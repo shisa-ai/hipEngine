@@ -323,6 +323,10 @@ class Qwen4ExpGGUFTextGenerator:
         # QSA ordered-v2 sparse decode is request-local too; the binder
         # republishes it with the rest.
         self.qsa_ordered_decode_v2 = False
+        # The exact grouped Q5_1 down chain's own gate is published by every
+        # plan, so an unbound generator keeps it on: a batch owner built before
+        # the bind still runs the production chain.
+        self.q51_exact_grouped_down = True
         self.q51_down_m1 = False
         self.q51_fold128_prefill = False
         self.q51_fold_pair_prefill = False
@@ -1092,6 +1096,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q51_register_cache = bool(
         getattr(generator, "q51_register_cache", False))
     runner.q51_row_publish = bool(getattr(generator, "q51_row_publish", False))
+    runner.q51_exact_grouped_down = bool(
+        getattr(generator, "q51_exact_grouped_down", True))
     runner.forkb_grouped_down = bool(
         getattr(generator, "forkb_grouped_down", False))
     runner.q8_down_row4_prefill = bool(

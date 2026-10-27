@@ -4118,14 +4118,14 @@
       "start_line": 3682,
       "end_line": 3691,
       "sha256": "0194c904c65a8447596a9c9d6cf14c0d9448346fac6e2d717df27ba44c133948",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Both process selectors replaced by runner-owned controls; default arithmetic unchanged and strict/diagnostic fallbacks retained. Obsolete chunk-size claim corrected separately; current admission owns capacity. Grouped-down validation: public306, GPU305 plus repaired focused308, CPU304 plus affected-file repairs and fixture/smoke chain. Worklog: worklog/entries/20261027T002615.120716Z-cleanup-refactor-r0159-grouped-down-d11f93.md."],
       "subitems": [
         {
           "line": 3684,
           "text": "- `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` and",
-          "status": "pending",
-          "evidence": ["Exact-conv process transport replaced by runner-local scope; bulk default, serial fallback and state-row capture guards preserved. Public300/GPU302/focused tests pass; grouped-down cleanup remains. Worklog: worklog/entries/20261027T001915.269424Z-cleanup-refactor-r0159-exact-conv-4e88bc.md."]
+          "status": "resolved-removed",
+          "evidence": ["Exact-conv transport complete e0f678dd9. Exact grouped-down now runner-owned with explicit diagnostic scope, preserved defaults/guards and all batch/mixed/clone/cache-key forwarding; both fallback paths remain intentionally usable. See worklog/entries/20261027T002615.120716Z-cleanup-refactor-r0159-grouped-down-d11f93.md."]
         }
       ]
     },

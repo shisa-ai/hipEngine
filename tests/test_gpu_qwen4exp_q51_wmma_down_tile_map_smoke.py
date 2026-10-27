@@ -117,24 +117,28 @@ def test_down_only_route_engages_with_current_map_and_production_gate_up() -> No
         quant=_REPAIR_KEY[2], variant=_REPAIR_KEY[3],
     )
 
-    saved = {
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": os.environ.get(
-            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"
-        ),
-        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q5_1_WMMA"
-        ),
+    controls = {
+        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
+        "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
+        "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
     }
+    saved = {key: os.environ.get(key) for key in controls}
+    from hipengine.runtime.qwen4_exp_runner import q51_exact_grouped_down
+
     try:
-        os.environ["HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"] = "0"
-        os.environ["HIPENGINE_QWEN4_EXP_Q5_1_WMMA"] = "1"
+        # Close newer down owners so this diagnostic measures its named leaf.
+        os.environ.update(controls)
         setattr(runner_module, _DOWN_ALIAS, counted_down)
         register(KernelKey(*_RISK_GATE_UP_KEY), counted_risk, replace=True)
         register(KernelKey(*_REPAIR_KEY), counted_repair, replace=True)
 
         rows = gate._load_suites(list(gate.DEFAULT_PROMPTS))[:1]
         tokens = gate.build_chat_prompt(generator.tokenizer, str(rows[0]["prompt"]))
-        generator.runner.prefill([int(token) for token in tokens])
+        # The chain gate is runner state: closing it for the measured prefill
+        # falls through to the F16 down owner, and the published value comes
+        # back on exit.
+        with q51_exact_grouped_down(generator.runner, False):
+            generator.runner.prefill([int(token) for token in tokens])
     finally:
         setattr(runner_module, _DOWN_ALIAS, original_down)
         register(KernelKey(*_RISK_GATE_UP_KEY), original_risk, replace=True)

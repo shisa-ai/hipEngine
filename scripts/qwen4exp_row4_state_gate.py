@@ -34,7 +34,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
     router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
-    Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
+    Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_FIELD,
     Q51_PAIR_PREFILL_ENV,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
     q51_pair2_control_record,q51_register_cache_control_record,
     q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
@@ -560,8 +560,8 @@ def main():
             # arms close them, hold the sibling off and record the pair2 gate.
             assert generator.runner.q51_register_cache is True, (
                 "production must publish the register-cache fallback")
-            assert os.environ.get(Q51_PAIR2_GATE_ENV, "") not in {"", "0"}, (
-                "the pair2 chain's own gate must be on")
+            assert getattr(generator.runner, Q51_PAIR2_GATE_FIELD, False), (
+                "the pair2 chain's own gate must be published on the runner")
             report["selection_control"] = q51_register_cache_control_record(
                 generator.runner)
         if args.route_package == "q51-row-publish":
@@ -576,13 +576,13 @@ def main():
                 "production must bind the preempting exact Q5_1 down")
             assert os.environ.get("HIPENGINE_QWEN4_EXP_ROUTED_F16", "") not in {"", "0"}, (
                 "production must bind the preempting routed F16 down")
-            assert os.environ.get(Q51_PAIR2_GATE_ENV, "") not in {"", "0"}, (
-                "the pair2 chain's own gate must be on")
+            assert getattr(generator.runner, Q51_PAIR2_GATE_FIELD, False), (
+                "the pair2 chain's own gate must be published on the runner")
             report["selection_control"] = {
                 "runner_field": "q51_row_publish",
                 "before": False, "after": True,
                 "scope": "per measured run; restored on exit",
-                **q51_pair2_control_record(),
+                **q51_pair2_control_record(generator.runner),
                 "reason": (
                     "the routed F16 WMMA down is the production owner of this "
                     "scope and, behind it, the exact iu8, grouped-WMMA/"
@@ -628,8 +628,8 @@ def main():
             # separates every bound value from the plan's published one.
             assert os.environ.get(Q51_PAIR_PREFILL_ENV, "") not in {"", "0"}, (
                 "production must bind the grouped pair2 Q5_1 selection")
-            assert os.environ.get(Q51_PAIR2_GATE_ENV, "") not in {"", "0"}, (
-                "the pair2 chain's own gate must be on")
+            assert getattr(generator.runner, Q51_PAIR2_GATE_FIELD, False), (
+                "the pair2 chain's own gate must be published on the runner")
             if args.route_package == "q51-fold-pair":
                 assert getattr(generator.runner, Q51_FOLD128_FIELD, False), (
                     "production must publish the fold128 parent this arm rides")

@@ -8,7 +8,7 @@ from hipengine.kernels import registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
-    Q51_PAIR2_GATE_ENV,
+    Q51_PAIR2_GATE_FIELD,
     Q51_PAIR2_PREEMPTING_ENV,
     _apply_mode,
     q51_register_cache_expected_calls,
@@ -37,9 +37,14 @@ def _key(variant: str = FOLD_PAIR) -> KernelKey:
 
 def _env(**overrides):
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    env[Q51_PAIR2_GATE_ENV] = "1"
     env.update(overrides)
     return env
+
+
+def _owner(**fields):
+    """A runner whose pair2 chain gate is published, as every plan publishes it."""
+
+    return SimpleNamespace(q51_exact_grouped_down=True, **fields)
 
 
 # --- the selector ------------------------------------------------------------
@@ -187,16 +192,15 @@ def test_state_gate_arm_writes_no_process_switch():
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_route_scope_binds_the_runner_selection(mode, expected):
     # The register-cache leaf rides both fold rungs, which are runner state.
-    owner = SimpleNamespace(q51_register_cache=None, q51_row_publish=True,
-                            q51_fold128_prefill=True,
-                            q51_fold_pair_prefill=True)
+    owner = _owner(q51_register_cache=None, q51_row_publish=True,
+                   q51_fold128_prefill=True, q51_fold_pair_prefill=True)
     env = _env()
     with route_scope("q51-register-cache", mode, owner, environment=env):
         assert owner.q51_register_cache is expected
         # Every preempting owner is closed so the counted pair2 leaf can run.
         assert all(env[key] == "0" for key in Q51_PAIR2_PREEMPTING_ENV)
         # The pair2 gate is a prerequisite, never forced.
-        assert env[Q51_PAIR2_GATE_ENV] == "1"
+        assert owner.q51_exact_grouped_down is True
     assert owner.q51_register_cache is None
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
 
@@ -206,9 +210,8 @@ def test_route_scope_holds_the_downstream_row_publish_off_in_both_arms(mode):
     # The row-publish sibling replaces the register-cache leaf the arm counts,
     # so an arm that leaves the plan's row-publish decision in force measures
     # the other kernel.
-    owner = SimpleNamespace(q51_register_cache=False, q51_row_publish=True,
-                            q51_fold128_prefill=True,
-                            q51_fold_pair_prefill=True)
+    owner = _owner(q51_register_cache=False, q51_row_publish=True,
+                   q51_fold128_prefill=True, q51_fold_pair_prefill=True)
     env = _env()
     with route_scope("q51-register-cache", mode, owner, environment=env):
         assert owner.q51_row_publish is False
@@ -222,9 +225,8 @@ def test_route_scope_holds_the_downstream_row_publish_off_in_both_arms(mode):
 
 
 def test_route_scope_restores_every_decision_after_an_exception():
-    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True,
-                            q51_fold128_prefill=True,
-                            q51_fold_pair_prefill=True)
+    owner = _owner(q51_register_cache=True, q51_row_publish=True,
+                   q51_fold128_prefill=True, q51_fold_pair_prefill=True)
     env = _env()
     with pytest.raises(RuntimeError, match="measured run failed"):
         with route_scope("q51-register-cache", "before", owner, environment=env):
@@ -244,7 +246,7 @@ def test_route_scope_fails_loudly_without_the_chain_gate():
                             q51_fold128_prefill=True,
                             q51_fold_pair_prefill=True)
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_ENV):
+    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_FIELD):
         with route_scope("q51-register-cache", "after", owner, environment=env):
             pass
     # Neither the child nor the downstream pin is bound by a refused arm.
@@ -254,9 +256,8 @@ def test_route_scope_fails_loudly_without_the_chain_gate():
 
 
 def test_building_a_q51_register_cache_scope_binds_nothing():
-    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True,
-                            q51_fold128_prefill=True,
-                            q51_fold_pair_prefill=True)
+    owner = _owner(q51_register_cache=True, q51_row_publish=True,
+                   q51_fold128_prefill=True, q51_fold_pair_prefill=True)
     env = _env()
     scope = route_scope("q51-register-cache", "after", owner, environment=env)
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
@@ -272,9 +273,8 @@ def test_building_a_q51_register_cache_scope_binds_nothing():
 
 def test_control_record_names_the_field_the_preemptors_and_the_pin():
     env = _env()
-    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True,
-                            q51_fold128_prefill=True,
-                            q51_fold_pair_prefill=True)
+    owner = _owner(q51_register_cache=True, q51_row_publish=True,
+                   q51_fold128_prefill=True, q51_fold_pair_prefill=True)
     record = q51_register_cache_control_record(owner, environment=env)
     assert record["runner_field"] == "q51_register_cache"
     assert record["before"] is False and record["after"] is True
@@ -283,14 +283,17 @@ def test_control_record_names_the_field_the_preemptors_and_the_pin():
         key: "0" for key in Q51_PAIR2_PREEMPTING_ENV}
     assert record["preempting_owners_previous"] == {
         key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    assert record["pair2_gate"] == {Q51_PAIR2_GATE_ENV: "1"}
+    assert record["pair2_gate"] == {
+        "runner_field": Q51_PAIR2_GATE_FIELD,
+        "published_value": True,
+    }
     pin = record["downstream_row_publish"]
     assert pin["runner_field"] == "q51_row_publish"
     assert pin["bound_value"] is False
     assert pin["published_value"] is True
     assert "register-cache" in pin["reason"]
     # Recording changes nothing.
-    assert env[Q51_PAIR2_GATE_ENV] == "1"
+    assert owner.q51_exact_grouped_down is True
     assert owner.q51_register_cache is True
 
 

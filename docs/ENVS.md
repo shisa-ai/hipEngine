@@ -895,7 +895,7 @@ use.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL` | retired | No longer read. Grouped MoE admission follows the explicit routed, exact-grouped and production routes; the superseded grouped Q5_K experiment selector is removed. |
-| `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` | `1` | Exact grouped down-projection for Q5_1 expert weights at rows>=2. |
+| `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` | retired | No longer read. Exact grouped Q5_1 down selection is runner-owned and remains enabled by default; scoped diagnostics retain the direct fallback. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` | `1` | Exact grouped Q4_K gate/up route at rows>=2. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL` | `1` | Extends the exact grouped Q4 route to all shapes (not only where the grouped-down route already applies). |
 | `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` | retired | No longer read. The profile publishes grouped Q8_0 down selection on its runner; scoped diagnostics preserve the strict comparison. |

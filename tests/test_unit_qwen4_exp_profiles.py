@@ -575,7 +575,7 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     resolved = _resolve(profile, quant="gguf_ud_q4_k_xl")
-    resolved.construct_generator(lambda: SimpleNamespace())
+    generator = resolved.construct_generator(lambda: SimpleNamespace())
     decode = _selection_map(resolved)[("linear", "decode_c1_calibrated_q4_dp4a_43_layers")]
     assert decode["selected_variant"] == "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
@@ -589,7 +589,10 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
         # exact iu8 down sits behind it, and the pair2 chain's own gate is on.
         # A diagnostic arm closes the first two for the counted leaf to launch.
         assert os.environ["HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"] == "1"
-        assert os.environ["HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"] == "1"
+        # The pair2 chain's own gate is runner state now, published by every
+        # plan; no process key carries it.
+        assert generator.q51_exact_grouped_down is True
+        assert "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN" not in os.environ
 
 
 def test_shipped_ud_plan_publishes_the_production_row_publish_fallback() -> None:

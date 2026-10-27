@@ -658,7 +658,11 @@ def make_qwen4_exp_ar_batch_runner(
     # The batch row cap is 64, so fold128 is reachable at exactly its own
     # threshold while the rows>=512 rungs stay on their parents; the Q5_1 down
     # M1 and PF-1 fork-b decisions select from rows>=2, so they are reachable
-    # here too and must travel with the rest.
+    # here too and must travel with the rest. The exact grouped Q5_1 down chain
+    # gate is the chain all of those rungs sit inside; every plan publishes it
+    # on, so an unbound carrier keeps it on rather than closing the chain.
+    batch.q51_exact_grouped_down = bool(
+        getattr(generator, "q51_exact_grouped_down", True))
     batch.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
     batch.q51_fold128_prefill = bool(
         getattr(generator, "q51_fold128_prefill", False))

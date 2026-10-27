@@ -1403,7 +1403,6 @@ def _bind(
             else ""
         ),
         "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": resolved.manifest_sha256,
@@ -1426,6 +1425,9 @@ def _bind(
     generator.q51_fold_pair_prefill = q51_fold_pair_prefill
     generator.q51_register_cache = q51_register_cache
     generator.q51_row_publish = q51_row_publish
+    # The exact grouped Q5_1 down chain's own gate: every plan runs it, and
+    # a diagnostic arm closes it on the runner it measures.
+    generator.q51_exact_grouped_down = True
     generator.forkb_grouped_down = forkb_grouped_down
     generator.q8_down_row4_prefill = q8_down_row4_prefill
     generator.q8_down_bundle_prefill = q8_down_bundle_prefill
@@ -1445,6 +1447,7 @@ def _bind(
         runner.q51_fold_pair_prefill = q51_fold_pair_prefill
         runner.q51_register_cache = q51_register_cache
         runner.q51_row_publish = q51_row_publish
+        runner.q51_exact_grouped_down = True
         runner.forkb_grouped_down = forkb_grouped_down
         runner.q8_down_row4_prefill = q8_down_row4_prefill
         runner.q8_down_bundle_prefill = q8_down_bundle_prefill

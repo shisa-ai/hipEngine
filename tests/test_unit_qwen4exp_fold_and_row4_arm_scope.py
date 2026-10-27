@@ -17,7 +17,7 @@ from hipengine.runtime import qwen4_exp_runner as runner_module
 from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_FOLD128_FIELD,
     Q51_FOLD_PAIR_FIELD,
-    Q51_PAIR2_GATE_ENV,
+    Q51_PAIR2_GATE_FIELD,
     Q51_PAIR2_PREEMPTING_ENV,
     Q51_PAIR_PREFILL_ENV,
     Q8_DOWN_BUNDLE_FIELD,
@@ -49,7 +49,6 @@ def _production_env():
     """The shipped lane's process bindings around both ladders."""
 
     env = {
-        Q51_PAIR2_GATE_ENV: "1",
         Q51_PAIR_PREFILL_ENV: "1",
     }
     env.update({key: "1" for key in Q51_PAIR2_PREEMPTING_ENV})
@@ -61,6 +60,7 @@ def _published_runner():
     """A runner carrying the values the production binder publishes."""
 
     return SimpleNamespace(
+        q51_exact_grouped_down=True,
         q51_fold128_prefill=True, q51_fold_pair_prefill=True,
         q51_register_cache=True, q51_row_publish=True,
         forkb_grouped_down=True,
@@ -167,7 +167,7 @@ def test_fold_arm_restores_env_and_runner_state(package):
     before = dict(env)
     with route_scope(package, "after", owner, environment=env):
         assert all(env[key] == "0" for key in Q51_PAIR2_PREEMPTING_ENV)
-        assert env[Q51_PAIR2_GATE_ENV] == "1"
+        assert owner.q51_exact_grouped_down is True
         assert env[Q51_PAIR_PREFILL_ENV] == "1"
         assert owner.q51_register_cache is False
         assert owner.q51_row_publish is False
@@ -194,8 +194,10 @@ def test_q8_ladder_arm_restores_env_and_runner_state(package):
 
 
 def test_a_runner_without_the_field_comes_back_unpublished():
-    # An unbound runner (no attribute yet) keeps the parent after the scope.
-    owner = SimpleNamespace()
+    # An unbound runner (no rung attribute yet) keeps the parent after the
+    # scope. The pair2 chain gate is not one of the rungs: the arm requires it
+    # published, because a closed chain would make the counted leaf unreachable.
+    owner = SimpleNamespace(q51_exact_grouped_down=True)
     env = _production_env()
     with route_scope("q51-fold128", "after", owner, environment=env):
         assert owner.q51_fold128_prefill is True
@@ -293,9 +295,9 @@ def test_fold_arm_requires_the_pair2_selection_gate(package, gate):
 @pytest.mark.parametrize("package", ["q51-fold128", "q51-fold-pair"])
 def test_fold_arm_requires_the_pair2_chain_gate(package):
     env = _production_env()
-    env[Q51_PAIR2_GATE_ENV] = "0"
     owner = _published_runner()
-    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_ENV):
+    owner.q51_exact_grouped_down = False
+    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_FIELD):
         with route_scope(package, "after", owner, environment=env):
             pass
     assert owner.q51_row_publish is True
@@ -410,7 +412,10 @@ def test_fold_control_record_separates_bound_and_published_values():
         "published_value": True,
     }
     assert record["prerequisite"][Q51_PAIR_PREFILL_ENV] == "1"
-    assert record["pair2_gate"] == {Q51_PAIR2_GATE_ENV: "1"}
+    assert record["pair2_gate"] == {
+        "runner_field": Q51_PAIR2_GATE_FIELD,
+        "published_value": True,
+    }
     assert record["downstream_siblings"]["q51_register_cache"] == {
         "bound_value": False, "published_value": True}
     assert record["downstream_siblings"]["q51_row_publish"] == {

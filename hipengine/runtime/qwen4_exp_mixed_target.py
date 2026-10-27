@@ -363,6 +363,8 @@ class Qwen4ExpMixedTargetPass:
                     branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank, ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count, top_k=cfg.expert_used_count, stream=0, runtime=self.runtime,
+                    q51_exact_grouped_down=getattr(
+                        batch, "q51_exact_grouped_down", True),
                     q51_down_m1=getattr(batch, "q51_down_m1", False),
                     q51_fold128_prefill=getattr(
                         batch, "q51_fold128_prefill", False),

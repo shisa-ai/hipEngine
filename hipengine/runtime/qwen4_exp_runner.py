@@ -4198,6 +4198,43 @@ def q8_down_register(runner: Any, enabled: bool | object = _Q8_DOWN_REGISTER_UNS
         runner.q8_down_register = prior
 
 
+# Q5_1 exact grouped down gate. Production runs the exact grouped Q5_1 down
+# chain for every multi-row prefill chunk; the binder publishes that decision to
+# the owning runner, and the dispatch-time gate keeps its rows>=2, quant and
+# production-MoE-preemptor guards. It is the gate of the chain the Q5_1 ladder
+# sits inside, so closing it falls through to the sorted/WMMA owners below and
+# makes every rung of that ladder unreachable. It is request-local state, so a
+# diagnostic arm binds it on the runner it measures instead of writing a
+# process-wide switch.
+_Q51_EXACT_GROUPED_DOWN_UNSET = object()
+
+
+@contextlib.contextmanager
+def q51_exact_grouped_down(
+    runner: Any, enabled: bool | object = _Q51_EXACT_GROUPED_DOWN_UNSET,
+):
+    """Bind the Q5_1 exact grouped down chain gate for a diagnostic arm.
+
+    ``False`` skips the exact grouped Q5_1 down chain for the measured window so
+    the dispatch falls through to the sorted/WMMA owners below it, and ``True``
+    restores the production chain; leaving ``enabled`` unset keeps whatever the
+    plan published. The gate is the chain's own, so a closed gate also makes
+    every Q5_1 ladder rung inside it unreachable and, with the Q4 exact gate's
+    ``_ALL`` sibling cleared, takes the Q4_K exact gate/up predicate with it.
+    The binding is a mutable runner field, so it stays in force for as long as
+    the scope is open and the published value is restored on exit, including on
+    an exception.
+    """
+
+    prior = getattr(runner, "q51_exact_grouped_down", True)
+    if enabled is not _Q51_EXACT_GROUPED_DOWN_UNSET:
+        runner.q51_exact_grouped_down = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q51_exact_grouped_down = prior
+
+
 # Q5_1 down M1 selection. The production plan declares the M1 owner for the
 # exact grouped Q5_1 down chain's small-chunk scope; the binder publishes that
 # decision to the owning runner, and the dispatch-time selector keeps its exact
@@ -5436,6 +5473,7 @@ def run_qwen4_exp_moe(
     q8_down_bundle_prefill: bool = False,
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
+    q51_exact_grouped_down: bool = True,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert.
 
@@ -5483,6 +5521,12 @@ def run_qwen4_exp_moe(
     mapped down decision (see :func:`q8_mapped_down`); it only admits the
     bundle leaf when this call built the Q5_K row4 map and rows>=512, and never
     on decode.
+
+    ``q51_exact_grouped_down`` is the owning runner's plan-published Q5_1 exact
+    grouped down decision (see :func:`q51_exact_grouped_down`); it is the gate
+    of the exact grouped Q5_1 down chain itself, so ``False`` skips that chain
+    for the whole multi-row prefill and falls through to the sorted/WMMA owners
+    below it. It never selects on decode.
     """
 
     if scratch.closed:
@@ -5513,6 +5557,7 @@ def run_qwen4_exp_moe(
                 q51_fold_pair_prefill=q51_fold_pair_prefill,
                 q51_register_cache=q51_register_cache,
                 q51_row_publish=q51_row_publish,
+                q51_exact_grouped_down=q51_exact_grouped_down,
                 forkb_grouped_down=forkb_grouped_down,
                 q8_down_row4_prefill=q8_down_row4_prefill,
                 q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -5658,8 +5703,7 @@ def run_qwen4_exp_moe(
         not production_grouped_moe
         and weights["expert_down"].spec.quant_key == "gguf_q5_1"
         and rows >= 2
-        and os.environ.get("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN", "1")
-        not in {"", "0", "false", "False"}
+        and q51_exact_grouped_down
     )
     # T16 down route (down-leg build step 4): env-gated, tile-cache-keyed.
     # A cache miss falls through to the chain below, so the default path is
@@ -7128,6 +7172,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    q51_exact_grouped_down: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7145,7 +7190,9 @@ def run_qwen4_exp_dense_qsa_layer(
     ``q51_fold_pair_prefill``, ``forkb_grouped_down``, ``q8_down_row4_prefill``,
     ``q8_down_bundle_prefill``) and the register/row-publish/mapped siblings are
     the owning runner's plan-published MoE down selections, forwarded to the MoE
-    dispatch unchanged; they select nothing on a cache-only call.
+    dispatch unchanged; ``q51_exact_grouped_down`` is the exact grouped Q5_1
+    down chain's own gate and is forwarded the same way. They select nothing on
+    a cache-only call.
     """
 
     if scratch.closed:
@@ -7212,6 +7259,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
+        q51_exact_grouped_down=q51_exact_grouped_down,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -7263,6 +7311,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    q51_exact_grouped_down: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7413,6 +7462,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
+        q51_exact_grouped_down=q51_exact_grouped_down,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -7471,6 +7521,7 @@ def run_qwen4_exp_gdn_layer(
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    q51_exact_grouped_down: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7677,6 +7728,7 @@ def run_qwen4_exp_gdn_layer(
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
+        q51_exact_grouped_down=q51_exact_grouped_down,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -8520,6 +8572,13 @@ class Qwen4ExpGGUFResidentModelRunner:
     # it to the token mixer, so a diagnostic binds the serial arm on the one
     # runner it measures.
     gdn_exact_bulk_conv: bool = True
+    # Q5_1 exact grouped down gate, published by the profile binder for every
+    # plan: True runs the exact grouped Q5_1 down chain on each multi-row
+    # prefill chunk, and False skips that chain so the dispatch falls through to
+    # the sorted/WMMA owners below it. It is the chain's own gate, so every Q5_1
+    # ladder rung inside it is unreachable while it is closed. Decode never
+    # selects the chain. A diagnostic scope may outrank it.
+    q51_exact_grouped_down: bool = True
     # Q5_1 down M1 selection, published by the profile binder for the exact
     # grouped Q5_1 down chain's small-chunk scope: True on a production plan,
     # False on every plan that keeps the preceding expertgrid64 owner. The
@@ -9817,6 +9876,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    q51_exact_grouped_down=self.q51_exact_grouped_down,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -9863,6 +9923,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    q51_exact_grouped_down=self.q51_exact_grouped_down,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10171,6 +10232,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    q51_exact_grouped_down=self.q51_exact_grouped_down,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10207,6 +10269,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    q51_exact_grouped_down=self.q51_exact_grouped_down,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,

@@ -46,7 +46,8 @@ if str(ROOT) not in sys.path:
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
+    gdn_prefill_variant, q51_exact_grouped_down, qsa_ordered_decode_v2,
+    qsa_prefill_head_mode,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -106,6 +107,12 @@ class CandidateSpec:
     # production base, the ordered v1 parent on a strict one); the gate binds a
     # non-None value around the measured rows and restores it after.
     qsa_ordered_decode_v2: bool | None = None
+    # Explicit exact grouped Q5_1 down chain gate for this arm, same protocol.
+    # ``None`` keeps the base profile's published decision (on for every plan);
+    # ``False`` closes the chain around the measured rows so the dispatch falls
+    # through to the sorted/WMMA down owners, and the published value comes back
+    # after.
+    q51_exact_grouped_down: bool | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -139,6 +146,16 @@ _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dpp_exact",
 }
 _ALL_LAYERS = ",".join(map(str, range(48)))
+#: Owners that take the Q5_1 down leg before the F16 compact owner. The routed
+#: F16 route owns both legs ahead of the Q5_1 branch (so it preempts the arm's
+#: declared gate/up control too), and the T16 Q5_1 down owner sits between it and
+#: the F16 owner. An arm that counts the F16 down owner has to close both, or it
+#: measures whichever of them the base profile's own bindings selected; the
+#: candidate environment is applied after the bind and restored on exit.
+_F16_DOWN_PREEMPTORS_OFF = {
+    "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
+    "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
+}
 _F16_ROUTE_ARMS = {
     "recovery_plan": {},
     "recovery_plus_routed_f16": {"HIPENGINE_QWEN4_EXP_ROUTED_F16": "1"},
@@ -325,9 +342,9 @@ CANDIDATES = {
         environment={
             # The ONLY change: clear the exact-grouped Q4 gate so the chain
             # falls through to the F16 owner. Q4_IU8_PREFILL stays at its
-            # default 0 and EXACT_GROUPED_DOWN stays at production, which
-            # isolates the gate/up half (the down leg's route is selected
-            # independently at its own dispatch site).
+            # default 0 and the exact grouped Q5_1 down chain stays at its
+            # production publication, which isolates the gate/up half (the down
+            # leg's route is selected independently at its own dispatch site).
             "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
         },
         base_profile="production",
@@ -355,15 +372,21 @@ CANDIDATES = {
     # fastest registered down owner (-42.29% median vs the production iu8-risk
     # owner, `2026-10-07-qwen4exp-mx1-f16-owner-recheck`), so a down-only F16
     # variant is the only MX-1 configuration whose numerical status is unknown.
-    # The two overrides isolate exactly that leg:
-    #   * `EXACT_GROUPED_DOWN=0` skips the production Q5_1 down branch so the
-    #     chain falls through to `elif q5_wmma`.
+    # The overrides isolate exactly that leg:
+    #   * `q51_exact_grouped_down=False` on the runner skips the production Q5_1
+    #     down branch so the chain falls through to `elif q5_wmma`.
     #   * `Q5_1_WMMA=1` selects the F16 down owner there.
+    #   * `ROUTED_F16=0` and `T16_DOWN=0` close the two owners that take the down
+    #     leg ahead of it (the routed F16 route owns both legs before the Q5_1
+    #     branch, and the T16 owner sits between it and the F16 owner). Without
+    #     them the production base binds `ROUTED_F16=1` and the arm counts zero
+    #     F16 down calls while measuring another owner.
     # The gate/up leg is selected by the independent `exact_grouped_q4_gate`
     # predicate, which stays true because `EXACT_GROUPED_Q4_ALL` keeps its
-    # production default of 1 when only `EXACT_GROUPED_DOWN` is cleared. No
-    # gate/up key is overridden, so gate/up stays on the production
-    # exact iu8-risk+repair route.
+    # production default of 1 when only the down chain is closed. No gate/up key
+    # is overridden, so gate/up stays on the production exact iu8-risk+repair
+    # route on the layers whose exact chain owns it (0-26); the 27-47 production
+    # grouped window keeps the gate/up owner production selects there.
     "gdn_tiled16_multi": CandidateSpec(
         name="gdn_tiled16_multi",
         classification="T1",
@@ -419,13 +442,14 @@ CANDIDATES = {
         classification="T1",
         mechanism=(
             "the F16-WMMA compact grouped down owner (Q5_1 decoded to F16, F16 "
-            "WMMA, F32 accumulate) with no repair pass; the Q4_K gate/up leg "
-            "is left on the production exact iu8-risk+repair route"
+            "WMMA, F32 accumulate) with no repair pass; routed-F16 composition "
+            "is held off and other Q4_K gate/up controls retain their profile values"
         ),
         environment={
-            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "0",
+            **_F16_DOWN_PREEMPTORS_OFF,
             "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
         },
+        q51_exact_grouped_down=False,
         base_profile="production",
         scenario_id="qwen4exp-f16-compact-down",
         candidate_key=("hip_gfx1151", "moe_linear", "gguf_q5_1",
@@ -537,16 +561,21 @@ CANDIDATES = {
             "grouped down (Q5_1), both with no repair pass"
         ),
         environment={
-            # Three flags, because the down leg's own chain tests
-            # `exact_grouped_down` BEFORE `q5_wmma`:
-            #   4559 if down == gguf_q5_1
-            #   4571   if q5_mmq:
-            #   4603   elif exact_grouped_down:   <- production chain (repair)
-            #   4751   elif q5_wmma:              <- F16 down owner
+            # Two flags and one runner field, because the down leg's own chain
+            # tests `exact_grouped_down` BEFORE `q5_wmma`:
+            #   if routed_f16:              <- production base binds this on
+            #   elif down == gguf_q5_1:
+            #     if t16_down:
+            #     elif exact_grouped_down:  <- production chain (repair)
+            #     elif q5_wmma:             <- F16 down owner
+            # So the arm closes the routed F16 and T16 owners as well; without
+            # that both legs are the routed F16 route and the compact aliases
+            # the counters watch never launch.
+            **_F16_DOWN_PREEMPTORS_OFF,
             "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
-            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "0",
             "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
         },
+        q51_exact_grouped_down=False,
         base_profile="production",
         scenario_id="qwen4exp-mx1-full-route",
         # Both owners are invoked by direct module-attribute calls, so both
@@ -1662,6 +1691,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # arm binds it and the profile's own decision comes back on unwind.
         dispatch_stack.enter_context(qsa_ordered_decode_v2(
             candidate_generator.runner, candidate_spec.qsa_ordered_decode_v2))
+    if candidate_spec.q51_exact_grouped_down is not None:
+        # And for the exact grouped Q5_1 down chain gate: request-local state, so
+        # an arm that needs the owners below the chain binds it off for the
+        # measured rows and the profile's own decision comes back on unwind.
+        dispatch_stack.enter_context(q51_exact_grouped_down(
+            candidate_generator.runner,
+            candidate_spec.q51_exact_grouped_down))
     counter = {"calls": 0, "shapes": {}}
     batch_evidence = None
     batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}

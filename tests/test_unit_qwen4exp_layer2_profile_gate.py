@@ -388,12 +388,15 @@ def test_layer2_grouped_q5k_candidate_is_absent_after_its_gate_rejected_it() -> 
 def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
     """MX-1's down half must be gated as a down-only change.
 
-    The candidate selects the F16 down owner by clearing the exact-grouped-down
-    gate and opening the Q5_1 WMMA route. The gate/up leg is selected by the
-    independent ``exact_grouped_q4_gate`` predicate, which stays on when only
-    ``EXACT_GROUPED_DOWN`` is cleared because ``EXACT_GROUPED_Q4_ALL`` keeps its
-    production default. A gate/up override here would silently turn the run into
-    the already-refuted full route, so none of those keys may appear.
+    The candidate selects the F16 down owner by closing the exact grouped Q5_1
+    down chain on the runner, opening the Q5_1 WMMA route, and closing the two
+    owners that take the down leg ahead of it: the routed F16 route (which the
+    production base binds on and which owns both legs before the Q5_1 branch)
+    and the T16 Q5_1 down owner. The gate/up leg is selected by the independent
+    ``exact_grouped_q4_gate`` predicate, which stays on when only the down chain
+    is closed because ``EXACT_GROUPED_Q4_ALL`` keeps its production default. A
+    gate/up override here would silently turn the run into the already-refuted
+    full route, so none of those keys may appear.
     """
 
     module = _load_script()
@@ -403,9 +406,20 @@ def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
     assert candidate.base_profile == "production"
     assert candidate.scenario_id == "qwen4exp-f16-compact-down"
     assert candidate.environment == {
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "0",
+        # The two owners that take the Q5_1 down leg before the F16 owner. The
+        # production base binds ROUTED_F16=1, so without these the arm measures
+        # the routed F16 route and counts zero F16 down calls.
+        "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
+        "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
     }
+    # The chain gate is runner state, so the arm closes it through the spec's
+    # field instead of a process key.
+    assert candidate.q51_exact_grouped_down is False
+    # The 27-47 production grouped window is left at its production binding: it
+    # selects its own gate/up owner, and overriding it would move that window
+    # out from under the arm's declared "gate/up left at production" control.
+    assert "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL" not in candidate.environment
     for gate_up_key in (
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL",
@@ -413,6 +427,45 @@ def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
     ):
         assert gate_up_key not in candidate.environment, gate_up_key
+
+
+def test_mx1_full_route_candidate_closes_the_leg_preemptors() -> None:
+    """MX-1's two compact owners must be the ones the run actually launches.
+
+    The arm claims the F16-WMMA compact gate/up *and* down owners. The routed
+    F16 route owns both legs ahead of the Q5_1 branch and the production base
+    binds it on, so the arm has to close it (and the T16 down owner, which sits
+    between the routed route and the F16 down owner) or it measures the routed
+    route on both legs while counting zero compact dispatches.
+    """
+
+    module = _load_script()
+    candidate = module.CANDIDATES["mx1_full_route"]
+
+    assert candidate.classification == "T1"
+    assert candidate.base_profile == "production"
+    assert candidate.environment == {
+        "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
+        "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
+        # The gate/up half: clear the exact grouped Q4 gate so the compact F16
+        # owner is selected, and open the Q5_1 WMMA down route.
+        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
+        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
+    }
+    assert candidate.q51_exact_grouped_down is False
+    # The production gate/up selector this arm moves is the Q4 exact gate; the
+    # down chain gate is runner state, and neither `EXACT_GROUPED_Q4_ALL` nor
+    # the iu8 exact selectors are overridden.
+    for key in (
+        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL",
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
+        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN",
+        # The 27-47 production grouped window already selects both compact
+        # owners; moving it would be a second change the arm does not claim.
+        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
+    ):
+        assert key not in candidate.environment, key
 
 
 def test_f16_compact_down_candidate_engages_direct_alias_and_keeps_fallback() -> None:

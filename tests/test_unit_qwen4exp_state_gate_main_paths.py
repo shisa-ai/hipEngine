@@ -78,6 +78,7 @@ def _runner(**overrides):
 
     published = {
         "prefill_chunk_size": 1024,
+        "q51_exact_grouped_down": True,
         "q51_fold128_prefill": True,
         "q51_fold_pair_prefill": True,
         "q51_register_cache": True,
@@ -119,13 +120,12 @@ def stubs(registry):
 def premise_env(monkeypatch):
     """The chain gates the four arms ride in production.
 
-    The Q8_0 chain's own gate is request-local runner state, so only the Q5_1
-    pair2 process keys are set here; the Q8_0 arms read the gate off the runner
-    the fixture builds.
+    Both chains' own gates are request-local runner state, so only the Q5_1
+    pair2 selection key is set here; every arm reads its chain gate off the
+    runner the fixture builds.
     """
 
     monkeypatch.setenv(gate.Q51_PAIR_PREFILL_ENV, "1")
-    monkeypatch.setenv(gate.Q51_PAIR2_GATE_ENV, "1")
 
 
 def _install_generator(monkeypatch, runner):
@@ -233,8 +233,6 @@ def test_main_still_refuses_a_missing_published_parent(
     "package,key,message",
     [("q51-fold128", gate.Q51_PAIR_PREFILL_ENV,
       "production must bind the grouped pair2 Q5_1 selection"),
-     ("q51-fold128", gate.Q51_PAIR2_GATE_ENV,
-      "the pair2 chain's own gate must be on"),
      ("q51-fold-pair", gate.Q51_PAIR_PREFILL_ENV,
       "production must bind the grouped pair2 Q5_1 selection")])
 def test_main_still_refuses_a_closed_chain_gate(
@@ -242,6 +240,18 @@ def test_main_still_refuses_a_closed_chain_gate(
     monkeypatch.setenv(key, "0")
     with pytest.raises(AssertionError, match=message):
         _run_main(monkeypatch, tmp_path, package, _runner())
+    assert "" not in os.environ
+
+
+@pytest.mark.parametrize("package", ["q51-fold128", "q51-fold-pair"])
+def test_main_refuses_an_unpublished_pair2_chain_gate(
+        stubs, premise_env, monkeypatch, tmp_path, package):
+    # The pair2 chain's own gate is request-local runner state now, so the
+    # premise is the runner's published decision, not a process key.
+    with pytest.raises(AssertionError,
+                       match="the pair2 chain's own gate must be published"):
+        _run_main(monkeypatch, tmp_path, package,
+                  _runner(q51_exact_grouped_down=False))
     assert "" not in os.environ
 
 

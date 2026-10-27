@@ -9,7 +9,7 @@ from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_IU8_EXACT_ENV,
-    Q51_PAIR2_GATE_ENV,
+    Q51_PAIR2_GATE_FIELD,
     Q51_PAIR2_PREEMPTING_ENV,
     _apply_mode,
     q51_row_publish_expected_calls,
@@ -133,22 +133,22 @@ def test_campaign_arm_writes_no_process_switch():
 def test_route_scope_binds_the_runner_selection(mode, expected):
     # The row-publish leaf rides both fold rungs, which are runner state.
     owner = SimpleNamespace(q51_row_publish=None, q51_fold128_prefill=True,
-                            q51_fold_pair_prefill=True)
+                            q51_fold_pair_prefill=True,
+                            q51_exact_grouped_down=True)
     env = {
         RETIRED_ROW_PUBLISH_ENV: "1",
-        Q51_PAIR2_GATE_ENV: "1",
         **{key: "1" for key in Q51_PAIR2_PREEMPTING_ENV},
     }
     with route_scope("q51-row-publish", mode, owner, environment=env):
         assert owner.q51_row_publish is expected
         # Every preempting owner is closed so the counted pair2 leaf can run.
         assert all(env[key] == "0" for key in Q51_PAIR2_PREEMPTING_ENV)
-        # The pair2 gate and the retired switch are untouched.
-        assert env[Q51_PAIR2_GATE_ENV] == "1"
+        # The pair2 gate on the runner and the retired switch are untouched.
+        assert owner.q51_exact_grouped_down is True
         assert env[RETIRED_ROW_PUBLISH_ENV] == "1"
     assert owner.q51_row_publish is None
     assert env[RETIRED_ROW_PUBLISH_ENV] == "1"
-    assert env[Q51_PAIR2_GATE_ENV] == "1"
+    assert owner.q51_exact_grouped_down is True
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
 
 
@@ -293,26 +293,30 @@ def test_moe_graph_capture_forwards_the_selection(monkeypatch):
     assert seen == [True]
 
 
+def _chain_gate_owner(**fields):
+    published = {"q51_exact_grouped_down": True}
+    published.update(fields)
+    return SimpleNamespace(**published)
+
+
 def test_pair2_scope_restores_absent_and_present_values():
-    env = {Q51_PAIR2_PREEMPTING_ENV[0]: "1", Q51_PAIR2_GATE_ENV: "1"}
-    with q51_pair2_scope(environment=env):
+    env = {Q51_PAIR2_PREEMPTING_ENV[0]: "1"}
+    with q51_pair2_scope(runner=_chain_gate_owner(), environment=env):
         assert all(env[key] == "0" for key in Q51_PAIR2_PREEMPTING_ENV)
-    assert env == {Q51_PAIR2_PREEMPTING_ENV[0]: "1", Q51_PAIR2_GATE_ENV: "1"}
+    assert env == {Q51_PAIR2_PREEMPTING_ENV[0]: "1"}
 
 
 def test_pair2_scope_restores_after_an_exception():
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    env[Q51_PAIR2_GATE_ENV] = "1"
     with pytest.raises(RuntimeError, match="arm failed"):
-        with q51_pair2_scope(environment=env):
+        with q51_pair2_scope(runner=_chain_gate_owner(), environment=env):
             raise RuntimeError("arm failed")
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
 
 
 def test_pair2_scope_changes_nothing_until_entered():
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    env[Q51_PAIR2_GATE_ENV] = "1"
-    scope = q51_pair2_scope(environment=env)
+    scope = q51_pair2_scope(runner=_chain_gate_owner(), environment=env)
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
     with scope:
         assert all(env[key] == "0" for key in Q51_PAIR2_PREEMPTING_ENV)
@@ -330,7 +334,7 @@ def test_pair2_control_names_every_preemptor():
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
         "HIPENGINE_QWEN4_EXP_T16_DOWN",
     )
-    assert Q51_PAIR2_GATE_ENV not in Q51_PAIR2_PREEMPTING_ENV
+    assert Q51_PAIR2_GATE_FIELD not in Q51_PAIR2_PREEMPTING_ENV
     assert Q51_IU8_EXACT_ENV == "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 
 
@@ -343,9 +347,8 @@ def test_route_scope_leaves_the_preemptors_alone_for_other_packages():
 
 
 def test_building_a_q51_route_scope_binds_nothing():
-    owner = SimpleNamespace(q51_row_publish=True)
+    owner = SimpleNamespace(q51_row_publish=True, q51_exact_grouped_down=True)
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    env[Q51_PAIR2_GATE_ENV] = "1"
     owner.q51_fold128_prefill = True
     owner.q51_fold_pair_prefill = True
     scope = route_scope("q51-row-publish", "after", owner, environment=env)
@@ -358,15 +361,16 @@ def test_building_a_q51_route_scope_binds_nothing():
     assert owner.q51_row_publish is True
 
 
-@pytest.mark.parametrize("gate", [None, "", "0", "false", "False"])
+@pytest.mark.parametrize("gate", [None, False])
 def test_pair2_scope_fails_loudly_without_the_chain_gate(gate):
     # Without the pair2 chain's own gate the chain is skipped entirely, so an
-    # arm would report an engagement it cannot produce.
+    # arm would report an engagement it cannot produce. The gate is runner
+    # state: an unbound runner and a closed one both refuse.
+    owner = SimpleNamespace() if gate is None else _chain_gate_owner(
+        q51_exact_grouped_down=gate)
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    if gate is not None:
-        env[Q51_PAIR2_GATE_ENV] = gate
-    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_ENV):
-        with q51_pair2_scope(environment=env):
+    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_FIELD):
+        with q51_pair2_scope(runner=owner, environment=env):
             pass
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
 
@@ -374,9 +378,10 @@ def test_pair2_scope_fails_loudly_without_the_chain_gate(gate):
 @pytest.mark.parametrize("mode", ["before", "after"])
 def test_route_scope_fails_loudly_without_the_chain_gate(mode):
     owner = SimpleNamespace(q51_row_publish=None, q51_fold128_prefill=True,
-                            q51_fold_pair_prefill=True)
+                            q51_fold_pair_prefill=True,
+                            q51_exact_grouped_down=False)
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
-    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_ENV):
+    with pytest.raises(ValueError, match=Q51_PAIR2_GATE_FIELD):
         with route_scope("q51-row-publish", mode, owner, environment=env):
             pass
     assert owner.q51_row_publish is None
@@ -389,15 +394,23 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
     env = {
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT": "1",
-        Q51_PAIR2_GATE_ENV: "1",
     }
-    record = q51_pair2_control_record(environment=env)
+    record = q51_pair2_control_record(_chain_gate_owner(), environment=env)
     assert record["preempting_owners_closed"] == {
         key: "0" for key in Q51_PAIR2_PREEMPTING_ENV}
     assert record["preempting_owners_previous"][
         "HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
     assert record["preempting_owners_previous"][
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA"] is None
-    assert record["pair2_gate"] == {Q51_PAIR2_GATE_ENV: "1"}
+    assert record["pair2_gate"] == {
+        "runner_field": Q51_PAIR2_GATE_FIELD,
+        "published_value": True,
+    }
+    # Without a runner there is no published value to name, and the record says
+    # so rather than implying the gate was on.
+    assert q51_pair2_control_record(environment=env)["pair2_gate"] == {
+        "runner_field": Q51_PAIR2_GATE_FIELD,
+        "published_value": None,
+    }
     # Recording changes nothing.
     assert env["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"

@@ -597,8 +597,10 @@ Q51_PAIR2_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_T16_DOWN",
 )
 #: The pair2 chain's own gate. It must stay on for the counted leaf to run, so
-#: the arm records it instead of forcing it.
-Q51_PAIR2_GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"
+#: the arm records it instead of forcing it. The gate is request-local runner
+#: state, so an arm reads it on the runner it measures, not from the
+#: environment.
+Q51_PAIR2_GATE_FIELD = "q51_exact_grouped_down"
 #: Kept for callers that name the single exact owner.
 Q51_IU8_EXACT_ENV = "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 #: The pair2 chain's own selection gate. It decides whether the parent variant
@@ -622,12 +624,14 @@ QSA_ORDERED_DECODE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
 QSA_ORDERED_V2_FUSED_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED"
 
 
-def q51_pair2_control_record(*, environment=os.environ):
+def q51_pair2_control_record(runner=None, *, environment=os.environ):
     """The recorded control: the value both arms force, and what it replaced.
 
     The forced value is what the scope writes, not what the environment held
     before it, so a reader cannot mistake the production binding for the arm's
-    own state. The previous values are recorded beside it.
+    own state. The previous values are recorded beside it. The pair2 gate is
+    runner state, so its published value is read from the runner the arm
+    measures (``None`` when the record is built without one).
     """
 
     return {
@@ -637,7 +641,12 @@ def q51_pair2_control_record(*, environment=os.environ):
         "preempting_owners_previous": {
             key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV
         },
-        "pair2_gate": {Q51_PAIR2_GATE_ENV: environment.get(Q51_PAIR2_GATE_ENV)},
+        "pair2_gate": {
+            "runner_field": Q51_PAIR2_GATE_FIELD,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, Q51_PAIR2_GATE_FIELD, None)),
+        },
     }
 
 
@@ -715,7 +724,8 @@ def q51_fold_control_record(route_package, runner=None, *, environment=os.enviro
     holds fixed around it: the ladder rung it does not count (bound off, with
     the plan's published value beside it) or the parent rung it rides (required,
     recorded as found), the pair2 selection gate and chain gates, and the two
-    runner-local siblings that would replace the leaf.
+    runner-local siblings that would replace the leaf. The pair2 gate is runner
+    state, so it is recorded from the runner this record names.
     """
 
     if route_package == "q51-fold128":
@@ -745,7 +755,7 @@ def q51_fold_control_record(route_package, runner=None, *, environment=os.enviro
             Q51_PAIR_PREFILL_ENV: environment.get(Q51_PAIR_PREFILL_ENV),
         },
         "scope": "per measured run; restored on exit",
-        **q51_pair2_control_record(environment=environment),
+        **q51_pair2_control_record(runner, environment=environment),
         "downstream_siblings": {
             "q51_register_cache": {
                 "bound_value": False,
@@ -786,7 +796,7 @@ def q51_register_cache_control_record(runner=None, *, environment=os.environ):
         "before": False,
         "after": True,
         "scope": "per measured run; restored on exit",
-        **q51_pair2_control_record(environment=environment),
+        **q51_pair2_control_record(runner, environment=environment),
         "downstream_row_publish": {
             "runner_field": "q51_row_publish",
             "bound_value": False,
@@ -872,22 +882,24 @@ def qsa_ordered_v2_fused_off(*, environment=os.environ):
 
 
 @contextlib.contextmanager
-def q51_pair2_scope(*, environment=os.environ):
+def q51_pair2_scope(*, runner=None, environment=os.environ):
     """Close the owners that preempt the grouped pair2 Q5_1 down chain.
 
     The row-publish selection only exists inside that chain, so an arm that
     leaves any preemptor open counts zero launches and measures the other
     owner. Every key is read per dispatch, so closing them after construction
     takes effect; all prior values (including absent keys) come back on exit.
-    The pair2 chain's own gate is not one of the preemptors and must already be
-    on: without it the chain is skipped entirely, so the scope fails loudly
-    rather than reporting an engagement it cannot produce.
+    The pair2 chain's own gate is not one of the preemptors: it is request-local
+    runner state and must already be on, so the scope reads it on the runner it
+    measures and fails loudly rather than reporting an engagement it cannot
+    produce.
     """
 
-    if environment.get(Q51_PAIR2_GATE_ENV, "") in {"", "0", "false", "False"}:
+    if not getattr(runner, Q51_PAIR2_GATE_FIELD, False):
         raise ValueError(
-            f"{Q51_PAIR2_GATE_ENV} must be on for the grouped pair2 Q5_1 down "
-            "chain; without it the counted row-publish leaf cannot launch")
+            f"runner.{Q51_PAIR2_GATE_FIELD} must be on for the grouped pair2 "
+            "Q5_1 down chain; without it the counted row-publish leaf cannot "
+            "launch")
     previous = {key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV}
     for key in Q51_PAIR2_PREEMPTING_ENV:
         environment[key] = "0"
@@ -1163,8 +1175,11 @@ PF13_SIBLING_FIELDS = (
 )
 #: The grouped chain's own gates. They decide whether the chain runs at all, so
 #: the arm records them and refuses to measure with either off: a closed gate
-#: makes both leaves count zero and would be reported as a neutral A/B.
-PF13_GATE_ENV = (Q51_PAIR2_GATE_ENV, "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4")
+#: makes both leaves count zero and would be reported as a neutral A/B. The
+#: pair2 gate is request-local runner state (``PF13_GATE_FIELD``); the Q4 gate is
+#: still a process key.
+PF13_GATE_FIELD = Q51_PAIR2_GATE_FIELD
+PF13_GATE_ENV = ("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4",)
 #: The exact expert-grid family the M1 leaf belongs to. Its parent rung is what
 #: the ``before`` arm measures, so any other family would compare two unrelated
 #: owners and select no M1 leaf at all.
@@ -1199,6 +1214,10 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
             "and binding nothing would measure the plan's own PF-1/PF-3 "
             "decisions")
     closed = {"", "0", "false", "False"}
+    if not getattr(runner, PF13_GATE_FIELD, False):
+        raise ValueError(
+            f"runner.{PF13_GATE_FIELD} must be on for the grouped expert-down "
+            "chain; without it neither counted leaf can launch")
     for key in PF13_GATE_ENV:
         if environment.get(key, "") in closed:
             raise ValueError(
@@ -1300,7 +1319,14 @@ def pf13_control_record(runner=None, *, environment=os.environ):
             "previous": {
                 key: environment.get(key) for key in PF13_PREEMPTING_ENV},
         },
-        "gates": {key: environment.get(key) for key in PF13_GATE_ENV},
+        "gates": {
+            "runner_field": {
+                "field": PF13_GATE_FIELD,
+                "published_value": _value(PF13_GATE_FIELD),
+            },
+            "environment": {
+                key: environment.get(key) for key in PF13_GATE_ENV},
+        },
         "expert_grid": {
             "published": environment.get(PF13_EXPERT_GRID_ENV),
             "effective": environment.get(PF13_EXPERT_GRID_ENV) or "64",
@@ -1687,10 +1713,10 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # The same owners that preempt the pair2 chain preempt this leaf, and
         # the downstream row-publish sibling replaces it outright, so both arms
         # close the preemptors and hold that sibling off; the profile's own
-        # values come back on exit. ``Q51_PAIR2_GATE_ENV`` must stay on and is
+        # values come back on exit. ``Q51_PAIR2_GATE_FIELD`` must stay on and is
         # recorded, not forced.
         return _combined_scope(
-            q51_pair2_scope(environment=environment),
+            q51_pair2_scope(runner=runner, environment=environment),
             q51_register_cache(runner, mode == "after"),
             q51_row_publish(runner, False))
     if route_package == "q51-row-publish":
@@ -1712,9 +1738,9 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # The routed F16 WMMA down, the exact iu8 down and the grouped-WMMA/
         # grouped-MoE/MMQ/T16 owners all preempt the pair2 chain the arm counts,
         # so both arms close them and the profile's own values come back on
-        # exit. ``Q51_PAIR2_GATE_ENV`` must stay on and is recorded, not forced.
+        # exit. ``Q51_PAIR2_GATE_FIELD`` must stay on and is recorded, not forced.
         return _combined_scope(
-            q51_pair2_scope(environment=environment),
+            q51_pair2_scope(runner=runner, environment=environment),
             q51_row_publish(runner, mode == "after"))
     if route_package == "q8-down-register":
         if mode not in {"before", "after"}:
@@ -1779,7 +1805,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # leaf, so both arms bind them off. Every forced value comes back on
         # exit and the gates are recorded, not forced.
         return _combined_scope(
-            q51_pair2_scope(environment=environment),
+            q51_pair2_scope(runner=runner, environment=environment),
             q51_fold_scope(route_package, mode, runner,
                            environment=environment),
             q51_register_cache(runner, False),
@@ -2652,7 +2678,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "before": False,
             "after": True,
             "scope": "per measured run; restored on exit",
-            **q51_pair2_control_record(),
+            **q51_pair2_control_record(generator.runner),
             "reason": (
                 "the routed F16 WMMA down is the production owner of this "
                 "scope and, behind it, the exact iu8, grouped-WMMA/grouped-MoE, "

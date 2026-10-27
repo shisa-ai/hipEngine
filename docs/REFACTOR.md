@@ -3071,18 +3071,6 @@ should be removed or collapsed.
   16K/64K, cancellation, serving, and graph-repeat soak; retain the registered
   strict spans kernel as the execution-profile fallback.
 
-## 2026-08-27 Qwen4Exp exact chunked prefill bisection flags
-
-- Exact bulk-convolution prefill is the default and uses runner-owned selection;
-  `gdn_exact_bulk_conv(runner, False)` retains the serial diagnostic fallback.
-  Its process-environment transport is removed. The remaining
-  `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` defaults on for the exact grouped
-  down path. Automatic public admission chooses among 4096/2048/1024-token
-  workspaces; explicit constructor defaults are 512. This is separate from the
-  engine-loop scheduling cap. Remove the grouped-down process transport and
-  redundant alternatives after public serving, rollback, cancellation and
-  long-context repeatability checks; retain the strict oracles.
-
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 
 - Remaining Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidate
@@ -3100,7 +3088,8 @@ should be removed or collapsed.
   per-category top-1, determinism/isolation, BF16-relative, task, and lifecycle
   gates pass; otherwise remove the candidates after the campaign.
 - The 2026-10-07 down-only `HIPENGINE_QWEN4_EXP_Q5_1_WMMA=1` experiment,
-  with `EXACT_GROUPED_DOWN=0` and production gate/up unchanged, fails the full
+  historically using `EXACT_GROUPED_DOWN=0` with production gate/up unchanged,
+  fails the full
   18-prompt layer2 envelope: global top-1 444/450 and prefill-last mean/p95 KL
   0.002424/0.010571. Keep it default-off. The per-call 16-row tile-map/readback
   helper exists only to make this diagnostic route valid; it is not a new
@@ -3131,7 +3120,8 @@ should be removed or collapsed.
   the serial oracle or changing chunk/cancellation ownership. Verify all callers
   of `prefill_chunked()` before making it private, and preserve the public
   `prefill()` interface and 2,052+ QSA transition coverage. Current chunk policy
-  is documented in the exact-chunked bisection entry above.
+  is documented by `_AUTO_PREFILL_CHUNK_LADDER` and the generator constructor;
+  it is separate from the engine-loop scheduling cap.
 
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 
