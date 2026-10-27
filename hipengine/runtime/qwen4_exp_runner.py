@@ -2370,6 +2370,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     attention_context_limit: int | None = None,
     cache_only: bool = False,
     qsa_ordered_decode_v2: bool = False,
+    qsa_wave32: bool = True,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -2382,6 +2383,13 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     must be on, ``head_dim`` must be 256, and the selection must be 1..4096 rows
     - and never on a cache-only call or on decode positions the index state has
     not made sparse. An unbound caller keeps the v1 ordered parent.
+
+    ``qsa_wave32`` is the owning runner's H128 sparse-attention decision (see
+    :func:`qsa_wave32`) and defaults to the production wave32 owner, so an
+    unbound H128 caller keeps that arithmetic. It selects the wave32 paged
+    owner only for ``head_dim`` 128 on the non-ordered sparse arm; every other
+    geometry keeps the wave64 parent, which is also what an explicit ``False``
+    restores.
     """
 
     if rows != 1:
@@ -2596,10 +2604,8 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             )
         else:
             sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_f32
-            if (
-                head_dim == 128
-                and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
-                not in {"", "0", "false", "False"}
+            if _qwen4_exp_qsa_wave32_selected(
+                head_dim=head_dim, published=qsa_wave32
             ):
                 sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32
             sparse_attention(
@@ -2702,6 +2708,46 @@ def qsa_batched_selection(
         yield prior
     finally:
         runner.qsa_batched_selection = prior
+
+
+# QSA H128 sparse-attention selection. The promoted production arithmetic for
+# head_dim 128 is the wave32 paged owner, on both the decode dispatch and the
+# prefill rows fallback below the H256 wave-prefill owner; the wave64 parents
+# stay the registered strict fallback. It is request-local state: the c1 decode
+# path and the prefill chunk path forward the owning runner's decision, so a
+# harness binds the parent on the runner it measures instead of writing a
+# process-wide switch.
+_QSA_WAVE32_UNSET = object()
+
+
+@contextlib.contextmanager
+def qsa_wave32(runner: Any, enabled: bool | object = _QSA_WAVE32_UNSET):
+    """Bind the QSA H128 sparse-attention owner for a diagnostic arm.
+
+    ``False`` pins the wave64 parents for the measured window and ``True``
+    restores the wave32 owners; leaving ``enabled`` unset keeps whatever the
+    runner carries. The prior value is restored on exit, including on an
+    exception.
+    """
+
+    prior = getattr(runner, "qsa_wave32", True)
+    if enabled is not _QSA_WAVE32_UNSET:
+        runner.qsa_wave32 = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.qsa_wave32 = prior
+
+
+def _qwen4_exp_qsa_wave32_selected(*, head_dim: int, published: bool) -> bool:
+    """The dispatch-time guard on the H128 wave32 sparse-attention owners.
+
+    The selection covers the head_dim 128 geometry only; every other geometry
+    keeps its own owner, and the wave64 parents remain the registered strict
+    fallback. The decision is the owning runner's, not a process switch.
+    """
+
+    return bool(head_dim == 128 and published)
 
 
 # QSA ordered-v2 sparse-decode selection. The production plan publishes the
@@ -2840,6 +2886,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     cache_only: bool = False,
     head_mode: str | None = _QSA_HEAD_PARENT,
     batched_selection: bool = True,
+    qsa_wave32: bool = True,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -2856,6 +2903,14 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     (see :func:`qsa_batched_selection`): True runs the batched score/top-k/expand
     owner, False the strict per-row fallback. The shape and count guards below
     apply to whichever arm runs.
+
+    ``qsa_wave32`` is the owning runner's H128 sparse-attention decision (see
+    :func:`qsa_wave32`) and defaults to the production wave32 owner, so an
+    unbound H128 caller keeps that arithmetic. It selects the wave32 rows owner
+    as the fallback below the H256 wave-prefill owner, only for ``head_dim``
+    128 and only where WMMA attention does not own the chunk; every other
+    geometry, an explicit ``False``, and a chunk WMMA owns keep the wave64 rows
+    parent.
     """
 
     count = int(rows)
@@ -3297,10 +3352,8 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             sparse_attention_rows = resolve(
                 backend=sparse_key.backend,layer=sparse_key.layer,
                 quant=sparse_key.quant,variant=sparse_key.variant)
-        elif (
-            head_dim == 128
-            and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
-            not in {"", "0", "false", "False"}
+        elif _qwen4_exp_qsa_wave32_selected(
+            head_dim=head_dim, published=qsa_wave32
         ):
             sparse_attention_rows = (
                 qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32
@@ -7167,6 +7220,7 @@ def run_qwen4_exp_dense_qsa_layer(
     moe_graph_key: object | None = None,
     cache_only: bool = False,
     qsa_ordered_decode_v2: bool = False,
+    qsa_wave32: bool = True,
     q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
@@ -7185,6 +7239,10 @@ def run_qwen4_exp_dense_qsa_layer(
     sparse-decode decision, forwarded to the token mixer (see
     :func:`qsa_ordered_decode_v2`); it selects nothing on a cache-only call and
     only inside the ordered route's own guards.
+
+    ``qsa_wave32`` is the owning runner's H128 sparse-attention decision,
+    forwarded to the token mixer (see :func:`qsa_wave32`); it selects nothing on
+    a cache-only call and only for the head_dim 128 geometry.
 
     The six expert-down decisions (``q51_down_m1``, ``q51_fold128_prefill``,
     ``q51_fold_pair_prefill``, ``forkb_grouped_down``, ``q8_down_row4_prefill``,
@@ -7226,6 +7284,7 @@ def run_qwen4_exp_dense_qsa_layer(
         attention_context_limit=attention_context_limit,
         cache_only=cache_only,
         qsa_ordered_decode_v2=qsa_ordered_decode_v2,
+        qsa_wave32=qsa_wave32,
         stream=stream, runtime=active_runtime,
     )
     if cache_only:
@@ -7302,6 +7361,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     rope_positions_ptr: int | None = None,
     head_mode: str | None = _QSA_HEAD_PARENT,
     batched_selection: bool = True,
+    qsa_wave32: bool = True,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
@@ -7327,6 +7387,11 @@ def run_qwen4_exp_qsa_prefill_layer(
 
     ``batched_selection`` is the owning runner's QSA chunk selection decision,
     forwarded unchanged to the token mixer (see :func:`qsa_batched_selection`).
+
+    ``qsa_wave32`` is the owning runner's H128 sparse-attention decision,
+    forwarded unchanged to the token mixer (see :func:`qsa_wave32`); the mixer
+    applies it only as the fallback below the H256 wave-prefill owner and only
+    for the head_dim 128 geometry.
 
     ``q51_down_m1`` is the owning runner's plan-published Q5_1 down M1 decision,
     forwarded to the MoE down dispatch; it only selects inside the exact grouped
@@ -7414,6 +7479,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         rope_positions_ptr=rope_positions_ptr,
         head_mode=head_mode,
         batched_selection=batched_selection,
+        qsa_wave32=qsa_wave32,
         stream=stream,
         runtime=active_runtime,
     )
@@ -8548,6 +8614,14 @@ class Qwen4ExpGGUFResidentModelRunner:
     # reader and forwards it to the token mixer, so a diagnostic binds the
     # fallback on the one runner it measures.
     qsa_batched_selection: bool = True
+    # QSA H128 sparse-attention owner: True runs the wave32 paged kernels (the
+    # decode dispatch and the prefill rows fallback below the H256 wave-prefill
+    # owner), the promoted production arithmetic for head_dim 128; False keeps
+    # the wave64 parents, which stay the registered strict fallback. The
+    # geometry guard stays dispatch-time and the H256 owners keep their own
+    # preemption. Both the c1 decode path and the prefill chunk path forward it,
+    # so a diagnostic binds the parent on the one runner it measures.
+    qsa_wave32: bool = True
     # QSA ordered-v2 sparse decode, published by the profile binder from the
     # plan's own c1 H256 indexed sparse decode row: True on a production plan,
     # False on every plan that keeps the ordered v1 parent. The dispatch-time
@@ -9918,6 +9992,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     ),
                     cache_only=False,
                     qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
+                    qsa_wave32=self.qsa_wave32,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -10264,6 +10339,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
                     batched_selection=self.qsa_batched_selection,
+                    qsa_wave32=self.qsa_wave32,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,

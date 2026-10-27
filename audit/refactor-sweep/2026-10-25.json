@@ -4102,13 +4102,13 @@
       "start_line": 3675,
       "end_line": 3681,
       "sha256": "a1fa85086bcaab99a39affb1ca3741160061cdab454dbc9c72e75393f59dc84c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Retired process selector in favor of owner-local scope at both H128 decode/prefill sites; defaults/strict wave64 parents preserved. GPU309 executable H128 dispatch/kernel comparisons, public H256 guard310 and CPU311 pass. No H128 model-quality or long-context promotion claim. Worklog: worklog/entries/20261027T004801.907193Z-cleanup-refactor-r0158-qsa-wave32-b9d6ef.md."],
       "subitems": [
         {
           "line": 3677,
           "text": "- `HIPENGINE_QWEN4_EXP_QSA_WAVE32` defaults on for the promoted production H128",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

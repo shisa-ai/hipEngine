@@ -874,7 +874,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_LAYER_GRAPHS` | unset | Override for per-layer graph capture admission (backend capability gates the default). |
 | `HIPENGINE_QWEN4_EXP_RAW_VARIANT` | `coltile8` | Raw-Q rowbatch prefill variant selector. |
 | `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` | `32` | Row-batch size for raw Q4 prompt-prefill row owners; `0`/`false` disables, `1` selects 32. |
-| `HIPENGINE_QWEN4_EXP_QSA_WAVE32` | `1` | Uses the wave32 QSA paged sparse-attention decode kernel for head_dim 128. |
+| `HIPENGINE_QWEN4_EXP_QSA_WAVE32` | retired | No longer read. H128 sparse decode and prefill fallback selection is runner-owned; `qsa_wave32(runner, False)` selects the wave64 diagnostic parent without changing H256 routes. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` | `0` | Opt-in ordered sparse-attention decode route for head_dim 256. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` | retired | No longer read. The owning target/draft runner carries ordered-v2 selection; the v1 prerequisite, geometry/count guards and separate fused diagnostic remain. |
 | `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR` | retired | No longer read. The resolved profile publishes prefill head grouping on the owning runner; scoped diagnostics may select pair or quad without changing independent batch attention selection. |
