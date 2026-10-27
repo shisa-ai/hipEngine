@@ -403,7 +403,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE` / `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE` | unset | Diagnostic | Select the two-/four-wave Q8T16 wide WMMA prefill session variants (shape-scoped). |
 | `HIPENGINE_GEMMA4_DECODE_GRAPH` | `1` | Rollback seam | Replays Gemma 4 decode steps from a whole-step HIP graph capture in the generation loop and the campaign bench's instrumented path. The flash phase kernel re-derives its slice partitioning per block from a staged device live-extent slot, so flash, split and class routes all replay bit-identically; the capture window is bounded by the measured launch-bound prize (buckets below 2176 keys capture — +15.4% decode at 1024, +2.2% at 2048; deeper device-bound steps take the launched fallback, which costs less than a capture). Those figures are from the Radeon 8060S; a backend package can declare its own window as `GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`, and `hip_gfx1100` declares `0` because a W7900 measured no gain at any depth (0.93x at 1536 and 2048), so its decode stays launched. `0` restores fully launched decode. |
 | `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE` | unset | Kernel R&D | Dense Q4_K WMMA prefill tile override (A/B harness writes `64x16`-style values). |
-| `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE` | `64x16` | Kernel R&D | Dense Q6_K WMMA prefill tile override. |
 | `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` | unset | Diagnostic route | llama-compat selected-expert dp4a adapter; set by the llama-compat MTP environment map and read by the selected-caller contract. |
 | `HIPENGINE_GGUF_T16_SELECTED_DP4A` | unset | Diagnostic route | llama-compat T16 selected dp4a adapter; set by the llama-compat MTP environment map and read by the selected-caller contract. |
 | `HIPENGINE_GGUF_T16_DS4_PREFILL` | unset | Diagnostic route | DS4 T16 selected-prefill variant selector (compact-MoE WMMA routing tests). |
@@ -1154,6 +1153,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE` is retired and ignored. Regression
+  tests retain the name; backend wrapper defaults and explicit tile arguments
+  select Q6 WMMA geometry.
 
 - `LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER` is backend package
   metadata. The output-gate diagnostic temporarily overrides that attribute;

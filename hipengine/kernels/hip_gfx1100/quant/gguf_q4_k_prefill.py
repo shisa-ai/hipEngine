@@ -28,7 +28,6 @@ _SOURCE = Path(__file__).with_name("gguf_q4_k_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_prefill.so"
 _Q4_K_BLOCK = 256
 _Q4_K_DENSE_WMMA_TILE_ENV = "HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE"
-_Q6_K_DENSE_WMMA_TILE_ENV = "HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE"
 
 # Allowed (tile_m, tile_n) for the WMMA prefill kernels. Mirrors the PARO
 # fusedw4 prefill tile set and the Q8_0 WMMA prefill wrapper.
@@ -94,30 +93,6 @@ def _default_tiles(rows: int, out_features: int) -> tuple[int, int]:
     tile_n = 32 if rows >= 32 else 16
     tile_m = 32 if out_features >= 32 else 16
     return tile_m, tile_n
-
-
-def _default_q6_tiles(
-    default: tuple[int, int] = (64, 16),
-) -> tuple[int, int]:
-    """Return the backend-selected Q6 dense tile or an explicit override."""
-
-    value = os.environ.get(_Q6_K_DENSE_WMMA_TILE_ENV, "").strip().lower()
-    if not value:
-        return default
-    try:
-        tile_m_raw, tile_n_raw = value.split("x", 1)
-        tile = int(tile_m_raw), int(tile_n_raw)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{_Q6_K_DENSE_WMMA_TILE_ENV} must name a supported tile as MxN"
-        ) from exc
-    if tile not in _ALLOWED_TILES:
-        allowed = ", ".join(f"{m}x{n}" for m, n in sorted(_ALLOWED_TILES))
-        raise ValueError(
-            f"{_Q6_K_DENSE_WMMA_TILE_ENV}={value!r} is unsupported; "
-            f"expected one of: {allowed}"
-        )
-    return tile
 
 
 def _default_q4_pack8_tiles(
@@ -509,7 +484,7 @@ def _make_q6_wrapper(
     sym = _q6_symbol(variant)
 
     def wrapper(*args, **kwargs) -> None:
-        tile_m, tile_n = _default_q6_tiles(default_tile)
+        tile_m, tile_n = default_tile
         kwargs.setdefault("tile_m", tile_m)
         kwargs.setdefault("tile_n", tile_n)
         _launch(sym, *args, **kwargs)
@@ -617,7 +592,6 @@ register_gguf_q4_k_prefill_kernels()
 __all__ = [
     "_ALLOWED_TILES",
     "_default_q4_pack8_tiles",
-    "_default_q6_tiles",
     "_default_tiles",
     "build_gguf_q4_k_prefill",
     "plan_gguf_q4_k_prefill_build",

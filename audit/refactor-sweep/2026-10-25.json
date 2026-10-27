@@ -7236,8 +7236,8 @@
       "start_line": 6066,
       "end_line": 6086,
       "sha256": "bbd9f278285f9c43c94ad42364b607c7b27cf3cd52c2243c6c4db01cf2b9ef98",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-q6-override-removed",
+      "evidence": ["Q6 environment override and trivial helper removed; backend wrapper defaults and explicit tile args preserved. RED/GREEN direct-wrapper tests, full CPU bundle, GPU Q6 oracle and docs/audit pass. Public Q6 model engagement deferred at bottom; Q4 env and dense-Q4 session cleanup remain pending. Worklog: worklog/entries/20261027T082533.919957Z-cleanup-refactor-r0276-q6-26aa27.md."],
       "subitems": [
         {
           "line": 6068,
@@ -7252,7 +7252,7 @@
         {
           "line": 6078,
           "text": "- `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` is the temporary Q6 tile",
-          "status": "pending"
+          "status": "deferred-public-validation"
         },
         {
           "line": 6082,

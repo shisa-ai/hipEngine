@@ -4693,10 +4693,9 @@ fallback count is not a success metric.
   gate. Clean selector-unset pp512/milestone publication and the final Q4/Q6
   WMMA trace now pass. Keep the exact fallback for one release; remove the
   session selector after that rollback window.
-- `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` is the temporary Q6 tile
-  rollback added 2026-07-26. Remove the environment branch after the clean
-  16x32 publication and one release window remain non-regressive; explicit
-  `tile_m`/`tile_n` arguments stay for tests and microbenchmarks.
+- The Q6 environment tile override is removed. Backend wrapper defaults and
+  explicit `tile_m`/`tile_n` arguments remain; public Laguna route verification
+  awaits the checkpoint described in the deferred section below.
 - `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` is the temporary Q4 pack8
   shape-policy rollback added 2026-07-26. Remove it after clean publication,
   a confirming family trace, and one non-regressive release window; explicit
@@ -10859,3 +10858,14 @@ artifacts are unchanged.
 long enough to exercise H6Z/H6W, confirm the selected variants and natural-cache
 allocation lifecycle, and compare blocking/stream/direct outputs. The removed
 H7Y route must not be selected or allocate mirrors.
+
+### R0276 — Public Q6 tile-policy validation
+
+The Q6 environment override is removed; the Q4 override and dense-Q4 session
+selector remain separate unfinished items above.
+
+**Dependency:** the unavailable Laguna checkpoint.
+**Clearing action:** run the R0273 gfx1151 public gate with
+`HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` set and trace Q6 WMMA launches.
+Confirm the backend's default tile still runs, outputs match the unset control,
+and teardown is clean. Explicit primitive tile arguments remain supported.

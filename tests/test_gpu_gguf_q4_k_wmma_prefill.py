@@ -41,7 +41,6 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     _ALLOWED_TILES,
     _default_q4_pack8_tiles,
-    _default_q6_tiles,
     _default_tiles,
     build_gguf_q4_k_prefill,
     gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_bf16_out,
@@ -170,16 +169,16 @@ def test_gguf_q4_k_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
 def test_gguf_q6_k_wmma_prefill_default_and_rollback_tiles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", raising=False)
-    assert _default_q6_tiles() == (64, 16)
-    assert _default_q6_tiles((16, 32)) == (16, 32)
+    from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_prefill as kernels
 
-    monkeypatch.setenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", "64x16")
-    assert _default_q6_tiles() == (64, 16)
-
-    monkeypatch.setenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", "48x16")
-    with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE"):
-        _default_q6_tiles()
+    calls = []
+    monkeypatch.setattr(kernels, "_launch", lambda *args, **kwargs: calls.append(kwargs))
+    for value in ("64x16", "48x16"):
+        monkeypatch.setenv("HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE", value)
+        gguf_q6_k_wmma_prefill_bf16_bf16_out()
+        assert (calls[-1]["tile_m"], calls[-1]["tile_n"]) == (64, 16)
+        gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out()
+        assert (calls[-1]["tile_m"], calls[-1]["tile_n"]) == (16, 32)
 
 
 def test_gguf_q4_k_pack8_gfx1151_shape_tiles_and_rollback(
