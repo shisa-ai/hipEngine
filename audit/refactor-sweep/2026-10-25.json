@@ -5493,18 +5493,20 @@
       "start_line": 4637,
       "end_line": 4650,
       "sha256": "a3af7bdf8f5b69c0030ed56c7d8bbcf9459e9151d35fb9984d5d97d089b2c751",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Active policy consumers verified in shared submit/poll, GGUF, Gemma4 and Qwen4Exp. Moved keep/retire-policy decision to bottom of REFACTOR with caller migration and public validation actions; no runtime change. Token-budget and burst tests pass. Worklog: worklog/entries/20261027T173300.955410Z-cleanup-refactor-r0211-r0212-128ecc.md."
+      ],
       "subitems": [
         {
           "line": 4639,
           "text": "- Added 2026-08-17 with C2-5. `token_budget` is the Generation-2 scheduling",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4645,
           "text": "- Removal trigger: after C2-6 derives per-model/backend round budgets from",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },
@@ -5514,23 +5516,25 @@
       "start_line": 4651,
       "end_line": 4672,
       "sha256": "3366e0953ca3679746f349463a8f419a2ce9e597e8944912449a8f8054335181",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Existing factory test now covers gfx1100 fair/chunk256/burst1/cap4 and gfx1151 fair/chunk256/burst2/cap8, explicit protect_decode pins and unchanged Q8 defaults. Moved generic-default choice to bottom of REFACTOR rather than silently replacing supported scoped behavior. Historical promotion evidence preserved in original inventory subitems. Worklog: worklog/entries/20261027T173300.955410Z-cleanup-refactor-r0211-r0212-128ecc.md."
+      ],
       "subitems": [
         {
           "line": 4653,
           "text": "- Added 2026-08-17. The `(\"hip_gfx1100\", \"gguf_q4_k_m\")` generator factory now",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4661,
           "text": "- Measured justification: W7900 Qwen3.8-27B Q4_K_M/BF16-KV 16K server \u2014",
-          "status": "pending"
+          "status": "verified-historical"
         },
         {
           "line": 4666,
           "text": "- Removal trigger: when `fair` is proven as the generic default (A4 rerun under",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },

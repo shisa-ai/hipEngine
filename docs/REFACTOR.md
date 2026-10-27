@@ -3430,42 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Generation-1 prefill/decode policy compatibility choices
-
-- Added 2026-08-17 with C2-5. `token_budget` is the Generation-2 scheduling
-  architecture: each round rotates bounded prefill quanta by stable slot and
-  then advances every due decode row once. `protect_decode`, `protect_ttft`,
-  and `fair` remain available because current GGUF packages and their retained
-  evidence select them explicitly; they are compatibility/rollback policy
-  names, not the long-term production planner interface.
-- Removal trigger: after C2-6 derives per-model/backend round budgets from
-  measured TTFT/ITL SLO rows and passes c1-c32 production soaks on gfx1100 and
-  gfx1151, promote those registered token budgets, remove generic policy
-  selection from public production configuration, and retain only a diagnostic
-  compatibility seam while old GGUF runners remain supported.
-
-## gfx1100 GGUF Q4_K_M fair launch-policy default (scoped registry default)
-
-- Added 2026-08-17. The `("hip_gfx1100", "gguf_q4_k_m")` generator factory now
-  declares `engine_loop_config_defaults = fair:256/burst-1` via the
-  `GGUF_Q4_K_M_*` gfx1100 package capabilities, mirroring the F4-retained
-  gfx1151 scoped default. The generic engine-loop default and the
-  `HIPENGINE_PREFILL_DECODE_POLICY` env resolution still default to
-  `protect_decode`; the env remains the explicit pin for configurations that
-  must stay on `protect_decode` (the A4 frozen W7900 UD-Q4_K_M gates — a
-  different quant, unaffected by this default).
-- Measured justification: W7900 Qwen3.8-27B Q4_K_M/BF16-KV 16K server —
-  `protect_decode` produced zero packed decode steps at c4/c8 bursts (requests
-  serialized: one request's decode finished before the next prefill);
-  `fair` produced width-4 packed AR decode (40 packed steps, zero serial
-  fallback, zero fallback steps).
-- Removal trigger: when `fair` is proven as the generic default (A4 rerun under
-  the new default for any affected `gguf_q4_k_m` configuration, plus the other
-  gfx1100 GGUF quants/models pass their load/SLO gates), collapse the scoped
-  factory default into the generic `EngineLoopConfig`/env default and delete
-  the per-package `GGUF_Q4_K_M_PREFILL_DECODE_POLICY` capability. Until then
-  the env pin and the scoped default are the rollback/bisection seam.
-
 ## Qwen3.8 c>1 mirrored-INT8 serving seam
 
 - Added 2026-08-15 after the dedicated-XTX context soak and corrected after the
@@ -10606,3 +10570,34 @@ where direct resident indexing is inapplicable, and compare imported Conv/GDN
 state with the per-layer parent. Include single-slot fallback, rejection,
 cancellation and resource cleanup. CPU ownership tests do not prove public GPU
 state-transfer engagement.
+
+### R0211/R0212 — Scheduling policy and generic-default decisions
+
+`EngineLoopConfig` and its environment resolver default to `protect_decode`.
+Qwen hybrid GGUF Q4_K_M factories select `fair` with chunk 256 on both HIP
+backends: gfx1100 uses burst one and gfx1151 burst two. Gemma4 selects `fair`;
+Qwen4Exp selects `token_budget` with a decode-active prefill bound. Explicit
+`HIPENGINE_PREFILL_DECODE_POLICY` values override generator defaults.
+`protect_ttft` is also used by the shared submit/poll construction path. These
+are active scheduling behaviors, not dead compatibility names.
+
+**Decision needed:** keep policy selection as a supported production control,
+or standardize production on `token_budget`; separately, choose whether
+unconfigured generators should inherit `fair` instead of `protect_decode`.
+The old entries proposed both generic `fair` and eventual `token_budget`, so
+neither is an unambiguous cleanup replacement. Different backend burst defaults
+must not be erased as a side effect. No default or admission behavior changes
+in this disposition; missing benchmark rows do not restrict any policy.
+
+**Clearing action:** if policy selection is retained, close R0211 as supported
+configuration. If standardized, migrate every generator default, submit/poll
+constructor and CLI/env caller to explicit round budgets before removing the
+old policy branches. For R0212, either keep the scoped defaults as supported
+registry configuration or change the generic default and remove only redundant
+package policy declarations. Update configuration docs and run
+`tests/test_unit_llm_generate.py`, `tests/test_unit_concurrency2_token_budget.py`
+and `tests/test_integration_generation_engine_loop_burst.py`; exercise public
+mixed-prefill/decode, staggered admission, cancellation and cleanup on both
+backends and confirm the selected policy. TTFT/ITL comparisons evaluate the
+chosen behavior; they are not permission to run it. Historical fair-promotion
+evidence stays in the sweep inventory and original worklogs.

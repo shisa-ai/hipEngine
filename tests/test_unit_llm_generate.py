@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine import LLM, SamplingParams
 from hipengine.generation import (
     GenerationCancellationToken,
@@ -50,8 +52,14 @@ def test_generator_engine_loop_defaults_respect_explicit_env() -> None:
     assert preserved == explicit
 
 
-def test_gfx1100_gguf_q4_k_m_factory_defaults_to_fair_launch_policy(monkeypatch) -> None:
-    """The gfx1100 Q4_K_M plain-AR path launches with the measured fair default."""
+@pytest.mark.parametrize(
+    ("backend", "burst_chunks", "capacity"),
+    (("hip_gfx1100", 1, 4), ("hip_gfx1151", 2, 8)),
+)
+def test_gguf_q4_k_m_factory_defaults_to_scoped_fair_policy(
+    monkeypatch, backend: str, burst_chunks: int, capacity: int,
+) -> None:
+    """Q4_K_M factories preserve backend defaults without changing other quants."""
 
     import hipengine.generation.qwen35_gguf as qwen35_gguf
     from hipengine.generation import (
@@ -69,21 +77,21 @@ def test_gfx1100_gguf_q4_k_m_factory_defaults_to_fair_launch_policy(monkeypatch)
     register_builtin_generators()
     generator = resolve_text_generator(
         model="qwen3_5_gguf",
-        backend="hip_gfx1100",
+        backend=backend,
         quant="gguf_q4_k_m",
     )(
         model_path="/tmp/fake.gguf",
         weight_index=object(),
         model_plugin=object(),
     )
-    assert generator.backend == "hip_gfx1100"
+    assert generator.backend == backend
     assert generator.engine_loop_config_defaults == {
         "prefill_decode_policy": "fair",
         "max_prefill_chunk_tokens": 256,
-        "fair_prefill_burst_chunks": 1,
+        "fair_prefill_burst_chunks": burst_chunks,
     }
     # The registry-owned plain-AR route cap is unchanged by the policy default.
-    assert generator.server_plain_ar_max_active_requests == 4
+    assert generator.server_plain_ar_max_active_requests == capacity
 
     # The explicit env pin must still override the scoped default.
     pinned = _engine_loop_config_with_generator_defaults(
@@ -93,10 +101,10 @@ def test_gfx1100_gguf_q4_k_m_factory_defaults_to_fair_launch_policy(monkeypatch)
     )
     assert pinned.prefill_decode_policy == "protect_decode"
 
-    # Other GGUF quants on gfx1100 must not inherit the scoped loop default.
+    # Other GGUF quants must not inherit the scoped loop default.
     other = resolve_text_generator(
         model="qwen3_5_gguf",
-        backend="hip_gfx1100",
+        backend=backend,
         quant="gguf_q8_0",
     )(
         model_path="/tmp/fake-q8.gguf",
