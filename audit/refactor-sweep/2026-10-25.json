@@ -6620,18 +6620,18 @@
       "start_line": 5495,
       "end_line": 5509,
       "sha256": "92ace7b563e00c2efd88e22308ce86aa2160d6d114c420004cf1d513cca50e42",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified Laguna selector and dedicated workspace already absent; raw-Q6/F16 primitive and distinct dense-H5120 route preserved. Docs/audit pass. Worklog: worklog/entries/20261027T030204.857128Z-cleanup-refactor-r0255-7788e7.md."],
       "subitems": [
         {
           "line": 5497,
           "text": "- WPF-H4's temporary selector and owner are removed. The complete changed-",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5503,
           "text": "- Remove the constructor seam, context-local ABI, conditional eager library,",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

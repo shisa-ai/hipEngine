@@ -4604,21 +4604,6 @@ fallback count is not a success metric.
   workspace/scratch owner; do not add a public/session selector, allocation,
   sidecar, or second ABI.
 
-## Laguna default-off Q6 F16/rocBLAS selector
-
-- WPF-H4's temporary selector and owner are removed. The complete changed-
-  arithmetic 18-prompt/576-step lane rejects source Q6 at maximum KL
-  **0.338657 > 0.05** despite **567/576** top-1, deterministic repeats,
-  lifecycle recovery, and diagnostic prefill **151.784 -> 158.205 tok/s
-  (1.042x)**. The earlier M512 state gate passed at KL **0.000721933**, but it
-  cannot waive the category-heldout ceiling.
-- Remove the constructor seam, context-local ABI, conditional eager library,
-  rocBLAS handle, **97,517,568-byte** workspace owner, backend capabilities, and
-  focused runtime tests. Retain only the separately registered raw-Q6/F16
-  producer/composite primitives, their required unfused numerical chain, and
-  leaf evidence. Exact role-qualified coltile remains production. Reopen only
-  with materially different arithmetic and a fresh complete quality gate.
-
 ## Laguna raw-Q5/Q6 prefill rowbatch selector
 
 - Added 2026-07-28 as the default-off WPF-1 runtime admission seam, promoted
