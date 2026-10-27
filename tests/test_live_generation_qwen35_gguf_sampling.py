@@ -3014,6 +3014,10 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     generator._shared_mtp_draft_pool = {}
     generator._shared_mtp_draft_pool_lock = threading.Lock()
 
+    def reject_direct_loop(*args, **kwargs):
+        raise AssertionError("resident scheduler must not enter the direct AR loop")
+
+    monkeypatch.setattr(generator, "_generate_ar_serving_slots", reject_direct_loop)
     adapter = SubmitPollTextGenerator(generator, capacity=2)
     runner = adapter._runner
     assert isinstance(runner, qwen35_gguf.Qwen35GGUFResidentModelRunner)

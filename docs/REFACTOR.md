@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF duplicate AR loop ownership | `Qwen35GGUFResidentModelRunner` owns public blocking and OpenAI submit/poll execution, but `_generate_ar_serving_slots()` remains as a direct control/oracle and explicit compatibility fallback. | D1–E3/F1 now prove one shared model-owning loop through exact arbitrary-C burst/live admission, cancellation, SSE, shutdown, real KV ownership, observability, and retained server scaling on both gfx11 targets. The direct loop still supplies the independent c1/native-width oracle used by the retained E1/E2/E3 packets. | Both gfx11 triggers are met. During F2, move the oracle into an explicit test/benchmark helper and remove production call sites after one release window; keep registry-resolved unsupported-shape fallbacks. |
 | GGUF RadixCache early admission history | Radix is now the HTTP and in-process default, with batched suffix prefill and registered gapped-page gather. The earlier admission used a latest-boundary policy and serial suffix steps; its results below are historical, not the current default policy. Stochastic reuse remains unsupported; deterministic processed-argmax requests preserve their host processors. | Early p256+s1 ownership gates passed exact state, refcounts/COW, source reclaim, snapshot eviction, and final drain on gfx1151 and gfx1100. The historical W7900 A2 packet closed lifecycle/pressure but rejected that agentic configuration: radix hit 0/12, 3/24, and 3/18 C1 turns, regressed active-SSE goodput 64.19%/65.63%/26.64%, and worsened tool-ready latency 181.90%/196.09%/38.81%. The original numerical and timing artifacts remain in the benchmark history. The current BF16 layout-repair packet independently passes all 16 category/lifecycle scopes with exact state and zero KL; it makes no new performance claim. | Keep lifecycle tests and the explicit `off` rollback. Remove obsolete admission cost guards only after their concrete slow-path conditions no longer apply. Any new performance claim needs a fresh same-host workload; the historical A2 result neither measures the repaired path nor overrides the owner-directed radix default. |
 | GGUF LCP-1 convolution prefill | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline|tile32x128` selects between the production global-read convolution and the registered exact shared-token route. | gfx1151 selects `tile32x128` automatically. The clean 512/4K 82-part and wall gates pass, the 4K body falls `954.134 -> 49.790 ms`, and all six right-sized prefill rows improve `+1.10%..+24.04%` with unchanged memory. gfx1100 remains on `baseline` pending hardware transfer. The production implementation is the required unfused fallback and explicit rollback. | Remove the explicit mode selector after one release window if the gfx1100 transfer remains stable. Never remove the exact production fallback. |
 | GGUF packed-AR singleton-indexed GDN | Backend capability `GGUF_GDN_INDEXED_SINGLETON_DECODE` selects a one-token-per-row indexed sibling while retaining the arbitrary-length segmented recurrence. | gfx1151 defaults to the singleton sibling after independent-c1 byte equality and exact p512/d64 trajectories; gfx1100 remains on segmented GDN pending hardware transfer. The runtime manifest records `indexed_singleton` versus `segments` explicitly. | Remove the gfx1100 capability split only after an independent W7900 c2/c4/c8 correctness/performance gate. Keep the segmented implementation permanently as the arbitrary-length fallback. |
@@ -10663,3 +10662,33 @@ nodes in `tests/test_gpu_gguf_q4_k_t16_dense.py`. Before changing a threshold,
 run its fused/unfused primitive oracle and same-host public prefill/verification
 comparison with selected variants, output/state, capture-inclusive wall and
 cleanup recorded. No floor, dispatch, arithmetic or default changes here.
+
+### R0281-AR-LOOP — Direct GGUF compatibility loop and shared flush helpers
+
+Public `LLM` construction wraps the GGUF generator in `SubmitPollTextGenerator`,
+whose resident factory creates `Qwen35GGUFResidentModelRunner`. That owner does
+not call `_generate_ar_serving_slots()`, including for its scalar capability
+fallbacks. The old entry is still called by direct
+`Qwen35GGUFBringupGenerator.generate_detailed()` for prepared multi-prompt greedy
+requests; direct-generator tests exercise packed, streamed and scalar arms.
+It is a live compatibility path, not an independent public model owner.
+
+The adjacent `_flush_ar_packed_decode_owners_if_chunk_changed()` and
+`_flush_ar_packed_decode_owners()` helpers are also used by the resident runner
+for physical-group transitions, scalar fallback and reclaim. `_GGUFARServingSlot`
+is shared by both paths. Do not delete the whole legacy region or its state
+record as an oracle extraction. The resident runner's `_step_native_serial()`
+keeps its own unsupported-shape and sampled contracts; the legacy loop is not
+its fallback.
+
+**Decision needed:** retire the direct-generator batched compatibility surface,
+or move it to an explicit diagnostic adapter with its callers. Then extract
+only the loop-specific methods; first give the shared flush operations an owner
+that both routes can consume. No release-window note proves these dependencies
+have migrated. **Clearing action:** preserve the resident bypass sentinel in
+`tests/test_live_generation_qwen35_gguf_sampling.py::test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions`,
+then migrate the direct tests and check uniform/ragged prompts, widths below
+and above eight, shrinking/EOS, unsupported packed prefill/decode, dirty-owner
+flush and error cleanup. Exercise public `LLM.generate_detailed()` plus
+submit/poll cancellation and streaming after extraction. This disposition pins
+existing ownership without changing runtime behavior.
