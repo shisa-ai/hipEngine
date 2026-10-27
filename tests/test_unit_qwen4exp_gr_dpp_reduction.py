@@ -39,7 +39,7 @@ def test_dpp_route_is_opt_in_and_keeps_scope(monkeypatch):
     assert runner._qwen4_exp_gr_k320_full_rows_key(
         KernelKey(base.backend, base.layer, base.quant, DPP),
         rows=512, branches=4, low_rank=320,
-    ).variant == DPP
+    ).variant == K320_FULL
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", "1")
     assert runner._qwen4_exp_gr_k320_full_rows_key(
         KernelKey(base.backend, base.layer, base.quant, DPP),
@@ -65,14 +65,14 @@ def test_dpp_route_is_opt_in_and_keeps_scope(monkeypatch):
     ).variant == DPP
 
 
-def test_k320_route_is_default_off(monkeypatch):
+def test_k320_route_ignores_retired_environment(monkeypatch):
     base = KernelKey("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
                      "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", "0")
     monkeypatch.setattr(runner, "is_registered", lambda key: True)
     assert runner._qwen4_exp_gr_k320_full_rows_key(
         base, rows=512, branches=4, low_rank=320
-    ).variant == base.variant
+    ).variant == K320_FULL
 
 
 @pytest.mark.parametrize("mode,value", [("before", "0"), ("after", "1")])

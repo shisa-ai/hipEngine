@@ -290,23 +290,23 @@
       "start_line": 285,
       "end_line": 312,
       "sha256": "4bba676ff73537b1fc54d3363c7be063a8fb9e0536ef0dfdca47f2c94e57322e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed K320 environment read/profile binding; registered exact specialization follows DPP parent only inside rows/branches/K/H scope. Script-local controls preserve parent comparisons and restore on failure. Full CPU, focused final-scope tests, GPU bit parity and public aligned exact-fallback engagement pass; default wide GR path remains separate and unaligned tails use DPP. Worklog: worklog/entries/20261027T105916.290194Z-cleanup-refactor-r0013-41a456.md."],
       "subitems": [
         {
           "line": 287,
           "text": "- `coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact` is a",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 293,
           "text": "- The candidate preserves ascending FMA order, DPP reduction, four-wave",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 306,
           "text": "- Unit/profile tests pass33 and the HIP GPU bundle passes10/10 on gfx1151,",
-          "status": "pending"
+          "status": "verified-current"
         }
       ]
     },

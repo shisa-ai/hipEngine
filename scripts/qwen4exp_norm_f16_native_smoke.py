@@ -15,6 +15,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts._qwen4exp_k320_control import k320_selection
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -51,7 +53,6 @@ def main():
     )
 
     os.environ.pop(ENV, None)
-    os.environ.pop("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", None)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     production, strict = [resolve_runtime_profile(model="qwen4_exp_gguf", backend="hip_gfx1151",
@@ -70,8 +71,6 @@ def main():
             model_path=args.model_root, weight_index=index, model_plugin=resolve_model(index.architecture or ""),
             backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
         assert os.environ[ENV] == "1", "native production binder did not enable publication"
-        if args.gr_k320_full_rows:
-            os.environ["HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS"] = "1"
         report["native_binder_value"] = os.environ[ENV]
         counts = dict(publisher=0, cast=0, consumed=0)
         key = PRODUCER_KEY
@@ -118,10 +117,9 @@ def main():
                     first_native = False
                 else:
                     os.environ[ENV] = report["native_binder_value"] if mode == "candidate" else "0"
-                    if args.gr_k320_full_rows:
-                        os.environ["HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS"] = "1" if mode == "candidate" else "0"
                 before = dict(counts)
-                first = generator.runner.prefill(case["prompt_token_ids"])
+                with k320_selection(not args.gr_k320_full_rows or mode == "candidate"):
+                    first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_state = _state_summary(generator.runner)
                 logits, token = [first.logits.copy()], int(first.token_id)
                 ids = [token]

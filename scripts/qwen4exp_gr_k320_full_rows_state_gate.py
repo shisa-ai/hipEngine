@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Qualify the K320/full-row GR-up DPP sibling against complete model state.
 
-Arms toggle ``HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS`` through the runner's own
-default-off selector, so the production selection path itself is under test;
+Arms use a scoped diagnostic override of the runner's shape selector;
 a passive registry counter on the candidate variant records engagement without
 changing behavior. Each case runs parent/candidate/candidate/candidate/parent,
 compares full prefill and decode logits, recurrent/layout state and full KV
@@ -50,7 +49,8 @@ BACKEND = "hip_gfx1151"
 LAYER = "linear+gr_gated_mean"
 QUANT = "gguf_q8_0"
 CHUNK_SIZE = 4096
-K320_ENV = "HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS"
+from scripts._qwen4exp_k320_control import k320_selection
+K320_CONTROL = "scoped_selector"
 
 
 def array_digest(array: np.ndarray) -> str:
@@ -152,7 +152,7 @@ def main() -> int:
         "strict_manifest_sha256": profile.strict_manifest_sha256,
         "parent_variant": PARENT,
         "candidate_variant": CANDIDATE,
-        "arm_toggle": K320_ENV,
+        "arm_toggle": K320_CONTROL,
         "scope": {
             "backend": BACKEND,
             "layer": LAYER,
@@ -186,9 +186,9 @@ def main() -> int:
             baseline = None
             start_candidate = state["candidate_calls"]
             for arm_index, enabled in enumerate((False, True, True, True, False)):
-                os.environ[K320_ENV] = "1" if enabled else "0"
                 before_candidate = state["candidate_calls"]
-                arm = capture(runner, args.decode_steps, args.full_kv)
+                with k320_selection(enabled):
+                    arm = capture(runner, args.decode_steps, args.full_kv)
                 if baseline is None:
                     baseline = arm
                 else:
@@ -224,7 +224,6 @@ def main() -> int:
         report["error"] = f"{type(error).__name__}: {error}"
         raise
     finally:
-        os.environ[K320_ENV] = "0"
         register(candidate_key, candidate, replace=True)
         generator.close()
         report["memory_after_close"] = memory_stats()

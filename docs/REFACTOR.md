@@ -170,33 +170,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   `benchmarks/results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows/`.
 
 
-## K320/full-row GR-up DPP screen
-
-- `coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact` is a
-  separately registered, default-off sibling of the promoted ordered-DPP GR-up
-  owner. Its wrapper accepts only K320/H2560/four branches and complete
-  rowbatch-4 groups; runtime selection requires the promoted DPP key first and
-  otherwise retains that key. The generic DPP owner remains the fallback for
-  tails, other K/H shapes and absent registration.
-- The candidate preserves ascending FMA order, DPP reduction, four-wave
-  publication, `expf`, branch mean, output layout and both materialized outputs.
-  It removes only compile-time-provable generic row-validity and variable-K
-  control. **Promoted 2026-10-08** after the full qualification chain
-  (natural-input owner, full model-state gate, complete-engine A/B — see
-  `benchmarks/results/2026-10-08-qwen4exp-gr-k320-natural-owner/`): the
-  production binder binds it on for the qualified lane (`gguf_ud_q4_k_xl`,
-  production) and `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS=0` is the dedicated
-  bisection opt-out; the generic DPP owner remains the registered strict
-  fallback. Removal condition for the opt-out flag: delete the flag (and its
-  profile binding + the selector's env read) once the K320 sibling has held the
-  production default through a full campaign cycle without a rollback, or when
-  the generic DPP leaf it narrows is retired.
-- Unit/profile tests pass33 and the HIP GPU bundle passes10/10 on gfx1151,
-  including exact parent parity at rows512/1024/4096. The balanced complete
-  operation screen covers 12 real-weight cases and20 pairs/case: 1.084–1.103x
-  operation speedup, geometric mean1.092x, exact outputs. Evidence:
-  `benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md`.
-
 
 
 ## Bounded HC grouped-norm F16 publication and rollback

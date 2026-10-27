@@ -812,7 +812,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
 | `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` | unset (F16 route sets `1`) | Hyper-connection read projections launched directly on F16 activations (bit-identical). |
 | `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | `1` | Scale-only GR read also publishes half(mixed); `0` keeps per-projection conversions. |
-| `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS` | profile-selected | K320 full-row GR-up owner for rows > 256 in complete groups of four; `0` is the bisection opt-out. |
 | `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` | profile-selected | GR norm publishes an F16 copy for the following projections. |
 | `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | `1` | The scale-only norm launch also computes the inject logits (bit-identical); `0` keeps them separate. |
 | `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | `1` | Scale-only GR read for Q8_0 up projections; `0` is the rollback. |
@@ -1150,6 +1149,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS` is retired and ignored. The registered
+  K320 specialization follows the selected DPP parent for supported full-row
+  geometry; diagnostic parent comparisons use a scoped script-local override.
 
 - `HIPENGINE_QWEN4_EXP_AR_BATCH` is retired and ignored. Resident plain-AR
   requests use the shared batch; external runners and requests that do not fit

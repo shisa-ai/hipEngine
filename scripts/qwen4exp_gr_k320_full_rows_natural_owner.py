@@ -12,8 +12,8 @@ runtime selector or model-rate claim.
 
 The sibling is admitted only for the screen's declared window: rows > 256 in
 complete groups of 4, four branches, low rank 320, hidden 2560 - exactly the
-predicate the runner's default-off selector applies behind
-``HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS``.
+predicate of the runner's registered specialization. A scoped diagnostic
+selector keeps collection on the generic DPP parent.
 """
 from __future__ import annotations
 
@@ -91,7 +91,6 @@ def main() -> int:
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] = "1"
     os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS"] = "0"
 
     gate.register_gfx1151_kernels(replace=True)
     gate.register_qwen4_exp_gfx1151_profiles()
@@ -259,7 +258,9 @@ def main() -> int:
         for case in cases:
             current_case = case["id"]
             before = len(captures)
-            token = generator.runner.prefill(case["prompt_token_ids"])
+            from scripts._qwen4exp_k320_control import k320_selection
+            with k320_selection(False):
+                token = generator.runner.prefill(case["prompt_token_ids"])
             own = captures[before:]
             if not own:
                 raise AssertionError((current_case, "no admitted natural GR-up calls"))

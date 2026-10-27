@@ -2,9 +2,8 @@
 """Complete-engine A/B for the K320/full-row GR-up DPP sibling.
 
 One model residency, all 12 canonical cases, production compact-capture path.
-Arms toggle ``HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS`` through the runner's own
-default-off selector; a passive registry counter on the candidate variant
-records engagement. Balanced before/after order per repetition, full prefill
+Arms use a scoped diagnostic override of the runner's shape selector; a passive
+registry counter on the candidate variant records engagement. Balanced before/after order per repetition, full prefill
 plus 128 decode transitions, exact trajectory checks, engagement counts, and
 teardown accounting. The candidate is never made a default by this A/B.
 """
@@ -49,7 +48,8 @@ LAYER = "linear+gr_gated_mean"
 QUANT = "gguf_q8_0"
 CHUNK_SIZE = 4096
 TRANSITIONS = 128
-K320_ENV = "HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS"
+from scripts._qwen4exp_k320_control import k320_selection
+K320_CONTROL = "scoped_selector"
 
 
 def _arm_summary(rows):
@@ -88,7 +88,6 @@ def main(argv=None) -> int:
         os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] = "1"
     os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1"
-    os.environ[K320_ENV] = "0"
 
     fixture, fixture_sha = load_fixture(args.fixture)
     cases = list(fixture["cases"])
@@ -150,7 +149,7 @@ def main(argv=None) -> int:
         "fixture_sha256": fixture_sha,
         "manifest_sha256": profile.manifest_sha256,
         "arms": {"before": {"gr_k320": "0"}, "after": {"gr_k320": "1"}},
-        "arm_toggle": K320_ENV,
+        "arm_toggle": K320_CONTROL,
         "parent_variant": PARENT,
         "candidate_variant": CANDIDATE,
         "chunk_size": CHUNK_SIZE,
@@ -165,24 +164,24 @@ def main(argv=None) -> int:
             case_samples: dict = {"before": [], "after": []}
             for mode in ("before", "after"):
                 for _ in range(args.warmups_per_mode):
-                    os.environ[K320_ENV] = "1" if mode == "after" else "0"
                     before_calls = state["candidate_calls"]
-                    _hipengine_case_sample(
-                        runner, case=case, repetition=-1, transitions=TRANSITIONS,
-                        prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
-                    )
+                    with k320_selection(mode == "after"):
+                        _hipengine_case_sample(
+                            runner, case=case, repetition=-1, transitions=TRANSITIONS,
+                            prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
+                        )
                     if mode == "after":
                         if state["candidate_calls"] - before_calls <= 0:
                             raise AssertionError((case_id, "candidate did not engage in warmup"))
             for repetition in range(3):
                 order = ("before", "after") if (repetition + case_index) % 2 == 0 else ("after", "before")
                 for mode in order:
-                    os.environ[K320_ENV] = "1" if mode == "after" else "0"
                     before_calls = state["candidate_calls"]
-                    row = _hipengine_case_sample(
-                        runner, case=case, repetition=repetition, transitions=TRANSITIONS,
-                        prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
-                    )
+                    with k320_selection(mode == "after"):
+                        row = _hipengine_case_sample(
+                            runner, case=case, repetition=repetition, transitions=TRANSITIONS,
+                            prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
+                        )
                     row["candidate_calls"] = state["candidate_calls"] - before_calls
                     if mode == "after" and row["candidate_calls"] <= 0:
                         raise AssertionError((case_id, "candidate did not engage"))
@@ -250,7 +249,6 @@ def main(argv=None) -> int:
         report["status"] = "completed"
         report["memory_after_close"] = None
     finally:
-        os.environ[K320_ENV] = "0"
         generator.close()
         report["memory_after_close"] = memory_stats()
         args.output.parent.mkdir(parents=True, exist_ok=True)

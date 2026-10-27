@@ -3866,7 +3866,8 @@ def run_qwen4_exp_gr_read(
     elif fused_up:
         fused_up_key = _qwen4_exp_gr_wave_scale_key(fused_up_key, rows=rows, branches=branches)
         fused_up_key = _qwen4_exp_gr_k320_full_rows_key(
-            fused_up_key, rows=rows, branches=branches, low_rank=low_rank
+            fused_up_key, rows=rows, branches=branches, low_rank=low_rank,
+            hidden=hidden,
         )
         resolve(
             backend=fused_up_key.backend,
@@ -5044,22 +5045,21 @@ def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) ->
 
 
 def _qwen4_exp_gr_k320_full_rows_key(
-    key: KernelKey, *, rows: int, branches: int, low_rank: int
+    key: KernelKey, *, rows: int, branches: int, low_rank: int, hidden: int = 2560
 ) -> KernelKey:
-    """Select the default-off K320/full-row GR DPP screen arm.
+    """Select the registered K320 specialization of the exact DPP owner.
 
     The candidate is narrower than the promoted DPP owner: it is valid only for
     K=320, H=2560, four branches, and complete ROW_BATCH=4 groups. All other
     shapes keep the already-selected DPP owner or its parent fallback.
     """
     if (
-        os.environ.get("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", "0")
-        in {"", "0", "false", "False"}
-        or key.variant != "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"
+        key.variant != "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"
         or rows <= 256
         or rows % 4 != 0
         or branches != 4
         or low_rank != 320
+        or hidden != 2560
     ):
         return key
     candidate = KernelKey(
