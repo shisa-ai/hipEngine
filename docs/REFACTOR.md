@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| PARO ragged packed prefill | Ragged compact slabs automatically use per-segment linear/full-attention prefill; `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR` and `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN` retain explicit bisection routes. | SOL-P2 found the packed segmented/varlen route changed the first ragged row's persistent state and, across all 40 layers, its generated tokens. `per_segment_ragged_exact` is the production-safe fallback; equal-length slabs retain `packed_segments`/`packed_varlen`. | Repair the ragged packed kernels, then remove the automatic fallback only after c8 ragged generated-token plus all-linear-state/all-full-KV identity passes independent c1 on gfx1151 and gfx1100 and an end-to-end prefill comparison is non-regressive. Remove the force flags after the repaired route survives one release window. |
 | PARO short-prompt prefill | The public generator uses token-serial c1 steps when prompt tokens are fewer than `linear_conv_kernel_dim`; low-level `prefill_native()` remains strict. | Release fallback. A no-env gfx1151 wheel-path smoke generated from the one-token prompt `Hello`; normal prompts still use native prefill. | Replace the serial fallback only after a dedicated native short-prompt kernel matches c1 generated tokens plus recurrent/KV state for lengths 1-3. |
 | GGUF public AR profile | `HIPENGINE_GGUF_DECODE_REPACK=0` remains a rollback opt-out; low-level WMMA/GEMV selectors remain available for benchmark bisection. | Release default: T16 decode-repack is on, and public generate/stream sessions pass the resolved backend plus `use_wmma_prefill=True` and `use_gemv_decode=True`. A no-env gfx1151 Q4_K_M smoke generated one token through `LLM(model)`. | Remove the decode-repack opt-out after one release window and a defaults-only gfx1100 refresh. Keep raw layouts only where a quant/kernel lacks a T16 fallback or a retained diagnostic requires them. |
 | GGUF fused dual+SiLU gate/up prefill floor | `hipengine/runtime/gguf_linear.py::_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33` (was 512) for the dense H5120 K5120/N17408 `linear_pair_silu` owner. | Bit-identical to the unfused chain at that shape for rows 45/96/192/511/512 (fixture from rows 2), and W7900 Qwen3.8-27B-Q4_K_M measured **+4.2%/+4.2%/+4.9%** prefill at 45/96/192 rows. The same owner is 8.2% slower per cycle inside captured target-verify groups (16/32 rows, C4-C8 K3, replications 3/3), which is why the floor sits at 33 rather than at the small-B boundary: row count is a proxy for prefill-vs-verify context. | Replace the proxy with an explicit prefill-context selector: a session-scoped floor whose value participates in `_DISPATCH_RESOLVE_CACHE` / `_PAIR_DISPATCH_RESOLVE_CACHE` keys (a scope that does not would leak decisions across scopes). Then lower the bulk-prefill floor to the rows<=8 small-B boundary, qualify target verification separately at its own group widths, and delete the row-count proxy. |
@@ -10565,3 +10564,44 @@ field. Run the graph-policy nodes in
 `LLM.generate()` with the repaired route confirmed and allocations drained.
 Evaluate capture-inclusive wall separately before an automatic performance
 choice. No runtime policy, kernel or graph implementation changes here.
+
+### R0281-PARO-RAGGED — Ragged packed prefill and diagnostic ownership
+
+Unequal prompt segments automatically use per-segment linear and full-attention
+execution, reported as `per_segment_ragged_exact`. Equal-length slabs retain
+`packed_segments` and `packed_varlen`. The July SOL-P2 gate recorded a packed
+ragged state/token mismatch and validated the per-segment fallback; it did not
+show that ragged requests cannot run. Keep this working fallback and its
+slot-local Conv/GDN/live-KV ownership. An October 27 gfx1151 c3 check at
+prompt lengths 8/9/11 preserves independent-c1 tokens, all linear state and
+live KV through shrinking widths and retired-slot immutability, then frees
+tracked allocations. That check exercises the fallback with serial decode,
+not the rejected packed candidate or public native-width selection. See
+`worklog/entries/20261027T225807.809651Z-cleanup-refactor-r0281-paro-ragged-4633ca.md`.
+
+`HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR` and
+`HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN` still have
+hidden-bisect callers; the retained benchmark also controls the linear path
+and isolates both flags for its c1 reference. These flags force the diagnostic
+per-segment route. Setting them to zero does **not** bypass the automatic
+ragged fallback, so the existing CLI cannot re-test packed ragged kernels by
+simply requesting `packed_segments`/`packed_varlen`.
+
+**Remaining work:** repair the original packed ragged difference under an
+explicit diagnostic owner, or keep per-segment execution as the supported
+ragged algorithm. Decide separately whether the live comparison controls stay
+supported or move to an owner-scoped interface. Do not delete their callers,
+exact fallback, equal-length paths or primitive implementations as stale
+release-window cleanup.
+**Clearing action:** first run
+`scripts/qwen35_batch_shrinking_correctness.py --model "$PARO_MODEL" --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --batch-size 3 --prompt-lengths 8,9,11 --steps-per-width 1 --max-layers 40 --max-sequence-length 1024 --survivor-slot 1 --decode-execution serial --json /tmp/paro-ragged-current.json`
+on the intended backend and verify resolved device and prefill metadata. This
+checks the working fallback, not the packed candidate. Add a test-only packed
+ragged bypass before comparing identical input trajectories and locating the
+first unequal hidden, Conv/GDN or live-KV state. Cover c8, sparse slots,
+continuation, EOS/cancellation and cleanup on each applicable backend. Run
+`tests/test_unit_qwen35_resident_batch_layout.py`,
+`tests/test_unit_qwen35_paro_serial_bridge.py` and
+`tests/test_unit_qwen35_batch_partition_bench.py`, then public ragged
+`LLM.generate()` requests with the selected path confirmed. No prefill policy,
+flag, arithmetic or runtime implementation changes in this disposition.
