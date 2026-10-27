@@ -4038,13 +4038,13 @@
       "start_line": 3648,
       "end_line": 3653,
       "sha256": "fac300f7a58cf812e99059ddc5cd081e36dc7bc0614a08dc8cabf99cdba8cbd8",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Retired out8 process transport in favor of runner publication/scoped diagnostics; exact grid/pair/fold precedence and base kernels preserved. Fixed full competing-route closure in ablation. Public316 base/out8 actual launches with equaltext, GPU317, CPU314 plus focused repairs and fixture/smoke checks pass. Worklog: worklog/entries/20261027T011418.901738Z-cleanup-refactor-r0154-out8-ed23f2.md."],
       "subitems": [
         {
           "line": 3650,
           "text": "- `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` defaults on and batches eight adjacent output",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

@@ -660,9 +660,12 @@ def make_qwen4_exp_ar_batch_runner(
     # M1 and PF-1 fork-b decisions select from rows>=2, so they are reachable
     # here too and must travel with the rest. The exact grouped Q5_1 down chain
     # gate is the chain all of those rungs sit inside; every plan publishes it
-    # on, so an unbound carrier keeps it on rather than closing the chain.
+    # on, so an unbound carrier keeps it on rather than closing the chain. The
+    # chain's non-expertgrid fallback rung is published on for the same reason:
+    # an unbound carrier keeps the out8 owner, not the output1 base.
     batch.q51_exact_grouped_down = bool(
         getattr(generator, "q51_exact_grouped_down", True))
+    batch.q51_out8 = bool(getattr(generator, "q51_out8", True))
     batch.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
     batch.q51_fold128_prefill = bool(
         getattr(generator, "q51_fold128_prefill", False))

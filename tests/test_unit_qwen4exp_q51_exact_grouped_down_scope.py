@@ -244,16 +244,17 @@ def test_the_batch_capture_key_carries_the_gate() -> None:
         q51_fold128_prefill=False,
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
+        q51_out8=True,
         forkb_grouped_down=False,
         q8_down_row4_prefill=False,
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, False, False)
+        False, False, False, True, True, False, False, False)
 
     owner.q51_exact_grouped_down = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, False, False, False)
+        False, False, False, False, True, False, False, False)
 
 
 def test_the_generator_default_keeps_the_chain_on() -> None:

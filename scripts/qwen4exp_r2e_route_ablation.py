@@ -31,7 +31,14 @@ from hipengine.models import resolve_model
 from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _forced_logits, _kl)
 from scripts.qwen4exp_halo_box_campaign_ab import (
-    head_route_configuration, restore_route_configuration)
+    Q51_FOLD128_FIELD,
+    Q51_FOLD_PAIR_FIELD,
+    Q51_PAIR2_GATE_FIELD,
+    Q51_PAIR2_PREEMPTING_ENV,
+    Q51_PAIR_PREFILL_ENV,
+    head_route_configuration,
+    restore_route_configuration,
+)
 
 # route -> (env name(s), disabled value)
 ROUTES = {
@@ -55,6 +62,68 @@ RUNNER_ROUTE_MODES = {
 RUNNER_ROUTE_OFF = {
     "q51_down_m1": "q51_down_m1",
     "forkb_grouped_down": "forkb_grouped_down",
+}
+
+#: The Q5_1 out8 rung's closure. The rung only decides the exact grouped Q5_1
+#: down chain's non-expertgrid fallback, so every owner that keeps that chain - or
+#: the rung inside it - from running has to move. In dispatch order:
+#:
+#:   * ``HIPENGINE_QWEN4_EXP_ROUTED_F16`` takes the whole down leg from rows>=2
+#:     on the shipped lane, and the production plan publishes it on;
+#:   * ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`` closes the chain gate from
+#:     rows>=16, published on by the production plan;
+#:   * ``HIPENGINE_QWEN4_EXP_T16_DOWN`` takes the down owner inside the Q5_1
+#:     branch before the chain (diagnostic, default off);
+#:   * ``HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT`` is the chain's own iu8-risk+repair
+#:     owner above the ladder, published on by the production plan;
+#:   * ``HIPENGINE_QWEN4_EXP_Q5_1_WMMA`` is the Q5_1 WMMA owner below the chain
+#:     (the production plan pins it off);
+#:   * ``HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`` makes the pair2 parent exist at
+#:     rows>=64, and the production plan publishes it on - so pair2 is not off by
+#:     default and would replace the rung on this harness's 1024-row chunks;
+#:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
+#:     with the expertgrid64 family (default ``64``).
+#:
+#: The first five are the campaign's own ``Q51_PAIR2_PREEMPTING_ENV`` set, reused
+#: rather than restated. The four fold siblings are held off too: their guards
+#: require the pair2 parent variant, so they are inert once pair2 is closed, but
+#: an arm that names a leaf should not depend on that guard staying that narrow.
+#:
+#: This is not a leave-one-route-out arm: the ablated decision is ``q51_out8`` and
+#: the rest are the preemptors the arm must close to exercise it. The arm reports
+#: every binding it made rather than implying a single-route delta.
+OUT8_PREEMPTING_ENV = tuple(dict.fromkeys(
+    Q51_PAIR2_PREEMPTING_ENV
+    + (
+        Q51_PAIR_PREFILL_ENV,
+        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
+    )
+))
+OUT8_SIBLING_FIELDS = (
+    Q51_FOLD128_FIELD,
+    Q51_FOLD_PAIR_FIELD,
+    "q51_register_cache",
+    "q51_row_publish",
+)
+
+# route -> (runner field bindings, process keys, disabled value) for a leaf whose
+# field is request-local but whose selection also depends on decisions above it.
+RUNNER_ROUTE_OFF_WITH_ENV = {
+    "q51_out8": (
+        (("q51_out8", False),)
+        + tuple((field, False) for field in OUT8_SIBLING_FIELDS),
+        OUT8_PREEMPTING_ENV,
+        "0",
+    ),
+}
+
+# route -> runner fields that must stay published for the counted leaf to mean
+# what the arm says. ``q51_exact_grouped_down`` is the chain's own gate: the
+# output1 base is also the owner the dispatch falls through to *below* a closed
+# chain, so an arm with the gate off would count that launch and call it the
+# rung. The arm records the gate and refuses to measure with it off.
+RUNNER_ROUTE_REQUIRED_FIELDS = {
+    "q51_out8": {Q51_PAIR2_GATE_FIELD: True},
 }
 
 # The scalar sparse-prefill rows owner and its head-grouped leaves. Launches of
@@ -102,6 +171,7 @@ def main() -> None:
     p.add_argument("--route", required=True,
                    choices=(sorted(ROUTES) + sorted(RUNNER_ROUTE_MODES)
                             + sorted(RUNNER_ROUTE_OFF)
+                            + sorted(RUNNER_ROUTE_OFF_WITH_ENV)
                             + ["strict_baseline"]))
     p.add_argument("--teacher", required=True)
     p.add_argument("--decode-steps", type=int, default=82)
@@ -127,20 +197,33 @@ def main() -> None:
     # incumbent arm + route ablation, applied AFTER construction
     runner_mode = RUNNER_ROUTE_MODES.get(a.route)
     runner_off = RUNNER_ROUTE_OFF.get(a.route)
+    runner_off_with_env = RUNNER_ROUTE_OFF_WITH_ENV.get(a.route)
     if (a.route == "strict_baseline" or runner_mode is not None
             or runner_off is not None):
         envs, off = (), "0"
+    elif runner_off_with_env is not None:
+        _bindings, envs, off = runner_off_with_env
     else:
         envs, off = ROUTES[a.route]
     for name in envs:
         os.environ[name] = off
     engagement_asserts = {name: os.environ[name] for name in envs}
+    bound_fields: dict[str, bool] = {}
     if runner_mode is not None:
         scope = qsa_prefill_head_mode(generator.runner, runner_mode)
     elif runner_off is not None:
         scope = getattr(runner_module, runner_off)(generator.runner, False)
+        bound_fields = {runner_off: False}
+    elif runner_off_with_env is not None:
+        selection = contextlib.ExitStack()
+        for field, value in runner_off_with_env[0]:
+            selection.enter_context(
+                getattr(runner_module, field)(generator.runner, value))
+            bound_fields[field] = value
+        scope = selection
     else:
         scope = contextlib.nullcontext()
+    required_fields = RUNNER_ROUTE_REQUIRED_FIELDS.get(a.route, {})
     # The head leaf is the scalar fallback, so the ablation needs WMMA off for
     # its launches to happen at all. Both the override and the launch counter
     # are registered on the stack that unwinds on any failure below.
@@ -179,10 +262,16 @@ def main() -> None:
         # engagement guard: the ablation envs must still hold the disabled value
         for name in envs:
             assert os.environ.get(name) == off, f"engagement lost: {name}"
-        if runner_off is not None:
-            # Configuration: the ablated leaf stayed bound off for the run.
-            assert getattr(generator.runner, runner_off) is False, (
-                f"configuration lost: {runner_off}")
+        for field, value in bound_fields.items():
+            # Configuration: the ablated leaf and its preemptors stayed bound.
+            assert getattr(generator.runner, field) is value, (
+                f"configuration lost: {field}")
+        for field, value in required_fields.items():
+            # Configuration: the counted leaf's own gate stayed published. A
+            # closed chain falls through to the same output1 owner below it, so
+            # a lost gate would make the arm count a launch it did not select.
+            assert getattr(generator.runner, field) is value, (
+                f"required runner field changed: {field}")
         if runner_mode is not None:
             # Configuration: the arm's own decision stayed bound.
             assert generator.runner.qsa_prefill_head_mode == runner_mode, (
@@ -197,8 +286,8 @@ def main() -> None:
         report = {
             "schema": 1, "kind": "r2e_route_drift_ablation",
             "route": a.route, "ablated_envs": list(envs),
-            "ablated_runner_fields": (
-                {runner_off: False} if runner_off is not None else {}),
+            "ablated_runner_fields": bound_fields,
+            "required_runner_fields": required_fields,
             "env_values_at_end": engagement_asserts,
             "head_engagement": (
                 {

@@ -73,17 +73,24 @@ def test_the_dispatch_reads_both_decisions_from_parameters() -> None:
 
 
 def test_the_m1_variant_is_selected_by_the_runner_decision() -> None:
-    source = inspect.getsource(qwen4_exp_runner.run_qwen4_exp_moe)
+    source = inspect.getsource(qwen4_exp_runner._qwen4_exp_q51_down_key)
+    normalized = " ".join(source.split())
 
+    # The M1 owner is the runner's decision, and the preceding expertgrid64
+    # owner is its fallback.
     assert (
-        '"selected_grouped_prefill_compact_rowbatch8_out8_"\n'
-        '                            "expertgrid64_m1_bf16_bf16_out"\n'
-        "                            if q51_down_m1"
-    ) in source
-    # The preceding expertgrid64 owner stays the fallback, and the exact
-    # expert-grid gate still decides whether that family is selected at all.
-    assert "expertgrid64_bf16_bf16_out" in source
+        '"selected_grouped_prefill_compact_rowbatch8_out8_" '
+        '"expertgrid64_m1_bf16_bf16_out" if q51_down_m1 else '
+        '"selected_grouped_prefill_compact_rowbatch8_out8_" '
+        '"expertgrid64_bf16_bf16_out"'
+    ) in normalized
+    # The exact expert-grid gate still decides whether that family is selected
+    # at all.
     assert 'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID' in source
+    # The dispatch resolves the selector's own answer rather than keeping a
+    # second copy of the ladder.
+    assert "_qwen4_exp_q51_down_key(" in inspect.getsource(
+        qwen4_exp_runner.run_qwen4_exp_moe)
 
 
 def test_the_forkb_branch_is_the_runner_decision() -> None:

@@ -46,7 +46,8 @@ if str(ROOT) not in sys.path:
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_prefill_variant, q51_exact_grouped_down, qsa_ordered_decode_v2,
+    gdn_prefill_variant, q51_exact_grouped_down, q51_out8,
+    qsa_ordered_decode_v2,
     qsa_prefill_head_mode,
 )
 from scripts.execution_profile_gdn_calibration import (
@@ -113,6 +114,13 @@ class CandidateSpec:
     # through to the sorted/WMMA down owners, and the published value comes back
     # after.
     q51_exact_grouped_down: bool | None = None
+    # Explicit Q5_1 out8 fallback rung for this arm, same protocol. ``None``
+    # keeps the base profile's published decision (the out8 owner on every
+    # plan); ``False`` pins the output1 rowbatch8 base around the measured rows.
+    # It only governs the exact grouped Q5_1 down chain's non-expertgrid rung,
+    # so an arm that also needs the output1 leaf to launch closes
+    # ``q51_exact_grouped_down`` and the expert-grid family with it.
+    q51_out8: bool | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -1698,6 +1706,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         dispatch_stack.enter_context(q51_exact_grouped_down(
             candidate_generator.runner,
             candidate_spec.q51_exact_grouped_down))
+    if candidate_spec.q51_out8 is not None:
+        # And for that chain's out8 fallback rung: same protocol, so an arm that
+        # measures the output1 base binds it and the published out8 owner comes
+        # back on unwind.
+        dispatch_stack.enter_context(q51_out8(
+            candidate_generator.runner, candidate_spec.q51_out8))
     counter = {"calls": 0, "shapes": {}}
     batch_evidence = None
     batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}

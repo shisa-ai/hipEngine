@@ -2,20 +2,20 @@
 
 Two contracts are under test:
 
-* ``step`` forwards the seven plan-published expert-down decisions - the Q5_1
-  exact grouped down chain gate, the Q5_1 down M1 leaf, the two Q5_1 fold
-  rungs, the PF-1 fork-b grouped down and the two Q8_0 row4 rungs - to both
-  layer owners unchanged, so the batch decode path selects the same leaves the
-  c1 path selects.
+* ``step`` forwards the eight plan-published expert-down decisions - the Q5_1
+  exact grouped down chain gate, its out8 fallback rung, the Q5_1 down M1 leaf,
+  the two Q5_1 fold rungs, the PF-1 fork-b grouped down and the two Q8_0 row4
+  rungs - to both layer owners unchanged, so the batch decode path selects the
+  same leaves the c1 path selects.
 * The captured ``post_mixer`` segment records the MoE launches, and the MoE runs
   eager inside it, so the selection is baked into the graph. The capture key
-  therefore carries all seven decisions: a runner whose selection changes
+  therefore carries all eight decisions: a runner whose selection changes
   captures a new segment instead of replaying one built under the old
   selection.
 
-The gate differs from the rungs it gates in one way that matters here: every
-plan publishes it on, so an unbound batch owner keeps it on while an unbound
-owner keeps the production-only rungs off.
+The chain gate and its out8 fallback rung differ from the rungs around them in
+one way that matters here: every plan publishes both on, so an unbound batch
+owner keeps them on while it keeps the production-only rungs off.
 """
 
 from types import SimpleNamespace
@@ -28,9 +28,11 @@ from hipengine.runtime.qwen4_exp_batch_runner import Qwen4ExpGGUFBatchRunner
 from tests.test_unit_qwen4exp_batch_runner import _fake_runner, _install_step_fakes
 
 #: The exact grouped Q5_1 down chain's own gate. It precedes the rungs whose
-#: chain it gates, and it is the one decision every plan publishes on.
+#: chain it gates, and it is one of the two decisions every plan publishes on.
 CHAIN_GATE_FIELD = "q51_exact_grouped_down"
-#: The seven decisions, in the order the runner publishes them. The order is the
+#: The chain's non-expertgrid fallback rung, published on by every plan.
+OUT8_FIELD = "q51_out8"
+#: The eight decisions, in the order the runner publishes them. The order is the
 #: contract: ``_expert_down_policy`` and the ``(layer, rows) + policy`` capture
 #: key both read this sequence, and ``test_the_policy_tuple_is_boolean_normalized``
 #: pins it against the runner's own tuple.
@@ -39,14 +41,16 @@ POLICY_FIELDS = (
     "q51_fold128_prefill",
     "q51_fold_pair_prefill",
     CHAIN_GATE_FIELD,
+    OUT8_FIELD,
     "forkb_grouped_down",
     "q8_down_row4_prefill",
     "q8_down_bundle_prefill",
 )
 #: The per-decision default a ``getattr`` fallback uses, which is the value an
-#: unbound owner carries: the production-only rungs stay off, the gate stays on.
+#: unbound owner carries: the production-only rungs stay off, the chain gate and
+#: its out8 fallback stay on.
 UNBOUND_DEFAULTS = {
-    field: field == CHAIN_GATE_FIELD for field in POLICY_FIELDS
+    field: field in (CHAIN_GATE_FIELD, OUT8_FIELD) for field in POLICY_FIELDS
 }
 
 
@@ -116,7 +120,7 @@ def test_the_production_batch_width_is_the_only_width_that_reaches_fold128():
     # gate is live wherever the grouped chain runs, which is every multi-row
     # width.
     assert QWEN4_EXP_MAX_BATCH_ROWS == 64
-    assert len(POLICY_FIELDS) == 7
+    assert len(POLICY_FIELDS) == 8
 
 
 def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
@@ -126,7 +130,7 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
     keys = [key for _name, _width, _policy, key in seen]
     assert keys and all(key is not None for key in keys)
     for _name, width, policy, key in seen:
-        # ``(layer, rows)`` plus the seven decisions, in publication order.
+        # ``(layer, rows)`` plus the eight decisions, in publication order.
         assert key[1] == width
         assert key[2:] == policy
 
@@ -153,8 +157,9 @@ def test_a_flipped_rung_changes_the_capture_key(monkeypatch, field):
 
 def test_an_unbound_runner_forwards_every_parent():
     # The class defaults are the parents, exactly like an unbound c1 runner,
-    # except for the chain gate: every plan publishes it on, so an unbound owner
-    # keeps the production chain rather than closing it.
+    # except for the chain gate and its out8 fallback: every plan publishes both
+    # on, so an unbound owner keeps the production chain rather than closing it
+    # or dropping to the output1 base.
     runner = object.__new__(Qwen4ExpGGUFBatchRunner)
     assert runner._expert_down_policy() == tuple(
         UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS)
@@ -167,11 +172,12 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q51_fold128_prefill = "yes"
     runner.q51_fold_pair_prefill = None
     runner.q51_exact_grouped_down = 0
+    runner.q51_out8 = "1"
     runner.forkb_grouped_down = 0
     runner.q8_down_row4_prefill = 1
     runner.q8_down_bundle_prefill = ""
     assert runner._expert_down_policy() == (
-        True, True, False, False, False, True, False)
+        True, True, False, False, True, False, True, False)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
     assert runner._expert_down_policy() == tuple(
@@ -183,7 +189,7 @@ def test_the_policy_tuple_is_boolean_normalized():
 
 def test_a_c1_runner_built_later_inherits_the_generators_rungs():
     # The binder publishes to the generator; the serving pool clones c1 staging
-    # runners on demand. Those clones must read the same seven decisions, or a
+    # runners on demand. Those clones must read the same eight decisions, or a
     # speculative draft would measure the parents while its target ran the
     # leaves.
     from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions

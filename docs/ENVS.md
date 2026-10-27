@@ -865,7 +865,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` | `0` (production binder sets `1`) | Master gate for the production grouped MoE prefill session (rows >= 16, supported quant shapes). |
 | `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1` | retired | No longer read. The profile publishes the Q5_1 down M1 choice on its runner; registered strict fallback kernels remain. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | `0` (production binder) | Q5_1 grouped WMMA down-projection admission under the production grouped MoE route. |
-| `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | `1` | Uses the out8 Q5_1 grouped compact prefill variant. |
+| `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | retired | No longer read. The owning runner selects the out8 fallback below the expertgrid family; `q51_out8(runner, False)` retains the output1 comparison without changing higher-priority owners. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` | `0` | Opt-in Q5_1-style grouped WMMA down for Q8_0 experts. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | unset (F16 route sets `1`) | Warp-per-expert routed down decode owner (reduction order differs); the other half of the pair selected by `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP`. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT` | `0` (production-only binding) | Weight-exact iu8-WMMA Q5_1 down with risk+repair; bit-identical to the pair2 row-publish parent in practice at multiplier 16. |

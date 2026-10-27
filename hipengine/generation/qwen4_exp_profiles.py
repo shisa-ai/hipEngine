@@ -1428,6 +1428,9 @@ def _bind(
     # The exact grouped Q5_1 down chain's own gate: every plan runs it, and
     # a diagnostic arm closes it on the runner it measures.
     generator.q51_exact_grouped_down = True
+    # The chain's non-expertgrid fallback rung: every plan keeps the out8
+    # owner, and a diagnostic arm pins the output1 base on its own runner.
+    generator.q51_out8 = True
     generator.forkb_grouped_down = forkb_grouped_down
     generator.q8_down_row4_prefill = q8_down_row4_prefill
     generator.q8_down_bundle_prefill = q8_down_bundle_prefill
@@ -1448,6 +1451,7 @@ def _bind(
         runner.q51_register_cache = q51_register_cache
         runner.q51_row_publish = q51_row_publish
         runner.q51_exact_grouped_down = True
+        runner.q51_out8 = True
         runner.forkb_grouped_down = forkb_grouped_down
         runner.q8_down_row4_prefill = q8_down_row4_prefill
         runner.q8_down_bundle_prefill = q8_down_bundle_prefill

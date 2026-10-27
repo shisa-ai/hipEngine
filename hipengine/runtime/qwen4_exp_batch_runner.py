@@ -416,6 +416,7 @@ def run_qwen4_exp_batch_gdn_layer(
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_exact_grouped_down: bool = True,
+    q51_out8: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -502,6 +503,7 @@ def run_qwen4_exp_batch_gdn_layer(
             q51_fold128_prefill=q51_fold128_prefill,
             q51_fold_pair_prefill=q51_fold_pair_prefill,
             q51_exact_grouped_down=q51_exact_grouped_down,
+            q51_out8=q51_out8,
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -607,19 +609,23 @@ def _run_layer_ffn(
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_exact_grouped_down: bool = True,
+    q51_out8: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
 ) -> None:
     """GR write after the mixer, FFN GR read, MoE, and the final GR write.
 
-    The seven expert-down decisions (``q51_down_m1``, the two Q5_1 fold rungs,
-    the Q5_1 exact grouped down chain gate, ``forkb_grouped_down`` and the two
-    Q8_0 row4 rungs) are the owning runner's plan-published selections,
-    forwarded to the MoE dispatch unchanged. A batch tops out at
-    ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, so fold128 is reachable at exactly its own
-    threshold and the rows>=512 rungs stay on their parents; the Q5_1 down M1
-    and PF-1 fork-b decisions are reachable at every multi-row batch width.
+    The eight expert-down decisions (``q51_down_m1``, the two Q5_1 fold rungs,
+    the Q5_1 exact grouped down chain gate, its out8 fallback rung,
+    ``forkb_grouped_down`` and the two Q8_0 row4 rungs) are the owning runner's
+    plan-published selections, forwarded to the MoE dispatch unchanged. A batch
+    tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, so fold128 is reachable at
+    exactly its own threshold and the rows>=512 rungs stay on their parents; the
+    Q5_1 down M1
+    and PF-1 fork-b decisions are reachable at every multi-row batch width, and
+    the out8 fallback rung is live wherever the exact grouped Q5_1 down chain
+    runs with the expert-grid family off.
     """
 
     attention_inject = scratch.attention_gr.inject_logits
@@ -654,6 +660,7 @@ def _run_layer_ffn(
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_exact_grouped_down=q51_exact_grouped_down,
+        q51_out8=q51_out8,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -704,6 +711,7 @@ def run_qwen4_exp_batch_qsa_layer(
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_exact_grouped_down: bool = True,
+    q51_out8: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -790,6 +798,7 @@ def run_qwen4_exp_batch_qsa_layer(
             q51_fold128_prefill=q51_fold128_prefill,
             q51_fold_pair_prefill=q51_fold_pair_prefill,
             q51_exact_grouped_down=q51_exact_grouped_down,
+            q51_out8=q51_out8,
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -862,9 +871,13 @@ class Qwen4ExpGGUFBatchRunner:
     # tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` (64) rows: fold128 is reachable at
     # exactly its own threshold while the rows>=512 rungs stay on their parents,
     # and the Q5_1 down M1 and PF-1 fork-b decisions select from rows>=2, so they
-    # are reachable here too. The exact grouped Q5_1 down chain gate is the one
-    # decision every plan publishes on, so its default is the production chain.
+    # are reachable here too. The exact grouped Q5_1 down chain gate and its
+    # non-expertgrid fallback rung are the decisions every plan publishes on, so
+    # their defaults are the production chain and the out8 owner.
     q51_exact_grouped_down: bool = True
+    # The chain's non-expertgrid fallback rung: every plan publishes the out8
+    # owner, and the output1 base is a diagnostic binding on one runner.
+    q51_out8: bool = True
     q51_down_m1: bool = False
     q51_fold128_prefill: bool = False
     q51_fold_pair_prefill: bool = False
@@ -1761,11 +1774,13 @@ class Qwen4ExpGGUFBatchRunner:
         The MoE runs eager inside the layer's captured ``post_mixer`` segment,
         so the expert-down selectors resolve at capture time and their launches
         are baked into the graph. Every capture key therefore carries these
-        seven plan-published decisions: a runner whose selection changes
+        eight plan-published decisions: a runner whose selection changes
         captures a new segment instead of replaying one built under the old
         selection. ``q51_exact_grouped_down`` is the exact grouped Q5_1 down
         chain's own gate, and every Q5_1 ladder rung sits inside the chain it
-        gates.
+        gates; ``q51_out8`` is that chain's non-expertgrid fallback rung, so a
+        captured segment built on the out8 owner must not replay under the
+        output1 base.
         """
 
         return (
@@ -1773,6 +1788,7 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.q51_fold128_prefill),
             bool(self.q51_fold_pair_prefill),
             bool(self.q51_exact_grouped_down),
+            bool(self.q51_out8),
             bool(self.forkb_grouped_down),
             bool(self.q8_down_row4_prefill),
             bool(self.q8_down_bundle_prefill),
@@ -2042,6 +2058,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
+                    q51_out8=self.q51_out8,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -2077,6 +2094,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
+                    q51_out8=self.q51_out8,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
