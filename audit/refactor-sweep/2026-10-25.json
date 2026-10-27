@@ -51,8 +51,8 @@
       "start_line": 84,
       "end_line": 95,
       "sha256": "3f9172411e341c6db09207ea6c226bb30c8c0ac7c2411fb39b25d7c2ea445dde",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["INT8 attention and dense-prefill GPU correctness tests use normal build resolution instead of implicit temporary compiler files/cached-only refusal. Regression RED/GREEN, build-unit tests and both real GPU files pass; numerical checks and HIP guards retained. Runtime and explicit cache-only benchmark contracts unchanged. Worklog: worklog/entries/20261027T091303.198480Z-cleanup-refactor-r0005-b9ec7d.md."],
       "subitems": []
     },
     {

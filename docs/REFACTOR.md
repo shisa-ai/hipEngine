@@ -52,18 +52,6 @@ attention readers that walk `[base, base+live)`, and the store's snapshot
 bookkeeping, so it needs its own correctness gate against the host oracle in
 `tests/test_gpu_dms_append_decode_hip.py`.
 
-## Cached-build tests key off a mutable /tmp compiler-version file
-
-`tests/test_gpu_qwen38_int8_batch_attention_gpu.py` and the other
-`require_cached=True` tests take the build-cache key from
-`/tmp/hipengine-hipcc-version.txt`, and skip only when that file is *absent*.
-Any change to its contents silently rekeys the cache: truncating it to
-`hipcc --version | head -1` instead of the documented full output produced four
-`FileNotFoundError: cached build artifact missing` failures that look like
-kernel defects but are pure environment drift. Either record the expected
-contents alongside the artifact and fail loudly on a mismatch, or have these
-tests build when the entry is missing instead of requiring a prebuild.
-
 ## Flash-Next shared decode batch: rollback lever and remaining gaps
 
 The full-model AR batch is the default serving path for Flash-Next

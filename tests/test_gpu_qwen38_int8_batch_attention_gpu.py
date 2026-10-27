@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-import os
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -55,13 +53,6 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
     return exp / np.sum(exp, axis=-1, keepdims=True)
 
 
-def _compiler_version() -> str:
-    path = Path(os.environ.get("HIPENGINE_COMPILER_VERSION_FILE", "/tmp/hipengine-hipcc-version.txt"))
-    if not path.is_file():
-        pytest.skip("cached HIP compiler-version file is unavailable")
-    return path.read_text()
-
-
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.parametrize(
     ("rows", "live_counts"),
@@ -111,11 +102,7 @@ def _run_attention_gate(
         else qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans
     )
     runtime = get_hip_runtime()
-    library = build_qwen35_paged_attn_decode(
-        load=True,
-        compiler_version=_compiler_version(),
-        require_cached=True,
-    )
+    library = build_qwen35_paged_attn_decode(load=True)
     block_size = 256
     num_q_heads, num_kv_heads, head_dim = 24, 4, 256
     q_width = num_q_heads * head_dim

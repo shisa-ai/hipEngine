@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -38,8 +36,6 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (  # noqa: E402
 from hipengine.loading.materialize import float_array_to_bf16_bits  # noqa: E402
 from hipengine.quant.gguf import bf16_to_float32  # noqa: E402
 from hipengine.kernels.registry import resolve  # noqa: E402
-
-_COMPILER = Path("/tmp/d08-c0/hipcc-version.txt")
 
 
 def test_dense_prefill_wmma_residual_sibling_is_registered() -> None:
@@ -87,8 +83,7 @@ def test_dense_prefill_wmma_residual_preserves_rounded_bf16_boundary() -> None:
     projection = np.empty((rows, n), dtype=np.uint16)
     candidate = np.empty((rows, n), dtype=np.uint16)
     runtime = get_hip_runtime()
-    compiler = _COMPILER.read_text() if _COMPILER.exists() else None
-    library = build_dense_gemv(load=True, compiler_version=compiler)
+    library = build_dense_gemv(load=True)
     buffers = []
 
     def upload(array):
@@ -162,8 +157,7 @@ def test_dense_prefill_wmma_matches_reference(n: int, k: int, rows: int) -> None
     expected = cpu_x @ cpu_weights.T
 
     runtime = get_hip_runtime()
-    compiler = _COMPILER.read_text() if _COMPILER.exists() else None
-    library = build_dense_gemv(load=True, compiler_version=compiler)
+    library = build_dense_gemv(load=True)
     host_ref = np.empty((rows, n), dtype=np.uint16)
     host_got = np.empty((rows, n), dtype=np.uint16)
     buffers = []
