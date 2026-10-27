@@ -820,7 +820,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS` | profile-selected | Admits rows 9-256 to the dense-wide owner under the short-prompt gate. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` | profile-selected | Comma-separated layers on the split-operand dense WMMA route. |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` | profile-selected | Names the Q8_0 expert-down prefill owner. |
-| `HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS` | `1` | Checked full-row DPP Q8_0 coltile leaf for its qualified shapes; `0` is the rollback. |
 | `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` | `1` | VALU DPP wave reduction in the Q8_0 coltile leaf; `0` restores the shuffle tree. |
 | `HIPENGINE_QWEN4_EXP_Q8_DPU_REDUCTION` | unset | Recorded in host-speed probe provenance only. |
 | `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Comma-separated layers on the staged-F32 Q8_0 route (candidate). |
@@ -1147,6 +1146,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS` is retired and ignored.
+  Registered checked full-row selection follows the DPP family and its shape
+  predicate; the generic DPP leaf remains the tail/unsupported-shape fallback.
 
 - `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` is retired and ignored. The profile
   binds publication to the owning runner and its prefill execution scope;

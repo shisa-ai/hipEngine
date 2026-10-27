@@ -259,28 +259,28 @@
       "start_line": 265,
       "end_line": 284,
       "sha256": "4a81ed2dc07aeb65725302db0375f9dc919a3e9b8c2f5fc0083c8f8af9602063",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Stale diagnostic-only premise corrected: checked leaf is selected by exact raw DPP dispatch. Removed dedicated environment opt-out and cache-key component; preserved shape/registration/family fallbacks and diagnostics. Full CPU, GPU parity/bounds and scoped public exact-fallback engagement with retired env zero pass. Default public dense-wide route remains separate. Worklog: worklog/entries/20261027T115914.626790Z-cleanup-refactor-r0012-41bfa3.md."],
       "subitems": [
         {
           "line": 267,
           "text": "- `coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out`",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 273,
           "text": "- The sibling narrows the pipelined leaf's weight/activation/output offsets from",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 278,
           "text": "- Remove the variant, wrapper and extern symbol once a different mechanism or a",
-          "status": "pending"
+          "status": "resolved-stale"
         },
         {
           "line": 281,
           "text": "- Evidence:",
-          "status": "pending"
+          "status": "verified-current"
         }
       ]
     },

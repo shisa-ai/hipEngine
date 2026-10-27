@@ -90,8 +90,8 @@ def test_dispatch_prefers_the_dpp_leaf() -> None:
     ).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
     )
-    # The qualified prefill window claims the checked full-row sibling; the
-    # same launch with the dedicated opt-out falls back to the plain DPP leaf.
+    # The qualified prefill window keeps the checked sibling even when the
+    # retired environment override is present.
     os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", None)
     try:
         assert _raw_k_coltile_pipelined_dispatch(
@@ -103,7 +103,7 @@ def test_dispatch_prefers_the_dpp_leaf() -> None:
         assert _raw_k_coltile_pipelined_dispatch(
             base, **qualified_shape
         ).key.variant == (
-            "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+            "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out"
         )
     finally:
         os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", None)

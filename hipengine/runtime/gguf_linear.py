@@ -4257,9 +4257,7 @@ def _raw_k_coltile_pipelined_dispatch(
     ``benchmarks/results/2026-10-04-qwen4exp-q8-prefill-dpp-reduction/``.
 
     ``coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out``
-    is preferred over the plain DPP leaf while
-    ``HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS`` is not ``0`` (default on)
-    and the launch shape passes
+    is preferred over the plain DPP leaf when the launch shape passes
     ``q8_0_coltile_dpp_checked_full_rows_qualified``: the six declared dense
     Q8_0 geometries of the qualified lane between 512 and 4096 complete rows. It
     is the checked-int32/full-four-row narrowing of the DPP leaf - same ordered
@@ -4280,10 +4278,7 @@ def _raw_k_coltile_pipelined_dispatch(
     if os.environ.get(_Q8_DPP_REDUCTION_ENV, "1") != "0":
         # The DPP family flag governs both DPP leaves: the checked full-rows
         # sibling is a narrowing of the plain DPP leaf, not a separate family.
-        if (
-            os.environ.get(_Q8_DPP_CHECKED_FULL_ROWS_ENV, "1") != "0"
-            and q8_0_coltile_dpp_checked_full_rows_qualified(rows, in_features, out_features)
-        ):
+        if q8_0_coltile_dpp_checked_full_rows_qualified(rows, in_features, out_features):
             preferred.append(
                 "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out"
             )
@@ -4300,9 +4295,6 @@ _Q8_STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
 
 # Read here so the dispatch memoization key can see it; see the cache key note.
 _Q8_DPP_REDUCTION_ENV = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
-# Same purpose as the DPP flag: the checked full-row preference changes the
-# selected leaf, so a flip inside one process must change the cache key.
-_Q8_DPP_CHECKED_FULL_ROWS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS"
 
 
 def _q8_dpp_reduction_raw() -> str:
@@ -4314,12 +4306,6 @@ def _q8_dpp_reduction_raw() -> str:
     """
 
     return _raw_env_value(_Q8_DPP_REDUCTION_ENV, "1")
-
-
-def _q8_dpp_checked_full_rows_raw() -> str:
-    """The raw checked-full-rows flag, for the same reason as the DPP flag."""
-
-    return _raw_env_value(_Q8_DPP_CHECKED_FULL_ROWS_ENV, "1")
 
 
 def _q4_pack8_wmma_bulk_raw() -> str:
@@ -5228,7 +5214,6 @@ def launch_gguf_linear(
         # Read by ``_raw_k_coltile_pipelined_dispatch``; without it in the key a
         # flag flip inside one process would replay the other arm's leaf.
         _q8_dpp_reduction_raw(),
-        _q8_dpp_checked_full_rows_raw(),
         bool(use_q4_pack8_wmma),
         _q4_pack8_wmma_bulk_raw() != "0",
         registered_variant,

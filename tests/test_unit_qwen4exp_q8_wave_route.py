@@ -89,10 +89,10 @@ def test_checked_full_rows_upgrade_is_shape_gated_and_env_opt_out(monkeypatch):
     assert upgrade(wave, **qualified).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out"
     )
-    # The dedicated opt-out falls back to the plain DPP leaf on the same shape.
+    # The retired opt-out cannot change shape selection.
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", "0")
     assert upgrade(wave, **qualified).key.variant == (
-        "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+        "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out"
     )
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS", raising=False)
 
