@@ -7346,12 +7346,12 @@
         {
           "line": 6161,
           "text": "| Area | Debt | Current status | Removal trigger |",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 6162,
           "text": "| --- | --- | --- | --- |",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 6163,
@@ -8157,12 +8157,12 @@
         {
           "line": 6339,
           "text": "| Path | Cleanup target | Keep | Remove / collapse trigger |",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 6340,
           "text": "| --- | --- | --- | --- |",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 6341,
