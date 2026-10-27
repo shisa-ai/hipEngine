@@ -5903,18 +5903,20 @@
       "start_line": 4923,
       "end_line": 4937,
       "sha256": "09a1944076c29b61f44db6f8f3f60ed2722051038ef537dcf6a444f28f77b357",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Removed obsolete blanket native-after-bulk blocker and duplicate Cleanup Ledger eager-verifier row. Serving already defaults native; later private Conv handoff and serial journal repair has actual-model Qwen3.8 B1-B3/longer acceptance evidence. This is not an independent rerun of original Qwen3.6 incident or universal arithmetic claim. Preserve permanent serial_exact oracle, context/shape fallback and separate numerical work. Focused ownership/hidden/suite/public-route checks and docs/audit/worklog pass. Worklog: worklog/entries/20261027T185609.433890Z-cleanup-refactor-r0226-2b3961.md."
+      ],
       "subitems": [
         {
           "line": 4925,
           "text": "- Added 2026-08-12 after public dense MTP was aligned with public AR prompt",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4934,
           "text": "- Removal trigger: make dense native rows exact after bulk prefill across the",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -7688,7 +7690,7 @@
         {
           "line": 6222,
           "text": "| GGUF MTP eager verifier | `Qwen35GGUFTransactionalVerifier` retains the `serial_exact` target chain as the correctness oracle; its stable full-shape buffers are keyed by scheduler graph shape and `captured=false` remains explicit. Dense public MTP now bulk-prefills the target once, retains every trunk-hidden row on device, and catches NextN up with the shifted `(zero, h0, ..., h[n-2])` sequence. | Correctness route and current dense public fallback. Candidate-only/shared ABI, verify-chain spans, GPU accept, rollback, reject/partial/full commit, exact greedy output, and the 601-second 408-request all-category public soak pass. Native dense rows after bulk prefill remain blocked as documented above; the older serial-prefill native protocol is separately gated. | Keep `serial_exact` permanently as the unfused transaction oracle. Promote native verification for public bulk-admitted dense MTP only after full-suite output/state and reject/partial/full gates pass from the same prefix and complete wall is non-regressive. |",
-          "status": "pending"
+          "status": "resolved-R0226"
         },
         {
           "line": 6223,
