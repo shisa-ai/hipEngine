@@ -6163,33 +6163,35 @@
       "start_line": 5098,
       "end_line": 5132,
       "sha256": "d5e36064edafc70407d7d71bbe3ec4057a6909a30bca689641b1452531dde6b8",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-flag-retired",
+      "evidence": [
+        "Retire unused process-wide weight-arena rollback reader/constant and mark ENVS row retired; preserve programmatic false, backend/artifact selection, DeviceMemoryArena/planner/accounting and all allocation fallbacks. RED/GREEN both backends, full CPU bundle, focused loader tests, real gfx1151 public shared fallback (37/257/513 repeated pre-removal IDs and zero close), docs/audit/worklog pass. No private arena engagement or speed/memory claim. Worklog: worklog/entries/20261027T193524.178739Z-cleanup-refactor-r0237-5bd441.md."
+      ],
       "subitems": [
         {
           "line": 5100,
           "text": "- Added 2026-08-06 and promoted to the gfx1151 private-c1 default after exact",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5106,
           "text": "- The gfx1100 dense-H5120 geometry policy was added on 2026-08-12 and",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5115,
           "text": "- Task 24 adds an independent gfx1151 dense-H5120/Q4_K_S 80-MiB policy. With",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5120,
           "text": "- Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a",
-          "status": "pending"
+          "status": "resolved-flag-retired"
         },
         {
           "line": 5128,
           "text": "- Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },

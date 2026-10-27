@@ -9465,7 +9465,6 @@ def _gguf_bulk_prefill_initial_hidden_capacity(
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
-_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV = "HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA"
 _GGUF_IQ_GROUPED_PREFILL_ENV = "HIPENGINE_GGUF_IQ_GROUPED_PREFILL"
 _GGUF_MOE_TAIL_NEXT_RMS_ENV = "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
@@ -10635,20 +10634,14 @@ def _resolve_gguf_private_c1_small_weight_arena(
     requested: bool | None = None,
     artifact_preset_key: str | None = None,
 ) -> tuple[bool, str]:
-    """Select the retained allocator-owned private-c1 path with explicit opt-out.
+    """Select allocator-owned private-c1 weights with a programmatic opt-out.
 
-    The policy-table admission route is certified per artifact
-    ``(geometry, stamp)``: ``artifact_preset_key=None`` keeps the plain row,
-    preset-bound/unknown identities resolve only an exact preset-keyed row
-    (none ship today). ``requested`` (and its env) is an opt-OUT seam only —
-    ``True`` never bypasses the artifact-qualified admission.
+    The policy-table route uses geometry/stamp and optional preset-key rows.
+    ``requested=True`` never bypasses policy selection; ``False`` keeps
+    dedicated allocation owners.
     """
 
-    enabled = (
-        _env_flag(_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV, True)
-        if requested is None
-        else bool(requested)
-    )
+    enabled = True if requested is None else bool(requested)
     if not enabled:
         return False, "disabled"
     if int(max_batch_size) != 1:

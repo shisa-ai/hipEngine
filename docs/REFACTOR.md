@@ -3430,41 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## SH16 private-c1 selective immutable-weight arena
-
-- Added 2026-08-06 and promoted to the gfx1151 private-c1 default after exact
-  four-transition plus 18-prompt gates and four-depth whole-GTT savings of
-  **190/212/210/210 MiB**. One owner holds the exact **571 allocations <=16
-  MiB** while all **161 larger owners / 95.965% of weight bytes**, all
-  state/scratch, c>N requests, unsupported layouts, and denied routes keep
-  dedicated behavior.
-- The gfx1100 dense-H5120 geometry policy was added on 2026-08-12 and
-  subsequently widened to the first complete 80-MiB inventory crossover. It
-  packs 849 allocations into one owner, leaves only the 1,042,944,000-byte
-  untied head
-  dedicated, reduces physical weight owners **370 -> 2**, and cuts the XTX
-  512/128 process peak **16.171 -> 16.095 GiB** with exact output. The complete
-  W7900 three-shape plus natural-MTP safeguard now passes: prefill/decode and
-  true-AR/B1-B3 are all faster than the same-commit dual-layout rollback, while
-  peak delta falls **45.50-47.03%**.
-- Task 24 adds an independent gfx1151 dense-H5120/Q4_K_S 80-MiB policy. With
-  anonymous host embedding it packs 849 logical allocations into one arena,
-  leaves only the 1,042,944,000-byte untied root dedicated, and exposes two
-  physical weight owners. The retained combined 512/1K/4K rows are within the
-  1% wall guard and below the lower llama process-GTT row at every shape.
-- Keep `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA=0` temporarily as a
-  disable-only rollback/bisection seam. Remove the shared environment seam
-  after task 26's clean gfx1100/gfx1151 cumulative closure confirms both dense
-  H5120 policies and no supported private-c1 consumer requires rollback. The
-  gfx1151 half of that confirmation is complete on 2026-08-17 at `20e5106da`
-  (see the
-  [`G6 closure artifact`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-g6-closure.json));
-  the gfx1100 half remains pending on W7900 hardware, so the seam stays.
-- Do not remove `DeviceMemoryArena`, the selective planner, ownership fields, or
-  telemetry while this production owner is active. Do not revive the rejected
-  SH15 whole-session state arena or compact-Q4 stack; task 24's dedicated 1K
-  outer-chunk policy is the separately admitted Q4_K_S 4K owner.
-
 ## gfx1151 Qwen3.8 Q4 host embedding and bounded 4K scratch
 
 - Added 2026-08-17 for private-c1 dense-H5120/Q4_K_S memory parity. Automatic

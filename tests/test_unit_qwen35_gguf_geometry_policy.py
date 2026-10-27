@@ -158,6 +158,29 @@ def test_gfx1100_qwen38_dense_prefill_scratch_row_cap_bounds_declared_context() 
     assert session._prefill_scratch_rows(768) == 768
 
 
+@pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
+@pytest.mark.parametrize("retired_value", ("0", "false", "off"))
+def test_weight_arena_ignores_retired_environment_rollback(
+    monkeypatch: pytest.MonkeyPatch, backend: str, retired_value: str
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA", retired_value)
+    common = {
+        "backend": backend,
+        "geometry": QWEN35_DENSE_H5120_GEOMETRY,
+        "file_type_name": _Q4_K_M if backend == "hip_gfx1100" else _Q4_K_S,
+        "max_batch_size": 1,
+        "has_shared_runner": False,
+    }
+    resolve = gguf_runner._resolve_gguf_private_c1_small_weight_arena
+    assert resolve(**common) == (True, "private_c1_selective")
+    assert resolve(**common, requested=False) == (False, "disabled")
+    assert resolve(**common, requested=True) == (True, "private_c1_selective")
+    assert resolve(**{**common, "max_batch_size": 2}) == (False, "multi_row_fallback")
+    assert resolve(**{**common, "has_shared_runner": True}) == (
+        False, "shared_runner_fallback"
+    )
+
+
 def test_gfx1151_qwen38_memory_policies_are_geometry_and_quant_scoped() -> None:
     runner = _dense_runner(model_name="community/Qwen3.8-27B-finetune")
     runner.backend = "hip_gfx1151"

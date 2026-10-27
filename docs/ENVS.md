@@ -413,7 +413,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS` | unset | Specdec2 route | Exact target row-count override for the specdec2 verifier rows. |
 | `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` | unset | Specdec2 route | Q6 mixed target rowtile admission override. |
 | `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` | `0` | Diagnostic | Default-off cooldown that keeps a request out of speculation for one cycle after a rejected speculative attempt. |
-| `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | backend-scoped | Rollback seam | Allocates private-c1 small weights from a session-owned arena; `0` restores the shared allocator path. |
+| `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | retired | No longer read | Private-c1 weight allocation follows backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
 | `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA` | retired | No longer read | Private-c1 decode scratch follows the backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
 | `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | gfx1151: `1024` | Rollback seam | Overrides the short-prompt c1 batch-attention workgroup; the calibrated 1024-thread variant passed the execution-profile c1 threads gate and the exact 256-thread leaf stays the strict fallback. |
 | `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` | unset | Diagnostic | Session-acquire-time diagnostic resolver that forces the WMMA-prefill route without touching the production session default. Unrecognised values raise rather than silently reading as route-unchanged. |
