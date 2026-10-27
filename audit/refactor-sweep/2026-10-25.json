@@ -4186,7 +4186,7 @@
       "end_line": 3755,
       "sha256": "8cba23b64c6fed653c5f74d638d49d97c4d4e79b28220da8c0b907d39be9f11e",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Stale host-default claim corrected: device radix selection already ships. Removed unused host-selection method/five mirrors, preserved actual diagnostic/native readers and CPU oracle. GPU346 exact synthetic context ladder through262144 plus pooling/restore and public2405token native engagement pass. Full-model262K parity remains open, not inferred from synthetic coverage. Worklog: worklog/entries/20261027T032410.164954Z-cleanup-refactor-r0162-qsa-host-594fae.md."],
       "subitems": [
         {
           "line": 3745,

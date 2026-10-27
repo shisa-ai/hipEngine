@@ -1124,7 +1124,14 @@ def _qsa_select_starts_host(
     *,
     budget: int,
 ) -> np.ndarray:
-    """Select exact QSA blocks without the quadratic single-thread GPU fallback."""
+    """Exact host control ordering for QSA blocks: score descending, then start.
+
+    Retained as the readable statement of the tie contract the device radix
+    selector must match (``qsa_topk_expand_f32_i64`` compacts the lowest block
+    indices at an exact threshold). No engine path selects it: the promoted
+    route is the device selector, and the CPU reference
+    (``qsa_select_positions``) is what the gates compare against.
+    """
 
     score = np.asarray(scores, dtype=np.float32)
     starts = np.asarray(block_starts, dtype=np.int64)
@@ -1151,12 +1158,7 @@ class Qwen4ExpQSAIndexDeviceState:
     query_position: DeviceBuffer
     selected_positions: DeviceBuffer
     member_host: np.ndarray
-    block_starts_host: np.ndarray
     scores_host: np.ndarray
-    selected_starts_host: np.ndarray
-    selected_count_host: np.ndarray
-    query_position_host: np.ndarray
-    selected_positions_host: np.ndarray
     physical_positions_host: np.ndarray
     capacity: int
     index_heads: int
@@ -1205,22 +1207,27 @@ class Qwen4ExpQSAIndexDeviceState:
             physical_positions[: complete_blocks * ratio].reshape(complete_blocks, ratio),
             dtype=np.int32,
         )
-        block_starts_host = np.arange(complete_blocks, dtype=np.int64) * ratio
+        # Upload sources for the device buffers whose host mirrors were only
+        # ever read by the retired host selection route. They stay locals so the
+        # device buffers keep their initial contents (the stateful graph probe
+        # snapshots and restores them).
+        block_starts_init = np.arange(complete_blocks, dtype=np.int64) * ratio
+        selected_starts_init = np.full(budget, -1, dtype=np.int64)
+        selected_count_init = np.zeros(1, dtype=np.int32)
+        query_position_init = np.zeros(1, dtype=np.int64)
+        # ``scores_host`` is the retrieval gate's D2H target for its final score
+        # row, so it stays a field even though no engine path reads it.
         scores_host = np.empty(complete_blocks, dtype=np.float32)
-        selected_starts_host = np.full(budget, -1, dtype=np.int64)
-        selected_count_host = np.zeros(1, dtype=np.int32)
-        query_position_host = np.zeros(1, dtype=np.int64)
-        selected_positions_host = np.empty(budget * ratio + ratio - 1, dtype=np.int64)
         sizes = (
             capacity * dimension * DType.FP32.itemsize,
             member_host.nbytes,
-            block_starts_host.nbytes,
+            block_starts_init.nbytes,
             complete_blocks * dimension * DType.FP32.itemsize,
             complete_blocks * DType.FP32.itemsize,
-            selected_starts_host.nbytes,
-            selected_count_host.nbytes,
-            query_position_host.nbytes,
-            selected_positions_host.nbytes,
+            selected_starts_init.nbytes,
+            selected_count_init.nbytes,
+            query_position_init.nbytes,
+            (budget * ratio + ratio - 1) * DType.INT64.itemsize,
         )
         buffers: list[DeviceBuffer] = []
         try:
@@ -1228,16 +1235,16 @@ class Qwen4ExpQSAIndexDeviceState:
                 buffers.append(malloc(size, runtime=active_runtime))
             copy_host_array_to_device(buffers[1], member_host, runtime=active_runtime)
             copy_host_array_to_device(
-                buffers[2], block_starts_host, runtime=active_runtime
+                buffers[2], block_starts_init, runtime=active_runtime
             )
             copy_host_array_to_device(
-                buffers[5], selected_starts_host, runtime=active_runtime
+                buffers[5], selected_starts_init, runtime=active_runtime
             )
             copy_host_array_to_device(
-                buffers[6], selected_count_host, runtime=active_runtime
+                buffers[6], selected_count_init, runtime=active_runtime
             )
             copy_host_array_to_device(
-                buffers[7], query_position_host, runtime=active_runtime
+                buffers[7], query_position_init, runtime=active_runtime
             )
             active_runtime.memset(buffers[0].ptr, 0, buffers[0].nbytes)
         except Exception:
@@ -1247,12 +1254,7 @@ class Qwen4ExpQSAIndexDeviceState:
         return cls(
             *buffers,
             member_host,
-            block_starts_host,
             scores_host,
-            selected_starts_host,
-            selected_count_host,
-            query_position_host,
-            selected_positions_host,
             physical_positions,
             capacity,
             heads,
@@ -1450,83 +1452,6 @@ class Qwen4ExpQSAIndexDeviceState:
         )
         tail = position + 1 - blocks * self.compression_ratio
         return self.block_budget * self.compression_ratio + tail
-
-    def select_positions_host(
-        self,
-        prepared_query_ptr: int,
-        *,
-        query_position: int,
-        key_norm_weight_ptr: int,
-        rotary_dim: int,
-        theta: float,
-        eps: float = 1e-6,
-        stream: int = 0,
-    ) -> np.ndarray:
-        """Return exact selected logical positions for any appended sparse query."""
-
-        if self.closed:
-            raise RuntimeError("QSA index state is closed")
-        position = int(query_position)
-        if position < 0 or position >= self.count:
-            raise ValueError("QSA query position must identify an appended index key")
-        blocks = (position + 1) // self.compression_ratio
-        if blocks <= self.block_budget:
-            raise ValueError("native QSA selection requires more blocks than the budget")
-        self.query_position_host[0] = position
-        copy_host_array_to_device(
-            self.query_position,
-            self.query_position_host,
-            runtime=self.runtime,
-        )
-        self.prepare_complete_blocks(
-            blocks,
-            key_norm_weight_ptr=key_norm_weight_ptr,
-            rotary_dim=rotary_dim,
-            theta=theta,
-            eps=eps,
-            stream=stream,
-        )
-        qwen4_exp_qsa_score_f32(
-            int(prepared_query_ptr),
-            self.pooled_keys.ptr,
-            self.scores.ptr,
-            1,
-            blocks,
-            self.index_heads,
-            self.index_dim,
-            stream=stream,
-            runtime=self.runtime,
-        )
-        if stream:
-            self.runtime.stream_synchronize(stream)
-        copy_device_to_host(
-            host_array_ptr(self.scores_host),
-            self.scores,
-            blocks * DType.FP32.itemsize,
-            runtime=self.runtime,
-        )
-        chosen = _qsa_select_starts_host(
-            self.scores_host[:blocks],
-            self.block_starts_host[:blocks],
-            budget=self.block_budget,
-        )
-        self.selected_starts_host[:] = chosen
-        self.selected_count_host[0] = self.block_budget
-        output_count = 0
-        for start in chosen.tolist():
-            stop = output_count + self.compression_ratio
-            self.selected_positions_host[output_count:stop] = np.arange(
-                int(start), int(start) + self.compression_ratio, dtype=np.int64
-            )
-            output_count = stop
-        if position % self.compression_ratio != self.compression_ratio - 1:
-            tail_start = position // self.compression_ratio * self.compression_ratio
-            tail = np.arange(tail_start, position + 1, dtype=np.int64)
-            self.selected_positions_host[output_count : output_count + tail.size] = tail
-            output_count += int(tail.size)
-        selected = self.selected_positions_host[:output_count]
-        selected.sort()
-        return selected.copy()
 
     def select(
         self,

@@ -3022,16 +3022,17 @@ should be removed or collapsed.
 
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 
-- The strict Qwen4Exp runner currently downloads one FP32 block-score row per
-  QSA layer and performs exact NumPy lexicographic top-512 selection. This
-  replaces the reduced-fixture single-thread device selector, whose
-  `O(blocks * budget²)` scan is not viable at 262K. Remove the host score copy,
-  host selection, and their device metadata mirrors only after a scalable exact
-  GPU selector matches Transformers/llama indices at 2,052/4K/16K/64K/262K,
-  preserves lower-start tie behavior, passes non-contiguous/cancellation/
-  rollback isolation, and improves complete-model wall time. Keep the current
-  host route as strict fallback until that gate; affected owner:
-  `hipengine/runtime/qwen4_exp_runner.py`.
+- Production c1 and chunked QSA use device radix top-k selection and expansion,
+  preserving lower-start tie order. The old host-selection default description
+  is obsolete; CPU selection remains an independent reference.
+- Cleanup removes the unused device-state host-selection method and mirrors
+  with no remaining consumer. Preserve metadata still used by physical-page
+  mapping, retrieval diagnostics and stateful graph probes.
+- Remaining validation: complete-model index parity at 262K. Existing 262K
+  allocation evidence does not establish inference parity. Synthetic selector
+  parity at that length is a separate contract, not a substitute. Run the
+  retrieval/index-reference gate at the full length and record cancellation,
+  rollback and isolation results; do not gate execution on this missing row.
 
 ## 2026-08-26 speculative-MTP default capability migration
 

@@ -350,7 +350,9 @@ def test_qwen4_exp_qsa_index_pools_only_new_complete_blocks(monkeypatch) -> None
                 d_keys.ptr + position * 4 * np.dtype(np.float32).itemsize,
                 position=position,
             )
-        index_state.select_positions_host(
+        # The device entry is the production route; it drives the same
+        # incremental pooling and restore behaviour the host route used to.
+        index_state.select_positions_device(
             d_query.ptr,
             query_position=5,
             key_norm_weight_ptr=d_norm.ptr,
@@ -361,7 +363,7 @@ def test_qwen4_exp_qsa_index_pools_only_new_complete_blocks(monkeypatch) -> None
         assert [call[2] for call in calls] == [3]
 
         index_state.append(d_keys.ptr + 6 * 4 * 4, position=6)
-        index_state.select_positions_host(
+        index_state.select_positions_device(
             d_query.ptr,
             query_position=6,
             key_norm_weight_ptr=d_norm.ptr,
@@ -371,7 +373,7 @@ def test_qwen4_exp_qsa_index_pools_only_new_complete_blocks(monkeypatch) -> None
         assert [call[2] for call in calls] == [3]
 
         index_state.append(d_keys.ptr + 7 * 4 * 4, position=7)
-        index_state.select_positions_host(
+        index_state.select_positions_device(
             d_query.ptr,
             query_position=7,
             key_norm_weight_ptr=d_norm.ptr,

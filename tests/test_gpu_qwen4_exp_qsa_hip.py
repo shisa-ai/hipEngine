@@ -18,6 +18,18 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
     qsa_select_positions,
 )
 
+# The R0162 context ladder and its tie fixture are shared with the CPU contract
+# test so the GPU rungs and the CPU oracle cannot drift apart.
+from test_unit_qwen4exp_qsa_select_ladder import (
+    BUDGET,
+    CONTEXT_LADDER,
+    RATIO,
+    TIE_CASES,
+    expansion,
+    query_position,
+    tie_scores,
+)
+
 
 def _hip_available() -> bool:
     try:
@@ -265,30 +277,32 @@ def test_qwen4_exp_qsa_mrope_rows_match_interleaved_three_axis_oracle() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("query_position", [4095, 4094])
+@pytest.mark.parametrize(
+    "blocks, tail",
+    TIE_CASES,
+    ids=[f"ctx{blocks * RATIO + tail}" for blocks, tail in TIE_CASES],
+)
 def test_qwen4_exp_qsa_gpu_topk_expands_blocks_tail_and_breaks_ties(
-    query_position: int,
+    blocks: int, tail: int,
 ) -> None:
+    """Every named context, plus incomplete tails, with exact-tie behaviour.
+
+    ``query_position`` is zero-based: the row sits at ``blocks*ratio+tail-1``
+    and its incomplete tail is ``(query_position + 1) % ratio``.
+    """
+
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
         qwen4_exp_qsa_topk_expand_f32_i64,
     )
 
     runtime = get_hip_runtime()
-    ratio, budget = 4, 512
-    blocks = (query_position + 1) // ratio
-    scores = np.zeros(blocks, dtype=np.float32)
-    high = min(124, blocks)
-    scores[-high:] = np.arange(1, high + 1, dtype=np.float32)
-    selected_high = np.arange(blocks - high, blocks, dtype=np.int64)
-    selected_ties = np.arange(budget - high, dtype=np.int64)
-    selected_blocks = np.sort(np.concatenate((selected_ties, selected_high)))
-    expected = np.concatenate(
-        [
-            (selected_blocks[:, None] * ratio + np.arange(ratio)).reshape(-1),
-            np.arange(blocks * ratio, query_position + 1, dtype=np.int64),
-        ]
-    )
+    ratio, budget = RATIO, BUDGET
+    position = query_position(blocks, tail)
+    assert (position + 1) // ratio == blocks
+    assert (position + 1) % ratio == tail
+    scores = tie_scores(blocks)
+    expected = expansion(blocks, tail)
 
     allocations = []
     try:
@@ -301,7 +315,7 @@ def test_qwen4_exp_qsa_gpu_topk_expands_blocks_tail_and_breaks_ties(
             d_selected.ptr,
             d_count.ptr,
             blocks,
-            query_position,
+            position,
             ratio,
             budget,
             runtime=runtime,
@@ -319,7 +333,11 @@ def test_qwen4_exp_qsa_gpu_topk_expands_blocks_tail_and_breaks_ties(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("blocks", [513, 4_096, 65_536])
+@pytest.mark.parametrize(
+    "blocks",
+    [ctx // RATIO for ctx in CONTEXT_LADDER],
+    ids=[f"ctx{ctx}" for ctx in CONTEXT_LADDER],
+)
 def test_qwen4_exp_qsa_gpu_topk_matches_host_lexsort(blocks: int) -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
@@ -328,7 +346,7 @@ def test_qwen4_exp_qsa_gpu_topk_matches_host_lexsort(blocks: int) -> None:
 
     runtime = get_hip_runtime()
     rng = np.random.default_rng(4347 + blocks)
-    ratio, budget = 4, 512
+    ratio, budget = RATIO, BUDGET
     scores = rng.uniform(0.0, 10.0, size=blocks).astype(np.float32)
     selected_blocks = np.sort(
         np.lexsort((np.arange(blocks, dtype=np.int64), -scores))[:budget]
