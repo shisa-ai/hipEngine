@@ -4651,20 +4651,6 @@ fallback count is not a success metric.
   consider folding only the stable owner into package auto policy. No
   allocation, workspace, sidecar, or public selector was added.
 
-## Laguna P6 IQ2 MMQ32 diagnostic
-
-- The pre-existing explicit four-axis primitive expands raw IQ2 to signed-byte
-  fragments and consumes a caller-owned D4-Q8_1 pack. Actual M512 repricing
-  improves the 46-layer gate/up leaf sum **1297.436 -> 388.901 ms (3.336x)**
-  and a temporary session reaches **122.135/110.761 tok/s** at 512/1K.
-- Runtime admission is closed: complete quality reaches max KL **0.683239** at
-  **565/576** top-1, while P6-specific repair density reaches **85.946%**
-  uncertain coordinates and **99.496%** touched active output rows. No runtime
-  owner, selector, or repair queue was added. Keep the primitive only as an
-  explicit arithmetic ceiling/negative control; do not add another P2/P6
-  changed-arithmetic sibling. This result does not close WPF-1R's separate raw
-  Q5/Q6 density screen.
-
 ## Laguna long-context F32 hipBLASLt rollback routes
 
 - Added 2026-07-27. The first capacity-sized full-score owner improved

@@ -6847,18 +6847,18 @@
       "start_line": 5766,
       "end_line": 5779,
       "sha256": "4f24d82e999e426e106eeef759bbc5240e2e3b4e1d4e8a1e6274327253462542",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Completed rejection c54fa331c. No IQ2 MMQ32 Laguna runtime owner/selector; explicit primitive remains registered in gguf_iq2_xs_mmq_prefill.py and consumed by scripts/iq2_xs_tuning_bench.py and tests/test_gpu_gguf_iq2_xs_mmq_prefill.py. Preserve this negative control; do not add another P2/P6 changed-arithmetic sibling. WPF-1R separate density screen is not closed here. No kernel/runtime edits. Docs/audit gates pass."],
       "subitems": [
         {
           "line": 5768,
           "text": "- The pre-existing explicit four-axis primitive expands raw IQ2 to signed-byte",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5772,
           "text": "- Runtime admission is closed: complete quality reaches max KL **0.683239** at",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
