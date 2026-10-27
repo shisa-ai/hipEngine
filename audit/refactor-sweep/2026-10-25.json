@@ -5977,18 +5977,20 @@
       "start_line": 4971,
       "end_line": 4984,
       "sha256": "3c411b3f2382fbc5f00682f6c58fb8e4b681f5dadb2ebb13f466ef400d919f11",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Removed unused snapshot wrapper/key/export/exclusion/HIP host export/snapshot specialization and its test cases. Preserved live serial alpha-beta+Conv ABI/registry/policy/arithmetic/internal kernel name and strict primitives. Real HIP RED/GREEN and serial synthetic bit/CPU-oracle GPU checks pass, full CPU bundle/fixtures/smokes/docs/audit/worklog pass. Public UD probe misses F32 composite because alpha/beta tensors are Q8_0; repeated outputs match pre-removal and close zero. Preserve failed engagement evidence; no public F32 or speed claim. Worklog: worklog/entries/20261027T191440.042645Z-cleanup-refactor-r0229-2a235a.md."
+      ],
       "subitems": [
         {
           "line": 4973,
           "text": "- Added 2026-08-05 after the exact rows1-4 primitive passed scalar/CPU oracles,",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4978,
           "text": "- Retain only the gfx1100 registry wrapper/body and direct regression fixture",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

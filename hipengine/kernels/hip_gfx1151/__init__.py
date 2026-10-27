@@ -2715,13 +2715,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         # benchmarks/results/2026-09-12-gfx1151-qwen38-27b-q4km-dense-rowtile-withheld-variants-qualified.json.
         # The exact scalar F32 alpha/beta pair is independently admitted on
         # gfx1151; wider/native rows retain singleton projections.
-        # The cross-family alpha/beta plus snapshot-Conv owner has only been
-        # screened on gfx1100; gfx1151 retains three independent leaves.
-        (
-            "linear_attn_alpha_beta+chain_conv+snapshot",
-            "f32",
-            "bf16_k5120_n48_c10240_k4_exact_state_rows_tloop",
-        ),
         # The dependent alpha/beta-to-GDN owner is screened only on gfx1100;
         # gfx1151 retains scalar projections plus snapshot chain GDN.
         (

@@ -808,13 +808,11 @@ __global__ void qwen35_linear_attn_chain_conv_decode_lowp_snapshot_tloop_kernel(
 }
 
 // One-grid owner for two independent dense-F32 alpha/beta projections plus
-// Conv. Pair blocks preserve the scalar local256 FMA/reduction order;
-// ROW_TILE=2 is selected only for four verifier rows. Final blocks preserve the
-// existing Conv channel body. The serial specialization updates state in place;
-// the verifier specialization also writes the immutable initial snapshot. GDN
-// is a later launch, so kernel completion is the only synchronization required
-// between these independent block groups.
-template <int ROW_TILE, bool WRITE_SNAPSHOT>
+// Conv. Pair blocks preserve the scalar local256 FMA/reduction order; final
+// blocks preserve the Conv channel body. Only the in-place serial specialization
+// is instantiated. GDN is a later launch, so kernel completion synchronizes the
+// independent block groups.
+template <int ROW_TILE>
 __global__ void qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel(
     const uint16_t* __restrict__ norm,
     const float* __restrict__ weight_a,
@@ -822,9 +820,7 @@ __global__ void qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kern
     uint16_t* __restrict__ out_a,
     uint16_t* __restrict__ out_b,
     const uint16_t* __restrict__ hidden_states,
-    const float* __restrict__ base_conv_state,
     float* __restrict__ chain_conv_state,
-    float* __restrict__ initial_conv_state_snapshot,
     const float* __restrict__ conv_weight,
     float* __restrict__ conv_out,
     int64_t rows,
@@ -934,14 +930,7 @@ __global__ void qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kern
   for (int k = 0; k < K_MAX; ++k) {
     float value = 0.0f;
     if (k < kernel_size) {
-      if constexpr (WRITE_SNAPSHOT) {
-        value = base_conv_state[channel_base + k];
-        initial_conv_state_snapshot[channel_base + k] = value;
-      } else {
-        // The serial entry passes one in-place state pointer. Avoid reading it
-        // through the restrict-qualified base alias in this specialization.
-        value = chain_conv_state[channel_base + k];
-      }
+      value = chain_conv_state[channel_base + k];
     }
     state[k] = value;
   }
@@ -1364,91 +1353,6 @@ extern "C" int hipengine_qwen35_linear_attn_chain_conv_decode_bf16_snapshot_tloo
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w(
-    const uint16_t* norm,
-    const float* weight_a,
-    const float* weight_b,
-    uint16_t* out_a,
-    uint16_t* out_b,
-    const uint16_t* hidden_states,
-    const float* base_conv_state,
-    float* chain_conv_state,
-    float* initial_conv_state_snapshot,
-    const float* conv_weight,
-    float* conv_out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
-    int64_t channels,
-    int64_t kernel_size,
-    hipStream_t stream) {
-  constexpr int64_t kInFeatures = 5120;
-  constexpr int64_t kOutFeatures = 48;
-  constexpr int64_t kChannels = 10240;
-  constexpr int64_t kKernelSize = 4;
-  if (!norm || !weight_a || !weight_b || !out_a || !out_b ||
-      !hidden_states || !base_conv_state || !chain_conv_state ||
-      !initial_conv_state_snapshot || !conv_weight || !conv_out ||
-      rows < 1 || rows > 4 || in_features != kInFeatures ||
-      out_features != kOutFeatures || channels != kChannels ||
-      kernel_size != kKernelSize) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  const int row_tile = rows == 4 ? 2 : 1;
-  const int64_t row_groups = (rows + row_tile - 1) / row_tile;
-  const int64_t pair_blocks = 2 * out_features * row_groups;
-  const int64_t conv_blocks = (channels + 255) / 256;
-  const dim3 grid(static_cast<unsigned int>(pair_blocks + conv_blocks));
-  if (rows == 4) {
-    hipLaunchKernelGGL(
-        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<2, true>),
-        grid,
-        dim3(256),
-        0,
-        stream,
-        norm,
-        weight_a,
-        weight_b,
-        out_a,
-        out_b,
-        hidden_states,
-        base_conv_state,
-        chain_conv_state,
-        initial_conv_state_snapshot,
-        conv_weight,
-        conv_out,
-        rows,
-        in_features,
-        out_features,
-        channels,
-        kernel_size);
-  } else {
-    hipLaunchKernelGGL(
-        (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1, true>),
-        grid,
-        dim3(256),
-        0,
-        stream,
-        norm,
-        weight_a,
-        weight_b,
-        out_a,
-        out_b,
-        hidden_states,
-        base_conv_state,
-        chain_conv_state,
-        initial_conv_state_snapshot,
-        conv_weight,
-        conv_out,
-        rows,
-        in_features,
-        out_features,
-        channels,
-        kernel_size);
-  }
-  return static_cast<int>(hipGetLastError());
-}
-
 extern "C" int hipengine_qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w(
     const uint16_t* norm,
     const float* weight_a,
@@ -1478,7 +1382,7 @@ extern "C" int hipengine_qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w(
   const int64_t conv_blocks = (channels + 255) / 256;
   const dim3 grid(static_cast<unsigned int>(pair_blocks + conv_blocks));
   hipLaunchKernelGGL(
-      (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1, false>),
+      (qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1>),
       grid,
       dim3(256),
       0,
@@ -1490,8 +1394,6 @@ extern "C" int hipengine_qwen35_linear_attn_alpha_beta_conv_decode_bf16_f32w(
       out_b,
       hidden_states,
       conv_state,
-      conv_state,
-      nullptr,
       conv_weight,
       conv_out,
       1,
