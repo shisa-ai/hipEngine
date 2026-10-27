@@ -6580,7 +6580,7 @@
       "end_line": 5494,
       "sha256": "e7bdab81a6d8250c0ae846454152f8dac98091b201c112f2126eb594e740606a",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["2026-10-27 source review: public positive selector absent, but q5_f32_ordered_nbytes/use_q5_f32_ordered/q5_k_f32_ordered_workspace_nbytes/q5_f32_ordered_prefill_session remain internal naming debt. No scripts/*.py consumers found. Rename with tests after bg-355 releases runtime freeze; preserve distinct Q6 production/H6E rollback maps and single scratch owner."],
       "subitems": [
         {
           "line": 5443,
@@ -6642,7 +6642,7 @@
       "end_line": 5540,
       "sha256": "d4204e93f7adf74e9001b925373f175ab937438d4444a9ea95c43db58bca7492",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["2026-10-27 source review: explicit publication trigger authorizes raw-Q5/Q6 RB4/RB16 surface removal. Historical commands remain attached to historical revisions; they do not block current retirement. Preserve RB0/RB8/RB32 and live RB32 coltile2_rowbatch16/coltile4_rowbatch8, ordered-F32 and IQ-down variants. Exact removal map underway; implementation waits only for bg-355 runtime freeze to end, then targeted validation."],
       "subitems": [
         {
           "line": 5512,
