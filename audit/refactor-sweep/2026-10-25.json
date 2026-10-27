@@ -4146,7 +4146,8 @@
         {
           "line": 3709,
           "text": "- The 2026-10-07 down-only `HIPENGINE_QWEN4_EXP_Q5_1_WMMA=1` experiment,",
-          "status": "pending"
+          "status": "resolved-removed",
+          "evidence": ["Process override migrated to runner scope, preserving production-grouped OR admission and tile-map helper needed by that production route. Public/GPU338, CPU339 and final gates pass. Worklog: worklog/entries/20261027T023651.116584Z-cleanup-refactor-r0160-q51-wmma-36e509.md."]
         },
         {
           "line": 3720,

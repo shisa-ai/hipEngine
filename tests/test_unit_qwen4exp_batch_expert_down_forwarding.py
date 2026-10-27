@@ -2,15 +2,16 @@
 
 Two contracts are under test:
 
-* ``step`` forwards the eleven plan-published expert-down decisions - the Q5_1
-  exact grouped down chain gate, its out8 fallback rung, the Q4_K exact grouped
-  gate/up chain's gate and `_ALL` joint term, that chain's out4 fallback rung,
-  the Q5_1 down M1 leaf, the two Q5_1 fold rungs, the PF-1 fork-b grouped down
-  and the two Q8_0 row4 rungs - to both layer owners unchanged, so the batch
-  decode path selects the same leaves the c1 path selects.
+* ``step`` forwards the twelve plan-published expert-down decisions - the Q5_1
+  exact grouped down chain gate, the F16 WMMA down owner below it, its out8
+  fallback rung, the Q4_K exact grouped gate/up chain's gate and `_ALL` joint
+  term, that chain's out4 fallback rung, the Q5_1 down M1 leaf, the two Q5_1
+  fold rungs, the PF-1 fork-b grouped down and the two Q8_0 row4 rungs - to
+  both layer owners unchanged, so the batch decode path selects the same
+  leaves the c1 path selects.
 * The captured ``post_mixer`` segment records the MoE launches, and the MoE runs
   eager inside it, so the selection is baked into the graph. The capture key
-  therefore carries all eleven decisions: a runner whose selection changes
+  therefore carries all twelve decisions: a runner whose selection changes
   captures a new segment instead of replaying one built under the old
   selection.
 
@@ -42,7 +43,11 @@ Q4_GATE_ALL_FIELD = "q4_exact_grouped_all"
 #: plan. It bakes its own gate/up launch into the captured segment, so it belongs
 #: in the key like the Q5_1 rungs above it.
 Q4_OUT4_FIELD = "q4_out4"
-#: The eleven decisions, in the order the runner publishes them. The order is the
+#: The F16 WMMA down owner below the Q5_1 chain, published off by every plan.
+#: Decode cannot reach the production admission that also selects it, so a
+#: captured decode segment bakes its launch in and the key must say so.
+WMMA_DOWN_FIELD = "q51_wmma_down"
+#: The twelve decisions, in the order the runner publishes them. The order is the
 #: contract: ``_expert_down_policy`` and the ``(layer, rows) + policy`` capture
 #: key both read this sequence, and ``test_the_policy_tuple_is_boolean_normalized``
 #: pins it against the runner's own tuple.
@@ -51,6 +56,7 @@ POLICY_FIELDS = (
     "q51_fold128_prefill",
     "q51_fold_pair_prefill",
     CHAIN_GATE_FIELD,
+    WMMA_DOWN_FIELD,
     OUT8_FIELD,
     Q4_GATE_FIELD,
     Q4_GATE_ALL_FIELD,
@@ -136,7 +142,7 @@ def test_the_production_batch_width_is_the_only_width_that_reaches_fold128():
     # gate is live wherever the grouped chain runs, which is every multi-row
     # width.
     assert QWEN4_EXP_MAX_BATCH_ROWS == 64
-    assert len(POLICY_FIELDS) == 11
+    assert len(POLICY_FIELDS) == 12
 
 
 def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
@@ -146,7 +152,7 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
     keys = [key for _name, _width, _policy, key in seen]
     assert keys and all(key is not None for key in keys)
     for _name, width, policy, key in seen:
-        # ``(layer, rows)`` plus the eleven decisions, in publication order.
+        # ``(layer, rows)`` plus the twelve decisions, in publication order.
         assert key[1] == width
         assert key[2:] == policy
 
@@ -188,6 +194,7 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q51_fold128_prefill = "yes"
     runner.q51_fold_pair_prefill = None
     runner.q51_exact_grouped_down = 0
+    runner.q51_wmma_down = "1"
     runner.q51_out8 = "1"
     runner.q4_exact_grouped_gate = "on"
     runner.q4_exact_grouped_all = 0
@@ -196,7 +203,8 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q8_down_row4_prefill = 1
     runner.q8_down_bundle_prefill = ""
     assert runner._expert_down_policy() == (
-        True, True, False, False, True, True, False, False, False, True, False)
+        True, True, False, False, True, True, True, False, False, False, True,
+        False)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
     assert runner._expert_down_policy() == tuple(
@@ -208,7 +216,7 @@ def test_the_policy_tuple_is_boolean_normalized():
 
 def test_a_c1_runner_built_later_inherits_the_generators_rungs():
     # The binder publishes to the generator; the serving pool clones c1 staging
-    # runners on demand. Those clones must read the same eleven decisions, or a
+    # runners on demand. Those clones must read the same twelve decisions, or a
     # speculative draft would measure the parents while its target ran the
     # leaves.
     from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions

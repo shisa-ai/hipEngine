@@ -35,6 +35,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_FOLD_PAIR_FIELD,
     Q51_PAIR2_GATE_FIELD,
     Q51_PAIR2_PREEMPTING_ENV,
+    Q51_PAIR2_PREEMPTING_FIELDS,
     Q51_PAIR_PREFILL_ENV,
     head_route_configuration,
     restore_route_configuration,
@@ -76,15 +77,16 @@ RUNNER_ROUTE_OFF = {
 #:     branch before the chain (diagnostic, default off);
 #:   * ``HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT`` is the chain's own iu8-risk+repair
 #:     owner above the ladder, published on by the production plan;
-#:   * ``HIPENGINE_QWEN4_EXP_Q5_1_WMMA`` is the Q5_1 WMMA owner below the chain
-#:     (the production plan pins it off);
+#:   * the Q5_1 WMMA owner below the chain is the owning runner's
+#:     ``q51_wmma_down`` field (the production plan publishes it off), so the
+#:     arm binds it off on the runner it measures;
 #:   * ``HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`` makes the pair2 parent exist at
 #:     rows>=64, and the production plan publishes it on - so pair2 is not off by
 #:     default and would replace the rung on this harness's 1024-row chunks;
 #:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
 #:     with the expertgrid64 family (default ``64``).
 #:
-#: The first five are the campaign's own ``Q51_PAIR2_PREEMPTING_ENV`` set, reused
+#: The process keys are the campaign's own ``Q51_PAIR2_PREEMPTING_ENV`` set, reused
 #: rather than restated. The four fold siblings are held off too: their guards
 #: require the pair2 parent variant, so they are inert once pair2 is closed, but
 #: an arm that names a leaf should not depend on that guard staying that narrow.
@@ -145,7 +147,8 @@ Q4_OUT4_PREEMPTING_ENV = (
 RUNNER_ROUTE_OFF_WITH_ENV = {
     "q51_out8": (
         (("q51_out8", False),)
-        + tuple((field, False) for field in OUT8_SIBLING_FIELDS),
+        + tuple((field, False) for field in OUT8_SIBLING_FIELDS)
+        + tuple((field, False) for field in Q51_PAIR2_PREEMPTING_FIELDS),
         OUT8_PREEMPTING_ENV,
         "0",
     ),

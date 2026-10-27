@@ -308,6 +308,7 @@ def test_the_batch_capture_key_carries_both_gates() -> None:
         q51_fold128_prefill=False,
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
+        q51_wmma_down=False,
         q51_out8=True,
         q4_exact_grouped_gate=True,
         q4_exact_grouped_all=True,
@@ -317,16 +318,19 @@ def test_the_batch_capture_key_carries_both_gates() -> None:
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, True, True, True, False, False, False)
+        False, False, False, True, False, True, True, True, True, False, False,
+        False)
 
     owner.q4_exact_grouped_gate = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, False, True, True, False, False, False)
+        False, False, False, True, False, True, False, True, True, False, False,
+        False)
 
     owner.q4_exact_grouped_gate = True
     owner.q4_exact_grouped_all = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, True, False, True, False, False, False)
+        False, False, False, True, False, True, True, False, True, False, False,
+        False)
 
 
 def test_the_mixed_pass_reads_both_gates_from_the_batch_owner() -> None:

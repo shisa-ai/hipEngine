@@ -118,12 +118,12 @@ def test_down_only_route_engages_with_current_map_and_production_gate_up() -> No
     )
 
     controls = {
-        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
         "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
     }
     saved = {key: os.environ.get(key) for key in controls}
-    from hipengine.runtime.qwen4_exp_runner import q51_exact_grouped_down
+    from hipengine.runtime.qwen4_exp_runner import (
+        q51_exact_grouped_down, q51_wmma_down)
 
     try:
         # Close newer down owners so this diagnostic measures its named leaf.
@@ -134,10 +134,11 @@ def test_down_only_route_engages_with_current_map_and_production_gate_up() -> No
 
         rows = gate._load_suites(list(gate.DEFAULT_PROMPTS))[:1]
         tokens = gate.build_chat_prompt(generator.tokenizer, str(rows[0]["prompt"]))
-        # The chain gate is runner state: closing it for the measured prefill
-        # falls through to the F16 down owner, and the published value comes
-        # back on exit.
-        with q51_exact_grouped_down(generator.runner, False):
+        # Both decisions are runner state: closing the chain gate for the
+        # measured prefill falls through to the F16 down owner, admitting that
+        # owner selects it, and both published values come back on exit.
+        with q51_exact_grouped_down(generator.runner, False), \
+                q51_wmma_down(generator.runner, True):
             generator.runner.prefill([int(token) for token in tokens])
     finally:
         setattr(runner_module, _DOWN_ALIAS, original_down)

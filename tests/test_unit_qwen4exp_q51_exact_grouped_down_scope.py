@@ -248,6 +248,7 @@ def test_the_batch_capture_key_carries_the_gate() -> None:
         q51_fold128_prefill=False,
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
+        q51_wmma_down=False,
         q51_out8=True,
         q4_exact_grouped_gate=True,
         q4_exact_grouped_all=True,
@@ -257,11 +258,13 @@ def test_the_batch_capture_key_carries_the_gate() -> None:
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, True, True, True, False, False, False)
+        False, False, False, True, False, True, True, True, True, False, False,
+        False)
 
     owner.q51_exact_grouped_down = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, True, True, True, False, False, False)
+        False, False, False, False, False, True, True, True, True, False, False,
+        False)
 
 
 def test_the_generator_default_keeps_the_chain_on() -> None:
@@ -458,7 +461,10 @@ def test_the_layer2_down_arms_close_the_chain_on_the_runner() -> None:
         # only the exact chain still measures the routed route.
         assert candidate.environment["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "0"
         assert candidate.environment["HIPENGINE_QWEN4_EXP_T16_DOWN"] == "0"
-        assert candidate.environment["HIPENGINE_QWEN4_EXP_Q5_1_WMMA"] == "1"
+        # The F16 owner's own admission is runner state now, so the arm binds
+        # it on the runner instead of naming a process key.
+        assert candidate.q51_wmma_down is True, name
+        assert "HIPENGINE_QWEN4_EXP_Q5_1_WMMA" not in candidate.environment
 
     # The gate/up half is the Q4 chain's own field now, bound by the spec rather
     # than by a process key.

@@ -48,7 +48,7 @@ from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
     gdn_peer_prefill, gdn_prefill_variant,
     q4_exact_grouped_all, q4_exact_grouped_gate,
-    q4_out4, q51_exact_grouped_down, q51_out8,
+    q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     qsa_ordered_decode_v2,
     qsa_prefill_head_mode,
 )
@@ -123,6 +123,13 @@ class CandidateSpec:
     # through to the sorted/WMMA down owners, and the published value comes back
     # after.
     q51_exact_grouped_down: bool | None = None
+    # Explicit admission of the F16 WMMA compact grouped Q5_1 down owner for
+    # this arm, same protocol. ``None`` keeps the base profile's published
+    # decision (off for every plan); ``True`` admits the owner on the chunks
+    # the production grouped MoE route does not own, which is the only way an
+    # arm can measure it on a non-production chunk, and the published value
+    # comes back after.
+    q51_wmma_down: bool | None = None
     # Explicit Q5_1 out8 fallback rung for this arm, same protocol. ``None``
     # keeps the base profile's published decision (the out8 owner on every
     # plan); ``False`` pins the output1 rowbatch8 base around the measured rows.
@@ -416,7 +423,8 @@ CANDIDATES = {
     # The overrides isolate exactly that leg:
     #   * `q51_exact_grouped_down=False` on the runner skips the production Q5_1
     #     down branch so the chain falls through to `elif q5_wmma`.
-    #   * `Q5_1_WMMA=1` selects the F16 down owner there.
+    #   * `q51_wmma_down=True` on the runner admits the F16 down owner there
+    #     (request-local state, not a process key).
     #   * `ROUTED_F16=0` and `T16_DOWN=0` close the two owners that take the down
     #     leg ahead of it (the routed F16 route owns both legs before the Q5_1
     #     branch, and the T16 owner sits between it and the F16 owner). Without
@@ -487,11 +495,9 @@ CANDIDATES = {
             "WMMA, F32 accumulate) with no repair pass; routed-F16 composition "
             "is held off and other Q4_K gate/up controls retain their profile values"
         ),
-        environment={
-            **_F16_DOWN_PREEMPTORS_OFF,
-            "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
-        },
+        environment=_F16_DOWN_PREEMPTORS_OFF,
         q51_exact_grouped_down=False,
+        q51_wmma_down=True,
         base_profile="production",
         scenario_id="qwen4exp-f16-compact-down",
         candidate_key=("hip_gfx1151", "moe_linear", "gguf_q5_1",
@@ -603,8 +609,8 @@ CANDIDATES = {
             "grouped down (Q5_1), both with no repair pass"
         ),
         environment={
-            # One flag and two runner fields, because the down leg's own chain
-            # tests `exact_grouped_down` BEFORE `q5_wmma`:
+            # Two process keys and three runner fields, because the down leg's
+            # own chain tests `exact_grouped_down` BEFORE `q5_wmma`:
             #   if routed_f16:              <- production base binds this on
             #   elif down == gguf_q5_1:
             #     if t16_down:
@@ -614,11 +620,12 @@ CANDIDATES = {
             # that both legs are the routed F16 route and the compact aliases
             # the counters watch never launch. Both chain gates are runner state
             # (`q51_exact_grouped_down`, `q4_exact_grouped_gate`), so they are
-            # the spec's fields rather than process keys.
+            # the spec's fields rather than process keys, and so is the F16 down
+            # owner's admission (`q51_wmma_down`).
             **_F16_DOWN_PREEMPTORS_OFF,
-            "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
         },
         q51_exact_grouped_down=False,
+        q51_wmma_down=True,
         q4_exact_grouped_gate=False,
         base_profile="production",
         scenario_id="qwen4exp-mx1-full-route",
@@ -1747,6 +1754,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         dispatch_stack.enter_context(q51_exact_grouped_down(
             candidate_generator.runner,
             candidate_spec.q51_exact_grouped_down))
+    if candidate_spec.q51_wmma_down is not None:
+        # And for the F16 WMMA down owner's admission: request-local state, so
+        # an arm that measures the down-only route admits it for the measured
+        # rows and the profile's own decision comes back on unwind.
+        dispatch_stack.enter_context(q51_wmma_down(
+            candidate_generator.runner, candidate_spec.q51_wmma_down))
     if candidate_spec.q51_out8 is not None:
         # And for that chain's out8 fallback rung: same protocol, so an arm that
         # measures the output1 base binds it and the published out8 owner comes

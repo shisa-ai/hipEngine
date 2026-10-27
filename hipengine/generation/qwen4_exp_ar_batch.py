@@ -662,9 +662,14 @@ def make_qwen4_exp_ar_batch_runner(
     # gate is the chain all of those rungs sit inside; every plan publishes it
     # on, so an unbound carrier keeps it on rather than closing the chain. The
     # chain's non-expertgrid fallback rung is published on for the same reason:
-    # an unbound carrier keeps the out8 owner, not the output1 base.
+    # an unbound carrier keeps the out8 owner, not the output1 base. The F16
+    # WMMA down owner below that chain is published off, and a decode row
+    # cannot reach the production admission that also selects it, so the
+    # carrier has to hand over the plan's value rather than let the batch
+    # owner default it.
     batch.q51_exact_grouped_down = bool(
         getattr(generator, "q51_exact_grouped_down", True))
+    batch.q51_wmma_down = bool(getattr(generator, "q51_wmma_down", False))
     batch.q51_out8 = bool(getattr(generator, "q51_out8", True))
     batch.q4_exact_grouped_gate = bool(
         getattr(generator, "q4_exact_grouped_gate", True))

@@ -332,6 +332,7 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q51_fold128_prefill=False,
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
+        q51_wmma_down=False,
         q51_out8=True,
         q4_exact_grouped_gate=True,
         q4_exact_grouped_all=True,
@@ -341,11 +342,13 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, True, True, True, False, False, False)
+        False, False, False, True, False, True, True, True, True, False, False,
+        False)
 
     owner.q51_out8 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, True, True, True, False, False, False)
+        False, False, False, True, False, False, True, True, True, False, False,
+        False)
 
 
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:
@@ -483,6 +486,8 @@ def test_the_profile_gate_can_bind_the_rung() -> None:
 ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
 PRODUCTION_MOE_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
+#: The retired process switch for the F16 WMMA down owner below the chain;
+#: nothing reads it, and the tests keep the literal to prove it inert.
 WMMA_ENV = "HIPENGINE_QWEN4_EXP_Q5_1_WMMA"
 PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
 GATE_FIELD = "q51_exact_grouped_down"
@@ -578,7 +583,9 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         assert published[ROUTED_F16_ENV] == "1"
         assert published[IU8_EXACT_ENV] == "1"
         assert published[PAIR_ENV] == "1"
-        assert published[WMMA_ENV] == "0"
+        # The F16 WMMA down owner below the chain is runner state now, so the
+        # plan publishes it off through the field and names no process key.
+        assert published[WMMA_ENV] is None
         assert published[T16_DOWN_ENV] is None      # default off
         assert published[EXPERT_GRID_ENV] is None   # default 64
 

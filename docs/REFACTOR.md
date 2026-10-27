@@ -3022,31 +3022,12 @@ should be removed or collapsed.
 
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 
-- Remaining Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidate
-  controls include `HIPENGINE_QWEN4_EXP_Q5_1_WMMA`,
-  `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N`, and
-  `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N`. They raise warm repeated-token 512
-  prefill from 8.67 to 211.76 tok/s and corrected natural-suite wall by 6.60x,
-  but still fail the complete production numerical gate after the PLE ownership
-  fix on 18 final rows, and fail decisively on the binding 687-row packet
-  (mean/p95/max KL 0.01280/0.05553/0.82237; top-1 94.47%).
-  Keep them default-off for bisection while strict-compatible arithmetic and a
-  Q4 replacement layout are developed. Promote and collapse the duplicate
-  direct/grouped routes only after the full category+heldout mean/tail/max,
-  per-category top-1, determinism/isolation, BF16-relative, task, and lifecycle
-  gates pass; otherwise remove the candidates after the campaign.
-- The 2026-10-07 down-only `HIPENGINE_QWEN4_EXP_Q5_1_WMMA=1` experiment,
-  historically using `EXACT_GROUPED_DOWN=0` with production gate/up unchanged,
-  fails the full
-  18-prompt layer2 envelope: global top-1 444/450 and prefill-last mean/p95 KL
-  0.002424/0.010571. Keep it default-off. The per-call 16-row tile-map/readback
-  helper exists only to make this diagnostic route valid; it is not a new
-  production owner. Remove the selector, helper and duplicate F16-down dispatch
-  when this investigation closes without a separately qualified successor;
-  preserve the registered strict owner and the immutable
-  [qualification evidence](../benchmarks/results/2026-10-07-qwen4exp-mx1-f16-down-only-layer2-qualification/README.md).
-  A successor must charge map construction, synchronization and readback in
-  its full-operation timing.
+- Remaining process controls are `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N` for the
+  compact F16 Q4 gate/up fallback and `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N` for
+  dense Q8 WMMA. They are not one grouped-MoE arithmetic candidate. Migrate
+  their tile choices to their owning execution scopes and diagnostic callers;
+  preserve existing defaults, supported tile validation and registered fallback
+  kernels. Verify each consumer, including dense Q8 users outside Qwen4Exp.
 
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 

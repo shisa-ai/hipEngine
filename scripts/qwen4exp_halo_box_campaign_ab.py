@@ -585,17 +585,24 @@ GDN_SERIAL_ROUTE_PACKAGES = frozenset({"gdn-narrow", "gdn-wave-norm"})
 GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
 #: Owners that preempt the grouped pair2 Q5_1 down chain - and with it the
 #: row-publish selection - on the shipped lane: the routed F16 WMMA down (the
-#: actual production owner), the exact iu8-risk+repair down, grouped WMMA,
-#: grouped MoE prefill, and the T16 expert-major down. A row-publish arm holds
-#: every one of them off for both arms; the profile's own values come back on
-#: exit. The retired ds4-MMQ Q5_1 suffix is not a preemptor: nothing reads it.
+#: actual production owner), the exact iu8-risk+repair down, grouped MoE
+#: prefill, and the T16 expert-major down. A row-publish arm holds every one
+#: of them off for both arms; the profile's own values come back on exit. The
+#: F16 WMMA down owner below the chain is request-local runner state now, so
+#: it is held off through ``Q51_PAIR2_PREEMPTING_FIELDS`` rather than a
+#: process key. The retired ds4-MMQ Q5_1 suffix is not a preemptor: nothing
+#: reads it.
 Q51_PAIR2_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
-    "HIPENGINE_QWEN4_EXP_Q5_1_WMMA",
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     "HIPENGINE_QWEN4_EXP_T16_DOWN",
 )
+#: The preemptor the runner carries as a field: the F16 WMMA compact grouped
+#: Q5_1 down owner below the chain (``runner.q51_wmma_down``). The production
+#: plan publishes it off, and the arms bind it off on the runner they measure
+#: so the closure does not depend on that publication staying off.
+Q51_PAIR2_PREEMPTING_FIELDS = ("q51_wmma_down",)
 #: The pair2 chain's own gate. It must stay on for the counted leaf to run, so
 #: the arm records it instead of forcing it. The gate is request-local runner
 #: state, so an arm reads it on the runner it measures, not from the
@@ -629,9 +636,11 @@ def q51_pair2_control_record(runner=None, *, environment=os.environ):
 
     The forced value is what the scope writes, not what the environment held
     before it, so a reader cannot mistake the production binding for the arm's
-    own state. The previous values are recorded beside it. The pair2 gate is
-    runner state, so its published value is read from the runner the arm
-    measures (``None`` when the record is built without one).
+    own state. The previous values are recorded beside it. The F16 WMMA down
+    owner below the chain is runner state, so it is recorded as a field the
+    arm binds off. The pair2 gate is runner state too, so its published value
+    is read from the runner the arm measures (``None`` when the record is
+    built without one).
     """
 
     return {
@@ -640,6 +649,14 @@ def q51_pair2_control_record(runner=None, *, environment=os.environ):
         },
         "preempting_owners_previous": {
             key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV
+        },
+        "preempting_owner_fields_closed": {
+            field: False for field in Q51_PAIR2_PREEMPTING_FIELDS
+        },
+        "preempting_owner_fields_previous": {
+            field: (None if runner is None
+                    else getattr(runner, field, None))
+            for field in Q51_PAIR2_PREEMPTING_FIELDS
         },
         "pair2_gate": {
             "runner_field": Q51_PAIR2_GATE_FIELD,
@@ -888,7 +905,9 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
     The row-publish selection only exists inside that chain, so an arm that
     leaves any preemptor open counts zero launches and measures the other
     owner. Every key is read per dispatch, so closing them after construction
-    takes effect; all prior values (including absent keys) come back on exit.
+    takes effect; the F16 WMMA down owner below the chain is runner state, so
+    it is bound off on the runner this arm measures; all prior values
+    (including absent keys and fields) come back on exit.
     The pair2 chain's own gate is not one of the preemptors: it is request-local
     runner state and must already be on, so the scope reads it on the runner it
     measures and fails loudly rather than reporting an engagement it cannot
@@ -900,11 +919,16 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
             f"runner.{Q51_PAIR2_GATE_FIELD} must be on for the grouped pair2 "
             "Q5_1 down chain; without it the counted row-publish leaf cannot "
             "launch")
+    from hipengine.runtime.qwen4_exp_runner import q51_wmma_down
+
     previous = {key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV}
     for key in Q51_PAIR2_PREEMPTING_ENV:
         environment[key] = "0"
     try:
-        yield previous
+        with contextlib.ExitStack() as scope:
+            for manager in (q51_wmma_down,):
+                scope.enter_context(manager(runner, False))
+            yield previous
     finally:
         for key, value in previous.items():
             if value is None:
@@ -1230,6 +1254,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         q51_fold_pair_prefill,
         q51_register_cache,
         q51_row_publish,
+        q51_wmma_down,
         q8_down_bundle_prefill,
         q8_down_register,
         q8_down_row4_prefill,
@@ -1237,7 +1262,8 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
 
     previous_env = {key: environment.get(key) for key in PF13_PREEMPTING_ENV}
     previous_fields = {
-        field: getattr(runner, field, None) for field in PF13_SIBLING_FIELDS}
+        field: getattr(runner, field, None)
+        for field in PF13_SIBLING_FIELDS + Q51_PAIR2_PREEMPTING_FIELDS}
     for key in PF13_PREEMPTING_ENV:
         environment[key] = "0"
     try:
@@ -1246,6 +1272,8 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
                             q51_register_cache, q51_row_publish,
                             q8_down_row4_prefill, q8_down_bundle_prefill,
                             q8_down_register):
+                scope.enter_context(manager(runner, False))
+            for manager in (q51_wmma_down,):
                 scope.enter_context(manager(runner, False))
             scope.enter_context(q51_down_m1(runner, mode == "after"))
             scope.enter_context(forkb_grouped_down(runner, mode == "after"))
@@ -1313,6 +1341,12 @@ def pf13_control_record(runner=None, *, environment=os.environ):
             "forced_value": "0",
             "previous": {
                 key: environment.get(key) for key in PF13_PREEMPTING_ENV},
+        },
+        "preempting_owner_fields": {
+            "bound_value": False,
+            "published_value": {
+                field: _value(field)
+                for field in Q51_PAIR2_PREEMPTING_FIELDS},
         },
         "gates": {
             "runner_fields": {

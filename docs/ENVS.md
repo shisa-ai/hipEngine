@@ -864,7 +864,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` | retired | No longer read. Chunked QSA prefill uses batched score/top-k/expansion by default; `qsa_batched_selection(runner, False)` selects the per-row diagnostic fallback on that runner. |
 | `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` | `0` (production binder sets `1`) | Master gate for the production grouped MoE prefill session (rows >= 16, supported quant shapes). |
 | `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1` | retired | No longer read. The profile publishes the Q5_1 down M1 choice on its runner; registered strict fallback kernels remain. |
-| `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | `0` (production binder) | Q5_1 grouped WMMA down-projection admission under the production grouped MoE route. |
+| `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | retired | No longer read. Optional compact WMMA down selection is runner-owned; production grouped-MoE admission, tile-map preparation and strict fallback remain unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | retired | No longer read. The owning runner selects the out8 fallback below the expertgrid family; `q51_out8(runner, False)` retains the output1 comparison without changing higher-priority owners. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` | `0` | Opt-in Q5_1-style grouped WMMA down for Q8_0 experts. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | unset (F16 route sets `1`) | Warp-per-expert routed down decode owner (reduction order differs); the other half of the pair selected by `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP`. |
@@ -916,7 +916,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE` | retired | No longer read. The owning runner carries the register-cache fallback decision, with rows>=512, K640 and folded-pair parent guards unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH` | retired | No longer read. The owning runner carries the profile's row-publication decision; the register-cache parent and shape guards remain. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_1 iu8 route. |
-| `HIPENGINE_QWEN4_EXP_Q4_TILE_M` / `HIPENGINE_QWEN4_EXP_Q4_TILE_N` | `16` / `16` (production pins 64/16 at rows>=512) | WMMA tile override for the Q4_K iu8 prefill build. |
+| `HIPENGINE_QWEN4_EXP_Q4_TILE_M` / `HIPENGINE_QWEN4_EXP_Q4_TILE_N` | binder: `16` / `16`; unbound M: `64` at rows>=512, otherwise `16` | Tile override for the compact F16 Q4_K gate/up fallback, not the iu8 owner. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED` / `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA` | retired | No longer read. Removed the legacy fixed-grid and host-loop expert-down dispatch branches; registered diagnostic kernels and the strict selected fallback remain. |
 | `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | retired | No longer read. The owning runner carries the mapped-down decision; admission still requires a map built by the current invocation and rows>=512. |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER` | retired | No longer read. The owning runner carries the register-down fallback decision; the rows>=512, K640 and bundle-parent guards remain. |

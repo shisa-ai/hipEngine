@@ -11,6 +11,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_IU8_EXACT_ENV,
     Q51_PAIR2_GATE_FIELD,
     Q51_PAIR2_PREEMPTING_ENV,
+    Q51_PAIR2_PREEMPTING_FIELDS,
     _apply_mode,
     q51_row_publish_expected_calls,
     q51_pair2_control_record,
@@ -330,10 +331,12 @@ def test_pair2_control_names_every_preemptor():
     assert Q51_PAIR2_PREEMPTING_ENV == (
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
-        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA",
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
         "HIPENGINE_QWEN4_EXP_T16_DOWN",
     )
+    # The F16 WMMA down owner below the chain is runner state, so the arm
+    # holds it off through the field set rather than a process key.
+    assert Q51_PAIR2_PREEMPTING_FIELDS == ("q51_wmma_down",)
     assert Q51_PAIR2_GATE_FIELD not in Q51_PAIR2_PREEMPTING_ENV
     assert Q51_IU8_EXACT_ENV == "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 
@@ -400,8 +403,10 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
         key: "0" for key in Q51_PAIR2_PREEMPTING_ENV}
     assert record["preempting_owners_previous"][
         "HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
-    assert record["preempting_owners_previous"][
-        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA"] is None
+    assert record["preempting_owner_fields_closed"] == {
+        "q51_wmma_down": False}
+    assert record["preempting_owner_fields_previous"] == {
+        "q51_wmma_down": None}
     assert record["pair2_gate"] == {
         "runner_field": Q51_PAIR2_GATE_FIELD,
         "published_value": True,

@@ -416,6 +416,7 @@ def run_qwen4_exp_batch_gdn_layer(
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_exact_grouped_down: bool = True,
+    q51_wmma_down: bool = False,
     q51_out8: bool = True,
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
@@ -506,6 +507,7 @@ def run_qwen4_exp_batch_gdn_layer(
             q51_fold128_prefill=q51_fold128_prefill,
             q51_fold_pair_prefill=q51_fold_pair_prefill,
             q51_exact_grouped_down=q51_exact_grouped_down,
+            q51_wmma_down=q51_wmma_down,
             q51_out8=q51_out8,
             q4_exact_grouped_gate=q4_exact_grouped_gate,
             q4_exact_grouped_all=q4_exact_grouped_all,
@@ -615,6 +617,7 @@ def _run_layer_ffn(
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_exact_grouped_down: bool = True,
+    q51_wmma_down: bool = False,
     q51_out8: bool = True,
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
@@ -669,6 +672,7 @@ def _run_layer_ffn(
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_exact_grouped_down=q51_exact_grouped_down,
+        q51_wmma_down=q51_wmma_down,
         q51_out8=q51_out8,
         q4_exact_grouped_gate=q4_exact_grouped_gate,
         q4_exact_grouped_all=q4_exact_grouped_all,
@@ -723,6 +727,7 @@ def run_qwen4_exp_batch_qsa_layer(
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_exact_grouped_down: bool = True,
+    q51_wmma_down: bool = False,
     q51_out8: bool = True,
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
@@ -813,6 +818,7 @@ def run_qwen4_exp_batch_qsa_layer(
             q51_fold128_prefill=q51_fold128_prefill,
             q51_fold_pair_prefill=q51_fold_pair_prefill,
             q51_exact_grouped_down=q51_exact_grouped_down,
+            q51_wmma_down=q51_wmma_down,
             q51_out8=q51_out8,
             q4_exact_grouped_gate=q4_exact_grouped_gate,
             q4_exact_grouped_all=q4_exact_grouped_all,
@@ -893,6 +899,12 @@ class Qwen4ExpGGUFBatchRunner:
     # non-expertgrid fallback rung are the decisions every plan publishes on, so
     # their defaults are the production chain and the out8 owner.
     q51_exact_grouped_down: bool = True
+    # The F16 WMMA down owner's admission, published off by the profile
+    # binder: it is the down-only MX-1 diagnostic below that chain, and the
+    # production grouped MoE route admits the owner on its own. Decode never
+    # reaches the production term, so a captured segment that ran this owner
+    # is keyed on it.
+    q51_wmma_down: bool = False
     # The chain's non-expertgrid fallback rung: every plan publishes the out8
     # owner, and the output1 base is a diagnostic binding on one runner.
     q51_out8: bool = True
@@ -1802,11 +1814,13 @@ class Qwen4ExpGGUFBatchRunner:
         The MoE runs eager inside the layer's captured ``post_mixer`` segment,
         so the expert-path selectors resolve at capture time and their launches
         are baked into the graph. Every capture key therefore carries these
-        eleven plan-published decisions: a runner whose selection changes
+        twelve plan-published decisions: a runner whose selection changes
         captures a new segment instead of replaying one built under the old
         selection. ``q51_exact_grouped_down`` is the exact grouped Q5_1 down
         chain's own gate, and every Q5_1 ladder rung sits inside the chain it
-        gates; ``q51_out8`` is that chain's non-expertgrid fallback rung, so a
+        gates; ``q51_wmma_down`` admits the F16 WMMA down owner below that
+        chain, and a decode row cannot reach the production admission that also
+        selects it; ``q51_out8`` is that chain's non-expertgrid fallback rung, so a
         captured segment built on the out8 owner must not replay under the
         output1 base. ``q4_exact_grouped_gate`` and ``q4_exact_grouped_all`` are
         the Q4_K gate/up chain's own gate and its `_ALL` joint term, and
@@ -1819,6 +1833,7 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.q51_fold128_prefill),
             bool(self.q51_fold_pair_prefill),
             bool(self.q51_exact_grouped_down),
+            bool(self.q51_wmma_down),
             bool(self.q51_out8),
             bool(self.q4_exact_grouped_gate),
             bool(self.q4_exact_grouped_all),
@@ -2092,6 +2107,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
+                    q51_wmma_down=self.q51_wmma_down,
                     q51_out8=self.q51_out8,
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,
@@ -2131,6 +2147,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
+                    q51_wmma_down=self.q51_wmma_down,
                     q51_out8=self.q51_out8,
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,

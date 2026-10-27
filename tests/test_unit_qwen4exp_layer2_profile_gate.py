@@ -411,8 +411,10 @@ def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
         # the routed F16 route and counts zero F16 down calls.
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
         "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
-        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
     }
+    # The F16 owner's own admission is runner state, so the arm admits it
+    # through the spec's field instead of a process key.
+    assert candidate.q51_wmma_down is True
     # The chain gate is runner state, so the arm closes it through the spec's
     # field instead of a process key.
     assert candidate.q51_exact_grouped_down is False
@@ -449,10 +451,10 @@ def test_mx1_full_route_candidate_closes_the_leg_preemptors() -> None:
     assert candidate.environment == {
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
         "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
-        # The gate/up half is the Q4 chain's own field (closed below); the one
-        # process key opens the Q5_1 WMMA down route.
-        "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
     }
+    # The gate/up half is the Q4 chain's own field (closed below) and the
+    # Q5_1 WMMA down owner is the Q5_1 side's, so neither is a process key.
+    assert candidate.q51_wmma_down is True
     assert candidate.q51_exact_grouped_down is False
     # Both chain gates are runner state, so the arm closes them through the
     # spec's fields instead of process keys.
