@@ -6205,23 +6205,23 @@
       "start_line": 5181,
       "end_line": 5197,
       "sha256": "e5aa65c16505055c8814054f5fb88eb94a6ff80a6d1d8ce00ae5689dd4136a7b",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified rejected session-arena switch/primitive absent; distinct live arenas untouched. Completed receipt removed. Worklog: worklog/entries/20261027T045723.695977Z-cleanup-refactor-r0240-f750ce.md."],
       "subitems": [
         {
           "line": 5183,
           "text": "- Added 2026-08-06 as default-off",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5187,
           "text": "- The screen was restricted by the gfx1151 package capability to an owned",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5190,
           "text": "- **Closed 2026-08-06:** exact state/lifecycle and measured **236/292-MiB**",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

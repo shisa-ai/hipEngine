@@ -4334,23 +4334,6 @@ fallback count is not a success metric.
   trajectory corruption. Revisit the 4,096-row plateau only if a later exact
   owner is non-regressive at 8K+ and keeps memory flat.
 
-## SH15 gfx1151 private-c1 persistent allocation arena — closed
-
-- Added 2026-08-06 as default-off
-  `HIPENGINE_GGUF_PRIVATE_C1_SESSION_ARENA=1` after SH15-M1 measured a
-  2-MiB HIP commit mechanism and exact metadata-derived plans reproduced all
-  **732 weight + 189 state/scratch** requests at 512/4K/32K/64K.
-- The screen was restricted by the gfx1151 package capability to an owned
-  private-c1 runner. Shared runners, c>N, unsupported resident layouts, and
-  either owner-allocation denial retained dedicated allocations.
-- **Closed 2026-08-06:** exact state/lifecycle and measured **236/292-MiB**
-  whole-GTT savings at 512/4K did not pass the wall contract. Prefill regressed
-  **1.608%/1.809%**, beyond the <=1% loss limit. Removed the environment switch,
-  package capability, generic arena primitive, weight/state planners, allocator
-  routing, ownership telemetry, and candidate tests. SH14 production files are
-  byte-identical to their pre-screen parent. Do not revive unchanged packing or
-  stack compact Q4 onto this rejected owner.
-
 ## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
 
 - Added 2026-07-31 as a gfx1151 default plus
