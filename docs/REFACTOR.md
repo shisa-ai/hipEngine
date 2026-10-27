@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna exact IQ2 expanded-magnitude rollback | `LagunaGGUFResidentSession(..., use_iq2_grid64=False)` / `scripts/laguna_target_ar_bench.py --disable-iq2-grid64` restores the compact-grid c=1 IQ2 gate/up+SiLU tile2 route around gfx1100's expanded-magnitude default; rows>1 always retain compact grid. | Promoted. A 4 KiB canonical magnitude table replaces the retained 1 KiB packed-code reconstruction without duplicating persistent weights. First/last actual layers improve **30.00-33.73%**; full state is exact. Two clean process orders improve IQ2/kernel/span/child at every context, and both complete 18-prompt orders move h32 **52.650 -> 54.540 tok/s (+3.590%)** with every train/heldout category decode and E2E row positive. gfx1151 and unsupported backends remain compact-grid. | Retain explicit `False` for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered compact-grid route for rows>1, unsupported backends, and exact fallback. |
 | Laguna DFlash IQ3 selected-down tile4 | `LagunaGGUFResidentSession(..., iq3_selected_down_tile=1|4)` and `scripts/laguna_dflash_category_bench.py --iq3-selected-down-tile` retain tile1 plus the explicit gfx1100 tile4 verifier path. gfx1151 excludes tile4 and its public provider uses tile1. | Retained only in the measured gfx1100 scope: tile4 is exact there, improves the profiled 45-call family 33.66%, and moves counterbalanced h32/h128 DFlash decode +4.725%/+4.536% with every category/heldout decode and E2E positive. The independent gfx1151 transfer is rejected: clean tile1 and tile4 each pass only **24/36** true-AR equality rows with the same deterministic six-prompt failures; tile4 is trajectory-identical to tile1 but complete decode is noise-flat **15.73505 -> 15.73726 tok/s (+0.014%)**, E2E regresses **5.29982 -> 5.29797 (-0.035%)**, and category rows regress. The public packet was ineligible after the binding correctness failure. | Keep tile4 only for the retained gfx1100 explicit verifier route. Keep gfx1151/public DFlash on tile1; reopen only after the shared true-AR mismatch is repaired and a materially different gfx1151 mechanism has a plausible complete-route gain. |
 | Qwen tokenizer EOS discovery | The PARO generator falls back to looking up `<|im_end|>` and `<|endoftext|>` because `tokenizers.Tokenizer.from_file()` does not expose `generation_config.json` EOS metadata. | The fallback recognizes both Qwen EOS ids, preserves explicit scalar/sequence metadata first, and deliberately avoids unrelated model-family markers. | Remove the string lookup once the Qwen model plugin owns and supplies normalized BOS/EOS/PAD metadata from `generation_config.json` / `tokenizer_config.json` to generation and sampling. |
 | PARO width-plan execution and rollback flags | The greedy generator and `scripts/qwen35_batch_retained_bench.py` each execute `BatchWidthPartitionPlan` groups and collect similar telemetry; `_generate_batch_sampled()` remains diagnostic. `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` and the legacy-named `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` remain explicit rollback opt-outs. | G3 retains an identity-matched schema-2 gfx1151 c2/c4/c8 profile. G4/G5 attach it to the shared stable-slot owner; blocking F1, native/serial SSE, live admission, c8 repeatability, and a no-flag OpenAI c4 confirmation are exact. gfx1151 backend capabilities now enable the hash/sync-checked packaged profile by default even outside a repository CWD; explicit `=0` still selects the serial fallback. gfx1100 remains package-default off pending owner c4/c8 symmetry. | After one release window and a defaults-only gfx1151 refresh, remove the two positive opt-in semantics and rename/collapse them to one clear rollback selector; consolidate duplicate generator/benchmark plan execution after gfx1100 owner c4/c8 is independently retained. Keep profile identity checks, unsupported-shape partitions, and exact serial fallback permanently. |
@@ -10527,3 +10526,23 @@ chains and wave-local/shared-statistics reducers on GPU, including missing
 keys, below-threshold lengths, wrap and multi-row paths; then run
 R0249/R0250's public continuation/lifecycle gate. No fusion, control, kernel
 or default changes in this reconciliation.
+
+### R0281-IQ2 — c1 IQ2 grid comparison control
+
+`use_iq2_grid64` and target-AR's `--disable-iq2-grid64` still select and
+report the c1 expanded-grid versus compact-grid gate/up comparison. The
+session resolves gfx1100's package default; the lower-level plan's false
+default does not describe public session selection. Multi-row dispatch keeps
+its compact-grid route; R0258's grouped-prefill policy and the removed local64
+reduction selector are separate concerns.
+
+**Decision needed:** retain the constructor/CLI grid comparison as a supported
+diagnostic, or migrate callers to a scoped c1 policy owner before retiring it.
+**Clearing action:** migrate both target-AR construction sites/result fields,
+then run the host-only grid-route node in `tests/test_live_laguna_moe_gpu.py`,
+`tests/test_unit_laguna_iq2_local64_reduction_runtime.py`, runner and target-AR
+units. Preserve independent c1/multi-row selection and actual registered
+compact-grid fallbacks. Compare exact primitive outputs and exercise
+R0249/R0250's public continuation/lifecycle gate with the c1 route confirmed.
+Do not reintroduce rejected local64 runtime controls or alter grouped-prefill
+consumers. No grid implementation, control or backend default changes here.

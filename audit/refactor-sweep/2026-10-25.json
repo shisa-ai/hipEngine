@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "IQ2 grid row 6186 moves to bottom R0281-IQ2: live target-AR c1 comparison distinct from grouped prefill/local64 rejection; preserve session-vs-low-level default distinction and compact multi-row fallback. Host grid node plus three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T211132.290595Z-cleanup-refactor-r0281-iq2-1b9890.md.",
         "Fusion/reducer rows 6183/6184/6185 consolidate into R0281-FUSION with distinct live controls: head/writer chain separate; wave-local requires split+gate, so gate-off comparison must disable wave-local. Both gfx11 defaults and unfused chains unchanged. Fake-runtime node plus four unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210758.730816Z-cleanup-refactor-r0281-fusion-33ebfb.md.",
         "Split/tile16 rows 6181/6182 consolidate into R0281-SPLIT live resource/profile interface decision. Both gfx11 packages now declare thresholds; session/allocator and target-AR/profile controls affect workspace and dispatch. Preserve invalid-combination errors/capacity filtering and exact fallbacks. Fake-runtime node plus three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210445.240109Z-cleanup-refactor-r0281-split-b70b05.md.",
         "IQ3 c1 rows 6179/6180 consolidate into R0281-IQ3 live schedule comparison decision, distinct from R0258 grouped prefill and verifier tile selection. Preserve wave10 miss->wave4, serial composite, backend and multi-row fallback contracts. Three explicit host plan nodes plus runner/target-AR units and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210132.459602Z-cleanup-refactor-r0281-iq3-29157e.md.",
@@ -7562,7 +7563,7 @@
         {
           "line": 6186,
           "text": "| Laguna exact IQ2 expanded-magnitude rollback | `LagunaGGUFResidentSession(..., use_iq2_grid64=False)` / `scripts/laguna_target_ar_bench.py --disable-iq2-grid64` restores the compact-grid c=1 IQ2 gate/up+SiLU tile2 route around gfx1100's expanded-magnitude default; rows>1 always retain compact grid. | Promoted. A 4 KiB canonical magnitude table replaces the retained 1 KiB packed-code reconstruction without duplicating persistent weights. First/last actual layers improve **30.00-33.73%**; full state is exact. Two clean process orders improve IQ2/kernel/span/child at every context, and both complete 18-prompt orders move h32 **52.650 -> 54.540 tok/s (+3.590%)** with every train/heldout category decode and E2E row positive. gfx1151 and unsupported backends remain compact-grid. | Retain explicit `False` for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered compact-grid route for rows>1, unsupported backends, and exact fallback. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-IQ2"
         },
         {
           "line": 6187,
