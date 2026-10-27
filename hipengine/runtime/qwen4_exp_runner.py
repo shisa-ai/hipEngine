@@ -4075,6 +4075,35 @@ def gdn_tile16_prefill(runner: Any, enabled: bool | object = _GDN_TILE16_UNSET):
         runner.gdn_tile16_prefill = prior
 
 
+# GDN conv prefill ownership. Production runs the exact bulk conv owner for
+# every chunk wider than one row and keeps the per-row decode-conv loop below it
+# as the arithmetic reference. It is request-local state: the prefill chunk path
+# forwards the owning runner's decision to the token mixer, so a diagnostic that
+# needs the serial comparison binds it on the runner it measures.
+_GDN_EXACT_CONV_UNSET = object()
+
+
+@contextlib.contextmanager
+def gdn_exact_bulk_conv(
+    runner: Any, enabled: bool | object = _GDN_EXACT_CONV_UNSET
+):
+    """Bind the GDN conv prefill owner for a diagnostic arm.
+
+    ``False`` pins the per-row serial fallback for the measured window and
+    ``True`` restores the exact bulk owner; leaving ``enabled`` unset keeps
+    whatever the runner carries. The prior value is restored on exit, including
+    on an exception.
+    """
+
+    prior = getattr(runner, "gdn_exact_bulk_conv", True)
+    if enabled is not _GDN_EXACT_CONV_UNSET:
+        runner.gdn_exact_bulk_conv = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.gdn_exact_bulk_conv = prior
+
+
 # Q5_1 row-publish selection. The production plan declares the row-publish
 # owner for the rows>=512 K640 grouped Q5_1 down scope; the binder publishes
 # that decision to the owning runner, and the dispatch-time selector keeps its
@@ -7436,6 +7465,7 @@ def run_qwen4_exp_gdn_layer(
     defer_write: list | None = None,
     prefill_variant: str | None = None,
     gdn_tile16_prefill: bool = True,
+    gdn_exact_bulk_conv: bool = True,
     q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
@@ -7452,6 +7482,12 @@ def run_qwen4_exp_gdn_layer(
     ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
     :func:`gdn_prefill_variant`): it selects the narrow/wide wave-norm leaf for
     multi-row chunks and leaves the register parent and decode untouched.
+
+    ``gdn_tile16_prefill`` is the owning runner's tile-16 prefill decision (see
+    :func:`gdn_tile16_prefill`), forwarded to the token mixer.
+
+    ``gdn_exact_bulk_conv`` is the owning runner's conv prefill decision (see
+    :func:`gdn_exact_bulk_conv`), forwarded to the token mixer.
 
     ``q51_down_m1`` is the owning runner's plan-published Q5_1 down M1
     decision, forwarded to the MoE down dispatch.
@@ -7570,6 +7606,7 @@ def run_qwen4_exp_gdn_layer(
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
         prefill_variant=prefill_variant,
         gdn_tile16_prefill=gdn_tile16_prefill,
+        gdn_exact_bulk_conv=gdn_exact_bulk_conv,
     )
     if layer_graph is not None:
         def _segment_gr_write_ffn_read(graph_stream: int) -> None:
@@ -7855,6 +7892,7 @@ def run_qwen4_exp_gdn_token_mixer(
     runtime: HipRuntime | None = None,
     prefill_variant: str | None = None,
     gdn_tile16_prefill: bool = True,
+    gdn_exact_bulk_conv: bool = True,
 ) -> DeviceBuffer:
     """Execute strict Qwen4Exp GDN projections, Conv, recurrence, and output.
 
@@ -7864,6 +7902,9 @@ def run_qwen4_exp_gdn_token_mixer(
     ``gdn_tile16_prefill`` is the owning runner's tile-16 decision (see
     :func:`gdn_tile16_prefill`): False pins the columnwarp parent inside the
     columnwarp gate for a diagnostic arm.
+    ``gdn_exact_bulk_conv`` is the owning runner's conv prefill decision (see
+    :func:`gdn_exact_bulk_conv`): False runs the per-row serial fallback for
+    chunks wider than one row. Decode always runs the decode conv kernel.
     """
 
     if scratch.closed:
@@ -7883,6 +7924,13 @@ def run_qwen4_exp_gdn_token_mixer(
     state_rows_capture = (
         capture_map.get(int(recurrent_state_ptr)) if capture_map else None
     )
+    if state_rows_capture and not gdn_exact_bulk_conv:
+        # The per-row loop runs the decode owner once per row and has nowhere to
+        # publish per-token state; only the bulk owner takes state_rows_ptr.
+        raise RuntimeError(
+            "GDN state-row capture needs the exact bulk conv; the per-row "
+            "serial fallback cannot publish state rows"
+        )
     captured: set[str] = set()
     _launch_qwen4_exp_dense_pair(
         weights["attn_qkv"], weights["attn_gate"], mixed_ptr,
@@ -7953,10 +8001,7 @@ def run_qwen4_exp_gdn_token_mixer(
             runtime=active_runtime,
         )
     else:
-        exact_bulk_conv = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL", "1"
-        ) not in {"", "0", "false", "False"}
-        if exact_bulk_conv:
+        if gdn_exact_bulk_conv:
             resolve(
                 backend=str(weights["attn_qkv"].backend),
                 layer="linear_attn_conv_prefill",
@@ -8469,6 +8514,12 @@ class Qwen4ExpGGUFResidentModelRunner:
     # parent on the one runner it measures; a fresh runner or a serving clone
     # inherits this default, never that binding.
     gdn_tile16_prefill: bool = True
+    # GDN conv prefill owner: True runs the exact bulk conv for chunks wider
+    # than one row, False the per-row serial fallback. Decode always runs the
+    # decode conv kernel. The prefill chunk path is its only reader and forwards
+    # it to the token mixer, so a diagnostic binds the serial arm on the one
+    # runner it measures.
+    gdn_exact_bulk_conv: bool = True
     # Q5_1 down M1 selection, published by the profile binder for the exact
     # grouped Q5_1 down chain's small-chunk scope: True on a production plan,
     # False on every plan that keeps the preceding expertgrid64 owner. The
@@ -10114,6 +10165,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
+                    gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,

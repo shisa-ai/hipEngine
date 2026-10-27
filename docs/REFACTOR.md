@@ -3073,14 +3073,15 @@ should be removed or collapsed.
 
 ## 2026-08-27 Qwen4Exp exact chunked prefill bisection flags
 
-- `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` and
-  `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` default on for the promoted exact
-  chunked path. Automatic public admission chooses among 4096/2048/1024-token
+- Exact bulk-convolution prefill is the default and uses runner-owned selection;
+  `gdn_exact_bulk_conv(runner, False)` retains the serial diagnostic fallback.
+  Its process-environment transport is removed. The remaining
+  `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` defaults on for the exact grouped
+  down path. Automatic public admission chooses among 4096/2048/1024-token
   workspaces; explicit constructor defaults are 512. This is separate from the
-  engine-loop scheduling cap. Remove both
-  flags, the old bulk-Conv/direct-down alternatives, and losing chunk policy
-  after public serving, rollback, cancellation, and long-context repeatability
-  gates stabilize; keep `prefill_serial()` as the registered strict fallback.
+  engine-loop scheduling cap. Remove the grouped-down process transport and
+  redundant alternatives after public serving, rollback, cancellation and
+  long-context repeatability checks; retain the strict oracles.
 
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 

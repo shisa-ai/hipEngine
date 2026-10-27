@@ -870,7 +870,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | unset (F16 route sets `1`) | Warp-per-expert routed down decode owner (reduction order differs); the other half of the pair selected by `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP`. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT` | `0` (production-only binding) | Weight-exact iu8-WMMA Q5_1 down with risk+repair; bit-identical to the pair2 row-publish parent in practice at multiplier 16. |
 | `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` | `64` | Expert-grid mode for the exact grouped routes: `64` (admitted), plus `q4`/`q5` spellings at their call sites. |
-| `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` | `1` | Uses the exact bulk conv prefill owner; `0` restores the generic chain. |
+| `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` | retired | No longer read. Exact bulk convolution remains the prefill default; `gdn_exact_bulk_conv(runner, False)` selects the serial diagnostic fallback on the measured runner. |
 | `HIPENGINE_QWEN4_EXP_LAYER_GRAPHS` | unset | Override for per-layer graph capture admission (backend capability gates the default). |
 | `HIPENGINE_QWEN4_EXP_RAW_VARIANT` | `coltile8` | Raw-Q rowbatch prefill variant selector. |
 | `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` | `32` | Row-batch size for raw Q4 prompt-prefill row owners; `0`/`false` disables, `1` selects 32. |

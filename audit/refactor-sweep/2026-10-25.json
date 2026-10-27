@@ -4124,7 +4124,8 @@
         {
           "line": 3684,
           "text": "- `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` and",
-          "status": "pending"
+          "status": "pending",
+          "evidence": ["Exact-conv process transport replaced by runner-local scope; bulk default, serial fallback and state-row capture guards preserved. Public300/GPU302/focused tests pass; grouped-down cleanup remains. Worklog: worklog/entries/20261027T001915.269424Z-cleanup-refactor-r0159-exact-conv-4e88bc.md."]
         }
       ]
     },
