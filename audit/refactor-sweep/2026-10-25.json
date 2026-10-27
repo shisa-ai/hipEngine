@@ -9751,23 +9751,23 @@
       "start_line": 7624,
       "end_line": 7639,
       "sha256": "48a0c596a6841ec30393dc3e7ee9513c1e0ebdce94897b6a03d45f789cdbec3d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified rejected routed-width setter/modes absent; removed completed receipt without changing production routing. Docs/audit pass. Worklog: worklog/entries/20261027T035225.235941Z-cleanup-refactor-r0337-r0342-e1ce26.md."],
       "subitems": [
         {
           "line": 7626,
           "text": "- Added 2026-07-27 as the explicit diagnostic",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7630,
           "text": "- A five-repetition pp512 screen measures top-10/top-9/top-8 medians",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7634,
           "text": "- Top-8 is rejected at max KL **0.671401** and top-9 is also rejected at",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -9886,23 +9886,23 @@
       "start_line": 7721,
       "end_line": 7737,
       "sha256": "b7aecad6c1f6f0a4c24afb9ac16dbe0526cd40f3fd92603a1318ee8b81d2a6fb",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified rejected native/range-reduction exponential selectors absent; removed completed receipt, preserved production expf. Docs/audit pass. Worklog: worklog/entries/20261027T035225.235941Z-cleanup-refactor-r0337-r0342-e1ce26.md."],
       "subitems": [
         {
           "line": 7723,
           "text": "- Added 2026-07-29 as a default-off resident and category measurement seam for",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7727,
           "text": "- Raw native exponential is rejected: seven production pairs improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7731,
           "text": "- Bounded accurate-style range reduction is also rejected: seven production",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

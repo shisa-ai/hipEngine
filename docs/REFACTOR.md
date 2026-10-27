@@ -6631,22 +6631,6 @@ should be boring.
   only the dedicated A/B harness and constructor override after the active
   700 campaign no longer needs this bisection point.
 
-## Laguna prefill-only routed-width selector
-
-- Added 2026-07-27 as the explicit diagnostic
-  `LagunaGGUFResidentSession.set_prefill_moe_top_k`. It changes only the
-  logical plan attached to the already-full-size row scratch; the separately
-  owned c=1 scratch keeps the model-declared top-10 route.
-- A five-repetition pp512 screen measures top-10/top-9/top-8 medians
-  **648.578/684.313/720.130 tok/s**. Each mode is internally deterministic
-  and selects token 2930, while cross-mode hidden/logit/KV hashes differ as
-  expected for approximate routing.
-- Top-8 is rejected at max KL **0.671401** and top-9 is also rejected at
-  **0.452960**, both with **314/320** top-1. The removal trigger is satisfied:
-  the runtime setter, multi-arm harness mode, both category
-  comparisons/configurations, and focused tests are removed. Production
-  remains model-declared top-10 for prefill and decode.
-
 ## Laguna gfx1151 head/KV transfer selector
 
 - Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100
@@ -6727,23 +6711,6 @@ should be boring.
   unconditional for the qualified gfx1151 shape. Permanently retain the
   natural tile16 and generic registered owners for unsupported
   shapes/backends.
-
-## Laguna gfx1151 SWA exponential decode selector
-
-- Added 2026-07-29 as a default-off resident and category measurement seam for
-  raw-native and bounded range-reduction SWA exponentials. Both candidates
-  changed only the exponential in saturated 72Q/8KV/D128/SWA512 decode; the
-  retained compiler `expf` direct-store body was always the production path.
-- Raw native exponential is rejected: seven production pairs improve
-  **19.130955 -> 19.309790 tok/s (+0.935%)**, but the complete category gate
-  reaches max KL **1.452698** despite **566/576** top-1. Its runtime field,
-  setter, and comparison names were removed.
-- Bounded accurate-style range reduction is also rejected: seven production
-  pairs improve only **19.164777 -> 19.229973 tok/s (+0.340%)**, while the
-  complete category gate reaches max KL **1.888082** despite **558/576**
-  top-1. This satisfies the cleanup trigger: remove the runtime field, setter,
-  both comparison lanes, and the two dead registered primitive/leaf controls.
-  Production remains on compiler `expf`; no exponential rollback debt remains.
 
 ## Laguna gfx1151 exact SWA exp-domain selector
 
