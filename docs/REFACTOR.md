@@ -3369,14 +3369,25 @@ category and control/ownership gates before closing this entry.
   load harness can partition oracle keys into isolated workers, verify merged
   token digests, and start a separate measured owner. This is benchmark
   containment, not runtime serving architecture.
-- The current GPU generation remained unstable after 4/4/4/1 partitioning and
-  after replacing workers with fully drained same-owner serial c1 oracles.
-  Disabling decode graphs during all 13 same-owner oracle rows still faults
-  before the first tuning result. The canonical packet is blocked; worker and
-  same-owner modes remain only for fresh-generation rerun/bisection.
-- Removal trigger: after the canonical clean-source production packet completes
-  twice without an oracle teardown/handoff fault, collapse to the simplest
-  stable independent-oracle protocol and remove abandoned worker variants.
+- The earlier W7900 oracle/handoff fault was resolved by invalidating decode
+  graphs before packed prefill reused their workspace. The accepted canonical
+  packet is recorded in
+  `benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`;
+  the subsequent
+  `benchmarks/results/2026-08-19-concurrency2-pipeline-verify-skip-tuning-accepted.json`
+  also completed with same-owner serial oracles. These are historical results,
+  not a current-source rerun or proof that every worker mode is equivalent.
+- The harness defaults to `--oracle-mode same_owner`, disables decode graphs
+  only during reference generation, and checks that requests drain before
+  serving. Explicit `isolated` mode still partitions reference keys into workers
+  and verifies merged key coverage. Neither mode is runtime serving architecture.
+- Remaining cleanup: choose one independent-oracle protocol and remove the other
+  implementation and CLI mode once no diagnostic caller needs it. Preserve exact
+  token coverage, explicit worker failures and final ownership checks. Run
+  `uv run pytest tests/test_integration_gguf_production_load_gate.py
+  tests/test_unit_concurrency2_production_load.py -q`, then the selected real
+  `scripts/gguf_production_load_gate.py` packet before deleting a protocol. The
+  old device fault is not an outstanding runtime blocker.
 
 ## C2-6 guarded idle packed-workspace release API
 
