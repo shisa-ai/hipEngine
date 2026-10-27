@@ -6536,18 +6536,18 @@
       "start_line": 5408,
       "end_line": 5425,
       "sha256": "ab899ae16dbfe9b275bf6f57a10405813b504df2e2bff44cf1ee571756f39f40",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified gfx1100 H5B capability/map absent; shared implementation and gfx1151 policies remain. Removed completed receipt duplicated by R0272. Worklog: worklog/entries/20261027T024455.000833Z-cleanup-refactor-r0252-r0272-de0474.md."],
       "subitems": [
         {
           "line": 5410,
           "text": "- WPF-H5B's temporary gfx1100 policy/map/owner seam is removed. The complete",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5418,
           "text": "- Remove the gfx1100 top-level/component capabilities, architecture-local",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -7141,18 +7141,18 @@
       "start_line": 6000,
       "end_line": 6012,
       "sha256": "f3b0819a00ee569b98ac95f462dfae7651d14fb141cd50255d234fc300a66291",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Stale pre-removal H5B receipt; verified no gfx1100 capability/map exists, unlike independent gfx1151 route. See R0252 and worklog/entries/20261027T024455.000833Z-cleanup-refactor-r0252-r0272-de0474.md."],
       "subitems": [
         {
           "line": 6002,
           "text": "- Added 2026-07-30 as the explicit default-false gfx1100",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 6007,
           "text": "- Remove the gfx1100 capability/components/map and owner-propagation tests if",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

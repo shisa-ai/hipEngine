@@ -4553,24 +4553,6 @@ fallback count is not a success metric.
   explicit complete-pack H8A rollback. Remove that false opt-out after one
   later Q5/IQ-down checkpoint if no rollback is needed.
 
-## Laguna default-off F32 hipBLASLt attention selector
-
-- WPF-H5B's temporary gfx1100 policy/map/owner seam is removed. The complete
-  18-prompt/576-step gate deterministically extends every natural prompt within
-  its train/heldout split to M512 and observes all **10,512** expected changed-
-  association launches, but reaches maximum KL **0.444675 > 0.05** despite
-  **564/576 (97.917%)** top-1, deterministic repeats, lifecycle recovery, and
-  diagnostic prefill **165.555 -> 190.103 tok/s (1.148x)** with every category
-  positive. Natural M512 passed at KL **0.000429**, but cannot waive the complete
-  gate.
-- Remove the gfx1100 top-level/component capabilities, architecture-local
-  hipBLASLt algorithm map, generic map normalization/selection seam, resident
-  propagation, and focused runtime tests. Retain the existing backend-neutral
-  leaf implementation and standalone W7900 evidence because gfx1151 owns its
-  independently quality-admitted route. Exact gfx1100 qrow4/M128 attention
-  remains production. Reopen only with materially different arithmetic and a
-  fresh complete quality gate.
-
 ## Laguna default-off Q5 exact-value F32/rocBLAS selector
 
 - WPF-H5A's temporary selector and owner are removed. The complete changed-
@@ -5127,19 +5109,6 @@ fallback count is not a success metric.
   removes the remaining output row reduction/scale and is the gfx1151 default;
   keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
   one-release rollback window, then collapse both selectors.
-
-## gfx1100 Laguna H5B packed-attention qualification selector
-
-- Added 2026-07-30 as the explicit default-false gfx1100
-  `LAGUNA_PREFILL_ATTENTION_HIPBLASLT` package capability. The package also
-  owns its measured QK **2/1/3** and PV **2** heuristic map plus packed-query,
-  direct-producer, wave-softmax, and packed-output component policy. gfx1151
-  retains its independent built-in map and production defaults.
-- Remove the gfx1100 capability/components/map and owner-propagation tests if
-  the complete multi-prompt changed-association gate fails. If quality and
-  clean 512/1K timing pass, promote the top-level capability and retain one
-  explicit whole-route rollback only through the next production checkpoint;
-  unsafe `KVLiveSpans` shapes always keep their exact fallback independently.
 
 ## Laguna packed-query F32 hipBLASLt attention selector
 
