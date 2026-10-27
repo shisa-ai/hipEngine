@@ -14,6 +14,14 @@ from hipengine.models.kv_capabilities import (
     resolve_kv_capability,
 )
 from hipengine.models.laguna import LAGUNA_GGUF, LagunaGGUFModel
+from hipengine.models.llama import (
+    LLAMA_ARCHITECTURE,
+    LLAMA_DENSE,
+    LlamaCapabilityMiss,
+    LlamaModel,
+    LlamaSpec,
+    parse_llama_spec,
+)
 from hipengine.models.maple import (
     MAPLE,
     MAPLE_LAYER_PATTERN,
@@ -85,6 +93,12 @@ __all__ = [
     "GEMMA4_GGUF",
     "Gemma4GGUFModel",
     "LAGUNA_GGUF",
+    "LLAMA_ARCHITECTURE",
+    "LLAMA_DENSE",
+    "LlamaCapabilityMiss",
+    "LlamaModel",
+    "LlamaSpec",
+    "parse_llama_spec",
     "MAPLE",
     "MAPLE_LAYER_PATTERN",
     "MOONSHINE",
