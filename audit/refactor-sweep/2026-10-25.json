@@ -10693,18 +10693,18 @@
       "start_line": 8304,
       "end_line": 8317,
       "sha256": "fcae73cc502d5bf36d22e7475f5a288921c0e09c2f8c53a94f66aeb476c466fe",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified temporary source-Q5 constructor/capability absent and standalone registered primitives preserved. Completed receipt removed; see worklog/entries/20261027T040930.233208Z-cleanup-refactor-r0369-f11874.md."],
       "subitems": [
         {
           "line": 8306,
           "text": "- The temporary gfx1100 `use_q5_source_mmq` constructor switch, context-local",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8311,
           "text": "- The binding 18-prompt/576-step lane rejects promotion at maximum KL",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

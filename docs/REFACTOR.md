@@ -7182,19 +7182,6 @@ should be boring.
   owner, their gfx1151 capabilities, compact evidence, and same-state quality
   harness. The exact normalized/deferred GQA6 siblings and generic
   complete-`KVLiveSpans` split route remain required rollback/fallback paths.
-## WPF-H1 source-Q5 MMQ candidate cleanup — complete
-
-- The temporary gfx1100 `use_q5_source_mmq` constructor switch, context-local
-  activation scopes, bounded DS4 runtime workspace, package capability, and
-  dispatch policy were added only for complete qualification. A natural M512
-  deep-state screen passed at KL **0.0002241** with deterministic repeat and
-  lifecycle recovery.
-- The binding 18-prompt/576-step lane rejects promotion at maximum KL
-  **4.162014** despite **561/576** top-1 and **1.348x** aggregate prefill. The
-  removal trigger is satisfied in the same decision unit: all temporary runtime
-  ownership and focused integration tests are removed. Keep only the separately
-  registered source-Q5 producer/consumer primitives and leaf/rejection evidence;
-  production remains exact and H2 must not stack H1 arithmetic.
 
 ## Moonshine exact two-region continuous scheduler — opt-in strict fallback
 
