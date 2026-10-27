@@ -191,11 +191,10 @@ def test_gguf_q4_k_pack8_gfx1151_shape_tiles_and_rollback(
     assert _default_q4_pack8_tiles(256, 1024, 3072) == (64, 16)
 
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE", "64x16")
-    assert _default_q4_pack8_tiles(512, 1024, 3072) == (64, 16)
+    assert _default_q4_pack8_tiles(512, 1024, 3072) == (64, 32)
 
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE", "48x16")
-    with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE"):
-        _default_q4_pack8_tiles(512, 1024, 3072)
+    assert _default_q4_pack8_tiles(512, 1024, 3072) == (64, 32)
 
 
 def test_gguf_q4_k_wmma_prefill_wrapper_validates_contract() -> None:

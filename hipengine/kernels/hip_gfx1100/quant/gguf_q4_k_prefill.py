@@ -17,7 +17,6 @@ activation pointer and matching output feature count for both sides.
 from __future__ import annotations
 
 import ctypes
-import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -27,7 +26,6 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("gguf_q4_k_prefill.hip")
 _OUTPUT_NAME = "gguf_q4_k_prefill.so"
 _Q4_K_BLOCK = 256
-_Q4_K_DENSE_WMMA_TILE_ENV = "HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE"
 
 # Allowed (tile_m, tile_n) for the WMMA prefill kernels. Mirrors the PARO
 # fusedw4 prefill tile set and the Q8_0 WMMA prefill wrapper.
@@ -101,23 +99,6 @@ def _default_q4_pack8_tiles(
     out_features: int,
 ) -> tuple[int, int]:
     """Return the measured gfx1151 pack8 tile for a dense Q4 shape."""
-
-    value = os.environ.get(_Q4_K_DENSE_WMMA_TILE_ENV, "").strip().lower()
-    if value:
-        try:
-            tile_m_raw, tile_n_raw = value.split("x", 1)
-            tile = int(tile_m_raw), int(tile_n_raw)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"{_Q4_K_DENSE_WMMA_TILE_ENV} must name a supported tile as MxN"
-            ) from exc
-        if tile not in _ALLOWED_TILES:
-            allowed = ", ".join(f"{m}x{n}" for m, n in sorted(_ALLOWED_TILES))
-            raise ValueError(
-                f"{_Q4_K_DENSE_WMMA_TILE_ENV}={value!r} is unsupported; "
-                f"expected one of: {allowed}"
-            )
-        return tile
 
     shape = int(rows), int(in_features), int(out_features)
     if shape == (512, 1024, 3072):

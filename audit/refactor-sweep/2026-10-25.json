@@ -7236,8 +7236,8 @@
       "start_line": 6066,
       "end_line": 6086,
       "sha256": "bbd9f278285f9c43c94ad42364b607c7b27cf3cd52c2243c6c4db01cf2b9ef98",
-      "status": "partial-q6-override-removed",
-      "evidence": ["Q6 environment override and trivial helper removed; backend wrapper defaults and explicit tile args preserved. RED/GREEN direct-wrapper tests, full CPU bundle, GPU Q6 oracle and docs/audit pass. Public Q6 model engagement deferred at bottom; Q4 env and dense-Q4 session cleanup remain pending. Worklog: worklog/entries/20261027T082533.919957Z-cleanup-refactor-r0276-q6-26aa27.md."],
+      "status": "partial-tile-overrides-removed",
+      "evidence": ["Q6 environment override and trivial helper removed; Q4 environment override removed with original shape policy and explicit tiles preserved. Shape comparison harness uses scoped policy replacement with restoration. RED/GREEN tests, full CPU bundles, Q4/Q6 GPU parity and docs/audit pass. Public model engagement deferred at bottom; dense-Q4 session cleanup remains pending. Worklogs: worklog/entries/20261027T082533.919957Z-cleanup-refactor-r0276-q6-26aa27.md and worklog/entries/20261027T083234.102496Z-cleanup-refactor-r0276-q4-10c6c0.md."],
       "subitems": [
         {
           "line": 6068,
@@ -7257,7 +7257,7 @@
         {
           "line": 6082,
           "text": "- `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` is the temporary Q4 pack8",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

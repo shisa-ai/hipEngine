@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import contextlib
 from pathlib import Path
 import statistics
 import time
@@ -25,7 +25,6 @@ from scripts.laguna_target_ar_bench import (
     _progress,
 )
 
-_TILE_ENV = "HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE"
 _MODES = {
     "q4_64x16_rollback": "64x16",
     "selector_unset_q4_shape_policy": None,
@@ -39,12 +38,19 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _select(mode: str) -> None:
+@contextlib.contextmanager
+def _select(mode: str):
+    from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_prefill as kernels
+
+    original = kernels._default_q4_pack8_tiles
     tile = _MODES[mode]
-    if tile is None:
-        os.environ.pop(_TILE_ENV, None)
-    else:
-        os.environ[_TILE_ENV] = tile
+    if tile is not None:
+        selected = tuple(int(value) for value in tile.split("x"))
+        kernels._default_q4_pack8_tiles = lambda *args: selected
+    try:
+        yield
+    finally:
+        kernels._default_q4_pack8_tiles = original
 
 
 def _child_session(
@@ -70,16 +76,16 @@ def _run(
     mode: str,
     tokens: list[int],
 ) -> tuple[float, int]:
-    _select(mode)
-    child = _child_session(owner)
-    try:
-        started = time.perf_counter()
-        result = child.prefill(tokens, use_bulk=True)
-        child.runtime.device_synchronize()
-        elapsed = time.perf_counter() - started
-        return 512.0 / elapsed, int(result.next_token_id)
-    finally:
-        child.close()
+    with _select(mode):
+        child = _child_session(owner)
+        try:
+            started = time.perf_counter()
+            result = child.prefill(tokens, use_bulk=True)
+            child.runtime.device_synchronize()
+            elapsed = time.perf_counter() - started
+            return 512.0 / elapsed, int(result.next_token_id)
+        finally:
+            child.close()
 
 
 def main() -> int:
@@ -111,13 +117,13 @@ def main() -> int:
     )
     try:
         for mode in _MODES:
-            _select(mode)
-            warm_session = _child_session(owner)
-            try:
-                warm_session.prefill(tokens[:128], use_bulk=True)
-                runtime.device_synchronize()
-            finally:
-                warm_session.close()
+            with _select(mode):
+                warm_session = _child_session(owner)
+                try:
+                    warm_session.prefill(tokens[:128], use_bulk=True)
+                    runtime.device_synchronize()
+                finally:
+                    warm_session.close()
         for repetition in range(args.repetitions):
             mode_order = tuple(_MODES)
             order = (
@@ -138,7 +144,6 @@ def main() -> int:
                 )
     finally:
         owner.close()
-        os.environ.pop(_TILE_ENV, None)
     result = {
         mode: {
             "samples_tok_s": values,
