@@ -4334,30 +4334,6 @@ fallback count is not a success metric.
   trajectory corruption. Revisit the 4,096-row plateau only if a later exact
   owner is non-regressive at 8K+ and keeps memory flat.
 
-## Laguna gfx1151 source-F16 non-temporal decode comparison seam — closed
-
-- Added 2026-07-31 as a gfx1151 default plus
-  `--compare-f16-nontemporal-decode` same-resident profiling seam after all
-  four natural leaves improved **3.015-3.509%** and all seven exact
-  p512/d128 pairs improved **22.792512 -> 22.855773 tok/s (+0.27755%)**.
-- Keep the comparison switch through tracked-clean selector-unset publication
-  and the next source-F16/kernel-span census, then remove the CLI switch.
-  Retain constructor `false` and the cached-load registered composites as the
-  exact peer-backend/rollback path.
-- The standalone single/triple/quad non-temporal wrappers are leaf diagnostics,
-  not production dispatch. After the census freezes the family attribution,
-  collapse any wrappers no longer used by a retained benchmark or exact
-  regression test while preserving the production composite variants.
-- **Clean publication passed 2026-07-31:** selector-unset production advances
-  **22.780604 -> 22.856155 tok/s (+0.33165%)**. Keep the comparison seam only
-  through the pending source-F16/kernel-span census, then close it.
-- **Closed 2026-07-31:** the post-promotion two-queue census confirms the
-  expected source-F16 production symbols and lowers their inclusive family
-  time **24.538908 -> 24.362893 ms/token (-0.717%)**. Removed the completed
-  CLI/protocol comparison seam. Constructor `false`, cached-load registered
-  composites, and exact leaf diagnostics remain the rollback and regression
-  coverage.
-
 ## Laguna gfx1151 exact global local1024 selector
 
 - Added 2026-07-31 as a default-off `LAGUNA_GLOBAL_LOCAL1024` capability and

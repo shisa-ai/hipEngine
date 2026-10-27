@@ -6231,33 +6231,33 @@
       "start_line": 5198,
       "end_line": 5221,
       "sha256": "96959ed05930697e8f06c80606862915aa80ca0f8bf0c857f6512bc9af19d6bc",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Comparison CLI absent; all standalone single/triple/quad wrappers have direct benchmark and GPU-test consumers, so conditional unused-wrapper deletion has no target. Required constructor rollback/composites preserved. Worklog: worklog/entries/20261027T052525.970282Z-cleanup-refactor-r0241-aa515c.md."],
       "subitems": [
         {
           "line": 5200,
           "text": "- Added 2026-07-31 as a gfx1151 default plus",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5204,
           "text": "- Keep the comparison switch through tracked-clean selector-unset publication",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5208,
           "text": "- The standalone single/triple/quad non-temporal wrappers are leaf diagnostics,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5212,
           "text": "- **Clean publication passed 2026-07-31:** selector-unset production advances",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5215,
           "text": "- **Closed 2026-07-31:** the post-promotion two-queue census confirms the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
