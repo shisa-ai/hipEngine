@@ -6267,28 +6267,28 @@
       "start_line": 5222,
       "end_line": 5243,
       "sha256": "c385863fc209daab243fbc2e2ce1d33b1966d449a23df322c51d35ad85179c67",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Dedicated comparison CLI and mutation setter absent; enabled backend capability and dense-prefix-conditioned runtime consumption remain. No kernel changes. worklog/entries/20261027T052901.877360Z-cleanup-refactor-r0242-bd7f79.md"],
       "subitems": [
         {
           "line": 5224,
           "text": "- Added 2026-07-31 as a default-off `LAGUNA_GLOBAL_LOCAL1024` capability and",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5227,
           "text": "- If any same-resident p512/d128 pair regresses or changes state, remove the",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5233,
           "text": "- **Promotion gate passed 2026-07-31:** all seven exact resident pairs improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5238,
           "text": "- **Closed 2026-07-31:** tracked-clean selector-unset production reaches",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
