@@ -140,6 +140,71 @@ def test_cache_refuses_a_context_beyond_its_score_row():
         LlamaKVCache(_Spec(), MAX_DENSE_DECODE_CONTEXT + 1, runtime=None)
 
 
+def _geometry(head_dim: int):
+    class _Spec:
+        pass
+
+    _Spec.head_dim = head_dim
+    return _Spec()
+
+
+@pytest.mark.parametrize(
+    ("head_dim", "expected"),
+    [
+        # ``max(head_dim + keys + threads, keys + 528)`` floats of LDS: below a
+        # 528-float reduction the bound is geometry-independent.
+        (32, 15856),
+        (128, 15856),
+        # The 256/512 class kernel moves its logits to request-owned global
+        # scratch instead of refusing, so those widths reach the cache bound.
+        (512, 16128),
+    ],
+)
+def test_prefill_bound_follows_the_attention_lds_row(head_dim, expected):
+    from hipengine.runtime.llama_dense import max_dense_prefill_tokens
+
+    assert max_dense_prefill_tokens(_geometry(head_dim)) == expected
+
+
+def test_prefill_bound_is_tighter_than_the_decode_cache():
+    from hipengine.runtime.llama_dense import (
+        MAX_DENSE_DECODE_CONTEXT,
+        max_dense_prefill_tokens,
+    )
+
+    # A prompt that filled the cache would leave no room to generate, so the
+    # prompt bound can never exceed the cache capacity.
+    for head_dim in (32, 64, 128, 256):
+        assert max_dense_prefill_tokens(_geometry(head_dim)) <= MAX_DENSE_DECODE_CONTEXT
+
+
+def test_generator_refuses_a_prompt_beyond_the_prefill_bound(tmp_path: Path):
+    """An over-long prompt is refused before the resident weights load."""
+
+    from hipengine.runtime.llama_dense import MAX_DENSE_DECODE_CONTEXT
+
+    wide = dict(TINY_LLAMA_CONFIG)
+    wide["max_position_embeddings"] = 32768
+    path, _f32, _bf16 = write_tiny_llama_checkpoint(tmp_path / "wide", config=wide)
+    generator = _generator(path, context_length=MAX_DENSE_DECODE_CONTEXT)
+    assert generator.max_prompt_tokens < generator.context_length
+
+    generator._validate_prompt_length(generator.max_prompt_tokens, 1)
+    with pytest.raises(ValueError, match="dense causal prefill attention"):
+        generator._validate_prompt_length(generator.max_prompt_tokens + 1, 1)
+
+    prompt = " ".join(["hello"] * (generator.max_prompt_tokens + 1))
+    with pytest.raises(ValueError, match="dense causal prefill attention"):
+        generator.generate_detailed(_request(prompts=(prompt,)))
+    assert generator._runner is None, "the refusal must precede the weight load"
+
+
+def test_generator_refuses_a_prompt_that_leaves_no_room_to_generate(checkpoint):
+    generator = _generator(checkpoint)
+    with pytest.raises(ValueError, match="exceeds the 512-token context"):
+        generator._validate_prompt_length(510, 4)
+
+
 def test_generator_refuses_a_wider_serving_capacity(checkpoint):
     generator = _generator(checkpoint)
     generator.declare_serving_capacity(1)

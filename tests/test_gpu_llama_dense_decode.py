@@ -176,3 +176,44 @@ def test_llm_generate_runs_the_dense_llama_path(tiny_checkpoint):
     assert output.prompt_tokens == len(prompt_ids)
     assert output.finish_details is not None
     assert isinstance(output.text, str)
+
+
+def test_generation_fills_the_declared_context_end_to_end(tiny_checkpoint):
+    """A prompt that reaches the last position of the declared context runs.
+
+    The checkpoint declares 512 positions, so 508 prompt tokens plus 4 generated
+    ones is the longest request this path can serve. That exercises the prompt
+    pass at its widest admitted row count and a decode step at the final
+    position, which is where an off-by-one in the cache append would land.
+    """
+
+    from hipengine.llm import LLM, SamplingParams
+
+    path, _f32, bf16 = tiny_checkpoint
+    declared = int(TINY_LLAMA_CONFIG["max_position_embeddings"])
+    max_new_tokens = 4
+    # The fixture tokenizer is word-level with whitespace removed, so one word
+    # is one token; alternating the two in-vocabulary words keeps it exact.
+    words = ("hello", "world")
+    prompt_text = " ".join(words[index % 2] for index in range(declared - max_new_tokens))
+    prompt_ids = tuple(1 + (index % 2) for index in range(declared - max_new_tokens))
+
+    llm = LLM(str(path), max_sequence_length=declared)
+    try:
+        outputs = llm.generate_detailed(prompt_text, SamplingParams(max_tokens=max_new_tokens))
+    finally:
+        close = getattr(llm, "close", None)
+        if callable(close):
+            close()
+
+    reference_tokens, _logits = tiny_llama_reference_decode(
+        bf16,
+        TINY_LLAMA_CONFIG,
+        np.asarray(prompt_ids, dtype=np.int64),
+        max_new_tokens=max_new_tokens,
+        eos_token_id=TINY_LLAMA_EOS,
+    )
+
+    output = outputs[0]
+    assert output.prompt_tokens == len(prompt_ids)
+    assert output.generated_token_ids == reference_tokens

@@ -28,10 +28,17 @@ tap contract.
 `hipengine/runtime/llama_dense.py` takes the same head width to the tree's dense
 decode attention, which stages one FP32 score row plus a 256-slot reduction
 scratch in workgroup LDS. That is a 64 KiB budget, so
-`MAX_DENSE_DECODE_CONTEXT` (16128 tokens) is the longest context the decode path
-can serve, and `LlamaKVCache` refuses a longer one by name. Nanbeige 4.3 33B
+`MAX_DENSE_DECODE_CONTEXT` (16128 tokens) is the longest context the cache can
+hold, and `LlamaKVCache` refuses a longer one by name. Nanbeige 4.3 33B
 declares 524288 positions, so the decode ceiling is the kernel's, not the
 checkpoint's.
+
+The prompt pass has a second, tighter budget: the exact causal prefill kernel
+stages one FP32 logit row per key, `max(head_dim + keys + threads, keys + 528)`
+floats, so at a 128-wide head no prompt longer than 15856 tokens is admitted.
+`max_dense_prefill_tokens` derives that from the attention launcher's own
+admission rule and the generator refuses a longer prompt by name before the
+weights load, rather than letting it fail inside the kernel after a 66 GB load.
 
 Removal condition: a native flash prefill kernel for `head_dim` 128 is registered
 and its logits match the exact kernel within the BF16 representation tolerance on
@@ -39,8 +46,9 @@ the same prompt, at which point
 `hipengine/kernels/hip_gfx1100/attention/dense_prefill_attention.py` routes to it
 and keeps the exact kernel as the strict fallback. The LDS ceiling goes in the
 same change: route dense decode through the paged attention path, whose per-block
-score row is not sized by the context, and delete `MAX_DENSE_DECODE_CONTEXT`
-with it. Validate with
+score row is not sized by the context, and route the prompt pass through the
+tiled flash prefill, whose K/V tile is fixed, then delete `MAX_DENSE_DECODE_CONTEXT`
+and `max_dense_prefill_tokens` with it. Validate with
 `uv run pytest tests/test_gpu_llama_dense_prefill.py tests/test_gpu_llama_dense_decode.py`.
 
 

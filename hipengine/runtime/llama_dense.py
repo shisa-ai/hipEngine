@@ -13,7 +13,12 @@ a token.
 
 That kernel keeps its score row in workgroup shared memory, so ``max_context`` is
 bounded by the LDS budget rather than by the checkpoint's position limit.
-:data:`MAX_DENSE_DECODE_CONTEXT` is the largest context it can serve.
+:data:`MAX_DENSE_DECODE_CONTEXT` is the largest context the cache can hold.
+
+The prompt pass has its own, usually tighter, bound: the causal prefill kernel
+stages one FP32 logit row per key in LDS too. :func:`max_dense_prefill_tokens`
+asks the attention launcher what it serves for a geometry, so a prompt longer
+than it can run is refused by name instead of failing inside the kernel.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_shared_bytes
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_gemv_bf16_f32_out,
     dense_gemv_out_bf16,
@@ -65,6 +71,45 @@ _F32_NBYTES = 4
 _DECODE_LDS_BYTES = 64 * 1024
 _DECODE_THREADS = 256
 MAX_DENSE_DECODE_CONTEXT = _DECODE_LDS_BYTES // _F32_NBYTES - _DECODE_THREADS
+
+
+def max_dense_prefill_tokens(spec: "LlamaSpec") -> int:
+    """The longest prompt the strict causal prefill attention serves.
+
+    The prefill launcher admits a key count only when its LDS row fits, and that
+    row is ``max(head_dim + keys + threads, keys + 528)`` floats -- so the bound
+    is a property of the head geometry, not a constant. Above it the launcher
+    raises, which is the right answer for a caller that asked for the shape but
+    the wrong one to discover after a 66 GB weight load, so this asks the same
+    question up front. It never exceeds the decode cache capacity: a prompt that
+    fills the cache leaves no room to generate.
+
+    The predicate is monotonic in ``keys``, which is what makes the bisection
+    sound rather than a search.
+    """
+
+    head_dim = int(spec.head_dim)
+    low, high = 1, MAX_DENSE_DECODE_CONTEXT
+    if not _prefill_fits(head_dim, low):
+        raise ValueError(
+            f"the causal prefill attention cannot serve head_dim={head_dim} at any "
+            "context length"
+        )
+    while low < high:
+        middle = (low + high + 1) // 2
+        if _prefill_fits(head_dim, middle):
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
+def _prefill_fits(head_dim: int, keys: int) -> bool:
+    try:
+        gemma4_attention_shared_bytes(head_dim=head_dim, keys=keys)
+    except NotImplementedError:
+        return False
+    return True
 
 
 class LlamaKVCache:
@@ -502,4 +547,5 @@ __all__ = [
     "LlamaDenseRunner",
     "LlamaKVCache",
     "MAX_DENSE_DECODE_CONTEXT",
+    "max_dense_prefill_tokens",
 ]

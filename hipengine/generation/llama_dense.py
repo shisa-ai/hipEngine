@@ -37,7 +37,11 @@ from hipengine.loading.llama_safetensors import (
 )
 from hipengine.loading.safetensors import WeightIndex
 from hipengine.models.llama import LlamaCapabilityMiss, LlamaSpec
-from hipengine.runtime.llama_dense import MAX_DENSE_DECODE_CONTEXT, LlamaDenseRunner
+from hipengine.runtime.llama_dense import (
+    MAX_DENSE_DECODE_CONTEXT,
+    LlamaDenseRunner,
+    max_dense_prefill_tokens,
+)
 from hipengine.tokenization.llama_dense import LlamaDenseTokenizer
 
 _LLAMA_DENSE_QUANT = "bf16"
@@ -56,6 +60,7 @@ class LlamaDenseGenerator:
     context_length: int | None = None
     spec: LlamaSpec = field(init=False)
     tokenizer: LlamaDenseTokenizer = field(init=False)
+    max_prompt_tokens: int = field(init=False)
     _loaded: LlamaLoadedModel | None = field(default=None, init=False, repr=False)
     _runner: LlamaDenseRunner | None = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
@@ -85,6 +90,7 @@ class LlamaDenseGenerator:
             else self._validate_context(self.context_length)
         )
         self.tokenizer = self._build_tokenizer()
+        self.max_prompt_tokens = max_dense_prefill_tokens(self.spec)
 
     # -- construction ------------------------------------------------------
     def _validate_context(self, tokens: int) -> int:
@@ -205,28 +211,52 @@ class LlamaDenseGenerator:
         self._validate_request(request)
         with self._lock:
             self._require_open()
+            # Tokenize and bound-check every row before the resident weights
+            # load: an over-long prompt is cheaper to refuse than to load 66 GB
+            # for.
+            prompt_ids = tuple(
+                self._prompt_ids(request, row_index)
+                for row_index in range(len(request.prompts))
+            )
+            for ids in prompt_ids:
+                self._validate_prompt_length(len(ids), request.max_tokens)
             runner = self._ensure_runner()
             outputs: list[GenerationOutput] = []
             for row_index in range(len(request.prompts)):
                 raise_if_generation_deadline_expired(request)
-                outputs.append(self._generate_row(runner, request, row_index))
+                outputs.append(
+                    self._generate_row(runner, request, row_index, prompt_ids[row_index])
+                )
             return tuple(outputs)
+
+    def _prompt_ids(self, request: GenerationRequest, row_index: int) -> Sequence[int]:
+        prompt_ids = request.prompt_token_ids(row_index, self.tokenize)
+        if not prompt_ids:
+            raise ValueError("the prompt produced no token ids")
+        return prompt_ids
+
+    def _validate_prompt_length(self, prompt_tokens: int, max_tokens: int) -> None:
+        if prompt_tokens > self.max_prompt_tokens:
+            raise ValueError(
+                f"prompt of {prompt_tokens} tokens exceeds the {self.max_prompt_tokens}-token "
+                "prompt bound of the dense causal prefill attention, which stages one FP32 "
+                "logit row per key in 64 KiB of LDS; a longer prompt needs the tiled or "
+                "paged prefill path"
+            )
+        if prompt_tokens + max_tokens > self.context_length:
+            raise ValueError(
+                f"prompt of {prompt_tokens} tokens plus {max_tokens} generated "
+                f"tokens exceeds the {self.context_length}-token context"
+            )
 
     def _generate_row(
         self,
         runner: LlamaDenseRunner,
         request: GenerationRequest,
         row_index: int,
+        prompt_ids: Sequence[int],
     ) -> GenerationOutput:
         started = time.perf_counter()
-        prompt_ids = request.prompt_token_ids(row_index, self.tokenize)
-        if not prompt_ids:
-            raise ValueError("the prompt produced no token ids")
-        if len(prompt_ids) + request.max_tokens > self.context_length:
-            raise ValueError(
-                f"prompt of {len(prompt_ids)} tokens plus {request.max_tokens} generated "
-                f"tokens exceeds the {self.context_length}-token context"
-            )
 
         runner.reset()
         logits = runner.prefill(prompt_ids)
