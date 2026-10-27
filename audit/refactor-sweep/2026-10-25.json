@@ -4613,13 +4613,13 @@
       "start_line": 4010,
       "end_line": 4016,
       "sha256": "da49cc7395c6b8a6bc5d623b700b7988ee03ba050399707e1aed40450e46662b",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed single-owner grouped-Q4 R6 environment/cache reader; physical/native rowtile admission and repeated primitives preserved. RED/GREEN wrapper routing, full linear units, GPU grouped/repeated bit parity, CPU fixtures/smoke and docs/audit pass. Public wrapper/output/acceptance/cleanup validation remains open. Worklog: worklog/entries/20261027T145647.988271Z-cleanup-refactor-r0181-b1a6e7.md."],
       "subitems": [
         {
           "line": 4012,
           "text": "- The grouped-grid Q4 owner is retained by default for consecutive physical R6",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

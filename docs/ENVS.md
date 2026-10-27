@@ -478,7 +478,6 @@ not by backend-branched runtime code.
 | --- | --- | --- |
 | `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER` | true | Exact resident-to-packed Conv/GDN state gather through the registered chunked pointer-table copy leaf. `0` restores the per-layer D2D transfer chain as explicit rollback. |
 | `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` | false | Default-off screen selecting the dense dual WMMA row32/row48 variants for specdec2 production R28 rows. |
-| `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6` | true | Grouped-rows6 variant of the rowtile16 W2 Q4_T16 prefill owner (kernel-side seam of the backend capability policy). |
 | `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE` | true | Q5_T16 single-wave rowtile owner; `0` restores the four-wave owner for rollback and bisection. |
 | `HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120` | true | Fixed-5120 rounded-norm residual decode sibling (rows 2-8); `0` restores the generic rounded-norm tree. |
 
@@ -1131,6 +1130,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6` is retired and ignored.
+  Physical-row scope and native rowtile policy select grouped Q4 R6 launches;
+  repeated two-wave primitives remain available.
 
 - `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6` is retired and ignored.
   Backend defaults, row/shape admission and registered-kernel availability

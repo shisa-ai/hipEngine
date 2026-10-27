@@ -330,9 +330,8 @@ def test_gfx1100_physical_r6_two_wave_policy_routes_target_wrapper(
     )
     monkeypatch.setattr(
         t16_prefill,
-        "_Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED",
-        None,
-        raising=False,
+        "gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("grouped"),
     )
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 6, 5_120, 17_408)
@@ -345,9 +344,8 @@ def test_gfx1100_physical_r6_two_wave_policy_routes_target_wrapper(
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 6, 5_120, 17_408)
 
-    # All 12 calls, including the separately promoted FFN-down shape, use the
-    # current two-wave default; explicit rollback restores the parent.
-    assert calls == ["two_wave"] * 12 + ["parent"]
+    # Grouped packets use their own owner; primitive disable restores the parent.
+    assert calls == ["two_wave", "grouped", "grouped", "two_wave", "parent"]
 
 
 def test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches(
@@ -379,13 +377,6 @@ def test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches(
         "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6",
         raising=False,
     )
-    monkeypatch.setattr(
-        t16_prefill,
-        "_Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED",
-        None,
-        raising=False,
-    )
-
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 24, 5_120, 17_408)
     assert calls == [("grouped", 24)]
@@ -395,15 +386,9 @@ def test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches(
         "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6",
         "0",
     )
-    monkeypatch.setattr(
-        t16_prefill,
-        "_Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED",
-        None,
-        raising=False,
-    )
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 24, 5_120, 17_408)
-    assert calls == [("two_wave", 6)] * 4
+    assert calls == [("grouped", 24)]
 
 
 def test_gfx1100_grouped_rows8_defaults_on_only_for_live_c5c6(

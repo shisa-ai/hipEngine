@@ -2791,13 +2791,6 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## 2026-09-01 gfx1100 grouped Q4 rows6 rollback — closed
-
-- The grouped-grid Q4 owner is retained by default for consecutive physical R6
-  chunks. `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=0` restores repeated
-  WG64/two-wave R6 launches. Remove the environment/cache policy after the next
-  stable milestone audit; keep the registered repeated-R6 strict fallback.
-
 ## 2026-09-01 gfx1100 fused packed-state transfer rollback — closed
 
 - The existing strict pointer-table pair-copy leaf is the retained gfx1100
@@ -10547,10 +10540,21 @@ and cancellation/cleanup. Direct GPU bit parity does not establish public routin
 
 The grouped-pair environment override and its cached read are removed.
 Backend defaults, shape/row checks and registered-kernel checks remain.
-The independent single-owner grouped-Q4 override is unchanged.
 
 **Dependency:** public gfx1100 physical target execution reaching grouped pairs.
 **Clearing action:** run `hipengine serve` across admitted pair widths, trace
 both grouped output launches, and compare output/acceptance with the registered
 repeated-R6 composition. Include a shape outside pair policy and cancellation
 cleanup. Direct grouped-kernel bit parity is not public pair-route evidence.
+
+### R0181 — Public grouped Q4 R6 single-owner validation
+
+The single-owner grouped-Q4 R6 environment override and cache are removed.
+Physical scope and native rowtile selection remain; registered repeated-R6
+primitives are unchanged.
+
+**Dependency:** public gfx1100 physical target execution reaching this wrapper.
+**Clearing action:** run `hipengine serve` at admitted grouped widths, confirm
+single-owner grouped launches, and compare output/acceptance with repeated R6.
+Include non-grouped rows, a shape outside policy, and cancellation/cleanup.
+Direct grouped-kernel bit parity does not establish public wrapper engagement.
