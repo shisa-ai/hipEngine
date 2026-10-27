@@ -5450,8 +5450,8 @@
       "start_line": 4605,
       "end_line": 4619,
       "sha256": "7394f1d6a4b768800be63fe592a34b578656ed6bccb4c8781dd162b0e79f3e11",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-active-teardown-owner",
+      "evidence": ["Guarded API is actively called by KV-pool teardown; it rejects dirty packed state and live graphs. State/private KV charges already reserve and release through the pool ledger. Remaining work is resource-reference and teardown ownership extraction, not missing accounting or an unused API. Focused workspace/layout/global growth/VMM and sampling files pass; docs/audit pass. Worklog: worklog/entries/20261027T172435.748577Z-cleanup-refactor-r0209-r0210-9e664a.md."],
       "subitems": [
         {
           "line": 4607,
@@ -5461,7 +5461,8 @@
         {
           "line": 4615,
           "text": "- Removal trigger: either wire it to a future idle-reclaim path that satisfies",
-          "status": "pending"
+          "status": "resolved-active-caller",
+          "evidence": "Production KV-pool teardown invokes guarded release before closing the pool; preserve until resource-owner replacement is complete."
         }
       ]
     },
@@ -5471,7 +5472,7 @@
       "start_line": 4620,
       "end_line": 4636,
       "sha256": "287da3e5aa0008630e2825deb71f6c62a07b00af2c914b1bd1518ea377e8f3dd",
-      "status": "pending",
+      "status": "partial-private-fallback-consolidation",
       "evidence": ["Repaired graph metadata overwriting leased page maps using graph-owned discard target, preserved host-staged table, and fixed own-pool growth/shrink invalidation. CPU capture/lifetime tests, GPU312 real masked replay/commit controls, CPU314 plus focused repair, public315 packed identity capture/replay and gates pass. Private workspace fallback consolidation remains open. Worklog: worklog/entries/20261027T005813.069045Z-cleanup-refactor-r0210-packed-map-c7e7be.md."],
       "subitems": [
         {

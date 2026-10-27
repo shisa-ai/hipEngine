@@ -3400,10 +3400,17 @@ category and control/ownership gates before closing this entry.
   production KV-pool teardown during rebind, auto-context retry and close.
   It fails closed on unflushed state or live graphs and releases workspace
   ownership before the pool closes; it is not an unused API.
-- Remaining cleanup: move packed-workspace ownership into the load-time resource
-  ledger while preserving teardown order and lifecycle tests. Remove the session
-  method only after every teardown caller uses the replacement owner; do not
-  restore per-row reclaim releases.
+- Packed state scratch and private KV already reserve named byte charges in
+  the global pool before allocation and release those charges on failure or
+  teardown. The remaining ownership cleanup is to move the session-held
+  workspace references and teardown orchestration into a dedicated resource
+  owner, not to add accounting a second time.
+- Keep the guarded session API until every teardown caller uses that replacement
+  owner. Preserve scatter/graph quiescence, release scratch and its pool charges
+  before pool close, and do not restore per-row reclaim releases. Validate with
+  `uv run pytest tests/test_unit_gguf_packed_workspace_stability.py
+  tests/test_unit_gguf_packed_verify_layout.py
+  tests/test_unit_gguf_global_pool_growth.py -q` and public cancellation/reuse.
 
 ## Packed workspace page table and identity-table device kernels
 
