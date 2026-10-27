@@ -3430,85 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna MoE shared/routed branch-concurrency candidate
-
-- Added 2026-07-26 as an exact, default-off session and profile-harness
-  candidate. For rows greater than one, the always-on shared expert runs on a
-  nonblocking secondary stream while router selection and routed experts run
-  on the caller stream. Two timing-disabled events preserve the producer and
-  final-combine dependencies. Decode and the established single-stream route
-  remain unchanged.
-- The production-style Q4 GPU composition fixture is BF16-byte identical to
-  the sequential route. The performance gate must use
-  `GPU_MAX_HW_QUEUES=2` for both arms so queue count is not a confound, then
-  prove an actual overlap in a cached trace rather than inferring it from wall
-  time.
-- If the clean queue-matched A/B is negative, remove the constructor option,
-  profile flag, secondary-stream lifecycle, event plumbing, helper split, and
-  concurrency fixture immediately. If it is positive, promote through an
-  architecture capability only after complete-state/quality/lifecycle and
-  traced-overlap gates; then remove the explicit positive selector after clean
-  publication while retaining the required sequential fallback.
-- The candidate trigger passes: seven queue-matched complete-state pairs move
-  **560.837 -> 567.577 tok/s (+1.202%, 7/7 wins)**, clean default-off
-  512/1K/4K reaches **565.457/525.733/443.027 tok/s**, and tracing proves
-  **100.390/101.241 ms (99.16%)** of secondary kernel time overlaps caller
-  kernels while kernel span falls **12.727 ms**. Promote through the gfx1151
-  capability and two-queue process policy; retain the explicit selector only
-  through clean selector-unset publication and one later MoE checkpoint.
-- Promotion is complete in code: gfx1151 defaults the capability when at least
-  two process queues are available, the process default is now two, an
-  explicit one-queue override automatically selects the sequential fallback,
-  and constructor/CLI rollback remains. Clean selector-unset publication and
-  the follow-up MoE checkpoints are now complete; defer selector cleanup only
-  through the lower-priority secondary-stream screen.
-- Initial eager-concurrency selector-unset publication passed at
-  **565.447/526.711/443.444 tok/s**. The production trace observes two
-  queues/two streams, overlaps **76.883/77.763 ms (98.87%)** of secondary
-  kernel time, and cuts the prior kernel span **11.265 ms**. Keep the explicit
-  constructor/CLI and one-queue rollbacks through the scheduling cleanup while
-  retaining the automatic sequential safety fallback.
-- The delayed-launch checkpoint is closed. `before_down` preserved complete
-  state but regressed **566.394 -> 565.011 tok/s (-0.244%, 2/7 wins)** and
-  introduced a **535.465 tok/s** low tail. Its row-launcher, session, CLI, and
-  test selectors are removed; no temporary phase-selection debt remains.
-- The follow-up after-router checkpoint temporarily adds
-  `moe_shared_after_router` at the row launcher, session, and long-profile
-  CLI. It records the secondary dependency after router selection while
-  retaining gate/up-plus-down overlap. The gate passes at **+0.073%, 5/7
-  wins**, and tracing verifies a **0.310-ms** span reduction. Promote through
-  a gfx1151 capability, then collapse redundant positive selection after clean
-  selector-unset publication.
-- Promotion now resolves `LAGUNA_MOE_SHARED_AFTER_ROUTER` from the gfx1151
-  package; explicit constructor/CLI false remains rollback. Remove redundant
-  public positive selection after clean selector-unset 512/1K/4K publication,
-  while retaining the false rollback through the next MoE scheduling audit.
-- Clean selector-unset publication passes at
-  **566.839/527.381/444.447 tok/s**. Collapse redundant positive selection
-  during the next MoE scheduling cleanup; retain the explicit false rollback
-  while lower-priority secondary-stream scheduling is screened.
-- The lower-priority checkpoint adds general HIP priority-range/query and
-  priority-stream creation helpers plus a temporary
-  `moe_shared_low_priority` session/CLI selector. gfx1151 reports
-  `(least=+1, greatest=-1)`. Remove the Laguna selector if the complete-state
-  gate fails; the general HIP helpers may remain because they are exact,
-  tested runtime primitives.
-- The checkpoint passes **+0.494%, 6/7 wins** and tracing cuts kernel span
-  **7.255 ms**. Promote the least-priority selection through a gfx1151
-  capability. After clean selector-unset publication, remove redundant
-  positive CLI/session selection while retaining explicit priority-0 rollback
-  through one later scheduling checkpoint.
-- Promotion now resolves `LAGUNA_MOE_SHARED_LOW_PRIORITY` from the gfx1151
-  package. `--no-moe-shared-low-priority` and an explicit constructor false
-  remain exact priority-0 rollback. Clean selector-unset 512/1K/4K publication
-  is the remaining promotion gate.
-- Clean selector-unset publication passes at
-  **568.849/527.113/444.508 tok/s**; 1K/4K are flat within
-  **-0.051%/+0.014%**. The eager-priority1 checkpoint is now closed at
-  **-0.198%, 1/7 wins**. Collapse redundant positive selection during the next
-  MoE scheduling cleanup while retaining explicit priority-0 and sequential
-  rollbacks.
-
 ## Laguna selected one-plane FP32-scale MMQ modes
 
 - Added 2026-07-25 as explicit session-local LAP-3/LAP-4 candidates. The
@@ -10290,3 +10211,28 @@ owner/layout, output/state and cleanup. Global query geometry is a resource
 choice, not an evidence allowlist; do not remove a supported width merely
 because a benchmark did not cover it. No route, arithmetic or resource policy
 changes in this disposition.
+
+### R0269 — Laguna MoE scheduling diagnostic controls
+
+MoE concurrency is already the gfx1151 default when the process has at least
+two hardware queues. Automatic one-queue execution stays sequential; c1
+concurrency also requires the shared stream/event owner. After-router and
+low-priority scheduling are backend defaults, not default-off candidates.
+Keep these implementations and general HIP priority helpers. The rejected
+before-down selector is already absent. Historical promotion is recorded in
+`benchmarks/results/2026-07-26-gfx1151-laguna-moe-branch-concurrency-production.json`
+and the matching shared-after-router/priority artifacts.
+
+**Decision needed:** retain constructor/profile scheduling overrides as
+supported diagnostics, or move comparisons to scoped harness controls and
+retire redundant mutation interfaces. `scripts/laguna_long_context_profile.py`
+still exposes concurrency, after-router and low-priority choices.
+**Clearing action:** if retired, migrate those callers while preserving
+sequential and priority-0 controls; do not remove the live stream/events or
+queue-capacity fallback. Run `tests/test_unit_laguna_gguf_runner.py`,
+`tests/test_unit_laguna_long_context_profile.py` and
+`tests/test_live_laguna_moe_gpu.py`; compare public single-/multi-row eager
+and graph execution, queue limits, cancellation and shutdown with the local
+checkpoint dependency at R0249/R0250. Confirm dependencies and resource
+cleanup, not just token equality. No scheduling/default change accompanies
+this reconciliation.

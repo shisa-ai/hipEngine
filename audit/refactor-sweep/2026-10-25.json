@@ -7076,78 +7076,80 @@
       "start_line": 5872,
       "end_line": 5950,
       "sha256": "a8df130f7b7dd338e789021deb0a64bf371d524ae6e2c247e4887cac929109d7",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-retirement",
+      "evidence": [
+        "Obsolete default-off candidate history reconciled: concurrency/after-router/low-priority are gfx1151 production with queue/shared-resource fallback, before-down already retired. Live profile controls remain decision; move only interface migration/retirement to bottom, preserve streams/events/sequential/priority0 and helpers. Runner/profile/docs/audit/worklog pass; no runtime or GPU claim. Worklog: worklog/entries/20261027T200153.380117Z-cleanup-refactor-r0269-2491f1.md."
+      ],
       "subitems": [
         {
           "line": 5874,
           "text": "- Added 2026-07-26 as an exact, default-off session and profile-harness",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5880,
           "text": "- The production-style Q4 GPU composition fixture is BF16-byte identical to",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5885,
           "text": "- If the clean queue-matched A/B is negative, remove the constructor option,",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5891,
           "text": "- The candidate trigger passes: seven queue-matched complete-state pairs move",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5898,
           "text": "- Promotion is complete in code: gfx1151 defaults the capability when at least",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5904,
           "text": "- Initial eager-concurrency selector-unset publication passed at",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5910,
           "text": "- The delayed-launch checkpoint is closed. `before_down` preserved complete",
-          "status": "pending"
+          "status": "resolved-already-implemented"
         },
         {
           "line": 5914,
           "text": "- The follow-up after-router checkpoint temporarily adds",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5921,
           "text": "- Promotion now resolves `LAGUNA_MOE_SHARED_AFTER_ROUTER` from the gfx1151",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5925,
           "text": "- Clean selector-unset publication passes at",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5929,
           "text": "- The lower-priority checkpoint adds general HIP priority-range/query and",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5935,
           "text": "- The checkpoint passes **+0.494%, 6/7 wins** and tracing cuts kernel span",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5940,
           "text": "- Promotion now resolves `LAGUNA_MOE_SHARED_LOW_PRIORITY` from the gfx1151",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5944,
           "text": "- Clean selector-unset publication passes at",
-          "status": "pending"
+          "status": "historical"
         }
       ]
     },
