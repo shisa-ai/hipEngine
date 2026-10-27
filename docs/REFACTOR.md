@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna D9 MoE-tail next-RMS rollback | `LagunaGGUFResidentSession(..., use_moe_tail_next_rmsnorm=False)` restores the exact registered BF16 add/add/F32-weight-RMS chain around the gfx1100/gfx1151 c=1 composite; rows>1 and unsupported backends keep that chain. | Promoted on gfx1100 c=1. Synthetic and all-47-boundary actual Q2 XL state are exact; clean short/512/1K/near-4K kernel sum, span, and profiled child rows improve, and the complete category gate moves h32 decode 46.409->47.132 tok/s with every decode/E2E row positive. Independently promoted on gfx1151: native hidden17/3072 is byte-exact, cached resources are local256/VGPR16/LDS1024/scratch0, and counterbalanced p512/d128 moves rollback 14.529573/14.525706 to 14.555265 tok/s while removing 94 launches/token. | Keep for one release/bisection window and the current DFlash/MTP refresh, then remove the constructor selector while retaining the architecturally required unfused chain. |
 | Laguna D12 raw-Q5 wave32x2 selectors | `LagunaGGUFResidentSession(..., use_q5_wave32x2_output=..., use_q5_wave32x2_query_gate=...)` independently rolls the gfx1100 defaults back to the exact pack8 siblings for c=1 attention output and unequal query/gate. | Promoted together on gfx1100. Formal 50-warmup/15x200 actual-weight leaves improve 13.63-24.80% in HIP events; clean short/512/1K/near-4K kernel sum/span/child all improve; and the counterbalanced canonical gate moves h32 decode 47.046->48.987 tok/s with every category positive and prefill neutral. Synthetic/production leaves and full shared-weight state are exact; cached trace is local32/VGPR96/LDS0/scratch0. gfx1151, rows>1, shape/registry misses, and explicit disable retain pack8. | After one release/bisection window and the current DFlash/MTP refresh, remove positive constructor-selection semantics and keep at most a clear pack8 rollback. Never remove pack8 as the required fallback. |
 | Laguna exact Q5 fixed-metadata rollback | `LagunaGGUFResidentSession(..., use_q5_fixed_meta_output=False, use_q5_fixed_meta_query_gate=False)` and `laguna_target_ar_bench.py --disable-q5-fixed-meta-{output,query-gate}` independently restore the retained D12 coefficient-publication siblings around the gfx1100 fixed-metadata default. | Promoted. Two wave-uniform 128-bit metadata loads remove 32 coefficient exchanges and reduce logical VGPR **89 -> 72** without a sidecar. First/last actual output/query-gate rows improve event **19.80-25.19%** / wall **17.59-24.07%** at exact bits; full state/lifecycle and cached c=1 trace pass. Both clean process orders improve Q5 **22.68-23.12%**, kernel sum **2.35-6.34%**, span **2.17-5.58%**, and child throughput **2.26-4.41%** at every context. Both complete 18-prompt orders move h32 **54.476 -> 57.711 tok/s (+5.938%)** with every train/heldout category decode and E2E row positive. | Retain explicit role-scoped `False` for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered coefficient-publication siblings and pack8 routes for rollback, rows>1, shape/registry misses, and unsupported backends. |
 | Laguna shared-Q5 fixed-metadata rollback | `LagunaGGUFResidentSession(..., use_q5_shared_fixed_meta=False)` and `laguna_target_ar_bench.py --disable-q5-shared-fixed-meta` restore the registered local128 pack8 BF16 pair around gfx1100's local32 fixed-metadata default for sparse layers 1-46. | Promoted. First/last actual pairs are BF16-bit exact and improve event **27.45-27.61%** / wall **26.88-27.48%**. Full state/lifecycle and default-vs-rollback pass; cached tracing records exactly 46 calls/token at local32/VGPR80/LDS0/scratch0 and unchanged 723 dispatches/token. Both clean orders improve shared-pair/kernel/span/child **45.99-47.13% / 1.32-3.02% / 1.43-2.62% / 0.89-3.33%**. Both complete category orders move h32 **59.500 -> 60.942 tok/s (+2.425%)** with every train/heldout category decode positive. Layer 47 Q6, rows>1, key misses, and unsupported backends retain existing routes. | Retain explicit `False` for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered local128 pack8 pair for rollback, rows>1, shape/registry misses, and unsupported backends. |
@@ -10360,3 +10359,26 @@ harness with local model lengths spanning chunk boundaries, and R0249/R0250's
 public generation gate at one token, short and multi-chunk prompts. Include
 continuation, verifier accept/rollback and cleanup. No prefill implementation,
 keyword or default change accompanies this reconciliation.
+
+### R0281-D9 — Laguna MoE-tail composite comparison control
+
+`use_moe_tail_next_rmsnorm=False` still selects the registered unfused
+add/add/RMSNorm chain and is exposed by
+`scripts/laguna_long_context_profile.py --no-moe-tail-next-rmsnorm`.
+The gfx1151 backend also defaults the separate wave0-tree fused sibling;
+its false value restores the earlier fused composite, not the unfused chain.
+These are distinct comparison levels. Missing fused keys and ineligible
+rows retain the primitive chain regardless of public controls.
+
+**Decision needed:** retain the constructor/profile composite override as a
+supported diagnostic, or move comparisons to a scoped plan owner and retire
+the public control. The old one-release note is not a current failure.
+**Clearing action:** migrate the profile caller and plan tests together,
+preserving actual fused/unfused comparison and the separate fused-sibling
+rollback. Run `tests/test_unit_laguna_moe_tail_wave0_tree_runtime.py`,
+`tests/test_unit_laguna_gguf_runner.py`,
+`tests/test_unit_laguna_long_context_profile.py` and the corresponding GPU
+composite/primitive oracle; then R0249/R0250's public model gate with c1,
+multi-row/verifier and missing-key fallbacks, continuation and cleanup.
+Keep the architecturally required registered unfused chain. No fusion,
+arithmetic, default or public-control change in this reconciliation.

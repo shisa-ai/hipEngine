@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "D9 row 6172 moves to R0281-D9: profile caller still selects unfused chain; separate gfx1151 wave0-tree false restores older fused sibling. Keep distinct rollback levels and primitive fallback, defer public-vs-scoped plan ownership only. Three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T204222.252229Z-cleanup-refactor-r0281-d9-961e57.md.",
         "Serial prefill row 6169 moved to R0281-SERIAL: one-token production and multi-token independent oracle live, only interface ownership deferred. Grouped-down row 6171 consolidates into R0270 live mode decision; category consumers remain. Three host unit files/help and docs/audit/worklog pass; no runtime change. Worklog: worklog/entries/20261027T203856.966907Z-cleanup-refactor-r0281-prefill-ad3539.md.",
         "Token4/wave32/qrow2 attention rows 6164-6168 consolidate into bottom R0281-ATTN. Current qrow4 package defaults and later cache/BLAS overlays differ from old history; accepted variants, comparison callers and exact fallbacks live. Runner/category/target-AR/DFlash units and docs/audit/worklog pass, no runtime change. Worklog: worklog/entries/20261027T203537.603068Z-cleanup-refactor-r0281-attention-3a1070.md.",
         "Source-F16 rows 6163/6170 consolidate one live environment override into bottom R0281-F16. Category/leaf/target consumers remain; retain-vs-scoped-migration decision explicit, exact/compensated scope unchanged. Three harness unit files and docs/audit/worklog pass; no runtime change. Worklog: worklog/entries/20261027T203251.721201Z-cleanup-refactor-r0281-f16-d7e9e5.md. Remaining rows still require individual disposition."
@@ -7484,7 +7485,7 @@
         {
           "line": 6172,
           "text": "| Laguna D9 MoE-tail next-RMS rollback | `LagunaGGUFResidentSession(..., use_moe_tail_next_rmsnorm=False)` restores the exact registered BF16 add/add/F32-weight-RMS chain around the gfx1100/gfx1151 c=1 composite; rows>1 and unsupported backends keep that chain. | Promoted on gfx1100 c=1. Synthetic and all-47-boundary actual Q2 XL state are exact; clean short/512/1K/near-4K kernel sum, span, and profiled child rows improve, and the complete category gate moves h32 decode 46.409->47.132 tok/s with every decode/E2E row positive. Independently promoted on gfx1151: native hidden17/3072 is byte-exact, cached resources are local256/VGPR16/LDS1024/scratch0, and counterbalanced p512/d128 moves rollback 14.529573/14.525706 to 14.555265 tok/s while removing 94 launches/token. | Keep for one release/bisection window and the current DFlash/MTP refresh, then remove the constructor selector while retaining the architecturally required unfused chain. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-D9"
         },
         {
           "line": 6173,
