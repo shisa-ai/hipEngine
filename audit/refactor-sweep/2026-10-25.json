@@ -5290,13 +5290,13 @@
       "start_line": 4464,
       "end_line": 4478,
       "sha256": "db524124ca287e1ffb731785349c873fa82c7f81df103bc6368f09953ab646e4",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Removed device-chain oracle environment read; explicit constructor bool defaults false and isolates diagnostic selection. Comparison body/CPU oracle unchanged. RED/GREEN coexistence test, full MTP2/MoE units and docs/audit pass. Corrected certification wording. Body extraction and public acceptance/lifecycle checks remain open. Worklog: worklog/entries/20261027T162229.960164Z-cleanup-refactor-r0203-9fd159.md."],
       "subitems": [
         {
           "line": 4466,
           "text": "- Added 2026-08-25 with SPECDEC2-PERF P4. The promoted C1/C2/C4 cycle keeps",
-          "status": "pending"
+          "status": "partial"
         },
         {
           "line": 4472,

@@ -898,6 +898,7 @@ class Qwen35GGUFMTP2Adapter:
         quant: str = "gguf_q4_k_m",
         ngram_enabled: bool | None = None,
         ngram_config: NgramModConfig | None = None,
+        device_chain_qualification_oracle: bool = False,
     ) -> None:
         self.owner = owner
         self.generator = owner.generator
@@ -1014,10 +1015,7 @@ class Qwen35GGUFMTP2Adapter:
             else None
         )
         self.physical_prompt_streaming = bool(self.physical_prompt_streaming_widths)
-        self.device_chain_qualification_oracle = os.environ.get(
-            "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE",
-            "0",
-        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.device_chain_qualification_oracle = bool(device_chain_qualification_oracle)
         self.post_reject_cooldown_enabled = _env_enabled(
             "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
         )

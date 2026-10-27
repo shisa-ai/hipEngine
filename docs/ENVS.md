@@ -418,7 +418,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX` | unset | Specdec2 route | Maximum n-gram probe tokens. |
 | `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS` | unset | Specdec2 route | Exact target row-count override for the specdec2 verifier rows. |
 | `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` | unset | Specdec2 route | Q6 mixed target rowtile admission override. |
-| `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE` | `0` | Diagnostic | Marks the adapter as device-chain-qualified by an external oracle instead of retained evidence; screening only. |
 | `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` | `0` | Diagnostic | Default-off cooldown that keeps a request out of speculation for one cycle after a rejected speculative attempt. |
 | `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | backend-scoped | Rollback seam | Allocates private-c1 small weights from a session-owned arena; `0` restores the shared allocator path. |
 | `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA` | retired | No longer read | Private-c1 decode scratch follows the backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
@@ -1122,6 +1121,11 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE` is retired and ignored. Diagnostics
+  explicitly construct `Qwen35GGUFMTP2Adapter` with
+  `device_chain_qualification_oracle=True` to materialize IDs and compare GPU
+  acceptance with the CPU oracle. This does not certify or admit a model.
 
 - `HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL` is retired and ignored. Backend
   shape/range policy selects planar-Q6 prefill retiles, with the registered

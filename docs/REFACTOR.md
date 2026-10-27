@@ -3240,16 +3240,17 @@ category and control/ownership gates before closing this entry.
 
 - Added 2026-08-25 with SPECDEC2-PERF P4. The promoted C1/C2/C4 cycle keeps
   proposal and target IDs device-resident through GPU accept and selected
-  commit, then reads only bounded committed output/status. Setting
-  `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE=1` temporarily adds post-commit
-  candidate/target-ID materialization and the CPU acceptance oracle for strict
-  qualification; it is never part of default production timing.
+  commit, then reads only bounded committed output/status. Explicit diagnostic
+  construction with `device_chain_qualification_oracle=True` adds post-commit
+  candidate/target-ID materialization and CPU acceptance comparison. The
+  environment read is removed; default adapter instances remain unaffected.
+  This option enables checks, not model admission or certification.
 - Removal trigger: after P4 reject/every-partial/full, following-AR,
   cancellation/failure, profile, and full category gates are retained with
   GPU/CPU accept agreement and cache-only traces prove no pre-accept D2H in the
-  default route, move the oracle to a test/qualification adapter and remove the
-  runtime environment read. Keep the pure CPU acceptance implementation and
-  strict eager fallback.
+  default route, move the oracle body to a test/qualification adapter. Keep the
+  explicit diagnostic constructor route until that replacement is available,
+  the pure CPU acceptance implementation, and strict eager fallback.
 
 ## SPECDEC2 request-local ngram-mod experiment
 
