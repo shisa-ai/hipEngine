@@ -4334,29 +4334,6 @@ fallback count is not a success metric.
   trajectory corruption. Revisit the 4,096-row plateau only if a later exact
   owner is non-regressive at 8K+ and keeps memory flat.
 
-## Laguna exact SWA producer-maximum selector
-
-- Added 2026-07-29 as a default-off gfx1151 capability plus session/profile
-  comparison seam after the separately registered primitive passed byte-exact
-  wrap/eviction, leaf, and cached resource gates.
-- If matched resident p512/d128 decode is negative, remove the runtime
-  capability, cache field, session setter, and profile comparison switch while
-  retaining the exact registered primitive for diagnostics. If positive,
-  promote the architecture capability, publish a clean selector-unset result,
-  then remove the dedicated comparison switch after one later attention
-  re-profile. Keep the prior mixed32/exp32 kernel as the exact rollback.
-- **Promotion gate passed 2026-07-29:** all seven resident pairs improve
-  **19.684442 -> 19.996117 tok/s (+1.583%)** with exact state/lifecycle.
-  Keep the comparison switch through the pending clean publication and
-  post-promotion attention census, then remove it.
-- **Clean publication passed:** selector-unset production is
-  **19.983610 tok/s** with exact state/lifecycle. The comparison switch now
-  remains only for the pending post-promotion attention census and should be
-  removed in that logical unit.
-- **Closed 2026-07-29:** the census confirms SWA **-21.36%** and kernel sum
-  **-1.46%**. The profile comparison flag and session setter are removed in
-  the census unit; retain only the architecture capability, current owner,
-  and registered mixed32/exp32 rollback.
 ## Laguna H7U parallel MoE compactor
 
 - Cleanup completed 2026-08-02. Exact bounded fixed, source-default

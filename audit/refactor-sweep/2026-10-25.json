@@ -6365,33 +6365,33 @@
       "start_line": 5291,
       "end_line": 5313,
       "sha256": "5f208454c5c98df6f6e80e393a220173562c64424b11263452cf287a521ec460",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Comparison CLI/setter absent; source verifies enabled PRODUCER_MAX capability and laguna_kv.py producer-max selection with mixed32/exp32 fallback. Historical census 344063416; no runtime/kernel changes or new performance claims. Completed receipt removed; docs/audit gates pass."],
       "subitems": [
         {
           "line": 5293,
           "text": "- Added 2026-07-29 as a default-off gfx1151 capability plus session/profile",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5296,
           "text": "- If matched resident p512/d128 decode is negative, remove the runtime",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5302,
           "text": "- **Promotion gate passed 2026-07-29:** all seven resident pairs improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5306,
           "text": "- **Clean publication passed:** selector-unset production is",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5310,
           "text": "- **Closed 2026-07-29:** the census confirms SWA **-21.36%** and kernel sum",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
