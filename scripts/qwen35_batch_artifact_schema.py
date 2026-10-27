@@ -114,9 +114,17 @@ _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS = (
     "rocminfo",
     "rocm_smi",
 )
+# GPU telemetry comes from rocm-smi on stacks through ROCm 10.0.0 and from
+# amd-smi on ROCm 10.1.0+, which no longer ships ROCm SMI. A capture record
+# names its tool; artifacts written before that field existed were captured
+# with rocm-smi, so an absent ``tool`` keeps the historical requirement.
+_GPU_TELEMETRY_COMMAND_FRAGMENTS = {
+    "rocm-smi": ("rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"),
+    "amd-smi": ("amd-smi", "metric", "--mem-usage", "--usage", "--temperature"),
+}
+_DEFAULT_GPU_TELEMETRY_TOOL = "rocm-smi"
 _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_COMMAND_FRAGMENTS = {
     "rocminfo": ("rocminfo | grep -E", "Name:|gfx", "head -4"),
-    "rocm_smi": ("rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"),
 }
 _REQUIRED_ACCEPTED_COMMAND_FIELDS = (
     "benchmark",
@@ -125,18 +133,22 @@ _REQUIRED_ACCEPTED_COMMAND_FIELDS = (
 )
 _REQUIRED_ACCEPTED_ENVIRONMENT_COMMAND_FRAGMENTS = (
     "rocminfo",
-    "rocm-smi",
     "hipcc --version",
     "git rev-parse HEAD",
     "git diff --quiet",
 )
 _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS = (
     "rocminfo | grep -E 'Name:|gfx' | head -4",
-    "rocm-smi --showmeminfo vram --showuse --showtemp",
     "hipcc --version",
     "git rev-parse HEAD",
     "git diff --quiet",
 )
+# Exactly one GPU telemetry invocation must be declared, whichever tool the
+# recording environment ships.
+_REQUIRED_ACCEPTED_ENVIRONMENT_TELEMETRY_COMMANDS = {
+    "rocm-smi": "rocm-smi --showmeminfo vram --showuse --showtemp",
+    "amd-smi": "amd-smi metric --mem-usage --usage --temperature",
+}
 DISALLOWED_ACCEPTED_DIAGNOSTIC_COMMAND_FRAGMENTS = RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_COMMAND_FRAGMENTS
 DISALLOWED_ACCEPTED_DIAGNOSTIC_EVIDENCE_FRAGMENTS = RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_EVIDENCE_FRAGMENTS
 DISALLOWED_ACCEPTED_DIAGNOSTIC_TRACE_FIELD_NAMES = RETAINED_ARTIFACT_DISALLOWED_DIAGNOSTIC_TRACE_FIELD_NAMES
@@ -2248,19 +2260,26 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
     ):
         errors.append("hardware.visible_device.device_name must match hardware.gpu for accepted artifacts")
     for field in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_FIELDS:
-        command_fragment = "rocm-smi" if field == "rocm_smi" else field
+        capture = hardware.get(field)
+        tool = capture.get("tool") if isinstance(capture, Mapping) else None
+        if tool not in _GPU_TELEMETRY_COMMAND_FRAGMENTS:
+            tool = _DEFAULT_GPU_TELEMETRY_TOOL if field == "rocm_smi" else field
         _validate_capture_context(
             f"hardware.{field}",
-            hardware.get(field),
+            capture,
             errors,
-            command_fragment=command_fragment,
+            command_fragment=tool,
         )
-        capture = hardware.get(field)
         command = capture.get("command") if isinstance(capture, Mapping) else None
         if isinstance(command, str):
-            for fragment in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_COMMAND_FRAGMENTS[field]:
+            for fragment in _REQUIRED_ACCEPTED_HARDWARE_CAPTURE_COMMAND_FRAGMENTS.get(field, ()):
                 if fragment not in command:
                     errors.append(f"hardware.{field}.command must include {fragment} for accepted artifacts")
+            telemetry_fragments = _GPU_TELEMETRY_COMMAND_FRAGMENTS.get(tool)
+            if telemetry_fragments is not None:
+                for fragment in telemetry_fragments:
+                    if fragment not in command:
+                        errors.append(f"hardware.{field}.command must include {fragment} for accepted artifacts")
     rocminfo = hardware.get("rocminfo")
     if isinstance(hardware_arch, str) and hardware_arch and isinstance(rocminfo, Mapping):
         rocminfo_output = rocminfo.get("output")
@@ -2314,6 +2333,12 @@ def _validate_accepted_evidence_fields(payload: Mapping[str, Any], errors: list[
         for command in _REQUIRED_ACCEPTED_ENVIRONMENT_COMMANDS:
             if command not in environment_commands:
                 errors.append(f"commands.environment must include exact command `{command}` for accepted artifacts")
+        telemetry_commands = tuple(_REQUIRED_ACCEPTED_ENVIRONMENT_TELEMETRY_COMMANDS.values())
+        if not any(command in environment_commands for command in telemetry_commands):
+            expected = " or ".join(f"`{command}`" for command in telemetry_commands)
+            errors.append(
+                f"commands.environment must include exact command {expected} for accepted artifacts"
+            )
         _append_disallowed_accepted_diagnostic_text_errors(
             joined_environment_commands,
             path="commands.environment",

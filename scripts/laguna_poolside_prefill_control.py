@@ -42,6 +42,7 @@ from scripts.laguna_target_ar_bench import (
     _sha256_bytes,
     _sha256_json,
 )
+from scripts import gpu_smi
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SERVER = Path(
@@ -342,7 +343,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     binary_sha256 = _file_sha256(args.server_bin)
     binary_version = _command_capture((str(args.server_bin.resolve()), "--version"))
     clocks_before = _command_capture(
-        ("rocm-smi", "--showproductname", "--showclocks", "--showpower", "--json")
+        gpu_smi.command_argv(
+            rocm_args=["--showproductname", "--showclocks", "--showpower", "--json"],
+            amd_args=["metric", "--clock", "--power", "--temperature", "--json"],
+        )
     )
 
     args.server_log.parent.mkdir(parents=True, exist_ok=True)
@@ -420,7 +424,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         _terminate(process)
 
     clocks_after = _command_capture(
-        ("rocm-smi", "--showproductname", "--showclocks", "--showpower", "--json")
+        gpu_smi.command_argv(
+            rocm_args=["--showproductname", "--showclocks", "--showpower", "--json"],
+            amd_args=["metric", "--clock", "--power", "--temperature", "--json"],
+        )
     )
     summary = _summarize_rows(rows, lengths=lengths, repetitions=args.repetitions)
     ratios = {

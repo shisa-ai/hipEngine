@@ -48,6 +48,10 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from scripts import gpu_smi  # noqa: E402
 DEFAULT_PROMPTS = (1024, 4096)
 DEFAULT_OUTPUT = 128
 DEFAULT_SAMPLES = 3
@@ -79,14 +83,17 @@ def provenance(gpu: int) -> dict[str, Any]:
     """Commit, working-tree and toolchain state for this snapshot."""
 
     hipcc = _run(["hipcc", "--version"], timeout=60)
+    telemetry = gpu_smi.capture_text(
+        rocm_args=["--showid", "--showproductname"],
+        amd_args=["static", "-a", "-b"],
+        device=gpu,
+    )
     return {
         "git_commit": _git("rev-parse", "HEAD"),
         "git_dirty_files": _git("status", "--porcelain").splitlines()[:40],
         "physical_gpu_index": gpu,
-        "gpu_name": _gpu_name(gpu),
-        "rocm_smi": _run(
-            ["rocm-smi", "--showid", "--showproductname"], timeout=60
-        ).splitlines()[-12:],
+        "gpu_name": gpu_smi.product_name(gpu) or "",
+        "gpu_telemetry": telemetry,
         "hipcc_version_first_line": (hipcc.splitlines() or [""])[0],
         "captured_at": _now(),
     }
@@ -103,38 +110,6 @@ def _run(command: list[str], *, env: dict[str, str] | None = None, timeout: int 
             + "\n".join(tail)
         )
     return (completed.stdout or "") + (completed.stderr or "")
-
-
-def _gpu_name(gpu: int) -> str:
-    """Name of physical GPU ``gpu`` from rocm-smi.
-
-    rocm-smi puts the ``GPU[N]`` marker and the ``Device Name:`` label on the
-    *same* line (``GPU[0]\t\t: Device Name: \t\t<name>``), so parse line by
-    line rather than tracking a previous marker line.
-    """
-
-    try:
-        done = subprocess.run(
-            ["rocm-smi", "--showid", "--showproductname"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    for line in (done.stdout or "").splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("GPU[") or "Device Name:" not in stripped:
-            continue
-        close = stripped.find("]")
-        open_b = stripped.find("[")
-        if close < 0 or open_b < 0:
-            continue
-        if stripped[open_b + 1 : close] != str(gpu):
-            continue
-        return stripped.split("Device Name:", 1)[1].strip()
-    return ""
 
 
 def base_env(gpu: int) -> dict[str, str]:

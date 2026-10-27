@@ -26939,7 +26939,9 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     incomplete_environment_commands = json.loads(json.dumps(accepted))
     incomplete_environment_commands["commands"]["environment"] = ["rocminfo", "hipcc --version"]
-    with pytest.raises(ValueError, match="commands.environment must include rocm-smi"):
+    # Either telemetry tool satisfies the requirement: rocm-smi through ROCm
+    # 10.0.0, amd-smi from ROCm 10.1.0 on.
+    with pytest.raises(ValueError, match="must include exact command `rocm-smi"):
         validate_cn_diagnostic_artifact_payload(incomplete_environment_commands)
 
     missing_git_environment_command = json.loads(json.dumps(accepted))

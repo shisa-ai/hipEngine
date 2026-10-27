@@ -64,7 +64,7 @@ the [shared consumer map](reference/SHARED-SPECULATIVE-OPTIMIZATION.md#source-ba
 <!-- BEGIN GENERATED: sections -->
 | Directory | Contents | Files |
 | --- | --- | --- |
-| [`reference/`](reference/) | Current subsystem contracts. Read the one your task touches. | 46 |
+| [`reference/`](reference/) | Current subsystem contracts. Read the one your task touches. | 47 |
 | [`campaigns/`](campaigns/) | Bounded model/hardware campaigns. Mostly closed; kept as evidence. | 75 |
 | [`model-cards/`](model-cards/) | Per-model support status, quality, and integration notes. | 12 |
 | [`archive/`](archive/) | Superseded documents, closed proposals, and frozen history. | 25 |

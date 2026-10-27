@@ -45,6 +45,7 @@ from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedT
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, detect_hip_target_arches
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts import gpu_smi
 from scripts.qwen35_batch_artifact_schema import (
     DECODE_EXECUTION_DIAGNOSTIC_TRACE_FIELDS,
     _load_payload,
@@ -3718,7 +3719,11 @@ def _hardware_context() -> dict[str, Any]:
         "default_hardware": gpu_name == "AMD Radeon Pro W7900" and arch == "gfx1100",
         "visible_device": visible_device,
         "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
-        "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
+        "rocm_smi": gpu_smi.capture_text(
+            rocm_args=["--showmeminfo", "vram", "--showuse", "--showtemp"],
+            amd_args=["metric", "--mem-usage", "--usage", "--temperature"],
+            timeout=10.0,
+        ),
     }
 
 
@@ -5182,7 +5187,10 @@ def _build_payload(
         "commands": {
             "environment": [
                 "rocminfo | grep -E 'Name:|gfx' | head -4",
-                "rocm-smi --showmeminfo vram --showuse --showtemp",
+                gpu_smi.command_line(
+                    rocm_args=["--showmeminfo", "vram", "--showuse", "--showtemp"],
+                    amd_args=["metric", "--mem-usage", "--usage", "--temperature"],
+                ),
                 "hipcc --version",
                 "git rev-parse HEAD",
                 "git diff --quiet",

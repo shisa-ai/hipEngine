@@ -54,6 +54,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.core import build as _hipengine_build  # noqa: E402
 from hipengine.kernels.backends import hip_target_arch_for_backend  # noqa: E402
+from scripts import gpu_smi
 
 ARTIFACT_KIND = "w7900_p5_c1_decode_attribution"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
@@ -978,26 +979,8 @@ def _single(root: Path, pattern: str) -> Path:
 
 
 def _observed_device() -> str:
-    executable = shutil.which("rocm-smi")
-    if executable is None:
-        return "unavailable"
-    completed = subprocess.run(
-        [executable, "--showproductname", "--json"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    try:
-        payload = json.loads(completed.stdout or "{}")
-    except json.JSONDecodeError:
-        return "unavailable"
-    for card in payload.values():
-        if isinstance(card, Mapping):
-            for key in ("Card Series", "Card Model", "Card SKU"):
-                value = card.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
-    return "unavailable"
+    name = gpu_smi.product_name()
+    return name if name else "unavailable"
 
 
 def _rocprofv3_version() -> str:

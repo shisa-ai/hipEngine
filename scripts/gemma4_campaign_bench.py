@@ -56,6 +56,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from scripts import gpu_smi  # noqa: E402
+
 # The campaign's GGUF. This was a hard-coded path under /mnt/nvme1 until that
 # mount moved, which broke every script here at import time with a
 # FileNotFoundError that named the model rather than the missing mount. Resolve
@@ -475,7 +477,10 @@ def _provenance(artifact: Path) -> dict[str, Any]:
         for key in os.environ
         if key.startswith(("HIP", "HSA", "ROCR", "AMD", "GPU_", "HCC", "PYTORCH", "TORCH"))
     )
-    clock_report = _run(["rocm-smi", "--showclock", "--showpower", "--showtemp"])
+    clock_report = gpu_smi.capture_text(
+        rocm_args=["--showclock", "--showpower", "--showtemp"],
+        amd_args=["metric", "--clock", "--power", "--temperature"],
+    )["output"]
     return {
         "host": platform.node(),
         "git_commit": commit,

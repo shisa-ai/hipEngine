@@ -268,39 +268,33 @@ def test_harness_has_no_removed_variable_reference(harness) -> None:
 
 
 def test_vram_free_gib_reads_the_selected_card(harness, monkeypatch) -> None:
-    payload = json.dumps(
-        {
-            "card0": {
-                "VRAM Total Memory (B)": str(48 * 1024**3),
-                "VRAM Total Used Memory (B)": str(8 * 1024**3),
-            },
-            "card1": {
-                "VRAM Total Memory (B)": str(24 * 1024**3),
-                "VRAM Total Used Memory (B)": str(24 * 1024**3),
-            },
-        }
-    )
+    """Free VRAM comes from the active environment's telemetry tool."""
 
-    def fake_run(cmd, **kwargs):
-        return type("R", (), {"returncode": 0, "stdout": payload})()
+    free_by_device = {0: 40 * 1024**3, 1: 0}
 
-    monkeypatch.setattr(harness.subprocess, "run", fake_run)
+    def fake_usage(device=0, **kwargs):
+        free = free_by_device[device]
+        return {"vram_total_bytes": 48 * 1024**3, "vram_used_bytes": 48 * 1024**3 - free, "vram_free_bytes": free}
+
+    monkeypatch.setattr(harness.gpu_smi, "memory_usage", fake_usage)
     assert harness.vram_free_gib("0") == pytest.approx(40.0, abs=0.01)
     assert harness.vram_free_gib("1") == pytest.approx(0.0, abs=0.01)
     assert harness.vram_free_gib(None) == pytest.approx(40.0, abs=0.01)
 
 
-def test_vram_free_gib_returns_none_when_unavailable(harness, monkeypatch) -> None:
-    def fake_run(cmd, **kwargs):
-        raise OSError("rocm-smi missing")
+def test_vram_free_gib_returns_none_when_the_tool_cannot_report(harness, monkeypatch) -> None:
+    def fake_usage(device=0, **kwargs):
+        return None
 
-    monkeypatch.setattr(harness.subprocess, "run", fake_run)
+    monkeypatch.setattr(harness.gpu_smi, "memory_usage", fake_usage)
     assert harness.vram_free_gib("0") is None
 
-    def fake_bad_json(cmd, **kwargs):
-        return type("R", (), {"returncode": 0, "stdout": "not json"})()
 
-    monkeypatch.setattr(harness.subprocess, "run", fake_bad_json)
+def test_vram_free_gib_returns_none_when_free_bytes_are_unknown(harness, monkeypatch) -> None:
+    def fake_usage(device=0, **kwargs):
+        return {"vram_total_bytes": 48 * 1024**3, "vram_used_bytes": None, "vram_free_bytes": None}
+
+    monkeypatch.setattr(harness.gpu_smi, "memory_usage", fake_usage)
     assert harness.vram_free_gib("0") is None
 
 

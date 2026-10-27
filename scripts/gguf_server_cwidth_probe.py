@@ -44,6 +44,12 @@ import time
 import urllib.request
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts import gpu_smi  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 _PROM_LINE = re.compile(
@@ -62,38 +68,16 @@ def vram_free_gib(visible_devices: str | None = None) -> float | None:
     out-of-memory error.  Recording free VRAM lets a caller reject such a phase
     instead of publishing it.
     """
-    try:
-        completed = subprocess.run(
-            ["rocm-smi", "--showmeminfo", "vram", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=15.0,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if completed.returncode != 0:
-        return None
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(payload, dict):
-        return None
     index = 0
     if visible_devices:
         first = str(visible_devices).split(",")[0].strip()
         if first.isdigit():
             index = int(first)
-    entry = payload.get(f"card{index}")
-    if not isinstance(entry, dict):
+    usage = gpu_smi.memory_usage(index)
+    free = None if usage is None else usage["vram_free_bytes"]
+    if free is None:
         return None
-    try:
-        total = float(entry["VRAM Total Memory (B)"])
-        used = float(entry["VRAM Total Used Memory (B)"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    return round((total - used) / (1024.0**3), 3)
+    return round(free / (1024.0**3), 3)
 
 
 def parse_prometheus(text: str) -> dict[str, float]:

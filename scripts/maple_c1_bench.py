@@ -45,6 +45,7 @@ from hipengine.kernels.backends import backend_package_capability  # noqa: E402
 from hipengine.loading.maple import load_maple_checkpoint  # noqa: E402
 from hipengine.runtime.maple import PREFILL_CHUNK, MapleRunner  # noqa: E402
 from hipengine.tokenization.maple import MapleTokenizer  # noqa: E402
+from scripts import gpu_smi
 
 DEFAULT_MODEL = "deepgrove/maple-preview-2bit-mlx"
 DEFAULT_SUITE = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
@@ -766,8 +767,9 @@ def main() -> int:
             "rocminfo": _capture(
                 ["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"]
             ),
-            "rocm_smi": _capture(
-                ["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"]
+            "rocm_smi": gpu_smi.capture_text(
+                rocm_args=["--showmeminfo", "vram", "--showuse", "--showtemp"],
+                amd_args=["metric", "--mem-usage", "--usage", "--temperature"],
             ),
             "hipcc": _capture(["hipcc", "--version"]),
         }

@@ -49,6 +49,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.benchmark.prompts import file_sha256, token_ids_sha256  # noqa: E402
 from hipengine.benchmark.provenance import collect_model_identity  # noqa: E402
 from hipengine.util.amdgpu_vram import VramSampler, select_card  # noqa: E402
+from scripts import gpu_smi
 
 SCHEMA_VERSION = 2
 ENGINE_CHOICES = ("hipengine", "llamacpp-hip", "llamacpp-vulkan")
@@ -2730,7 +2731,10 @@ def _hardware_capture(args: argparse.Namespace, *, engine: str) -> dict[str, Any
         "kernel_cmdline": Path("/proc/cmdline").read_text(encoding="utf-8").strip(),
         "uname": _capture(["uname", "-a"]),
         "rocminfo": _capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -8"]),
-        "rocm_smi": _capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"]),
+        "rocm_smi": gpu_smi.capture_text(
+            rocm_args=["--showmeminfo", "vram", "--showuse", "--showtemp"],
+            amd_args=["metric", "--mem-usage", "--usage", "--temperature"],
+        ),
         "hipcc": _capture(["hipcc", "--version"]),
         "tuned_profile": _capture(["tuned-adm", "active"]),
         "gpu_max_hw_queues": (

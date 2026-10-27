@@ -64,7 +64,13 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts import gpu_smi  # noqa: E402, Callable
 
 import numpy as np
 
@@ -87,20 +93,16 @@ def _git(*args: str) -> str:
 
 
 def _device_identity() -> dict[str, Any]:
-    try:
-        smi = subprocess.run(
-            ["rocm-smi", "--showproductname", "--showbus"],
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout
-    except OSError:
-        smi = ""
+    smi = gpu_smi.capture_text(
+        rocm_args=["--showproductname", "--showbus"],
+        amd_args=["static", "-a", "-b"],
+    )
     return {
         "hostname": platform.node(),
         "cpu": platform.processor() or platform.machine(),
         "python": platform.python_version(),
-        "rocm_smi": " ".join(smi.split())[:400],
+        "rocm_smi": " ".join(smi["output"].split())[:400],
+        "rocm_smi_source": smi["tool"],
     }
 
 

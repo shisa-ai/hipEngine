@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.provenance import collect_artifact_provenance
+from scripts import gpu_smi
 
 
 DEFAULT_MAX_OUTPUT_CHARS = 20000
@@ -37,6 +38,40 @@ def _truncate(text: str, max_chars: int) -> tuple[str, bool]:
     if len(text) <= max_chars:
         return text, False
     return text[:max_chars], True
+
+
+def unavailable_command(args: list[str], error: str) -> dict[str, Any]:
+    """Record a probe the active environment cannot answer.
+
+    The inventory reports availability rather than substituting a tool from
+    another ROCm install, which would describe a different stack.
+    """
+
+    return {
+        "args": args,
+        "available": False,
+        "path": None,
+        "returncode": None,
+        "timed_out": False,
+        "stdout": "",
+        "stderr": "",
+        "stdout_truncated": False,
+        "stderr_truncated": False,
+        "error": error,
+    }
+
+
+def gpu_telemetry_command(
+    *, rocm_args: list[str], amd_args: list[str], preference: tuple[str, ...] = gpu_smi.TOOL_PREFERENCE
+) -> tuple[list[str], str | None]:
+    """Absolute argv for a GPU telemetry probe, or ``([], reason)``."""
+
+    try:
+        return gpu_smi.command_argv(
+            rocm_args=rocm_args, amd_args=amd_args, preference=preference
+        ), None
+    except gpu_smi.GpuToolUnavailable as exc:
+        return [], str(exc)
 
 
 def run_command(args: list[str], *, timeout_s: float, max_output_chars: int, cwd: Path | None = None) -> dict[str, Any]:
@@ -316,35 +351,63 @@ def collect_environment(
         ),
     }
     if include_device_probes:
+        # GPU telemetry is resolved from the active ROCm root only. A rocm-smi
+        # left on PATH by a system ROCm install reports a different stack, so a
+        # probe the environment cannot answer is recorded as unavailable.
+        smi_identity, smi_identity_error = gpu_telemetry_command(
+            rocm_args=["--showproductname", "--showdriverversion"],
+            amd_args=["static", "-a", "-d"],
+        )
+        smi_metrics, smi_metrics_error = gpu_telemetry_command(
+            rocm_args=[
+                "--showproductname",
+                "--showdriverversion",
+                "--showvbios",
+                "--showid",
+                "--showtemp",
+                "--showclocks",
+                "--showpower",
+                "--showuse",
+                "--showmeminfo",
+                "vram",
+                "--showmeminfo",
+                "vis_vram",
+            ],
+            amd_args=["metric"],
+        )
+        amd_static, amd_static_error = gpu_telemetry_command(
+            rocm_args=["static", "-a"],
+            amd_args=["static", "-a"],
+            preference=("amd-smi",),
+        )
+        amd_metric, amd_metric_error = gpu_telemetry_command(
+            rocm_args=["metric"],
+            amd_args=["metric"],
+            preference=("amd-smi",),
+        )
         commands.update(
             {
                 "rocminfo": run_command(["rocminfo"], timeout_s=timeout_s, max_output_chars=max_output_chars),
-                "rocm_smi": run_command(
-                    ["rocm-smi", "--showproductname", "--showdriverversion"],
-                    timeout_s=timeout_s,
-                    max_output_chars=max_output_chars,
+                "rocm_smi": (
+                    run_command(smi_identity, timeout_s=timeout_s, max_output_chars=max_output_chars)
+                    if smi_identity
+                    else unavailable_command([], smi_identity_error or "unavailable")
                 ),
-                "rocm_smi_metrics": run_command(
-                    [
-                        "rocm-smi",
-                        "--showproductname",
-                        "--showdriverversion",
-                        "--showvbios",
-                        "--showid",
-                        "--showtemp",
-                        "--showclocks",
-                        "--showpower",
-                        "--showuse",
-                        "--showmeminfo",
-                        "vram",
-                        "--showmeminfo",
-                        "vis_vram",
-                    ],
-                    timeout_s=timeout_s,
-                    max_output_chars=max_output_chars,
+                "rocm_smi_metrics": (
+                    run_command(smi_metrics, timeout_s=timeout_s, max_output_chars=max_output_chars)
+                    if smi_metrics
+                    else unavailable_command([], smi_metrics_error or "unavailable")
                 ),
-                "amd_smi_static": run_command(["amd-smi", "static", "-a"], timeout_s=timeout_s, max_output_chars=max_output_chars),
-                "amd_smi_metric": run_command(["amd-smi", "metric"], timeout_s=timeout_s, max_output_chars=max_output_chars),
+                "amd_smi_static": (
+                    run_command(amd_static, timeout_s=timeout_s, max_output_chars=max_output_chars)
+                    if amd_static
+                    else unavailable_command([], amd_static_error or "unavailable")
+                ),
+                "amd_smi_metric": (
+                    run_command(amd_metric, timeout_s=timeout_s, max_output_chars=max_output_chars)
+                    if amd_metric
+                    else unavailable_command([], amd_metric_error or "unavailable")
+                ),
                 "vulkaninfo_summary": run_command(
                     ["vulkaninfo", "--summary"],
                     timeout_s=timeout_s,
