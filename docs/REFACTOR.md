@@ -3430,73 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna exact qrow4 SWA prefill selector
-
-- Added 2026-07-29. WPF-3 registers the direct exact qrow4 body plus
-  `swa_context_rows_qrow4_m128_c256_exact_spans`, which keeps wave32 below its
-  measured rows/context crossover. The gfx1100 package now exports the
-  qualified policy after no-override deep-state KL0 and paired 512/1K gains of
-  **11.230%/16.774%**. Explicit local128, wave32, qrow2, qrow4, and online
-  variants remain available for rollback and the separate arithmetic screen.
-- Clean publication is complete at **131.919/125.960 tok/s** with cached SWA
-  reductions of **55.411%/59.449%**. No benchmark-only comparison plumbing is
-  committed. The separate complete online-qrow4 decision improves suite prefill
-  **0.995%** but is rejected at maximum KL **0.394600** despite **564/576**
-  top-1, deterministic repeats, and passing Poolside/lifecycle checks. Preserve
-  local128, qualified wave32, and exact qrow4-C256 as gfx1100 fallback/default;
-  do not remove online qrow2/qrow4 registrations because gfx1151 independently
-  owns them. Do not reopen changed-association gfx1100 SWA without a materially
-  different arithmetic premise and a new complete quality gate.
-- WPF-H5M's package-only `LAGUNA_SWA_PREFILL_ROLE_VARIANTS` cleanup trigger is
-  closed. Complete M512 state is KL0/byte-exact, integrated tracing selects all
-  **72** expected calls, and clean package-default 512/1K/4K publishes
-  **238.565/218.182/158.138 tok/s (+0.256%/+0.135%/+0.490% over H5L)**. Keep the
-  one-entry gfx1100 map and bounded resolver: it replaces only the retained
-  package-default auto route at M128, window 512, 72 SWA heads, and start >=256;
-  explicit rollback plus shape, registration, and backend misses retain WPF-3.
-  gfx1151 remains empty/fail-closed. There is no public/session selector, new
-  allocation, workspace, or sidecar to remove. After one release checkpoint,
-  consider folding the stable role into the existing auto wrapper and deleting
-  only the map/cache-field indirection while preserving exact fallbacks.
-- WPF-H5N's temporary default-off role-policy extension is removed. Complete
-  M512 state and integrated tracing are exact/positive, but the clean gate is
-  negative at 4K and a seven-repeat adjudication confirms **7/7** H5N samples
-  below H5M (**158.152 -> 157.832 tok/s, -0.202%**). Retain the separately
-  registered standalone H5N leaf and its M512 evidence; do not re-add it to the
-  role-candidate policy or package map without a distinct long-context premise
-  and a fresh 512/1K/4K gate. The older H5M map/cache-field cleanup remains
-  independently eligible after its release checkpoint.
-- WPF-H5R's `LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS` cleanup trigger is closed.
-  Complete M512 state is KL0, corrected one-queue tracing records all **144**
-  write->H5R pairs, and selector-unset 512/1K/4K is
-  **+11.340%/+4.848%/+0.746%** with 3/3 wins each. Keep the one gfx1100 role
-  entry, preappend capability, and generic fail-closed cache gate through one
-  release checkpoint, then consider folding the stable role into package auto
-  policy while preserving H5M/wave32/global/partial/wrapped/verifier/explicit/
-  registration/backend misses. No allocation, workspace, sidecar, or public
-  selector was added. The earlier uncapped speed packet is superseded.
-- WPF-H5U's temporary runtime-policy seam is removed. Complete M512 state is
-  KL0/byte-exact, integrated tracing records **48 H5U + 144 H5R** physical
-  preappend pairs at unchanged topology, and active C4096 routes improve.
-  Source-default publication nevertheless misses the binding role-ineligible
-  1K non-regression gate: the balanced eight-pair adjudication is
-  **230.181231 -> 230.175317 tok/s (-0.00257%, 2/8 wins)**. Remove the global
-  package map, role candidate/resolver branch, allocator argument, runner
-  bookkeeping, and runtime-policy test; retain only the separately admitted
-  leaf. Reopen ownership only with a materially different package-scoping
-  premise and a fresh complete 512/1K/4K gate. No allocation, workspace,
-  sidecar, or public selector remains
-  ([runtime rejection](../benchmarks/results/2026-07-30-gfx1100-laguna-q2-xl-global-preappend-cached-source-runtime-rejected.json)).
-- WPF-H6A's dense-initial role-map cleanup trigger is closed. Complete M512
-  state is KL0/byte-exact, paired tracing records exact **48 H6A global + 144
-  H6A SWA** calls at unchanged **2,050** dispatches, default-off 512/1K/4K is
-  **+1.713%/+0.677%/+0.326%**, and selector-unset publication confirms
-  **+1.831%/+0.550%/+0.359%**, 3/3 wins each. Keep the two-entry map, dense role
-  parser, independent allocator/runner selector bookkeeping, H5R/H5U registered
-  rollbacks, and fail-closed policy through one release checkpoint; then
-  consider folding only the stable owner into package auto policy. No
-  allocation, workspace, sidecar, or public selector was added.
-
 ## Laguna long-context F32 hipBLASLt rollback routes
 
 - Added 2026-07-27. The first capacity-sized full-score owner improved
@@ -10323,3 +10256,32 @@ dependency is recorded at R0249/R0250. Preserve Qwen GGUF's independent
 consumers of shared IQ primitives, exact fallbacks and current defaults.
 Original tuning results remain in benchmark artifacts and worklogs; this
 reconciliation changes no runtime selection or arithmetic.
+
+### R0259 — Laguna exact SWA and preappend policy normalization
+
+Exact gfx1100 SWA policy keeps its qrow4/wave32 crossover, source-qualified
+role and safe append-before-attention ordering. Dense-initial source policy
+has advanced beyond H6A to H6Z global score/weight replay plus H6W SWA score
+replay; H6A and H6W comparison maps remain. The old H5N and H5U runtime-policy
+extensions are absent; their standalone numerical leaves remain registered.
+Online SWA has independent gfx1151 consumers and an observed gfx1100 quality
+failure, so do not delete or promote it as a side effect of structural cleanup.
+
+**Decision needed:** keep bounded backend role maps as the supported policy
+representation, or normalize them into a unified selector. They select cache
+ordering as well as a function; absence, empty maps, independent global/SWA
+overrides and explicit variants carry different fallback semantics.
+**Clearing action:** if normalization is chosen, compare exact selected
+function, cache ownership and append ordering before/after over starts
+0/128/256 and unrelated positions, no-wrap/wrap, complete/partial chunks,
+verifier/continuation, shape/backend and registration misses. Run
+`tests/test_unit_laguna_h5r_runtime_policy.py`,
+`tests/test_unit_laguna_h6a_runtime_policy.py`,
+`tests/test_unit_laguna_h6a_source_default.py`,
+`tests/test_unit_laguna_h6w_source_default.py` and
+`tests/test_unit_laguna_h6z_source_default.py`, then public bulk-prefill
+selection, output/state and teardown on the applicable backend using
+R0249/R0250's command and checkpoint dependency. Retain span-aware primitive
+fallbacks and the separately owned online arithmetic. A release window alone
+is not a reason to remove safe ordering or working policy. This disposition
+changes no runtime selection, storage or arithmetic.

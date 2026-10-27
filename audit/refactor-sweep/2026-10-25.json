@@ -6816,43 +6816,45 @@
       "start_line": 5670,
       "end_line": 5736,
       "sha256": "c51d1b191b9a3c9432c942f0fbfec1d91e641f7226177c916b6654489c929c15",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-normalization",
+      "evidence": [
+        "Current H6Z global/H6W SWA dense source and H5M/H5R bounded maps preserve cache ordering/fallback semantics, not redundant aliases. H5N/H5U runtime extensions already absent, standalone and gfx1151 online primitives stay. Replace historical tuning receipt with bottom role-policy normalization decision and identity/ordering/lifecycle checks. Focused current-policy tests and docs/audit/worklog pass, no runtime/device claim. Worklog: worklog/entries/20261027T195155.933650Z-cleanup-refactor-r0259-478b0d.md."
+      ],
       "subitems": [
         {
           "line": 5672,
           "text": "- Added 2026-07-29. WPF-3 registers the direct exact qrow4 body plus",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5678,
           "text": "- Clean publication is complete at **131.919/125.960 tok/s** with cached SWA",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5687,
           "text": "- WPF-H5M's package-only `LAGUNA_SWA_PREFILL_ROLE_VARIANTS` cleanup trigger is",
-          "status": "pending"
+          "status": "deferred-normalization"
         },
         {
           "line": 5698,
           "text": "- WPF-H5N's temporary default-off role-policy extension is removed. Complete",
-          "status": "pending"
+          "status": "resolved-already-implemented"
         },
         {
           "line": 5706,
           "text": "- WPF-H5R's `LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS` cleanup trigger is closed.",
-          "status": "pending"
+          "status": "deferred-normalization"
         },
         {
           "line": 5715,
           "text": "- WPF-H5U's temporary runtime-policy seam is removed. Complete M512 state is",
-          "status": "pending"
+          "status": "resolved-already-implemented"
         },
         {
           "line": 5727,
           "text": "- WPF-H6A's dense-initial role-map cleanup trigger is closed. Complete M512",
-          "status": "pending"
+          "status": "deferred-normalization"
         }
       ]
     },
