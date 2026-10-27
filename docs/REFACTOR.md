@@ -3430,19 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Qwen GGUF external-DMS capture seam
-
-- The default-off `Qwen35GGUFResidentSession.prefill(..., dms_capture=...)`
-  diagnostic synchronously exports normalized pre-Q hidden rows and dense Q/K
-  intermediates to an offline checksummed sink. It is never selected by
-  `LLM.generate()` and intentionally stalls the prefill stream for bounded
-  capture correctness.
-- Removal trigger: after the Qwen3.8 external sidecar is trained and its
-  reproducible capture manifest is retained, either promote this as an explicit
-  model-plugin-owned offline capture API or remove the session keyword and
-  runtime callback. Do not leave a generic synchronous D2H tap in the serving
-  façade, and never make it an environment-selected production path.
-
 ## External-DMS compact device transaction journal
 
 - The correctness-first external decision bridge snapshots only the active
@@ -10243,3 +10230,30 @@ comparison tests. Run `tests/test_unit_qwen35_gguf_decode_graph.py`,
 `tests/test_unit_qwen35_gguf_bench_metadata.py` and
 `tests/test_unit_gguf_mtp_bench_metrics.py`. This unit changes no default,
 replay floor or implementation and makes no current performance claim.
+
+### R0278 — Offline DMS capture API ownership
+
+`prefill(..., dms_capture=...)` serves two distinct consumers. The offline
+`DMSCaptureWriter` synchronously exports normalized hidden rows and Q/K to
+checksummed shards through `scripts/qwen38_dms_capture.py`. Serving creates
+`_ExternalDMSDevicePrefillCollector` internally; its `capture_device_chunk`
+method bypasses that host export. A caller cannot substitute an offline sink
+while the serving collector owns capture. Training and capture manifests are
+already recorded in `docs/reference/DMS.md`; waiting for initial training is
+not the remaining blocker.
+
+**Decision needed:** expose offline export under a model-plugin-owned capture
+API, or retire that offline API with its CLI and training/label consumers.
+Keep the serving device collector and its callback path. Do not remove the
+shared keyword/helper merely because the offline sink synchronizes.
+**Clearing action:** if migrating, move `scripts/qwen38_dms_capture.py` and
+`tests/test_live_dms_capture_gguf_hip.py` together, preserving input-stage,
+layer/shape validation, teacher logits, checksums and sink ownership. Run
+`tests/test_unit_dms_capture.py`,
+`tests/test_unit_qwen38_dms_capture_script.py` and the live capture test with
+a local compatible model; verify an actual capture manifest and its shards.
+Then exercise the device collector through public DMS generation using
+`tests/test_live_dms_public_serving.py`, with an explicitly labeled synthetic
+sidecar where trained artifacts are absent. Verify no new synchronous offline
+export in serving and correct close/cancellation behavior. No runtime or API
+change accompanies this disposition.

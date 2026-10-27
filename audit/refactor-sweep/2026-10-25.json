@@ -7350,18 +7350,20 @@
       "start_line": 6119,
       "end_line": 6131,
       "sha256": "b1778eb7a9083c7a227124a863c1317a05dd4a3cfa7501aed7e3bc8600ac8475",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-offline-api-ownership",
+      "evidence": [
+        "Training/capture artifacts exist; synchronous writer remains live in capture CLI and manifest/label tests. Shared capture hook also serves internal device collector via capture_device_chunk before sync/host copies; serving rejects caller sink substitution. Move offline model-plugin ownership vs full retirement decision to bottom, preserving device path. Capture units/help and docs/audit/worklog pass; no runtime/public/quality claim. Worklog: worklog/entries/20261027T202234.233016Z-cleanup-refactor-r0278-8079c2.md."
+      ],
       "subitems": [
         {
           "line": 6121,
           "text": "- The default-off `Qwen35GGUFResidentSession.prefill(..., dms_capture=...)`",
-          "status": "pending"
+          "status": "reconciled-distinct-device-and-offline-consumers"
         },
         {
           "line": 6126,
           "text": "- Removal trigger: after the Qwen3.8 external sidecar is trained and its",
-          "status": "pending"
+          "status": "deferred-offline-api-ownership"
         }
       ]
     },
