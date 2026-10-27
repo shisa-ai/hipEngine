@@ -1155,6 +1155,10 @@ harnesses read them but do not own them.
 
 These names appear in the tree but must not be confused with env knobs:
 
+- `LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER` is backend package
+  metadata. The output-gate diagnostic temporarily overrides that attribute;
+  it is not read from the process environment.
+
 - `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` is retired. Profile and session
   selection own activation staging; the old environment value has no effect.
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit

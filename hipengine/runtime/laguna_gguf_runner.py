@@ -2956,7 +2956,6 @@ class LagunaGGUFResidentSession:
         prefill_global_qrow6: bool | None = None,
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
-        prefill_attention_hipblaslt_packed_query_producer: bool | None = None,
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         prefill_long_attention_hipblaslt: bool | None = None,
         prefill_block_attention_hipblaslt: bool | None = None,
@@ -3469,8 +3468,6 @@ class LagunaGGUFResidentSession:
                 "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER",
                 False,
             )
-            if prefill_attention_hipblaslt_packed_query_producer is None
-            else prefill_attention_hipblaslt_packed_query_producer
         )
         capability_wave_rows_softmax = backend_package_capability(
             self.backend,

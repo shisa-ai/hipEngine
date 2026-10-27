@@ -4697,24 +4697,6 @@ fallback count is not a success metric.
   keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
   one-release rollback window, then collapse both selectors.
 
-## Laguna direct packed-query producer rollback
-
-- Added 2026-07-27 as
-  `prefill_attention_hipblaslt_packed_query_producer=false`. The gfx1151
-  capability writes only the three qualified dense-initial M128 query tiles
-  head-major from fused RMSNorm/RoPE; false restores the exact standalone
-  generic-to-head-major query transpose. Generic row zero and every unsafe
-  attention route are independent fallbacks, not part of this rollback.
-- Eleven complete pp512 pairs are state-exact and improve
-  **647.210 -> 650.651 tok/s (+0.532%, 7/11 wins)** with **1.557 ms** paired
-  median wall saved. Clean tracing removes all **144 / 4.907-ms** query
-  transposes, cuts dispatches **2,273 -> 2,129**, and improves the exact
-  producer-plus-pack boundary **20.530 -> 16.666 ms (-18.82%)**.
-  Selector-unset publication reaches **654.249/579.699/468.608 tok/s**.
-  Keep explicit false through the next optimization checkpoint, then remove
-  this one-purpose session selector and A/B comparison while retaining the
-  generic producer for unqualified rows.
-
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
 - Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16
@@ -10869,3 +10851,15 @@ fallback primitive remain unchanged.
 BLAS prompt, additionally confirming that the backend-selected wave-per-row
 softmax executes. Check blocking/stream/direct parity and teardown. Existing
 packed/wave/block leaf comparisons do not establish this public engagement.
+
+### R0274 — Laguna public packed-query producer validation
+
+The producer constructor override and its dedicated comparison arm are removed.
+The separate output-gate diagnostic keeps its original generic-producer control
+through a scoped package override restored on construction success or failure.
+Backend producer selection and generic-row/unsafe-shape fallbacks remain.
+
+**Dependency:** the unavailable Laguna checkpoint noted for R0273.
+**Clearing action:** run the R0273 gfx1151 public gate with a dense-initial BLAS
+prompt and confirm direct packed-query production for the eligible tiles,
+generic production for other rows, output parity and clean teardown.

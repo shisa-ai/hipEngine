@@ -38,16 +38,6 @@ _COMPARISONS = {
             "packed_query_producer": False,
         },
     },
-    "packed_query_producer": {
-        "production_rollback": {
-            "packed_output_gate": True,
-            "packed_query_producer": False,
-        },
-        "packed_query_producer_candidate": {
-            "packed_output_gate": True,
-            "packed_query_producer": True,
-        },
-    },
 }
 _STATE_KEYS = (
     "next_token",
@@ -78,6 +68,23 @@ def _child(
     settings: dict[str, bool],
 ) -> LagunaGGUFResidentSession:
     assert owner.weights is not None
+    # This process-local diagnostic keeps the historical output-gate comparison
+    # on the generic producer. Restore package policy even if construction fails.
+    from hipengine.kernels import hip_gfx1151 as package
+
+    key = "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER"
+    previous = getattr(package, key)
+    setattr(package, key, settings["packed_query_producer"])
+    try:
+        return _construct_child(owner, settings)
+    finally:
+        setattr(package, key, previous)
+
+
+def _construct_child(
+    owner: LagunaGGUFResidentSession,
+    settings: dict[str, bool],
+) -> LagunaGGUFResidentSession:
     return LagunaGGUFResidentSession(
         resident_weights=owner.weights,
         context_length=512,
@@ -90,9 +97,6 @@ def _child(
         prefill_chunk_size=512,
         prefill_attention_chunk_size=128,
         prefill_attention_hipblaslt=True,
-        prefill_attention_hipblaslt_packed_query_producer=(
-            settings["packed_query_producer"]
-        ),
         prefill_attention_hipblaslt_packed_output_gate=(
             settings["packed_output_gate"]
         ),

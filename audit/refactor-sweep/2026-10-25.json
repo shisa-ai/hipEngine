@@ -7189,18 +7189,18 @@
       "start_line": 6028,
       "end_line": 6045,
       "sha256": "eb01c53d08758f5c00bca88cfafa540a751c7836afd48f8ed6ae6ced7b9d2a01",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed producer constructor override and comparison arm, preserved generic-row/unsafe fallback. Remaining output-gate diagnostic preserves its original producer control with scoped restoration tested on success/failure. Full CPU bundle, targeted producer GPU parity and docs/audit pass. Public Laguna checkpoint absent; bottom R0274 names clearing action. Worklog: worklog/entries/20261027T080553.662334Z-cleanup-refactor-r0274-158dd3.md."],
       "subitems": [
         {
           "line": 6030,
           "text": "- Added 2026-07-27 as",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 6036,
           "text": "- Eleven complete pp512 pairs are state-exact and improve",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },
