@@ -3955,14 +3955,15 @@ fallback count is not a success metric.
   workspace: the slab is union-geometry and shared by every resident view, so
   per-reclaim release forced a same-size hot-path reallocation on the next
   packed step (the accepted C2-6 canonical packet recorded 246 releases /
-  242.39 GiB cumulative churn). Session close frees the workspace directly;
-  `Qwen35GGUFResidentSession.release_idle_packed_workspace()` remains as a
-  guarded (unflushed-state / live-graph fail-closed) public release API with
-  no production caller.
-- Removal trigger: either wire it to a future idle-reclaim path that satisfies
-  the guards, or delete it (and its lifecycle test) once the task-5 backend
-  unification moves packed workspace ownership into the load-time resource
-  ledger, where reclaim is ownership-based rather than session-based.
+  242.39 GiB cumulative churn). The guarded
+  `Qwen35GGUFResidentSession.release_idle_packed_workspace()` is now used by
+  production KV-pool teardown during rebind, auto-context retry and close.
+  It fails closed on unflushed state or live graphs and releases workspace
+  ownership before the pool closes; it is not an unused API.
+- Remaining cleanup: move packed-workspace ownership into the load-time resource
+  ledger while preserving teardown order and lifecycle tests. Remove the session
+  method only after every teardown caller uses the replacement owner; do not
+  restore per-row reclaim releases.
 
 ## Packed workspace page table and identity-table device kernels
 
