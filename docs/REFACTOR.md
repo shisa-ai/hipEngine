@@ -2921,30 +2921,6 @@ should be removed or collapsed.
   device-side reproduction of the 1024-thread occupancy loss measured in
   `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json`.
 
-## 2026-08-30 Qwen4Exp P1 device-driven grouped Q8_0 down
-
-- `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped
-  Q8_0 down owner
-  (`gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out`) that reads
-  `expert_start` on device and iterates experts via a fixed worker grid,
-  replacing the `group_expert_start` D2H copy + Python loop over 512 experts
-  (`HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`). The strict per-expert selected
-  gemv remains the default. Do not run a promotion packet for the current
-  perf-negative owner. First replace its grid/dataflow and prove that the new
-  candidate beats strict; only after the full 450-row/task/c2/lifecycle packet
-  and paired p512/p1024/p4096 evidence pass may it become the default. Then
-  remove the `Q8_0_GROUPED` / `Q8_0_GROUPED_WMMA` experiment flags together
-  with the D2H branch. Never leave the D2H loop as the sole path.
-
-  > **Perf-negative as of 2026-08-30** — `scripts/gguf_q8_0_grouped_down_microbench.py`
-  > (layer-2 shape, 512 experts, in=640/out=2560) measured the grouped owner at
-  > 4.17/6.32/14.46 ms (sparse/dense/deep) vs strict `selected_gemv` at
-  > 0.34/1.26/4.87 ms. The grouped kernel launches `dim3(out, experts)` =
-  > 1.31M blocks with OUT_BATCH=1 and a serial expert loop (no weight reuse),
-  > so it is ~3-12x slower than the strict default. Do **not** promote it to
-  > default until a re-audited tile/grid version (weight reuse + output tiling
-  > + empty-expert skip) beats `strict_ms`; see worklog entry 20260830T202256.
-
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
@@ -3048,7 +3024,6 @@ should be removed or collapsed.
 
 - Remaining Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidate
   controls include `HIPENGINE_QWEN4_EXP_Q5_1_WMMA`,
-  `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`,
   `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N`, and
   `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N`. They raise warm repeated-token 512
   prefill from 8.67 to 211.76 tok/s and corrected natural-suite wall by 6.60x,

@@ -3842,13 +3842,13 @@
       "start_line": 3474,
       "end_line": 3497,
       "sha256": "63562c538ae09981500dd9a3d83e6c9b2de73c2a39e2ca2ce793892a65907659",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed legacy fixed-grid/host-loop engine selectors, profile pin and preemptor entries. Strict selected fallback and registered diagnostic kernels survive. RED/GREEN, CPU328, public/GPU327 and docs/audit gates pass. Worklog: worklog/entries/20261027T015452.816399Z-cleanup-refactor-r0144-q8-selectors-ff1060.md."],
       "subitems": [
         {
           "line": 3476,
           "text": "- `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

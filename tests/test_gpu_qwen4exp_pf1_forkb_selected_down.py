@@ -279,7 +279,7 @@ def test_pf1_forkb_grouped_selected_down_bit_parity(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
+def test_pf1_forkb_runner_default_matches_strict_flag_off() -> None:
     """Runner wiring gate: the fork-b grouped down default is bit-identical to
     the incumbent strict selected gemv (flag off) at the whole-MoE level.
 
@@ -312,9 +312,6 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     runtime = get_hip_runtime()
     # The Q4 gate/up chain gate is request-local runner state, passed to the
     # dispatch below; the arm keeps the grouped prefill composition on.
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
-
     rng = np.random.default_rng(2026_09_04)
     hidden, ffn, experts, top_k = 256, 256, 4, 2
     rows = 16

@@ -168,7 +168,6 @@ def _published_environment() -> dict[str, str]:
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT": "1",
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "1",
-        "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
     }
 
 

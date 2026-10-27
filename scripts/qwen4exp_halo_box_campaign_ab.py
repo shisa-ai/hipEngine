@@ -1147,18 +1147,14 @@ PF13_LEAF_KEYS = {
 }
 #: Owners that keep either leaf from being selected. The Q5_1 side is the pair2
 #: preemptor set plus the pair2 selection itself (the M1 leaf sits below it); the
-#: Q8_0 side is the two owners in front of the sorted chain plus the two grouped
-#: owners below it, so the ``before`` arm falls through to the strict per-expert
-#: selected down rather than to a third grouped owner. Every key is read per
-#: dispatch, so closing them after construction takes effect.
+#: Q8_0 side is the two owners in front of the sorted chain, so the ``before``
+#: arm falls through to the strict per-expert selected down rather than to a
+#: third grouped owner. Every key is read per dispatch, so closing them after
+#: construction takes effect.
 PF13_PREEMPTING_ENV = tuple(dict.fromkeys(
     Q51_PAIR2_PREEMPTING_ENV
     + Q8_DOWN_PREEMPTING_ENV
-    + (
-        Q51_PAIR_PREFILL_ENV,
-        "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED",
-        "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA",
-    )
+    + (Q51_PAIR_PREFILL_ENV,)
 ))
 #: The replacement siblings each leaf's ladder applies while published: fold128
 #: -> fold_pair -> register_cache -> row_publish on the Q5_1 side, and row4 ->

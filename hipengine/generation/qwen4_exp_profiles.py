@@ -1191,7 +1191,6 @@ def _bind(
             if row["layer"] == "router_logits"
         ),
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "0",
-        "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
         # PF-3 Q5_1 M1 and PF-1 grouped Q8_0 down are T0 exact production

@@ -252,20 +252,16 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_qwen4_exp_runner_moe_q8_0_down_grouped_strict_fallback(
-    monkeypatch,
-) -> None:
-    """Regression: Q8_0 expert-down through the grouped prefill path with no
-    opt-in Q8_0 grouped owner flag must fall back to the strict per-expert
-    selected gemv and match the CPU oracle.
+def test_qwen4_exp_runner_moe_q8_0_down_grouped_strict_fallback() -> None:
+    """Regression: Q8_0 expert-down through the grouped prefill path must fall
+    back to the strict per-expert selected gemv and match the CPU oracle.
 
     The P1 device-driven grouped Q8_0 down owner restructured the Q8_0 down
-    dispatch in the grouped branch. A regression dropped the strict fallback
-    when neither ``HIPENGINE_QWEN4_EXP_Q8_0_GROUPED`` nor
-    ``HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`` is set, leaving ``expert_down``
-    unwritten for Q8_0 layers (layer 2/4/30/46/47) and corrupting whole-model
-    prefill output. This test pins the default (no-flag) path to the CPU
-    oracle.
+    dispatch in the grouped branch. A regression dropped the strict fallback,
+    leaving ``expert_down`` unwritten for Q8_0 layers (layer 2/4/30/46/47) and
+    corrupting whole-model prefill output. The two legacy grouped opt-ins that
+    used to sit above the fallback are retired, so this is now the only Q8_0
+    down route below the shipped owners; the test pins it to the CPU oracle.
     """
     from hipengine.core.hip import get_hip_runtime
     from tests._gguf_synthetic_weights import make_q8_0_weight
@@ -273,9 +269,6 @@ def test_qwen4_exp_runner_moe_q8_0_down_grouped_strict_fallback(
     runtime = get_hip_runtime()
     # Grouped prefill for rows>=16 with a Q4_K/Q4_K gate/up pair; Q8_0 down.
     # The chain gate is request-local runner state, passed to the dispatch below.
-    # Ensure neither opt-in Q8_0 grouped owner is active (the buggy case).
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
     rng = np.random.default_rng(2026)
     hidden, ffn, experts, top_k = 256, 256, 4, 2
     rows = 16
