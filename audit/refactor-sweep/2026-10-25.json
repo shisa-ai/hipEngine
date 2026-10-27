@@ -10481,33 +10481,33 @@
       "start_line": 8119,
       "end_line": 8139,
       "sha256": "53c10371ca0bc1f57d71fa4cf755a54da9077b5ec24b6d884b735f4608322b20",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Named comparison CLI/setter absent; required constructor rollback/capability/runtime host-batch path preserved. Docs/audit pass. Worklog: worklog/entries/20261027T042504.400484Z-cleanup-refactor-r0362-a1020e.md."],
       "subitems": [
         {
           "line": 8121,
           "text": "- Added 2026-07-30 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8125,
           "text": "- Seven exact same-resident p512/d128 pairs all improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8128,
           "text": "- Remove the comparison CLI, setter, and protocol fields after tracked-clean",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8133,
           "text": "- Publication and census pass at **22.141787 tok/s** and exactly **482 model",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8136,
           "text": "- The comparison CLI, setter, and protocol fields are removed. Retain the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
