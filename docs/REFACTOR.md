@@ -3431,28 +3431,6 @@ should be removed or collapsed.
   the profile manifest selections, strict WMMA fallbacks, qualified
   R6/R8/R9/R12 actual-shape bounds, and benchmark rollback evidence.
 
-## 2026-08-26 speculative-MTP default capability migration — closed
-
-- Dynamic Admission D7 removed the legacy broad `supports_default_mtp`
-  properties from the LLM, generator, and resident wrapper plus their redundant
-  tests/diagnostic reporting. OpenAI automatic admission now has one owner:
-  immutable model-plugin `SpeculativeMTPServingDecision` evidence with
-  `automatic_eligible=true` and exact static bounds.
-- Independent explicit diagnostics and the strict AR fallback remain. The D6
-  one-off `--force-cycle-k0` benchmark switch was also removed after its
-  fingerprinted evidence packet closed.
-
-## 2026-08-27 automatic realized-singleton intent seam — closed
-
-- Dynamic Admission D1 removed `SamplingParams.speculative_mtp_singleton_only`,
-  the matching internal `GenerationRequest` field, and the GGUF request-local
-  set. `SpeculativeMTPStaticEligibility` now carries typed provider intent while
-  the resident due `WorkItem` remains the sole C/K owner.
-- Pure and transitional K0 are explicit in plan/telemetry; the retained
-  slot-local journal, strict AR fallback, C1->C2->C1 lifecycle coverage, and
-  typed pre-mutation reasons remain. No temporary flag or duplicate intent path
-  remains from this seam.
-
 ## 2026-08-21 codebase simplification review
 
 This review covers the tracked tree at `a9419949d`. The main conclusion is that

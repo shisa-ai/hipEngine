@@ -4686,18 +4686,18 @@
       "start_line": 4053,
       "end_line": 4063,
       "sha256": "e0b0e66dbfc0a180c3e01b93246771d666bd2b87f95dc8d22edb284190837a9c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified removed broad properties and force-cycle-k0 option have no source/script/test readers; server helper _engine_supports_default_mtp consumes admitted/automatic_eligible typed plan instead. Retired completed receipt, preserving explicit diagnostics and AR fallback."],
       "subitems": [
         {
           "line": 4055,
           "text": "- Dynamic Admission D7 removed the legacy broad `supports_default_mtp`",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 4060,
           "text": "- Independent explicit diagnostics and the strict AR fallback remain. The D6",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -4707,18 +4707,18 @@
       "start_line": 4064,
       "end_line": 4074,
       "sha256": "61d8e9e93af05efb0117c67b2769a7b910026dc0c09057a3a0c6d8385670d666",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified speculative_mtp_singleton_only field absent; SpeculativeMTPStaticEligibility owns intent and existing adapter singleton helper consumes current semantics. Removed completed receipt, not singleton behavior or fallback tests."],
       "subitems": [
         {
           "line": 4066,
           "text": "- Dynamic Admission D1 removed `SamplingParams.speculative_mtp_singleton_only`,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 4070,
           "text": "- Pure and transitional K0 are explicit in plan/telemetry; the retained",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
