@@ -3434,8 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna prompt prefill fallback | `LagunaGGUFResidentSession.prefill(..., use_bulk=False)` keeps the original token-serial prompt path beside default chunked rows. | Multi-length state/target-AR gates are complete. LPF-4 established exact bounded 128-row bulk chunks; AR-O3 defaults gfx1151 to its independently retained capacity. WPF-2 now defaults gfx1100 to matrix512/attention128/grouped-exact after all 48 boundaries/KV/spans/routing/lifecycle pass and clean publication reaches **99.230/91.559 tok/s**. Explicit overrides retain M128/M256 and paired direct routing. Token-serial remains only as the independent state oracle and rollback through the post-prefill DFlash refresh; `forward_token()` decode is unchanged. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-matrix-chunk-retained.json` and `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-grouped-iq-matrix512-retained.json`. | Move token-serial prefill to a correctness-only helper (or remove the public selector) after bulk passes the full prompt-length/context matrix, retained target-AR performance is non-regressive, and verifier accept/rollback gates no longer need prefill bisection. |
-| Laguna grouped-down diagnostic selector | `LagunaGGUFResidentSession.set_selected_down_mode(direct|grouped_smallm|adaptive_grouped_smallm|grouped_smallm_fused|adaptive_grouped_smallm_fused)` retains explicit A/B selection beside the backend-qualified exact grouped-combine Q4/Q6 down default. | Exact grouped combine is promoted on gfx1151 from 32 rows after a bit-exact 1.249-1.313x sub-window screen, 0.99972x five-repeat complete-model screen, and exact/non-regressive category gate. The quality-rejected M16/M32 runtime route, scratch, selectors, and harnesses are removed; its registered leaf oracle remains. gfx1100 and rows below 32 retain direct. | Keep `adaptive_grouped_smallm` as the explicit unfused grouped rollback through one release window. Then remove redundant positive `grouped_smallm*` experiment modes and keep at most the adaptive unfused rollback plus clear `direct` for unsupported backends/short rows. Never remove direct fallback without independent evidence. |
 | Laguna D9 MoE-tail next-RMS rollback | `LagunaGGUFResidentSession(..., use_moe_tail_next_rmsnorm=False)` restores the exact registered BF16 add/add/F32-weight-RMS chain around the gfx1100/gfx1151 c=1 composite; rows>1 and unsupported backends keep that chain. | Promoted on gfx1100 c=1. Synthetic and all-47-boundary actual Q2 XL state are exact; clean short/512/1K/near-4K kernel sum, span, and profiled child rows improve, and the complete category gate moves h32 decode 46.409->47.132 tok/s with every decode/E2E row positive. Independently promoted on gfx1151: native hidden17/3072 is byte-exact, cached resources are local256/VGPR16/LDS1024/scratch0, and counterbalanced p512/d128 moves rollback 14.529573/14.525706 to 14.555265 tok/s while removing 94 launches/token. | Keep for one release/bisection window and the current DFlash/MTP refresh, then remove the constructor selector while retaining the architecturally required unfused chain. |
 | Laguna D12 raw-Q5 wave32x2 selectors | `LagunaGGUFResidentSession(..., use_q5_wave32x2_output=..., use_q5_wave32x2_query_gate=...)` independently rolls the gfx1100 defaults back to the exact pack8 siblings for c=1 attention output and unequal query/gate. | Promoted together on gfx1100. Formal 50-warmup/15x200 actual-weight leaves improve 13.63-24.80% in HIP events; clean short/512/1K/near-4K kernel sum/span/child all improve; and the counterbalanced canonical gate moves h32 decode 47.046->48.987 tok/s with every category positive and prefill neutral. Synthetic/production leaves and full shared-weight state are exact; cached trace is local32/VGPR96/LDS0/scratch0. gfx1151, rows>1, shape/registry misses, and explicit disable retain pack8. | After one release/bisection window and the current DFlash/MTP refresh, remove positive constructor-selection semantics and keep at most a clear pack8 rollback. Never remove pack8 as the required fallback. |
 | Laguna exact Q5 fixed-metadata rollback | `LagunaGGUFResidentSession(..., use_q5_fixed_meta_output=False, use_q5_fixed_meta_query_gate=False)` and `laguna_target_ar_bench.py --disable-q5-fixed-meta-{output,query-gate}` independently restore the retained D12 coefficient-publication siblings around the gfx1100 fixed-metadata default. | Promoted. Two wave-uniform 128-bit metadata loads remove 32 coefficient exchanges and reduce logical VGPR **89 -> 72** without a sidecar. First/last actual output/query-gate rows improve event **19.80-25.19%** / wall **17.59-24.07%** at exact bits; full state/lifecycle and cached c=1 trace pass. Both clean process orders improve Q5 **22.68-23.12%**, kernel sum **2.35-6.34%**, span **2.17-5.58%**, and child throughput **2.26-4.41%** at every context. Both complete 18-prompt orders move h32 **54.476 -> 57.711 tok/s (+5.938%)** with every train/heldout category decode and E2E row positive. | Retain explicit role-scoped `False` for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered coefficient-publication siblings and pack8 routes for rollback, rows>1, shape/registry misses, and unsupported backends. |
@@ -10149,7 +10147,12 @@ diagnostics, or migrate their comparison callers and remove redundant mode
 names. `scripts/laguna_grouped_down_category_bench.py`,
 `scripts/laguna_prefill_production_publication.py` and
 `tests/test_live_laguna_moe_gpu.py` still use these interfaces. The old
-one-release rollback note is not a runtime precondition.
+one-release rollback note is not a runtime precondition. R0281's grouped-down
+row uses the same `set_selected_down_mode()` owner: direct,
+`grouped_smallm*` and adaptive/fused modes still have category callers.
+Its older grouped-only default description does not replace the current MMQ
+package default; include these mode names in the same retention/migration
+decision rather than tracking a second selector debt.
 **Clearing action:** migrate those callers before removing a mode; preserve
 actual arithmetic comparisons, strict fallbacks and down primitives shared
 with production. Run `tests/test_unit_laguna_selected_mmq_modes.py`,
@@ -10337,3 +10340,23 @@ each applicable backend with wrapped SWA, dense/global and non-dense spans,
 empty/short/partial rows, continuation, verifier rows and cleanup. Do not
 collapse strict exact fallbacks into online arithmetic during interface cleanup.
 No variant, allocation, arithmetic or default changes in this consolidation.
+
+### R0281-SERIAL — Laguna explicit token-serial prefill control
+
+`prefill()` defaults to chunked bulk rows but uses `forward_token()` for a
+one-token prompt even with bulk requested. Explicit `use_bulk=False` also
+powers the independent serial oracle in `scripts/laguna_bulk_correctness.py`
+and serial/bulk category comparisons in `scripts/laguna_target_ar_bench.py`.
+The scalar implementation and oracle are required; the stale release-window
+note does not make them dead code.
+
+**Decision needed:** retain the explicit serial option as a supported diagnostic,
+or move only its multi-token orchestration into a test/benchmark helper.
+**Clearing action:** migrate both harnesses together before removing the public
+keyword, preserving final-row capture, cursor/KV/recurrent state and serial
+comparison independence. Keep the one-token production route and registered
+primitives. Run `tests/test_unit_laguna_target_ar_bench.py`, the bulk-correctness
+harness with local model lengths spanning chunk boundaries, and R0249/R0250's
+public generation gate at one token, short and multi-chunk prompts. Include
+continuation, verifier accept/rollback and cleanup. No prefill implementation,
+keyword or default change accompanies this reconciliation.
