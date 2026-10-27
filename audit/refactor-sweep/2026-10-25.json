@@ -6000,23 +6000,25 @@
       "start_line": 4985,
       "end_line": 5000,
       "sha256": "e35ea6e12269dfae46fe59a22a3b309525c178150c012d353a053fa33c0d3f3a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-already-implemented",
+      "evidence": [
+        "Closed sole-T16 residency history removed from active ledger. Materializer selects canonical T16 with only tiles for dense policy; separate raw/pack8 layouts remain intentional. Focused loader/planner tests pass (named dense files absent, relevant live cases skip); no runtime or new performance claim. Historical census and safeguard evidence preserved in worklog/entries/20261027T192516.568577Z-cleanup-refactor-r0230-f56d87.md."
+      ],
       "subitems": [
         {
           "line": 4987,
           "text": "- Added 2026-08-05 for the former exact dense-verifier FFN route, where 64 gate",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4990,
           "text": "- **Closed 2026-08-12:** gfx1100 now materializes one canonical",
-          "status": "pending"
+          "status": "resolved-already-implemented"
         },
         {
           "line": 4997,
           "text": "- Keep raw/pack8 kernels only as separately registered numerical/diagnostic",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },

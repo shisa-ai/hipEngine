@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Qwen3.6 dense Q4T16 FFN dual residency — closed
-
-- Added 2026-08-05 for the former exact dense-verifier FFN route, where 64 gate
-  and 64 up tensors kept pack8 plus **6,595,543,040 bytes / 6.143 GiB** of T16
-  decode sidecars.
-- **Closed 2026-08-12:** gfx1100 now materializes one canonical
-  `gguf_q4_k_t16_v1/tiles` payload for all 288 rank-2 Q4 tensors. Registered T16
-  owners cover c1, rows 2-4, fused gate/up+SiLU, M512/M1024/M4096/tails, and the
-  same-layout unfused chain. Live target+NextN census reports zero alternate or
-  duplicate payload bytes; exact 512/1K/4K state, natural B1-B3 transactions,
-  W7900 same-commit non-regression, and teardown gates pass. No runtime selector
-  or package path retains the old Q4 pack8 shadow.
-- Keep raw/pack8 kernels only as separately registered numerical/diagnostic
-  fallbacks for other model/layout owners; do not reattach them as sidecars to
-  this dense sole-T16 package without a new operation-complete residency gate.
-
 ## Maple CUDA sm_120a native-prefill follow-ups
 
 - **Serial compatibility path closed 2026-08-08.** `MapleCudaRunner` now owns
