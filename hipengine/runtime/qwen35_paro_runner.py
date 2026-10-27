@@ -15295,9 +15295,9 @@ def _select_token(model: Path, prompt: str, token_id: int | None) -> tuple[int, 
 
 def _load_tokenizer(model: Path) -> Any | None:
     try:
-        from tokenizers import Tokenizer
+        from hipengine.models.qwen35 import QWEN35_PARO_MOE
 
-        return Tokenizer.from_file(str(model / "tokenizer.json"))
+        return QWEN35_PARO_MOE.load_tokenizer(model)
     except Exception:
         return None
 

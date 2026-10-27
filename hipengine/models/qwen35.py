@@ -646,6 +646,13 @@ class Qwen35ParoMoeModel:
         "lm_head.weight",
     )
 
+    def load_tokenizer(self, model_path):
+        """Load the PARO tokenizer and normalized checkpoint special tokens."""
+
+        from hipengine.tokenization.qwen35_paro import Qwen35ParoTokenizer
+
+        return Qwen35ParoTokenizer.from_model_path(model_path)
+
     def layer_sequence(self) -> tuple[str, ...]:
         """Return a representative decode sequence for registry/fusion planning."""
 

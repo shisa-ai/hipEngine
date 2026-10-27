@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "EOS row 6188: model-plugin tokenizer adapter loads normalized BOS/EOS/PAD metadata; generator string discovery removed. Public probe exposed ignored request eos_token_id; termination and finish metadata now honor explicit overrides across greedy/sampled/batch/stream/resident routes while preserving both checkpoint IDs when absent. CPU deterministic bundle, focused generator/metadata/live-tokenizer tests and public gfx1151 requests pass with zero tracked allocations after close. Worklog: worklog/entries/20261027T212208.797086Z-cleanup-refactor-r0281-eos-27556c.md.",
         "DFlash tile row 6187 moves to R0281-DFLASH: live gfx1100 tile4 and public tile1 separate from historical shared gfx1151 AR mismatch. Current-stack reproduction awaits local target/drafter, exact category command and first-divergent-state/public lifecycle checks named; no new identity gates. Host plan plus category/public/cycle/fake-provider tests and docs/audit/worklog pass. Worklog: worklog/entries/20261027T211503.417766Z-cleanup-refactor-r0281-dflash-19da6d.md.",
         "IQ2 grid row 6186 moves to bottom R0281-IQ2: live target-AR c1 comparison distinct from grouped prefill/local64 rejection; preserve session-vs-low-level default distinction and compact multi-row fallback. Host grid node plus three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T211132.290595Z-cleanup-refactor-r0281-iq2-1b9890.md.",
         "Fusion/reducer rows 6183/6184/6185 consolidate into R0281-FUSION with distinct live controls: head/writer chain separate; wave-local requires split+gate, so gate-off comparison must disable wave-local. Both gfx11 defaults and unfused chains unchanged. Fake-runtime node plus four unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210758.730816Z-cleanup-refactor-r0281-fusion-33ebfb.md.",
@@ -7574,7 +7575,7 @@
         {
           "line": 6188,
           "text": "| Qwen tokenizer EOS discovery | The PARO generator falls back to looking up `<|im_end|>` and `<|endoftext|>` because `tokenizers.Tokenizer.from_file()` does not expose `generation_config.json` EOS metadata. | The fallback recognizes both Qwen EOS ids, preserves explicit scalar/sequence metadata first, and deliberately avoids unrelated model-family markers. | Remove the string lookup once the Qwen model plugin owns and supplies normalized BOS/EOS/PAD metadata from `generation_config.json` / `tokenizer_config.json` to generation and sampling. |",
-          "status": "pending"
+          "status": "implemented-plugin-metadata-and-request-eos"
         },
         {
           "line": 6189,

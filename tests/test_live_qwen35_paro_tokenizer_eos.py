@@ -11,6 +11,7 @@ from tokenizers import Tokenizer
 from tokenizers.models import WordLevel
 
 from hipengine.generation import GenerationRequest
+from hipengine.models.qwen35 import QWEN35_PARO_MOE
 from hipengine.generation.qwen35_paro import (
     _is_eos,
     _request_with_tokenizer_eos,
@@ -51,6 +52,21 @@ _END_OF_TEXT = chr(60) + chr(124) + "endoftext" + chr(124) + chr(62)
 _S_END = "</s>"
 
 
+def _model_tokenizer(tmp_path: Path):
+    tokenizer = Tokenizer(WordLevel(
+        vocab={
+            "[UNK]": 0,
+            _END_OF_TEXT: 248044,
+            _IM_START: 248045,
+            _IM_END: 248046,
+            _S_END: 248047,
+        },
+        unk_token="[UNK]",
+    ))
+    tokenizer.save(str(tmp_path / "tokenizer.json"))
+    return QWEN35_PARO_MOE.load_tokenizer(tmp_path)
+
+
 def _request(**overrides: Any) -> GenerationRequest:
     values: dict[str, Any] = {
         "prompts": ("hello",),
@@ -81,17 +97,8 @@ def test_eos_token_id_attribute_accepts_sequences_and_ignores_invalid_ids() -> N
     assert _tokenizer_eos_ids(tk) == (42, 43)
 
 
-def test_qwen_chat_tokenizer_resolves_im_end_and_endoftext() -> None:
-    # The bug on main: <|im_end|> is the turn terminator but was never looked
-    # up, so chat generations never stopped at end-of-turn.
-    tk = _HFTokenizer(
-        vocab={
-            _END_OF_TEXT: 248044,
-            _IM_START: 248045,
-            _IM_END: 248046,
-            _S_END: 248047,
-        }
-    )
+def test_qwen_chat_tokenizer_resolves_im_end_and_endoftext(tmp_path: Path) -> None:
+    tk = _model_tokenizer(tmp_path)
     ids = _tokenizer_eos_ids(tk)
     assert ids == (248046, 248044)
     assert _is_eos(tk, 248046)  # <|im_end|>   -> stops (the fix)
@@ -101,18 +108,18 @@ def test_qwen_chat_tokenizer_resolves_im_end_and_endoftext() -> None:
     assert not _is_eos(tk, 846)  # ordinary token -> keeps generating
 
 
-def test_qwen_eos_fallback_supports_token_to_id_mappings() -> None:
+def test_bare_tokenizer_mapping_does_not_trigger_generation_discovery() -> None:
     tk = _MappingTokenizer(token_to_id={_END_OF_TEXT: 248044, _IM_END: 248046})
 
-    assert _tokenizer_eos_ids(tk) == (248046, 248044)
+    assert _tokenizer_eos_ids(tk) == ()
 
 
 def test_tokenizer_without_any_eos_returns_empty() -> None:
     assert _tokenizer_eos_ids(_HFTokenizer(vocab={"hello": 1})) == ()
 
 
-def test_request_uses_primary_qwen_eos_without_overriding_explicit_eos() -> None:
-    tk = _HFTokenizer(vocab={_END_OF_TEXT: 248044, _IM_END: 248046})
+def test_request_uses_primary_qwen_eos_without_overriding_explicit_eos(tmp_path: Path) -> None:
+    tk = _model_tokenizer(tmp_path)
     inferred = _request_with_tokenizer_eos(_request(), tk)
 
     assert inferred.eos_token_id == 248046
@@ -120,7 +127,7 @@ def test_request_uses_primary_qwen_eos_without_overriding_explicit_eos() -> None
     assert _request_with_tokenizer_eos(explicit, tk) is explicit
 
 
-def test_tokenizers_runtime_interface_resolves_qwen_eos_ids() -> None:
+def test_tokenizers_runtime_interface_resolves_qwen_eos_ids(tmp_path: Path) -> None:
     tk = Tokenizer(
         WordLevel(
             vocab={
@@ -134,7 +141,9 @@ def test_tokenizers_runtime_interface_resolves_qwen_eos_ids() -> None:
     )
 
     assert not hasattr(tk, "eos_token_id")
-    assert _tokenizer_eos_ids(tk) == (248046, 248044)
+    assert _tokenizer_eos_ids(tk) == ()
+    tk.save(str(tmp_path / "tokenizer.json"))
+    assert _tokenizer_eos_ids(QWEN35_PARO_MOE.load_tokenizer(tmp_path)) == (248046, 248044)
 
 
 def _find_paro_model_fixture() -> Path | None:
@@ -163,7 +172,7 @@ def test_paro_tokenizer_eos_integration() -> None:
     assert _PARO_MODEL is not None
     generation_config = json.loads((_PARO_MODEL / "generation_config.json").read_text())
     tokenizer_config = json.loads((_PARO_MODEL / "tokenizer_config.json").read_text())
-    tk = Tokenizer.from_file(str(_PARO_MODEL / "tokenizer.json"))
+    tk = QWEN35_PARO_MOE.load_tokenizer(_PARO_MODEL)
     ids = _tokenizer_eos_ids(tk)
 
     assert generation_config["eos_token_id"] == [248046, 248044]

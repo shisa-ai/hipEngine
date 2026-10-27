@@ -304,7 +304,7 @@ def test_qwen35_paro_host_sampler_resolves_tokenizer_eos_for_thinking_budget(mon
     calls = []
 
     class FakeSession:
-        tokenizer = SimpleNamespace(token_to_id=lambda token: 99 if token == "<|endoftext|>" else None)
+        tokenizer = SimpleNamespace(eos_token_id=(99,))
 
         def __init__(self, runner, *, max_sequence_length, **kwargs):
             pass
@@ -2407,7 +2407,7 @@ def test_qwen35_paro_generator_keeps_sparse_live_slots_native(monkeypatch) -> No
     )
 
     class FakeSession:
-        tokenizer = SimpleNamespace(token_to_id=lambda token: 999 if token == "<|endoftext|>" else None)
+        tokenizer = SimpleNamespace(eos_token_id=(999,))
         block_size = 256
 
         def __init__(self, runner, *, max_sequence_length, **kwargs):
@@ -3497,10 +3497,7 @@ def test_qwen35_paro_resident_model_owner_samples_each_row_serially(monkeypatch)
 def test_qwen35_paro_generator_stops_on_im_end_and_reports_eos(monkeypatch) -> None:
     class FakeSession:
         tokenizer = SimpleNamespace(
-            token_to_id=lambda token: {
-                "<|endoftext|>": 248044,
-                "<|im_end|>": 248046,
-            }.get(token)
+            eos_token_id=(248046, 248044),
         )
 
         def __init__(self, runner, *, max_sequence_length, **kwargs):
