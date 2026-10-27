@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 Qwen3.8 compact-peer GDN rollback seam
-
-- Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route
-  right-sizes normalized Q/K to K-head cardinality and is bit-identical to the
-  peer-wave oracle, but differs slightly from scalar-exact direct LDS32
-  (maximum BF16 output 0.001953125, FP32 state 2.24e-8). Keep
-  `chain_lds32_direct_nonvolatile` as the explicit exact selector through one
-  release window and retain both primitive chains permanently as numerical
-  fallbacks.
-- The gfx1151 1,024-row recurrence cap is evidence, not a universal tuning
-  constant: unchunked compact wins at 512/1K but loses 8.26% at 4K; state-carry
-  chunking restores a 1.422x complete-chain win. Revisit 1K only during P4's
-  full 128/256/512/1K chunk sweep, with peer-bit/state exactness, scalar-oracle
-  bounds, 512/1K/4K full-engine gates, and the natural category suite. Do not
-  remove or widen the cap from a single-prompt timing.
-
 ## gfx1151 Qwen3.8 role-qualified Q6 rollback seams
 
 - Added 2026-08-15 after all-planar Q6 improved 512/1K/4K prefill by
@@ -10556,9 +10540,14 @@ The fallback is a supported numerical route, not release-window debt.
 `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` entry, so its activation, weight
 tile and output planes are independently allocated. The gfx1151 MoE owner-slot
 policy and gfx1100 dense arena do not establish safe reuse for this geometry.
+The 2026-08-16 memory-parity investigation recorded final-logit changes under
+both dense owner-slot and single-arena aliases, plus trajectory divergence in
+other reuse attempts; dedicated storage preserves that observed boundary.
+See `worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md`.
 Q5 already casts dead recurrent-output input in place; no persistent F16
-weight copy is needed. **Clearing action:** establish a dense gfx1151 lifetime
-plan covering all active producers, then alias stage-disjoint planes and
+weight copy is needed. **Clearing action:** reproduce and isolate those alias
+failures while establishing a dense gfx1151 lifetime plan covering all active
+producers, then alias stage-disjoint planes and
 remove only proven-redundant allocation owners. Exercise non-anchor and
 512/1K/4K lengths, pairwise live-range overlap, full-attention/recurrent/FFN
 handoffs and teardown. Run

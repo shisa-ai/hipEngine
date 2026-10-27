@@ -5791,18 +5791,20 @@
       "start_line": 4845,
       "end_line": 4860,
       "sha256": "4149ea4b5b545d5a3834c1ce3eb114870a960a1aaf8fbf38a9e265cb12a40e32",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt",
+      "evidence": [
+        "Explicit exact nonvolatile LDS32 is a required registered numerical fallback, not a temporary release-window rollback; compact-peer row1024 state-carry cap is supported backend policy. Optional retuning is not cleanup debt. Policies still select compact-peer for dense Q4_K_M/Q4_K_S geometry; chunk pointers/state/fallback tests pass. Removed stale ledger without runtime change. While reading adjacent policy, corrected R0220 deferred note with observed dense alias final-logit/trajectory failures from 20260816 memory-parity entry; no new numerical/performance claim. Worklog: worklog/entries/20261027T183344.042619Z-cleanup-refactor-r0222-98571f.md."
+      ],
       "subitems": [
         {
           "line": 4847,
           "text": "- Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 4854,
           "text": "- The gfx1151 1,024-row recurrence cap is evidence, not a universal tuning",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
