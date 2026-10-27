@@ -3285,16 +3285,16 @@ category and control/ownership gates before closing this entry.
   selection resolves to an immutable variant manifest through
   model/backend/quant plugin plans, with per-scope strict fallback and exact-key
   registry validation. `LLM.execution_profile_manifest_sha256` and server model
-  discovery expose the resolution. To avoid an unannounced behavior change
-  during calibration, an omitted profile temporarily bypasses plan resolution
-  and preserves the pre-profile package selection. That compatibility behavior
-  is not a fourth named profile. `HIPENGINE_EXECUTION_PROFILE` is the sole
+  discovery expose the resolution. `HIPENGINE_EXECUTION_PROFILE` is the sole
   environment adapter; explicit API/CLI values win.
-- 2026-09-12 (v0.5.0): an omitted profile now resolves to `production` for
-  every combination with a registered strict+production plan (seven at this
-  writing; the list is in `EXECUTION-PROFILES.md` §2.1). The named default, the
-  strict fallback, and the batch-invariant fallback are all reachable, and the
-  API/server docs name the default.
+- An omitted profile resolves to `production` when both strict and production
+  plans are registered, or to `strict` when that production plan records a
+  qualification failure. If either plan is missing, resolution returns `None`
+  and preserves pre-profile package selection. This compatibility path is not
+  a fourth named profile and does not prevent the implemented model from running.
+  `tests/test_unit_execution_profile_defaults.py` and the runtime/quarantine
+  tests cover these distinct cases; do not replace the fallback with blanket
+  production selection for combinations without plans.
 - Removal trigger for the remaining legacy path: after P4 re-certifies or
   replaces every current non-exact default so that every shipped
   model/backend/quant has a registered plan, and one release window confirms
