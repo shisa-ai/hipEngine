@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -117,6 +119,56 @@ def test_fast_review_manifest_is_unselected_with_strict_fallback() -> None:
     assert verifier["selected_variant"] == "b1_graph_off_fast_d64_candidate"
     assert verifier["strict_fallback_variant"] == "b1_graph_off_strict_exact"
     assert len(result["candidate_review_sha256"]) == 64
+
+
+def test_simultaneous_evaluator_is_absent() -> None:
+    assert not hasattr(mtp_paro_verifier_numerics, "run")
+    assert callable(mtp_paro_verifier_numerics.run_sequential)
+
+
+def test_cli_dispatches_sequential_evaluator(tmp_path, monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_sequential(**kwargs):
+        calls.append(kwargs)
+        return {
+            "status": "passed",
+            "aggregate": {
+                "rows": 2,
+                "mean_kl": 0.0,
+                "max_kl": 0.0,
+                "top1_agreement": 1.0,
+            },
+            "first_decision_mismatch": None,
+        }
+
+    monkeypatch.setattr(
+        mtp_paro_verifier_numerics, "run_sequential", fake_run_sequential
+    )
+    out = tmp_path / "gate.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mtp_paro_verifier_numerics",
+            "--model",
+            "/models/gguf/fixture.gguf",
+            "--prompt-name",
+            "fixture",
+            "--decode-tokens",
+            "4",
+            "--out",
+            str(out),
+        ],
+    )
+
+    assert mtp_paro_verifier_numerics.main() == 0
+    assert len(calls) == 1
+    assert calls[0]["prompt_name"] == "fixture"
+    assert calls[0]["decode_tokens"] == 4
+    assert calls[0]["backend"] == "hip_gfx1100"
+    assert calls[0]["prompt_tokens_file"] is None
+    assert json.loads(out.read_text(encoding="utf-8"))["status"] == "passed"
 
 
 def test_verifier_capture_reads_materialized_verify_logits(monkeypatch) -> None:

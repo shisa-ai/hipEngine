@@ -7391,18 +7391,6 @@ should be boring.
   long/lifecycle, and same-host economics gates; never select by prompt or live
   acceptance.
 
-## PARO MTP verifier numerical evaluator migration (2026-08-24)
-
-- `scripts/mtp_paro_verifier_numerics.py` temporarily retains the original
-  simultaneous two-session `run()` beside the sequential `run_sequential()`
-  selected by the CLI. The simultaneous owner needs about 85% W7900 VRAM with
-  the proposer and timed out during setup; it remains only for bisection while
-  the sequential strict-capture/fast-replay evaluator is qualified.
-- **Ready:** `run_sequential()` now passes the complete 10-prompt/three-repeat
-  D64 gate plus focused strict schedule/commit and state-owner regressions.
-  Remove the old simultaneous `run()` in the next cleanup unit; keep only the
-  sequential evaluator.
-
 ## SPECDEC2 post-reject cooldown experiment (2026-08-29)
 
 - `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` (default off) forces a

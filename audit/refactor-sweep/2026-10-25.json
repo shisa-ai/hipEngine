@@ -11204,18 +11204,18 @@
       "start_line": 8746,
       "end_line": 8757,
       "sha256": "05f410c56d51735ba67c0cab630ee9bb0eedfd7726ca1f941d5d70f32767b429",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Deleted unused simultaneous run(); AST comparison confirms all surviving evaluator/helper/CLI bodies unchanged. Focused CLI dispatch/report tests, help, docs/audit pass. Worklog: worklog/entries/20261027T045201.569971Z-cleanup-refactor-r0390-19a056.md."],
       "subitems": [
         {
           "line": 8748,
           "text": "- `scripts/mtp_paro_verifier_numerics.py` temporarily retains the original",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8753,
           "text": "- **Ready:** `run_sequential()` now passes the complete 10-prompt/three-repeat",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
