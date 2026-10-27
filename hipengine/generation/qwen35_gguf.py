@@ -484,25 +484,6 @@ def _gguf_prefix_gapped_fast_route_available(lease: Any, context_tokens: int) ->
     )
 
 
-_GGUF_PREFIX_BATCHED_SUFFIX_ENV = "HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX"
-
-
-def _gguf_prefix_batched_suffix_enabled() -> bool:
-    """Batched reused-suffix (\"extend\") prefill; the serial loop is the fallback.
-
-    Default on: the packed paged prefill route accepts restored mid-sequence
-    state at any context length. ``HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0``
-    restores the serial ``session.step()`` suffix loop for rollback/bisection.
-    """
-
-    return os.environ.get(_GGUF_PREFIX_BATCHED_SUFFIX_ENV, "1").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-
 def _gguf_prefix_batched_suffix_chunk_eligible(chunk: tuple[int, ...]) -> bool:
     """Batch a reused suffix only when it is at least two rows wide.
 
@@ -11476,10 +11457,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     "prefill_batch_native",
                     None,
                 )
-                if (
-                    _gguf_prefix_batched_suffix_enabled()
-                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
-                )
+                if _gguf_prefix_batched_suffix_chunk_eligible(chunk)
                 else None
             )
             if callable(prefill_batch):
@@ -11656,10 +11634,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     "prefill_batch_native",
                     None,
                 )
-                if (
-                    _gguf_prefix_batched_suffix_enabled()
-                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
-                )
+                if _gguf_prefix_batched_suffix_chunk_eligible(chunk)
                 else None
             )
             if callable(prefill_batch):

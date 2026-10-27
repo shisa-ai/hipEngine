@@ -2337,36 +2337,6 @@ the allocation repair. The observations and proposal below are historical.
   Fixing that is the real prize - it would make every hit pay and let the
   retained working set grow.
 
-## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18, resolved 2026-09-18)
-
-- `_prefill_native_chunk` has two routes for a chunk: a batched call through
-  `prefill_batch_native`, and a serial loop that calls `session.step()` once per
-  token. A row with `prefix_reused_tokens` takes the serial loop and never
-  reaches the batched route. Measured cost on `zbook`/`gfx1151`: **34.0 ms per
-  suffix token** (31.5-34.5 across all 16 hit turns of the prefix-cache A/B),
-  against **1.8 ms/token** for the batched full prefill it replaces. That single
-  route is why the measured A/B is net-negative (+6.4% wall overall, ShareGPT
-  +22.7%) even though reuse resolves 16 of 27 lookups.
-- **Resolved 2026-09-18:** the reused branch of both reused-suffix routes now
-  prefills batched via `prefill_batch_native` (the <1024 paged-prefill policy
-  gate was the only blocker; see the resolution note in "Reused-suffix prefill
-  has two routes and only one is slow" above). Shared-prefix admission no longer
-  asks for a contiguous suffix run: the paged route walks the block table, so
-  `shared_admission_noncontiguous` cannot fire. The serial loop remains as the
-  decline path for `_disable_incremental_prefill` (which fails closed for reused
-  rows by design) and as the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0` rollback.
-- Removal scope: the serial loop in `_prefill_native_chunk` and
-  `_prefill_processed_argmax_chunk`, the `prefix_c1_suffix_prefill_chunks` /
-  `prefix_c1_suffix_prefill_tokens` / `processed_argmax_prefix_c1_suffix_*`
-  counters that only it feeds, and the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX`
-  flag, once the served multi-turn A/B re-measurement with the wide retained
-  set (`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) shows the batched route
-  holding exactness and the win in production shapes, and the
-  `scripts/gguf_prefix_reuse_gate.py` gate passes at >=1024 total context on
-  gfx1151 and gfx1100.
-- The invariant stands while the loop lives: a reused row's prefix pages are
-  shared with another request, so no fallback may write them.
-
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
 - Resolved 2026-09-17: an omitted `--speculative-candidate-budget`

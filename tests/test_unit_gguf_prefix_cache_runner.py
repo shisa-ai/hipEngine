@@ -402,10 +402,10 @@ def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> 
     runner.close()
 
 
-def test_reused_suffix_prefill_falls_back_to_serial_when_disabled(
+def test_single_token_reused_suffix_keeps_serial_capability_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0 restores the serial suffix loop."""
+    """A single suffix token still uses the scalar leaf, independent of old env."""
 
     monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX", "0")
     owner = _FakePrefixOwner()
@@ -461,7 +461,7 @@ def test_reused_suffix_prefill_falls_back_to_serial_when_disabled(
     runner.close()
 
 
-def test_batched_reused_suffix_splits_at_an_interior_prompt_boundary() -> None:
+def test_batched_reused_suffix_splits_at_an_interior_prompt_boundary(monkeypatch) -> None:
     """A suffix crossing the deepest prompt boundary captures it mid-prefill.
 
     The snapshot is only capturable while the session sits exactly on the
@@ -469,6 +469,7 @@ def test_batched_reused_suffix_splits_at_an_interior_prompt_boundary() -> None:
     in between: [reused, boundary) then [boundary, prompt_end).
     """
 
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX", "0")
     owner = _FakePrefixOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
     runner.configure_engine_loop(

@@ -377,7 +377,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` | narrow default | Prefix cache | Number of completed-source snapshots the radix prefix cache retains; defaults to `max(1, capacity)`. A wider count retains more state and pins more KV pages. The state-byte ceiling also limits retention; it does not include the pinned KV pages. |
 | `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` | Dense: `1073741824` (1 GiB); DMS: `4294967296` (4 GiB); Flash-Next: half of free device memory at the first checkpoint, at most 32 GiB | Prefix cache | Byte cap on retained prefix snapshots, allocated on demand. The DMS cap includes host-owned cold prompt KV and hidden rows for prefix extension. An explicit value overrides either default; lower it on memory-constrained hosts. |
 | `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` | `512` | Prefix cache | Maximum gapped-suffix tokens a prefix-cache hit may reuse; measured against the full prefill a hit replaces. |
-| `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX` | true | Retained default with rollback opt-out | Batched reused-suffix ("extend") prefill; `0` restores the serial `session.step()` suffix loop for rollback/bisection. |
 | `HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` | `1..8` | Diagnostic | Comma/space-separated override of the shared-slot AR physical width set; the packaged production default is every width 1-8 after direct c3/c5/c6/c7 lifecycle certification. |
 | `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY` | true | Retained default with rollback opt-out | Next-N accepted-tail KV write-only path; `0` rolls back to the full write. |
 | `HIPENGINE_GGUF_PACKED_LAYER_OUTER` | true | Retained default with rollback opt-out | Session-paired (one pair per session) packed layer-outer executor; `0` restores the per-layer-keyed chunk-outer rollback owner. |
@@ -1147,6 +1146,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX` is retired and ignored. Reused suffixes
+  use the owner's batched method when eligible; one-token suffixes and owners
+  without that method retain the scalar fallback.
 
 - `HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS` is retired and ignored.
   Registered checked full-row selection follows the DPP family and its shape

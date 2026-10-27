@@ -2026,28 +2026,28 @@
       "start_line": 2323,
       "end_line": 2352,
       "sha256": "2fe5d5b846ad394eba5211ce9b181c507d7c106e2dc0e9abbb2f8a626d33d049",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-flag-retired",
+      "evidence": ["Removed global suffix opt-out; kept scalar one-token/missing-method capability fallback and live counters, so blanket loop deletion premise is not debt. RED/GREEN prefix-boundary tests, full CPU bundle and public gfx1151 dense-Qwen completed-prefix hit with batched suffix and zero teardown allocations pass. No new timing or gfx1100 public claim. Shared-prefix immutability preserved. Worklog: worklog/entries/20261027T124046.731843Z-cleanup-refactor-r0076-a28f64.md."],
       "subitems": [
         {
           "line": 2325,
           "text": "- `_prefill_native_chunk` has two routes for a chunk: a batched call through",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 2333,
           "text": "- **Resolved 2026-09-18:** the reused branch of both reused-suffix routes now",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 2341,
           "text": "- Removal scope: the serial loop in `_prefill_native_chunk` and",
-          "status": "pending"
+          "status": "resolved-flag-retired-fallback-kept"
         },
         {
           "line": 2350,
           "text": "- The invariant stands while the loop lives: a reused row's prefix pages are",
-          "status": "pending"
+          "status": "not-debt-retained"
         }
       ]
     },
