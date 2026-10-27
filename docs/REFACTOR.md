@@ -3227,15 +3227,14 @@ category and control/ownership gates before closing this entry.
 
 ## SPECDEC2 dense NextN host/device proposal duplication
 
-- Added 2026-08-25 with the S4 C2/C4 device-candidate handoff. The exact
-  physically batched NextN model transition currently has host-materialized and
-  device-top1 entry points in `qwen35_gguf_nextn.py`; they deliberately share
-  weights/state/session ownership but duplicate the embedding/norm/fusion/
-  backbone launch sequence while S4 keeps the old host path as an oracle.
-- Removal trigger: after S4 device accept/commit and graph/eager agreement pass,
-  extract one enqueue-only physical transition primitive with host/device result
-  adapters. Keep the strict host materialization oracle callable from tests, but
-  remove duplicate model-launch bodies from production selection.
+- Host-materialized and device-top1 batch entry points now call
+  `_enqueue_batch_hidden_transition` for embedding, normalization, fusion and
+  backbone execution. Each adapter retains token staging, synchronization/scoring
+  options, cursor publication and result materialization. The host oracle remains
+  callable without a duplicate model-launch body.
+- Remaining validation: public device accept/commit, graph/eager agreement and
+  cancellation/cleanup checks. CPU transition-order and provider tests preserve
+  the refactor contract but do not establish public GPU execution.
 
 ## SPECDEC2 P4 device-chain qualification oracle
 

@@ -1186,6 +1186,82 @@ class Qwen35GGUFNextNExecutor:
             logits=logits,
         )
 
+    def _enqueue_batch_hidden_transition(
+        self,
+        target_hidden: Tensor,
+        sessions: Sequence[Any],
+        positions: Sequence[int],
+        **step_options: Any,
+    ) -> int:
+        """Enqueue the shared NextN transition from pre-staged token IDs.
+
+        Result adapters own token staging, synchronization policy and result
+        materialization. Return the hidden-row byte stride for their views.
+        """
+        rows = len(sessions)
+        launch_gguf_embedding(
+            self.weights.fallback("token_embedding"),
+            self._token_buf.ptr,
+            self._embedding_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            vocab_size=self.vocab_size,
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            self._embedding_buf.ptr,
+            self.weights.nextn("enorm").allocation().tensor.ptr,
+            self._enorm_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            target_hidden.ptr,
+            self.weights.nextn("hnorm").allocation().tensor.ptr,
+            self._hnorm_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            runtime=self.runtime,
+        )
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        for row in range(rows):
+            destination = self._fusion_buf.ptr + row * 2 * hidden_nbytes
+            self.runtime.memcpy_async(
+                destination,
+                self._enorm_buf.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+            self.runtime.memcpy_async(
+                destination + hidden_nbytes,
+                self._hnorm_buf.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+        launch_gguf_linear(
+            self.weights.nextn("eh_proj"),
+            self._fusion_buf.ptr,
+            self._fused_buf.ptr,
+            rows=rows,
+            in_features=2 * self.hidden_size,
+            out_features=self.hidden_size,
+            runtime=self.runtime,
+        )
+        self._batch_session.step_hidden_batch_native(
+            self._fused_buf.ptr,
+            sessions=sessions,
+            positions=positions,
+            output_hidden_ptr=self._final_hidden_buf.ptr,
+            logits_ptr=self._logits_buf.ptr,
+            **step_options,
+        )
+        return hidden_nbytes
+
     def _run_step_batch_impl(
         self,
         request_ids: Sequence[int],
@@ -1274,65 +1350,8 @@ class Qwen35GGUFNextNExecutor:
                     library=self._batch_session._runtime_state_library,
                     runtime=self.runtime,
                 )
-        launch_gguf_embedding(
-            self.weights.fallback("token_embedding"),
-            self._token_buf.ptr,
-            self._embedding_buf.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            vocab_size=self.vocab_size,
-            runtime=self.runtime,
-        )
-        gguf_rmsnorm_bf16_f32_weight(
-            self._embedding_buf.ptr,
-            self.weights.nextn("enorm").allocation().tensor.ptr,
-            self._enorm_buf.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            eps=self.weights.config.rms_norm_eps,
-            runtime=self.runtime,
-        )
-        gguf_rmsnorm_bf16_f32_weight(
-            target_hidden.ptr,
-            self.weights.nextn("hnorm").allocation().tensor.ptr,
-            self._hnorm_buf.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            eps=self.weights.config.rms_norm_eps,
-            runtime=self.runtime,
-        )
-        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
-        for row in range(rows):
-            destination = self._fusion_buf.ptr + row * 2 * hidden_nbytes
-            self.runtime.memcpy_async(
-                destination,
-                self._enorm_buf.ptr + row * hidden_nbytes,
-                hidden_nbytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                0,
-            )
-            self.runtime.memcpy_async(
-                destination + hidden_nbytes,
-                self._hnorm_buf.ptr + row * hidden_nbytes,
-                hidden_nbytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                0,
-            )
-        launch_gguf_linear(
-            self.weights.nextn("eh_proj"),
-            self._fusion_buf.ptr,
-            self._fused_buf.ptr,
-            rows=rows,
-            in_features=2 * self.hidden_size,
-            out_features=self.hidden_size,
-            runtime=self.runtime,
-        )
-        self._batch_session.step_hidden_batch_native(
-            self._fused_buf.ptr,
-            sessions=sessions,
-            positions=pos,
-            output_hidden_ptr=self._final_hidden_buf.ptr,
-            logits_ptr=self._logits_buf.ptr,
+        hidden_nbytes = self._enqueue_batch_hidden_transition(
+            target_hidden, sessions, pos,
             score_output=bool(score_output),
             kv_write_only=bool(kv_write_only),
         )
@@ -1531,70 +1550,13 @@ class Qwen35GGUFNextNExecutor:
         sessions = tuple(self._batch_sessions[slot] for slot in slots)
         if tuple(int(session.position) for session in sessions) != pos:
             raise ValueError("device NextN batch positions do not match provider cursors")
-        launch_gguf_embedding(
-            self.weights.fallback("token_embedding"),
-            self._token_buf.ptr,
-            self._embedding_buf.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            vocab_size=self.vocab_size,
-            runtime=self.runtime,
-        )
-        gguf_rmsnorm_bf16_f32_weight(
-            self._embedding_buf.ptr,
-            self.weights.nextn("enorm").allocation().tensor.ptr,
-            self._enorm_buf.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            eps=self.weights.config.rms_norm_eps,
-            runtime=self.runtime,
-        )
-        gguf_rmsnorm_bf16_f32_weight(
-            target_hidden.ptr,
-            self.weights.nextn("hnorm").allocation().tensor.ptr,
-            self._hnorm_buf.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            eps=self.weights.config.rms_norm_eps,
-            runtime=self.runtime,
-        )
-        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
-        for row in range(rows):
-            destination = self._fusion_buf.ptr + row * 2 * hidden_nbytes
-            self.runtime.memcpy_async(
-                destination,
-                self._enorm_buf.ptr + row * hidden_nbytes,
-                hidden_nbytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                0,
-            )
-            self.runtime.memcpy_async(
-                destination + hidden_nbytes,
-                self._hnorm_buf.ptr + row * hidden_nbytes,
-                hidden_nbytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                0,
-            )
-        launch_gguf_linear(
-            self.weights.nextn("eh_proj"),
-            self._fusion_buf.ptr,
-            self._fused_buf.ptr,
-            rows=rows,
-            in_features=2 * self.hidden_size,
-            out_features=self.hidden_size,
-            runtime=self.runtime,
-        )
         hot_vocab = (
             getattr(self.weights, "hot_vocab", None)
             if bool(getattr(self, "_lm_head_top1_mapped", False))
             else None
         )
-        self._batch_session.step_hidden_batch_native(
-            self._fused_buf.ptr,
-            sessions=sessions,
-            positions=pos,
-            output_hidden_ptr=self._final_hidden_buf.ptr,
-            logits_ptr=self._logits_buf.ptr,
+        hidden_nbytes = self._enqueue_batch_hidden_transition(
+            target_hidden, sessions, pos,
             score_output=True,
             score_weight=None if hot_vocab is None else hot_vocab.lm_head,
             score_vocab_size=None if hot_vocab is None else int(hot_vocab.size),

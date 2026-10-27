@@ -5269,18 +5269,18 @@
       "start_line": 4452,
       "end_line": 4463,
       "sha256": "68f5637d5e25e203fa50a3de67e91b2e6ce5261828ce8a5c6501c30ff1fadd6a",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Host/device batched adapters now share embedding/norm/fusion/backbone helper; staging, cursor publication, synchronization/scoring options and result materialization preserved. New launch-order/offset/options test, full NextN provider/MTP2 seam files and docs/audit pass. Public graph/eager accept/commit and lifecycle checks remain open. Worklog: worklog/entries/20261027T161809.092938Z-cleanup-refactor-r0202-12f6f8.md."],
       "subitems": [
         {
           "line": 4454,
           "text": "- Added 2026-08-25 with the S4 C2/C4 device-candidate handoff. The exact",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 4459,
           "text": "- Removal trigger: after S4 device accept/commit and graph/eager agreement pass,",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },
