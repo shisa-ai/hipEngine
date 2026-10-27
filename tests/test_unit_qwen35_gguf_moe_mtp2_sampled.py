@@ -529,7 +529,7 @@ def test_moe_staged_c2_refuses_a_sampled_row_by_name() -> None:
     adapter._sampling_modes()[8] = "sampled"
     frontier = SimpleNamespace(target_batch=object())
 
-    with pytest.raises(MoeSampledRouteUnsupportedError):
+    with pytest.raises(NotImplementedError, match="uses execute_cycle"):
         adapter.execute_target_frontier(
             plan,
             frontier,

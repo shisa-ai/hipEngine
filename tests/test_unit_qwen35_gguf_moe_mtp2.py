@@ -108,7 +108,6 @@ def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch) -> Non
     adapter._prompt_sinks = {}
     adapter._intents = {}
     adapter._disabled_requests = set()
-    adapter._batch_accept_workspace = None
     adapter._resident_charge_tokens = {}
     adapter._draft_kv_slabs = {}
     target = SimpleNamespace(runtime=object(), runner=SimpleNamespace(hidden_size=4),

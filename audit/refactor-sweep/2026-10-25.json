@@ -5045,7 +5045,7 @@
       "end_line": 4290,
       "sha256": "42662421d0d85842bb3a3bf57b37f1ae774d024a56284154c2709dcd73259cc3",
       "status": "partial",
-      "evidence": ["Factory bypass verified at capacities 2/4/8. Removed obsolete legacy C2 proposal body and staged capability/claims advertisement; C1 complete cycles and multi-slot factory unchanged. Required lifecycle method explicitly refuses unsupported staged proposal. Full MoE/sampled/upload/provider/lifetime tests and docs/audit pass. Target/accept diagnostics and batch resources still require extraction; public lifecycle remains open. Worklogs: worklog/entries/20261027T152644.315495Z-cleanup-refactor-r0192-98d0bd.md; worklog/entries/20261027T153516.382904Z-cleanup-refactor-r0192-proposal-94bb75.md."],
+      "evidence": ["Removed legacy C2 proposal/target bodies, physical repair, private accept workspace/uploads and dead proposal fields. Required lifecycle refusal methods preserve interface validation; C1 cycle/recovery/slabs and generalized multi-slot factory remain. Full MoE/sampled/upload/provider/lifetime/generalized seam tests and docs/audit pass. Public C2 rejection/cancellation/cleanup remains open. Worklogs: worklog/entries/20261027T153516.382904Z-cleanup-refactor-r0192-proposal-94bb75.md; worklog/entries/20261027T154355.850123Z-cleanup-refactor-r0192-target-b8828a.md."],
       "subitems": [
         {
           "line": 4281,
@@ -5055,7 +5055,7 @@
         {
           "line": 4287,
           "text": "- Removal trigger: after the batched provider passes complete C2 production and",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

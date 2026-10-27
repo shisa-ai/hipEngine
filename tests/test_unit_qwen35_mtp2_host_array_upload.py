@@ -13,7 +13,6 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
-from hipengine.generation import qwen35_gguf_moe_mtp2 as moe_mtp2
 from hipengine.generation import qwen35_gguf_mtp2 as mtp2
 from hipengine.generation.qwen35_gguf_moe_mtp2 import Qwen35GGUFMoEMTP2Adapter
 from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
@@ -48,7 +47,11 @@ def test_mtp2_generation_has_no_synchronous_raw_host_pointer_upload(
         and isinstance(node.func, ast.Name)
         and node.func.id == "copy_host_array_to_device"
     ]
-    assert owning_calls
+    if relative_path.endswith("qwen35_gguf_mtp2.py"):
+        assert owning_calls
+    else:
+        # The C1 adapter no longer uploads a private C2 accept payload.
+        assert not owning_calls
     for call in owning_calls:
         assert len(call.args) >= 2
         source = call.args[1]
@@ -170,22 +173,9 @@ def test_upload_accept_array_rejects_capacity_overflow_before_upload(
     assert calls == []
 
 
-def test_moe_upload_accept_array_uses_the_owning_upload(monkeypatch) -> None:
-    calls: list[tuple[DeviceBuffer, np.ndarray, int]] = []
-
-    def upload(buffer, array, nbytes, *, runtime) -> None:
-        _ = runtime
-        calls.append((buffer, array, int(nbytes)))
-
-    monkeypatch.setattr(moe_mtp2, "copy_host_array_to_device", upload)
-    tensor = SimpleNamespace(ptr=0x5000, numel=3, dtype=DType.INT32)
-    values = np.arange(6, dtype=np.int32)[::2]
-
-    Qwen35GGUFMoEMTP2Adapter._upload_accept_array(tensor, values, object())
-
-    assert len(calls) == 1
-    buffer, array, nbytes = calls[0]
-    assert (buffer.ptr, buffer.nbytes, nbytes) == (0x5000, 12, 12)
-    assert array.dtype == np.int32
-    assert array.flags.c_contiguous
-    assert array.tolist() == [0, 2, 4]
+def test_legacy_moe_has_no_private_batch_accept_resources() -> None:
+    for name in (
+        "_upload_accept_array", "_batch_accept_resources",
+        "_accept_target_batch_on_device", "_repair_physical_provider",
+    ):
+        assert not hasattr(Qwen35GGUFMoEMTP2Adapter, name)

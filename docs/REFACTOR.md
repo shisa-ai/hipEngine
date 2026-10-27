@@ -3059,13 +3059,13 @@ fallback count is not a success metric.
   Its obsolete C2 proposal body is removed; the required lifecycle method now
   reports that this adapter owns complete C1 cycles. Multi-slot production
   proposals continue through the generalized adapter.
-- Direct diagnostic tests still exercise the old target and upload helpers.
-  Separate these oracles before deleting `execute_target_frontier`, physical
-  provider repair and batch-accept resources; preserve the C1 cycle, shared slab
-  accounting, failure recovery and release.
-- Removal trigger: after the batched provider passes complete C2 production and
-  lifecycle gates, delete the unreachable capacity-2 methods/branches and keep
-  only the retained C1 adapter plus the capacity-aware factory.
+- The obsolete staged target body, provider repair, batch-accept workspace and
+  upload helpers are removed. Required staged interface methods explicitly
+  refuse direct calls; the complete C1 cycle, shared slab accounting, failure
+  recovery and release remain. Upload contiguity/capacity coverage exercises the
+  generalized adapter now used by multi-slot MoE.
+- Remaining validation: exercise the batched provider through public C2 serving
+  with cancellation, rejection and resource cleanup before closing this entry.
 
 ## SPECDEC2 MoE physical-C2 numerical scope
 
