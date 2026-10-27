@@ -198,20 +198,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   `benchmarks/results/2026-10-06-qwen4exp-gr-k320-full-rows-screen.md`.
 
 
-## Qwen4Exp MT-8 rollback/replay accounting
-
-- The CPU-only `scripts/qwen4exp_mtp_rollback_accounting.py` screen covers a
-  four-token serial Qwen4Exp MTP proposal at every rejection depth, all-reject
-  and full-accept. Target forwards are `1/2/3/4/4`; draft forwards are `4` in
-  every case. Verification stops at the first mismatch and draft rollback is a
-  cursor trim; restored bytes, restore allocations and per-cycle allocations are
-  zero. Shared resident weights are counted once, not once per case.
-- This is diagnostic-only. No duplicate target replay or dirty-destination
-  full-state restore exists in the current route, so no production change is
-  justified. Reopen only with a transaction redesign that introduces distinct
-  state/KV/recurrent ownership or a real dirty-destination restore path.
-  Evidence: `benchmarks/results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/`.
-
 
 ## Bounded HC grouped-norm F16 publication and rollback
 

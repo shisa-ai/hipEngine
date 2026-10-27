@@ -316,18 +316,18 @@
       "start_line": 313,
       "end_line": 327,
       "sha256": "e18310b0f2652ed62ac9836c6c5ea43ec8733712ddb18fa8694c71a8f06767f1",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": ["Completed diagnostic, no production cleanup target. Current tests/test_unit_qwen4exp_mtp_rollback_accounting.py and script --budget 4 screen pass. Keep accounting tool and immutable benchmarks/results/2026-10-07-qwen4exp-mt8-rollback-replay-accounting/ evidence. Reopen only for a transaction redesign introducing distinct state/KV/recurrent ownership or dirty-destination restore; do not infer physical serving-width guarantees from this serial CPU screen."],
       "subitems": [
         {
           "line": 315,
           "text": "- The CPU-only `scripts/qwen4exp_mtp_rollback_accounting.py` screen covers a",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 321,
           "text": "- This is diagnostic-only. No duplicate target replay or dirty-destination",
-          "status": "pending"
+          "status": "not-debt-retained"
         }
       ]
     },
