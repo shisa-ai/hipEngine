@@ -6422,18 +6422,18 @@
       "start_line": 5327,
       "end_line": 5338,
       "sha256": "0af4df904c686a39a5bec0ffcd01e7a93a9528dbfdbd78659c7533443ceac41b",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Rejection cleanup 8c0e9609b removed runtime policy/test; current Laguna runtime/package have no H7E/ds4x2 route. gguf_iq_source_mmq_prefill.py still registers standalone IQ3 ds4x2 leaf as required. Rejection artifact benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-iq3-d4x2-complete-quality-rejected.json preserved. Docs/audit pass; no kernel/runtime changes."],
       "subitems": [
         {
           "line": 5329,
           "text": "- Cleanup completed 2026-08-02. The temporary exact-M512 owner passed narrow",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5333,
           "text": "- Removed the residual-route resolver/plan fields, tile128 export, optional",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

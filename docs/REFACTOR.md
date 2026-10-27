@@ -4334,18 +4334,6 @@ fallback count is not a success metric.
   trajectory corruption. Revisit the 4,096-row plateau only if a later exact
   owner is non-regressive at 8K+ and keeps memory flat.
 
-## Laguna H7E bounded default-off IQ3 residual-D4 owner
-
-- Cleanup completed 2026-08-02. The temporary exact-M512 owner passed narrow
-  state/trace gates but failed the binding 18-prompt/576-step lane at max KL
-  **5.630805** and general-Japanese top-1 **89.844%**. Promotion timing was
-  skipped.
-- Removed the residual-route resolver/plan fields, tile128 export, optional
-  eager-library fields, qualified/live maps, and runtime test. H6T/IQ4 remain
-  source and required fallbacks. Retain only the separately registered H7E leaf
-  and rejection evidence; reopen only with a materially different repair or
-  representation and a fresh RED/complete-quality contract.
-
 ## Laguna H7Y bounded default-off lane-major SWA cache owner
 
 - Added 2026-08-03 for writer-inclusive qualification of the admitted H7Y
