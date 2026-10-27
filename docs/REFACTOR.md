@@ -45,15 +45,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   slot at that cap and 400 MiB at 262K, so a longer request decodes on its c1
   staging runner instead. Page the pooled index keys through the same block
   table to remove the cap.
-- **A speculative row cannot share a batch step.** MTP rows verify a candidate
-  chain on a request-owned c1 runner. Automatic MTP therefore applies only to a
-  request running alone: the plugin declares greedy and processed-argmax MTP
-  automatic-eligible at one row, an automatic request that arrives while others
-  are registered decodes plainly, and an automatic MTP row is demoted to the
-  batch when another request registers. Let MTP verify rows and AR decode rows
-  share one physical step to remove the demotion. Sampled requests are not
-  selected automatically: their acceptance and economics have not been
-  measured.
 - **Decoding requests slow down while another request prefills a long
   prompt.** The token-budget round runs one full prefill chunk, then one decode
   step, so each decode token waits behind a chunk: two short requests beside a

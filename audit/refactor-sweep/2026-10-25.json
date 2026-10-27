@@ -82,7 +82,8 @@
         {
           "line": 122,
           "text": "- **A speculative row cannot share a batch step.** MTP rows verify a candidate",
-          "status": "pending"
+          "status": "resolved-duplicate-R0010",
+          "evidence": "Shared explicit-MTP/AR target execution is implemented in qwen4_exp_serving_mixed.py and selected by _batch_row under its explicit capability/control. Mixed admission/commit/cancel/lifecycle unit suites pass. R0010 owns the observed-regression opt-in and clearing command; no fresh public performance claim."
         },
         {
           "line": 131,
