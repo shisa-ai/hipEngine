@@ -5044,13 +5044,13 @@
       "start_line": 4279,
       "end_line": 4290,
       "sha256": "42662421d0d85842bb3a3bf57b37f1ae774d024a56284154c2709dcd73259cc3",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Factory bypass verified at capacities 2/4/8 with a failing legacy-constructor sentinel. Full MoE adapter/sampled/host-upload tests and docs/audit pass. Direct diagnostics still use prototype capability/upload helpers; separate oracles and remove staged methods/resources while preserving shared C1 recovery. Public lifecycle and deletion remain open. Worklog: worklog/entries/20261027T152644.315495Z-cleanup-refactor-r0192-98d0bd.md."],
       "subitems": [
         {
           "line": 4281,
           "text": "- Added 2026-08-27 as the first functional physical-C2 seam in",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4287,

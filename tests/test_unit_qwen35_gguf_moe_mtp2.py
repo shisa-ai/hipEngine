@@ -1214,10 +1214,11 @@ def test_moe_prefill_is_unchanged_at_the_original_working_length(monkeypatch) ->
     assert len(harness.freed) == 1
 
 
-def test_moe_adapter_factory_keeps_c1_and_selects_batched_c2() -> None:
+@pytest.mark.parametrize("capacity", [2, 4, 8])
+def test_moe_adapter_factory_keeps_c1_and_selects_batched_owner(capacity, monkeypatch) -> None:
     owner_c1 = SimpleNamespace(capacity=1, generator=SimpleNamespace())
     owner_c2 = SimpleNamespace(
-        capacity=2,
+        capacity=capacity,
         generator=SimpleNamespace(
             execution_profile=SimpleNamespace(value="production"),
             backend="hip_gfx1100",
@@ -1231,6 +1232,11 @@ def test_moe_adapter_factory_keeps_c1_and_selects_batched_c2() -> None:
     }
 
     c1 = create_qwen35_gguf_moe_mtp2_adapter(owner_c1, **kwargs)
+
+    def reject_legacy_construction(*args, **kwargs):
+        raise AssertionError("multi-slot factory reached legacy adapter")
+
+    monkeypatch.setattr(Qwen35GGUFMoEMTP2Adapter, "__init__", reject_legacy_construction)
     c2 = create_qwen35_gguf_moe_mtp2_adapter(owner_c2, **kwargs)
 
     assert isinstance(c1, Qwen35GGUFMoEMTP2Adapter)
