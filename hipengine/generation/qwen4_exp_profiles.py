@@ -274,9 +274,7 @@ _DENSE_WIDE_TAIL_EVIDENCE = (
 def _dense_wide_tail_selection(*, production: bool) -> VariantSelection:
     selected = "coltile8_rowbatch4_f32_f32_out"
     if production:
-        selected = os.environ.get(DENSE_WIDE_TAIL_VARIANT_ENV, "").strip() or _DENSE_WIDE_TAIL_PADDED
-        if selected not in (_DENSE_WIDE_TAIL_PARENT, _DENSE_WIDE_TAIL_PADDED):
-            raise ValueError(f"{DENSE_WIDE_TAIL_VARIANT_ENV} must name the parent or padded F16 variant")
+        selected = _DENSE_WIDE_TAIL_PADDED
     return _selection(
         "linear", _DENSE_WIDE_TAIL_SCOPE, selected,
         "coltile8_rowbatch4_f32_f32_out", "gguf_q8_0",

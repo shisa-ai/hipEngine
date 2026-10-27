@@ -389,8 +389,8 @@
       "start_line": 372,
       "end_line": 394,
       "sha256": "189a981e065452167bebc3f3c682204ff017d6b826b2ff647f9f19668483f7e0",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-manifest-stabilized",
+      "evidence": ["Named production registration now fixes padded selection regardless of pre-registration environment; binder/manifest agreement and strict selections preserved. RED/GREEN focused profiles, full CPU bundle and public padded-tail engagement with prior parent value pass. Launch-time environment reader and post-binder diagnostics remain open. Worklog: worklog/entries/20261027T111041.488466Z-cleanup-refactor-r0017-manifest-e3ca5c.md."],
       "subitems": [
         {
           "line": 374,
@@ -400,7 +400,7 @@
         {
           "line": 380,
           "text": "- `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` is a temporary named-plan",
-          "status": "pending"
+          "status": "partial-registration-reader-removed"
         },
         {
           "line": 386,

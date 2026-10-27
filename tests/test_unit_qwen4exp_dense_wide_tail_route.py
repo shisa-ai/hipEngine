@@ -66,7 +66,7 @@ def test_other_profiles_do_not_admit_padded(kind, quant, monkeypatch):
     assert os.environ[ENV] == PARENT
 
 
-def test_rollback_is_manifested_and_rebind_does_not_leak(monkeypatch):
+def test_named_manifest_is_stable_and_rebind_does_not_leak(monkeypatch):
     result = profile()
     bind(result)
     monkeypatch.setenv(ENV, PARENT)
@@ -75,18 +75,18 @@ def test_rollback_is_manifested_and_rebind_does_not_leak(monkeypatch):
     clear_runtime_profile_registry_for_tests()
     monkeypatch.setenv(ENV, PARENT)
     rollback = profile()
-    assert rollback.manifest_sha256 != result.manifest_sha256
-    assert next(r for r in rollback.manifest["selections"] if r["scope"] == SCOPE)["selected_variant"] == PARENT
+    assert rollback.manifest_sha256 == result.manifest_sha256
+    assert next(r for r in rollback.manifest["selections"] if r["scope"] == SCOPE)["selected_variant"] == PADDED
     bind(rollback)
-    assert os.environ[ENV] == PARENT
+    assert os.environ[ENV] == PADDED
     bind(profile(ExecutionProfile.STRICT))
     assert os.environ[ENV] == PARENT
 
 
-def test_unknown_selection_fails_closed(monkeypatch):
+def test_unknown_legacy_override_does_not_change_named_selection(monkeypatch):
     monkeypatch.setenv(ENV, "unknown")
-    with pytest.raises(ValueError, match="DENSE_WIDE_TAIL_VARIANT"):
-        profile()
+    result = profile()
+    assert next(r for r in result.manifest["selections"] if r["scope"] == SCOPE)["selected_variant"] == PADDED
 
 
 @pytest.mark.parametrize("backend,quant,target,rows,k,n,expected", [
