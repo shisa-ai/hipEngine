@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "kind": "qsa_full_capacity_correctness",
+  "status": "passed_index_only",
+  "performance_claim": false,
+  "source_commit": "918de222121f2f69c17c1bf3bd43ba0260529715",
+  "host": "gfx1151",
+  "backend": "hip_gfx1151",
+  "command": "/tmp/hipengine-dms-public-20261026/env.sh scripts/qwen4_exp_qsa_retrieval_gate.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --index-only --target-tokens 262144 --prefill-chunk-size 4096 --json-out /tmp/r0162-262k/qsa-262144-index-only.json",
+  "launcher_sha256": "65290868d016bbade22df776d8ab7b48b2c7696bc176a282c739a8be08a882df",
+  "raw_result_sha256": "d1f374c5d95e435228a65a94364c5f56716252a383e2c2beb470a150970dc1d8",
+  "scope": "Full-capacity prefill, final QSA layer CPU-selected-position parity, cursor/count consistency, finite logits and tracked allocation teardown. Not retrieval, decode, repeat, rollback or cancellation.",
+  "result": {
+    "schema": 1,
+    "mode": "index_only",
+    "model": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "target_tokens": 262144,
+    "tokens": 262144,
+    "prefill_chunk_size": 4096,
+    "batched_selection": true,
+    "needle_token_offset": 720,
+    "prefill_seconds": 4417.590292534092,
+    "sequence_length": 262144,
+    "needle_selected_layers": 12,
+    "qsa_layers": [
+      {
+        "layer": 3,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 7,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 11,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 15,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 19,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 23,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 27,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 31,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 35,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 39,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 43,
+        "count": 2048,
+        "needle_selected": true
+      },
+      {
+        "layer": 47,
+        "count": 2048,
+        "needle_selected": true
+      }
+    ],
+    "cpu_index_oracle": {
+      "source": "huggingface/transformers@fc5c5bde8e656dad91cbf34e61940d984b1c7b91",
+      "layer": 47,
+      "selected_count": 2048,
+      "exact_positions": true,
+      "position_mismatches": 0,
+      "score_mean_abs": 0.0003588927793316543,
+      "score_max_abs": 0.00442659854888916,
+      "cutoff_margin": 0.0004730224609375
+    },
+    "llama_index_tap": null,
+    "depth_profile": null,
+    "memory_peak": {
+      "current_allocated_bytes": 97893074928,
+      "peak_allocated_bytes": 97893074928,
+      "total_allocated_bytes": 97893074928,
+      "total_freed_bytes": 0,
+      "active_allocations": 1625,
+      "peak_allocations": 1625
+    },
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 97893074928,
+      "total_allocated_bytes": 97893074928,
+      "total_freed_bytes": 97893074928,
+      "active_allocations": 0,
+      "peak_allocations": 1625
+    },
+    "tokenizer_match": null,
+    "external_logits": null,
+    "generated_ids": "not_exercised",
+    "generated_text": "not_exercised",
+    "final_answer": "not_exercised",
+    "retrieval_contains_code": "not_exercised",
+    "retrieval_exact": "not_exercised",
+    "transactional": {
+      "status": "not_exercised",
+      "reason": "index-only mode prefills a full-capacity prompt and never decodes, so the repeat and rollback arms do not run",
+      "repeat_exact": "not_exercised",
+      "abandoned_token": "not_exercised",
+      "isolation_exact": "not_exercised"
+    },
+    "index_only": {
+      "position": 262144,
+      "index_counts": [
+        262144,
+        262144,
+        262144,
+        262144,
+        262144,
+        262144,
+        262144,
+        262144,
+        262144,
+        262144,
+        262144,
+        262144
+      ],
+      "index_capacity": [
+        262144
+      ],
+      "complete_blocks": [
+        65536
+      ],
+      "state_scope": "cursor_count_consistency",
+      "state_exact": true,
+      "logits_finite": true,
+      "exact_token_budget": true,
+      "decode_exercised": false,
+      "teacher_comparison_gating": false
+    }
+  }
+}
