@@ -6558,18 +6558,18 @@
       "start_line": 5426,
       "end_line": 5440,
       "sha256": "ddcd9c91695fe14a16bf905353b7ed75470f300eed443754a3b5bea674c87c49",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified Laguna exact-value selector/dedicated owner absent and separate registered primitives preserved. Completed receipt removed; docs/audit pass. Worklog: worklog/entries/20261027T025819.350455Z-cleanup-refactor-r0253-67df83.md."],
       "subitems": [
         {
           "line": 5428,
           "text": "- WPF-H5A's temporary selector and owner are removed. The complete changed-",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5434,
           "text": "- Remove the constructor seam, context-local ABI, conditional eager library,",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

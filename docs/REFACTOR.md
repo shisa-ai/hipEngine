@@ -4552,21 +4552,6 @@ fallback count is not a success metric.
   explicit complete-pack H8A rollback. Remove that false opt-out after one
   later Q5/IQ-down checkpoint if no rollback is needed.
 
-## Laguna default-off Q5 exact-value F32/rocBLAS selector
-
-- WPF-H5A's temporary selector and owner are removed. The complete changed-
-  association 18-prompt/576-step lane rejects exact-value Q5 SGEMM at maximum
-  KL **1.143627 > 0.05** despite **564/576** top-1, deterministic repeats,
-  lifecycle recovery, and diagnostic prefill **152.359 -> 202.707 tok/s
-  (1.330x)**. The earlier M512 state gate passed at KL **0.000374211**, but it
-  cannot waive the category-heldout ceiling.
-- Remove the constructor seam, context-local ABI, conditional eager library,
-  rocBLAS handle, **195,035,136-byte** workspace owner, backend capabilities,
-  and focused runtime tests. Retain only the separately registered exact-value
-  raw-Q5/F32 producer/composite primitives, their required unfused numerical
-  chain, and leaf evidence. Exact role-qualified coltile remains production.
-  Reopen only with materially different arithmetic and a fresh complete gate.
-
 ## Laguna exact-ordered F32 Q5/Q6 production selector
 
 - Added 2026-07-30 for WPF-H5D and advanced through H5I. The gfx1100 package
