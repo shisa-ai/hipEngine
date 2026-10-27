@@ -397,7 +397,6 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
             lambda *args, _label=label, **kwargs: calls.append(_label),
         )
     monkeypatch.delenv("HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL", raising=False)
-    monkeypatch.setattr(t16_mod, "_Q6_PLANAR_EXACT_PREFILL_RESOLVED", None)
 
     for rows, shape in (
         (3, (17_408, 5_120)),
@@ -457,14 +456,13 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
 
     calls.clear()
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL", "0")
-    monkeypatch.setattr(t16_mod, "_Q6_PLANAR_EXACT_PREFILL_RESOLVED", None)
     t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
         1, 2, 3, 35, 17_408, 5_120
     )
     t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
         1, 2, 3, 32, 5_120, 1_024
     )
-    assert calls == ["parent", "parent"]
+    assert calls == ["row64", "row64"]
 
 
 def test_p9_h3_q6_t16_registry_key_resolves() -> None:

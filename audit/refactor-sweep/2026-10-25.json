@@ -5243,13 +5243,13 @@
       "start_line": 4436,
       "end_line": 4451,
       "sha256": "48756547e5fa856d5491974140f442945e32d71a3510e633e6a636a7288e0397",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed planar-Q6 environment/cache and retained direct backend band selection and parent fallback. Corrected stale ledger bands without changing them. RED/GREEN routing, full linear units, row64/shared4 GPU parent parity and docs/audit pass. Public C1-C3 same-protocol gates remain open. Worklog: worklog/entries/20261027T161223.686161Z-cleanup-refactor-r0201-9a3070.md."],
       "subitems": [
         {
           "line": 4438,
           "text": "- Added 2026-08-31 during the P13 C1-prefill attribution follow-up. Backend",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4446,
@@ -5259,7 +5259,7 @@
         {
           "line": 4448,
           "text": "- Removal trigger: after one later release-checkpoint same-protocol repeat",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

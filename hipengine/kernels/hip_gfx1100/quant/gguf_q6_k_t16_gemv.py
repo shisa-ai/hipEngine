@@ -212,26 +212,6 @@ _Q6_T16_WMMA_PREFILL_SHARED8R3_BF16_BF16 = (
 )
 _QK_K = 256
 _T16_COLS = 16
-_ENV_Q6_PLANAR_EXACT_PREFILL = "HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL"
-_Q6_PLANAR_EXACT_PREFILL_RESOLVED: bool | None = None
-
-
-def _q6_planar_exact_prefill_enabled() -> bool:
-    """Whether the exact gfx1100 retile is active (0 restores one-wave parent)."""
-
-    global _Q6_PLANAR_EXACT_PREFILL_RESOLVED
-    if _Q6_PLANAR_EXACT_PREFILL_RESOLVED is None:
-        raw = os.environ.get(_ENV_Q6_PLANAR_EXACT_PREFILL, "1").strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            value = True
-        elif raw in {"0", "false", "no", "off"}:
-            value = False
-        else:
-            raise ValueError(
-                f"{_ENV_Q6_PLANAR_EXACT_PREFILL} must be a boolean value"
-            )
-        _Q6_PLANAR_EXACT_PREFILL_RESOLVED = value
-    return _Q6_PLANAR_EXACT_PREFILL_RESOLVED
 
 
 def plan_gguf_q6_k_t16_gemv_build(
@@ -945,22 +925,21 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
     """Select the exact W7900 row retile for one qualified planar-Q6 shape."""
 
     fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
-    if _q6_planar_exact_prefill_enabled():
-        bands = GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS.get(
-            (int(in_features), int(out_features)), ()
-        )
-        functions = {
-            "t16_wmma_prefill_shared4_row64_bf16_bf16_out": (
-                gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out
-            ),
-            "t16_wmma_prefill_shared4_bf16_bf16_out": (
-                gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out
-            ),
-        }
-        for min_rows, max_rows, variant in bands:
-            if int(min_rows) <= int(rows) <= int(max_rows):
-                fn = functions[str(variant)]
-                break
+    bands = GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS.get(
+        (int(in_features), int(out_features)), ()
+    )
+    functions = {
+        "t16_wmma_prefill_shared4_row64_bf16_bf16_out": (
+            gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out
+        ),
+        "t16_wmma_prefill_shared4_bf16_bf16_out": (
+            gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out
+        ),
+    }
+    for min_rows, max_rows, variant in bands:
+        if int(min_rows) <= int(rows) <= int(max_rows):
+            fn = functions[str(variant)]
+            break
     fn(
         x_ptr,
         tiles_ptr,
