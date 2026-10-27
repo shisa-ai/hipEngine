@@ -4054,13 +4054,13 @@
       "start_line": 3654,
       "end_line": 3659,
       "sha256": "5c64461b7405208c7190f683581928f52630faed8c1ec68eeb8a5bc3c126ad76",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Retired out4 process selector in favor of runner publication/scope, preserving exact ladder precedence and strict base kernels. Public318 actual base/out4 launches equaltext, GPU320, CPU319 plus focused tuple migration and fixtures/smokes pass. Worklog: worklog/entries/20261027T012758.049036Z-cleanup-refactor-r0155-out4-d68c1a.md."],
       "subitems": [
         {
           "line": 3656,
           "text": "- `HIPENGINE_QWEN4_EXP_Q4_OUT4` defaults on and batches four adjacent output",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

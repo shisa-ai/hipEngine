@@ -902,7 +902,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL` | production profile | Grouped row4 GEMV prefill variant. |
 | `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` | production profile | Selected-dual grouped rowbatch8/out4 expertgrid64 bundle prefill for Q4_K. |
 | `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` | production profile | Selected-dual grouped pair2 prefill for Q4_K (rows>=64, in_features<=4096). |
-| `HIPENGINE_QWEN4_EXP_Q4_OUT4` | `1` | Uses the out4 (four-output) selected-dual grouped rowbatch8 Q4 variants. |
+| `HIPENGINE_QWEN4_EXP_Q4_OUT4` | retired | No longer read. The owning runner selects the out4 fallback below the exact expertgrid family; `q4_out4(runner, False)` retains the base comparison without changing higher-priority owners. |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL` | production profile | Integer-uint8 risk+repair selected Q4 gate/up prefill (rows>=2, hidden%256==0, ffn%128==0). |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS` | production layer list | Comma-separated layer list admitting the Q4 iu8 prefill route. |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT` | production profile | Exact iu8-risk Q4 gate/up route (the layer-2 Q4 route). |

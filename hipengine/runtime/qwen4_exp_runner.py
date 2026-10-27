@@ -4321,6 +4321,38 @@ def q51_out8(runner: Any, enabled: bool | object = _Q51_OUT8_UNSET):
         runner.q51_out8 = prior
 
 
+# Q4 out4 fallback selection. It is one rung of the exact grouped Q4_K gate/up
+# ladder: the fallback below the exact expert-grid family, choosing the out4
+# rowbatch8 owner over the strict rowbatch8 base. The routed-F16 owner, the
+# chain's own switches, the exact iu8-risk+repair chain and the expert-grid
+# family with its pair2/bundle preemptors are separate decisions; this one only
+# moves that rung. It is request-local state, so a diagnostic arm binds it on the
+# runner it measures instead of writing a process-wide switch.
+_Q4_OUT4_UNSET = object()
+
+
+@contextlib.contextmanager
+def q4_out4(runner: Any, enabled: bool | object = _Q4_OUT4_UNSET):
+    """Bind the Q4 out4 fallback rung for a diagnostic arm.
+
+    ``False`` pins the strict rowbatch8 base for the measured window and ``True``
+    restores the out4 owner; leaving ``enabled`` unset keeps whatever the plan
+    published. The rung only decides the non-expertgrid fallback, so an arm that
+    also needs the strict base to launch has to move the exact expert grid family
+    and the exact iu8-risk+repair chain above it out of the way. The binding is a
+    mutable runner field, so it stays in force for as long as the scope is open
+    and the published value is restored on exit, including on an exception.
+    """
+
+    prior = getattr(runner, "q4_out4", True)
+    if enabled is not _Q4_OUT4_UNSET:
+        runner.q4_out4 = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q4_out4 = prior
+
+
 # Q5_1 down M1 selection. The production plan declares the M1 owner for the
 # exact grouped Q5_1 down chain's small-chunk scope; the binder publishes that
 # decision to the owning runner, and the dispatch-time selector keeps its exact
@@ -5084,6 +5116,52 @@ def qwen4_exp_q4_pair_prefill_selected(
     )
 
 
+def _qwen4_exp_q4_gate_up_key(
+    *,
+    backend: str,
+    quant: str,
+    rows: int,
+    in_features: int,
+    q4_out4: bool = True,
+) -> KernelKey:
+    """The exact grouped Q4_K gate/up owner, before its own launch.
+
+    This is the ladder the chain's guards select, in dispatch order: the exact
+    expert-grid family (``EXACT_EXPERT_GRID``), the out4 fallback rung
+    (``q4_out4``, see :func:`q4_out4`), the strict rowbatch8 base, then the pair2
+    and bundle preemptors inside the expert-grid family. The caller owns
+    everything above it - the routed-F16 owner, ``production_grouped_moe``, the
+    chain's ``EXACT_GROUPED_Q4``/``EXACT_GROUPED_Q4_ALL`` switches and the exact
+    iu8-risk+repair switch - so this function is only reached by a chunk that
+    already runs the chain.
+
+    Every input is either a dispatch-time guard (rows, in_features, the
+    registry) or the owning runner's published decision, so the same call on the
+    same runner and chunk always returns the same owner. The pair2 and bundle
+    preemptors are gated on the expert-grid family, so they cannot replace this
+    rung's owner while that family is closed - but they are read here rather
+    than assumed. Every arm resolves through the registry, so a diagnostic
+    wrapper registered on one of these keys sees the launch the dispatch makes.
+    """
+
+    expert_grid64 = os.environ.get(
+        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+    ) in {"64", "q4"}
+    if expert_grid64:
+        variant = "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
+    elif q4_out4:
+        variant = "selected_dual_grouped_rowbatch8_out4_bf16_bf16_out"
+    else:
+        variant = "selected_dual_grouped_rowbatch8_bf16_bf16_out"
+    if expert_grid64 and qwen4_exp_q4_pair_prefill_selected(
+        backend, quant, rows=rows, in_features=in_features,
+    ):
+        variant = "selected_dual_grouped_pair2_bf16_bf16_out"
+    elif expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(backend, quant):
+        variant = "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"
+    return KernelKey(backend, "moe_linear", quant, variant)
+
+
 def _qwen4_exp_q5_k_iu8_risk_multiplier() -> float:
     """Kahan-bound multiplier for the exact Q5_K iu8 risk criterion.
 
@@ -5622,6 +5700,7 @@ def run_qwen4_exp_moe(
     q8_mapped_down: bool = False,
     q51_exact_grouped_down: bool = True,
     q51_out8: bool = True,
+    q4_out4: bool = True,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert.
 
@@ -5666,6 +5745,13 @@ def run_qwen4_exp_moe(
     rung, so the exact expert-grid family above it, the exact iu8-risk+repair
     chain above that, and the pair2/fold siblings below it are unaffected, and
     it never selects on decode.
+
+    ``q4_out4`` is the owning runner's out4 fallback decision for the exact
+    grouped Q4_K gate/up chain (see :func:`q4_out4`); it only picks between the
+    out4 rowbatch8 owner and the strict rowbatch8 base on the chain's
+    non-expertgrid rung, so the routed-F16 owner, the chain's own switches, the
+    exact iu8-risk+repair chain and the expert-grid family's pair2/bundle
+    preemptors are unaffected, and it never selects on decode.
 
     ``q8_down_register`` is the owning runner's plan-published Q8_0 down
     register decision (see :func:`q8_down_register`); it selects inside the
@@ -5714,6 +5800,7 @@ def run_qwen4_exp_moe(
                 q51_row_publish=q51_row_publish,
                 q51_exact_grouped_down=q51_exact_grouped_down,
                 q51_out8=q51_out8,
+                q4_out4=q4_out4,
                 forkb_grouped_down=forkb_grouped_down,
                 q8_down_row4_prefill=q8_down_row4_prefill,
                 q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -6263,33 +6350,15 @@ def run_qwen4_exp_moe(
                         runtime=active_runtime,
                     )
             else:
-                expert_grid_mode = os.environ.get(
-                    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
-                )
-                expert_grid64 = expert_grid_mode in {"64", "q4"}
-                grouped_q4_gate = (
-                    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out
-                    if expert_grid64
-                    else gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
-                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_OUT4", "1")
-                    not in {"", "0", "false", "False"}
-                    else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
-                )
-                if expert_grid64 and qwen4_exp_q4_pair_prefill_selected(
-                    backend, weights["expert_gate"].spec.quant_key,
+                grouped_q4_key = _qwen4_exp_q4_gate_up_key(
+                    backend=backend,
+                    quant=weights["expert_gate"].spec.quant_key,
                     rows=rows, in_features=hidden,
-                ):
-                    grouped_q4_gate = resolve(
-                        backend=backend, layer="moe_linear",
-                        quant=weights["expert_gate"].spec.quant_key,
-                        variant="selected_dual_grouped_pair2_bf16_bf16_out")
-                elif expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(
-                    backend, weights["expert_gate"].spec.quant_key
-                ):
-                    grouped_q4_gate = resolve(
-                        backend=backend, layer="moe_linear",
-                        quant=weights["expert_gate"].spec.quant_key,
-                        variant="selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
+                    q4_out4=q4_out4,
+                )
+                grouped_q4_gate = resolve(
+                    backend=grouped_q4_key.backend, layer=grouped_q4_key.layer,
+                    quant=grouped_q4_key.quant, variant=grouped_q4_key.variant)
                 grouped_q4_gate(
                     scratch.expert_down.ptr,
                     scratch.group_expert_start.ptr,
@@ -7302,6 +7371,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q51_row_publish: bool = False,
     q51_exact_grouped_down: bool = True,
     q51_out8: bool = True,
+    q4_out4: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7327,7 +7397,9 @@ def run_qwen4_exp_dense_qsa_layer(
     down chain's own gate and is forwarded the same way. ``q51_out8`` is that
     chain's non-expertgrid fallback rung (see :func:`q51_out8`): it picks the
     out8 rowbatch8 owner over the output1 base and selects nothing on a
-    cache-only call.
+    cache-only call. ``q4_out4`` is the Q4 gate/up ladder's equivalent rung (see
+    :func:`q4_out4`): it picks the out4 rowbatch8 owner over the strict base and
+    likewise selects nothing on a cache-only call.
     """
 
     if scratch.closed:
@@ -7397,6 +7469,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q51_row_publish=q51_row_publish,
         q51_exact_grouped_down=q51_exact_grouped_down,
         q51_out8=q51_out8,
+        q4_out4=q4_out4,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -7451,6 +7524,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q51_row_publish: bool = False,
     q51_exact_grouped_down: bool = True,
     q51_out8: bool = True,
+    q4_out4: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7609,6 +7683,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q51_row_publish=q51_row_publish,
         q51_exact_grouped_down=q51_exact_grouped_down,
         q51_out8=q51_out8,
+        q4_out4=q4_out4,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -7669,6 +7744,7 @@ def run_qwen4_exp_gdn_layer(
     q51_row_publish: bool = False,
     q51_exact_grouped_down: bool = True,
     q51_out8: bool = True,
+    q4_out4: bool = True,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7877,6 +7953,7 @@ def run_qwen4_exp_gdn_layer(
         q51_row_publish=q51_row_publish,
         q51_exact_grouped_down=q51_exact_grouped_down,
         q51_out8=q51_out8,
+        q4_out4=q4_out4,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -8742,6 +8819,13 @@ class Qwen4ExpGGUFResidentModelRunner:
     # out8 variants, and the pair2/fold rungs below it replace the variant
     # either way. A diagnostic scope may outrank it.
     q51_out8: bool = True
+    # Q4 out4 fallback selection, published by the profile binder for every
+    # plan: True runs the out4 rowbatch8 owner as the exact grouped Q4_K gate/up
+    # chain's non-expertgrid fallback, and False keeps the strict rowbatch8 base.
+    # It is one rung: the expert-grid family above it keeps its own out4 variant
+    # and the pair2/bundle preemptors inside it, and the iu8 chain above that is
+    # unaffected. A diagnostic scope may outrank it.
+    q4_out4: bool = True
     # Q5_1 down M1 selection, published by the profile binder for the exact
     # grouped Q5_1 down chain's small-chunk scope: True on a production plan,
     # False on every plan that keeps the preceding expertgrid64 owner. The
@@ -10041,6 +10125,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_row_publish=self.q51_row_publish,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
                     q51_out8=self.q51_out8,
+                    q4_out4=self.q4_out4,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10090,6 +10175,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_row_publish=self.q51_row_publish,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
                     q51_out8=self.q51_out8,
+                    q4_out4=self.q4_out4,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10400,6 +10486,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_row_publish=self.q51_row_publish,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
                     q51_out8=self.q51_out8,
+                    q4_out4=self.q4_out4,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10439,6 +10526,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q51_row_publish=self.q51_row_publish,
                     q51_exact_grouped_down=self.q51_exact_grouped_down,
                     q51_out8=self.q51_out8,
+                    q4_out4=self.q4_out4,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,

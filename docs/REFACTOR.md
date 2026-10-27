@@ -3044,12 +3044,6 @@ should be removed or collapsed.
   after serving/cancellation/graph soak; retain direct selected primitives as
   the strict unfused fallback.
 
-## 2026-08-27 Qwen4Exp exact grouped Q4_K output batching
-
-- `HIPENGINE_QWEN4_EXP_Q4_OUT4` defaults on and batches four adjacent output
-  columns sequentially per exact grouped-Q4 CTA. Remove the flag and output1
-  wrapper after natural 64K plus serving/cancellation/graph soak.
-
 ## 2026-08-27 Qwen4Exp exact grouped Q4_K bisection
 
 - `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` defaults on for the exact row-batched

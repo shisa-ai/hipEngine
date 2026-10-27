@@ -1431,6 +1431,9 @@ def _bind(
     # The chain's non-expertgrid fallback rung: every plan keeps the out8
     # owner, and a diagnostic arm pins the output1 base on its own runner.
     generator.q51_out8 = True
+    # The Q4 gate/up ladder's non-expertgrid fallback rung: every plan keeps the
+    # out4 owner, and a diagnostic arm pins the strict base on its own runner.
+    generator.q4_out4 = True
     generator.forkb_grouped_down = forkb_grouped_down
     generator.q8_down_row4_prefill = q8_down_row4_prefill
     generator.q8_down_bundle_prefill = q8_down_bundle_prefill
@@ -1452,6 +1455,7 @@ def _bind(
         runner.q51_row_publish = q51_row_publish
         runner.q51_exact_grouped_down = True
         runner.q51_out8 = True
+        runner.q4_out4 = True
         runner.forkb_grouped_down = forkb_grouped_down
         runner.q8_down_row4_prefill = q8_down_row4_prefill
         runner.q8_down_bundle_prefill = q8_down_bundle_prefill

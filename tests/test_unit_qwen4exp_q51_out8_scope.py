@@ -227,13 +227,17 @@ def test_the_exact_iu8_chain_still_sits_above_the_selector() -> None:
 
 
 def test_the_q4_side_and_its_out4_switch_are_out_of_scope() -> None:
-    """``EXACT_EXPERT_GRID`` and ``Q4_OUT4`` are not retired by this unit."""
+    """``EXACT_EXPERT_GRID`` is shared; the Q4 rung moved to its own selector."""
 
     dispatch = inspect.getsource(runner_module.run_qwen4_exp_moe)
     selector = inspect.getsource(runner_module._qwen4_exp_q51_down_key)
-    assert dispatch.count(EXPERT_GRID_ENV) == 1   # the Q4 gate/up ladder
+    q4_selector = inspect.getsource(runner_module._qwen4_exp_q4_gate_up_key)
+    assert dispatch.count(EXPERT_GRID_ENV) == 0   # both ladders read it locally
     assert selector.count(EXPERT_GRID_ENV) == 1   # the Q5_1 down rung
-    assert Q4_OUT4_ENV in dispatch
+    assert q4_selector.count(EXPERT_GRID_ENV) == 1  # the Q4 gate/up rung
+    # The Q4 rung's own switch is the owning runner's field now, not a process
+    # key: no module reads the retired name.
+    assert Q4_OUT4_ENV not in dispatch
 
 
 # --- forwarding -------------------------------------------------------------
@@ -329,16 +333,17 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
         q51_out8=True,
+        q4_out4=True,
         forkb_grouped_down=False,
         q8_down_row4_prefill=False,
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, False, False, False)
+        False, False, False, True, True, True, False, False, False)
 
     owner.q51_out8 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, False, False, False)
+        False, False, False, True, False, True, False, False, False)
 
 
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:

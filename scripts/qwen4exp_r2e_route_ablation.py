@@ -106,6 +106,40 @@ OUT8_SIBLING_FIELDS = (
     "q51_row_publish",
 )
 
+#: The Q4 out4 rung's closure. The rung only decides the exact grouped Q4_K
+#: gate/up chain's non-expertgrid fallback, so every owner that keeps that chain -
+#: or the rung inside it - from running has to move. In dispatch order:
+#:
+#:   * ``HIPENGINE_QWEN4_EXP_ROUTED_F16`` takes the whole gate/up leg, and the
+#:     production plan publishes it on;
+#:   * ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`` closes the chain gate from
+#:     rows>=16;
+#:   * ``HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT`` is the chain's own iu8-risk+repair
+#:     owner above the ladder, published on by the production plan;
+#:   * ``HIPENGINE_QWEN4_EXP_T16_GATE_UP`` is the T16 gate/up owner inside that
+#:     iu8 branch (diagnostic, default off) - inert once the branch is closed,
+#:     but the arm closes it rather than depend on that nesting;
+#:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
+#:     with the expertgrid64 family (default ``64``);
+#:   * ``HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL`` and
+#:     ``HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL`` are the pair2/bundle preemptors
+#:     inside that family, published on by the production plan. Their guards
+#:     require the expert-grid family, so they are inert once it is closed, but
+#:     an arm that names a leaf should not depend on that guard staying narrow.
+#:
+#: This is not a leave-one-route-out arm: the ablated decision is ``q4_out4`` and
+#: the rest are the preemptors the arm must close to exercise it. The arm reports
+#: every binding it made rather than implying a single-route delta.
+Q4_OUT4_PREEMPTING_ENV = (
+    "HIPENGINE_QWEN4_EXP_ROUTED_F16",
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
+    "HIPENGINE_QWEN4_EXP_T16_GATE_UP",
+    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
+    "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL",
+)
+
 # route -> (runner field bindings, process keys, disabled value) for a leaf whose
 # field is request-local but whose selection also depends on decisions above it.
 RUNNER_ROUTE_OFF_WITH_ENV = {
@@ -115,6 +149,7 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
         OUT8_PREEMPTING_ENV,
         "0",
     ),
+    "q4_out4": ((("q4_out4", False),), Q4_OUT4_PREEMPTING_ENV, "0"),
 }
 
 # route -> runner fields that must stay published for the counted leaf to mean
@@ -124,6 +159,18 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
 # rung. The arm records the gate and refuses to measure with it off.
 RUNNER_ROUTE_REQUIRED_FIELDS = {
     "q51_out8": {Q51_PAIR2_GATE_FIELD: True},
+}
+
+# route -> process keys that must stay at the given value for the counted leaf
+# to mean what the arm says. The Q4 gate/up chain's own switches are environment
+# state published by the profile, not runner fields: the strict base is also the
+# owner the dispatch falls through to *below* a closed chain, so an arm with the
+# gate off would count that launch and call it the rung. The arm records the
+# gate and refuses to measure with it off.
+Q4_GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4"
+Q4_GATE_ALL_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL"
+RUNNER_ROUTE_REQUIRED_ENV = {
+    "q4_out4": {Q4_GATE_ENV: "1", Q4_GATE_ALL_ENV: "1"},
 }
 
 # The scalar sparse-prefill rows owner and its head-grouped leaves. Launches of
@@ -224,6 +271,11 @@ def main() -> None:
     else:
         scope = contextlib.nullcontext()
     required_fields = RUNNER_ROUTE_REQUIRED_FIELDS.get(a.route, {})
+    required_env = RUNNER_ROUTE_REQUIRED_ENV.get(a.route, {})
+    for name, value in required_env.items():
+        # Fail fast: the gate is what keeps the counted launch on this rung.
+        assert os.environ.get(name) == value, (
+            f"required process key not published: {name}")
     # The head leaf is the scalar fallback, so the ablation needs WMMA off for
     # its launches to happen at all. Both the override and the launch counter
     # are registered on the stack that unwinds on any failure below.
@@ -272,6 +324,9 @@ def main() -> None:
             # a lost gate would make the arm count a launch it did not select.
             assert getattr(generator.runner, field) is value, (
                 f"required runner field changed: {field}")
+        for name, value in required_env.items():
+            assert os.environ.get(name) == value, (
+                f"required process key changed: {name}")
         if runner_mode is not None:
             # Configuration: the arm's own decision stayed bound.
             assert generator.runner.qsa_prefill_head_mode == runner_mode, (
@@ -288,6 +343,7 @@ def main() -> None:
             "route": a.route, "ablated_envs": list(envs),
             "ablated_runner_fields": bound_fields,
             "required_runner_fields": required_fields,
+            "required_process_keys": required_env,
             "env_values_at_end": engagement_asserts,
             "head_engagement": (
                 {
