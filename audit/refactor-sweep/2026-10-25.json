@@ -7396,18 +7396,20 @@
       "start_line": 6145,
       "end_line": 6158,
       "sha256": "f74a93ecaa3488756f07486862ea344c7460eeb6a30fffc77afe7118cb72bef6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-device-control-implementation",
+      "evidence": [
+        "One-pass exact-budget prefill already implemented but per-layer logits/ranking/mask upload and post-layer decode metadata finalization remain host control. Update model-derived geometry and exact tie/window/count contract, preserve staging/release/journal ownership, move remaining bounded device primitive/integration work bottom. One-pass/collector/lifetime/diagnostic/cache/oracle units and docs/audit/worklog pass; no runtime/perf claim. Worklog: worklog/entries/20261027T202906.902384Z-cleanup-refactor-r0280-cae1ab.md."
+      ],
       "subitems": [
         {
           "line": 6147,
           "text": "- Correctness-first `exact_budget` prefill reads all external-linear logits to",
-          "status": "pending"
+          "status": "verified-current-per-layer-host-control"
         },
         {
           "line": 6152,
           "text": "- Removal trigger: implement bounded deterministic per-layer/head device ranking",
-          "status": "pending"
+          "status": "deferred-device-control-implementation"
         }
       ]
     },

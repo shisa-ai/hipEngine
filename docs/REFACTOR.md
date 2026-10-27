@@ -3430,20 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## External-DMS serving control readbacks
-
-- Correctness-first `exact_budget` prefill reads all external-linear logits to
-  host, deterministically ranks them, and uploads the final device mask. Decode
-  also synchronizes after all 16 full-attention layers and reads 64 decision
-  bytes before host metadata finalization. Neither path retains dense KV, but
-  both are production-speed debt and prevent graph-owned control.
-- Removal trigger: implement bounded deterministic per-layer/head device ranking
-  plus device-resident decode live-count/position/eviction finalization. Preserve
-  the current host paths only as strict diagnostic fallbacks until exact mask,
-  rollback, c1-c32 lifecycle, frozen-profile quality, and profiler gates pass.
-  Remove their positive runtime selection once the device owner survives one
-  release window.
-
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |
@@ -10272,3 +10258,35 @@ verifier-journal unit files plus `tests/test_gpu_dms_external_runtime.py` and
 partial/full commit, following cycles, copy-failure retry, cancellation and
 shutdown. Use a trace to verify copy/allocation ownership, not just token IDs.
 No journal algorithm or runtime selection changes in this reconciliation.
+
+### R0280 — DMS device ranking and decode control ownership
+
+One-pass exact-budget prefill already reserves score-independent capacity and
+packs each completed layer in its capture trunk pass. It does not remove host
+control: `finalize_layer()` synchronizes, copies that layer's logits to host,
+builds an exact-budget mask and uploads it. Ranking evicts highest scores first,
+with oldest-position tie-breaking and the protected-window/count rule in
+`build_dms_exact_budget_eviction()`. Decode uses device projection/append/attention,
+then synchronizes after the configured full-attention layers, reads their
+decisions and finalizes host metadata. Layer/head geometry is model-derived,
+not a fixed 16-layer/64-byte contract.
+
+**Remaining work:** implement bounded deterministic device ranking and
+live-count/position/eviction finalization with one owner for host observability,
+compact extents, prefix reuse and speculative rollback. Preserve the one-pass
+ordering and layer staging/release lifetimes; the current host route is the
+working reference, not an admission failure. Device packing alone is not this
+successor.
+**Clearing action:** add CPU-oracle RED tests for exact masks including ties,
+non-finite rejection, window edges, non-aligned lengths and per-head counts;
+then register device primitives and integrate collector/decode owners. Run
+`tests/test_unit_kvcache_dms.py`,
+`tests/test_unit_dms_one_pass_prefill.py`,
+`tests/test_unit_dms_layer_collector.py`,
+`tests/test_unit_dms_layer_outer_lifetime.py`,
+`tests/test_unit_dms_prefill_cache.py` and the R0279 journal bundle, plus
+`tests/test_gpu_dms_external_runtime.py` and public DMS lifecycle/MTP requests.
+Confirm masks, payload/scales/metadata, accepted-prefix rollback, continuation
+and cleanup on each implemented composition. Profile named operations and
+transfers with resources priced before retiring the host fallback. No control
+algorithm, API or runtime default changes in this reconciliation.
