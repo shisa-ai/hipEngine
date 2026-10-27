@@ -5717,18 +5717,20 @@
       "start_line": 4789,
       "end_line": 4812,
       "sha256": "7033e022a3475e5588ccdca285e9ed745b18b8499518d040d54b5259402b1a55",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Migrated all known Q6-named shared-session aliases and runner method/handle/library/constructor callers to existing quant-neutral T16-F16 API; aliases removed. RED/GREEN covers naming and opt-out exact fallback, existing Q4/Q5/Q6 routing and row-policy coverage preserved. Runtime policy/arithmetic/layout unchanged. Remaining packed-prefill integration and opt-out keep/retire decision moved to bottom: ordinary prefill opens context, public packed entry does not. Worklog: worklog/entries/20261027T180839.282466Z-cleanup-refactor-r0219-5842e5.md."
+      ],
       "subitems": [
         {
           "line": 4791,
           "text": "- Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6",
-          "status": "pending"
+          "status": "partial-naming-migrated"
         },
         {
           "line": 4807,
           "text": "- Removal trigger: after one release window with the complete category gate and",
-          "status": "pending"
+          "status": "partial-naming-migrated"
         }
       ]
     },

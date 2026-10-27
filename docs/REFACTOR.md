@@ -3430,30 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Dense-H5120 bounded Q4/Q5/Q6 source-F16 rollback seam
-
-- Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6
-  prefill owner; retained Q4 and Q5 extensions now share that owner and keep
-  compatibility aliases plus `use_q6_f16_rocblas_prefill=False` as a whole-route
-  exact rollback. The name is stale but the rollback remains useful while
-  changed-arithmetic Q4/Q5/Q6 accumulates release evidence. Q5 is limited to
-  the qualified dense-H5120 recurrent-output geometry at measured anchors and
-  casts its dead K6,144 input in place. Exact Q4 pair-owned and Q5
-  natural-octet-owned source-F16 production are selected through a generic
-  quant/shape/inclusive-row
-  variant policy; misses retain each scalar producer. An ordered pair-only
-  policy can admit a second projection only when its already-qualified first
-  peer owns the common activation, without exposing that shape to singleton or
-  unrelated pair dispatch. A separate generic per-quant/shape row ceiling
-  prevents nearest-anchor extrapolation through the
-  known-losing Q4 full-attention-Q M2048/4K boundary while admitting M512/1K.
-  Decode, verifier, peer backends, and all other misses retain exact T16.
-- Removal trigger: after one release window with the complete category gate and
-  512/1K/4K XTX/W7900 safeguards stable, rename the private runner fields/method
-  to quant-neutral T16-F16 terminology and remove the Q6-named compatibility
-  aliases if no external caller depends on them. Keep registry-key misses and
-  exact T16 kernels as required numerical/peer-backend fallbacks.
-
 ## gfx1151 Qwen3.8 Q5 source-F16 rollback and workspace seam
 
 - Added 2026-08-15 for the 48 sole-Q5T16 K6,144/N5,120 recurrent outputs.
@@ -10576,3 +10552,26 @@ resource cleanup. Preserve native HIP graph and distinct AQL profiling, and
 keep full provenance serialization out of replay. Original promotion and
 attribution results remain in the sweep inventory and worklogs; this cleanup
 changes no replay arithmetic, transport default or performance claim.
+
+### R0219 — Source-F16 packed-prefill integration and rollback decision
+
+The shared session type/context, private runner method/handle/library and
+constructor option now use quant-neutral T16-F16 names. All known Q6 alias
+callers were migrated and the aliases removed. The bounded scratch planes keep
+their existing `q6_f16_*` plan keys; R0220 covers their ownership. Exact T16 and
+registry misses remain required fallbacks. The constructor opt-out is now
+`use_t16_f16_rocblas_prefill=False`; automatic selection is unchanged.
+
+**Dependency:** ordinary resident `prefill()` opens the source-F16 context, but
+packed `prefill_batch_native()` does not. Default public serving uses packed
+prefill, so private-context coverage is not evidence of source-F16 execution
+through that surface. **Clearing action:** integrate a request-row-scoped owner
+with packed scratch lifetimes and ragged requests, then exercise
+`LLM.generate_detailed()` with non-anchor, 512/1K/4K and mixed-length requests on
+each applicable backend. Confirm selected registry variants and exact
+request/slot ownership, cleanup, and the changed-arithmetic execution-profile
+gates. Keep the ordered pair-only operand policy and Q4 row ceiling, which
+preserve known fallback cases. **Decision needed:** retain the quant-neutral
+constructor opt-out as a supported diagnostic or remove it once its callers
+are migrated; a release window alone is not a dependency. No policy, arithmetic
+or scratch layout changed in the naming cleanup.

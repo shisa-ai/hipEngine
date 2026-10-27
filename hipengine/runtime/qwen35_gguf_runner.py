@@ -443,7 +443,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
     PREFILL_F16_STAGING_MAX_ROWS,
-    Q6T16F16RocblasPrefillSession,
+    T16F16RocblasPrefillSession,
     TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
@@ -462,7 +462,7 @@ from hipengine.runtime.gguf_linear import (
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q5_raw_mmq_target_session,
-    q6_t16_f16_rocblas_prefill_session,
+    t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     q8_t16_dual_wmma_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
@@ -13379,7 +13379,7 @@ class Qwen35GGUFResidentSession:
     preload_expert_sidecars: bool = True
     use_wmma_prefill: bool | None = None
     use_gemv_decode: bool | None = None
-    use_q6_f16_rocblas_prefill: bool | None = None
+    use_t16_f16_rocblas_prefill: bool | None = None
     use_prefill_f16_staging: bool = False
     use_wide_f16_activation: bool = False
     use_q6_integer_mmq: bool = False
@@ -13586,8 +13586,8 @@ class Qwen35GGUFResidentSession:
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
     _iq_dense_mmq_library: object | None = field(default=None, init=False)
     _iq_dense_mmq_producer_library: object | None = field(default=None, init=False)
-    _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
-    _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
+    _t16_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
+    _t16_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
     _q5_raw_mmq_target_library: object | None = field(default=None, init=False)
     _q5_source_mmq_target_library: object | None = field(default=None, init=False)
@@ -18473,18 +18473,18 @@ class Qwen35GGUFResidentSession:
             free(gapped_key, runtime=runtime)
             self._gapped_head_major_cache = None
 
-    def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
+    def _t16_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
 
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
         if self._bulk_prefill_scratch is None:
             self._ensure_bulk_prefill_workspace()
-        if self.use_q6_f16_rocblas_prefill is False:
-            return q6_t16_f16_rocblas_prefill_session(None)
+        if self.use_t16_f16_rocblas_prefill is False:
+            return t16_f16_rocblas_prefill_session(None)
         policy = _gguf_t16_f16_rocblas_prefill_policy(self.runner)
         if policy is None:
-            return q6_t16_f16_rocblas_prefill_session(None)
+            return t16_f16_rocblas_prefill_session(None)
         scratch = self._bulk_prefill_scratch
         q6_shape_tiles = {
             (int(rows), int(shape[0]), int(shape[1])): int(tile)
@@ -18520,7 +18520,7 @@ class Qwen35GGUFResidentSession:
             # Source-F16 arithmetic is admitted by complete request shape, not
             # by an implementation chunk that happens to fit this scratch.
             # Long chunked requests therefore retain the exact T16 owner.
-            return q6_t16_f16_rocblas_prefill_session(None)
+            return t16_f16_rocblas_prefill_session(None)
         pair_only_policies = {
             key: MappingProxyType(
                 {
@@ -18537,21 +18537,21 @@ class Qwen35GGUFResidentSession:
         }
         all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
         if not all_shape_tiles:
-            return q6_t16_f16_rocblas_prefill_session(None)
-        if self._q6_f16_rocblas_prefill_library is None:
-            self._q6_f16_rocblas_prefill_library = (
+            return t16_f16_rocblas_prefill_session(None)
+        if self._t16_f16_rocblas_prefill_library is None:
+            self._t16_f16_rocblas_prefill_library = (
                 build_gguf_q6_k_f16_rocblas_prefill(
                     load=True,
                     compiler_version=self.compiler_version,
                     require_cached=self.require_cached_build,
                 )
             )
-        if self._q6_f16_rocblas is None:
-            self._q6_f16_rocblas = Rocblas.load()
+        if self._t16_f16_rocblas is None:
+            self._t16_f16_rocblas = Rocblas.load()
             # Qualified FP16 GEMMs need no auxiliary workspace. A caller-owned
             # empty workspace releases rocBLAS's lazy ~32-MiB device reserve so
             # this route remains inside hipEngine's existing tracked arena.
-            self._q6_f16_rocblas.set_workspace(0, 0)
+            self._t16_f16_rocblas.set_workspace(0, 0)
         solution_version_prefix = str(
             backend_package_capability(
                 self.runner.backend,
@@ -18572,12 +18572,12 @@ class Qwen35GGUFResidentSession:
             }
             if isinstance(raw_solution_indices, Mapping)
             and solution_version_prefix
-            and self._q6_f16_rocblas.version_string().startswith(
+            and self._t16_f16_rocblas.version_string().startswith(
                 solution_version_prefix
             )
             else {}
         )
-        owner = Q6T16F16RocblasPrefillSession(
+        owner = T16F16RocblasPrefillSession(
             min_rows=min(shape[0] for shape in all_shape_tiles),
             max_rows=max(shape[0] for shape in all_shape_tiles),
             x_f16_ptr=int(scratch.q6_f16_x.ptr),
@@ -18607,12 +18607,12 @@ class Qwen35GGUFResidentSession:
                 "linear_variant_intervals_by_quant", {}
             ),
             pair_only_second_operand_policies=pair_only_policies,
-            dequant_library=self._q6_f16_rocblas_prefill_library,
+            dequant_library=self._t16_f16_rocblas_prefill_library,
             cast_library=self.runner._cast_library(),
-            rocblas=self._q6_f16_rocblas,
+            rocblas=self._t16_f16_rocblas,
             solution_indices_by_gemm_shape=solution_indices,
         )
-        return q6_t16_f16_rocblas_prefill_session(owner)
+        return t16_f16_rocblas_prefill_session(owner)
 
     def _ensure_prefill_f16_staging_buffer(self):
         """Return this resident session's shared bounded staging allocation."""
@@ -19190,7 +19190,7 @@ class Qwen35GGUFResidentSession:
                 self._q6_integer_mmq_context(),
                 self._iq_dense_mmq_context(),
                 self._q8_mmq_prefill_context(),
-                self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
+                self._t16_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
                 bulk_kwargs: dict[str, object] = {}
                 if capture_hidden_seed_fp32:
@@ -29796,11 +29796,11 @@ class Qwen35GGUFResidentSession:
             self._release_prefill_aotriton_bridge()
         self._release_int8_prefill_oracle_buffers()
         self._release_gapped_prefill_buffers(runtime=runtime)
-        if self._q6_f16_rocblas is not None:
+        if self._t16_f16_rocblas is not None:
             runtime.device_synchronize()
-            self._q6_f16_rocblas.close()
-            self._q6_f16_rocblas = None
-        self._q6_f16_rocblas_prefill_library = None
+            self._t16_f16_rocblas.close()
+            self._t16_f16_rocblas = None
+        self._t16_f16_rocblas_prefill_library = None
         for graph in tuple(self._decode_graphs):
             graph.close()
         self._decode_graphs.clear()
@@ -29886,8 +29886,8 @@ class Qwen35GGUFResidentSession:
         self._prefill_hidden_a = None
         self._prefill_hidden_b = None
         self._bulk_prefill_scratch = None
-        self._q6_f16_rocblas_prefill_library = None
-        self._q6_f16_rocblas = None
+        self._t16_f16_rocblas_prefill_library = None
+        self._t16_f16_rocblas = None
         self._q8_mmq_risk_count = None
         self._q8_mmq_risk_indices = None
         self._logits_host = None

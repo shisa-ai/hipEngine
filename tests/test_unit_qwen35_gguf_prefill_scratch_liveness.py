@@ -937,19 +937,19 @@ def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
     session = SimpleNamespace(
         runner=runner,
         _bulk_prefill_scratch=scratch,
-        use_q6_f16_rocblas_prefill=None,
-        _q6_f16_rocblas_prefill_library="dequant-library",
-        _q6_f16_rocblas=fake_rocblas,
+        use_t16_f16_rocblas_prefill=None,
+        _t16_f16_rocblas_prefill_library="dequant-library",
+        _t16_f16_rocblas=fake_rocblas,
         compiler_version=None,
         require_cached_build=False,
     )
     monkeypatch.setattr(
         gguf_runner,
-        "q6_t16_f16_rocblas_prefill_session",
+        "t16_f16_rocblas_prefill_session",
         lambda owner: owner,
     )
 
-    owner = gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+    owner = gguf_runner.Qwen35GGUFResidentSession._t16_f16_rocblas_prefill_context(
         session, request_rows=request_rows
     )
 
@@ -967,31 +967,59 @@ def test_gfx1100_source_f16_owner_keeps_exact_fallback_beyond_scratch_rows(
     session = SimpleNamespace(
         runner=runner,
         _bulk_prefill_scratch=scratch,
-        use_q6_f16_rocblas_prefill=None,
+        use_t16_f16_rocblas_prefill=None,
     )
     fallback = object()
     monkeypatch.setattr(
         gguf_runner,
-        "q6_t16_f16_rocblas_prefill_session",
+        "t16_f16_rocblas_prefill_session",
         lambda owner: fallback if owner is None else owner,
     )
 
-    owner = gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+    owner = gguf_runner.Qwen35GGUFResidentSession._t16_f16_rocblas_prefill_context(
         session, request_rows=769
     )
 
     assert owner is fallback
 
 
+def test_source_f16_runner_uses_quant_neutral_owner_names() -> None:
+    fields = gguf_runner.Qwen35GGUFResidentSession.__dataclass_fields__
+    assert fields["use_t16_f16_rocblas_prefill"].default is None
+    assert "use_q6_f16_rocblas_prefill" not in fields
+    assert "_t16_f16_rocblas" in fields
+    assert "_t16_f16_rocblas_prefill_library" in fields
+    assert not hasattr(gguf_runner, "Q6T16F16RocblasPrefillSession")
+    assert not hasattr(gguf_runner, "q6_t16_f16_rocblas_prefill_session")
+
+
+def test_source_f16_explicit_opt_out_preserves_exact_fallback(monkeypatch) -> None:
+    session = SimpleNamespace(
+        runner=_fake_dense_qwen36_runner(),
+        _bulk_prefill_scratch=SimpleNamespace(rows=768),
+        use_t16_f16_rocblas_prefill=False,
+    )
+    fallback = object()
+    monkeypatch.setattr(
+        gguf_runner,
+        "t16_f16_rocblas_prefill_session",
+        lambda owner: fallback if owner is None else owner,
+    )
+
+    assert gguf_runner.Qwen35GGUFResidentSession._t16_f16_rocblas_prefill_context(
+        session, request_rows=517
+    ) is fallback
+
+
 def test_gfx1100_source_f16_owner_rejects_nonpositive_request_rows() -> None:
     session = SimpleNamespace(
         runner=_fake_dense_qwen36_runner(),
         _bulk_prefill_scratch=SimpleNamespace(rows=768),
-        use_q6_f16_rocblas_prefill=None,
+        use_t16_f16_rocblas_prefill=None,
     )
 
     with pytest.raises(ValueError, match="request rows must be positive"):
-        gguf_runner.Qwen35GGUFResidentSession._q6_f16_rocblas_prefill_context(
+        gguf_runner.Qwen35GGUFResidentSession._t16_f16_rocblas_prefill_context(
             session, request_rows=0
         )
 

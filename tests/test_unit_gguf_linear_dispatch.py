@@ -32,7 +32,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
     GGUF_OUTPUT_FP16,
-    Q6T16F16RocblasPrefillSession,
+    T16F16RocblasPrefillSession,
     launch_gguf_q4_t16_sidecar_decode,
     launch_gguf_linear,
     launch_gguf_linear_moe_tail_host_batch,
@@ -44,7 +44,7 @@ from hipengine.runtime.gguf_linear import (
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q5_raw_mmq_target_session,
-    q6_t16_f16_rocblas_prefill_session,
+    t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
@@ -343,7 +343,7 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
 
         return fake
 
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -372,7 +372,7 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
             stream=7,
             runtime="runtime-sentinel",
         )
-        with q6_t16_f16_rocblas_prefill_session(session):
+        with t16_f16_rocblas_prefill_session(session):
             launch_gguf_linear(
                 weight,
                 x_ptr=0x10000000,
@@ -477,7 +477,7 @@ def test_q5_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
 
         return fake
 
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -501,7 +501,7 @@ def test_q5_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
     register(exact_key, capture("exact"), replace=True)
     register(candidate_key, capture("candidate"), replace=True)
     try:
-        with q6_t16_f16_rocblas_prefill_session(session):
+        with t16_f16_rocblas_prefill_session(session):
             launch_gguf_linear(
                 weight,
                 x_ptr=0x10000000,
@@ -575,7 +575,7 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
 
         return fake
 
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -594,7 +594,7 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
     register(exact_key, capture("exact"), replace=True)
     register(candidate_key, capture("candidate"), replace=True)
     try:
-        with q6_t16_f16_rocblas_prefill_session(session):
+        with t16_f16_rocblas_prefill_session(session):
             launch_gguf_linear(
                 weight,
                 x_ptr=0x10000000,
@@ -671,7 +671,7 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         for key in (exact_key, scalar_key, pair_key)
     }
     calls: list[str] = []
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -705,7 +705,7 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
     register(scalar_key, lambda *args, **kwargs: calls.append("scalar"), replace=True)
     register(pair_key, lambda *args, **kwargs: calls.append("pair"), replace=True)
     try:
-        with q6_t16_f16_rocblas_prefill_session(session):
+        with t16_f16_rocblas_prefill_session(session):
             for rows, hidden, outputs in (
                 (512, 17_408, 5_120),
                 (4_096, 17_408, 5_120),
@@ -785,7 +785,7 @@ def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
         for key in (scalar_key, octet_key)
     }
     calls: list[str] = []
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -819,7 +819,7 @@ def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
     register(scalar_key, lambda *args, **kwargs: calls.append("scalar"), replace=True)
     register(octet_key, lambda *args, **kwargs: calls.append("octet"), replace=True)
     try:
-        with q6_t16_f16_rocblas_prefill_session(session):
+        with t16_f16_rocblas_prefill_session(session):
             for rows in (512, 1_024, 4_096):
                 launch_gguf_linear(
                     weight,
@@ -853,7 +853,7 @@ def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
 
 def test_t16_f16_rocblas_variant_policy_rejects_overlapping_intervals() -> None:
     with pytest.raises(ValueError, match="must not overlap"):
-        Q6T16F16RocblasPrefillSession(
+        T16F16RocblasPrefillSession(
             min_rows=512,
             max_rows=4096,
             x_f16_ptr=1,
@@ -916,7 +916,7 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
 
         return fake
 
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -951,7 +951,7 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
     register(q6_key, capture("q6"), replace=True)
     register(q4_pair_key, capture("q4_pair"), replace=True)
     try:
-        with q6_t16_f16_rocblas_prefill_session(session):
+        with t16_f16_rocblas_prefill_session(session):
             assert launch_gguf_linear_pair(
                 q6_weight,
                 q4_weight,
@@ -1011,7 +1011,7 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
 
 
 def test_q4_t16_f16_rocblas_inplace_policy_is_shape_scoped() -> None:
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x10000000,
@@ -1040,7 +1040,7 @@ def test_q4_t16_f16_rocblas_inplace_policy_is_shape_scoped() -> None:
 
 
 def test_q6_t16_f16_rocblas_context_supports_bounded_inplace_down_activation() -> None:
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -1061,7 +1061,7 @@ def test_q6_t16_f16_rocblas_context_supports_bounded_inplace_down_activation() -
 
 
 def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -1206,7 +1206,7 @@ def test_q6_t16_f16_rocblas_context_declines_mixed_pair_for_singleton_owner() ->
         layout=LAYOUT_RAW_GGUF,
         quant_key="gguf_q8_0",
     )
-    session = Q6T16F16RocblasPrefillSession(
+    session = T16F16RocblasPrefillSession(
         min_rows=512,
         max_rows=4096,
         x_f16_ptr=0x30000000,
@@ -1221,7 +1221,7 @@ def test_q6_t16_f16_rocblas_context_declines_mixed_pair_for_singleton_owner() ->
         rocblas="rocblas-handle",
     )
 
-    with q6_t16_f16_rocblas_prefill_session(session):
+    with t16_f16_rocblas_prefill_session(session):
         assert not launch_gguf_linear_pair(
             q6_weight,
             q8_weight,

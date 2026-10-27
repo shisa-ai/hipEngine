@@ -2202,11 +2202,6 @@ def t16_f16_rocblas_prefill_session(
         _t16_f16_rocblas_prefill_session.reset(token)
 
 
-# Compatibility names for callers written when this owner covered only Q6.
-Q6T16F16RocblasPrefillSession = T16F16RocblasPrefillSession
-q6_t16_f16_rocblas_prefill_session = t16_f16_rocblas_prefill_session
-
-
 @contextlib.contextmanager
 def f32_ordered_prefill_session(
     session: F32OrderedPrefillSession | None,
@@ -5185,9 +5180,9 @@ def launch_gguf_linear(
         None if f32_ordered_session is None else id(f32_ordered_session),
         (
             None
-            if (q6_f16_session := _t16_f16_rocblas_prefill_session.get())
+            if (t16_f16_session := _t16_f16_rocblas_prefill_session.get())
             is None
-            else id(q6_f16_session)
+            else id(t16_f16_session)
         ),
         (
             None
@@ -11534,7 +11529,6 @@ __all__ = [
     "F32OrderedPrefillSession",
     "GGUFLinearDispatch",
     "Q5F32ResidentPlane",
-    "Q6T16F16RocblasPrefillSession",
     "T16F16RocblasPrefillSession",
     "gguf_wmma_prefill_enabled",
     "launch_gguf_linear",
@@ -11563,7 +11557,6 @@ __all__ = [
     "q4_t16_unequal_pair_prefill_session",
     "f32_ordered_prefill_session",
     "q5_raw_mmq_target_session",
-    "q6_t16_f16_rocblas_prefill_session",
     "t16_f16_rocblas_prefill_session",
     "q8_mmq_prefill_session",
     "q8_t16_dual_wmma_prefill_session",

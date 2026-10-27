@@ -156,7 +156,7 @@ def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkey
     )
     monkeypatch.setattr(
         Qwen35GGUFResidentSession,
-        "_q6_f16_rocblas_prefill_context",
+        "_t16_f16_rocblas_prefill_context",
         lambda _self, **_kwargs: nullcontext(),
     )
     monkeypatch.setattr(
