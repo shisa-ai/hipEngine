@@ -28858,20 +28858,15 @@ class Qwen35GGUFResidentSession:
             return False
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
-        max_chunk_raw = os.environ.get("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "")
-        max_chunk = (
-            int(max_chunk_raw)
-            if max_chunk_raw
-            else int(
-                backend_package_capability(
-                    self.runner.backend,
-                    "GGUF_Q6_LM_HEAD_MAX_CHUNK",
-                    8,
-                )
+        max_chunk = int(
+            backend_package_capability(
+                self.runner.backend,
+                "GGUF_Q6_LM_HEAD_MAX_CHUNK",
+                8,
             )
         )
         if max_chunk < 2 or max_chunk > 8:
-            raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 8]")
+            raise ValueError("GGUF_Q6_LM_HEAD_MAX_CHUNK capability must be in [2, 8]")
         max_chunk = min(max_chunk, primitive_max_rows)
         if rows <= max_chunk:
             return self._verify_lm_head_rowtile(

@@ -46,7 +46,7 @@ def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: py
     ]
 
 
-def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk8_and_env_rollback(
+def test_verify_lm_head_rowtile_chunked_ignores_retired_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
@@ -77,18 +77,17 @@ def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk8_and_env_rollback(
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12)
     assert calls == [8, 4]
     calls.clear()
-    # Env overrides remain real rollback controls even when the primitive can
-    # execute the complete row count directly.
+    # Retired overrides cannot replace the backend's chunk policy.
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "6")
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 12)
-    assert calls == [6, 6]
+    assert calls == [8, 4]
     calls.clear()
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    assert calls == [6, 2]
+    assert calls == [8]
     calls.clear()
     monkeypatch.setenv("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "4")
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
-    assert calls == [4, 4]
+    assert calls == [8]
 
 
 def test_verify_lm_head_rowtile_chunked_honors_gfx1100_package_limit(
@@ -114,10 +113,19 @@ def test_verify_lm_head_rowtile_chunked_honors_gfx1100_package_limit(
         lambda self: 8,
     )
 
-    # The independent W7900 transfer now advertises its qualified native R8
-    # owner; the explicit env rollback remains covered above.
+    # The W7900 package advertises its native R8 owner.
     assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
     assert calls == [8]
+
+
+@pytest.mark.parametrize("limit", [1, 9])
+def test_verify_lm_head_rejects_invalid_backend_chunk_policy(monkeypatch, limit) -> None:
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(backend="hip_gfx1100")
+    session._verify_lm_head_rowtile_max_rows = lambda: 8
+    monkeypatch.setattr(runner_mod, "backend_package_capability", lambda *args: limit)
+    with pytest.raises(ValueError, match="capability must be in"):
+        session._verify_lm_head_rowtile_chunked(1, 2, 8)
 
 
 def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(

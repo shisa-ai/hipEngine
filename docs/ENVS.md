@@ -363,7 +363,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` | unset | Gate instrumentation | Makes the GDN prefill chain emit per-row captured state for offline full-logit/semantic gates; set by the execution-profile and MTP gate harnesses and by the production profile binder. |
 | `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE` | unset | Gate instrumentation | Reserves the GDN semantic-gate capture scratch and enables the semantic-gate comparison route; must be set before session construction so the scratch allocation precedes capture. |
 | `HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR` | unset | Diagnostic capture | Writes diagnostic BF16 output-norm rows for offline full-logit gates into this directory. |
-| `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` | unset | Kernel R&D | Overrides the maximum row chunk for the Q6_K `lm_head` decode path; unset uses the derived default. |
 | `HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` | profile-scoped | Rollback seam | Uses the integer MMQ prefill owner for Q6_K rows; enabled by the production profile binder, disabled under strict. |
 | `HIPENGINE_GGUF_Q5_MMQ32_PIPE` | unset | Kernel R&D | Selects the pipelined MMQ32 consumer variant for Q5_K prefill dispatch; used by the MMQ test/bisect harness. |
 | `HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS` / `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE` | harness defaults | Kernel R&D | Workgroup thread count and launch shape for the Q6 top-1 stage-1 draft kernel; set by the MTP draft bench/rocprof harnesses. |
@@ -1135,6 +1134,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` is retired and ignored. The backend
+  chunk limit is capped by the registered Q6 LM-head primitive's row capacity;
+  arbitrary widths continue to use the row-chunk planner.
 
 - `HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE` is retired and ignored.
   Backend capability selects direct resident verifier indexing; single-session

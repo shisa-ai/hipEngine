@@ -4549,13 +4549,13 @@
       "start_line": 3982,
       "end_line": 3988,
       "sha256": "64b80771a09054ec734b91e74c9374467fe636a7c061a8a4d3fb397abbc884d5",
-      "status": "pending",
-      "evidence": ["Consolidated duplicate R0292 here, retaining its bounds, removal condition and fallback requirements. Promotion is already recorded by benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-q6-root-f32-rows8-retained.json; rollback removal still pending."],
+      "status": "deferred-public-validation",
+      "evidence": ["Consolidated duplicate R0292 here. Removed environment override; backend bounds, primitive capacity cap, arbitrary-width planner and all row kernels preserved. RED/GREEN and full LM-head/packed-AR benchmark/profiler units, CPU fixtures/smoke and docs/audit pass. Original promotion artifact preserved; defaults-only gfx1100/gfx1151 direct/server refresh remains open. Worklog: worklog/entries/20261027T144020.081262Z-cleanup-refactor-r0177-7c330b.md."],
       "subitems": [
         {
           "line": 3984,
           "text": "- Promoted after BF16-bit exact actual-weight, same-build C8 marker, and complete",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

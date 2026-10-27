@@ -2791,20 +2791,6 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## 2026-09-02 gfx1100 planar-Q6 root R8 rollback — closed
-
-- The planar-Q6 F32 R8 root owner is promoted on gfx1100 and gfx1151.
-  Complete counterbalanced C5-C8 qualification is recorded in
-  `benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-q6-root-f32-rows8-retained.json`;
-  the older statement that this promotion was pending is superseded.
-- Both packages advertise maximum chunk 8.
-  `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4` retains the prior R4 composition for
-  bisection; values outside [2,8] are invalid. Remove the override after one
-  release window plus defaults-only gfx1151/gfx1100 direct and server refreshes.
-  Keep `_small_b_rowtile_chunks` and all 2-8 row kernels as exact fallbacks for
-  arbitrary packed widths. The artifact's leaf screen preserves the original
-  actual-weight comparison; no new measurement is claimed here.
-
 ## 2026-09-01 gfx1100 grouped Q6 mixed-rowtile rollback — closed
 
 - Promoted after exact tracked-clean marker ownership and complete C5-C8
@@ -10541,3 +10527,15 @@ the recorded single-session regression. Incompatible owners also retain imports.
 confirm direct resident slab indexing, and check captured state remains read-only
 until acceptance commits. Compare output and accepted-state ownership with the
 packed-import parent and include single-session and cancellation/cleanup cases.
+
+### R0177 — Public planar-Q6 chunk-policy validation
+
+The LM-head chunk environment override is removed. Backend policy and primitive
+capacity own chunk size; `_small_b_rowtile_chunks` and the 2–8-row kernels remain.
+Existing promotion evidence is in
+`benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-q6-root-f32-rows8-retained.json`.
+
+**Dependency:** defaults-only gfx1100 and gfx1151 direct/server refreshes.
+**Clearing action:** exercise `LLM.generate()` and `hipengine serve` on both
+backends, trace Q6 root row chunks at eight requests and a non-divisible packed
+width, and compare logits/output and cleanup with the registered R4 composition.
