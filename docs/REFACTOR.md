@@ -4681,25 +4681,6 @@ fallback count is not a success metric.
   keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
   one-release rollback window, then collapse both selectors.
 
-## Laguna `dense_q4_prefill_mode=wmma_pack8`
-
-- Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16
-  use wave32 WMMA consumers over existing rank-2 Q4 pack8 bytes/effective FP32
-  scale/min planes and raw Q6_K bytes. Q4 remains 64x16; Q6 now defaults to
-  the exact scratch-free 16x32 tile after the 64x16 body exposed
-  VGPR256/236 B-thread spilling. They add no sidecar, leave decode unchanged,
-  and retain exact pack8/raw FMA paths as fallbacks.
-- Promoted as the gfx1151 package capability by the clean compounded category
-  gate. Clean selector-unset pp512/milestone publication and the final Q4/Q6
-  WMMA trace now pass. Keep the exact fallback for one release; remove the
-  session selector after that rollback window.
-- The Q6 environment tile override is removed. Backend wrapper defaults and
-  explicit `tile_m`/`tile_n` arguments remain; public Laguna route verification
-  awaits the checkpoint described in the deferred section below.
-- The Q4 environment tile override is removed. Shape policy and explicit tile
-  arguments remain; the diagnostic comparison uses a scoped policy replacement
-  with restoration on failure. The session selector above is still pending.
-
 ## Priority Cleanup (do first)
 
 **Revalidate the gfx1151 GGUF graph default on the current stack and retire
@@ -10860,8 +10841,9 @@ H7Y route must not be selected or allocate mirrors.
 
 ### R0276 — Public Q4/Q6 tile-policy validation
 
-The Q4/Q6 environment overrides are removed; the dense-Q4 session selector
-remains a separate unfinished item above.
+The Q4/Q6 environment overrides and dense-Q4 runtime setter are removed.
+The category benchmark owns its validated session-local comparison control;
+backend defaults and primitive fallback paths remain unchanged.
 
 **Dependency:** the unavailable Laguna checkpoint.
 **Clearing action:** run the R0273 gfx1151 public gate with

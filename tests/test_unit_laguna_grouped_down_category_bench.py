@@ -381,7 +381,14 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
         def set_f16_prefill_mode(self, mode: str) -> None:
             self.row["f16_projection_mode"] = mode
 
-        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+        backend = "hip_gfx1151"
+
+        @property
+        def dense_q4_prefill_mode(self):
+            return "retained"
+
+        @dense_q4_prefill_mode.setter
+        def dense_q4_prefill_mode(self, mode: str) -> None:
             self.row["dense_q4_prefill_mode"] = mode
 
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
@@ -509,7 +516,14 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
         def set_f16_prefill_mode(self, mode: str) -> None:
             configured.append(("f16_projection", mode))
 
-        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+        backend = "hip_gfx1151"
+
+        @property
+        def dense_q4_prefill_mode(self):
+            return "retained"
+
+        @dense_q4_prefill_mode.setter
+        def dense_q4_prefill_mode(self, mode: str) -> None:
             configured.append(("dense_q4", mode))
 
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
@@ -571,7 +585,14 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
         def set_f16_prefill_mode(self, mode: str) -> None:
             self.row["f16_projection_mode"] = mode
 
-        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+        backend = "hip_gfx1151"
+
+        @property
+        def dense_q4_prefill_mode(self):
+            return "retained"
+
+        @dense_q4_prefill_mode.setter
+        def dense_q4_prefill_mode(self, mode: str) -> None:
             self.row["dense_q4_prefill_mode"] = mode
 
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
@@ -655,7 +676,14 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
         def set_f16_prefill_mode(self, mode: str) -> None:
             configured.append(("f16_projection", mode))
 
-        def set_dense_q4_prefill_mode(self, mode: str) -> None:
+        backend = "hip_gfx1151"
+
+        @property
+        def dense_q4_prefill_mode(self):
+            return "retained"
+
+        @dense_q4_prefill_mode.setter
+        def dense_q4_prefill_mode(self, mode: str) -> None:
             configured.append(("dense_q4", mode))
 
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:

@@ -7236,18 +7236,18 @@
       "start_line": 6066,
       "end_line": 6086,
       "sha256": "bbd9f278285f9c43c94ad42364b607c7b27cf3cd52c2243c6c4db01cf2b9ef98",
-      "status": "partial-tile-overrides-removed",
-      "evidence": ["Q6 environment override and trivial helper removed; Q4 environment override removed with original shape policy and explicit tiles preserved. Shape comparison harness uses scoped policy replacement with restoration. RED/GREEN tests, full CPU bundles, Q4/Q6 GPU parity and docs/audit pass. Public model engagement deferred at bottom; dense-Q4 session cleanup remains pending. Worklogs: worklog/entries/20261027T082533.919957Z-cleanup-refactor-r0276-q6-26aa27.md and worklog/entries/20261027T083234.102496Z-cleanup-refactor-r0276-q4-10c6c0.md."],
+      "status": "deferred-public-validation",
+      "evidence": ["Q4/Q6 ambient tile overrides removed; explicit primitive tiles preserved. Dense-Q4 runtime setter removed; validated session-local diagnostic control preserves category/oracle comparisons. RED/GREEN tests, full CPU bundles, Q4/Q6 GPU parity and docs/audit pass. Public Laguna engagement awaits checkpoint with bottom clearing action. Worklogs: worklog/entries/20261027T082533.919957Z-cleanup-refactor-r0276-q6-26aa27.md, worklog/entries/20261027T083234.102496Z-cleanup-refactor-r0276-q4-10c6c0.md, worklog/entries/20261027T083855.670345Z-cleanup-refactor-r0276-session-d37b24.md."],
       "subitems": [
         {
           "line": 6068,
           "text": "- Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 6074,
           "text": "- Promoted as the gfx1151 package capability by the clean compounded category",
-          "status": "pending"
+          "status": "deferred-public-validation"
         },
         {
           "line": 6078,

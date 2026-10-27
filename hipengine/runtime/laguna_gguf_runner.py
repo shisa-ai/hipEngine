@@ -4285,14 +4285,6 @@ class LagunaGGUFResidentSession:
 
         self.prefill_swa_attention_hipblaslt = bool(enabled)
 
-    def set_dense_q4_prefill_mode(self, mode: str) -> None:
-        """Select the explicit dense/shared Q4 rows>1 projection route."""
-
-        self.dense_q4_prefill_mode = resolve_laguna_dense_q4_prefill_mode(
-            self.backend,
-            mode,
-        )
-
     def set_group_compact_mode(self, mode: str) -> None:
         """Select stable serial or parallel MoE metadata compaction."""
 
