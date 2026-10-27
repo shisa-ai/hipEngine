@@ -45,7 +45,6 @@ from hipengine.runtime.llama_dense import (
 from hipengine.tokenization.llama_dense import LlamaDenseTokenizer
 
 _LLAMA_DENSE_QUANT = "bf16"
-_LLAMA_DENSE_DEFAULT_CONTEXT = 8192
 _LLAMA_DENSE_RESIDENT_PATH = "llama_dense_prefill_then_decode"
 
 
@@ -81,11 +80,13 @@ class LlamaDenseGenerator:
         self.backend = resolve_backend(self.backend)
         self.spec = load_llama_spec(self.weight_index)
         self.context_length = (
-            min(
-                _LLAMA_DENSE_DEFAULT_CONTEXT,
-                self.spec.max_position_embeddings,
-                MAX_DENSE_DECODE_CONTEXT,
-            )
+            # The default is what the path can serve, not a round number: the
+            # cache is the checkpoint's position count capped by the decode
+            # kernel's LDS row. Anything lower would refuse context the kernels
+            # run, and it costs only KV memory -- 3.4 GB here against ~50 GB of
+            # headroom. A prompt is separately bounded by the prefill row, which
+            # `_validate_prompt_length` reports by name.
+            min(self.spec.max_position_embeddings, MAX_DENSE_DECODE_CONTEXT)
             if self.context_length is None
             else self._validate_context(self.context_length)
         )

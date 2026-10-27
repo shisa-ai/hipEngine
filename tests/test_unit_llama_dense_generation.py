@@ -109,6 +109,21 @@ def test_generator_defaults_the_context_to_the_checkpoint_limit(checkpoint):
     assert generator.context_length == int(TINY_LLAMA_CONFIG["max_position_embeddings"])
 
 
+def test_generator_defaults_the_context_to_the_kernel_bound(tmp_path: Path):
+    """A checkpoint declaring more positions gets the kernel's bound, not a round number."""
+
+    from hipengine.runtime.llama_dense import MAX_DENSE_DECODE_CONTEXT
+
+    wide = dict(TINY_LLAMA_CONFIG)
+    wide["max_position_embeddings"] = 32768
+    path, _f32, _bf16 = write_tiny_llama_checkpoint(tmp_path / "wide-default", config=wide)
+    generator = _generator(path)
+    assert generator.context_length == MAX_DENSE_DECODE_CONTEXT
+    # The prompt bound stays tighter than the cache, and both are reachable.
+    assert generator.max_prompt_tokens < generator.context_length
+    generator.declare_max_sequence_length(generator.context_length)
+
+
 def test_generator_refuses_a_context_beyond_the_checkpoint(checkpoint):
     with pytest.raises(ValueError, match="exceeds the checkpoint"):
         _generator(checkpoint, context_length=int(TINY_LLAMA_CONFIG["max_position_embeddings"]) + 1)
