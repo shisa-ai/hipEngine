@@ -4185,13 +4185,13 @@
       "start_line": 3743,
       "end_line": 3755,
       "sha256": "8cba23b64c6fed653c5f74d638d49d97c4d4e79b28220da8c0b907d39be9f11e",
-      "status": "pending",
-      "evidence": ["Stale host-default claim corrected: device radix selection already ships. Removed unused host-selection method/five mirrors, preserved actual diagnostic/native readers and CPU oracle. GPU346 exact synthetic context ladder through262144 plus pooling/restore and public2405token native engagement pass. Full-model262K parity remains open, not inferred from synthetic coverage. Worklog: worklog/entries/20261027T032410.164954Z-cleanup-refactor-r0162-qsa-host-594fae.md."],
+      "status": "resolved-removed",
+      "evidence": ["Unused host selector/mirrors removed; CPU oracle and live metadata preserved. Synthetic ladder/public engagement recorded in worklog/entries/20261027T032410.164954Z-cleanup-refactor-r0162-qsa-host-594fae.md. Full-capacity index artifact committed38c7a42f2; near-full complete-model retrieval, terminal-layer CPU index parity, repeat, rollback, suspended-chunk cancellation/replay and zero-allocation teardown pass on e2d5bdcc2. Scope is not all-layer logits parity. Artifact: benchmarks/results/2026-10-27-r0162-near-full-qsa-lifecycle.json. Worklog: worklog/entries/20261027T071854.406762Z-cleanup-refactor-r0162-complete-24b33c.md."],
       "subitems": [
         {
           "line": 3745,
           "text": "- The strict Qwen4Exp runner currently downloads one FP32 block-score row per",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

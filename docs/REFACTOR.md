@@ -3020,20 +3020,6 @@ should be removed or collapsed.
   after serving/cancellation/graph soak; retain direct selected primitives as
   the strict unfused fallback.
 
-## 2026-08-27 Qwen4Exp scalable device top-512 selection
-
-- Production c1 and chunked QSA use device radix top-k selection and expansion,
-  preserving lower-start tie order. The old host-selection default description
-  is obsolete; CPU selection remains an independent reference.
-- Cleanup removes the unused device-state host-selection method and mirrors
-  with no remaining consumer. Preserve metadata still used by physical-page
-  mapping, retrieval diagnostics and stateful graph probes.
-- Remaining validation: complete-model index parity at 262K. Existing 262K
-  allocation evidence does not establish inference parity. Synthetic selector
-  parity at that length is a separate contract, not a substitute. Run the
-  retrieval/index-reference gate at the full length and record cancellation,
-  rollback and isolation results; do not gate execution on this missing row.
-
 ## 2026-08-26 speculative-MTP default capability migration
 
 - September 12 gfx1151 dense Q4_K_M correction: the named production binder
