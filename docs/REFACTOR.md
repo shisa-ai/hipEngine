@@ -35,11 +35,10 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   runner per request. Remove it, and the c1 per-request decode branch of
   `decode_batch` for plain rows, once a release has served the batch path
   without a rollback; the c1 step stays for MTP rows and over-long requests.
-- **A lone request pays about 7% against the c1 runner** (48.9 vs 45.6 ms). The
-  remaining host work is the PLE n-gram hash and staging (about 2.4 ms before
-  the first layer) and roughly 38 small per-step uploads (positions, contexts,
-  index query positions for each QSA layer). Pack the per-step metadata into
-  one upload, or graph-capture the head and PLE stages, then re-time width 1.
+- **Metadata upload consolidation is complete.** The batch runner stages one
+  packed metadata buffer per step, and the output head has graph capture/replay.
+  The earlier per-step upload count is historical. Any further width-one tuning
+  must profile the current PLE/hash and launch path rather than repeat this work.
 - **A batch slot holds at most 65,536 positions**
   (`QWEN4_EXP_BATCH_SLOT_POSITIONS`). Each slot keeps per-position index slabs
   (pooled keys, member map, scores) outside the shared pool, about 100 MiB per
@@ -73,10 +72,13 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   short, medium and long prompts with zero, one and multiple decoding peers,
   and meet the campaign's frozen latency and prompt-cost criteria without this
   override.
-- **The Q8_0 expert-down layers read a tile count back to the host at two or
-  more rows** (`HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN`), so that MoE
-  segment is not graph-capturable and runs eagerly in every batch step. Derive
-  the count on device to make it capturable.
+- **Q8 WMMA down selection control remains.** The tile-count readback is gone:
+  the owner builds a current map and launches its static upper bound. The
+  separate `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` branch still selects
+  between implemented arithmetic routes. Remove it after profile-owned registry
+  selection expresses both production WMMA and strict grouped/GEMV comparison
+  without a global switch. Preserve the map rebuild and capacity checks; verify
+  `tests/test_unit_qwen4exp_q8_wmma_down_tile_map.py` and public profile selection.
 
 ## Flash-Next batch decode runner: hand-off copies and owner reset duplication
 

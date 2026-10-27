@@ -61,8 +61,8 @@
       "start_line": 96,
       "end_line": 153,
       "sha256": "c4fcb07f2dad5ac3c7d43a1c2764c3312e800f85ef8f9deecfcbafdaf81b9b96",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-current-source-reconciled",
+      "evidence": ["Current source has packed per-step metadata and head graph replay; focused owner tests pass. Q8 WMMA down rebuilds its map and passes a validated static tile upper bound, with no count D2H readback; test_unit_qwen4exp_q8_wmma_down_tile_map.py passes. Removed stale readback debt; current width-one retiming and other serving/capacity items remain open."],
       "subitems": [
         {
           "line": 107,
@@ -72,7 +72,7 @@
         {
           "line": 111,
           "text": "- **A lone request pays about 7% against the c1 runner** (48.9 vs 45.6 ms). The",
-          "status": "pending"
+          "status": "partial-implementation-done-retiming-open"
         },
         {
           "line": 116,
@@ -97,7 +97,7 @@
         {
           "line": 149,
           "text": "- **The Q8_0 expert-down layers read a tile count back to the host at two or",
-          "status": "pending"
+          "status": "partial-readback-resolved-selector-open"
         }
       ]
     },
