@@ -3430,26 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna selected one-plane FP32-scale MMQ modes
-
-- Added 2026-07-25 as explicit session-local LAP-3/LAP-4 candidates. The
-  original `mmq64x32_d4_f32` route used one FP32 scale per 32 activations for
-  selected Q4 gate/up and Q4/Q6 down. It crossed 350 tok/s but failed the
-  complete quality gate at max KL 0.0767056. The repaired
-  `mmq128x32_d8_f32` gate/up route stores one FP32 scale per 16 activations in
-  the same 160-byte block and pairs with `mmq64x32_d4_f32` down. It retains
-  direct/exact selected and grouped-down paths as required fallbacks;
-  D4x2/D4x3 remain diagnostics.
-- Promoted on gfx1151 after the clean category gate passed at max KL
-  0.040724836, 317/320 top-1, 2.615x aggregate prefill, flat decode, and exact
-  lifecycle recovery. Clean selector-unset publication now passes at
-  **354.820 tok/s** median with all three pp512 samples above 350, and the final
-  cached trace names the D8 128-column consumer. Retain the explicit
-  exact/D4x2/D4x3 rollback modes for one release; the rollback window is now
-  the sole removal condition for redundant experiment selectors. Remove the
-  rejected D4 gate default candidate at that boundary. Pre-admission pp512
-  samples were 353.951/356.082/356.473 tok/s.
-
 ## Priority Cleanup (do first)
 
 **Revalidate the gfx1151 GGUF graph default on the current stack and retire
@@ -10236,3 +10216,27 @@ and graph execution, queue limits, cancellation and shutdown with the local
 checkpoint dependency at R0249/R0250. Confirm dependencies and resource
 cleanup, not just token equality. No scheduling/default change accompanies
 this reconciliation.
+
+### R0270 — Laguna selected-MMQ diagnostic modes
+
+The unused one-plane `mmq64x32_d4_f32` gate/up selector is retired following
+its recorded quality failure. The same name still selects a live **down**
+projection in the category harness and GPU composition tests; that independent
+route and its shared kernels stay. gfx1151 defaults to the D8
+wave-column/direct/double-buffer/raw-prefetch gate/up family and D4 Q6/Q4
+down family. Direct/exact and quant/shape fallbacks are unchanged.
+
+**Decision needed:** retain older D8, D4x2/D4x3 and down modes as supported
+diagnostics, or migrate their comparison callers and remove redundant mode
+names. `scripts/laguna_grouped_down_category_bench.py`,
+`scripts/laguna_prefill_production_publication.py` and
+`tests/test_live_laguna_moe_gpu.py` still use these interfaces. The old
+one-release rollback note is not a runtime precondition.
+**Clearing action:** migrate those callers before removing a mode; preserve
+actual arithmetic comparisons, strict fallbacks and down primitives shared
+with production. Run `tests/test_unit_laguna_selected_mmq_modes.py`,
+`tests/test_unit_laguna_grouped_down_category_bench.py` and
+`tests/test_live_laguna_moe_gpu.py`, then R0249/R0250's public model gate on
+the applicable backend. Include non-aligned small/large rows, quant/shape
+misses, continuation and cleanup. No arithmetic or default changes accompany
+the gate/up-selector removal.

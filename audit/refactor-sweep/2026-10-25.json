@@ -7159,18 +7159,20 @@
       "start_line": 5951,
       "end_line": 5970,
       "sha256": "ee08354341226bf1870477e449769816dc4bfed233cf37dd3dad591bcb3dabae",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-removed-deferred-diagnostics",
+      "evidence": [
+        "Retire unused quality-rejected one-plane D4 gate/up selector only; independent D4 down, D8 and D4x2/D4x3 remain with live category/publication/GPU callers. Bottom entry names diagnostic retention/migration decision and public checkpoint dependency. RED/GREEN and focused host contracts pass; broad CPU reached 100% with sole H8B source hash failure, shell timed out in warning output; test-local pin repaired and H8B bundle passes, no broad rerun. Fixtures/smokes/docs/audit/worklog pass. Worklog: worklog/entries/20261027T200903.364588Z-cleanup-refactor-r0270-61347a.md."
+      ],
       "subitems": [
         {
           "line": 5953,
           "text": "- Added 2026-07-25 as explicit session-local LAP-3/LAP-4 candidates. The",
-          "status": "pending"
+          "status": "partial-removed-deferred-diagnostics"
         },
         {
           "line": 5961,
           "text": "- Promoted on gfx1151 after the clean category gate passed at max KL",
-          "status": "pending"
+          "status": "historical-deferred-diagnostics"
         }
       ]
     },

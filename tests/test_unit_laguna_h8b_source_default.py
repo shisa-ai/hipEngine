@@ -64,7 +64,8 @@ _POST_MERGE_SOURCE_SHA256 = {
         "673ce78ad4d4ff24bd8fe68dd61181894ceb22a65cce7d8649459b7cab1da911"
     ),
     "hipengine/runtime/laguna_moe.py": (
-        "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
+        # R0270 retires only the unused one-plane D4 gate selector; H8B scopes stay.
+        "127c6ce8654d9c03e939f500161f0f2dafcd877e10c66b39a15cc8082ecfb0c0"
     ),
     "tests/test_unit_laguna_h8b_scoped_activation_pack_reuse.py": (
         "a29b0a01d50e4a0ef590465cdb5dfe4054d3218d2cfa21f3437ec2f3eba9a266"

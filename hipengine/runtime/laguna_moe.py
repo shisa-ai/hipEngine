@@ -198,7 +198,6 @@ _SELECTED_GATE_UP_MODES = frozenset(
         "grouped_exact",
         "grouped_pair16",
         "mmq32_d4x3",
-        "mmq64x32_d4_f32",
         "mmq128x32_d8_f32",
         "mmq128x32_d8_f32_rowvec",
         "mmq128x32_d8_f32_wavecols",
@@ -246,7 +245,6 @@ def _should_fuse_grouped_weighted_sum(
 
 _FUSED_SELECTED_SILU_PACK_GATE_UP_MODES = frozenset(
     {
-        "mmq64x32_d4_f32",
         "mmq128x32_d8_f32",
         "mmq128x32_d8_f32_rowvec",
         "mmq128x32_d8_f32_wavecols",
@@ -4074,7 +4072,6 @@ def run_laguna_moe_rows(
         selected_down_mode=selected_down_mode,
     ) and scratch.expert_down.nbytes >= scratch.expert_gate_up.nbytes
     gate_up_f32_config = {
-        "mmq64x32_d4_f32": (1, False, False, False, False, False),
         "mmq128x32_d8_f32": (1, True, False, False, False, False),
         "mmq128x32_d8_f32_rowvec": (
             1,
