@@ -6579,38 +6579,38 @@
       "start_line": 5441,
       "end_line": 5494,
       "sha256": "e7bdab81a6d8250c0ae846454152f8dac98091b201c112f2126eb594e740606a",
-      "status": "pending",
-      "evidence": ["2026-10-27 source review: public positive selector absent, but q5_f32_ordered_nbytes/use_q5_f32_ordered/q5_k_f32_ordered_workspace_nbytes/q5_f32_ordered_prefill_session remain internal naming debt. No scripts/*.py consumers found. Rename with tests after bg-355 releases runtime freeze; preserve distinct Q6 production/H6E rollback maps and single scratch owner."],
+      "status": "resolved-renamed-removed",
+      "evidence": ["Renamed generic ordered-F32 session/context/scratch/plan/runner owners and migrated callers without aliases or duplicate allocations. Preserved quant-specific helpers/resident Q5 types and distinct Q6 production/H6E rollback maps. Full CPU bundle, ordered Q5/Q6 GPU regression and public shared-runtime generation pass. Worklog: worklog/entries/20261027T073351.330486Z-cleanup-refactor-r0254-492122.md."],
       "subitems": [
         {
           "line": 5443,
           "text": "- Added 2026-07-30 for WPF-H5D and advanced through H5I. The gfx1100 package",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 5451,
           "text": "- Cleanup completed immediately after the H5E checkpoint: remove the public",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 5461,
           "text": "- WPF-H5W's eager-alias cleanup trigger is closed. Complete state is KL0,",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 5469,
           "text": "- WPF-H5X's eager-alias cleanup trigger is closed. Complete state is KL0, four",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 5477,
           "text": "- WPF-H5Y's eager/workspace cleanup trigger is closed. Complete state is KL0;",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 5485,
           "text": "- WPF-H6E's source-adjudication trigger is closed: selector-unset 512/1K/4K is",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

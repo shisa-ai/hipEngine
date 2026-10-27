@@ -19,7 +19,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaHiddenCaptureTargets,
     LagunaPrefillChunkPolicy,
     LagunaPrefillScratchPlan,
-    LagunaQ5F32OrderedScratch,
+    LagunaF32OrderedScratch,
     LagunaRowsScratch,
     _validate_laguna_context_length,
     capture_laguna_hidden_rows,
@@ -332,9 +332,9 @@ def test_laguna_rows_scratch_is_bounded_and_frees() -> None:
         LagunaRowsScratch.allocate(_config(), max_rows=0, runtime=runtime)
 
 
-def test_laguna_q5_f32_ordered_scratch_is_one_bounded_buffer_and_frees() -> None:
+def test_laguna_f32_ordered_scratch_is_one_bounded_buffer_and_frees() -> None:
     runtime = _FakeRuntime()
-    scratch = LagunaQ5F32OrderedScratch.allocate(max_rows=512, runtime=runtime)
+    scratch = LagunaF32OrderedScratch.allocate(max_rows=512, runtime=runtime)
 
     assert scratch.buffer.nbytes == 150_994_944
     assert scratch.weight_f32_ptr == scratch.buffer.ptr
@@ -348,7 +348,7 @@ def test_laguna_q5_f32_ordered_scratch_is_one_bounded_buffer_and_frees() -> None
     assert runtime.allocations == {}
     assert len(runtime.freed) == 1
 
-    candidate = LagunaQ5F32OrderedScratch.allocate(
+    candidate = LagunaF32OrderedScratch.allocate(
         max_rows=512,
         use_activation_tile_k_row=True,
         runtime=runtime,
@@ -364,7 +364,7 @@ def test_laguna_q5_f32_ordered_scratch_is_one_bounded_buffer_and_frees() -> None
     assert len(runtime.freed) == 2
 
     with pytest.raises(ValueError, match="max_rows"):
-        LagunaQ5F32OrderedScratch.allocate(max_rows=0, runtime=runtime)
+        LagunaF32OrderedScratch.allocate(max_rows=0, runtime=runtime)
 
 
 def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
@@ -418,25 +418,25 @@ def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
     assert plan.total_nbytes == 439_022_368
     assert plan.matrix_rows == 512
     assert plan.attention_rows == 128
-    assert plan.q5_f32_ordered_nbytes == 0
+    assert plan.f32_ordered_nbytes == 0
 
     q5_plan = LagunaPrefillScratchPlan.build(
         config,
         moe_plan,
         policy=policy,
-        use_q5_f32_ordered=True,
+        use_f32_ordered=True,
     )
-    assert q5_plan.q5_f32_ordered_nbytes == 150_994_944
+    assert q5_plan.f32_ordered_nbytes == 150_994_944
     assert q5_plan.total_nbytes == 590_017_312
 
     h5y_plan = LagunaPrefillScratchPlan.build(
         config,
         moe_plan,
         policy=policy,
-        use_q5_f32_ordered=True,
+        use_f32_ordered=True,
         use_q5_activation_tile_k_row=True,
     )
-    assert h5y_plan.q5_f32_ordered_nbytes == 161_120_256
+    assert h5y_plan.f32_ordered_nbytes == 161_120_256
     assert h5y_plan.total_nbytes == 600_142_624
 
     wide_policy = LagunaPrefillChunkPolicy.resolve(

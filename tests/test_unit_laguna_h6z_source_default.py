@@ -178,7 +178,7 @@ def test_h6z_source_default_changes_only_late_global_role(
 ) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.kernels.registry import KernelKey, is_registered
-    from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+    from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 
     live_source = getattr(hip_gfx1100, _SOURCE_CAPABILITY)
     assert live_source == _H6Z_POLICY
@@ -212,10 +212,10 @@ def test_h6z_source_default_changes_only_late_global_role(
     assert _SCORE_SCRATCH_BYTES == 2_304 * 512 * 16
     assert _H6Z_USED_EXTENT_BYTES == 1_536 * 512 * 16
     assert _H6Z_USED_EXTENT_BYTES < _SCORE_SCRATCH_BYTES
-    assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == (
+    assert LagunaF32OrderedScratch.weight_f32_planned_nbytes() == (
         _Q5_WEIGHT_PLANE_BYTES
     )
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == _Q5_WORKSPACE_BYTES

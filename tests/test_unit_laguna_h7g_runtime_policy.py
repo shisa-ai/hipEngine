@@ -15,13 +15,13 @@ from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
 from hipengine.runtime.gguf_linear import (
     GGUFLinearDispatch,
-    Q5F32OrderedPrefillSession,
+    F32OrderedPrefillSession,
     _raw_k_f32_ordered_prefill_dispatch,
     clear_gguf_linear_dispatch_cache,
     launch_gguf_linear,
-    q5_f32_ordered_prefill_session,
+    f32_ordered_prefill_session,
 )
-from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 
 _CAPABILITY = "GGUF_Q5_F32_ORDERED_PREFILL_H7G_POLICY"
 _H5Y_CAPABILITY = "GGUF_Q5_F32_ORDERED_PREFILL_H5Y_POLICY"
@@ -120,8 +120,8 @@ def _policy_key(
     )
 
 
-def _session(*, with_activation: bool = True) -> Q5F32OrderedPrefillSession:
-    return Q5F32OrderedPrefillSession(
+def _session(*, with_activation: bool = True) -> F32OrderedPrefillSession:
+    return F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=0x4000,
@@ -180,12 +180,12 @@ def test_h7g_runtime_capability_is_retained_rollback_and_workspace_neutral() -> 
                 out_features,
             ).variant,
         )
-    assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
+    assert LagunaF32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
     assert (
-        LagunaQ5F32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
+        LagunaF32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
         == 10_125_312
     )
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256
@@ -201,7 +201,7 @@ def test_h7g_runtime_dispatch_is_exact_m512_role_owner_and_fails_closed(
     session = _session()
 
     _install_q5_policy(monkeypatch, _H5Y_POLICY)
-    with q5_f32_ordered_prefill_session(session):
+    with f32_ordered_prefill_session(session):
         for output_dtype, in_features, out_features in _H7G_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
                 _base(output_dtype),
@@ -219,7 +219,7 @@ def test_h7g_runtime_dispatch_is_exact_m512_role_owner_and_fails_closed(
             )
 
     _install_q5_policy(monkeypatch, _H7G_POLICY)
-    with q5_f32_ordered_prefill_session(session):
+    with f32_ordered_prefill_session(session):
         for output_dtype, in_features, out_features in _H7G_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
                 _base(output_dtype),
@@ -279,7 +279,7 @@ def test_h7g_runtime_dispatch_is_exact_m512_role_owner_and_fails_closed(
                 is base
             )
 
-    with q5_f32_ordered_prefill_session(_session(with_activation=False)):
+    with f32_ordered_prefill_session(_session(with_activation=False)):
         base = _base("bf16")
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
@@ -298,7 +298,7 @@ def test_h7g_runtime_dispatch_is_exact_m512_role_owner_and_fails_closed(
         "is_registered",
         lambda key: key != missing_key and original_is_registered(key),
     )
-    with q5_f32_ordered_prefill_session(session):
+    with f32_ordered_prefill_session(session):
         base = _base("bf16")
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
@@ -311,7 +311,7 @@ def test_h7g_runtime_dispatch_is_exact_m512_role_owner_and_fails_closed(
         )
 
     gfx1151 = _base("bf16", backend="hip_gfx1151")
-    with q5_f32_ordered_prefill_session(session):
+    with f32_ordered_prefill_session(session):
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
                 gfx1151,
@@ -359,7 +359,7 @@ def test_h7g_runtime_launch_reuses_owner_weight_activation_and_library(
         register(key, candidate, replace=True)
         clear_gguf_linear_dispatch_cache()
         try:
-            with q5_f32_ordered_prefill_session(session):
+            with f32_ordered_prefill_session(session):
                 launch_gguf_linear(
                     weight,
                     x_ptr=0x1000 + role_index,

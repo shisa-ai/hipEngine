@@ -157,7 +157,7 @@ def test_h6w_runtime_frozen_workspace_topology_and_promotion_contract() -> None:
 def test_h6w_runtime_capability_and_h6a_rollback_survive_source_promotion() -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.kernels.registry import KernelKey, is_registered
-    from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+    from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 
     assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _SOURCE_POLICY
     assert getattr(hip_gfx1100, _CAPABILITY) == _H6W_POLICY
@@ -182,13 +182,13 @@ def test_h6w_runtime_capability_and_h6a_rollback_survive_source_promotion() -> N
             _H6W_SWA,
         )
     )
-    assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == (
+    assert LagunaF32OrderedScratch.weight_f32_planned_nbytes() == (
         _Q5_WEIGHT_PLANE_BYTES
     )
-    assert LagunaQ5F32OrderedScratch.activation_bf16_planned_nbytes(
+    assert LagunaF32OrderedScratch.activation_bf16_planned_nbytes(
         max_rows=512
     ) == _Q5_ACTIVATION_PLANE_BYTES
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == _Q5_WORKSPACE_BYTES
@@ -290,20 +290,20 @@ def test_h6w_runtime_routes_late_starts_and_reuses_external_workspace(
 def test_h6w_runner_binds_q5_plane_after_allocation_and_same_stream_order() -> None:
     from hipengine.kernels import hip_gfx1100
     from hipengine.runtime.laguna_gguf_runner import (
+        LagunaF32OrderedScratch,
         LagunaGGUFResidentSession,
-        LagunaQ5F32OrderedScratch,
     )
 
     assert getattr(hip_gfx1100, _CAPABILITY) == _H6W_POLICY
     init_source = inspect.getsource(LagunaGGUFResidentSession.__init__)
     rows_source = inspect.getsource(LagunaGGUFResidentSession._run_layer_rows)
     cache_position = init_source.index("self.kv_cache = allocate_laguna_kv_cache(")
-    q5_position = init_source.index("LagunaQ5F32OrderedScratch.allocate(")
+    f32_position = init_source.index("LagunaF32OrderedScratch.allocate(")
     bind_position = init_source.index(".bind_prefill_score_scratch(")
-    assert cache_position < q5_position < bind_position
-    assert "q5_scratch.weight_f32_ptr" in init_source[bind_position:]
-    assert "q5_scratch.weight_f32_nbytes" in init_source[bind_position:]
-    assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == (
+    assert cache_position < f32_position < bind_position
+    assert "f32_scratch.weight_f32_ptr" in init_source[bind_position:]
+    assert "f32_scratch.weight_f32_nbytes" in init_source[bind_position:]
+    assert LagunaF32OrderedScratch.weight_f32_planned_nbytes() == (
         _Q5_WEIGHT_PLANE_BYTES
     )
 

@@ -70,12 +70,12 @@ from hipengine.loading.laguna_gguf_materialize import (
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
-    Q5F32OrderedPrefillSession,
+    F32OrderedPrefillSession,
     Q5F32ResidentPlane,
     launch_gguf_linear,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_silu,
-    q5_f32_ordered_prefill_session,
+    f32_ordered_prefill_session,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
 )
@@ -690,7 +690,7 @@ class LagunaRowsScratch:
 
 
 @dataclass
-class LagunaQ5F32OrderedScratch:
+class LagunaF32OrderedScratch:
     """Projection-local exact F32 weight and optional BF16 activation planes."""
 
     max_rows: int
@@ -720,7 +720,7 @@ class LagunaQ5F32OrderedScratch:
     def activation_bf16_planned_nbytes(cls, *, max_rows: int) -> int:
         rows = int(max_rows)
         if rows <= 0:
-            raise ValueError("Q5 F32 ordered max_rows must be positive")
+            raise ValueError("F32 ordered max_rows must be positive")
         return max(
             q5_k_f32_activation_tile_k_row_nbytes(
                 rows,
@@ -739,7 +739,7 @@ class LagunaQ5F32OrderedScratch:
     ) -> int:
         rows = int(max_rows)
         if rows <= 0:
-            raise ValueError("Q5 F32 ordered max_rows must be positive")
+            raise ValueError("F32 ordered max_rows must be positive")
         activation_nbytes = (
             cls.activation_bf16_planned_nbytes(max_rows=rows)
             if use_activation_tile_k_row
@@ -754,7 +754,7 @@ class LagunaQ5F32OrderedScratch:
         max_rows: int,
         use_activation_tile_k_row: bool = False,
         runtime: HipRuntime | None = None,
-    ) -> "LagunaQ5F32OrderedScratch":
+    ) -> "LagunaF32OrderedScratch":
         rows = int(max_rows)
         activation_nbytes = (
             cls.activation_bf16_planned_nbytes(max_rows=rows)
@@ -972,7 +972,7 @@ class LagunaPrefillScratchPlan:
     attention_rows: int
     rows_nbytes: int
     moe_nbytes: int
-    q5_f32_ordered_nbytes: int = 0
+    f32_ordered_nbytes: int = 0
 
     @classmethod
     def build(
@@ -981,7 +981,7 @@ class LagunaPrefillScratchPlan:
         moe_plan: LagunaMoEKernelPlan,
         *,
         policy: LagunaPrefillChunkPolicy,
-        use_q5_f32_ordered: bool = False,
+        use_f32_ordered: bool = False,
         use_q5_activation_tile_k_row: bool = False,
     ) -> "LagunaPrefillScratchPlan":
         rows_nbytes = LagunaRowsScratch.planned_nbytes(
@@ -992,16 +992,16 @@ class LagunaPrefillScratchPlan:
             moe_plan,
             max_rows=policy.matrix_rows,
         )
-        if use_q5_activation_tile_k_row and not use_q5_f32_ordered:
+        if use_q5_activation_tile_k_row and not use_f32_ordered:
             raise ValueError(
                 "H5Y activation-tile-K-row ownership requires ordered F32 scratch"
             )
-        q5_f32_ordered_nbytes = (
-            LagunaQ5F32OrderedScratch.planned_nbytes(
+        f32_ordered_nbytes = (
+            LagunaF32OrderedScratch.planned_nbytes(
                 max_rows=512,
                 use_activation_tile_k_row=use_q5_activation_tile_k_row,
             )
-            if use_q5_f32_ordered
+            if use_f32_ordered
             else 0
         )
         return cls(
@@ -1009,12 +1009,12 @@ class LagunaPrefillScratchPlan:
             attention_rows=policy.attention_rows,
             rows_nbytes=rows_nbytes,
             moe_nbytes=moe_nbytes,
-            q5_f32_ordered_nbytes=q5_f32_ordered_nbytes,
+            f32_ordered_nbytes=f32_ordered_nbytes,
         )
 
     @property
     def total_nbytes(self) -> int:
-        return self.rows_nbytes + self.moe_nbytes + self.q5_f32_ordered_nbytes
+        return self.rows_nbytes + self.moe_nbytes + self.f32_ordered_nbytes
 
 
 @dataclass
@@ -2834,7 +2834,7 @@ def load_laguna_eager_libraries(
     backend: str,
     compiler_version: str | None = None,
     require_cached: bool = False,
-    use_q5_f32_ordered: bool = False,
+    use_f32_ordered: bool = False,
 ) -> LagunaEagerLibraries:
     """Build/load every library used by one eager session exactly once."""
 
@@ -2921,7 +2921,7 @@ def load_laguna_eager_libraries(
             q6_t16_linear=build_gguf_q6_k_t16_gemv(**kwargs),
             q5_f32_ordered=(
                 build_gguf_q5_k_f32_rocblas_prefill(**kwargs)
-                if use_q5_f32_ordered
+                if use_f32_ordered
                 else None
             ),
             q8_decode_linear=build_gguf_q8_0_pack8_gemv(**kwargs),
@@ -3809,8 +3809,8 @@ class LagunaGGUFResidentSession:
         self.moe_scratch: LagunaMoEScratch | None = None
         self.rows_scratch: LagunaRowsScratch | None = None
         self.rows_moe_scratch: LagunaMoEScratch | None = None
-        self.q5_f32_ordered_scratch: LagunaQ5F32OrderedScratch | None = None
-        self.q5_f32_ordered_dispatch: Q5F32OrderedPrefillSession | None = None
+        self.f32_ordered_scratch: LagunaF32OrderedScratch | None = None
+        self.f32_ordered_dispatch: F32OrderedPrefillSession | None = None
         self.q5_f32_resident_cache: LagunaQ5F32ResidentGlobalCache | None = None
         self._owns_q5_f32_resident_cache = False
         self.verifier_scratch: LagunaVerifierScratch | None = None
@@ -3893,7 +3893,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 compiler_version=compiler_version,
                 require_cached=require_cached_build,
-                use_q5_f32_ordered=bool(self._f32_ordered_prefill_quants),
+                use_f32_ordered=bool(self._f32_ordered_prefill_quants),
             )
             self.moe_plan = resolve_laguna_moe_plan(
                 config,
@@ -3919,7 +3919,7 @@ class LagunaGGUFResidentSession:
                 config,
                 self.moe_plan,
                 policy=self.prefill_chunk_policy,
-                use_q5_f32_ordered=bool(self._f32_ordered_prefill_quants),
+                use_f32_ordered=bool(self._f32_ordered_prefill_quants),
                 use_q5_activation_tile_k_row=(
                     self._q5_activation_tile_k_row
                 ),
@@ -4067,8 +4067,8 @@ class LagunaGGUFResidentSession:
             )
             if self._f32_ordered_prefill_quants:
                 assert self.libraries.q5_f32_ordered is not None
-                self.q5_f32_ordered_scratch = (
-                    LagunaQ5F32OrderedScratch.allocate(
+                self.f32_ordered_scratch = (
+                    LagunaF32OrderedScratch.allocate(
                         max_rows=512,
                         use_activation_tile_k_row=(
                             self._q5_activation_tile_k_row
@@ -4076,7 +4076,7 @@ class LagunaGGUFResidentSession:
                         runtime=self.runtime,
                     )
                 )
-                q5_scratch = self.q5_f32_ordered_scratch
+                f32_scratch = self.f32_ordered_scratch
                 if resident_q5_f32_cache is not None:
                     if (
                         resident_q5_f32_cache.closed
@@ -4104,14 +4104,14 @@ class LagunaGGUFResidentSession:
                         self.q5_f32_resident_cache = None
                     else:
                         self._owns_q5_f32_resident_cache = True
-                self.q5_f32_ordered_dispatch = Q5F32OrderedPrefillSession(
+                self.f32_ordered_dispatch = F32OrderedPrefillSession(
                     min_rows=512,
-                    max_rows=q5_scratch.max_rows,
-                    weight_f32_ptr=q5_scratch.weight_f32_ptr,
-                    weight_f32_nbytes=q5_scratch.weight_f32_nbytes,
-                    activation_bf16_ptr=q5_scratch.activation_bf16_ptr,
+                    max_rows=f32_scratch.max_rows,
+                    weight_f32_ptr=f32_scratch.weight_f32_ptr,
+                    weight_f32_nbytes=f32_scratch.weight_f32_nbytes,
+                    activation_bf16_ptr=f32_scratch.activation_bf16_ptr,
                     activation_bf16_nbytes=(
-                        q5_scratch.activation_bf16_nbytes
+                        f32_scratch.activation_bf16_nbytes
                     ),
                     library=self.libraries.q5_f32_ordered,
                     resident_weight_f32_planes=(
@@ -4122,8 +4122,8 @@ class LagunaGGUFResidentSession:
                 )
                 if self.kv_cache.prefill_score_scratch_required:
                     self.kv_cache.bind_prefill_score_scratch(
-                        q5_scratch.weight_f32_ptr,
-                        q5_scratch.weight_f32_nbytes,
+                        f32_scratch.weight_f32_ptr,
+                        f32_scratch.weight_f32_nbytes,
                     )
             if self.moe_branch_concurrency:
                 if self.moe_shared_low_priority:
@@ -5100,9 +5100,7 @@ class LagunaGGUFResidentSession:
             with (
                 raw_k_prefill_rowbatch_session(self.raw_k_prefill_rowbatch),
                 raw_k_prefill_variant_session(self.raw_k_prefill_variant),
-                q5_f32_ordered_prefill_session(
-                    self.q5_f32_ordered_dispatch
-                ),
+                f32_ordered_prefill_session(self.f32_ordered_dispatch),
             ):
                 for layer_id in range(config.block_count):
                     self._run_layer_rows(
@@ -6880,7 +6878,7 @@ class LagunaGGUFResidentSession:
             route = self.swa_attention_hipblaslt
             self.swa_attention_hipblaslt = None
             release(route.close)
-        self.q5_f32_ordered_dispatch = None
+        self.f32_ordered_dispatch = None
         if (
             self.q5_f32_resident_cache is not None
             and self._owns_q5_f32_resident_cache
@@ -6891,9 +6889,9 @@ class LagunaGGUFResidentSession:
             release(lambda: cache.free(runtime=self.runtime))
         else:
             self.q5_f32_resident_cache = None
-        if self.q5_f32_ordered_scratch is not None:
-            scratch = self.q5_f32_ordered_scratch
-            self.q5_f32_ordered_scratch = None
+        if self.f32_ordered_scratch is not None:
+            scratch = self.f32_ordered_scratch
+            self.f32_ordered_scratch = None
             release(lambda: scratch.free(runtime=self.runtime))
         if self.verifier_scratch is not None:
             scratch = self.verifier_scratch
@@ -7177,9 +7175,9 @@ __all__ = [
     "LagunaEagerLibraries",
     "LagunaEagerScratch",
     "LagunaEagerTokenResult",
+    "LagunaF32OrderedScratch",
     "LagunaGGUFResidentSession",
     "LagunaHiddenCaptureTargets",
-    "LagunaQ5F32OrderedScratch",
     "LagunaRowsScratch",
     "LagunaVerifierRowsResult",
     "LagunaVerifierScratch",

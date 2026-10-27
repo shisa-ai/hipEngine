@@ -84,14 +84,18 @@ _LINEAR_SYMBOL_SHA256 = {
         "55a8c2d542178807ef80764511e60a0deee419d57df22eba52b7aca7e338936c"
     ),
     "_launch_raw_k_f32_resident_activation_tile_k_row": (
-        "82bc76f0e339298d2b0e5c5de5ed72076a04054df511651b2b6af1784ca5b00f"
+        "17d53949d155612e2cede25a90140860751c6d2f62449b748549ea2d2240f129"
     ),
 }
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8, execution-profile, and raw-K rowbatch policies do not
     # alter H8A's owner.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "97f1c88f6d4692156af889853ec5441c6640f7d67b872cc0fac00d5cadeae1dd"
+        "6f1e71d471e8549b5f297043e81a1ca7d076ee2f65973eea71ca83f6e2479c6f"
+    ),
+    # This GPU test only renamed the shared ordered-F32 prefill session manager.
+    "tests/test_gpu_laguna_h8a_resident_q5_global_cache.py": (
+        "616f0245296ffc56225a2c1c23673637479e6899f90a959b476a9f2aead23b21"
     ),
 }
 

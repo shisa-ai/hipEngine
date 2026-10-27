@@ -21,7 +21,7 @@ from hipengine.runtime.gguf_linear import (
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
 )
-from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 
 _ROOT = Path(__file__).parents[1]
 _ARTIFACT = (
@@ -132,7 +132,7 @@ def test_h7i_runtime_contract_binds_standalone_artifact_and_exact_role_set() -> 
     assert all("full_group_compute" in value for value in _H7I_POLICY.values())
     assert all("full_group_compute" not in value for value in _H7C_POLICY.values())
     assert _GENERIC_POLICY == {}
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256

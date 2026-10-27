@@ -1588,8 +1588,14 @@ class Q5F32ResidentPlane:
 
 
 @dataclass(frozen=True)
-class Q5F32OrderedPrefillSession:
-    """Caller-owned transient and optional immutable resident Q5 F32 planes."""
+class F32OrderedPrefillSession:
+    """Caller-owned F32 weight plane plus optional bounded side planes.
+
+    The weight plane is shared by every quant in
+    ``GGUF_F32_ORDERED_PREFILL_QUANTS``. The optional BF16 activation plane is
+    admitted by the ``use_q5_activation_tile_k_row`` flag, and
+    ``resident_weight_f32_planes`` belongs to the Q5 resident cache.
+    """
 
     max_rows: int
     weight_f32_ptr: int
@@ -1603,17 +1609,17 @@ class Q5F32OrderedPrefillSession:
     def __post_init__(self) -> None:
         if not 0 < int(self.min_rows) <= int(self.max_rows):
             raise ValueError(
-                "Q5 F32 ordered min_rows must be positive and fit max_rows"
+                "F32 ordered min_rows must be positive and fit max_rows"
             )
         if int(self.weight_f32_ptr) <= 0 or int(self.weight_f32_nbytes) <= 0:
             raise ValueError(
-                "Q5 F32 ordered weight plane must be a non-empty device buffer"
+                "F32 ordered weight plane must be a non-empty device buffer"
             )
         has_activation_ptr = int(self.activation_bf16_ptr) > 0
         has_activation_nbytes = int(self.activation_bf16_nbytes) > 0
         if has_activation_ptr != has_activation_nbytes:
             raise ValueError(
-                "Q5 F32 ordered activation plane pointer/bytes must be both set or zero"
+                "F32 ordered activation plane pointer/bytes must be both set or zero"
             )
         normalized: dict[int, Q5F32ResidentPlane] = {}
         for raw_ptr, plane in (self.resident_weight_f32_planes or {}).items():
@@ -1654,9 +1660,9 @@ class Q5F32OrderedPrefillSession:
         return plane
 
 
-_q5_f32_ordered_prefill_session: ContextVar[
-    Q5F32OrderedPrefillSession | None
-] = ContextVar("q5_f32_ordered_prefill_session", default=None)
+_f32_ordered_prefill_session: ContextVar[
+    F32OrderedPrefillSession | None
+] = ContextVar("f32_ordered_prefill_session", default=None)
 
 
 @dataclass(frozen=True)
@@ -2183,16 +2189,16 @@ q6_t16_f16_rocblas_prefill_session = t16_f16_rocblas_prefill_session
 
 
 @contextlib.contextmanager
-def q5_f32_ordered_prefill_session(
-    session: Q5F32OrderedPrefillSession | None,
+def f32_ordered_prefill_session(
+    session: F32OrderedPrefillSession | None,
 ) -> Iterator[None]:
     """Expose one bounded exact-value raw-K plane during an owner row pass."""
 
-    token = _q5_f32_ordered_prefill_session.set(session)
+    token = _f32_ordered_prefill_session.set(session)
     try:
         yield
     finally:
-        _q5_f32_ordered_prefill_session.reset(token)
+        _f32_ordered_prefill_session.reset(token)
 
 
 @contextlib.contextmanager
@@ -3607,7 +3613,7 @@ def _raw_k_f32_ordered_prefill_dispatch(
 ) -> GGUFLinearDispatch:
     """Select an exact ordered raw-K route only inside its bounded owner."""
 
-    session = _q5_f32_ordered_prefill_session.get()
+    session = _f32_ordered_prefill_session.get()
     if (
         session is None
         or int(rows) < int(session.min_rows)
@@ -5120,7 +5126,7 @@ def launch_gguf_linear(
             raw_k_variant = str(package_variant)
     mmq_session = _q8_mmq_prefill_session.get()
     q5_raw_mmq_session = _q5_raw_mmq_target_session.get()
-    q5_f32_ordered_session = _q5_f32_ordered_prefill_session.get()
+    f32_ordered_session = _f32_ordered_prefill_session.get()
     # Capture the raw sidecar pointer itself, not a declared-allocation proxy.
     # The raw-pointer-keyed resident Q5 plane lookup and the raw-K dispatch
     # family read this exact pointer, so the memo key below must vary with it.
@@ -5218,11 +5224,7 @@ def launch_gguf_linear(
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
         None if q5_raw_mmq_session is None else id(q5_raw_mmq_session),
-        (
-            None
-            if q5_f32_ordered_session is None
-            else id(q5_f32_ordered_session)
-        ),
+        None if f32_ordered_session is None else id(f32_ordered_session),
         (
             None
             if (q6_f16_session := _t16_f16_rocblas_prefill_session.get())
@@ -11358,7 +11360,7 @@ def _launch_raw_k_f32_ordered(
     out_features,
     kwargs,
 ) -> None:
-    session = _q5_f32_ordered_prefill_session.get()
+    session = _f32_ordered_prefill_session.get()
     if session is None:
         raise RuntimeError("raw-K F32 ordered dispatch escaped its owner session")
     fn(
@@ -11385,7 +11387,7 @@ def _launch_raw_k_f32_ordered_activation_tile_k_row(
     out_features,
     kwargs,
 ) -> None:
-    session = _q5_f32_ordered_prefill_session.get()
+    session = _f32_ordered_prefill_session.get()
     if session is None or int(session.activation_bf16_ptr) <= 0:
         raise RuntimeError(
             "raw-K F32 ordered activation-tile-K-row dispatch escaped its owner session"
@@ -11415,7 +11417,7 @@ def _launch_raw_k_f32_resident_activation_tile_k_row(
     out_features,
     kwargs,
 ) -> None:
-    session = _q5_f32_ordered_prefill_session.get()
+    session = _f32_ordered_prefill_session.get()
     if session is None or int(session.activation_bf16_ptr) <= 0:
         raise RuntimeError(
             "resident Q5 activation-tile-K-row dispatch escaped its owner session"
@@ -11571,8 +11573,8 @@ __all__ = [
     "PREFILL_F16_STAGING_VARIANT",
     "PrefillF16StagingWorkspace",
     "launch_gguf_q4_t16_sidecar_decode",
+    "F32OrderedPrefillSession",
     "GGUFLinearDispatch",
-    "Q5F32OrderedPrefillSession",
     "Q5F32ResidentPlane",
     "Q6T16F16RocblasPrefillSession",
     "T16F16RocblasPrefillSession",
@@ -11602,7 +11604,7 @@ __all__ = [
     "TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
-    "q5_f32_ordered_prefill_session",
+    "f32_ordered_prefill_session",
     "q5_raw_mmq_target_session",
     "q6_t16_f16_rocblas_prefill_session",
     "t16_f16_rocblas_prefill_session",

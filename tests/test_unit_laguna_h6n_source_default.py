@@ -93,7 +93,7 @@ def test_h6n_source_default_promotes_only_fixed512_global_role(monkeypatch) -> N
         register_laguna_kv_attention_kernels,
     )
     from hipengine.runtime import laguna_kv as module
-    from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+    from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 
     register_laguna_kv_attention_kernels()
     assert getattr(hip_gfx1100, _H6W_CAPABILITY) == _PRODUCTION_POLICY
@@ -118,7 +118,7 @@ def test_h6n_source_default_promotes_only_fixed512_global_role(monkeypatch) -> N
             _H6N_GLOBAL,
         )
     )
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == _PRODUCTION_WORKSPACE_BYTES

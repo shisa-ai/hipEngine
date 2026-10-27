@@ -17,7 +17,7 @@ from hipengine.runtime.gguf_linear import (
     GGUFLinearDispatch,
     _raw_k_prefill_rowbatch_dispatch,
 )
-from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 from tests.test_unit_laguna_h7i_runtime_policy import (
     _CAPABILITY,
     _GENERIC_CAPABILITY,
@@ -115,7 +115,7 @@ def test_h7i_source_default_promotes_only_three_roles_and_keeps_h7c_rollback(
     assert hashlib.sha256(
         inspect.getsource(_raw_k_prefill_rowbatch_dispatch).encode()
     ).hexdigest() == _RUNTIME_DISPATCH_SHA256
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256

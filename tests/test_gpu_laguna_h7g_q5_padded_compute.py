@@ -25,7 +25,7 @@ from hipengine.kernels.hip_gfx1100.quant import (
     gguf_q5_k_f32_rocblas_prefill as q5_f32,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
-from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 from tests.test_gpu_gguf_q5_k_f32_rocblas_prefill import (
     _bf16_bits,
     _bf16_to_f32,
@@ -377,12 +377,12 @@ def test_h7g_registry_source_policy_and_h5y_immutability() -> None:
     } == {(role[2], role[4], role[5]) for role in _ROLES}
     assert hip_gfx1100.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == _Q6_PRODUCTION_POLICY
     assert all("padded_compute" not in variant for variant in _Q5_PRODUCTION_POLICY.values())
-    assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
+    assert LagunaF32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
     assert (
-        LagunaQ5F32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
+        LagunaF32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
         == 10_125_312
     )
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256

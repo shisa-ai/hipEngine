@@ -153,10 +153,10 @@ def test_h6l_registry_source_and_production_ownership() -> None:
         config,
         plan,
         policy=policy,
-        use_q5_f32_ordered=True,
+        use_f32_ordered=True,
         use_q5_activation_tile_k_row=True,
     )
-    assert scratch.q5_f32_ordered_nbytes == _PRODUCTION_WORKSPACE_BYTES
+    assert scratch.f32_ordered_nbytes == _PRODUCTION_WORKSPACE_BYTES
     assert scratch.total_nbytes == _PRODUCTION_TOTAL_SCRATCH_BYTES
 
     load_backend_kernel_package("hip_gfx1151")

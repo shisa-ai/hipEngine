@@ -10,11 +10,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime.gguf_linear import (
     GGUFLinearDispatch,
-    Q5F32OrderedPrefillSession,
+    F32OrderedPrefillSession,
     _raw_k_f32_ordered_prefill_dispatch,
-    q5_f32_ordered_prefill_session,
+    f32_ordered_prefill_session,
 )
-from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 
 
 _H6E_POLICY = {
@@ -89,8 +89,8 @@ def _selected(
     )
 
 
-def _session(*, with_activation: bool = True) -> Q5F32OrderedPrefillSession:
-    return Q5F32OrderedPrefillSession(
+def _session(*, with_activation: bool = True) -> F32OrderedPrefillSession:
+    return F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=0x4000,
@@ -136,17 +136,17 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
         role for role in _H6U_POLICY if _H6U_POLICY[role] != _H6E_POLICY[role]
     } == set(_H6U_ROLES)
     assert sum(_H6U_CALL_WEIGHTS.values()) == 142
-    assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
+    assert LagunaF32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
     assert (
-        LagunaQ5F32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
+        LagunaF32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
         == 10_125_312
     )
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256
 
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         for output_dtype, in_features, out_features in _H6U_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
                 _base(output_dtype),
@@ -186,7 +186,7 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
             )
 
     _install_policy(monkeypatch, _H6E_POLICY)
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         for output_dtype, in_features, out_features in _H6U_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
                 _base(output_dtype),
@@ -201,7 +201,7 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
             )
 
     _install_policy(monkeypatch, _H6U_POLICY)
-    with q5_f32_ordered_prefill_session(_session(with_activation=False)):
+    with f32_ordered_prefill_session(_session(with_activation=False)):
         base = _base("bf16")
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
@@ -220,7 +220,7 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
         "is_registered",
         lambda key: key != missing_key and original_is_registered(key),
     )
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         base = _base("bf16")
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
@@ -233,7 +233,7 @@ def test_h6u_source_default_promotes_only_qualified_q6_roles(
         )
 
     gfx1151 = _base("bf16", backend="hip_gfx1151")
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
                 gfx1151,

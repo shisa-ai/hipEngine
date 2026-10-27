@@ -58,7 +58,7 @@ _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8, execution-profile, and raw-K rowbatch policies do not
     # alter H8B's owner.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "97f1c88f6d4692156af889853ec5441c6640f7d67b872cc0fac00d5cadeae1dd"
+        "6f1e71d471e8549b5f297043e81a1ca7d076ee2f65973eea71ca83f6e2479c6f"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

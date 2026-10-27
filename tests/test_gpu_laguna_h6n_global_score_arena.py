@@ -118,7 +118,7 @@ def test_h6n_source_registry_policy_and_static_contract() -> None:
     from hipengine.kernels import hip_gfx1100
     from hipengine.kernels.backends import load_backend_kernel_package
     from hipengine.kernels.registry import KernelKey, is_registered, resolve
-    from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+    from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 
     module = _module()
     source = _source_path().read_text()
@@ -138,7 +138,7 @@ def test_h6n_source_registry_policy_and_static_contract() -> None:
     assert hip_gfx1100.LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS == (
         _PRODUCTION_POLICY
     )
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256

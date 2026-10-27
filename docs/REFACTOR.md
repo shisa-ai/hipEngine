@@ -4373,58 +4373,6 @@ fallback count is not a success metric.
   explicit complete-pack H8A rollback. Remove that false opt-out after one
   later Q5/IQ-down checkpoint if no rollback is needed.
 
-## Laguna exact-ordered F32 Q5/Q6 production selector
-
-- Added 2026-07-30 for WPF-H5D and advanced through H5I. The gfx1100 package
-  owns all eight exact-M512 Q5 roles plus four exact-Q6 roles through one
-  **150,994,944-byte** projection-local F32 weight plane; row/key/backend/shape/
-  capacity misses retain raw coltile. H5I adds no allocation or sidecar. Complete
-  package-default M512 state is byte-exact at KL 0, and clean selector-unset
-  512/1K/4K publishes **191.713/178.080/134.411 tok/s**, improving H5G
-  **+1.762%/+1.736%/+1.256%**. This is retained production, not a rejected
-  experiment.
-- Cleanup completed immediately after the H5E checkpoint: remove the public
-  `LagunaGGUFResidentSession(use_q5_f32_ordered_prefill=...)` boolean, rename the
-  resolver as a private package-only helper, and remove it from `__all__`.
-  Retain the quant-keyed package role maps, context-local bounded owner,
-  registered unfused producer/consumer chains, and raw-coltile miss fallbacks
-  required by policy. Remove the legacy Q5-named internal session/scratch fields
-  after one clean checkpoint confirms no downstream benchmark harness imports
-  them; this is naming cleanup only and must not create a second owner.
-  Benchmark harnesses use scoped package-policy mutation for exact A/B control;
-  production has no per-session selector surface.
-- WPF-H5W's eager-alias cleanup trigger is closed. Complete state is KL0,
-  cached integration records **142 H5W + one H5I + three raw** consumers at
-  unchanged topology, default-off 512/1K/4K is
-  **+1.830%/+1.492%/+1.061%**, and selector-unset publication confirms
-  **+1.785%/+1.532%/+1.100%** with 3/3 wins each. Retain exactly the three Q6
-  eager aliases and promoted role entries; they add no selector or allocation.
-  Keep H5I F32-N72 plus raw exact fallbacks. Do not add a public/session
-  selector or duplicate owner.
-- WPF-H5X's eager-alias cleanup trigger is closed. Complete state is KL0, four
-  counter-rotated cached requests record **151 H5X + 37 H5L + 47 H5G**
-  consumers at unchanged topology, default-off 512/1K/4K is
-  **+0.439%/+0.468%/+0.518%**, and selector-unset publication confirms
-  **+0.531%/+0.310%/+0.327%**, 3/3 wins each. Retain exactly the four eager
-  aliases and H5X/H5L rollback primitives beneath H5Y. N48/N72 remain H5G and
-  all Q6 routes remain unchanged. Do not add a public/session selector or
-  duplicate owner.
-- WPF-H5Y's eager/workspace cleanup trigger is closed. Complete state is KL0;
-  cached integration records **188 packs + 235 weight producers + 188 H5Y +
-  47 H5G**, default-off 512/1K/4K is **+10.939%/+9.051%/+5.920%**, and
-  selector-unset publication confirms **+10.862%/+8.969%/+5.829%**, 3/3 wins
-  each. Retain exactly six eager aliases and one combined **161,120,256-byte**
-  ordered scratch allocation containing the F32 weight and BF16 activation
-  planes. Keep H5X/H5L/H5G registered fallbacks and all Q6 routes unchanged;
-  do not add a public/session selector, persistent sidecar, or duplicate owner.
-- `GGUF_Q6_F32_ORDERED_PREFILL_POLICY` selects the H6U DPP-wave reduction
-  variants. `GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY` selects distinct non-DPP
-  variants and remains an exact rollback, not a duplicate of the source map.
-  Do not replace its tests with production-map tests: that would lose rollback
-  coverage. Keep H5W and H5I registered exact rollbacks and preserve the combined
-  workspace/scratch owner; do not add a public/session selector, allocation,
-  sidecar, or second ABI.
-
 ## Laguna exact grouped-IQ prefill selector
 
 - Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving

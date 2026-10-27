@@ -90,7 +90,7 @@ def _prefill_scratch(config, plan) -> LagunaPrefillScratchPlan:
             matrix_rows=512,
             attention_rows=128,
         ),
-        use_q5_f32_ordered=True,
+        use_f32_ordered=True,
         use_q5_activation_tile_k_row=True,
     )
 
@@ -142,7 +142,7 @@ def test_h6q_source_default_is_retained_as_h6r_rollback(
     )
     package_scratch = _prefill_scratch(config, package_default)
     assert package_moe_scratch == _PRODUCTION_MOE_SCRATCH_BYTES
-    assert package_scratch.q5_f32_ordered_nbytes == _PRODUCTION_WORKSPACE_BYTES
+    assert package_scratch.f32_ordered_nbytes == _PRODUCTION_WORKSPACE_BYTES
     assert package_scratch.total_nbytes == _PRODUCTION_TOTAL_SCRATCH_BYTES
 
     monkeypatch.setattr(
@@ -166,8 +166,8 @@ def test_h6q_source_default_is_retained_as_h6r_rollback(
     assert laguna_moe_scratch_nbytes(rollback, max_rows=512) == package_moe_scratch
     rollback_scratch = _prefill_scratch(config, rollback)
     assert (
-        rollback_scratch.q5_f32_ordered_nbytes
-        == package_scratch.q5_f32_ordered_nbytes
+        rollback_scratch.f32_ordered_nbytes
+        == package_scratch.f32_ordered_nbytes
     )
     assert rollback_scratch.total_nbytes == package_scratch.total_nbytes
     assert len(rollback.kernel_keys) == len(package_default.kernel_keys)

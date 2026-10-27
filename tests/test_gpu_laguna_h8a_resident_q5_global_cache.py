@@ -666,7 +666,7 @@ def test_h8a_source_selected_shared_session_dispatch_and_unshared_fallback(
     assert not is_registered(_candidate_key("f32", backend="hip_gfx1151"))
     gguf_linear.clear_gguf_linear_dispatch_cache()
     library = object()
-    session = gguf_linear.Q5F32OrderedPrefillSession(
+    session = gguf_linear.F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=transient_ptr,
@@ -689,7 +689,7 @@ def test_h8a_source_selected_shared_session_dispatch_and_unshared_fallback(
             f"gguf_q5_k:{_candidate_variant('f32')}": library,
         },
     }
-    with gguf_linear.q5_f32_ordered_prefill_session(session):
+    with gguf_linear.f32_ordered_prefill_session(session):
         gguf_linear.launch_gguf_linear(
             matching,
             0x8000_0000,
@@ -702,7 +702,7 @@ def test_h8a_source_selected_shared_session_dispatch_and_unshared_fallback(
             0x8300_0000,
             **launch_kwargs,
         )
-    no_cache_session = gguf_linear.Q5F32OrderedPrefillSession(
+    no_cache_session = gguf_linear.F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=transient_ptr,
@@ -711,7 +711,7 @@ def test_h8a_source_selected_shared_session_dispatch_and_unshared_fallback(
         activation_bf16_nbytes=10_125_312,
         library=library,
     )
-    with gguf_linear.q5_f32_ordered_prefill_session(no_cache_session):
+    with gguf_linear.f32_ordered_prefill_session(no_cache_session):
         gguf_linear.launch_gguf_linear(
             matching,
             0x8400_0000,

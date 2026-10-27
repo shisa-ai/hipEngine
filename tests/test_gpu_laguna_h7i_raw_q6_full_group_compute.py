@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
-from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 from tests.test_gpu_laguna_h7c_raw_q6_dpp_wave_reduction import (
     _bf16_bits,
     _declaration,
@@ -414,7 +414,7 @@ def test_h7i_source_registry_package_workspace_and_backend_isolation(
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROLE_VARIANTS == _H7I_POLICY
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS == _H7I_POLICY
     assert not hasattr(hip_gfx1151, "GGUF_RAW_K_PREFILL_H7I_ROLE_VARIANTS")
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256

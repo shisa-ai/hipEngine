@@ -441,9 +441,9 @@ def test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped(
     from hipengine.kernels.registry import KernelKey
     from hipengine.runtime.gguf_linear import (
         GGUFLinearDispatch,
-        Q5F32OrderedPrefillSession,
+        F32OrderedPrefillSession,
         _raw_k_f32_ordered_prefill_dispatch,
-        q5_f32_ordered_prefill_session,
+        f32_ordered_prefill_session,
     )
 
     register_gguf_q5_k_f32_rocblas_prefill_kernels(replace=True)
@@ -464,7 +464,7 @@ def test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped(
             "raw",
         )
 
-    session = Q5F32OrderedPrefillSession(
+    session = F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=1000,
@@ -529,7 +529,7 @@ def test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped(
             is dispatch
         )
 
-    with q5_f32_ordered_prefill_session(session):
+    with f32_ordered_prefill_session(session):
         for role, geometry in q5_qualified.items():
             output_dtype, in_features, out_features = role
             selected = _raw_k_f32_ordered_prefill_dispatch(
@@ -631,7 +631,7 @@ def test_raw_k_f32_ordered_prefill_dispatch_is_owner_and_role_scoped(
         )
 
     with pytest.raises(ValueError, match="min_rows"):
-        Q5F32OrderedPrefillSession(
+        F32OrderedPrefillSession(
             min_rows=513,
             max_rows=512,
             weight_f32_ptr=1000,
@@ -654,10 +654,10 @@ def test_launch_gguf_linear_honors_raw_k_f32_ordered_prefill_session(
     from hipengine.kernels.registry import KernelKey, register
     from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
     from hipengine.runtime.gguf_linear import (
-        Q5F32OrderedPrefillSession,
+        F32OrderedPrefillSession,
         clear_gguf_linear_dispatch_cache,
         launch_gguf_linear,
-        q5_f32_ordered_prefill_session,
+        f32_ordered_prefill_session,
     )
 
     monkeypatch.setattr(
@@ -689,7 +689,7 @@ def test_launch_gguf_linear_honors_raw_k_f32_ordered_prefill_session(
         spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key=quant),
         allocation=lambda name: raw,
     )
-    session = Q5F32OrderedPrefillSession(
+    session = F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=400,
@@ -699,7 +699,7 @@ def test_launch_gguf_linear_honors_raw_k_f32_ordered_prefill_session(
     register(key, candidate, replace=True)
     clear_gguf_linear_dispatch_cache()
     try:
-        with q5_f32_ordered_prefill_session(session):
+        with f32_ordered_prefill_session(session):
             launch_gguf_linear(
                 weight,
                 x_ptr=100,
@@ -741,11 +741,11 @@ def test_h5y_dispatch_and_launch_require_bounded_activation_owner(
     from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
     from hipengine.runtime.gguf_linear import (
         GGUFLinearDispatch,
-        Q5F32OrderedPrefillSession,
+        F32OrderedPrefillSession,
         _raw_k_f32_ordered_prefill_dispatch,
         clear_gguf_linear_dispatch_cache,
         launch_gguf_linear,
-        q5_f32_ordered_prefill_session,
+        f32_ordered_prefill_session,
     )
 
     geometry = (
@@ -773,14 +773,14 @@ def test_h5y_dispatch_and_launch_require_bounded_activation_owner(
         ),
         "raw",
     )
-    no_activation = Q5F32OrderedPrefillSession(
+    no_activation = F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=400,
         weight_f32_nbytes=150_994_944,
         library="ordered-library",
     )
-    with q5_f32_ordered_prefill_session(no_activation):
+    with f32_ordered_prefill_session(no_activation):
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
                 base,
@@ -791,7 +791,7 @@ def test_h5y_dispatch_and_launch_require_bounded_activation_owner(
             is base
         )
 
-    session = Q5F32OrderedPrefillSession(
+    session = F32OrderedPrefillSession(
         min_rows=512,
         max_rows=512,
         weight_f32_ptr=400,
@@ -806,7 +806,7 @@ def test_h5y_dispatch_and_launch_require_bounded_activation_owner(
         "gguf_q5_k",
         f"f32_ordered_{geometry}_bf16_bf16_out",
     )
-    with q5_f32_ordered_prefill_session(session):
+    with f32_ordered_prefill_session(session):
         assert _raw_k_f32_ordered_prefill_dispatch(
             base,
             rows=512,
@@ -837,7 +837,7 @@ def test_h5y_dispatch_and_launch_require_bounded_activation_owner(
     register(key, candidate, replace=True)
     clear_gguf_linear_dispatch_cache()
     try:
-        with q5_f32_ordered_prefill_session(session):
+        with f32_ordered_prefill_session(session):
             launch_gguf_linear(
                 weight,
                 x_ptr=100,
@@ -865,7 +865,7 @@ def test_h5y_dispatch_and_launch_require_bounded_activation_owner(
         )
     ]
     with pytest.raises(ValueError, match="pointer/bytes"):
-        Q5F32OrderedPrefillSession(
+        F32OrderedPrefillSession(
             min_rows=512,
             max_rows=512,
             weight_f32_ptr=400,

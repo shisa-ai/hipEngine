@@ -14,9 +14,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
 )
 from hipengine.runtime.gguf_linear import (
     _raw_k_f32_ordered_prefill_dispatch,
-    q5_f32_ordered_prefill_session,
+    f32_ordered_prefill_session,
 )
-from hipengine.runtime.laguna_gguf_runner import LagunaQ5F32OrderedScratch
+from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
 from tests.test_unit_laguna_h7h_runtime_policy import (
     _H5Y_CAPABILITY,
     _H5Y_POLICY,
@@ -83,18 +83,18 @@ def test_h7h_source_default_promotes_only_two_roles_and_keeps_h7g_rollback(
     assert artifact["scope"]["source_promotion_pending"]
     assert artifact["scope"]["workspace_bytes"] == 161_120_256
 
-    assert LagunaQ5F32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
+    assert LagunaF32OrderedScratch.weight_f32_planned_nbytes() == 150_994_944
     assert (
-        LagunaQ5F32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
+        LagunaF32OrderedScratch.activation_bf16_planned_nbytes(max_rows=512)
         == 10_125_312
     )
-    assert LagunaQ5F32OrderedScratch.planned_nbytes(
+    assert LagunaF32OrderedScratch.planned_nbytes(
         max_rows=512,
         use_activation_tile_k_row=True,
     ) == 161_120_256
 
     _install_q5_policy(monkeypatch, _H7H_POLICY)
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         for output_dtype, in_features, out_features in _H7H_ROLES:
             selected = _raw_k_f32_ordered_prefill_dispatch(
                 _base(output_dtype),
@@ -145,7 +145,7 @@ def test_h7h_source_default_promotes_only_two_roles_and_keeps_h7g_rollback(
             )
 
     _install_q5_policy(monkeypatch, _H7G_POLICY)
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         for output_dtype, in_features, out_features in _H7H_ROLES:
             assert _raw_k_f32_ordered_prefill_dispatch(
                 _base(output_dtype),
@@ -160,7 +160,7 @@ def test_h7h_source_default_promotes_only_two_roles_and_keeps_h7g_rollback(
             )
 
     _install_q5_policy(monkeypatch, _H7H_POLICY)
-    with q5_f32_ordered_prefill_session(_session(with_activation=False)):
+    with f32_ordered_prefill_session(_session(with_activation=False)):
         base = _base("bf16")
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
@@ -179,7 +179,7 @@ def test_h7h_source_default_promotes_only_two_roles_and_keeps_h7g_rollback(
         "is_registered",
         lambda key: key != missing_key and original_is_registered(key),
     )
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         base = _base("bf16")
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
@@ -192,7 +192,7 @@ def test_h7h_source_default_promotes_only_two_roles_and_keeps_h7g_rollback(
         )
 
     gfx1151 = _base("bf16", backend="hip_gfx1151")
-    with q5_f32_ordered_prefill_session(_session()):
+    with f32_ordered_prefill_session(_session()):
         assert (
             _raw_k_f32_ordered_prefill_dispatch(
                 gfx1151,
