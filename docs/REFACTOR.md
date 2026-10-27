@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| PARO gfx1151 greedy decode graph | `capture_decode_graph()` remains available, but public greedy c1 consults a resident-session architecture policy before capture. | The 2026-07-13 gfx1151 p512/d8 graph/eager fixture gate rejected generated-token equality, and graph wall was slightly slower (`0.133842` vs `0.133048` s). gfx1151 therefore uses canonical eager resident steps; gfx1100 retains its previously validated graph path. | Repair and re-admit gfx1151 only after a current-stack graph/eager gate matches generated tokens plus hidden/Conv/GDN/KV state across long replay and improves capture-inclusive wall. If no repair is planned, move the rejected graph probe to a diagnostic-only harness and keep eager as the permanent gfx1151 policy. |
 | PARO ragged packed prefill | Ragged compact slabs automatically use per-segment linear/full-attention prefill; `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR` and `HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN` retain explicit bisection routes. | SOL-P2 found the packed segmented/varlen route changed the first ragged row's persistent state and, across all 40 layers, its generated tokens. `per_segment_ragged_exact` is the production-safe fallback; equal-length slabs retain `packed_segments`/`packed_varlen`. | Repair the ragged packed kernels, then remove the automatic fallback only after c8 ragged generated-token plus all-linear-state/all-full-KV identity passes independent c1 on gfx1151 and gfx1100 and an end-to-end prefill comparison is non-regressive. Remove the force flags after the repaired route survives one release window. |
 | PARO short-prompt prefill | The public generator uses token-serial c1 steps when prompt tokens are fewer than `linear_conv_kernel_dim`; low-level `prefill_native()` remains strict. | Release fallback. A no-env gfx1151 wheel-path smoke generated from the one-token prompt `Hello`; normal prompts still use native prefill. | Replace the serial fallback only after a dedicated native short-prompt kernel matches c1 generated tokens plus recurrent/KV state for lengths 1-3. |
 | GGUF public AR profile | `HIPENGINE_GGUF_DECODE_REPACK=0` remains a rollback opt-out; low-level WMMA/GEMV selectors remain available for benchmark bisection. | Release default: T16 decode-repack is on, and public generate/stream sessions pass the resolved backend plus `use_wmma_prefill=True` and `use_gemv_decode=True`. A no-env gfx1151 Q4_K_M smoke generated one token through `LLM(model)`. | Remove the decode-repack opt-out after one release window and a defaults-only gfx1100 refresh. Keep raw layouts only where a quant/kernel lacks a T16 fallback or a retained diagnostic requires them. |
@@ -10537,3 +10536,32 @@ category caller to a scoped verifier policy; do not add identity-based
 admission or disable working execution because a measurement is absent.
 Host plan, category/public-gate, cycle and fake-provider integration tests
 pass; no current full-model, GPU arithmetic or performance claim is made.
+
+### R0281-PARO-ARGRAPH — gfx1151 greedy graph mismatch
+
+The resident-session policy selects eager greedy c1 on gfx1151 and graph replay
+on gfx1100. Explicit `capture_decode_graph()` remains callable by diagnostics.
+The gfx1151 p512/d8 mismatch recorded in July reproduces on the October 27
+stack: eager/graph/eager runs have the same prefill seed; both eager runs have
+identical IDs and final logits, but graph first diverges at decode index 2.
+All three runs produce finite logits and release tracked allocations. See
+`worklog/entries/20261027T224932.969200Z-cleanup-refactor-r0281-paro-argraph-1d12bf.md`
+for the explicit backend, checkpoint, fixture and reproduction. This is separate
+from R0001's MTP verifier graph regression and makes no current timing claim.
+
+**Remaining work:** trace and repair the first graph/eager state or arithmetic
+difference before removing the gfx1151 eager policy. Keep the working eager
+route, gfx1100 graph route and explicit diagnostic capture; absence of a
+measurement on another architecture is not itself a capability failure.
+**Clearing action:** repeat the linked eager/graph/eager control, then compare
+hidden, Conv/GDN and live KV at each transition with identical inputs. Extend
+the repair gate to long replay, reset/reuse, cancellation and shutdown. The
+fixture CLI in `scripts/qwen35_decode_graph_fixture_gate.py` compares generated
+IDs and final logits, not all persistent state; it also labels its backend
+statically, so verify the runner's resolved backend rather than trusting that
+field. Run the graph-policy nodes in
+`tests/test_unit_generation_qwen35_paro.py` and
+`tests/test_unit_qwen35_resident_batch_layout.py`, then exercise public
+`LLM.generate()` with the repaired route confirmed and allocations drained.
+Evaluate capture-inclusive wall separately before an automatic performance
+choice. No runtime policy, kernel or graph implementation changes here.
