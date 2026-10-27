@@ -637,8 +637,20 @@ def test_physical_c8_t16_pairreuse_uses_backend_scope_and_env_rollback(
     assert calls == ["pairreuse", "baseline"]
 
 
+@pytest.mark.parametrize(
+    "x_rows,rows,in_features,out_features,expected",
+    [(1, 8, 2048, 512, "baseline"),
+     (2, 16, 2048, 512, "pairreuse"),
+     (4, 32, 2048, 512, "pairreuse"),
+     (6, 48, 2048, 512, "pairreuse"),
+     (7, 56, 2048, 512, "baseline"),
+     (6, 47, 2048, 512, "baseline"),
+     (6, 48, 1024, 512, "baseline"),
+     (6, 48, 2048, 256, "baseline")],
+)
 def test_physical_c2_t16_pairreuse_is_request_scoped(
     monkeypatch: pytest.MonkeyPatch,
+    x_rows, rows, in_features, out_features, expected,
 ) -> None:
     gate = _FakeWeight(
         "ffn_gate_exps",
@@ -669,11 +681,11 @@ def test_physical_c2_t16_pairreuse_is_request_scoped(
         lambda *args, **kwargs: calls.append("baseline"),
     )
     kwargs = dict(
-        x_rows=6,
-        rows=48,
+        x_rows=x_rows,
+        rows=rows,
         num_experts=256,
-        in_features=2048,
-        out_features=512,
+        in_features=in_features,
+        out_features=out_features,
         stream=7,
         runtime=object(),
     )
@@ -686,7 +698,19 @@ def test_physical_c2_t16_pairreuse_is_request_scoped(
             gate, up, 100, 130, 150, 160, **kwargs
         )
 
-    assert calls == ["baseline", "pairreuse"]
+        with pytest.raises(RuntimeError, match="scope failure"):
+            with moe_physical_c2_pairreuse_session(False):
+                assert qgr._launch_selected_raw_gguf_moe_pair(
+                    gate, up, 100, 130, 150, 160, **kwargs
+                )
+                raise RuntimeError("scope failure")
+        assert qgr._launch_selected_raw_gguf_moe_pair(
+            gate, up, 100, 130, 150, 160, **kwargs
+        )
+    assert qgr._launch_selected_raw_gguf_moe_pair(
+        gate, up, 100, 130, 150, 160, **kwargs
+    )
+    assert calls == ["baseline", expected, "baseline", expected, "baseline"]
 
 
 def test_qwen_q5_t16_tile8_uses_gfx1151_capability_and_peer_fallback(

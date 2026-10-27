@@ -3037,6 +3037,12 @@ fallback count is not a success metric.
   request-local `moe_physical_c2_pairreuse_session(...)` selects the exact
   duplicate-expert Q4 gate/up kernel only for x_rows 2-6, selected rows
   `x_rows*8`, K2048/N512. C1, C8, non-MoE, and Q5 down keep existing owners.
+- The multi-slot MoE factory already enables this scope on its architecture-shaped
+  adapter; it is not a dead diagnostic switch. Preserve the ContextVar's nested
+  disable/restoration semantics and row/geometry checks when moving selection
+  into a resolved profile. Routing tests cover both row bounds, an interior row,
+  selected-row mismatch and incompatible geometry; public state/acceptance
+  validation is still required for the profile migration.
 - Removal trigger: fold the route into a profile-resolved MoE physical-target
   manifest after C2 promotion or remove it if the final three-repeat gate loses.
 

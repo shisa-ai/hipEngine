@@ -5023,13 +5023,13 @@
       "start_line": 4270,
       "end_line": 4278,
       "sha256": "509f571390d868c978b96dcbcb3894bb4e978d90b15a2ad0c8ebd326c8cb830a",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Verified multi-slot MoE factory enables live request-local pair reuse. Added row-bound/interior/mismatch/geometry and nested-disable/error-restoration coverage. Full routing/adapter/C2 scope tests and docs/audit pass. No arithmetic change; resolved-profile integration and public state/acceptance validation remain open. Worklog: worklog/entries/20261027T152230.570879Z-cleanup-refactor-r0191-cd7286.md."],
       "subitems": [
         {
           "line": 4272,
           "text": "- Added 2026-08-27 after actual R5/R6 microbench and full-suite evidence. The",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4276,
