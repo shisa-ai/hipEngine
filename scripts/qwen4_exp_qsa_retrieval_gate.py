@@ -9,6 +9,11 @@ select a whole-block token budget and append only the actual incomplete tail.
 prompt with no decode, and reports generation, repeat, rollback, and retrieval
 as ``not_exercised``. Its pass predicate covers only exact CPU-reference index
 positions, finite logits, cursor/count consistency, and a clean teardown.
+
+The retrieval mode also runs a cancellation arm: it suspends a short chunk at
+the all-layer flush boundary, abandons it without resetting the committed
+prefix, and checks that the abandoned writes equal a committed chunk's writes
+and that the replay reproduces the reference logits.
 """
 
 from __future__ import annotations
@@ -39,7 +44,10 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
 )
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
-from hipengine.runtime.qwen4_exp_runner import qsa_batched_selection
+from hipengine.runtime.qwen4_exp_runner import (
+    Qwen4ExpQSAIndexDeviceState,
+    qsa_batched_selection,
+)
 from scripts.qwen4_exp_compare_logits import compare_logits
 
 
@@ -280,6 +288,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--cancel-arm",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Retrieval mode suspends a short chunk at the all-layer flush "
+            "boundary, abandons it without resetting the committed prefix, and "
+            "checks the abandoned writes against a committed chunk. Index-only "
+            "mode reports it not_exercised"
+        ),
+    )
+    parser.add_argument(
         "--index-only", action="store_true",
         help=(
             "Prefill an exactly --target-tokens prompt and stop: no decode, no "
@@ -342,6 +361,356 @@ def _index_state_exact(runner: object, token_count: int) -> dict[str, object]:
     }
 
 
+def _qsa_layer_states(runner: object) -> dict[int, object]:
+    """QSA index states keyed by their layer, checked against the real type.
+
+    ``index_states`` is allocated one entry per QSA layer today, but the arm must
+    not assume that: a binding that indexes anything other than a
+    ``Qwen4ExpQSAIndexDeviceState`` is a different contract, and the per-layer
+    index and pooled-key assertions do not apply to it.
+    """
+
+    states = tuple(runner.index_states)
+    bound: dict[int, object] = {}
+    for layer, binding in sorted(runner.qsa_bindings.items()):
+        state = states[int(binding.qsa_state_index)]
+        if not isinstance(state, Qwen4ExpQSAIndexDeviceState):
+            raise RuntimeError(
+                f"QSA binding for layer {int(layer)} indexes "
+                f"{type(state).__name__}, not Qwen4ExpQSAIndexDeviceState"
+            )
+        bound[int(layer)] = state
+    return bound
+
+
+def _index_state_coverage(runner: object) -> dict[str, object]:
+    """Describe what ``index_states`` actually holds and what the bindings cover."""
+
+    states = tuple(runner.index_states)
+    bound = sorted(
+        {int(binding.qsa_state_index) for binding in runner.qsa_bindings.values()}
+    )
+    return {
+        "total": len(states),
+        "qsa_states": sum(
+            isinstance(state, Qwen4ExpQSAIndexDeviceState) for state in states
+        ),
+        "types": sorted({type(state).__name__ for state in states}),
+        "bound_indices": bound,
+        "covers_all": bound == list(range(len(states))),
+    }
+
+
+def _physical_rows(attention: object, start: int, count: int) -> list[int]:
+    """Device rows for logical positions ``start .. start+count-1``.
+
+    The block table is not assumed to be the identity: a page may sit anywhere.
+    """
+
+    block_size = int(attention.block_size)
+    blocks = attention.block_host
+    return [
+        int(blocks[(start + index) // block_size]) * block_size
+        + (start + index) % block_size
+        for index in range(count)
+    ]
+
+
+def _download_rows(runtime: object, buffer: object, rows: list[int], row_bytes: int) -> np.ndarray:
+    out = np.empty(len(rows) * row_bytes, dtype=np.uint8)
+    for index, row in enumerate(rows):
+        runtime.memcpy(
+            host_array_ptr(out[index * row_bytes : (index + 1) * row_bytes]),
+            int(buffer.ptr) + row * row_bytes,
+            row_bytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+    return out
+
+
+def _kv_geometry(attention: object) -> tuple[int, int]:
+    """Physical slots and per-token byte stride of a paged K/V cache.
+
+    ``nbytes // positions`` is only the token stride when the buffer holds a
+    whole number of rows and the block table's tail is under one page. The paged
+    allocation rounds ``max_positions`` up to a block, so the slot count comes
+    from the table, not from the logical capacity; a buffer that is not a whole
+    number of rows has no token stride and comparing it would be meaningless.
+    """
+
+    block_size = int(attention.block_size)
+    slots = len(attention.block_host) * block_size
+    logical = int(attention.max_positions)
+    if slots < logical:
+        raise RuntimeError(
+            f"K/V block table covers {slots} slots for {logical} logical positions"
+        )
+    if slots - logical >= block_size:
+        raise RuntimeError(
+            f"K/V block table over-reserves {slots - logical} slots beyond one page"
+        )
+    key_bytes = int(attention.key_cache.nbytes)
+    value_bytes = int(attention.value_cache.nbytes)
+    if slots <= 0 or key_bytes % slots or value_bytes % slots:
+        raise RuntimeError(
+            f"K/V buffers ({key_bytes}/{value_bytes} bytes) are not a whole "
+            f"number of {slots} token rows"
+        )
+    if key_bytes // slots != value_bytes // slots:
+        raise RuntimeError("K/V token strides differ between key and value caches")
+    return slots, key_bytes // slots
+
+
+def _kv_rows(runner: object, start: int, count: int) -> dict[str, np.ndarray]:
+    """K/V bytes for ``count`` logical positions from every attention layer."""
+
+    captured: dict[str, np.ndarray] = {}
+    for layer, attention in enumerate(runner.attention_states):
+        slots, row_bytes = _kv_geometry(attention)
+        rows = _physical_rows(attention, start, count)
+        for name in ("key_cache", "value_cache"):
+            captured[f"layer{layer}.{name}"] = _download_rows(
+                runner.runtime, getattr(attention, name), rows, row_bytes
+            )
+    return captured
+
+
+def _pooled_rows(
+    runner: object, states: dict[int, object], first_block: int, count: int
+) -> dict[str, np.ndarray]:
+    """Pooled index-key bytes for ``count`` complete blocks from each QSA layer."""
+
+    captured: dict[str, np.ndarray] = {}
+    if count <= 0:
+        return captured
+    for layer, state in states.items():
+        blocks = int(state.capacity) // int(state.compression_ratio)
+        row_bytes = int(state.pooled_keys.nbytes) // blocks
+        out = np.empty(count * row_bytes, dtype=np.uint8)
+        runner.runtime.memcpy(
+            host_array_ptr(out),
+            int(state.pooled_keys.ptr) + first_block * row_bytes,
+            out.nbytes,
+            MemcpyKind.DEVICE_TO_HOST,
+        )
+        captured[f"layer{layer}.pooled"] = out
+    return captured
+
+
+_ALL_LAYER_FLUSH_BUDGET_SECONDS = 3600.0
+
+
+def cancellation_arm(
+    runner: object, baseline: object, probe: object, *, ratio: int, progress
+) -> dict[str, object]:
+    """Suspend a chunk at the all-layer flush boundary, abandon it, and replay it.
+
+    ``_prefill_chunk_steps`` yields ``None`` once per layer boundary and
+    ``"prefill_layers_complete"`` once per chunk after the final flush, and the
+    cursor advances only after that last yield resumes. A tiny time budget stops
+    mid-chunk with only some layers written, which cannot be compared against a
+    committed chunk. The budget here exceeds any single chunk, so the suspension
+    is the named all-layer boundary: every layer has written the chunk and
+    ``position`` is still uncommitted.
+
+    The committed prefix is never rebuilt and never reset. The abandoned chunk's
+    K/V rows, index keys and pooled blocks sit above the cursor, so ``restore``
+    of the baseline snapshot is a complete rewind of cursor and non-append state;
+    this arm measures that those rows are byte-identical to what a committed
+    chunk writes, which is what makes them unobservable to any later reader.
+
+    Limitation: the replay and the reference run share the abandoned rows'
+    storage, so the byte comparison is row-overwrite equality, not a comparison
+    against an independent pristine runner. It shows that the abandoned writes
+    are exactly what a committed chunk writes; it does not show what a second
+    runner would have written from a never-touched buffer.
+    """
+
+    base = int(runner.position)
+    states = _qsa_layer_states(runner)
+    coverage = _index_state_coverage(runner)
+    chunk = tuple(int(token) for token in probe)
+    if not chunk:
+        raise ValueError("cancellation probe needs at least one token")
+    if len(chunk) > int(runner.prefill_chunk_size):
+        raise ValueError("cancellation probe exceeds the prefill chunk size")
+    if base + len(chunk) > int(runner.max_sequence_length):
+        raise ValueError("cancellation probe exceeds sequence capacity")
+
+    progress(
+        f"cancel arm: suspend {len(chunk)} tokens at the all-layer flush boundary"
+    )
+    suspended = runner.prefill_append_resumable(
+        chunk, time_budget_seconds=_ALL_LAYER_FLUSH_BUDGET_SECONDS
+    )
+    pending = getattr(runner, "_pending_prefill_append", None)
+    if suspended is not None or pending is None:
+        raise RuntimeError(
+            "cancellation arm expected a suspension at the all-layer flush boundary"
+        )
+    cursor = int(runner.position)
+    counts = {layer: int(state.count) for layer, state in states.items()}
+    pooled = {layer: int(state.pooled_count) for layer, state in states.items()}
+    expected_count = base + len(chunk)
+    # Sparse selection pools every complete block its last query row can see, so
+    # the frontier must be exactly ``expected // ratio``. Dense rows append raw
+    # keys without pooling, so a dense state's frontier is not this chunk's work
+    # and must not be compared.
+    sparse_layers = {
+        layer: expected_count > int(state.dense_equivalent_limit)
+        for layer, state in states.items()
+    }
+    sparse_states = {
+        layer: state for layer, state in states.items() if sparse_layers[layer]
+    }
+    sparse = bool(sparse_states)
+    pooled_frontier = expected_count // ratio
+    pooled_consistent = (
+        all(pooled[layer] == pooled_frontier for layer in sparse_states)
+        if sparse
+        else True
+    )
+    kv_suspended = _kv_rows(runner, base, len(chunk))
+    first_block = base // ratio
+    blocks = pooled_frontier - first_block
+    pooled_compare = bool(sparse and pooled_consistent and blocks > 0)
+    pooled_suspended = (
+        _pooled_rows(runner, sparse_states, first_block, blocks)
+        if pooled_compare
+        else {}
+    )
+
+    # Close the saved context exactly as reset()/close() do, but without the
+    # reset: the committed prefix stays.
+    context, steps, _ = pending
+    context.run(steps.close)
+    runner._pending_prefill_append = None
+
+    runner.restore(baseline)
+    rewound_position = int(runner.position)
+    rewound_counts = {layer: int(state.count) for layer, state in states.items()}
+    rewound_pooled = {layer: int(state.pooled_count) for layer, state in states.items()}
+    replayed = runner.prefill_append(chunk)
+    replay_position = int(runner.position)
+    replay_logits = np.asarray(replayed.logits).copy()
+
+    runner.restore(baseline)
+    reference = runner.prefill_append(chunk)
+    kv_reference = _kv_rows(runner, base, len(chunk))
+    pooled_reference = (
+        _pooled_rows(runner, sparse_states, first_block, blocks)
+        if pooled_compare
+        else {}
+    )
+    runner.restore(baseline)
+
+    cursor_uncommitted = cursor == base
+    index_appended_all = bool(counts) and all(
+        count == expected_count for count in counts.values()
+    )
+    boundary_verified = bool(
+        cursor_uncommitted and index_appended_all and pooled_consistent
+    )
+    attention_count = len(runner.attention_states)
+    coverage_total = int(coverage["total"])
+    coverage_gated = bool(
+        coverage["covers_all"]
+        and int(coverage["qsa_states"]) == coverage_total
+        and coverage_total > 0
+    )
+    captures_complete = bool(
+        attention_count > 0
+        and attention_count == coverage_total
+        and len(kv_suspended) == 2 * attention_count
+        and all(array.size > 0 for array in kv_suspended.values())
+    )
+    kv_exact = (
+        captures_complete
+        and kv_suspended.keys() == kv_reference.keys()
+        and all(
+            np.array_equal(kv_suspended[name], kv_reference[name])
+            for name in kv_suspended
+        )
+    )
+    if pooled_suspended:
+        pooled_exact: object = (
+            pooled_suspended.keys() == pooled_reference.keys()
+            and all(
+                np.array_equal(pooled_suspended[name], pooled_reference[name])
+                for name in pooled_suspended
+            )
+        )
+    else:
+        pooled_exact = "not_exercised"
+    rewind_exact = (
+        rewound_position == base
+        and all(count == base for count in rewound_counts.values())
+        and all(
+            count == min(pooled[layer], base // ratio)
+            for layer, count in rewound_pooled.items()
+        )
+    )
+    replay_exact = (
+        np.array_equal(replay_logits, np.asarray(reference.logits))
+        and replay_position == expected_count
+    )
+    clean = bool(
+        boundary_verified
+        and coverage_gated
+        and captures_complete
+        and kv_exact
+        and pooled_exact is not False
+        and rewind_exact
+        and replay_exact
+    )
+    return {
+        "status": "exercised",
+        "suspended_at": "all_layer_flush" if boundary_verified else "unverified",
+        "chunk_tokens": len(chunk),
+        "base_position": base,
+        "headroom_tokens": int(runner.max_sequence_length) - base,
+        "coverage": coverage,
+        "coverage_gated": coverage_gated,
+        "attention_states": attention_count,
+        "cursor_before_rewind": cursor,
+        "index_counts_before_rewind": {
+            "layers": len(counts),
+            "unique": sorted(set(counts.values())),
+        },
+        "pooled_blocks_before_rewind": {
+            "layers": len(pooled),
+            "unique": sorted(set(pooled.values())),
+            # Complete blocks the chunk's keys finish, i.e. the frontier delta a
+            # sparse selection must reach. Dense rows do not pool at all.
+            "blocks_completed": blocks,
+            "mode": "sparse" if sparse else "dense",
+            "expected_frontier": pooled_frontier if sparse else None,
+        },
+        "cursor_after_rewind": rewound_position,
+        "index_counts_after_rewind": {
+            "layers": len(rewound_counts),
+            "unique": sorted(set(rewound_counts.values())),
+        },
+        "pooled_blocks_after_rewind": {
+            "layers": len(rewound_pooled),
+            "unique": sorted(set(rewound_pooled.values())),
+        },
+        "kv_rows_compared": len(kv_suspended),
+        "pooled_blocks_compared": len(pooled_suspended),
+        "kv_evidence": "row_overwrite_equality_shared_storage",
+        "kv_captures_complete": captures_complete,
+        "boundary_verified": boundary_verified,
+        "pooled_consistent": pooled_consistent,
+        "cursor_uncommitted": cursor_uncommitted,
+        "index_appended_all": index_appended_all,
+        "kv_rows_exact": bool(kv_exact),
+        "pooled_keys_exact": pooled_exact,
+        "rewind_exact": bool(rewind_exact),
+        "replay_exact": bool(replay_exact),
+        "clean": clean,
+    }
+
+
 def _require_exact_budget(token_count: int, target_tokens: int) -> None:
     """Index-only refuses a prompt that is not exactly the requested rung."""
 
@@ -382,7 +751,11 @@ def retrieval_passed(
 ) -> bool:
     """Retrieval pass: the default gate's published predicate, unchanged.
 
-    ``is True`` keeps an unexercised marker from passing as a measured boolean.
+    The repeat, rollback, retrieval, oracle, and teardown arms keep their
+    original meaning. The cancellation arm gates only when it ran: an
+    ``exercised`` arm must be ``clean``, and a ``not_exercised`` marker neither
+    passes nor fails. ``is True`` keeps an unexercised marker from passing as a
+    measured boolean.
     """
 
     passed = (
@@ -392,6 +765,9 @@ def retrieval_passed(
         and report["transactional"]["isolation_exact"] is True
         and report["memory_after_close"]["current_allocated_bytes"] == 0
     )
+    cancellation = report.get("cancellation") or {}
+    if cancellation.get("status") == "exercised":
+        passed = passed and cancellation.get("clean") is True
     if external is not None:
         passed = (
             passed
@@ -672,6 +1048,40 @@ def main() -> int:
 
         snapshot = None if args.index_only else runner.snapshot()
         initial = result
+        cancellation: dict[str, object]
+        if args.index_only:
+            cancellation = {
+                "status": "not_exercised",
+                "reason": (
+                    "index-only mode prefills at the requested capacity and "
+                    "never decodes, so no chunk is cancelled"
+                ),
+            }
+        elif not args.cancel_arm:
+            cancellation = {"status": "not_exercised", "reason": "--no-cancel-arm"}
+        else:
+            headroom = int(runner.max_sequence_length) - int(runner.position)
+            if headroom < 1:
+                cancellation = {
+                    "status": "not_exercised",
+                    "reason": "no headroom above the prefilled prompt",
+                    "headroom_tokens": headroom,
+                }
+            else:
+                probe_count = min(8, headroom, int(runner.prefill_chunk_size))
+                cancellation = cancellation_arm(
+                    runner,
+                    snapshot,
+                    tuple(token_ids[-probe_count:]),
+                    ratio=config.qsa_compression_ratio,
+                    progress=progress,
+                )
+                progress(
+                    "cancel arm: "
+                    f"kv_rows_exact={cancellation['kv_rows_exact']} "
+                    f"replay_exact={cancellation['replay_exact']} "
+                    f"clean={cancellation['clean']}"
+                )
 
         def rollout() -> tuple[list[int], list[np.ndarray]]:
             current = initial
@@ -764,6 +1174,7 @@ def main() -> int:
             },
             "llama_index_tap": llama_tap,
             "depth_profile": depth_profile,
+            "cancellation": cancellation,
             "memory_peak": peak,
             "memory_after_close": after,
         }
