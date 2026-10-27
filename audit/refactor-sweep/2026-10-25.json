@@ -7373,18 +7373,20 @@
       "start_line": 6132,
       "end_line": 6144,
       "sha256": "6a1d17101b7da8925a774c2436550983e1c1430e877b3986625b4bb376896922",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-implemented-deferred-general-undo",
+      "evidence": [
+        "Bounded append-tail host undo already default for proven no-expiry/capacity cases, shared row checkpoints and retryable finalization. General expiry/compaction retains exact request-owned full snapshots. Bottom entry names remaining reversible/device-local owner design without prompt-proportional VRAM shadow and preserves payload/scales/allocator/non-KV rollback. Six journal/helper unit files and docs/audit/worklog pass; no runtime/perf claim. Worklog: worklog/entries/20261027T202600.279151Z-cleanup-refactor-r0279-9b29e8.md."
+      ],
       "subitems": [
         {
           "line": 6134,
           "text": "- The correctness-first external decision bridge snapshots only the active",
-          "status": "pending"
+          "status": "partial-implemented-bounded-append-undo"
         },
         {
           "line": 6139,
           "text": "- Removal trigger: once the integrated gfx1100 compact owner is wired, replace",
-          "status": "pending"
+          "status": "deferred-general-undo-design"
         }
       ]
     },

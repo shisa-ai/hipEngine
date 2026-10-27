@@ -3430,19 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## External-DMS compact device transaction journal
-
-- The correctness-first external decision bridge snapshots only the active
-  request's compact K/V/position/eviction extents to bounded host transaction
-  scratch and restores them byte-for-byte on rollback. It is not a persistent
-  dense shadow, but synchronous D2H/H2D journaling is not a production-speed
-  endpoint.
-- Removal trigger: once the integrated gfx1100 compact owner is wired, replace
-  this with a resource-claimed device-local copy/journal or an exactly reversible
-  in-place mutation protocol, then retain the host journal only as the registered
-  strict fallback. Do not remove rollback coverage or restore metadata without
-  restoring payload bytes.
-
 ## External-DMS serving control readbacks
 
 - Correctness-first `exact_budget` prefill reads all external-linear logits to
@@ -10257,3 +10244,31 @@ Then exercise the device collector through public DMS generation using
 sidecar where trained artifacts are absent. Verify no new synchronous offline
 export in serving and correct close/cancellation behavior. No runtime or API
 change accompanies this disposition.
+
+### R0279 — General compact-DMS undo beyond append-only cycles
+
+The serial verifier already uses one host-owned append-tail undo image when
+existing/new eviction candidates cannot expire over the complete horizon and
+every head has capacity. Row checkpoints share the image; restore rewrites
+only the rejected suffix, and finalization keeps initial undo until the enclosing
+commit completes. Other cycles retain full request-owned extent snapshots,
+including payload, scales, metadata and allocator state. This is implemented
+rollback, not a persistent dense shadow or an unimplemented compact owner.
+See `worklog/entries/20261021T053327.726182Z-lhl-dms-bounded-append-undo-0217fc.md`.
+
+**Remaining work:** general eviction/compaction still copies owned extents to
+host. Choose a bounded reversible mutation log or a resource-claimed device-local
+journal; do not replace it with an unpriced prompt-proportional VRAM snapshot.
+Preserve the bounded append path and exact full fallback until the successor
+covers expiry, movement and changing extent ownership.
+**Clearing action:** implement the chosen owner in
+`hipengine/kvcache/dms.py`, `hipengine/kvcache/dms_device.py` and
+`_DMSStoreJournal` in `hipengine/runtime/qwen35_gguf_mtp.py`. Restore K/V,
+INT8 scales, positions, eviction/live counts, extent/ledger state and non-KV
+resident state at the same accepted-prefix boundary. Run the append-journal,
+append-tail, append-integration, cycle-transaction, journal-finalize and
+verifier-journal unit files plus `tests/test_gpu_dms_external_runtime.py` and
+`tests/test_gpu_dms_int8_device_payloads.py`. Exercise public MTP rejection,
+partial/full commit, following cycles, copy-failure retry, cancellation and
+shutdown. Use a trace to verify copy/allocation ownership, not just token IDs.
+No journal algorithm or runtime selection changes in this reconciliation.
