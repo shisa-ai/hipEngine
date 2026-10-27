@@ -6051,18 +6051,20 @@
       "start_line": 5017,
       "end_line": 5032,
       "sha256": "a24f70947fc05f2228286f5518f01314ffc34afe6783f27ac8a5c6f5fff5c16a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-already-implemented",
+      "evidence": [
+        "Duplicate MapleContinuousBatcher already absent from runtime/scripts/tests; direct batch benchmark calls MapleBatchRunner.batch_step and public fixed-slot admission stays with MapleResidentModelRunner. Close historical entry, preserve supported slots/fallbacks and original artifact. CPU-safe generation/CLI/docs/audit/worklog checks pass; optional device cases skip. Worklog: worklog/entries/20261027T193059.169529Z-cleanup-refactor-r0232-cd32fc.md."
+      ],
       "subitems": [
         {
           "line": 5019,
           "text": "- Added and retained 2026-08-08. `MapleResidentModelRunner` is now the sole",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5026,
           "text": "- **Closed at the final roadmap audit:** removed the duplicate",
-          "status": "pending"
+          "status": "resolved-already-implemented"
         }
       ]
     },

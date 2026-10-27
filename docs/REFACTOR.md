@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Maple P4 public fixed-slot admission
-
-- Added and retained 2026-08-08. `MapleResidentModelRunner` is now the sole
-  public submit/poll owner: it shares one c1 checkpoint, prefills request-local
-  fixed K/V slots, uses D0 for one active row, and uses D1 for c2/c4/c8. The
-  complete public gate is **123.131/165.697/202.038/214.788 aggregate tok/s**
-  with 15/15 repeated 18-prompt trajectory sets, sparse/staggered reclaim,
-  physical-c8 singleton preservation, and lifecycle exact. Evidence:
-  `benchmarks/results/2026-08-08-gfx1151-maple-p4-long-prefill-public-batch-retained.json`.
-- **Closed at the final roadmap audit:** removed the duplicate
-  `MapleContinuousBatcher` orchestration class and its private admission tests.
-  `scripts/maple_batch_decode_bench.py` now drives `MapleBatchRunner.batch_step`
-  directly to isolate D1 helper throughput; public sparse/staggered admission and
-  reclaim remain owned and tested only by `MapleResidentModelRunner`. Fixed
-  sparse K/V slots and registered numerical fallbacks remain intentional.
-
 ## SH16 private-c1 selective immutable-weight arena
 
 - Added 2026-08-06 and promoted to the gfx1151 private-c1 default after exact
