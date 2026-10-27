@@ -3434,9 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna P4.1 split-reducer gate-fusion rollback | `LagunaGGUFResidentSession(..., use_split_gate_fusion=False)`, `allocate_laguna_kv_cache(..., use_split_gate_fusion=False)`, and `laguna_target_ar_bench.py --disable-split-gate-fusion` restore the exact split reducer plus standalone softplus BF16 gate. | Promoted on gfx1100 split paths. First/last actual layers at live 128/257 are bit-exact and improve inclusive event **3.00-10.05%** and wall **2.89-9.60%**; full state/lifecycle are exact. The two-order category gate moves h32 **51.497 -> 51.825 tok/s (+0.637%)** with every train/heldout category decode row positive and no new allocation. Below-threshold, registry miss, gfx1151, and unsupported backends always use the registered unfused chain. | After one release/bisection window and a defaults-only matched-completion refresh, remove the positive constructor/CLI selection while retaining the architecturally required unfused registered fallback. |
-| Laguna current-P4 head RMSNorm+RoPE+KV rollback | `LagunaGGUFResidentSession(..., use_head_kv_fusion=False)` and `scripts/laguna_target_ar_bench.py --disable-head-kv-fusion` restore the registered two-launch head-plus-writer chain around the gfx1100 default. | Promoted on gfx1100 c=1. Global/SWA boundary fixtures, 48 hidden/47 routed boundaries, active K/V and every span field, reset, and lifecycle are exact; first/last actual layers improve inclusive event **33.05-39.36%** and wall **33.41-39.13%**. Pooled short and all long clean kernel/span/child rows improve; the two-order 18-prompt gate moves h32 **51.872 -> 52.391 tok/s (+1.001%)** with every train/heldout category decode positive and all guards passing. Rows/prefill, P2/P4.1 bodies, gfx1151, and unsupported backends remain unchanged. | Retain `False`/CLI rollback for one release and a defaults-only matched-completion refresh, then remove positive constructor selection while permanently keeping the registered unfused chain for rows/prefill and unsupported backends. |
-| Laguna SWA split wave-local reducer rollback | `LagunaGGUFResidentSession(..., use_swa_split_wave_local=False)` and `scripts/laguna_target_ar_bench.py --disable-swa-split-wave-local` restore the exact shared-statistics gated reducers around the gfx1100 wave-local default. | Promoted. Full logits, 48 hidden/47 routed boundaries, active K/V and every span byte, reset, and lifecycle are exact. First/last actual layers improve **4.84-18.96%**; two clean process orders improve reducer/SWA **4.63-5.22% / 4.24-4.55%**, kernel sum **0.94-1.98%**, and span **0.61-1.69%** at every context. The complete two-order gate moves h32 **52.211 -> 52.514 tok/s (+0.580%)** with every category decode positive and all guards passing. | Retain explicit false for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered shared-statistics reducer for unsupported backends and rollback. |
 | Laguna exact IQ2 expanded-magnitude rollback | `LagunaGGUFResidentSession(..., use_iq2_grid64=False)` / `scripts/laguna_target_ar_bench.py --disable-iq2-grid64` restores the compact-grid c=1 IQ2 gate/up+SiLU tile2 route around gfx1100's expanded-magnitude default; rows>1 always retain compact grid. | Promoted. A 4 KiB canonical magnitude table replaces the retained 1 KiB packed-code reconstruction without duplicating persistent weights. First/last actual layers improve **30.00-33.73%**; full state is exact. Two clean process orders improve IQ2/kernel/span/child at every context, and both complete 18-prompt orders move h32 **52.650 -> 54.540 tok/s (+3.590%)** with every train/heldout category decode and E2E row positive. gfx1151 and unsupported backends remain compact-grid. | Retain explicit `False` for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered compact-grid route for rows>1, unsupported backends, and exact fallback. |
 | Laguna DFlash IQ3 selected-down tile4 | `LagunaGGUFResidentSession(..., iq3_selected_down_tile=1|4)` and `scripts/laguna_dflash_category_bench.py --iq3-selected-down-tile` retain tile1 plus the explicit gfx1100 tile4 verifier path. gfx1151 excludes tile4 and its public provider uses tile1. | Retained only in the measured gfx1100 scope: tile4 is exact there, improves the profiled 45-call family 33.66%, and moves counterbalanced h32/h128 DFlash decode +4.725%/+4.536% with every category/heldout decode and E2E positive. The independent gfx1151 transfer is rejected: clean tile1 and tile4 each pass only **24/36** true-AR equality rows with the same deterministic six-prompt failures; tile4 is trajectory-identical to tile1 but complete decode is noise-flat **15.73505 -> 15.73726 tok/s (+0.014%)**, E2E regresses **5.29982 -> 5.29797 (-0.035%)**, and category rows regress. The public packet was ineligible after the binding correctness failure. | Keep tile4 only for the retained gfx1100 explicit verifier route. Keep gfx1151/public DFlash on tile1; reopen only after the shared true-AR mismatch is repaired and a materially different gfx1151 mechanism has a plausible complete-route gain. |
 | Qwen tokenizer EOS discovery | The PARO generator falls back to looking up `<|im_end|>` and `<|endoftext|>` because `tokenizers.Tokenizer.from_file()` does not expose `generation_config.json` EOS metadata. | The fallback recognizes both Qwen EOS ids, preserves explicit scalar/sequence metadata first, and deliberately avoids unrelated model-family markers. | Remove the string lookup once the Qwen model plugin owns and supplies normalized BOS/EOS/PAD metadata from `generation_config.json` / `tokenizer_config.json` to generation and sampling. |
@@ -10501,3 +10498,32 @@ long-context-profile units. Exercise actual global/SWA lengths below, above
 and unrelated to each crossover, wrap/continuation and multi-row fallback,
 then R0249/R0250's public generation and allocation-cleanup gate. No control,
 threshold, allocation or attention implementation changes here.
+
+### R0281-FUSION — Attention fusion and reducer comparison controls
+
+Both gfx11 packages enable head/KV fusion, split-gate fusion and wave-local
+SWA reduction. Target-AR still exposes the separate disable controls; the
+long-context profile also passes and reports head and split-bundle settings.
+`use_head_kv_fusion=False` selects the registered head-plus-writer chain;
+missing fused keys preserve that chain. This is independent of attention
+reducer selection.
+
+The KV allocator requires wave-local reduction to have both split attention
+and split-gate fusion. A gate-fusion comparison must also disable wave-local;
+otherwise construction raises a named dependency error. Wave-local false
+keeps shared-statistics gated reduction and disables dependent SWA overlays.
+Later fused variants do not make these controls aliases.
+
+**Decision needed:** keep each constructor/CLI comparison as a supported
+diagnostic, or migrate its callers to scoped head/KV and attention-policy
+owners before retiring it. **Clearing action:** migrate target-AR construction
+sites/result fields and long-context profile controls together, preserving
+fusion dependency errors, resolved-variant reporting and unfused chains.
+Run the fake-runtime bounded-workspace node in
+`tests/test_gpu_laguna_kv_attention.py`,
+`tests/test_unit_laguna_global_head_wave0_tree_runtime.py`, runner, target-AR
+and long-context-profile units. Compare the head/KV and split-gate primitive
+chains and wave-local/shared-statistics reducers on GPU, including missing
+keys, below-threshold lengths, wrap and multi-row paths; then run
+R0249/R0250's public continuation/lifecycle gate. No fusion, control, kernel
+or default changes in this reconciliation.
