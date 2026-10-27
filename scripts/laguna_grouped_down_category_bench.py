@@ -345,8 +345,8 @@ def _prefill_for_mode(
         f16_mode = _PREFILL_LANE_CONFIGURATIONS[mode].f16_prefill_mode
     if f16_mode is not None:
         with _f16_prefill_mode(f16_mode):
-            return session.prefill(token_ids, use_bulk=True)
-    return session.prefill(token_ids, use_bulk=True)
+            return session.prefill(token_ids)
+    return session.prefill(token_ids)
 
 
 def _session_for_mode(

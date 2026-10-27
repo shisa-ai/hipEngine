@@ -618,7 +618,6 @@ def _full_state_snapshot(
         result = session.prefill(
             token_ids[:length],
             capture_last=targets,
-            use_bulk=True,
         )
         session.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
@@ -813,7 +812,7 @@ def _run_one(
         if gpu_total_after_allocate != gpu_total:
             raise RuntimeError("HIP total memory changed during matrix session allocation")
         started = time.perf_counter()
-        result = session.prefill(token_ids[:length], use_bulk=True)
+        result = session.prefill(token_ids[:length])
         session.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
         logits = _device_values(session.runtime, result.logits, np.float32)
@@ -950,7 +949,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for mode in matrix_rows:
             warmup = _session(owner, args, matrix_rows=mode)
             try:
-                warmup.prefill(token_stream[: args.warmup_rows], use_bulk=True)
+                warmup.prefill(token_stream[: args.warmup_rows])
                 runtime.device_synchronize()
             finally:
                 warmup.close()

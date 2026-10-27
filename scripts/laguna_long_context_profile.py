@@ -996,7 +996,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             owner.prefill_global_attention_chunk_size
         )
         load_seconds = time.perf_counter() - load_started
-        owner.prefill(token_stream[: args.warmup_rows], use_bulk=True)
+        owner.prefill(token_stream[: args.warmup_rows])
         runtime.device_synchronize()
         for repetition in range(args.repetitions):
             for order_index, length in enumerate(
@@ -1132,7 +1132,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     owner.reset_state()
                     started = time.perf_counter()
-                    result = owner.prefill(token_stream[:length], use_bulk=True)
+                    result = owner.prefill(token_stream[:length])
                     runtime.device_synchronize()
                     elapsed = time.perf_counter() - started
                     prefill_final_position = int(owner.position)

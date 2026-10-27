@@ -31,6 +31,7 @@ from hipengine.runtime.f16_weight_linear import (
 )
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
+from scripts.laguna_serial_prefill import serial_prefill
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
@@ -339,7 +340,10 @@ def _run_target(
     session = _session(owner, args)
     try:
         prefill_started = time.perf_counter()
-        result = session.prefill(prompt["token_ids"], use_bulk=mode == "bulk")
+        result = (
+            session.prefill(prompt["token_ids"])
+            if mode == "bulk" else serial_prefill(session, prompt["token_ids"])
+        )
         prefill_seconds = time.perf_counter() - prefill_started
         generated = [int(result.next_token_id)]
         decode_steps: list[float] = []
@@ -384,7 +388,10 @@ def _warmup(owner: LagunaGGUFResidentSession, prompt: dict[str, Any], args: argp
     for mode in ("serial", "bulk"):
         session = _session(owner, args)
         try:
-            result = session.prefill(prompt["token_ids"], use_bulk=mode == "bulk")
+            result = (
+                session.prefill(prompt["token_ids"])
+                if mode == "bulk" else serial_prefill(session, prompt["token_ids"])
+            )
             for _ in range(max(0, args.warmup_output_tokens - 1)):
                 result = session.forward_token(result.next_token_id)
         finally:
@@ -420,7 +427,7 @@ def _oracle_gate(
     try:
         if session_configurator is not None:
             session_configurator(session)
-        result = session.prefill(prompt_ids, use_bulk=True)
+        result = session.prefill(prompt_ids)
         logits = np.empty(session.config.vocab_size, dtype=np.float32)
         owner.runtime.memcpy(
             host_array_ptr(logits),

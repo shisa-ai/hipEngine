@@ -10298,26 +10298,6 @@ empty/short/partial rows, continuation, verifier rows and cleanup. Do not
 collapse strict exact fallbacks into online arithmetic during interface cleanup.
 No variant, allocation, arithmetic or default changes in this consolidation.
 
-### R0281-SERIAL — Laguna explicit token-serial prefill control
-
-`prefill()` defaults to chunked bulk rows but uses `forward_token()` for a
-one-token prompt even with bulk requested. Explicit `use_bulk=False` also
-powers the independent serial oracle in `scripts/laguna_bulk_correctness.py`
-and serial/bulk category comparisons in `scripts/laguna_target_ar_bench.py`.
-The scalar implementation and oracle are required; the stale release-window
-note does not make them dead code.
-
-**Decision needed:** retain the explicit serial option as a supported diagnostic,
-or move only its multi-token orchestration into a test/benchmark helper.
-**Clearing action:** migrate both harnesses together before removing the public
-keyword, preserving final-row capture, cursor/KV/recurrent state and serial
-comparison independence. Keep the one-token production route and registered
-primitives. Run `tests/test_unit_laguna_target_ar_bench.py`, the bulk-correctness
-harness with local model lengths spanning chunk boundaries, and R0249/R0250's
-public generation gate at one token, short and multi-chunk prompts. Include
-continuation, verifier accept/rollback and cleanup. No prefill implementation,
-keyword or default change accompanies this reconciliation.
-
 ### R0281-D9 — Laguna MoE-tail composite comparison control
 
 `use_moe_tail_next_rmsnorm=False` still selects the registered unfused

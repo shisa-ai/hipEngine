@@ -72,7 +72,7 @@ def _run(
     child = _child_session(owner)
     try:
         started = time.perf_counter()
-        result = child.prefill(tokens, use_bulk=True)
+        result = child.prefill(tokens)
         child.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
         return {

@@ -68,7 +68,7 @@ def _run(
     child.set_fused_selected_silu_pack(_MODES[mode])
     try:
         started = time.perf_counter()
-        result = child.prefill(tokens, use_bulk=True)
+        result = child.prefill(tokens)
         child.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
         return {

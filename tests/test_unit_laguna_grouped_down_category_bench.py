@@ -413,9 +413,8 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
             self.row["attention_hipblaslt"] = enabled
 
-        def prefill(self, _token_ids, *, use_bulk: bool):
+        def prefill(self, _token_ids):
             self.row["f16_prefill_mode"] = benchmark.current_f16_prefill_strategy()
-            self.row["use_bulk"] = use_bulk
             return object()
 
     def fake_session(
@@ -458,7 +457,6 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
             "dense_q4_prefill_mode": "retained",
             "attention_hipblaslt": False,
             "f16_prefill_mode": "tiled",
-            "use_bulk": True,
         },
         {
             "global_prefill_variant": "global_context_rows_qrow2_online_spans",
@@ -469,7 +467,6 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
             "dense_q4_prefill_mode": "retained",
             "attention_hipblaslt": False,
             "f16_prefill_mode": "wmma_comp_swa",
-            "use_bulk": True,
         },
     ]
     assert benchmark.current_f16_prefill_strategy() == "auto"
@@ -627,9 +624,8 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
             self.row["attention_hipblaslt"] = enabled
 
-        def prefill(self, _token_ids, *, use_bulk: bool):
+        def prefill(self, _token_ids):
             self.row["retained_f16_strategy"] = benchmark.current_f16_prefill_strategy()
-            self.row["use_bulk"] = use_bulk
             return object()
 
     def fake_session(
@@ -666,7 +662,6 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
         "global_prefill_variant": "global_context_rows_qrow2_online_spans",
         "swa_prefill_variant": "swa_context_rows_qrow2_online_spans",
         "retained_f16_strategy": "wmma_comp_swa",
-        "use_bulk": True,
     }
     assert calls == [
         {

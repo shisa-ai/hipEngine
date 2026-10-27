@@ -23,6 +23,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaGGUFResidentSession,
     LagunaHiddenCaptureTargets,
 )
+from scripts.laguna_serial_prefill import serial_prefill
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
@@ -214,7 +215,10 @@ def _prefill_snapshot(
     targets, buffers = _capture_targets(runtime, session.config.hidden_size, 1)
     try:
         started = time.perf_counter()
-        result = session.prefill(tokens, capture_last=targets, use_bulk=use_bulk)
+        result = (
+            session.prefill(tokens, capture_last=targets)
+            if use_bulk else serial_prefill(session, tokens, capture_last=targets)
+        )
         elapsed = time.perf_counter() - started
         snapshot = _Snapshot(
             elapsed_seconds=elapsed,
@@ -302,7 +306,7 @@ def _serial_verifier_snapshot(
         depth: np.empty_like(final_hidden) for depth in LAGUNA_DFLASH_CAPTURE_DEPTHS
     }
     try:
-        session.prefill(prefix, use_bulk=False)
+        serial_prefill(session, prefix)
         started = time.perf_counter()
         next_token_id = -1
         for row_index, token in enumerate(rows):
@@ -356,7 +360,7 @@ def _bulk_verifier_snapshot(
     session = _session(owner, args)
     targets, buffers = _capture_targets(runtime, session.config.hidden_size, len(rows))
     try:
-        session.prefill(prefix, use_bulk=False)
+        serial_prefill(session, prefix)
         started = time.perf_counter()
         result = session.verify_rows(rows[0], rows[1:], captures=targets)
         elapsed = time.perf_counter() - started

@@ -204,7 +204,7 @@ def _run_once(
     )
     try:
         started = time.perf_counter()
-        result = session.prefill(token_stream[:length], use_bulk=True)
+        result = session.prefill(token_stream[:length])
         owner.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
         logits = np.empty(session.config.vocab_size, dtype=np.float32)

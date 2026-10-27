@@ -68,7 +68,7 @@ def _run(
     child = _child_session(owner, prefill_cached_meta=_MODES[mode])
     try:
         started = time.perf_counter()
-        result = child.prefill(tokens, use_bulk=True)
+        result = child.prefill(tokens)
         child.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
         return {
@@ -121,7 +121,7 @@ def main() -> int:
                 prefill_cached_meta=prefill_cached_meta,
             )
             try:
-                warm_session.prefill(tokens[:128], use_bulk=True)
+                warm_session.prefill(tokens[:128])
                 runtime.device_synchronize()
             finally:
                 warm_session.close()

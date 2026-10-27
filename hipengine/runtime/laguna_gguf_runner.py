@@ -4488,10 +4488,9 @@ class LagunaGGUFResidentSession:
         token_ids: Sequence[int],
         *,
         capture_last: LagunaHiddenCaptureTargets | None = None,
-        use_bulk: bool = True,
         stream: int = 0,
     ) -> LagunaEagerTokenResult:
-        """Chunked exact prefill with an explicit token-serial fallback."""
+        """Prefill chunked rows, using the scalar primitive for a single token."""
 
         self._check_open()
         self._check_no_staged_verifier()
@@ -4500,16 +4499,8 @@ class LagunaGGUFResidentSession:
             raise ValueError("Laguna eager prefill requires at least one token")
         if capture_last is not None and capture_last.rows != 1:
             raise ValueError("Laguna prefill capture_last requires one-row targets")
-        if not use_bulk or len(tokens) == 1:
-            result: LagunaEagerTokenResult | None = None
-            for index, token in enumerate(tokens):
-                result = self.forward_token(
-                    token,
-                    captures=capture_last if index == len(tokens) - 1 else None,
-                    stream=stream,
-                )
-            assert result is not None
-            return result
+        if len(tokens) == 1:
+            return self.forward_token(tokens[0], captures=capture_last, stream=stream)
 
         last_chunk: tuple[int, ...] = ()
         for start in range(0, len(tokens), self.prefill_chunk_size):

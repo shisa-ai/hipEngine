@@ -183,8 +183,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         control.kv_cache.global_split_gqa6_ctx4096_compensated_layer = None
         candidate.kv_cache.global_split_gqa6_ctx4096_min_layer = 32
         candidate.kv_cache.global_split_gqa6_ctx4096_compensated_layer = 28
-        control_result = control.prefill(token_stream, use_bulk=True)
-        candidate_result = candidate.prefill(token_stream, use_bulk=True)
+        control_result = control.prefill(token_stream)
+        candidate_result = candidate.prefill(token_stream)
         if int(control_result.next_token_id) != int(candidate_result.next_token_id):
             raise RuntimeError("decode-only attention routes changed prefill output")
         teacher_token = int(control_result.next_token_id)

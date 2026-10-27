@@ -67,7 +67,7 @@ def _run(
     try:
         child.set_selected_down_mode(_MODES[mode])
         started = time.perf_counter()
-        result = child.prefill(tokens, use_bulk=True)
+        result = child.prefill(tokens)
         child.runtime.device_synchronize()
         elapsed = time.perf_counter() - started
         return 512.0 / elapsed, int(result.next_token_id)
@@ -107,7 +107,7 @@ def main() -> int:
             warm_session = _child_session(owner)
             try:
                 warm_session.set_selected_down_mode(selected_down_mode)
-                warm_session.prefill(tokens[:128], use_bulk=True)
+                warm_session.prefill(tokens[:128])
                 runtime.device_synchronize()
             finally:
                 warm_session.close()

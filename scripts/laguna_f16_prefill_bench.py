@@ -246,14 +246,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for mode in _mode_order(shape_index, 0):
                     owner.reset_state()
                     with _prefill_mode(mode):
-                        owner.prefill(token_stream[:value], use_bulk=True)
+                        owner.prefill(token_stream[:value])
         for repetition in range(args.repetitions):
             for shape_index, value in enumerate(rows):
                 for mode in _mode_order(shape_index, repetition):
                     owner.reset_state()
                     with _prefill_mode(mode):
                         started = time.perf_counter()
-                        result = owner.prefill(token_stream[:value], use_bulk=True)
+                        result = owner.prefill(token_stream[:value])
                         runtime.device_synchronize()
                         elapsed = time.perf_counter() - started
                     samples[mode][value].append(elapsed)

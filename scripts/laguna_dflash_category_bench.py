@@ -164,7 +164,7 @@ def _run_ar(
     output_tokens: int,
 ) -> dict[str, Any]:
     prefill_started = time.perf_counter()
-    result = target.prefill(prompt["token_ids"], use_bulk=True)
+    result = target.prefill(prompt["token_ids"])
     target.runtime.device_synchronize()
     ttft_seconds = time.perf_counter() - prefill_started
     generated = [int(result.next_token_id)]

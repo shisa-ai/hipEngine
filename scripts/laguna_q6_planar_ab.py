@@ -60,7 +60,7 @@ def _run_once(
 ) -> dict[str, float | int | str]:
     owner.reset_state()
     started = time.perf_counter()
-    result = owner.prefill(tokens, use_bulk=True)
+    result = owner.prefill(tokens)
     owner.runtime.device_synchronize()
     elapsed = time.perf_counter() - started
     return {
@@ -116,7 +116,7 @@ def _run_mode(
     )
     load_seconds = time.perf_counter() - load_started
     try:
-        owner.prefill(tokens[:128], use_bulk=True)
+        owner.prefill(tokens[:128])
         runtime.device_synchronize()
         records = []
         for repetition in range(args.repetitions):

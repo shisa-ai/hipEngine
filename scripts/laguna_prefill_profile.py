@@ -257,12 +257,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for _ in range(args.warmups):
             for value in rows:
                 owner.reset_state()
-                owner.prefill(token_stream[:value], use_bulk=True)
+                owner.prefill(token_stream[:value])
         for repetition in range(args.repetitions):
             for value in _timing_order(rows, repetition):
                 owner.reset_state()
                 started = time.perf_counter()
-                result = owner.prefill(token_stream[:value], use_bulk=True)
+                result = owner.prefill(token_stream[:value])
                 runtime.device_synchronize()
                 elapsed = time.perf_counter() - started
                 timing_samples[value].append(elapsed)
