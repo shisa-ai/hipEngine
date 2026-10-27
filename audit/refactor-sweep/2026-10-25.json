@@ -6743,68 +6743,70 @@
       "start_line": 5556,
       "end_line": 5669,
       "sha256": "126b1430a8b53aaa4ec37c0aeebacbd70942cb6be035f706a66711867a910fa8",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-retirement",
+      "evidence": [
+        "Current IQ3 source is H6T; IQ4 H5J, IQ2 H6L and role H6C mappings remain working bounded policy. Launch-interface table cannot be removed independently of variant callers; old exact diagnostic chain still has comparison tests. Replace tuning diary with bottom decision/caller-migration requirements, preserve shared Qwen consumers/fallbacks, no runtime change. Focused current policy/interface tests and docs/audit/worklog pass. Exact old section pinned at 438966a4f:docs/REFACTOR.md; worklog/entries/20261027T194807.594125Z-cleanup-refactor-r0258-464c1f.md."
+      ],
       "subitems": [
         {
           "line": 5558,
           "text": "- Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5566,
           "text": "- WPF-2b promotes the distinct local64/pair16 rowbatch8 primitive after exact",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5573,
           "text": "- WPF-H6L's pair16 same-ABI capability cleanup trigger is closed. Complete",
-          "status": "pending"
+          "status": "deferred-normalization"
         },
         {
           "line": 5584,
           "text": "- The cleanup trigger is closed. Cleanup removed the unowned Laguna rowbatch8",
-          "status": "pending"
+          "status": "resolved-already-implemented"
         },
         {
           "line": 5593,
           "text": "- WPF-H5J's package-only `LAGUNA_GROUPED_IQ_DOWN_VARIANTS` cleanup trigger is",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5602,
           "text": "- WPF-H5Q's `LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS` cleanup trigger is closed.",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5611,
           "text": "- WPF-H5Z's second variant-to-active-expert ABI entry cleanup trigger is closed.",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5619,
           "text": "- WPF-H6D's third active-expert ABI capability cleanup trigger is closed.",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5629,
           "text": "- WPF-H6F's fourth active-expert ABI capability cleanup trigger is closed and",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5637,
           "text": "- WPF-H6I's fifth active-expert ABI capability cleanup trigger is closed.",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5648,
           "text": "- WPF-H6P adds a sixth same-ABI active-expert capability as a bounded default-",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         },
         {
           "line": 5657,
           "text": "- WPF-H6C's grouped gate/up role-map cleanup trigger is closed. Complete M512",
-          "status": "pending"
+          "status": "deferred-normalization"
         }
       ]
     },

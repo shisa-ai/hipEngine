@@ -3430,120 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna exact grouped-IQ prefill selector
-
-- Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving
-  route-major pair16/local64 gate/up before registered expert-major IQ3/IQ4
-  down and exact weighted restore. WPF-2b now exports
-  `LAGUNA_SELECTED_GATE_UP_MODE="grouped_pair16"` with
-  `LAGUNA_SELECTED_DOWN_MODE="grouped_exact"`. Explicit `grouped_exact` and
-  paired `direct` remain rollbacks; unsupported keys fail closed to the exact
-  route-major/grouped chain. gfx1151 keeps its independently measured MMQ
-  modes.
-- WPF-2b promotes the distinct local64/pair16 rowbatch8 primitive after exact
-  all-46-layer, complete-state KL0, clean 512/1K, and cached-trace gates. Clean
-  publication improves **99.230/91.559 -> 118.705/107.804 tok/s** and tracing
-  cuts gate/up **62.549%/62.850%** at unchanged dispatch count. Bulk gfx1100
-  now defaults gate/up to `grouped_pair16` plus `grouped_exact` down; c=1,
-  unsupported keys, explicit `grouped_exact`, and paired `direct` remain exact
-  fallbacks.
-- WPF-H6L's pair16 same-ABI capability cleanup trigger is closed. Complete
-  M512 is KL0/byte-exact; four cached requests substitute exact **46 rowbatch8
-  -> 46 H6L** at unchanged **2,192** dispatches and cut IQ2/request/span
-  **18.064%/5.153%/5.532%**. Selector-unset 512/1K/4K confirms
-  **+5.666%/+4.468%/+3.246%**, 3/3 exact wins each, while fixed natural
-  C4096/M512 wins **5/5** at **360.451 -> 381.893 tok/s (+5.949%)**. Keep H6L
-  source plus rowbatch8 same-ABI rollback through one release checkpoint; then
-  collapse the capability indirection to the source map if no downstream
-  bisection uses it. Add no adapter, allocation, workspace, sidecar, or public
-  selector. See the
-  [H6L production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq2-pair16-rowbatch16-production.json).
-- The cleanup trigger is closed. Cleanup removed the unowned Laguna rowbatch8
-  and fused-SiLU local256/group8 gate/up variants, IQ3 down rowbatch4, and
-  losing pair16 rowbatch4 wrappers, keys, HIP instantiations, and focused tests.
-  It preserves pair16 rowbatch8, grouped IQ3 single/down rowbatch8, IQ4 auto,
-  shared compaction metadata, c=1 route-major arithmetic, and direct exact
-  fallback. The initially broader deletion premise was unsafe: IQ2/IQ3
-  base/rowbatch4/adaptive/auto and IQ4 dual independently own Qwen3.5 GGUF's
-  exact default-on grouped-prefill route and remain covered. P6 and WPF-1R
-  remain closed.
-- WPF-H5J's package-only `LAGUNA_GROUPED_IQ_DOWN_VARIANTS` cleanup trigger is
-  closed. Complete M512 state is KL0/byte-exact, integrated tracing selects all
-  **45+2** expected calls, and clean selector-unset 512/1K/4K publishes
-  **196.103/181.859/137.169 tok/s (+2.290%/+2.122%/+2.052%)** over H5I. Keep
-  the two-entry gfx1100 map and its bounded resolver: it replaces each
-  registered IQ3/IQ4 key independently only for exact K1024/N3072, while map,
-  shape, registration, and backend misses retain rowbatch8/IQ4-auto. gfx1151
-  remains empty/fail-closed. There is no public/session selector, new
-  allocation, workspace, or sidecar to remove.
-- WPF-H5Q's `LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS` cleanup trigger is closed.
-  Complete M512 state is KL0, tracing selects all **45** P64 IQ3 calls, and
-  default-off 512/1K/4K is **+0.702%/+0.278%/+0.370%**. Selector-unset
-  publication confirms **+0.663%/+0.355%/+0.267%**, 3/3 paired wins at every
-  length. Keep H5Q's gfx1100 variant-to-`grouped_raw_iq_active_experts` entry
-  and ABI-table adapter: they pass the existing device active-expert list/count
-  with no allocation, producer, sidecar, or public selector. Map, ABI, shape,
-  registration, and backend misses retain the generic exact route; gfx1151
-  stays empty/fail-closed.
-- WPF-H5Z's second variant-to-active-expert ABI entry cleanup trigger is closed.
-  Complete M512 state is KL0/byte-exact; four paired traces select exact **45
-  H5Q or 45 H5Z** calls at unchanged **2,050** dispatches and cut IQ3/request/
-  span **2.342%/1.312%/1.539%**. Default-off 512/1K/4K is
-  **+1.801%/+1.334%/+0.900%** and selector-unset confirms
-  **+1.819%/+1.452%/+0.872%**, 3/3 wins each. Keep both ABI entries and H5Q as
-  registered rollback beneath H5Z production. Do not add another adapter,
-  allocation, workspace, sidecar, or public selector.
-- WPF-H6D's third active-expert ABI capability cleanup trigger is closed.
-  Complete M512 is KL0/byte-exact; four paired traces substitute exact **45 H5Z
-  -> 45 H6D** calls at unchanged **2,050** dispatches and cut IQ3/request/span
-  **2.564%/0.251%/0.861%**. Selector-unset 512/1K/4K confirms
-  **+1.207%/+0.657%/+0.492%**, 3/3 wins each, while fixed C4096/M512 wins **5/5**
-  at **329.327 -> 332.308 tok/s (+0.905%)**. Keep H5Z and H5Q as registered
-  rollback beneath H6D production and keep all three ABI entries through one
-  release checkpoint. Do not add another adapter, allocation, workspace,
-  sidecar, or public selector. See the
-  [H6D production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-row-interleaved-vopd-production.json).
-- WPF-H6F's fourth active-expert ABI capability cleanup trigger is closed and
-  superseded by H6I source production. Its original complete-state, trace, and
-  selector-unset gates remain valid rollback evidence. Keep H6F as the immediate
-  registered rollback beneath H6I through one release checkpoint; do not remove
-  H6D/H5Z/H5Q entries before that checkpoint because they remain the deeper
-  exact bisection chain. Add no adapter, allocation, workspace, sidecar, or
-  public selector. See the
-  [H6F production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-paired-output-reduction-production.json).
-- WPF-H6I's fifth active-expert ABI capability cleanup trigger is closed.
-  Complete M512 is KL0/byte-exact; four cached requests substitute exact **45
-  H6F -> 45 H6I** at unchanged **2,192** dispatches and cut IQ3/request/span
-  **9.559%/1.906%/2.200%**. Selector-unset 512/1K/4K confirms
-  **+2.304%/+1.650%/+0.719%**, 3/3 exact wins each, while fixed C4096/M512 wins
-  **5/5** at **352.966 -> 360.154 tok/s (+2.036%)**. Keep H6F as immediate
-  rollback through one release checkpoint, then collapse superseded H5Q/H5Z/
-  H6D capabilities only if no downstream bisection uses them. Retain the
-  registered H6I source plus H6F rollback; add no adapter, allocation,
-  workspace, sidecar, or public selector. See the
-  [H6I production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-triple-output-reduction-production.json).
-- WPF-H6P adds a sixth same-ABI active-expert capability as a bounded default-
-  off owner. Complete M512 and exact four-request **45 H6I -> 45 H6P** topology
-  pass; 512/1K/4K gains **+0.764%/+0.416%/+0.242%** and fixed C4096/M512 gains
-  **+0.141%**. Remove the H6P ABI entry if the separate source-default gate
-  fails. If H6P promotes, retain H6I as immediate rollback through one release
-  checkpoint, then collapse older H5Q/H5Z/H6D/H6F entries only when no active
-  bisection uses them. Add no adapter, allocation, workspace, sidecar, env flag,
-  or public selector. See the
-  [H6P candidate/runtime artifact](../benchmarks/results/2026-08-01-gfx1100-laguna-q2-xl-iq3-staged-wave-publication-candidate.json).
-- WPF-H6C's grouped gate/up role-map cleanup trigger is closed. Complete M512
-  state is KL0/byte-exact, paired tracing records exact **46 IQ2 + one H6C** at
-  unchanged **2,050** dispatches, default-off 512/1K/4K is
-  **+1.148%/+0.796%/+0.560%**, and selector-unset publication confirms
-  **+1.326%/+0.897%/+0.490%**, 3/3 wins each. Fixed natural-M512/C4096 also wins
-  **5/5** at **325.211 -> 328.863 tok/s (+1.123%)**. Keep the one-entry
-  `LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS` map and qualified
-  `grouped_raw_iq_dual_silu` ABI through one release checkpoint; then consider
-  folding the stable role into the grouped gate/up plan while preserving the
-  empty-map route-major rollback, bounded fail-closed checks, and no
-  allocation/workspace/sidecar/public selector. See the
-  [H6C production artifact](../benchmarks/results/2026-07-31-gfx1100-laguna-q2-xl-iq3-gate-up-expert-major-production.json).
-
 ## Laguna exact qrow4 SWA prefill selector
 
 - Added 2026-07-29. WPF-3 registers the direct exact qrow4 body plus
@@ -10405,3 +10291,35 @@ dense-prefill fields and context-dependent chunk policy are supported safety
 policy, not duplicate allocations to remove here; R0220 owns the unresolved
 alias failures and R0219 the packed source-F16 integration. No placement,
 chunk-size or allocation behavior changes in this disposition.
+
+### R0258 — Laguna grouped-IQ diagnostic chain and policy normalization
+
+The bounded backend maps select working registered kernels, not evidence
+allowlists. gfx1100 uses H6T for IQ3 selected down, H5J for IQ4 down, H6L for
+IQ2 pair16 gate/up and H6C for the layer-47 IQ3 role. These names identify the
+variants in `hipengine/kernels/hip_gfx1100/__init__.py`. Generic grouped and
+route-major chains handle shape, registration and backend misses. gfx1151
+keeps its independent MMQ policy. The old H6I/H6P source-default descriptions
+are historical; no default change is needed.
+
+**Decision needed:** retain the older exact diagnostic variants and their
+launch-interface mappings, or retire them with the comparison callers. Tests
+for H5Q/H5Z/H6D/H6F/H6I/H6P/H6Q/H6R still exercise that chain. Folding the
+maps into a source selector must preserve the distinction between active-
+expert and generic grouped interfaces; deleting interface entries alone can
+select a registered function with the wrong operands. The role and quant
+maps do not allocate another weight payload or workspace.
+**Clearing action:** inventory variant-specific test/profile callers, decide
+which diagnostics remain supported, and remove only unused registrations,
+bodies, mappings and fixtures together. Alternatively, normalize stable maps
+without changing selected function/interface identities over all shape,
+role, missing-registration and backend cases. Run
+`tests/test_unit_laguna_h6t_source_default.py`,
+`tests/test_unit_laguna_h6l_source_default.py`,
+`tests/test_unit_laguna_h6c_source_default.py` and affected variant tests, then
+`python scripts/laguna_public_correctness.py "$LAGUNA_MODEL" --backend hip_gfx1100 --max-tokens 8 --output /tmp/laguna-grouped-public.json`
+with a bulk prompt that engages grouped prefill. The local checkpoint
+dependency is recorded at R0249/R0250. Preserve Qwen GGUF's independent
+consumers of shared IQ primitives, exact fallbacks and current defaults.
+Original tuning results remain in benchmark artifacts and worklogs; this
+reconciliation changes no runtime selection or arithmetic.
