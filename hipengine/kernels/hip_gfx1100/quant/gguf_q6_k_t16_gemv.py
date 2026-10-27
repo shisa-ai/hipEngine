@@ -28,7 +28,6 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
-    launch_physical_row_chunks,
     launch_physical_rows6_chunked,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
@@ -214,9 +213,6 @@ _Q6_T16_WMMA_PREFILL_SHARED8R3_BF16_BF16 = (
 _QK_K = 256
 _T16_COLS = 16
 _ENV_Q6_PLANAR_EXACT_PREFILL = "HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL"
-_ENV_Q6_GROUPED_TARGET_ROWTILES = (
-    "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES"
-)
 _Q6_PLANAR_EXACT_PREFILL_RESOLVED: bool | None = None
 
 
@@ -352,20 +348,6 @@ def gguf_q6_k_t16_gemv_decode_bf16_bf16_out(
     )
 
 
-def _q6_grouped_target_rowtiles_enabled() -> bool:
-    raw = os.environ.get(
-        _ENV_Q6_GROUPED_TARGET_ROWTILES,
-        "1",
-    ).strip().lower()
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(
-        f"{_ENV_Q6_GROUPED_TARGET_ROWTILES} must be a boolean value"
-    )
-
-
 def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -442,7 +424,7 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
         and (int(in_features), int(out_features))
         in GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES
     )
-    if mixed_eligible and _q6_grouped_target_rowtiles_enabled():
+    if mixed_eligible:
         chunks = tuple(int(value) for value in mixed_chunks)
         if chunks[:3] != (8, 8, 8):
             raise RuntimeError("grouped Q6 target requires the retained R8 prefix")
@@ -484,20 +466,6 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
                 library=library,
                 runtime=runtime,
             )
-        return
-    if mixed_eligible and launch_physical_row_chunks(
-        launch_rowtile,
-        x_ptr,
-        tiles_ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        tuple(mixed_chunks),
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    ):
         return
     if q6_t16_physical_rowtile_enabled() and launch_physical_rows6_chunked(
         launch_rowtile,

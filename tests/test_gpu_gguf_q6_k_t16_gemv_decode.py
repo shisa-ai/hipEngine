@@ -259,25 +259,17 @@ def test_q6_planar_mixed_r8_chunks_are_candidate_and_shape_bounded(
             calls.clear()
 
             launch(x_ptr, 2, out_ptr, 24, 5_120, 10_240)
-            assert [call[0] for call in calls] == [8, 8, 8]
-            assert [call[1] for call in calls] == [
-                x_ptr,
-                x_ptr + 8 * 5_120 * 2,
-                x_ptr + 16 * 5_120 * 2,
-            ]
-            assert [call[2] for call in calls] == [
-                out_ptr,
-                out_ptr + 8 * 10_240 * 2,
-                out_ptr + 16 * 10_240 * 2,
-            ]
+            assert [call[0] for call in calls] == [24]
+            assert [call[1] for call in calls] == [x_ptr]
+            assert [call[2] for call in calls] == [out_ptr]
             calls.clear()
 
             launch(x_ptr, 2, out_ptr, 30, 5_120, 1_024)
-            assert [call[0] for call in calls] == [8, 8, 8, 6]
+            assert [call[0] for call in calls] == [24, 6]
             calls.clear()
 
             launch(x_ptr, 2, out_ptr, 36, 17_408, 5_120)
-            assert [call[0] for call in calls] == [8, 8, 8, 6, 6]
+            assert [call[0] for call in calls] == [24, 12]
             calls.clear()
 
             launch(x_ptr, 2, out_ptr, 24, 512, 256)
@@ -359,7 +351,7 @@ def test_q6_planar_grouped_mixed_chunks_default_on_for_identical_prefix_and_tail
         assert calls == [(grouped8, 32, x_ptr, out_ptr)]
 
 
-def test_q6_planar_grouped_mixed_chunks_have_explicit_rollback(
+def test_q6_planar_grouped_mixed_chunks_ignore_retired_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[int] = []
@@ -383,7 +375,7 @@ def test_q6_planar_grouped_mixed_chunks_have_explicit_rollback(
             1, 2, 3, 24, 5_120, 10_240
         )
 
-    assert calls == [8, 8, 8]
+    assert calls == [24]
 
 
 def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> None:

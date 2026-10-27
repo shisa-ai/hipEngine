@@ -2791,13 +2791,6 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## 2026-09-01 gfx1100 grouped Q6 mixed-rowtile rollback — closed
-
-- Promoted after exact tracked-clean marker ownership and complete C5-C8
-  qualification. `HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=0` retains the
-  prior mixed launch sequence for bisection; remove the flag after the grouped
-  owners are stable across the next production campaign.
-
 ## 2026-09-01 gfx1100 grouped Q5 rows6 rollback — closed
 
 - Promoted after exact tracked-clean marker ownership and complete C5-C8
@@ -10539,3 +10532,16 @@ Existing promotion evidence is in
 **Clearing action:** exercise `LLM.generate()` and `hipengine serve` on both
 backends, trace Q6 root row chunks at eight requests and a non-divisible packed
 width, and compare logits/output and cleanup with the registered R4 composition.
+
+### R0178 — Public grouped Q6 mixed-row validation
+
+The grouped-Q6 environment opt-out and its unreachable repeated-launch dispatch
+branch are removed. Physical mixed-row scope and shape policy remain; repeated
+row primitives and out-of-scope R6 composition are unchanged.
+
+**Dependency:** public gfx1100 physical MTP mixed-row execution.
+**Clearing action:** run `hipengine serve` across the admitted mixed widths,
+trace grouped prefix/tail launches, and compare outputs and acceptance with the
+registered repeated primitives. Include a shape outside the mixed policy and
+verify cancellation and cleanup. Direct grouped-versus-repeated GPU bit parity
+is separate from this public-route requirement.

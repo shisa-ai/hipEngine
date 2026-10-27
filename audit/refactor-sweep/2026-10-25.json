@@ -4565,13 +4565,13 @@
       "start_line": 3989,
       "end_line": 3995,
       "sha256": "fc2b8d4a8486460f97c1433db54c69626ff4dddb263fd736c454b74541cacc97",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Grouped-Q6 environment helper and unreachable repeated dispatch branch removed. Physical mixed scope, shapes, repeated primitives and out-of-scope fallback preserved. RED/GREEN routing, full linear/MTP2 seam units, CPU fixtures/smoke and grouped-versus-repeated GPU bit parity pass. Public gfx1100 mixed-width engagement remains open. Worklog: worklog/entries/20261027T144349.182997Z-cleanup-refactor-r0178-acf73b.md."],
       "subitems": [
         {
           "line": 3991,
           "text": "- Promoted after exact tracked-clean marker ownership and complete C5-C8",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },
