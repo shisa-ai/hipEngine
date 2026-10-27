@@ -412,10 +412,6 @@ independent workload gates.
 | `HIPENGINE_C8_Q5_PLANAR_DP4A` | false | Diagnostic route | Gates the optional planar INT8 Q5 sidecar (uploaded at materialization) for the planar-dp4a route. |
 | `HIPENGINE_C8_Q6_DP4A_GROUPED` | false | Opt-in diagnostic | Routes planar-decode rows 8-64 to the grouped integer-dp4a Q6 sibling (x quantized to q8_1); the BF16 grouped owner stays the exact default and strict fallback. |
 | `HIPENGINE_UD_REPACK_ELIGIBILITY` | unset | Rollback seam | Overrides model-wide UD repack eligibility (e.g. `model-wide`) so a synthetic geometry keeps its historical pack8/raw residents. |
-| `HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD` | unset | Specdec2 route | N-gram modifier-window size for the specdec2 ngram mode. |
-| `HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH` | unset | Specdec2 route | Required n-gram match count. |
-| `HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN` | unset | Specdec2 route | Minimum n-gram probe length. |
-| `HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX` | unset | Specdec2 route | Maximum n-gram probe tokens. |
 | `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS` | unset | Specdec2 route | Exact target row-count override for the specdec2 verifier rows. |
 | `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` | unset | Specdec2 route | Q6 mixed target rowtile admission override. |
 | `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` | `0` | Diagnostic | Default-off cooldown that keeps a request out of speculation for one cycle after a rejected speculative attempt. |
@@ -1121,6 +1117,11 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD`, `HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH`,
+  `HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN` and `HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX`
+  are retired and ignored. Diagnostic adapters use explicit `ngram_enabled=True`
+  and `ngram_config=NgramModConfig(...)`; default adapters keep this experiment off.
 
 - `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE` is retired and ignored. Diagnostics
   explicitly construct `Qwen35GGUFMTP2Adapter` with

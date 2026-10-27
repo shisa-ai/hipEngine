@@ -5311,8 +5311,8 @@
       "start_line": 4479,
       "end_line": 4506,
       "sha256": "06e7c59fc90136aa4727da1b7c9acb9e65122c0d974e4b2ceafc9e33a1072c12",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Removed environment enablement/config parsing in favor of existing explicit ngram_enabled and NgramModConfig constructor inputs. Default-off candidate and recorded failures preserved; no promotion. RED/GREEN instance selection, full MTP2 seam and docs/audit pass. Long-horizon/task/lifecycle gates and disposition remain open. Worklog: worklog/entries/20261027T162745.737930Z-cleanup-refactor-r0204-6c702f.md."],
       "subitems": [
         {
           "line": 4481,

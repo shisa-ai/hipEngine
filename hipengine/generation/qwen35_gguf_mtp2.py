@@ -133,8 +133,6 @@ from hipengine.speculative.transaction import (
 )
 
 
-_NGRAM_MOD_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD"
-_NGRAM_MOD_N_MATCH_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH"
 _EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
 _Q6_MIXED_TARGET_ROWTILES_ENV = (
     "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
@@ -156,8 +154,6 @@ _Q6_MIXED_TARGET_ROWTILES_ENV = (
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
-_NGRAM_MOD_N_MIN_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN"
-_NGRAM_MOD_PROBE_MAX_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX"
 
 
 def sampled_route_qualified_for(generator: Any) -> bool:
@@ -205,18 +201,6 @@ def _positive_env(name: str, default: int) -> int:
     except ValueError:
         return int(default)
     return value if value > 0 else int(default)
-
-
-def _ngram_mod_config_from_env() -> NgramModConfig:
-    minimum = _positive_env(_NGRAM_MOD_N_MIN_ENV, 24)
-    return NgramModConfig(
-        n_match=_positive_env(_NGRAM_MOD_N_MATCH_ENV, 24),
-        min_draft_tokens=minimum,
-        max_probe_tokens=max(
-            minimum,
-            _positive_env(_NGRAM_MOD_PROBE_MAX_ENV, 64),
-        ),
-    )
 
 
 _FP16_SPECDEC2_PROFILE_SELECTIONS = {
@@ -896,7 +880,7 @@ class Qwen35GGUFMTP2Adapter:
         target_verify_mode: str,
         candidate_budget: int,
         quant: str = "gguf_q4_k_m",
-        ngram_enabled: bool | None = None,
+        ngram_enabled: bool = False,
         ngram_config: NgramModConfig | None = None,
         device_chain_qualification_oracle: bool = False,
     ) -> None:
@@ -1004,14 +988,9 @@ class Qwen35GGUFMTP2Adapter:
             owner,
             self.generator,
         )
-        use_ngram = (
-            _env_enabled(_NGRAM_MOD_ENV)
-            if ngram_enabled is None
-            else bool(ngram_enabled)
-        )
         self._ngram = (
-            RequestLocalNgramMod(ngram_config or _ngram_mod_config_from_env())
-            if use_ngram
+            RequestLocalNgramMod(ngram_config or NgramModConfig())
+            if ngram_enabled
             else None
         )
         self.physical_prompt_streaming = bool(self.physical_prompt_streaming_widths)
