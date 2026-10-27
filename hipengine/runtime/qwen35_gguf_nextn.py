@@ -490,20 +490,6 @@ class Qwen35GGUFNextNStepExecutor(Protocol):
     def close(self) -> None: ...
 
 
-_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV = "HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY"
-
-
-def _nextn_accept_kv_write_only_enabled() -> bool:
-    """Resolve the default-on accepted-tail K/V-only transition."""
-
-    raw = os.environ.get(_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV, "1").strip().lower()
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"{_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV} must be a boolean value")
-
-
 def _private_slot_buffer(
     buffer: DeviceBuffer,
     *,
@@ -1438,7 +1424,7 @@ class Qwen35GGUFNextNExecutor:
             positions,
             target_hidden,
             score_output=False,
-            kv_write_only=_nextn_accept_kv_write_only_enabled(),
+            kv_write_only=True,
         )
         if not all(isinstance(result, Qwen35GGUFNextNStateAdvance) for result in results):
             raise RuntimeError("NextN state-only batch returned a scored result")
@@ -1464,7 +1450,7 @@ class Qwen35GGUFNextNExecutor:
             target_hidden,
             score_output=False,
             token_ids_device=token_ids,
-            kv_write_only=_nextn_accept_kv_write_only_enabled(),
+            kv_write_only=True,
         )
         if not all(isinstance(result, Qwen35GGUFNextNStateAdvance) for result in results):
             raise RuntimeError("NextN device state-only batch returned a scored result")
@@ -2838,7 +2824,7 @@ class Qwen35GGUFNextNExecutor:
             token_id,
             position,
             target_hidden,
-            kv_write_only=_nextn_accept_kv_write_only_enabled(),
+            kv_write_only=True,
         )
         slots = getattr(self, "_request_slots", None)
         if slots is not None:
@@ -2880,7 +2866,7 @@ class Qwen35GGUFNextNExecutor:
             int(position),
             target_hidden,
             token_ready=True,
-            kv_write_only=_nextn_accept_kv_write_only_enabled(),
+            kv_write_only=True,
         )
         self._set_batch_session_position(slot, int(position) + 1)
         self.runtime.device_synchronize()

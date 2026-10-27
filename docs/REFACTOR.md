@@ -2780,17 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-02 NextN accepted-tail K/V-only integration — closed
-
-- The existing exact K/V-only full-attention branch is now the default singleton,
-  device-token, and physical-batch accepted-tail state-transition owner. The
-  complete C5-C8 category+heldout gate improves every width and every binding
-  slice with all 520 generated-ID/acceptance rows exact and all packets drained.
-  `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=0` retains the full NextN block as
-  same-build rollback.
-- Remove the environment branch after the next stable milestone audit; keep the
-  complete state transition callable as a diagnostic correctness parent.
-
 ## 2026-09-02 gfx1100 grouped Q4 R8 at active C5-C6 — closed
 
 - Promoted the exact grouped-R8 primitive through gfx1100 capability metadata

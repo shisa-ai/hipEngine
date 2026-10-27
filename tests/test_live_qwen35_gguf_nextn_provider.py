@@ -953,14 +953,9 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
     assert not any(call[0] == "sync" for call in runtime_calls)
 
 
-def test_nextn_accepted_tail_kv_write_only_defaults_on_and_zero_rolls_back(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY", raising=False)
-    assert nextn_mod._nextn_accept_kv_write_only_enabled() is True
-
-    monkeypatch.setenv("HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY", "0")
-    assert nextn_mod._nextn_accept_kv_write_only_enabled() is False
+def test_nextn_accepted_tail_environment_helper_is_removed() -> None:
+    assert not hasattr(nextn_mod, "_nextn_accept_kv_write_only_enabled")
+    assert not hasattr(nextn_mod, "_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV")
 
 
 def test_nextn_executor_state_only_tail_defaults_to_kv_write_only(
@@ -987,7 +982,7 @@ def test_nextn_executor_state_only_tail_defaults_to_kv_write_only(
         )
         return 0x8000, 0x9000
 
-    monkeypatch.delenv("HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY", "0")
     monkeypatch.setattr(executor, "_run_block", fake_run_block, raising=False)
     monkeypatch.setattr(
         executor,

@@ -4334,18 +4334,18 @@
       "start_line": 3860,
       "end_line": 3870,
       "sha256": "7c8364a9d0c6f561f20287409f1e68db2a5781d7f92747309855c2cf9adfe7a7",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-flag-retired",
+      "evidence": ["Removed environment helper and made K/V-only explicit at all four accepted-tail call sites; full block transition remains callable. RED/GREEN provider tests, full CPU bundle and public dense-GGUF MTP singleton/device accepted-tail engagement with legacy env zero and clean teardown pass. No physical-batch public or timing claim. Worklog: worklog/entries/20261027T132305.153626Z-cleanup-refactor-r0167-d18461.md."],
       "subitems": [
         {
           "line": 3862,
           "text": "- The existing exact K/V-only full-attention branch is now the default singleton,",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3868,
           "text": "- Remove the environment branch after the next stable milestone audit; keep the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
