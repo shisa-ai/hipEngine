@@ -385,7 +385,6 @@ GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY = {
 # the same sibling regresses their complete-route gate.  The explicit switch
 # keeps the exact grouped-R6 chain available for rollback and bisection.
 GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6",
     "enabled_default": True,
     "active_slots": frozenset({5, 6}),
     "rows": frozenset({24}),

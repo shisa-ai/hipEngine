@@ -2780,16 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-02 gfx1100 grouped Q4 R8 at active C5-C6 — closed
-
-- Promoted the exact grouped-R8 primitive through gfx1100 capability metadata
-  only for physical R24 packets with five or six live target slots after the
-  current-source marker and complete category+heldout gates passed. C7/C8 and
-  all scope/shape/row misses retain grouped R6.
-- `HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=0` remains same-build grouped-R6
-  rollback. Remove the environment/cache override after the next stable
-  milestone audit; keep the registered grouped-R6 fallback.
-
 ## 2026-09-02 gfx1100 exact physical C7 target rows — closed
 
 - Promoted exact physical C7/K3 R28 through gfx1100 capability metadata after
@@ -10545,3 +10535,16 @@ profile, record the R6 two-wave rowtile and R36 row48 fused gate/up+SiLU launche
 and compare outputs, acceptance and teardown against their registered parents. Use
 `tests/test_gpu_gguf_q4_k_t16_dense.py::test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape`
 for the independent numerical gate; it does not replace public engagement.
+
+### R0168 — Public grouped Q4 active-slot validation
+
+The grouped-R8 environment/cache opt-out is removed; backend policy still limits
+selection to the admitted physical rows and live-slot counts. Grouped-R6 remains
+registered and selected for scope misses.
+
+**Dependency:** gfx1100 public physical execution with five and six active target
+slots. **Clearing action:** run `hipengine serve` with the physical MTP profile,
+trace grouped-R8 at R24 for C5/C6 and grouped-R6 on the corresponding C7/C8 scope
+misses, and compare outputs/acceptance/teardown with the strict parent. Preserve
+`tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtile16_w2_grouped_rows8_matches_grouped_rows6_bits`
+as the separate numerical gate.

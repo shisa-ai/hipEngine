@@ -4355,18 +4355,18 @@
       "start_line": 3871,
       "end_line": 3880,
       "sha256": "4f4a3ead8682d1c73c32fe1f6b7d752e5b06b93171c9df67a2177ad00328b323",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed environment/cache opt-out; backend default and R24/active-C5-C6 admission preserved, grouped-R6 scope fallback remains. RED/GREEN, full CPU bundle and direct grouped-R8/R6 GPU bit parity pass. Public gfx1100 physical C5/C6 engagement remains deferred with bottom clearing action. Worklog: worklog/entries/20261027T133338.177493Z-cleanup-refactor-r0168-0b6de9.md."],
       "subitems": [
         {
           "line": 3873,
           "text": "- Promoted the exact grouped-R8 primitive through gfx1100 capability metadata",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3877,
           "text": "- `HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=0` remains same-build grouped-R6",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

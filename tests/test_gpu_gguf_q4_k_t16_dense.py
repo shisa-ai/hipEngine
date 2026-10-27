@@ -439,11 +439,6 @@ def test_gfx1100_grouped_rows8_defaults_on_only_for_live_c5c6(
     assert policy["active_slots"] == frozenset({5, 6})
     assert policy["rows"] == frozenset({24})
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", raising=False)
-    monkeypatch.setattr(
-        t16_prefill,
-        "_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED",
-        None,
-    )
 
     with q4_t16_physical_extra_rowtiles_session(True):
         for active_slots in (5, 6, 7, 8, 0):
@@ -474,17 +469,12 @@ def test_gfx1100_grouped_rows8_defaults_on_only_for_live_c5c6(
 
     calls.clear()
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", "0")
-    monkeypatch.setattr(
-        t16_prefill,
-        "_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED",
-        None,
-    )
     with (
         q4_t16_physical_extra_rowtiles_session(True),
         target_verifier_active_slots_session(5),
     ):
         selector(1, 2, 3, 24, 5_120, 17_408)
-    assert calls == [("rows6", 24)]
+    assert calls == [("rows8", 24)]
 
 
 def test_gfx1100_physical_r6_two_wave_qkv_shape_defaults_on(
