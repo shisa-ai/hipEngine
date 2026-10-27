@@ -414,9 +414,7 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
             self.row["attention_hipblaslt"] = enabled
 
         def prefill(self, _token_ids, *, use_bulk: bool):
-            self.row["f16_prefill_mode"] = benchmark.os.environ.get(
-                "HIPENGINE_LAGUNA_F16_PREFILL"
-            )
+            self.row["f16_prefill_mode"] = benchmark.current_f16_prefill_strategy()
             self.row["use_bulk"] = use_bulk
             return object()
 
@@ -474,7 +472,7 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
             "use_bulk": True,
         },
     ]
-    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
+    assert benchmark.current_f16_prefill_strategy() == "auto"
 
     args = SimpleNamespace(
         shape_screen=tmp_path / "does-not-exist.json",
@@ -561,9 +559,7 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
         calls.append(
             {
                 **kwargs,
-                "f16_prefill_mode": benchmark.os.environ.get(
-                    "HIPENGINE_LAGUNA_F16_PREFILL"
-                ),
+                "f16_prefill_mode": benchmark.current_f16_prefill_strategy(),
             }
         )
         return {"pass": True}
@@ -590,7 +586,7 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
         ("dense_q4", "retained"),
         ("attention_hipblaslt", False),
     ]
-    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
+    assert benchmark.current_f16_prefill_strategy() == "auto"
 
 
 def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
@@ -632,9 +628,7 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
             self.row["attention_hipblaslt"] = enabled
 
         def prefill(self, _token_ids, *, use_bulk: bool):
-            self.row["retained_f16_strategy"] = benchmark.os.environ.get(
-                "HIPENGINE_LAGUNA_F16_PREFILL"
-            )
+            self.row["retained_f16_strategy"] = benchmark.current_f16_prefill_strategy()
             self.row["use_bulk"] = use_bulk
             return object()
 
@@ -692,7 +686,7 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
             "attention_hipblaslt": False,
         },
     ]
-    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
+    assert benchmark.current_f16_prefill_strategy() == "auto"
 
 
 def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> None:
@@ -735,9 +729,7 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
         oracle_kwargs.append(
             {
                 **kwargs,
-                "retained_f16_strategy": benchmark.os.environ.get(
-                    "HIPENGINE_LAGUNA_F16_PREFILL"
-                ),
+                "retained_f16_strategy": benchmark.current_f16_prefill_strategy(),
             }
         )
         return {"pass": True}
@@ -764,7 +756,7 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
             "retained_f16_strategy": "wmma_comp_swa",
         }
     ]
-    assert benchmark.os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "sentinel"
+    assert benchmark.current_f16_prefill_strategy() == "auto"
 
 
 def test_f16_wmma_comp_swa_category_requires_matching_compensated_screen(

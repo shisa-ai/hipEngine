@@ -177,8 +177,8 @@ def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
         lambda _backend, name, default=None: capabilities.get(name, default),
     )
 
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "auto")
-    automatic = _laguna_f16_prefill_configuration("hip_gfx1151")
+    with benchmark.f16_prefill_strategy("auto"):
+        automatic = _laguna_f16_prefill_configuration("hip_gfx1151")
     assert automatic == {
         "requested": "auto",
         "backend_strategy": "wmma_comp_swa",
@@ -188,20 +188,35 @@ def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
         "rows_one_always_gemv": True,
     }
 
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "tiled")
-    forced = _laguna_f16_prefill_configuration("hip_gfx1151")
+    with benchmark.f16_prefill_strategy("tiled"):
+        forced = _laguna_f16_prefill_configuration("hip_gfx1151")
     assert forced["effective_strategy"] == "tiled"
     assert forced["effective_min_rows"] == 2
 
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "wmma_comp_swa")
-    matrix = _laguna_f16_prefill_configuration("hip_gfx1151")
+    with benchmark.f16_prefill_strategy("wmma_comp_swa"):
+        matrix = _laguna_f16_prefill_configuration("hip_gfx1151")
     assert matrix["effective_strategy"] == "wmma_comp_swa"
     assert matrix["effective_min_rows"] == 16
 
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "gemv")
-    disabled = _laguna_f16_prefill_configuration("hip_gfx1151")
+    with benchmark.f16_prefill_strategy("gemv"):
+        disabled = _laguna_f16_prefill_configuration("hip_gfx1151")
     assert disabled["effective_strategy"] == "gemv"
     assert disabled["effective_min_rows"] is None
+
+
+def test_target_ar_f16_strategy_cli_and_run_scope_restore_on_failure(monkeypatch):
+    monkeypatch.setattr(benchmark.sys, "argv", ["laguna_target_ar_bench.py", "--f16-prefill-strategy", "gemv"])
+    args = benchmark._parse_args()
+    assert args.f16_prefill_strategy == "gemv"
+
+    def fail_inside_scope(_args):
+        assert benchmark.current_f16_prefill_strategy() == "gemv"
+        raise RuntimeError("comparison failed")
+
+    monkeypatch.setattr(benchmark, "_run", fail_inside_scope)
+    with pytest.raises(RuntimeError, match="comparison failed"):
+        benchmark.run(args)
+    assert benchmark.current_f16_prefill_strategy() == "auto"
 
 
 def test_promotion_gate_is_fail_closed_per_category() -> None:

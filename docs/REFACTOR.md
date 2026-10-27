@@ -10270,32 +10270,6 @@ and cleanup on each implemented composition. Profile named operations and
 transfers with resources priced before retiring the host fallback. No control
 algorithm, API or runtime default changes in this reconciliation.
 
-### R0281-F16 — Laguna source-F16 prefill comparison control
-
-Two Cleanup Ledger rows described the same
-`HIPENGINE_LAGUNA_F16_PREFILL=auto|gemv|tiled|wmma_comp_swa` selector.
-`f16_weight_linear._prefill_strategy()` still reads it; the category harness
-uses a restoring environment scope, and leaf/target harnesses report or select
-it. The older tiled-only row is not a second independent control.
-Automatic gfx1151 policy selects compensated WMMA only for eligible BF16
-multi-row projections at its backend row minimum; other cases retain tiled
-or registered GEMV behavior. R0271's hipBLASLt range/layout mode is a separate
-interface.
-
-**Decision needed:** retain this source-F16 strategy override for diagnostics,
-or migrate comparisons to a scoped owner and retire the environment selector.
-**Clearing action:** migrate `scripts/laguna_grouped_down_category_bench.py`,
-`scripts/laguna_f16_prefill_bench.py` and
-`scripts/laguna_target_ar_bench.py` together, preserving actual distinct
-comparison arms, metadata and restoration after failures. Keep single-row,
-F32-activation and unsupported-shape/backend fallbacks and the existing
-compensated eligibility scope. Run their unit files plus
-`tests/test_gpu_laguna_f16_projection.py`, then R0249/R0250's public model
-gate with eligible/ineligible projections and rows on both sides of the row
-minimum plus an unrelated length. Do not revive rejected direct WMMA or
-change arithmetic/defaults as a side effect of selector retirement. No runtime
-or environment behavior changes in this consolidation.
-
 ### R0281-ATTN — Laguna prefill/decode variant interfaces
 
 The five token4/wave32/qrow2 rollback rows describe live variant interfaces,

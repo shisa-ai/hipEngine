@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import math
-import os
 from pathlib import Path
 import platform
 import statistics
@@ -24,6 +22,10 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import host_array_ptr, memory_stats
 from hipengine.loading.gguf import GGUFReader
+from hipengine.runtime.f16_weight_linear import (
+    current_f16_prefill_strategy,
+    f16_prefill_strategy as _f16_prefill_mode,
+)
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_target_ar_bench import (
@@ -328,19 +330,6 @@ def _mode_order(
         if (int(prompt_index) + int(repetition)) % 2 == 0
         else tuple(reversed(modes))
     )
-
-
-@contextmanager
-def _f16_prefill_mode(mode: str):
-    previous = os.environ.get("HIPENGINE_LAGUNA_F16_PREFILL")
-    os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] = mode
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("HIPENGINE_LAGUNA_F16_PREFILL", None)
-        else:
-            os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] = previous
 
 
 def _prefill_for_mode(

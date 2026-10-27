@@ -220,7 +220,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     f16_prefill = _laguna_f16_prefill_configuration(args.backend)
     if f16_prefill["requested"] != "auto":
         raise RuntimeError(
-            "shipping-control activation capture requires HIPENGINE_LAGUNA_F16_PREFILL=auto"
+            "shipping-control activation capture requires the automatic F16 prefill strategy"
         )
 
     provenance = collect_artifact_provenance(

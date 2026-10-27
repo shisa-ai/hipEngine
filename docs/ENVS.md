@@ -521,7 +521,7 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_SELECTED_MOE_DOWN_STAGED` | false | Opt-in staged selected-MoE down projection; kept for bisection. |
 | `HIPENGINE_PARO_FFN_MEGAKERNEL` | false | Opt-in single-kernel selected FFN for the verify path (tokens > 1); AR decode keeps the unfused path so the AR baseline is untouched. |
 | `HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED` | false | Opt-in fused full-QKV split-key launch; two exact A/B pairs regressed aggregate wall/verify, so it stays a diagnostic. |
-| `HIPENGINE_LAGUNA_F16_PREFILL` | `auto` | gfx1151 Laguna F16-weight prefill route: `auto`, `gemv`, `tiled`, or `wmma_comp_swa`; invalid values are errors. |
+| `HIPENGINE_LAGUNA_F16_PREFILL` | retired | No longer read. Diagnostics use `f16_prefill_strategy(mode)` in `hipengine.runtime.f16_weight_linear`; target-AR exposes `--f16-prefill-strategy`. Automatic backend policy and shape fallbacks are unchanged. |
 | `HIPENGINE_LAGUNA_F16_DECODE` | unset | gfx1151 Laguna F16-weight decode route: `gemv` or `onebarrier`; used by the long-context profiling harness for A/B arms. |
 | `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` | true | Maple exact expert-major grouped MoE prefill; `0` restores the original row/route-gather chain. |
 | `HIPENGINE_MAPLE_FUSE_MOE` | false | Opt-in fused Maple MoE chain (kept off pending a kernel-efficiency fix; see `docs/REFACTOR.md`). |

@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 import math
-import os
 from pathlib import Path
 import platform
 import sys
@@ -19,6 +18,7 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import memory_stats
 from hipengine.loading.gguf import GGUFReader
+from hipengine.runtime.f16_weight_linear import f16_prefill_strategy
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_prefill_profile import _profile_token_stream, _summarize_timing_samples
@@ -38,7 +38,6 @@ from scripts.laguna_target_ar_bench import (
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_ROWS = (2, 3, 4, 5, 7, 8, 15, 16, 17, 32, 55, 64, 65, 122, 128)
 MODES = ("gemv", "tiled")
-_ENV_PREFILL_MODE = "HIPENGINE_LAGUNA_F16_PREFILL"
 DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf1-ab.json"
 )
@@ -78,15 +77,8 @@ def _mode_order(shape_index: int, repetition: int) -> tuple[str, str]:
 def _prefill_mode(mode: str) -> Iterator[None]:
     if mode not in MODES:
         raise ValueError(f"unknown Laguna F16 prefill mode {mode!r}")
-    previous = os.environ.get(_ENV_PREFILL_MODE)
-    os.environ[_ENV_PREFILL_MODE] = mode
-    try:
+    with f16_prefill_strategy(mode):
         yield
-    finally:
-        if previous is None:
-            os.environ.pop(_ENV_PREFILL_MODE, None)
-        else:
-            os.environ[_ENV_PREFILL_MODE] = previous
 
 
 def _comparison_summary(
@@ -337,8 +329,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompt_suite_sha256": _sha256_bytes(prompts_payload),
             "token_stream_sha256": _sha256_json(token_stream),
             "token_source": token_source,
-            "candidate_selection": f"process-local {_ENV_PREFILL_MODE}=tiled only inside candidate spans",
-            "control_selection": f"process-local {_ENV_PREFILL_MODE}=gemv only inside control spans",
+            "candidate_selection": "context-local f16_prefill_strategy('tiled') inside candidate spans",
+            "control_selection": "context-local f16_prefill_strategy('gemv') inside control spans",
         },
         "load": {
             "seconds_excluded": load_seconds,

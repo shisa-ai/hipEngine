@@ -16,6 +16,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.registry import resolve
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import bf16_to_float32
+from hipengine.runtime.f16_weight_linear import f16_prefill_strategy
 
 
 def _hip_available() -> bool:
@@ -334,6 +335,7 @@ def test_laguna_f16_projection_quad_runtime_uses_resident_weight_abi() -> None:
     ]
 
 
+@f16_prefill_strategy("tiled")
 def test_laguna_f16_projection_runtime_forced_bulk_keeps_c1_gemv(monkeypatch) -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         register_laguna_f16_projection_kernels,
@@ -365,7 +367,6 @@ def test_laguna_f16_projection_runtime_forced_bulk_keeps_c1_gemv(monkeypatch) ->
         spec=SimpleNamespace(layout="dense_f16", quant_key="fp16"),
         allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
     )
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "tiled")
     try:
         for rows in (1, 2):
             launch_f16_weight_linear(
@@ -385,12 +386,12 @@ def test_laguna_f16_projection_runtime_forced_bulk_keeps_c1_gemv(monkeypatch) ->
     assert [name for name, _, _ in calls] == ["gemv", "tiled"]
 
 
+@f16_prefill_strategy("wmma_comp_swa")
 def test_laguna_f16_projection_runtime_compensated_wmma_is_swa_scoped(
     monkeypatch,
 ) -> None:
     from hipengine.runtime.f16_weight_linear import _prefill_strategy
 
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "wmma_comp_swa")
     assert _prefill_strategy(
         rows=1,
         activation_dtype="bf16",
@@ -422,7 +423,7 @@ def test_laguna_f16_projection_runtime_auto_uses_measured_gfx1151_threshold(
 ) -> None:
     from hipengine.runtime.f16_weight_linear import _prefill_strategy
 
-    monkeypatch.delenv("HIPENGINE_LAGUNA_F16_PREFILL", raising=False)
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "retired-invalid-value")
     assert _prefill_strategy(
         rows=1, activation_dtype="bf16", backend="hip_gfx1151"
     ) is None

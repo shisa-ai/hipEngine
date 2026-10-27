@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ctypes
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
-from typing import Mapping
+from typing import Iterator, Mapping
 
 from hipengine.kernels.backends import backend_package_capability, load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
@@ -16,10 +18,29 @@ from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 LAYOUT_DENSE_F16 = "dense_f16"
 SOURCE_QUANT_FP16 = "fp16"
 F16_WEIGHT = "fp16_weight"
-_ENV_PREFILL_MODE = "HIPENGINE_LAGUNA_F16_PREFILL"
 _PREFILL_MODES = frozenset({"auto", "gemv", "tiled", "wmma_comp_swa"})
+_PREFILL_STRATEGY: ContextVar[str] = ContextVar("f16_prefill_strategy", default="auto")
 _ENV_DECODE_MODE = "HIPENGINE_LAGUNA_F16_DECODE"
 _DECODE_MODES = frozenset({"auto", "fixedk", "gemv", "onebarrier"})
+
+
+def current_f16_prefill_strategy() -> str:
+    """Return the current diagnostic strategy; production defaults to auto."""
+    return _PREFILL_STRATEGY.get()
+
+
+@contextmanager
+def f16_prefill_strategy(mode: str) -> Iterator[None]:
+    """Select a source-F16 comparison strategy in this execution context only."""
+    selected = str(mode).strip().lower() or "auto"
+    if selected not in _PREFILL_MODES:
+        expected = ", ".join(sorted(_PREFILL_MODES))
+        raise ValueError(f"F16 prefill strategy must be one of: {expected}")
+    token = _PREFILL_STRATEGY.set(selected)
+    try:
+        yield
+    finally:
+        _PREFILL_STRATEGY.reset(token)
 
 
 def _variant(activation_dtype: str, output_dtype: str) -> str:
@@ -39,10 +60,7 @@ def _prefill_strategy(
 ) -> str | None:
     if rows <= 1 or activation_dtype != "bf16":
         return None
-    mode = os.environ.get(_ENV_PREFILL_MODE, "auto").strip().lower() or "auto"
-    if mode not in _PREFILL_MODES:
-        expected = ", ".join(sorted(_PREFILL_MODES))
-        raise ValueError(f"{_ENV_PREFILL_MODE} must be one of: {expected}")
+    mode = current_f16_prefill_strategy()
     if mode == "gemv":
         return None
     if mode == "tiled":

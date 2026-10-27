@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import platform
 import statistics
@@ -26,6 +25,10 @@ from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import host_array_ptr, memory_stats
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.gguf import GGUFReader
+from hipengine.runtime.f16_weight_linear import (
+    current_f16_prefill_strategy,
+    f16_prefill_strategy,
+)
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 
@@ -59,6 +62,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--oracle-logprobs", type=Path, default=DEFAULT_ORACLE_LOGPROBS)
     parser.add_argument("--bulk-correctness-artifact", type=Path, default=DEFAULT_BULK_GATE)
     parser.add_argument("--backend", default="hip_gfx1151")
+    parser.add_argument(
+        "--f16-prefill-strategy",
+        choices=("auto", "gemv", "tiled", "wmma_comp_swa"),
+        default="auto",
+        help="select a context-local source-F16 prefill comparison strategy",
+    )
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--chunk-size", type=int, default=64)
     parser.add_argument(
@@ -584,12 +593,7 @@ def _promotion_gate(
 
 
 def _laguna_f16_prefill_configuration(backend: str) -> dict[str, Any]:
-    requested = os.environ.get("HIPENGINE_LAGUNA_F16_PREFILL", "auto").strip().lower() or "auto"
-    if requested not in {"auto", "gemv", "tiled", "wmma_comp_swa"}:
-        raise ValueError(
-            "HIPENGINE_LAGUNA_F16_PREFILL must be one of: "
-            "auto, gemv, tiled, wmma_comp_swa"
-        )
+    requested = current_f16_prefill_strategy()
     backend_strategy = backend_package_capability(
         backend, "LAGUNA_F16_PREFILL_STRATEGY", None
     )
@@ -638,6 +642,11 @@ def _repo_state() -> dict[str, Any]:
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    with f16_prefill_strategy(getattr(args, "f16_prefill_strategy", "auto")):
+        return _run(args)
+
+
+def _run(args: argparse.Namespace) -> dict[str, Any]:
     horizons = tuple(sorted(set(int(value) for value in args.output_horizons)))
     if len(horizons) < 2 or min(horizons) <= 1:
         raise ValueError("at least two distinct output horizons greater than one are required")

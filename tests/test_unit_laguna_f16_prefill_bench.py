@@ -69,3 +69,17 @@ def test_lpf1_comparison_fails_closed_on_mismatch_or_no_winning_tail() -> None:
     assert no_win["promotion"]["pass"] is False
     assert no_win["promotion"]["measured_min_rows"] is None
     assert "no_strictly_faster_measured_tail" in no_win["promotion"]["failed_checks"]
+
+
+def test_leaf_comparison_scope_restores_after_failure(monkeypatch):
+    import os
+    from hipengine.runtime.f16_weight_linear import current_f16_prefill_strategy
+    from scripts.laguna_f16_prefill_bench import _prefill_mode
+
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "retired-sentinel")
+    with pytest.raises(RuntimeError, match="comparison failed"):
+        with _prefill_mode("tiled"):
+            assert current_f16_prefill_strategy() == "tiled"
+            raise RuntimeError("comparison failed")
+    assert current_f16_prefill_strategy() == "auto"
+    assert os.environ["HIPENGINE_LAGUNA_F16_PREFILL"] == "retired-sentinel"

@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "F16 referral resolved: replace process environment strategy with a context-local owner, migrate leaf/category/target-AR comparisons and activation-statistics metadata. Nested/error/thread isolation and unchanged eligibility/default tests pass; GPU projection and CPU bundle checks recorded in the new worklog. No product decision required; full-model checkpoint dependency remains the existing R0249/R0250 validation item. Worklog: worklog/entries/20261027T215144.430284Z-cleanup-refactor-r0281-f16-scope-d2eb22.md.",
         "EOS row 6188: model-plugin tokenizer adapter loads normalized BOS/EOS/PAD metadata; generator string discovery removed. Public probe exposed ignored request eos_token_id; termination and finish metadata now honor explicit overrides across greedy/sampled/batch/stream/resident routes while preserving both checkpoint IDs when absent. CPU deterministic bundle, focused generator/metadata/live-tokenizer tests and public gfx1151 requests pass with zero tracked allocations after close. Worklog: worklog/entries/20261027T212208.797086Z-cleanup-refactor-r0281-eos-27556c.md.",
         "DFlash tile row 6187 moves to R0281-DFLASH: live gfx1100 tile4 and public tile1 separate from historical shared gfx1151 AR mismatch. Current-stack reproduction awaits local target/drafter, exact category command and first-divergent-state/public lifecycle checks named; no new identity gates. Host plan plus category/public/cycle/fake-provider tests and docs/audit/worklog pass. Worklog: worklog/entries/20261027T211503.417766Z-cleanup-refactor-r0281-dflash-19da6d.md.",
         "IQ2 grid row 6186 moves to bottom R0281-IQ2: live target-AR c1 comparison distinct from grouped prefill/local64 rejection; preserve session-vs-low-level default distinction and compact multi-row fallback. Host grid node plus three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T211132.290595Z-cleanup-refactor-r0281-iq2-1b9890.md.",
@@ -7450,7 +7451,7 @@
         {
           "line": 6163,
           "text": "| Laguna source-F16 prefill selector | `HIPENGINE_LAGUNA_F16_PREFILL=auto|gemv|tiled|wmma_comp_swa` exposes the promoted scoped AR-O2 route plus exact LPF-1 rollback. | gfx1151 `auto` now selects compensated WMMA only for QKV/gate/O on the 36 SWA layers from M16. The clean gate moves weighted prefill 53.388->69.037 tok/s (+29.313%) at max KL 0.043888 and 318/320 top-1; every category, Poolside oracle, determinism, and lifecycle gate passes. All 12 full-attention layers, M2-15, rows=1, and unmeasured backends remain exact. The rejected direct WMMA route stays removed after max KL 0.097062. | After one release window and a defaults-only gfx1151 refresh, remove redundant positive `wmma_comp_swa` selector semantics and keep at most explicit `tiled`/`gemv` rollback. Never revive direct `wmma`, broaden the compensated scope without an independent full quality gate, or remove exact rows=1/unsupported fallbacks. |",
-          "status": "deferred-diagnostic-retirement-R0281-F16"
+          "status": "implemented-context-local-f16-strategy"
         },
         {
           "line": 6164,
@@ -7485,7 +7486,7 @@
         {
           "line": 6170,
           "text": "| Laguna source-F16 tiled prefill selector | `HIPENGINE_LAGUNA_F16_PREFILL=auto|gemv|tiled` exposes explicit selection around the separately registered LPF-1 row/column tile. | Promoted gfx1151 default from two rows. Clean same-session rows 2..128 are exact and all faster (2.0538x weighted); the two-repeat category gate moves prefill 23.333->48.560 tok/s, TTFT 3.481->1.692 s, and h32 E2E 5.719->8.717 with neutral decode and all correctness/lifecycle gates. The reassociated WMMA control remains removed after changing three trajectories. `gemv` is the release rollback; rows=1/unsupported backends always retain registry-driven GEMV. | After one release window and a defaults-only gfx1151 refresh, remove the positive `tiled`/`auto` experiment semantics and keep at most one clear `gemv` rollback until release confidence permits removing the env selector entirely. Never remove the registered rows=1/unsupported-backend GEMV fallback. |",
-          "status": "duplicate-consolidated-R0281-F16"
+          "status": "duplicate-resolved-context-local-f16-strategy"
         },
         {
           "line": 6171,
