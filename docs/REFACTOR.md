@@ -4664,6 +4664,10 @@ fallback count is not a success metric.
   gate. Clean selector-unset pp512/milestone publication and the final
   hipBLASLt trace now pass. Retain exact tiled as rollback for one release;
   remove the session selector after that rollback window.
+- The runtime session setter is removed. Production construction and diagnostic
+  session configuration share layout/range validation; the valid backend default
+  is unchanged. Scaled and norm-direct diagnostic mode collapse remains open
+  because category and publication tooling still consumes those names.
 - The 2026-07-26 exact range-qualified follow-up makes
   `hipblaslt_norm_direct` the gfx1151 default. Actual norm metadata proves a
   **16.34623** FP16 input bound; full logits, final/pre-final hidden, KV,

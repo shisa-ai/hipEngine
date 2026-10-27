@@ -1432,13 +1432,13 @@ def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
 @pytest.mark.parametrize("unsafe_metadata", [None, "missing_norm", "infinite_value_bound"])
 def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch, unsafe_metadata) -> None:
     validated_modes = []
-    original_validate = runner_module.LagunaGGUFResidentSession.set_f16_prefill_mode
+    original_validate = runner_module.validate_laguna_f16_prefill_mode
 
-    def validate_mode(session, mode):
+    def validate_mode(backend, weights, mode):
         validated_modes.append(mode)
-        return original_validate(session, mode)
+        return original_validate(backend, weights, mode)
 
-    monkeypatch.setattr(runner_module.LagunaGGUFResidentSession, "set_f16_prefill_mode", validate_mode)
+    monkeypatch.setattr(runner_module, "validate_laguna_f16_prefill_mode", validate_mode)
     monkeypatch.delenv("GPU_MAX_HW_QUEUES", raising=False)
     events: list[str] = []
     config = _config()
@@ -1704,6 +1704,8 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
 
 
 def test_laguna_direct_prefill_modes_require_safe_complete_range_metadata() -> None:
+    from scripts.laguna_grouped_down_category_bench import _set_f16_prefill_mode
+
     config = _config()
 
     class Layer:
@@ -1739,9 +1741,9 @@ def test_laguna_direct_prefill_modes_require_safe_complete_range_metadata() -> N
         config=config,
         layers=tuple(Layer(0.294921875) for _ in range(config.block_count)),
     )
-    session.set_f16_prefill_mode("hipblaslt_norm_direct")
+    _set_f16_prefill_mode(session, "hipblaslt_norm_direct")
     assert session.f16_prefill_mode == "hipblaslt_norm_direct"
-    session.set_f16_prefill_mode("hipblaslt_range_direct")
+    _set_f16_prefill_mode(session, "hipblaslt_range_direct")
     assert session.f16_prefill_mode == "hipblaslt_range_direct"
 
     session.weights = SimpleNamespace(
@@ -1749,7 +1751,7 @@ def test_laguna_direct_prefill_modes_require_safe_complete_range_metadata() -> N
         layers=(Layer(None), *tuple(Layer(0.294921875) for _ in range(config.block_count - 1))),
     )
     with pytest.raises(ValueError, match="missing"):
-        session.set_f16_prefill_mode("hipblaslt_norm_direct")
+        _set_f16_prefill_mode(session, "hipblaslt_norm_direct")
 
     session.weights = SimpleNamespace(
         config=config,
@@ -1759,7 +1761,7 @@ def test_laguna_direct_prefill_modes_require_safe_complete_range_metadata() -> N
         ),
     )
     with pytest.raises(ValueError, match="missing"):
-        session.set_f16_prefill_mode("hipblaslt_range_direct")
+        _set_f16_prefill_mode(session, "hipblaslt_range_direct")
 
 
 def test_laguna_borrowed_session_rejects_loader_cache_options() -> None:

@@ -86,8 +86,7 @@ from hipengine.runtime.f16_weight_linear import (
 )
 from hipengine.runtime.laguna_f16_hipblaslt import (
     LagunaF16HipblasLt,
-    laguna_attention_gated_fp16_bound,
-    laguna_attention_norm_fp16_bound,
+    validate_laguna_f16_prefill_mode,
     resolve_laguna_f16_prefill_mode,
 )
 from hipengine.runtime.laguna_attention_hipblaslt import (
@@ -3923,7 +3922,9 @@ class LagunaGGUFResidentSession:
 
             self._validate_resident_weights()
             if self.f16_prefill_mode != "retained":
-                self.set_f16_prefill_mode(self.f16_prefill_mode)
+                self.f16_prefill_mode = validate_laguna_f16_prefill_mode(
+                    self.backend, self.weights, self.f16_prefill_mode,
+                )
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,
                 config.full_rope,
@@ -4203,57 +4204,6 @@ class LagunaGGUFResidentSession:
             row_batch,
         )
         self.raw_k_prefill_variant = "rowbatch"
-
-    def set_f16_prefill_mode(self, mode: str) -> None:
-        """Select the explicit rows>1 source-F16 projection route."""
-
-        selected = resolve_laguna_f16_prefill_mode(self.backend, mode)
-        if selected != "retained":
-            assert self.weights is not None
-            unsupported = [
-                (layer.layer_id, slot, layer.weight(slot).spec.layout)
-                for layer in self.weights.layers
-                for slot in ("attn_q", "attn_k", "attn_v", "attn_gate", "attn_output")
-                if layer.weight(slot).spec.layout != LAYOUT_DENSE_F16
-            ]
-            if unsupported:
-                raise ValueError(
-                    "Laguna hipBLASLt prefill requires dense F16 attention weights; "
-                    f"first unsupported={unsupported[0]}"
-                )
-        if selected in {"hipblaslt_norm_direct", "hipblaslt_range_direct"}:
-            assert self.weights is not None
-            bound = laguna_attention_norm_fp16_bound(
-                self.weights.config.hidden_size,
-                (
-                    getattr(layer.weight("attn_norm"), "source_abs_max", None)
-                    for layer in self.weights.layers
-                ),
-            )
-            if bound * 2.0 > 65_504.0:
-                raise ValueError(
-                    "Laguna direct norm cast requires a 2x-safe finite FP16 bound; "
-                    f"bound={bound}"
-                )
-        if selected == "hipblaslt_range_direct":
-            assert self.weights is not None
-            bound = laguna_attention_gated_fp16_bound(
-                self.weights.config.hidden_size,
-                (
-                    (
-                        getattr(layer.weight("attn_norm"), "source_abs_max", None),
-                        getattr(layer.weight("attn_v"), "source_row_l2_max", None),
-                        getattr(layer.weight("attn_gate"), "source_row_l2_max", None),
-                    )
-                    for layer in self.weights.layers
-                ),
-            )
-            if bound * 2.0 > 65_504.0:
-                raise ValueError(
-                    "Laguna direct attention-output cast requires a 2x-safe "
-                    f"finite FP16 bound; bound={bound}"
-                )
-        self.f16_prefill_mode = selected
 
     def set_f16_boundary_fusion(self, enabled: bool) -> None:
         """Fuse exact BF16-to-FP16 boundaries in range-direct prefill."""

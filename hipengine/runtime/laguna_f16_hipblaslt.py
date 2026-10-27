@@ -55,6 +55,53 @@ def resolve_laguna_f16_prefill_mode(
     return parsed
 
 
+def validate_laguna_f16_prefill_mode(backend: str, weights, requested: str) -> str:
+    """Validate layout and finite bounds before selecting an F16 route."""
+    from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16
+
+    selected = resolve_laguna_f16_prefill_mode(backend, requested)
+    if selected == "retained":
+        return selected
+    if weights is None:
+        raise ValueError("Laguna F16 prefill requires resident weights")
+    unsupported = [
+        (getattr(layer, "layer_id", index), slot, layer.weight(slot).spec.layout)
+        for index, layer in enumerate(weights.layers)
+        for slot in ("attn_q", "attn_k", "attn_v", "attn_gate", "attn_output")
+        if layer.weight(slot).spec.layout != LAYOUT_DENSE_F16
+    ]
+    if unsupported:
+        raise ValueError(
+            "Laguna hipBLASLt prefill requires dense F16 attention weights; "
+            f"first unsupported={unsupported[0]}"
+        )
+    if selected in {"hipblaslt_norm_direct", "hipblaslt_range_direct"}:
+        bound = laguna_attention_norm_fp16_bound(
+            weights.config.hidden_size,
+            (getattr(layer.weight("attn_norm"), "source_abs_max", None)
+             for layer in weights.layers),
+        )
+        if bound * 2.0 > 65_504.0:
+            raise ValueError(
+                "Laguna direct norm cast requires a 2x-safe finite FP16 bound; "
+                f"bound={bound}"
+            )
+    if selected == "hipblaslt_range_direct":
+        bound = laguna_attention_gated_fp16_bound(
+            weights.config.hidden_size,
+            ((getattr(layer.weight("attn_norm"), "source_abs_max", None),
+              getattr(layer.weight("attn_v"), "source_row_l2_max", None),
+              getattr(layer.weight("attn_gate"), "source_row_l2_max", None))
+             for layer in weights.layers),
+        )
+        if bound * 2.0 > 65_504.0:
+            raise ValueError(
+                "Laguna direct attention-output cast requires a 2x-safe "
+                f"finite FP16 bound; bound={bound}"
+            )
+    return selected
+
+
 def laguna_attention_norm_fp16_bound(
     hidden_size: int,
     source_abs_maxima: Iterable[float | None],

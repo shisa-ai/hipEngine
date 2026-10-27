@@ -7,6 +7,18 @@ from types import SimpleNamespace
 import pytest
 
 import scripts.laguna_grouped_down_category_bench as benchmark
+from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16
+
+
+def _safe_f16_weights():
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(layout=LAYOUT_DENSE_F16),
+        source_abs_max=0.1, source_row_l2_max=1.0,
+    )
+    return SimpleNamespace(
+        config=SimpleNamespace(hidden_size=3072),
+        layers=(SimpleNamespace(weight=lambda slot: weight),),
+    )
 from scripts.laguna_grouped_down_category_bench import (
     ATTENTION_HIPBLASLT_ABSOLUTE_COMPARISON,
     CUMULATIVE_CONTROL_COMPARISON,
@@ -378,7 +390,14 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
         def set_selected_down_mode(self, mode: str) -> None:
             self.row["selected_down_mode"] = mode
 
-        def set_f16_prefill_mode(self, mode: str) -> None:
+        weights = _safe_f16_weights()
+
+        @property
+        def f16_prefill_mode(self):
+            return "retained"
+
+        @f16_prefill_mode.setter
+        def f16_prefill_mode(self, mode: str) -> None:
             self.row["f16_projection_mode"] = mode
 
         backend = "hip_gfx1151"
@@ -513,7 +532,14 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
         def set_selected_down_mode(self, mode: str) -> None:
             configured.append(("selected_down", mode))
 
-        def set_f16_prefill_mode(self, mode: str) -> None:
+        weights = _safe_f16_weights()
+
+        @property
+        def f16_prefill_mode(self):
+            return "retained"
+
+        @f16_prefill_mode.setter
+        def f16_prefill_mode(self, mode: str) -> None:
             configured.append(("f16_projection", mode))
 
         backend = "hip_gfx1151"
@@ -582,7 +608,14 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
         def set_selected_down_mode(self, mode: str) -> None:
             self.row["selected_down_mode"] = mode
 
-        def set_f16_prefill_mode(self, mode: str) -> None:
+        weights = _safe_f16_weights()
+
+        @property
+        def f16_prefill_mode(self):
+            return "retained"
+
+        @f16_prefill_mode.setter
+        def f16_prefill_mode(self, mode: str) -> None:
             self.row["f16_projection_mode"] = mode
 
         backend = "hip_gfx1151"
@@ -673,7 +706,14 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
         def set_selected_down_mode(self, mode: str) -> None:
             configured.append(("selected_down", mode))
 
-        def set_f16_prefill_mode(self, mode: str) -> None:
+        weights = _safe_f16_weights()
+
+        @property
+        def f16_prefill_mode(self):
+            return "retained"
+
+        @f16_prefill_mode.setter
+        def f16_prefill_mode(self, mode: str) -> None:
             configured.append(("f16_projection", mode))
 
         backend = "hip_gfx1151"

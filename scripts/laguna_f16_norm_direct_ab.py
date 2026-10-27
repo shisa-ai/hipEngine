@@ -15,6 +15,7 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
+from scripts.laguna_grouped_down_category_bench import _set_f16_prefill_mode
 from scripts.laguna_matrix_chunk_bench import _device_digest, _kv_digest
 from scripts.laguna_prefill_profile import _profile_token_stream
 from scripts.laguna_target_ar_bench import (
@@ -64,7 +65,7 @@ def _run(
 ) -> dict[str, float | int | str]:
     child = _child_session(owner)
     try:
-        child.set_f16_prefill_mode(_MODES[mode])
+        _set_f16_prefill_mode(child, _MODES[mode])
         started = time.perf_counter()
         result = child.prefill(tokens, use_bulk=True)
         child.runtime.device_synchronize()
@@ -116,7 +117,7 @@ def main() -> int:
         for f16_mode in _MODES.values():
             warm_session = _child_session(owner)
             try:
-                warm_session.set_f16_prefill_mode(f16_mode)
+                _set_f16_prefill_mode(warm_session, f16_mode)
                 warm_session.prefill(tokens[:128], use_bulk=True)
                 runtime.device_synchronize()
             finally:

@@ -391,7 +391,7 @@ def _session_for_mode(
         )
         session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
         session.set_selected_down_mode(lane.selected_down_mode)
-        session.set_f16_prefill_mode(lane.f16_projection_mode)
+        _set_f16_prefill_mode(session, lane.f16_projection_mode)
         _set_dense_q4_prefill_mode(session, lane.dense_q4_prefill_mode)
         session.set_prefill_attention_hipblaslt(lane.attention_hipblaslt)
         return session
@@ -405,6 +405,15 @@ def _session_for_mode(
     }:
         raise ValueError(f"unknown Laguna execution mode {comparison.execution_mode!r}")
     return session
+
+
+def _set_f16_prefill_mode(session: LagunaGGUFResidentSession, mode: str) -> None:
+    """Validate and select the projection route for one diagnostic session."""
+    from hipengine.runtime.laguna_f16_hipblaslt import validate_laguna_f16_prefill_mode
+
+    session.f16_prefill_mode = validate_laguna_f16_prefill_mode(
+        session.backend, session.weights, mode,
+    )
 
 
 def _set_dense_q4_prefill_mode(session: LagunaGGUFResidentSession, mode: str) -> None:
@@ -444,7 +453,7 @@ def _oracle_for_candidate(
         def configure_session(session: LagunaGGUFResidentSession) -> None:
             session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
             session.set_selected_down_mode(lane.selected_down_mode)
-            session.set_f16_prefill_mode(lane.f16_projection_mode)
+            _set_f16_prefill_mode(session, lane.f16_projection_mode)
             _set_dense_q4_prefill_mode(session, lane.dense_q4_prefill_mode)
             session.set_prefill_attention_hipblaslt(
                 lane.attention_hipblaslt
