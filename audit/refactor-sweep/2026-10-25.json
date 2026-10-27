@@ -10579,28 +10579,28 @@
       "start_line": 8178,
       "end_line": 8195,
       "sha256": "1ffbce38a2fd129335db035e4346269617b5bd3ab52a6b85ccd5215191944021",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Direct profiling flag absent; required constructor rollback/capability/runtime choices preserved. Completed receipt removed. Worklog: worklog/entries/20261027T043617.207089Z-cleanup-refactor-r0365-e72e07.md."],
       "subitems": [
         {
           "line": 8180,
           "text": "- Added 2026-07-31 as the constructor override",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8185,
           "text": "- The exact actual-weight leaf improves **0.967%**, profiling contracts",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8188,
           "text": "- Remove the direct profiling flag after tracked-clean selector-unset",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8191,
           "text": "- Tracked-clean publication passes at **22.780604 tok/s / 43.896992",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

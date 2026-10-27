@@ -6925,24 +6925,6 @@ should be boring.
   retain the constructor override, capability, registered quad, and unfused
   fallback.
 
-## Laguna gfx1151 Q4 selected-down paired-coefficient selector
-
-- Added 2026-07-31 as the constructor override
-  `use_selected_down_q4_paircoeff_weighted_decode` and direct profiling flag
-  `--selected-down-q4-paircoeff-weighted-decode`. The gfx1151 capability
-  defaults on; `false` restores the exact scalar-column route-parallel weighted
-  Q4 owner.
-- The exact actual-weight leaf improves **0.967%**, profiling contracts
-  allocated VGPR **104 -> 80**, and seven same-resident p512/d128 pairs improve
-  **22.762554 -> 22.793632 tok/s (+0.13653%, 5/7 wins)**.
-- Remove the direct profiling flag after tracked-clean selector-unset
-  publication. Retain the constructor rollback, gfx1151 capability, both
-  four-axis registrations, and exact scalar-column fallback.
-- Tracked-clean publication passes at **22.780604 tok/s / 43.896992
-  ms/token**. The direct profiling flag is removed. Retain only the constructor
-  rollback, gfx1151 capability, both registrations, and exact scalar-column
-  fallback.
-
 ## Laguna gfx1151 decode shared-stream priority selector
 
 - Added 2026-07-31 as
