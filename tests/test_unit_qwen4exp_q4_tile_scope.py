@@ -241,14 +241,18 @@ def test_the_binder_reaches_a_runner_it_finds(profiles) -> None:
     assert getattr(runner, FIELD_N) == 16
 
 
-def test_the_dense_q8_pair_stays_a_process_key(profiles) -> None:
+def test_the_dense_q8_pair_is_not_this_units_process_key(profiles) -> None:
+    # The dense Q8_0 pair is a separate, multi-consumer contract: the binder
+    # publishes it on the carrier (see the q8 tile-policy unit) and the Q4_K
+    # module never reads it.
     resolved = _resolve(ExecutionProfile.PRODUCTION)
-    resolved.binder(SimpleNamespace(), resolved)
-    assert os.environ[DENSE_Q8_ENV[0]] == "64"
-    assert os.environ[DENSE_Q8_ENV[1]] == "32"
-    source = inspect.getsource(
-        gguf_q4_k_selected_prefill)  # the Q4_K module never reads them
-    assert DENSE_Q8_ENV[0] not in source
+    generator = SimpleNamespace()
+    resolved.binder(generator, resolved)
+    assert generator.q8_wmma_tiles == (64, 32)
+    for key in DENSE_Q8_ENV:
+        assert key not in os.environ
+    assert DENSE_Q8_ENV[0] not in inspect.getsource(
+        gguf_q4_k_selected_prefill)
 
 
 def test_a_cloned_runner_inherits_the_published_pair() -> None:

@@ -45,6 +45,7 @@ from hipengine.runtime.qwen4_exp_batch_qsa import (
     Qwen4ExpBatchQsaMixerPlan, run_qwen4_exp_batch_qsa_input_projections,
 )
 from hipengine.runtime.qwen4_exp_batch_runner import _run_layer_ffn
+from hipengine.runtime.qwen4_exp_runner import _qwen4_exp_q8_tile_scope
 from hipengine.runtime.qwen4_exp_mixed_gdn import (
     Qwen4ExpMixedGdnAdapter, Qwen4ExpMixedGdnProjectedRows,
 )
@@ -280,6 +281,12 @@ class Qwen4ExpMixedTargetPass:
         """Execute shared row projections and provisional depth-wave state work."""
         if self.closed or self.closing or self.resolved or self.verified:
             raise RuntimeError('mixed target verification requires a fresh open pass')
+        # The pass runs the batch owner's row set, so it launches the batch's
+        # Q8_0 dense tile pair (masking an outer pair when none is published).
+        with _qwen4_exp_q8_tile_scope(self.batch):
+            return self._verify_rows()
+
+    def _verify_rows(self) -> Qwen4ExpMixedTargetResult:
         self._validate()
         batch, cfg, rows = self.batch, self.batch.config, self.layout.total_rows
         tokens = np.ascontiguousarray([row.token for row in self.layout.rows], dtype=np.int64)

@@ -123,6 +123,7 @@ from hipengine.runtime.qwen4_exp_batch_state import (
     Qwen4ExpBatchStepMetadata,
 )
 from hipengine.runtime.qwen4_exp_runner import (
+    _qwen4_exp_q8_tile_scope,
     Qwen4ExpGDNLayerDeviceWeights,
     Qwen4ExpGDNLayerScratch,
     Qwen4ExpGRScratch,
@@ -936,6 +937,11 @@ class Qwen4ExpGGUFBatchRunner:
     # records this launch and the pair belongs in the capture key.
     q4_tile_m: int | None = None
     q4_tile_n: int | None = None
+    # The Q8_0 dense WMMA prefill tile pair, published (64, 32) by the profile
+    # binder and ``None`` on an unbound owner. A step at rows>1 can reach that
+    # family, so the pair is bound around the step and carried in the capture
+    # key of the segment it builds.
+    q8_wmma_tiles: tuple[int, int] | None = None
     q51_down_m1: bool = False
     q51_fold128_prefill: bool = False
     q51_fold_pair_prefill: bool = False
@@ -1836,6 +1842,16 @@ class Qwen4ExpGGUFBatchRunner:
 
         return (self.q4_tile_m, self.q4_tile_n)
 
+    def _q8_tile_policy(self) -> tuple[tuple[int, int] | None]:
+        """The Q8_0 dense tile pair a captured layer segment bakes in.
+
+        A step at ``rows>1`` can launch the Q8_0 dense WMMA prefill inside the
+        captured segment, and that launch resolves this pair. ``None`` is the
+        unbound heuristic and is part of the identity.
+        """
+
+        return (self.q8_wmma_tiles,)
+
     def _expert_down_policy(self) -> tuple[bool, ...]:
         """The expert-down decisions a captured layer segment depends on.
 
@@ -1926,14 +1942,15 @@ class Qwen4ExpGGUFBatchRunner:
         # slots' device state changes, so a failure poisons the rows: a retry
         # would append and advance on top of a half-applied step.
         try:
-            return self._execute_step(
-                plan,
-                tokens,
-                owner_plans=owner_plans,
-                embedding_kernel=embedding_kernel,
-                token_weight=token_weight,
-                capture_logits=capture_logits,
-            )
+            with _qwen4_exp_q8_tile_scope(self):
+                return self._execute_step(
+                    plan,
+                    tokens,
+                    owner_plans=owner_plans,
+                    embedding_kernel=embedding_kernel,
+                    token_weight=token_weight,
+                    capture_logits=capture_logits,
+                )
         except BaseException:
             self._poisoned.update(plan.slots)
             raise
@@ -2131,7 +2148,7 @@ class Qwen4ExpGGUFBatchRunner:
                     runtime=self.runtime,
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy()
-                    + self._q4_tile_policy(),
+                    + self._q4_tile_policy() + self._q8_tile_policy(),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -2174,7 +2191,7 @@ class Qwen4ExpGGUFBatchRunner:
                     runtime=self.runtime,
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy()
-                    + self._q4_tile_policy(),
+                    + self._q4_tile_policy() + self._q8_tile_policy(),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,

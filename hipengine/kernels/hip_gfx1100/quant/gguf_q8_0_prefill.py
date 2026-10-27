@@ -13,6 +13,8 @@ family (``wmma_prefill_*``).
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import ctypes
 import os
 from pathlib import Path
@@ -107,8 +109,81 @@ def _symbol(variant: str) -> str:
     return f"hipengine_gguf_q8_0_{variant}"
 
 
+#: The tile pair a launch uses when its caller passes no explicit tile. It is
+#: context-local, not process-wide: a runner that publishes a plan tile binds it
+#: for the scope it launches in, and nothing outside that scope sees it.
+_WMMA_TILE_POLICY: contextvars.ContextVar[tuple[int, int] | None] = (
+    contextvars.ContextVar("gguf_q8_0_wmma_tile_policy", default=None)
+)
+
+
+def normalize_wmma_tile_pair(
+    tile_m: int | None, tile_n: int | None,
+) -> tuple[int, int] | None:
+    """Validate one scoped tile pair; ``(None, None)`` means "no policy".
+
+    A lone side is rejected rather than paired with a default, so a
+    half-specified diagnostic cannot silently measure a tile nobody chose.
+    """
+
+    if tile_m is None and tile_n is None:
+        return None
+    if tile_m is None or tile_n is None:
+        raise ValueError(
+            "a Q8_0 WMMA tile policy requires both tile_m and tile_n; "
+            "bind (None, None) to restore the arch heuristic"
+        )
+    pair = (int(tile_m), int(tile_n))
+    if pair not in _ALLOWED_TILES:
+        allowed = ", ".join(f"({m}, {n})" for m, n in sorted(_ALLOWED_TILES))
+        raise ValueError(
+            f"tile (tile_m={pair[0]}, tile_n={pair[1]}) is not supported. "
+            f"Supported tiles: {allowed}"
+        )
+    return pair
+
+
+@contextlib.contextmanager
+def wmma_tile_policy(tile_m: int | None, tile_n: int | None):
+    """Bind the Q8_0 dense WMMA prefill tile pair for one execution scope.
+
+    This is the execution-owned replacement for the retired
+    ``HIPENGINE_GGUF_Q8_0_WMMA_TILE_M`` and ``HIPENGINE_GGUF_Q8_0_WMMA_TILE_N``
+    process keys. An explicit ``tile_m``/``tile_n`` launch argument still wins
+    over it, per side; the pair only decides the sides the caller left open, in
+    place of the arch heuristic.
+
+    ``(None, None)`` binds "no policy", which masks an outer pair and restores
+    the heuristic for the scope. The binding is a ``ContextVar`` token reset on
+    exit, so it restores on an exception and on cancellation; it is visible to
+    code the scope calls and to nothing else.
+
+    The reset is strict: a scope exited from a context other than the one that
+    entered it raises, because that means the owner abandoned a suspended step
+    instead of closing it. Every resumable driver here closes in the owning
+    context (``context.run(steps.close)``), so the strict reset reports a
+    lifecycle bug rather than hiding it.
+    """
+
+    pair = normalize_wmma_tile_pair(tile_m, tile_n)
+    token = _WMMA_TILE_POLICY.set(pair)
+    try:
+        yield pair
+    finally:
+        _WMMA_TILE_POLICY.reset(token)
+
+
+def current_wmma_tile_policy() -> tuple[int, int] | None:
+    """The pair a launch in this context would use, or ``None`` for none."""
+
+    return _WMMA_TILE_POLICY.get()
+
+
 def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int, int]:
-    """Heuristic default for (tile_m, tile_n) when the caller does not override.
+    """Default (tile_m, tile_n) for a launch whose caller passed no tile.
+
+    A scoped :func:`wmma_tile_policy` pair wins over the arch heuristic below,
+    and nothing else does: there is no process-wide tile switch.
 
     The default is keyed on the target arch (``_target_arch``): the gfx1100 and
     gfx1151 sweeps below ran on different physical hosts and retained different
@@ -138,7 +213,7 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     measured shape.
 
     ``in_features`` no longer selects anything; it stays in the signature
-    because callers and the override path pass the shape as a unit. See
+    because callers pass the shape as a unit. See
     ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for the pinning tests and
     ``scripts/gemma4_dense_q8_tile_sweep.py`` for the sweep that produced this.
 
@@ -210,15 +285,9 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     ``tests/test_gpu_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
     """
 
-    override_m = os.environ.get("HIPENGINE_GGUF_Q8_0_WMMA_TILE_M")
-    override_n = os.environ.get("HIPENGINE_GGUF_Q8_0_WMMA_TILE_N")
-    if override_m is not None or override_n is not None:
-        if override_m is None or override_n is None:
-            raise ValueError("Q8_0 WMMA tile override requires both M and N")
-        tile = (int(override_m), int(override_n))
-        if tile not in _ALLOWED_TILES:
-            raise ValueError(f"unsupported Q8_0 WMMA tile override: {tile}")
-        return tile
+    policy = _WMMA_TILE_POLICY.get()
+    if policy is not None:
+        return policy
     if _target_arch() == "gfx1151":
         tile_n = 64 if rows >= 64 else (32 if rows >= 32 else 16)
         tile_m = 32 if out_features >= 32 else 16
@@ -226,6 +295,22 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     # gfx1100, and any host whose arch is not the gfx1151 peer: the flat rule
     # measured on the W7900.
     return 16, (32 if rows >= 32 else 16)
+
+
+def _resolve_launch_tiles(
+    tile_m: int | None,
+    tile_n: int | None,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> tuple[int, int]:
+    """Resolve one launch's pair: an explicit side always wins, per side."""
+
+    if tile_m is None or tile_n is None:
+        tm_def, tn_def = _default_tiles(rows, in_features, out_features)
+        tile_m = tm_def if tile_m is None else tile_m
+        tile_n = tn_def if tile_n is None else tile_n
+    return tile_m, tile_n
 
 
 def _launch(
@@ -251,10 +336,9 @@ def _launch(
         raise ValueError("out_features must be positive")
     if in_features % 32 != 0:
         raise ValueError("in_features must be divisible by Q8_0 block size 32")
-    if tile_m is None or tile_n is None:
-        tm_def, tn_def = _default_tiles(rows, in_features, out_features)
-        tile_m = tm_def if tile_m is None else tile_m
-        tile_n = tn_def if tile_n is None else tile_n
+    tile_m, tile_n = _resolve_launch_tiles(
+        tile_m, tile_n, rows, in_features, out_features
+    )
     if (tile_m, tile_n) not in _ALLOWED_TILES:
         allowed = ", ".join(
             f"({m}, {n})" for m, n in sorted(_ALLOWED_TILES)
@@ -348,10 +432,9 @@ def _launch_dual(
         raise ValueError("out_features_a and out_features_b must be positive")
     if in_features % 32 != 0:
         raise ValueError("in_features must be divisible by Q8_0 block size 32")
-    if tile_m is None or tile_n is None:
-        tm_def, tn_def = _default_tiles(rows, in_features, max(out_features_a, out_features_b))
-        tile_m = tm_def if tile_m is None else tile_m
-        tile_n = tn_def if tile_n is None else tile_n
+    tile_m, tile_n = _resolve_launch_tiles(
+        tile_m, tile_n, rows, in_features, max(out_features_a, out_features_b)
+    )
     if (tile_m, tile_n) not in _ALLOWED_TILES:
         allowed = ", ".join(f"({m}, {n})" for m, n in sorted(_ALLOWED_TILES))
         raise ValueError(

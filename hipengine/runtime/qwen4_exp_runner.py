@@ -235,6 +235,10 @@ gguf_q8_0_dense_wide128x128_f16in_f32_f32_out = _GGUF_Q8_0_DENSE_WIDE_WRAPPERS[
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_iu8_wmma_prefill_f32_f32,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
+    normalize_wmma_tile_pair,
+    wmma_tile_policy,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.loading.qwen4_exp_gguf import Qwen4ExpGGUFConfig
@@ -4447,6 +4451,50 @@ def q4_tile_n(runner: Any, enabled: int | None | object = _Q4_TILE_UNSET):
         yield prior
     finally:
         runner.q4_tile_n = prior
+
+
+# Q8_0 dense WMMA prefill tile pair. The binder publishes the plan's pair on the
+# owning runner and the runner binds it for each scope that can launch that
+# family, so the value is execution-owned rather than process-wide; a diagnostic
+# arm rebinds the pair on the runner it measures.
+_Q8_WMMA_TILES_UNSET = object()
+
+
+@contextlib.contextmanager
+def q8_wmma_tiles(runner: Any, pair: object = _Q8_WMMA_TILES_UNSET):
+    """Bind the Q8_0 dense WMMA prefill tile pair for a diagnostic arm.
+
+    ``(tile_m, tile_n)`` binds that pair, ``None`` restores the unbound arch
+    heuristic, and leaving ``pair`` unset keeps whatever the plan published. The
+    pair is validated against the owner's allowed tiles when the scope is
+    entered, so an unsupported or half-specified pair fails here rather than at
+    the first launch. Restored on exit, including on an exception.
+    """
+
+    prior = getattr(runner, "q8_wmma_tiles", None)
+    if pair is not _Q8_WMMA_TILES_UNSET:
+        if pair is not None:
+            pair = normalize_wmma_tile_pair(*pair)
+        runner.q8_wmma_tiles = pair
+    try:
+        yield prior
+    finally:
+        runner.q8_wmma_tiles = prior
+
+
+def _qwen4_exp_q8_tile_scope(owner: Any):
+    """Bind the owner's Q8_0 tile pair for one execution entry.
+
+    Every Qwen4Exp entry that can reach the Q8_0 dense WMMA prefill under an
+    existing opt-in enters this, so the pair never depends on which entry the
+    scheduler happened to call. An owner that published nothing binds
+    ``(None, None)``: the pair is *ownership*, not an optional override, so a
+    nested runner must mask whatever pair its caller had bound rather than
+    inherit it.
+    """
+
+    pair = getattr(owner, "q8_wmma_tiles", None)
+    return wmma_tile_policy(*(pair if pair is not None else (None, None)))
 
 
 # Q4 exact grouped gate/up gate. Production runs the exact grouped Q4_K gate/up
@@ -9194,6 +9242,12 @@ class Qwen4ExpGGUFResidentModelRunner:
     # pair. A diagnostic scope may outrank the publication.
     q4_tile_m: int | None = None
     q4_tile_n: int | None = None
+    # The Q8_0 dense WMMA prefill tile pair, published (64, 32) by the profile
+    # binder and ``None`` on an unbound runner (the arch heuristic). It is bound
+    # around each execution entry that can reach that family, so a co-resident
+    # model in the same process keeps its own default. A diagnostic arm rebinds
+    # it on the runner it measures.
+    q8_wmma_tiles: tuple[int, int] | None = None
     # Q5_1 down M1 selection, published by the profile binder for the exact
     # grouped Q5_1 down chain's small-chunk scope: True on a production plan,
     # False on every plan that keeps the preceding expertgrid64 owner. The
@@ -9786,6 +9840,16 @@ class Qwen4ExpGGUFResidentModelRunner:
         """Run serial target bodies and score their captured rows together."""
 
         self._require_open()
+        # The per-row bodies are serial decode, but the deferred head read is
+        # one rows>1 pass over the captured rows, so this entry owns the plan's
+        # Q8_0 tile pair for its whole body.
+        with _qwen4_exp_q8_tile_scope(self):
+            return self._deferred_head_rows(input_token_ids)
+
+    def _deferred_head_rows(
+        self,
+        input_token_ids: Sequence[int],
+    ) -> Qwen4ExpTargetVerifyResult:
         tokens = tuple(int(token) for token in input_token_ids)
         output = self.target_verify_output(len(tokens))
         cfg = self.config
@@ -9889,6 +9953,20 @@ class Qwen4ExpGGUFResidentModelRunner:
         """
 
         self._require_open()
+        # The pass launches rows>1 dense projections both in the prefill body
+        # and in the deferred head read, so it owns the plan's Q8_0 tile pair
+        # for the whole entry rather than for the prefill chunk alone.
+        with _qwen4_exp_q8_tile_scope(self):
+            return self._verify_state_rows(
+                input_token_ids, capture_logits=capture_logits
+            )
+
+    def _verify_state_rows(
+        self,
+        input_token_ids: Sequence[int],
+        *,
+        capture_logits: bool = False,
+    ) -> Qwen4ExpTargetVerifyResult:
         if self._pending_verify_block is not None:
             raise RuntimeError("commit the previous Qwen4Exp verify block first")
         tokens = tuple(int(token) for token in input_token_ids)
@@ -10631,12 +10709,13 @@ class Qwen4ExpGGUFResidentModelRunner:
         )
 
     def _prefill_chunk(self, token_ids, **kwargs):
-        steps = self._prefill_chunk_steps(token_ids, **kwargs)
-        while True:
-            try:
-                next(steps)
-            except StopIteration as done:
-                return done.value
+        with _qwen4_exp_q8_tile_scope(self):
+            steps = self._prefill_chunk_steps(token_ids, **kwargs)
+            while True:
+                try:
+                    next(steps)
+                except StopIteration as done:
+                    return done.value
 
     def _prefill_chunk_steps(
         self,
@@ -11061,6 +11140,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 ),
                 self._q8_mmq_prefill_context(),
                 self._wide_f16_activation_context(),
+                _qwen4_exp_q8_tile_scope(self),
             ):
                 chunk_kwargs = dict(
                     capture_hidden_seeds=capture_hidden_seeds and hidden_seed_consumer is None,

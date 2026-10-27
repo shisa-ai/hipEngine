@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Per-shape tile sweep for the GGUF Q8_0 WMMA prefill owner.
 
-`gguf_q8_0_prefill.py::_default_tiles` picks (tile_m, tile_n) from the shape by a
-heuristic tuned in 2026 on other models' shapes. Gemma 4's dense Q8_0
-projections are 159 ms of a 554 ms per-prefill kernel budget, so the question is
-whether that heuristic is right for *these* shapes.
+`gguf_q8_0_prefill.py::_default_tiles` picks (tile_m, tile_n) from the shape by
+an arch heuristic, and a runner that publishes a plan tile binds a pair for the
+scope it launches in. The question here is whether either choice is right for
+Gemma 4's dense projection shapes.
 
-The `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N` overrides apply to every launch, so a
-whole-prefill sweep conflates the six shapes with each other. This probe times
-one shape at a time at rows=512 -- Gemma's block size -- over synthetic Q8_0
-weights of the real geometry, and reports the best tile per shape against the
-heuristic's current choice.
+Every tile is passed as an explicit `tile_m`/`tile_n` launch argument, so one
+shape is timed at a time at rows=512 -- Gemma's block size -- over synthetic
+Q8_0 weights of the real geometry. `_default_tiles` is read only to report what
+a launch that leaves the tiles open would use: the scoped pair when this probe
+runs inside `wmma_tile_policy(...)`, otherwise the arch heuristic. There is no
+process-wide tile switch to set before a run.
 
 Usage:
     env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. \

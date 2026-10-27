@@ -4135,14 +4135,14 @@
       "start_line": 3692,
       "end_line": 3729,
       "sha256": "0c9199abb27b87fb602bc8d234ab786edb6b380f7a77af855a808a8c004281c9",
-      "status": "pending",
-      "evidence": ["Peer bridge subitem resolved via runner-owned layer scope; defaults, recovery, guard and fallback precedence preserved. CPU333, public/GPU332, focused split-phase diagnostic repair and docs/audit pass. Other subitems remain pending. Worklog: worklog/entries/20261027T021228.975349Z-cleanup-refactor-r0160-gdn-peer-26c021.md."],
+      "status": "resolved-removed",
+      "evidence": ["Peer bridge resolved via runner-owned layer scope; defaults, recovery, guard and fallback precedence preserved. CPU333, public/GPU332, focused split-phase diagnostic repair and docs/audit pass. Remaining subitems subsequently resolved as recorded below. Worklog: worklog/entries/20261027T021228.975349Z-cleanup-refactor-r0160-gdn-peer-26c021.md."],
       "subitems": [
         {
           "line": 3694,
           "text": "- Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidates are",
-          "status": "pending",
-          "evidence": ["Compact Q4 tile process transport resolved with runner publication/scopes and capture identity. Defaults and tile validation preserved; public340, CPU341, GPU342 and docs/audit pass. Dense Q8 tile controls remain open. Worklog: worklog/entries/20261027T025147.903044Z-cleanup-refactor-r0160-q4-tiles-b897ea.md."]
+          "status": "resolved-removed",
+          "evidence": ["Compact Q4 transport resolved in12e8575e6. Dense Q8 now uses context-local validated policy with explicit launch precedence; Qwen publication no longer leaks into peers, all reachable multirow entries bound and batch capture identity includes policy. CPU344, public343 Qwen plus corrected Gemma345 safeT16 trace, GPU345 and final gates pass. Worklog: worklog/entries/20261027T030526.829497Z-cleanup-refactor-r0160-dense-q8-670052.md."]
         },
         {
           "line": 3709,

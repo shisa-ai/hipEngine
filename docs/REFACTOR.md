@@ -3020,14 +3020,6 @@ should be removed or collapsed.
   after serving/cancellation/graph soak; retain direct selected primitives as
   the strict unfused fallback.
 
-## 2026-08-27 Qwen4Exp grouped prefill performance candidates
-
-- Remaining process controls are `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N` for
-  dense Q8 WMMA. Migrate their tile choices to their owning execution scopes
-  and diagnostic callers; preserve existing defaults, supported tile validation
-  and registered fallback kernels. Verify each consumer, including dense Q8
-  users outside Qwen4Exp.
-
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 
 - The strict Qwen4Exp runner currently downloads one FP32 block-score row per

@@ -157,7 +157,8 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
         # then the compact F16 Q4_K gate/up tile pair the segment bakes in.
         assert key[1] == width
         assert key[2:2 + len(POLICY_FIELDS)] == policy
-        assert key[2 + len(POLICY_FIELDS):] == runner._q4_tile_policy()
+        assert key[2 + len(POLICY_FIELDS):] == (
+            runner._q4_tile_policy() + runner._q8_tile_policy())
 
 
 @pytest.mark.parametrize("field", ("q4_tile_m", "q4_tile_n"))
@@ -178,7 +179,8 @@ def test_a_flipped_tile_changes_the_capture_key(monkeypatch, field):
     assert flipped, "the second step dispatched no layer"
     for before, after in zip(baseline, flipped):
         assert before != after, field
-        assert after[-2:] == runner._q4_tile_policy()
+        assert after[-(len(runner._q4_tile_policy()) + len(runner._q8_tile_policy())):] == (
+            runner._q4_tile_policy() + runner._q8_tile_policy())
 
 
 @pytest.mark.parametrize("field", POLICY_FIELDS)
@@ -272,8 +274,12 @@ def test_the_mixed_pass_reads_the_rungs_from_the_shared_batch_runner():
 
     from hipengine.runtime.qwen4_exp_mixed_target import Qwen4ExpMixedTargetPass
 
+    # ``verify`` is the execution entry and binds the batch's Q8_0 tile pair
+    # around the row work; the rung forwarding itself lives in ``_verify_rows``.
+    assert "self._verify_rows()" in inspect.getsource(
+        Qwen4ExpMixedTargetPass.verify)
     tree = ast.parse(textwrap.dedent(
-        inspect.getsource(Qwen4ExpMixedTargetPass.verify)))
+        inspect.getsource(Qwen4ExpMixedTargetPass._verify_rows)))
     forwarded: list[set[str]] = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call)

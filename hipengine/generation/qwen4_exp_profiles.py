@@ -1322,8 +1322,6 @@ def _bind(
                 for row in resolved.manifest["selections"]
             ) else "0"
         ),
-        "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
-        "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         # Certified iu8-WMMA gate/up suffix within the WMMA-MoE27 route.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
@@ -1459,6 +1457,12 @@ def _bind(
     # it; a diagnostic arm binds a pair on the runner it measures.
     generator.q4_tile_m = 16
     generator.q4_tile_n = 16
+    # The Q8_0 dense WMMA prefill tile pair for this plan. It is execution-owned
+    # runner state, not a process key: the runner binds it around the scopes
+    # that can launch that family, so a co-resident model keeps the arch
+    # heuristic. ``None`` is the unbound heuristic; a diagnostic arm binds a
+    # pair on the runner it measures (see ``q8_wmma_tiles`` in the runner).
+    generator.q8_wmma_tiles = (64, 32)
     generator.forkb_grouped_down = forkb_grouped_down
     generator.q8_down_row4_prefill = q8_down_row4_prefill
     generator.q8_down_bundle_prefill = q8_down_bundle_prefill
@@ -1487,6 +1491,7 @@ def _bind(
         runner.q4_out4 = True
         runner.q4_tile_m = 16
         runner.q4_tile_n = 16
+        runner.q8_wmma_tiles = (64, 32)
         runner.forkb_grouped_down = forkb_grouped_down
         runner.q8_down_row4_prefill = q8_down_row4_prefill
         runner.q8_down_bundle_prefill = q8_down_bundle_prefill

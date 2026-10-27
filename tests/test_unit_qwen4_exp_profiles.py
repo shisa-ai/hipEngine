@@ -511,8 +511,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert fake_runner.gdn_peer_prefill_layers == (
         production_generator.gdn_peer_prefill_layers
     )
-    assert os.environ["HIPENGINE_GGUF_Q8_0_WMMA_TILE_M"] == "64"
-    assert os.environ["HIPENGINE_GGUF_Q8_0_WMMA_TILE_N"] == "32"
+    # The Q8_0 dense WMMA prefill tile pair is execution-owned runner state
+    # too: the plan publishes (64, 32) on the carrier and no process key.
+    assert "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M" not in os.environ
+    assert "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N" not in os.environ
+    assert production_generator.q8_wmma_tiles == (64, 32)
+    assert fake_runner.q8_wmma_tiles == (64, 32)
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
     assert tuple(
         int(value)

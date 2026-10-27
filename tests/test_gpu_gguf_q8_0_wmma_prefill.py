@@ -51,6 +51,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_wmma_prefill_fp16_f32_out,
     gguf_q8_0_wmma_prefill_fp16_fp16_out,
     plan_gguf_q8_0_prefill_build,
+    wmma_tile_policy,
 )
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
@@ -192,13 +193,26 @@ def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic(monkeypatch) 
         assert tn in {16, 32, 64}
 
 
-def test_gguf_q8_0_wmma_prefill_tile_override(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_Q8_0_WMMA_TILE_M", "64")
-    monkeypatch.setenv("HIPENGINE_GGUF_Q8_0_WMMA_TILE_N", "32")
-    assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (64, 32)
-    monkeypatch.delenv("HIPENGINE_GGUF_Q8_0_WMMA_TILE_N")
+def test_gguf_q8_0_wmma_prefill_tile_policy() -> None:
+    """The tile pair is scoped, not a process key, and is validated at entry."""
+
+    shape = dict(rows=512, in_features=2048, out_features=8192)
+    heuristic = _default_tiles(**shape)
+
+    with wmma_tile_policy(64, 32):
+        assert _default_tiles(**shape) == (64, 32)
+        # ``(None, None)`` masks the outer pair and restores the heuristic.
+        with wmma_tile_policy(None, None):
+            assert _default_tiles(**shape) == heuristic
+        assert _default_tiles(**shape) == (64, 32)
+    assert _default_tiles(**shape) == heuristic
+
     with pytest.raises(ValueError, match="requires both"):
-        _default_tiles(rows=512, in_features=2048, out_features=8192)
+        with wmma_tile_policy(64, None):
+            pass
+    with pytest.raises(ValueError, match="not supported"):
+        with wmma_tile_policy(48, 16):
+            pass
 
 
 def test_gguf_q8_0_wmma_prefill_wrapper_validates_contract() -> None:

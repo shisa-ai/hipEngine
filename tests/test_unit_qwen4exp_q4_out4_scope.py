@@ -378,8 +378,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:
     from hipengine.runtime.qwen4_exp_mixed_target import Qwen4ExpMixedTargetPass
 
+    # ``verify`` is the execution entry and binds the batch's Q8_0 tile pair
+    # around the row work; the forwarding itself lives in ``_verify_rows``.
+    assert "self._verify_rows()" in inspect.getsource(
+        Qwen4ExpMixedTargetPass.verify)
     tree = ast.parse(textwrap.dedent(
-        inspect.getsource(Qwen4ExpMixedTargetPass.verify)))
+        inspect.getsource(Qwen4ExpMixedTargetPass._verify_rows)))
     calls = [
         node for node in ast.walk(tree)
         if isinstance(node, ast.Call)

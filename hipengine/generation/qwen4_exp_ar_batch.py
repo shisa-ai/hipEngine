@@ -666,8 +666,9 @@ def make_qwen4_exp_ar_batch_runner(
     # WMMA down owner below that chain is published off, and a decode row
     # cannot reach the production admission that also selects it, so the
     # carrier has to hand over the plan's value rather than let the batch
-    # owner default it. The compact F16 Q4_K gate/up tile pair is the same
-    # kind of decision: the binder publishes 16/16 and ``None`` means the
+    # owner default it. The tile pairs are the same kind of decision: the
+    # binder publishes 16/16 for the compact F16 Q4_K gate/up owner and
+    # (64, 32) for the Q8_0 dense WMMA prefill, and ``None`` means the
     # dispatch heuristic, so the carrier forwards the published value as-is.
     batch.q51_exact_grouped_down = bool(
         getattr(generator, "q51_exact_grouped_down", True))
@@ -680,6 +681,7 @@ def make_qwen4_exp_ar_batch_runner(
     batch.q4_out4 = bool(getattr(generator, "q4_out4", True))
     batch.q4_tile_m = getattr(generator, "q4_tile_m", None)
     batch.q4_tile_n = getattr(generator, "q4_tile_n", None)
+    batch.q8_wmma_tiles = getattr(generator, "q8_wmma_tiles", None)
     batch.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
     batch.q51_fold128_prefill = bool(
         getattr(generator, "q51_fold128_prefill", False))
