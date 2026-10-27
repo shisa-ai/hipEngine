@@ -18945,6 +18945,25 @@ class Qwen35GGUFResidentSession:
             library=getattr(self, "_q8_mmq_prefill_library", None),
         )
 
+    @contextmanager
+    def _prefill_route_sessions(self):
+        """Bind the route scopes shared by ordinary and packed prefill.
+
+        Entry-specific Q8/pack8 and library-backed scopes stay with their
+        existing callers; this owner does not widen their eligibility.
+        """
+
+        with (
+            q4_t16_unequal_pair_prefill_session(
+                _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
+            ),
+            self._prefill_f16_staging_context(),
+            self._wide_f16_activation_context(),
+            self._q6_integer_mmq_context(),
+            self._iq_dense_mmq_context(),
+        ):
+            yield
+
     def _q6_dp4a_grouped_target_context(self, scratch, *, request_count: int):
         """Expose the C8-P4 grouped-dp4a q8_1 workspace to the Q6 decode."""
 
@@ -19175,13 +19194,7 @@ class Qwen35GGUFResidentSession:
                         len(token_ids),
                     )
                 ),
-                q4_t16_unequal_pair_prefill_session(
-                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
-                ),
-                self._prefill_f16_staging_context(),
-                self._wide_f16_activation_context(),
-                self._q6_integer_mmq_context(),
-                self._iq_dense_mmq_context(),
+                self._prefill_route_sessions(),
                 self._q8_mmq_prefill_context(),
                 self._t16_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
@@ -22435,21 +22448,10 @@ class Qwen35GGUFResidentSession:
                     " state before reusing the packed workspace slots"
                 )
         try:
-            # Packed admission prefill is the shipping AR route's prefill entry
-            # (generation/qwen35_gguf.py binds ``prefill_batch_native``), so it needs
-            # the same prefill-only QKV dual-owner session that ``prefill`` opens; the
-            # rows16 floor is otherwise invisible to the server path. Target
-            # verification uses ``verify_target_blocks_batch``/``verify_rows``, which
-            # never reach this entry, so verification stays on the exact singletons.
-            with (
-                q4_t16_unequal_pair_prefill_session(
-                    _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
-                ),
-                self._prefill_f16_staging_context(),
-                self._wide_f16_activation_context(),
-                self._q6_integer_mmq_context(),
-                self._iq_dense_mmq_context(),
-            ):
+            # Keep the common prefill route owner inside graph/flush guards.
+            # Verification never enters this prompt-only scope; ordinary-only
+            # Q8/pack8 controls remain at the ordinary prefill entry.
+            with self._prefill_route_sessions():
                 return self._prefill_batch_native_impl(
                     prompt_token_ids,
                     sessions=sessions,
