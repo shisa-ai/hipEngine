@@ -446,28 +446,28 @@
       "start_line": 420,
       "end_line": 437,
       "sha256": "02d8f42dc7520f82fbfdcc33a30e1791b0e1b8a459aec28a1a88ee59b0acaf96",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": ["Capacity ladder is necessary resource policy; coverage debt resolved without removing admission. Real planner below/at/above bounds at2051/2052/4352, real GPU reported-budget rung selection4096/2048 with repair/F16 allocation accounting and short execution, and public2051/2052/ragged3077 completion/cleanup pass. Not device exhaustion, cross-chunk equality or performance claims. Worklog: worklog/entries/20261027T121946.634773Z-cleanup-refactor-r0019-da3447.md."],
       "subitems": [
         {
           "line": 422,
           "text": "- `_select_prefill_chunk` / `_AUTO_PREFILL_CHUNK_LADDER` in",
-          "status": "pending"
+          "status": "not-debt-retained"
         },
         {
           "line": 425,
           "text": "- **Revert lever:** the ladder is a single tuple. Dropping it to `(1024,)` or",
-          "status": "pending"
+          "status": "not-debt-retained"
         },
         {
           "line": 430,
           "text": "- **Remove when:** the guard has a dedicated GPU test asserting the ladder under",
-          "status": "pending"
+          "status": "resolved-coverage"
         },
         {
           "line": 435,
           "text": "- Evidence: `benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-4096/`,",
-          "status": "pending"
+          "status": "verified-current"
         }
       ]
     },
