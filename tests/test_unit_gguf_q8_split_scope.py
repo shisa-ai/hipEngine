@@ -23,7 +23,8 @@ def test_wide_q8_split_is_backend_row_and_shape_scoped(monkeypatch, backend, row
 def test_explicit_q8_split_overrides_keep_main_semantics(monkeypatch):
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_THREADS", "64")
     resolve = linear._resolve_q8_t16_dual_split_threads
-    assert resolve("hip_gfx1100", 3, 5120, 48, 48, 0) == 64
+    assert resolve("hip_gfx1100", 3, 5120, 48, 48, 0) == 256
+    assert resolve("hip_gfx1100", 3, 5120, 48, 48, 64) == 64
     assert resolve("hip_gfx1100", 3, 5120, 48, 48, 128) == 128
 
 

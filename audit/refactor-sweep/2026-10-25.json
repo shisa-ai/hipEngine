@@ -8363,23 +8363,23 @@
       "start_line": 6559,
       "end_line": 6572,
       "sha256": "03cdab90bc56448dc1ef6a6c3463b66435143f98fe7ebb8feae2be0117c91cde",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed ambient thread-width reader and override predicate; explicit launch arguments and backend shape policy preserved. RED/GREEN focused tests, full CPU bundle, explicit-thread GPU oracle and public generation with retired environment set pass. Docs/audit pass. Worklog: worklog/entries/20261027T073918.072218Z-cleanup-refactor-r0289-c0bb0c.md."],
       "subitems": [
         {
           "line": 6560,
           "text": "- Added 2026-07-01. Host-side launch switch for Q8_0 T16 single/pair/triple",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 6563,
           "text": "- Purpose: test whether the llama-compat verifier hot leaf",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 6569,
           "text": "- Remove when: the Q8T16 verifier pair work moves to a different llama-style",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

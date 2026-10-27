@@ -398,7 +398,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE` | unset | Rollback seam | Rowtile variant policy for the Q4_T16 dual-SiLU prefill family. |
 | `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 single-wave rowtile variant. |
 | `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 shared-B row64 variant. |
-| `HIPENGINE_GGUF_Q8_T16_THREADS` | backend-scoped (`64` or `128`) | Rollback seam | Q8_0 T16 decode workgroup thread override; backend packages select independently retained defaults. |
 | `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` | unset | Diagnostic | Col8 pair-helper variant for Q8T16 decode (batch-route gate provenance key). |
 | `HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES` | `(5120,1024)` | Rollback seam | Shape-explicit Q8T16 rowtile admission set for the UD verifier. |
 | `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE` / `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE` | unset | Diagnostic | Select the two-/four-wave Q8T16 wide WMMA prefill session variants (shape-scoped). |

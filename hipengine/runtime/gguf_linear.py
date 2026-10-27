@@ -1449,10 +1449,9 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q8_0_t16_v1": 32,
 }
 
-# Q8_0 T16 decode scheduling. Backend packages select independently retained
-# defaults; explicit env values remain diagnostic/rollback overrides. The
-# thread-width hook stays separate from selected-MoE T16 dp4a scheduling.
-_Q8_T16_THREADS_ENV = "HIPENGINE_GGUF_Q8_T16_THREADS"
+# Q8_0 T16 decode scheduling. Backend packages select defaults; explicit launch
+# arguments remain available to diagnostics. Thread width stays separate from
+# selected-MoE T16 dp4a scheduling.
 _Q8_T16_ALLOWED_THREADS = frozenset({64, 128})
 # Match the production Q8T16 per-output reduction partition. The earlier
 # 64-thread rowtile rounded synthetic fixtures identically but diverged by one
@@ -2635,29 +2634,18 @@ def _resolve_use_gemv_decode(kwarg: bool | None) -> bool:
 
 
 def _resolve_q8_t16_threads(threads: int = 0) -> int:
-    """Resolve the Q8_0 T16 GEMV launch width.
+    """Resolve an explicit Q8_0 T16 launch width; zero keeps backend policy."""
 
-    Returns ``0`` when no override is active so the wrapper keeps its default
-    128-thread launch. Explicit kwargs take precedence over the env var.
-    """
-
-    if int(threads) != 0:
-        value = int(threads)
-    else:
-        raw = os.environ.get(_Q8_T16_THREADS_ENV, "").strip()
-        if not raw:
-            return 0
-        try:
-            value = int(raw)
-        except ValueError as exc:
-            raise ValueError(f"{_Q8_T16_THREADS_ENV} must be one of 64 or 128") from exc
+    value = int(threads)
+    if value == 0:
+        return 0
     if value not in _Q8_T16_ALLOWED_THREADS:
-        raise ValueError(f"{_Q8_T16_THREADS_ENV} must be one of 64 or 128")
+        raise ValueError("Q8 T16 threads must be one of 64 or 128")
     return value
 
 
 def _q8_t16_threads_override_active(threads: int = 0) -> bool:
-    return int(threads) != 0 or bool(os.environ.get(_Q8_T16_THREADS_ENV, "").strip())
+    return int(threads) != 0
 
 
 def _resolve_q8_t16_dual_split_threads(

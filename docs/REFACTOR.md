@@ -5283,20 +5283,6 @@ should be boring.
   `mul_mat_vec_q_moe` port or two later full-suite compat runs confirm 64 is
   stable enough that the 128-thread rollback path is no longer useful.
 
-## `HIPENGINE_GGUF_Q8_T16_THREADS` (diagnostic rejected)
-- Added 2026-07-01. Host-side launch switch for Q8_0 T16 single/pair/triple
-  GEMV wrappers. Default/unset keeps the existing 128-thread launch; setting
-  the env var to `64` exercises a smaller workgroup for verifier projections.
-- Purpose: test whether the llama-compat verifier hot leaf
-  `attn_qkv+attn_gate` is losing time because Q8T16 pair projection uses the
-  wrong launch width. The focused qwen35 pair microbench rejected 64 threads:
-  rows 2/3/4 measured **197.77/224.80/251.96 us** at 64 threads versus
-  **179.26/207.05/237.02 us** at 128 threads. `rocprofv3` confirmed the 64-thread
-  override launched with `Workgroup_Size_X=64`.
-- Remove when: the Q8T16 verifier pair work moves to a different llama-style
-  kernel body/schedule, or when the parity sprint no longer needs this A/B hook.
-  It is not a performance path and should not be promoted.
-
 ## `gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out` (diagnostic rejected)
 - Added 2026-07-01. Callable T16 Q8_0 dual-split pair kernel that consumes
   GGML q8_1 activation blocks and uses `sudot4`, intended to test whether the

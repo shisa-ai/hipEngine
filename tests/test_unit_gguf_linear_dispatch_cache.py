@@ -460,7 +460,7 @@ def test_pair_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeyp
         gl.clear_gguf_linear_dispatch_cache()
 
 
-def test_q8_t16_pair_threads_env_reaches_wrapper(monkeypatch) -> None:
+def test_retired_q8_t16_threads_env_does_not_override_pair_wrapper(monkeypatch) -> None:
     gl.clear_gguf_linear_dispatch_cache()
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_THREADS", "64")
     weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
@@ -496,7 +496,7 @@ def test_q8_t16_pair_threads_env_reaches_wrapper(monkeypatch) -> None:
             out_features_b=4096,
             runtime="rt",
         )
-        assert calls == [{"threads": 64, "stream": 0, "runtime": "rt"}]
+        assert calls == [{"threads": 0, "stream": 0, "runtime": "rt"}]
     finally:
         gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = saved_wrapper  # type: ignore[assignment]
         if saved_kernel is None:
@@ -506,10 +506,9 @@ def test_q8_t16_pair_threads_env_reaches_wrapper(monkeypatch) -> None:
         gl.clear_gguf_linear_dispatch_cache()
 
 
-def test_q8_t16_threads_env_rejects_invalid_value(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_THREADS", "256")
-    with pytest.raises(ValueError, match="HIPENGINE_GGUF_Q8_T16_THREADS must be one of 64 or 128"):
-        gl._resolve_q8_t16_threads()
+def test_q8_t16_threads_argument_rejects_invalid_value() -> None:
+    with pytest.raises(ValueError, match="Q8 T16 threads must be one of 64 or 128"):
+        gl._resolve_q8_t16_threads(256)
 
 
 def test_policy_reassignment_is_invisible_to_the_memo_until_it_is_cleared() -> None:
