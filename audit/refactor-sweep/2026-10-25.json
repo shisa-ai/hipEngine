@@ -4308,8 +4308,8 @@
       "start_line": 3846,
       "end_line": 3859,
       "sha256": "2522c3433a5890ffd6221d3a507ff3711db13bd641e4ba7931a715a9b85d4629",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-row48-optout-removed",
+      "evidence": ["Row48 environment control removed from backend policy; intrinsic-enabled policy preserves physical scope and parent fallback. Full CPU, focused dispatch and production-shape GPU parity pass; obsolete invalid-env test repaired. Public physical-R36 engagement deferred at bottom. Separate two-wave flag remains pending. Worklog: worklog/entries/20261027T130404.357161Z-cleanup-refactor-r0166-row48-a93c17.md."],
       "subitems": [
         {
           "line": 3848,
@@ -4324,7 +4324,7 @@
         {
           "line": 3855,
           "text": "- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48=0` remains same-build rollback for",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

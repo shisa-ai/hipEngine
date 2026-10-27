@@ -484,7 +484,6 @@ not by backend-branched runtime code.
 | --- | --- | --- |
 | `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER` | true | Exact resident-to-packed Conv/GDN state gather through the registered chunked pointer-table copy leaf. `0` restores the per-layer D2D transfer chain as explicit rollback. |
 | `HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE` | true | Packed C5-C8 target verification indexes the resident multi-slot Conv/GDN slabs directly without mutation. `0` restores the fused resident-to-packed import. |
-| `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48` | true | Specdec2 Q4 dual-SiLU rowtile owner at row48 for the qualified H5120 geometry (6144x5120 and 17408x5120 shapes). |
 | `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` | false | Default-off screen selecting the dense dual WMMA row32/row48 variants for specdec2 production R28 rows. |
 | `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8` | true | Q5_T16 grouped rows-8 owner for physical C8 verifier packets. |
 | `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2` | true | Q4_T16 native rowtile16 W2 variant for rows 32. |
@@ -1145,6 +1144,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48` is retired and ignored. Backend
+  policy and physical execution scope select the rowtile; registered parent
+  kernels remain available for strict comparisons and unsupported shapes.
 
 - `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE` is retired and ignored.
   Physical exact-row scope selects the wave-reduced FP32 owner; FP16 state,

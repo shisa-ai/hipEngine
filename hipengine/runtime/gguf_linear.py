@@ -3350,9 +3350,13 @@ def _q4_t16_physical_dual_silu_variant(
             if layer_id is None or int(layer_id) % modulus == remainder:
                 continue
         enabled_env = policy.get("enabled_env")
+        enabled_default = bool(policy.get("enabled_default", False))
+        if enabled_env is None:
+            if enabled_default:
+                return variant
+            continue
         if not isinstance(enabled_env, str) or not enabled_env:
             continue
-        enabled_default = bool(policy.get("enabled_default", False))
         cache_key = (enabled_env, enabled_default)
         enabled = _rowtile_variant_policy_env_cache.get(cache_key)
         if enabled is None:

@@ -2789,10 +2789,9 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   registered WG32 strict parent. A separate physical-registry-key extension was
   removed after marker-scoped C8 evidence showed no ownership change.
-- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48=0` remains same-build rollback for
-  the retained physical-R36 three-active-wave fused gate/up+SiLU owner. Remove
-  the environment/cache policy after the next stable milestone audit; keep the
-  row64 registered strict parent.
+- The row48 environment opt-out is removed. Backend metadata and physical
+  scope still select the owner; the registered row64 strict parent remains.
+  The separate two-wave control above remains unfinished.
 
 ## 2026-09-02 NextN accepted-tail K/V-only integration — closed
 
@@ -10558,3 +10557,15 @@ and compare output/acceptance plus teardown against the registered strict parent
 The existing numerical gate is
 `tests/test_gpu_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segments_state_rows_wave_reduce_is_parent_bit_exact`.
 Do not substitute successful c1 or unrelated-backend generation for engagement.
+
+### R0166 — Public physical Q4 row48 validation
+
+The row48 opt-out is removed; the separate two-wave control remains above.
+Scoped dispatch and production-shape GPU parity pass.
+
+**Dependency:** gfx1100 public physical target execution reaching R36.
+**Clearing action:** run `hipengine serve` with the physical dense-GGUF MTP
+profile, record the row48 fused gate/up+SiLU launch, and compare outputs,
+acceptance and teardown against the registered row64 parent. Use
+`tests/test_gpu_gguf_q4_k_t16_dense.py::test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape`
+for the independent numerical gate; it does not replace public engagement.

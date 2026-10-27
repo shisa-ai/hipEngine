@@ -1392,11 +1392,9 @@ def test_q4_t16_physical_row48_flag_is_not_resolved_on_row_miss(monkeypatch) -> 
             )
             is None
         )
-        with pytest.raises(ValueError, match="must be a boolean value"):
-            gguf_linear_module._q4_t16_physical_dual_silu_variant(
-                dispatch.key.backend,
-                36,
-            )
+        assert gguf_linear_module._q4_t16_physical_dual_silu_variant(
+            dispatch.key.backend, 36,
+        ) == "dense_dual_wmma_prefill_row48_bf16_bf16_out"
 
 
 def test_q4_t16_dense_pair_silu_retile_rollback(monkeypatch) -> None:
