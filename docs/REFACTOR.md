@@ -3355,10 +3355,17 @@ should be removed or collapsed.
 
 ## 2026-09-02 gfx1100 planar-Q6 root R8 rollback — closed
 
-- Promoted after BF16-bit exact actual-weight, same-build C8 marker, and complete
-  counterbalanced C5-C8 qualification. `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4`
-  retains the prior R4 composition for bisection; remove the override after the
-  R8 root owner is stable across the next production campaign.
+- The planar-Q6 F32 R8 root owner is promoted on gfx1100 and gfx1151.
+  Complete counterbalanced C5-C8 qualification is recorded in
+  `benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-q6-root-f32-rows8-retained.json`;
+  the older statement that this promotion was pending is superseded.
+- Both packages advertise maximum chunk 8.
+  `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4` retains the prior R4 composition for
+  bisection; values outside [2,8] are invalid. Remove the override after one
+  release window plus defaults-only gfx1151/gfx1100 direct and server refreshes.
+  Keep `_small_b_rowtile_chunks` and all 2-8 row kernels as exact fallbacks for
+  arbitrary packed widths. The artifact's leaf screen preserves the original
+  actual-weight comparison; no new measurement is claimed here.
 
 ## 2026-09-01 gfx1100 grouped Q6 mixed-rowtile rollback — closed
 
@@ -5978,19 +5985,6 @@ should be boring.
 - Remove the two rollbacks after one release window plus defaults-only gfx1151
   direct/server refreshes and an independent gfx1100 transfer. Keep the old
   per-row and 16-column rowtile bodies as unsupported-width fallbacks.
-
-## `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` (Q6 F32 root rollback)
-- gfx1151 already defaults to its exact native R8 root owner. The independent
-  W7900 transfer now makes gfx1100 R8-capable as well: actual Qwen3.8
-  `output.weight` F32 logits are bit-exact to two R4 launches and improve
-  **4.756 -> 3.700 ms (1.285x, 40/40 paired wins)** at the leaf.
-- Both packages now advertise maximum chunk 8. Setting
-  `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4` restores the prior effective gfx1100
-  composition; values outside [2,8] are invalid. The candidate still requires
-  its complete gfx1100 C5-C8 promotion gate before the rollback clock starts.
-- Remove after one release window plus defaults-only gfx1151 and gfx1100
-  direct/server refreshes. Keep `_small_b_rowtile_chunks` and all 2-8 row
-  kernels because they remain exact fallbacks for arbitrary packed widths.
 
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 c4/c8 rollback; c2 diagnostic)
 - Added 2026-07-01 as a default-off runtime hook for broad Q8T16 verifier

@@ -4544,7 +4544,7 @@
       "end_line": 3988,
       "sha256": "64b80771a09054ec734b91e74c9374467fe636a7c061a8a4d3fb397abbc884d5",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Consolidated duplicate R0292 here, retaining its bounds, removal condition and fallback requirements. Promotion is already recorded by benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-q6-root-f32-rows8-retained.json; rollback removal still pending."],
       "subitems": [
         {
           "line": 3984,
@@ -8442,23 +8442,23 @@
       "start_line": 6608,
       "end_line": 6620,
       "sha256": "631d766247eb60326ee00fb89969b549d50909e4e1a7c68741c0e8dad19123a7",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Duplicate entry consolidated into still-open R0177. Corrected stale pending-promotion claim against retained_exact_default artifact; preserved bounds, fallback kernels and removal condition there. No runtime change or rollback closure."],
       "subitems": [
         {
           "line": 6609,
           "text": "- gfx1151 already defaults to its exact native R8 root owner. The independent",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 6613,
           "text": "- Both packages now advertise maximum chunk 8. Setting",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 6617,
           "text": "- Remove after one release window plus defaults-only gfx1151 and gfx1100",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
