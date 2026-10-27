@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna DFlash IQ3 selected-down tile4 | `LagunaGGUFResidentSession(..., iq3_selected_down_tile=1|4)` and `scripts/laguna_dflash_category_bench.py --iq3-selected-down-tile` retain tile1 plus the explicit gfx1100 tile4 verifier path. gfx1151 excludes tile4 and its public provider uses tile1. | Retained only in the measured gfx1100 scope: tile4 is exact there, improves the profiled 45-call family 33.66%, and moves counterbalanced h32/h128 DFlash decode +4.725%/+4.536% with every category/heldout decode and E2E positive. The independent gfx1151 transfer is rejected: clean tile1 and tile4 each pass only **24/36** true-AR equality rows with the same deterministic six-prompt failures; tile4 is trajectory-identical to tile1 but complete decode is noise-flat **15.73505 -> 15.73726 tok/s (+0.014%)**, E2E regresses **5.29982 -> 5.29797 (-0.035%)**, and category rows regress. The public packet was ineligible after the binding correctness failure. | Keep tile4 only for the retained gfx1100 explicit verifier route. Keep gfx1151/public DFlash on tile1; reopen only after the shared true-AR mismatch is repaired and a materially different gfx1151 mechanism has a plausible complete-route gain. |
 | Qwen tokenizer EOS discovery | The PARO generator falls back to looking up `<|im_end|>` and `<|endoftext|>` because `tokenizers.Tokenizer.from_file()` does not expose `generation_config.json` EOS metadata. | The fallback recognizes both Qwen EOS ids, preserves explicit scalar/sequence metadata first, and deliberately avoids unrelated model-family markers. | Remove the string lookup once the Qwen model plugin owns and supplies normalized BOS/EOS/PAD metadata from `generation_config.json` / `tokenizer_config.json` to generation and sampling. |
 | PARO width-plan execution and rollback flags | The greedy generator and `scripts/qwen35_batch_retained_bench.py` each execute `BatchWidthPartitionPlan` groups and collect similar telemetry; `_generate_batch_sampled()` remains diagnostic. `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` and the legacy-named `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` remain explicit rollback opt-outs. | G3 retains an identity-matched schema-2 gfx1151 c2/c4/c8 profile. G4/G5 attach it to the shared stable-slot owner; blocking F1, native/serial SSE, live admission, c8 repeatability, and a no-flag OpenAI c4 confirmation are exact. gfx1151 backend capabilities now enable the hash/sync-checked packaged profile by default even outside a repository CWD; explicit `=0` still selects the serial fallback. gfx1100 remains package-default off pending owner c4/c8 symmetry. | After one release window and a defaults-only gfx1151 refresh, remove the two positive opt-in semantics and rename/collapse them to one clear rollback selector; consolidate duplicate generator/benchmark plan execution after gfx1100 owner c4/c8 is independently retained. Keep profile identity checks, unsupported-shape partitions, and exact serial fallback permanently. |
 | PARO selected-MoE compatibility alias | `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE` and CLI `--batch-decode-moe-path selected_c1` remain compatibility aliases even though true per-row paths still use `selected_c1_per_row_*` labels. | Runtime metadata emits canonical `moe_decode_path=selected_batch` plus `moe_selected_batch_layers`; retained validators accept either exact grouped-compact or selected-batch layers while still requiring zero per-row fallback layers. The canonical env/CLI spelling is `SELECTED_BATCH_MOE` / `selected_batch`, and the old alias has lower precedence. Clean current-revision gfx1100 c2 is now retained at **121.923 tok/s** selected-batch versus c1 **116.022** and serial c2 **100.925**; all-layer/lifecycle/category/profiler gates pass and `auto` resolves selected-batch. Evidence: `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json`. | Remove the legacy env/CLI alias after one compatibility window from the retained c2 promotion. Keep explicit per-row fallback names and counters permanently. |
@@ -10546,3 +10545,30 @@ compact-grid fallbacks. Compare exact primitive outputs and exercise
 R0249/R0250's public continuation/lifecycle gate with the c1 route confirmed.
 Do not reintroduce rejected local64 runtime controls or alter grouped-prefill
 consumers. No grid implementation, control or backend default changes here.
+
+### R0281-DFLASH — Verifier tiles and shared true-AR mismatch
+
+`iq3_selected_down_tile` and `laguna_dflash_category_bench.py` still expose
+tile1/tile4. The gfx1100 tile4 key is registered; gfx1151 lacks that key and
+an explicit request fails with a required-kernel error. Public session opening
+uses tile1 without a tile override. This verifier choice is separate from
+R0281-IQ3's c1 schedule.
+
+**Unresolved failure:** the historical gfx1151 packet
+`benchmarks/results/2026-08-20-gfx1151-laguna-dflash-iq3-tile4-rejected.json`
+records identical true-AR mismatches under tile1 and tile4, not a tile4
+trajectory regression. It does not establish a current-stack verdict.
+**Clearing action:** with the local target checkpoint noted at R0249/R0250
+and its DFlash drafter available, run
+`python scripts/laguna_dflash_category_bench.py "$LAGUNA_MODEL" "$LAGUNA_DRAFTER" --backend hip_gfx1151 --direct-gguf --iq3-selected-down-tile 1 --output /tmp/laguna-dflash-current.json`.
+Preserve the fixed-horizon equality and request-reset checks; if the mismatch
+reproduces, trace the first divergent verifier/prefill/commit state rather
+than attributing it to the output tile. Then run the public blocking/streaming
+DFlash gate and verify continuation, cancellation and allocation cleanup.
+
+Keep the working gfx1100 tile route and exact tile1 fallback. Decide whether
+the explicit tile control remains a supported diagnostic or moves with its
+category caller to a scoped verifier policy; do not add identity-based
+admission or disable working execution because a measurement is absent.
+Host plan, category/public-gate, cycle and fake-provider integration tests
+pass; no current full-model, GPU arithmetic or performance claim is made.

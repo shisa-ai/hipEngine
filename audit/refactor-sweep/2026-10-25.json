@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "DFlash tile row 6187 moves to R0281-DFLASH: live gfx1100 tile4 and public tile1 separate from historical shared gfx1151 AR mismatch. Current-stack reproduction awaits local target/drafter, exact category command and first-divergent-state/public lifecycle checks named; no new identity gates. Host plan plus category/public/cycle/fake-provider tests and docs/audit/worklog pass. Worklog: worklog/entries/20261027T211503.417766Z-cleanup-refactor-r0281-dflash-19da6d.md.",
         "IQ2 grid row 6186 moves to bottom R0281-IQ2: live target-AR c1 comparison distinct from grouped prefill/local64 rejection; preserve session-vs-low-level default distinction and compact multi-row fallback. Host grid node plus three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T211132.290595Z-cleanup-refactor-r0281-iq2-1b9890.md.",
         "Fusion/reducer rows 6183/6184/6185 consolidate into R0281-FUSION with distinct live controls: head/writer chain separate; wave-local requires split+gate, so gate-off comparison must disable wave-local. Both gfx11 defaults and unfused chains unchanged. Fake-runtime node plus four unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210758.730816Z-cleanup-refactor-r0281-fusion-33ebfb.md.",
         "Split/tile16 rows 6181/6182 consolidate into R0281-SPLIT live resource/profile interface decision. Both gfx11 packages now declare thresholds; session/allocator and target-AR/profile controls affect workspace and dispatch. Preserve invalid-combination errors/capacity filtering and exact fallbacks. Fake-runtime node plus three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210445.240109Z-cleanup-refactor-r0281-split-b70b05.md.",
@@ -7568,7 +7569,7 @@
         {
           "line": 6187,
           "text": "| Laguna DFlash IQ3 selected-down tile4 | `LagunaGGUFResidentSession(..., iq3_selected_down_tile=1|4)` and `scripts/laguna_dflash_category_bench.py --iq3-selected-down-tile` retain tile1 plus the explicit gfx1100 tile4 verifier path. gfx1151 excludes tile4 and its public provider uses tile1. | Retained only in the measured gfx1100 scope: tile4 is exact there, improves the profiled 45-call family 33.66%, and moves counterbalanced h32/h128 DFlash decode +4.725%/+4.536% with every category/heldout decode and E2E positive. The independent gfx1151 transfer is rejected: clean tile1 and tile4 each pass only **24/36** true-AR equality rows with the same deterministic six-prompt failures; tile4 is trajectory-identical to tile1 but complete decode is noise-flat **15.73505 -> 15.73726 tok/s (+0.014%)**, E2E regresses **5.29982 -> 5.29797 (-0.035%)**, and category rows regress. The public packet was ineligible after the binding correctness failure. | Keep tile4 only for the retained gfx1100 explicit verifier route. Keep gfx1151/public DFlash on tile1; reopen only after the shared true-AR mismatch is repaired and a materially different gfx1151 mechanism has a plausible complete-route gain. |",
-          "status": "pending"
+          "status": "deferred-model-reproduction-and-interface-R0281-DFLASH"
         },
         {
           "line": 6188,
