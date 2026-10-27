@@ -184,6 +184,8 @@ def test_generator_refuses_a_prompt_beyond_the_prefill_bound(tmp_path: Path):
     assert generator.max_prompt_tokens < generator.context_length
 
     generator._validate_prompt_length(generator.max_prompt_tokens, 1)
+    with pytest.raises(ValueError, match="shared-memory capacity"):
+        generator._validate_prompt_length(generator.max_prompt_tokens, 2)
     with pytest.raises(ValueError, match="dense causal prefill attention"):
         generator._validate_prompt_length(generator.max_prompt_tokens + 1, 1)
 
@@ -217,6 +219,15 @@ def test_generator_refuses_a_prompt_that_leaves_no_room_to_generate(checkpoint):
     generator = _generator(checkpoint)
     with pytest.raises(ValueError, match="exceeds the 512-token context"):
         generator._validate_prompt_length(510, 4)
+
+
+def test_context_declaration_refreshes_prompt_bound(checkpoint):
+    generator = _generator(checkpoint, context_length=32)
+    generator.declare_max_sequence_length(128)
+    assert generator.max_prompt_tokens == 128
+    generator._validate_prompt_length(65, 1)
+    generator.declare_max_sequence_length(16)
+    assert generator.max_prompt_tokens == 16
 
 
 def test_generator_refuses_a_wider_serving_capacity(checkpoint):

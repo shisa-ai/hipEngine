@@ -99,10 +99,10 @@ class _PrefillScratch:
     activation: DeviceBuffer
     cos: DeviceBuffer
     sin: DeviceBuffer
-    mask: DeviceBuffer
+    mask: DeviceBuffer | None
 
     @classmethod
-    def allocate(cls, spec, rows: int, *, runtime: HipRuntime) -> "_PrefillScratch":
+    def allocate(cls, spec, rows: int, *, runtime: HipRuntime, needs_mask: bool = True) -> "_PrefillScratch":
         def bf16(count: int) -> DeviceBuffer:
             return malloc(count * _BF16_NBYTES, runtime=runtime)
 
@@ -121,7 +121,7 @@ class _PrefillScratch:
             activation=bf16(rows * spec.intermediate_size),
             cos=malloc(rows * spec.head_dim * 4, runtime=runtime),
             sin=malloc(rows * spec.head_dim * 4, runtime=runtime),
-            mask=malloc(rows * rows, runtime=runtime),
+            mask=malloc(rows * rows, runtime=runtime) if needs_mask else None,
         )
 
     def close(self, *, runtime: HipRuntime) -> None:
@@ -140,7 +140,8 @@ class _PrefillScratch:
             self.norm,
             self.hidden,
         ):
-            free(buffer, runtime=runtime)
+            if buffer is not None:
+                free(buffer, runtime=runtime)
 
 
 def _bf16_bits_to_float32(bits: np.ndarray) -> np.ndarray:
@@ -217,7 +218,9 @@ class LlamaPrefillRunner:
         if scratch is None or scratch.rows < rows:
             if scratch is not None:
                 scratch.close(runtime=self.runtime)
-            scratch = _PrefillScratch.allocate(self.spec, rows, runtime=self.runtime)
+            scratch = _PrefillScratch.allocate(
+                self.spec, rows, runtime=self.runtime, needs_mask=not self._attention_is_tiled
+            )
             self._scratch = scratch
         return scratch
 
@@ -230,6 +233,14 @@ class LlamaPrefillRunner:
         in_features: int,
         out_features: int,
     ) -> None:
+        if in_features % 32 or out_features % 128:
+            from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
+
+            dense_gemv_out_bf16(
+                x_ptr, weight_ptr, out_ptr, rows, in_features, out_features,
+                runtime=self.runtime,
+            )
+            return
         dense_prefill_wmma_out_bf16(
             x_ptr,
             weight_ptr,
@@ -371,6 +382,12 @@ class LlamaPrefillRunner:
             if int(capture.head_dim) != self.spec.head_dim:
                 raise ValueError("capture sink head_dim does not match the decoder")
 
+        if not self._attention_is_tiled:
+            # Check shared-memory capacity before allocating prompt scratch or
+            # publishing any KV writes.
+            from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_shared_bytes
+
+            gemma4_attention_shared_bytes(head_dim=self.spec.head_dim, keys=rows)
         spec = self.spec
         scratch = self._scratch_for(rows)
         self._gather_embeddings(tokens, scratch)
@@ -542,13 +559,18 @@ class LlamaPrefillRunner:
                 raise ValueError("logits row selection is outside the prompt")
 
         out = malloc(selected.size * spec.vocab_size * 4, runtime=self.runtime)
-        norm_host = self._copy_bf16_rows(scratch.norm, rows, spec.hidden_size)
-        staging = np.ascontiguousarray(norm_host[selected])
-        staging_buffer = malloc(staging.nbytes, runtime=self.runtime)
+        staging_bytes = int(selected.size) * spec.hidden_size * _BF16_NBYTES
+        staging_buffer = None
         try:
-            copy_host_to_device(
-                staging_buffer, host_array_ptr(staging), staging.nbytes, runtime=self.runtime
-            )
+            staging_buffer = malloc(staging_bytes, runtime=self.runtime)
+            row_bytes = spec.hidden_size * _BF16_NBYTES
+            for destination, source in enumerate(selected):
+                self.runtime.memcpy(
+                    staging_buffer.ptr + destination * row_bytes,
+                    scratch.norm.ptr + int(source) * row_bytes,
+                    row_bytes,
+                    MemcpyKind.DEVICE_TO_DEVICE,
+                )
             dense_gemv_bf16_f32_out(
                 staging_buffer.ptr,
                 self.loaded.lm_head.ptr,
@@ -562,7 +584,8 @@ class LlamaPrefillRunner:
                 int(selected.size), spec.vocab_size
             )
         finally:
-            free(staging_buffer, runtime=self.runtime)
+            if staging_buffer is not None:
+                free(staging_buffer, runtime=self.runtime)
             free(out, runtime=self.runtime)
         if capture is not None:
             capture.capture_teacher_logits(values[-1].copy())

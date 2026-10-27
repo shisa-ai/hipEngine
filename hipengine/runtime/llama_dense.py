@@ -154,7 +154,7 @@ def resident_weight_bytes(weight_index: object) -> int:
     return total
 
 
-def max_dense_prefill_tokens(spec: "LlamaSpec") -> int:
+def max_dense_prefill_tokens(spec: "LlamaSpec", *, strict: bool = False) -> int:
     """The longest prompt the selected prefill kernel serves.
 
     The tiled kernel serves every key count, so the prompt bound is the
@@ -168,7 +168,7 @@ def max_dense_prefill_tokens(spec: "LlamaSpec") -> int:
     """
 
     head_dim = int(spec.head_dim)
-    if dense_flash_prefill_admits(
+    if not strict and dense_flash_prefill_admits(
         tokens=1,
         keys=1,
         num_heads=int(spec.num_attention_heads),
@@ -466,6 +466,9 @@ class LlamaDenseRunner(LlamaPrefillRunner):
                 f"decode position {next_position} is outside the cache capacity of "
                 f"{self.max_context}"
             )
+
+        if not self._attention_is_tiled:
+            gemma4_attention_shared_bytes(head_dim=spec.head_dim, keys=next_position + 1)
 
         scratch = self._scratch_for(1)
         decode = self._decode_scratch()

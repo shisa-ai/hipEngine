@@ -95,7 +95,7 @@ class LlamaDenseGenerator:
         )
         self.tokenizer = self._build_tokenizer()
         self.max_prompt_tokens = min(
-            max_dense_prefill_tokens(self.spec), self.context_length
+            max_dense_prefill_tokens(self.spec, strict=self.strict_arithmetic), self.context_length
         )
 
     # -- construction ------------------------------------------------------
@@ -153,6 +153,9 @@ class LlamaDenseGenerator:
                 )
             return
         self.context_length = requested
+        self.max_prompt_tokens = min(
+            max_dense_prefill_tokens(self.spec, strict=self.strict_arithmetic), requested
+        )
 
     def declare_serving_capacity(self, capacity: int | None) -> None:
         """This path serves one request at a time; a wider width is refused."""
@@ -254,9 +257,13 @@ class LlamaDenseGenerator:
         if prompt_tokens > self.max_prompt_tokens:
             raise ValueError(
                 f"prompt of {prompt_tokens} tokens exceeds the {self.max_prompt_tokens}-token "
-                "prompt bound of the dense causal prefill attention, which stages one FP32 "
-                "logit row per key in 64 KiB of LDS; a longer prompt needs the tiled or "
-                "paged prefill path"
+                "prompt bound of the selected dense causal prefill attention and serving context"
+            )
+        attention_limit = max_dense_prefill_tokens(self.spec, strict=self.strict_arithmetic)
+        if attention_limit < self.context_length and prompt_tokens + max(0, max_tokens - 1) > attention_limit:
+            raise ValueError(
+                f"request needs more than {attention_limit} cached positions; "
+                "the selected exact attention kernel exceeds its shared-memory capacity"
             )
         if prompt_tokens + max_tokens > self.context_length:
             raise ValueError(

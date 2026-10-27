@@ -140,10 +140,15 @@ def test_first_layer_tap_is_bit_identical_to_the_reference(tiny_checkpoint):
     assert np.array_equal(sink.teacher, logits[0])
 
 
-def test_row_subset_logits_agree_with_the_full_projection(tiny_checkpoint):
+def test_row_subset_logits_agree_with_the_full_projection(tiny_checkpoint, monkeypatch):
     path, _f32, bf16 = tiny_checkpoint
     runner, loaded = _runner(path)
     tokens = np.asarray((2, 4, 6, 8, 10), dtype=np.int64)
+
+    def reject_host_roundtrip(*args, **kwargs):
+        pytest.fail("selected logits must not download the full normalized prompt")
+
+    monkeypatch.setattr(runner, "_copy_bf16_rows", reject_host_roundtrip)
     try:
         subset = runner.prefill(tokens, logits=(1, 3))
         every = runner.prefill(tokens, logits="all")
@@ -162,8 +167,9 @@ def test_row_subset_logits_agree_with_the_full_projection(tiny_checkpoint):
     assert float(np.max(np.abs(every[[1, 3]] - subset))) <= 5.0e-2 * peak_all
 
 
-@pytest.mark.parametrize("keys", [7, 37, 128, 129, 1024])
-def test_tiled_attention_matches_the_exact_kernel(keys):
+@pytest.mark.parametrize("tokens,keys", [(1, 1), (1, 37), (7, 7), (7, 128), (8, 129), (9, 129), (17, 1024), (33, 65)])
+@pytest.mark.parametrize("mask_kind", ["causal", "holes", "empty"])
+def test_tiled_attention_matches_the_exact_kernel(tokens, keys, mask_kind):
     """The tiled route is the default for head_dim 128; the exact one is strict.
 
     Shared memory in the tiled kernel is a fixed K/V tile, so ``keys`` only
@@ -187,14 +193,18 @@ def test_tiled_attention_matches_the_exact_kernel(keys):
 
     runtime = get_hip_runtime()
     rng = np.random.default_rng(keys)
-    tokens, heads, kv_heads, head_dim = 7, 4, 2, 128
+    heads, kv_heads, head_dim = 4, 2, 128
     width = heads * head_dim
     kv_width = kv_heads * head_dim
 
     q = _f32_to_bf16_bits(rng.standard_normal((tokens, width)).astype(np.float32) * 0.5)
     k = _f32_to_bf16_bits(rng.standard_normal((keys, kv_width)).astype(np.float32) * 0.5)
     v = _f32_to_bf16_bits(rng.standard_normal((keys, kv_width)).astype(np.float32) * 0.5)
-    mask = causal_keep_mask(keys)[keys - tokens :]
+    mask = causal_keep_mask(tokens, keys=keys)
+    if mask_kind == "holes":
+        mask[:, ::3] = 0
+    elif mask_kind == "empty":
+        mask[:] = 0
 
     def run(q_buf, k_buf, v_buf, mask_ptr, strict):
         out = malloc(tokens * width * 2, runtime=runtime)
@@ -232,7 +242,8 @@ def test_tiled_attention_matches_the_exact_kernel(keys):
         tiled = run(q_buf, k_buf, v_buf, mask_buf.ptr, False)
         # A null mask asserts the causal precondition; it must agree with the
         # explicit causal mask, because the walk already excludes those keys.
-        implicit = run(q_buf, k_buf, v_buf, 0, False)
+        implicit = run(q_buf, k_buf, v_buf, 0, False) if mask_kind == "causal" else None
+        repeat = run(q_buf, k_buf, v_buf, mask_buf.ptr, False)
     finally:
         for buf in buffers:
             free(buf, runtime=runtime)
@@ -248,8 +259,17 @@ def test_tiled_attention_matches_the_exact_kernel(keys):
     # of it. A tolerance below that would assert that the FP64 oracle and a
     # BF16 store round identically, which is not a property of either.
     assert np.max(np.abs(tiled_f32 - oracle)) <= 5e-3 * scale
-    assert np.max(np.abs(reference - oracle)) <= 5e-3 * scale
-    assert np.array_equal(implicit, tiled), "a null mask must equal the causal mask"
+    live_rows = np.any(mask, axis=1)
+    if np.any(live_rows):
+        assert np.max(np.abs(reference[live_rows] - oracle[live_rows])) <= 5e-3 * scale
+    # Gemma's strict fallback explicitly defines an empty softmax as NaN;
+    # the tiled kernel defines it as zero. Assert both contracts, not parity
+    # between undefined strict distributions and the tiled empty-row result.
+    assert np.all(np.isnan(reference[~live_rows]))
+    assert np.all(tiled_f32[~live_rows] == 0)
+    if implicit is not None:
+        assert np.array_equal(implicit, tiled), "a null mask must equal the causal mask"
+    assert np.array_equal(repeat, tiled)
 
 
 def _attention_oracle(q, k, v, mask, *, heads, kv_heads, head_dim):
@@ -267,9 +287,11 @@ def _attention_oracle(q, k, v, mask, *, heads, kv_heads, head_dim):
         vh = vf[:, kv_head * head_dim : (kv_head + 1) * head_dim]
         scores = qh @ kh.T * head_dim**-0.5
         scores = np.where(mask.astype(bool), scores, -np.inf)
-        scores -= scores.max(axis=1, keepdims=True)
+        maxima = scores.max(axis=1, keepdims=True)
+        scores -= np.where(np.isfinite(maxima), maxima, 0.0)
         weights = np.exp(scores)
-        weights /= weights.sum(axis=1, keepdims=True)
+        denominator = weights.sum(axis=1, keepdims=True)
+        weights /= np.where(denominator > 0, denominator, 1.0)
         out[:, head * head_dim : (head + 1) * head_dim] = weights @ vh
     return out
 

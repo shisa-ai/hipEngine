@@ -139,18 +139,26 @@ def test_greedy_tokens_match_the_reference(tiny_checkpoint):
     assert tuple(generated) == reference_tokens
 
 
-def test_llm_generate_runs_the_dense_llama_path(tiny_checkpoint):
+@pytest.mark.parametrize("profile", [None, "strict"])
+@pytest.mark.parametrize("head_dim", [32, 128])
+def test_llm_generate_runs_the_dense_llama_path(tmp_path, profile, head_dim):
     from hipengine.llm import LLM, SamplingParams
 
-    path, _f32, bf16 = tiny_checkpoint
-    llm = LLM(str(path), max_sequence_length=64)
+    config = dict(TINY_LLAMA_CONFIG, head_dim=head_dim,
+                  hidden_size=4 * head_dim, num_attention_heads=4, num_key_value_heads=2)
+    path, _f32, bf16 = write_tiny_llama_checkpoint(tmp_path / "public", config=config)
+    llm = LLM(str(path), max_sequence_length=64, execution_profile=profile)
     try:
         prompt_ids = llm.tokenize("hello world")
         outputs = llm.generate_detailed("hello world", SamplingParams(max_tokens=4))
         # Every registered generator is driven through the submit/poll bridge, so
         # the route check looks at the inner generator the bridge holds.
         driver = llm._get_text_generator()
-        generator_type = type(getattr(driver, "_inner", driver)).__name__
+        inner = getattr(driver, "_inner", driver)
+        generator_type = type(inner).__name__
+        assert inner.strict_arithmetic == (profile == "strict")
+        assert inner._runner._attention_is_tiled == (head_dim == 128 and profile != "strict")
+        assert (inner._runner._scratch.mask is None) == inner._runner._attention_is_tiled
         resolved_quant = llm.resolved_quant
         resolved_backend = llm.resolved_backend
     finally:
@@ -160,7 +168,7 @@ def test_llm_generate_runs_the_dense_llama_path(tiny_checkpoint):
 
     reference_tokens, _logits = tiny_llama_reference_decode(
         bf16,
-        TINY_LLAMA_CONFIG,
+        config,
         np.asarray(prompt_ids, dtype=np.int64),
         max_new_tokens=4,
         eos_token_id=TINY_LLAMA_EOS,

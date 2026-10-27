@@ -112,6 +112,9 @@ def dense_causal_prefill_bf16(
             if int(keep_mask_ptr) == 0:
                 raise
 
+    if int(keep_mask_ptr) == 0:
+        raise ValueError("the exact attention kernel requires a non-null keep mask")
+
     gemma4_attention_prefill_bf16(
         query_ptr,
         key_ptr,

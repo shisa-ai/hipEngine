@@ -35,30 +35,11 @@ allocates an all-ones mask row only for that geometry. A dense checkpoint with a
 different head width therefore serves the exact kernel's context bound, not the
 checkpoint's.
 
-Removal condition: the tiled kernel carries a second head width, at which point
-the exact fallback no longer needs a mask for any dense geometry and
-`max_dense_prefill_tokens` and `_DecodeScratch.mask` go with it. Validate with
+Removal condition: tiled attention supports all admitted head widths. Keep the
+exact fallback and its mask for explicitly requested strict arithmetic; remove
+only geometry-driven mask allocation and bounds once they are unnecessary.
+Validate with
 `uv run pytest tests/test_gpu_llama_dense_prefill.py tests/test_gpu_llama_dense_decode.py`.
-
-## Dense Llama has no registered execution-profile plan
-
-Recorded 2026-10-28. `hipengine/generation/llama_dense.py` selects its own
-arithmetic: `execution_profile="strict"` sets `strict_arithmetic`, which puts
-both attention passes on the exact block kernel, and the default takes the tiled
-one. `LLM(..., execution_profile="strict")` does not reach it, because
-`(llama_dense, <backend>, bf16)` has no registered plan and
-`resolve_runtime_profile` raises `MissingRuntimeProfilePlanError` before a
-generator is constructed. The omission is not specific to this path -- every
-unregistered combination behaves that way -- so the exact fallback is reachable
-from the runner and from direct generator construction, not from the public
-selector.
-
-Removal condition: register a strict plan for `(llama_dense, hip_gfx1100, bf16)`
-and its gfx1151 peer, which makes `execution_profile` resolve instead of raising
-before a generator is constructed. Validate with
-`uv run pytest tests/test_unit_llama_dense_generation.py` plus one
-`LLM(..., execution_profile="strict")` construction that reports
-`strict_arithmetic=True`.
 
 
 ## Outstanding work
