@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from scripts.laguna_long_context_profile import (
     SHORT_FOCUS_LENGTHS,
     STANDARD_DECODE_LENGTHS,
     _active_comparison_count,
+    _matrix_label,
     WPF_SHORT_LENGTHS,
     _parse_args,
     _parse_chunk_size,
@@ -104,7 +106,6 @@ def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.Monkey
             "0",
             "--quant-label",
             "UD-Q2_K_XL",
-            "--package-matrix-rows",
             "--compare-raw-k-prefill-rowbatch",
             "--raw-k-prefill-rowbatch",
             "32",
@@ -119,7 +120,7 @@ def test_lpf5_cli_supports_direct_gguf_profile_inputs(monkeypatch: pytest.Monkey
     assert args.direct_gguf is True
     assert args.safety_reserve_gib == 0.0
     assert args.quant_label == "UD-Q2_K_XL"
-    assert args.package_matrix_rows is True
+    assert args.chunk_size is None
     assert args.compare_raw_k_prefill_rowbatch is True
     assert args.raw_k_prefill_rowbatch == 32
     assert args.raw_k_prefill_rowbatch_control == 8
@@ -762,3 +763,54 @@ def test_lpf5_trace_attachment_summarizes_fixed_horizon_decode(
     assert symbols[
         "laguna_global_attention_split_exact_gated_reduce_kernel"
     ]["mean_duration_ns_per_transition"] == 21
+
+
+def test_lpf5_matrix_rows_default_to_backend_package_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["laguna_long_context_profile.py"])
+    assert _parse_args().chunk_size is None
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["laguna_long_context_profile.py", "--chunk-size", "256"],
+    )
+    assert _parse_args().chunk_size == 256
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["laguna_long_context_profile.py", "--chunk-size", "128"],
+    )
+    assert _parse_args().chunk_size == 128
+
+
+def test_lpf5_retired_package_matrix_rows_flag_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["laguna_long_context_profile.py", "--package-matrix-rows"],
+    )
+    with pytest.raises(SystemExit):
+        _parse_args()
+
+
+def test_lpf5_matrix_label_names_package_or_explicit_rows() -> None:
+    assert _matrix_label(None) == "package"
+    assert _matrix_label(256) == "256"
+
+
+def test_lpf5_report_publishes_owner_resolved_matrix_rows() -> None:
+    # The report block needs a loaded owner and a model, so pin the contract on
+    # the source order instead: the owner-resolved rows must be published after
+    # the load replaces the CLI placeholder, and the CLI fallback stays separate.
+    from scripts import laguna_long_context_profile as benchmark
+
+    source = inspect.getsource(benchmark.run)
+    resolved = source.index("active_matrix_rows = owner.prefill_chunk_size")
+    published = source.index('"matrix_rows": active_matrix_rows')
+    assert resolved < published
+    assert '"matrix_rows_cli_fallback": args.chunk_size' in source

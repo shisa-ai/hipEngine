@@ -134,6 +134,11 @@ def _active_comparison_count(args: argparse.Namespace) -> int:
     return sum(bool(getattr(args, name)) for name in COMPARISON_ARGUMENTS)
 
 
+def _matrix_label(chunk_size: int | None) -> str:
+    """Name the matrix-rows provenance: backend package resolution or a CLI size."""
+    return "package" if chunk_size is None else str(chunk_size)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", nargs="?", type=Path, default=DEFAULT_MODEL)
@@ -141,11 +146,13 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=max(DEFAULT_LENGTHS))
     parser.add_argument("--lengths", type=_parse_lengths, default=DEFAULT_LENGTHS)
-    parser.add_argument("--chunk-size", type=_parse_chunk_size, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument(
-        "--package-matrix-rows",
-        action="store_true",
-        help="resolve matrix rows from backend package capability instead of --chunk-size",
+        "--chunk-size",
+        type=_parse_chunk_size,
+        help=(
+            "explicit retained matrix rows; unset resolves them from the "
+            "backend package capability"
+        ),
     )
     parser.add_argument(
         "--attention-rows",
@@ -471,9 +478,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(
             f"retained Laguna profiling requires one of {PROFILE_LENGTH_SETS}"
         )
-    if args.chunk_size not in PROFILE_CHUNK_SIZES:
+    if args.chunk_size is not None and args.chunk_size not in PROFILE_CHUNK_SIZES:
         raise ValueError(f"Laguna profiling chunk size must be one of {PROFILE_CHUNK_SIZES}")
-    matrix_label = "package" if args.package_matrix_rows else str(args.chunk_size)
+    matrix_label = _matrix_label(args.chunk_size)
     output_tokens = int(args.decode_output_tokens)
     required_context = max(lengths) + output_tokens - 1
     if args.context_length < required_context:
@@ -484,7 +491,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("LPF-5 repetitions must be positive")
     if args.safety_reserve_gib < 0.0:
         raise ValueError("--safety-reserve-gib must be non-negative")
-    if args.warmup_rows <= 0 or args.warmup_rows > args.chunk_size:
+    if args.warmup_rows <= 0:
+        raise ValueError("LPF-5 warmup rows must be positive")
+    if args.chunk_size is not None and args.warmup_rows > args.chunk_size:
         raise ValueError("LPF-5 warmup rows must fit one retained chunk")
     if (
         args.compare_long_attention_hipblaslt
@@ -698,7 +707,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             progress=_progress,
             repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
-            prefill_chunk_size=(None if args.package_matrix_rows else args.chunk_size),
+            prefill_chunk_size=args.chunk_size,
             prefill_global_attention_chunk_size=args.attention_rows,
             q6_qmicro_permute=args.q6_qmicro_permute,
             q6_qmicro_planar=args.q6_qmicro_planar,
@@ -769,6 +778,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         )
         active_matrix_rows = owner.prefill_chunk_size
+        if args.warmup_rows > active_matrix_rows:
+            raise ValueError("LPF-5 warmup rows must fit one retained chunk")
         active_raw_k_prefill_variant = owner.raw_k_prefill_variant
         active_moe_branch_concurrency = owner.moe_branch_concurrency
         active_q6_qmicro_permute = owner.q6_qmicro_permute
@@ -1304,7 +1315,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "lengths": list(lengths),
             "chunk_size": active_matrix_rows,
             "matrix_rows": active_matrix_rows,
-            "package_matrix_rows_requested": bool(args.package_matrix_rows),
+            "package_matrix_rows_requested": args.chunk_size is None,
             "matrix_rows_cli_fallback": args.chunk_size,
             "attention_rows": active_global_attention_rows,
             "swa_attention_rows": min(

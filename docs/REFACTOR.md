@@ -4703,21 +4703,6 @@ fallback count is not a success metric.
   is removed; explicit rowbatch selection still restores RB32. The internal
   context-local `coltile` owner remains necessary to scope production dispatch.
 
-## Laguna prefill matrix-capacity selector
-
-- Added 2026-07-29. WPF-C1 first exported `LAGUNA_PREFILL_MATRIX_ROWS=256`;
-  WPF-2 now selects 512 after exact expert-major IQ down reuse makes the larger
-  grouping materially faster. Explicit `LagunaGGUFResidentSession(...,
-  prefill_chunk_size=...)` remains the rollback/comparison route. Both global
-  and SWA attention stay independently capped at 128.
-- Direct M256 improves exact M128 **0.973%/1.086%** at 512/1K and uses
-  **219,514,912 bytes** planned row/MoE scratch. With grouped exact IQ down,
-  M512 improves direct by **14.118%/13.354%** and beats the separately measured
-  grouped M256 row by **1.703%/1.691%**. Clean package publication and the
-  post-publication trace now pass, so collapse benchmark-only three-way
-  comparison plumbing in a separate cleanup unit while preserving M128/M256
-  exact rollback through explicit `prefill_chunk_size` overrides.
-
 ## Laguna exact grouped-IQ prefill selector
 
 - Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving

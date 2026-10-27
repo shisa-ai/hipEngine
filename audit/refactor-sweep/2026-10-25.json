@@ -6665,18 +6665,18 @@
       "start_line": 5541,
       "end_line": 5555,
       "sha256": "a06c3b347a67c37464812477af5877b26f6ef4108d0a89d98ebf61d9bcd9b7a6",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed redundant package-matrix-rows CLI; unset chunk-size forwards None, explicit overrides and actual resolved report remain. Focused profile tests/help and docs/audit gates pass. Worklog: worklog/entries/20261027T023211.342938Z-cleanup-refactor-r0257-matrix-cli-b936d8.md."],
       "subitems": [
         {
           "line": 5543,
           "text": "- Added 2026-07-29. WPF-C1 first exported `LAGUNA_PREFILL_MATRIX_ROWS=256`;",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5548,
           "text": "- Direct M256 improves exact M128 **0.973%/1.086%** at 512/1K and uses",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
