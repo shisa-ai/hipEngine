@@ -7210,23 +7210,23 @@
       "start_line": 6046,
       "end_line": 6065,
       "sha256": "2263788f23e0b3ab241b2338082b98e37c54fa55196ad4bb4054b5aef7a156dd",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed constructor override, rebuild setter and obsolete softmax comparison harness; backend default and block256 primitive preserved. RED/GREEN runner tests, full CPU bundle and docs/audit pass. Unchanged numerical leaves retain bg-366 GPU oracle evidence. Public Laguna checkpoint absent; bottom R0275 names clearing action. Worklog: worklog/entries/20261027T075909.952556Z-cleanup-refactor-r0275-567ba2.md."],
       "subitems": [
         {
           "line": 6048,
           "text": "- Added 2026-07-27 as",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 6053,
           "text": "- The candidate improves the qualified 48-layer attention model",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 6058,
           "text": "- Clean selector-unset publication now passes at",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

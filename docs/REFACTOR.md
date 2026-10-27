@@ -4715,26 +4715,6 @@ fallback count is not a success metric.
   this one-purpose session selector and A/B comparison while retaining the
   generic producer for unqualified rows.
 
-## Laguna wave-per-row causal-softmax rollback
-
-- Added 2026-07-27 as
-  `prefill_attention_hipblaslt_wave_rows_softmax=false` plus the session
-  setter. The gfx1151 capability selects a local32 wave-per-row reduction;
-  false restores the local256 block/LDS reduction. Unsafe shapes never enter
-  either BLAS route and retain their established `KVLiveSpans` kernels.
-- The candidate improves the qualified 48-layer attention model
-  **72.738 -> 62.755 ms (-13.73%)** and seven-pair pp512
-  **614.668 -> 620.032 tok/s (+0.873%, 6/7 wins)**. All-exact KL improves
-  **0.002097 -> 0.001796**, top-1 stays 2930, and tracing reports
-  local32/VGPR24/SGPR128/LDS0/scratch0.
-- Clean selector-unset publication now passes at
-  **632.618/568.845/464.606 tok/s**, and the required later corrected
-  attention-family trace measures **69.983 ms** at unchanged **2,417**
-  dispatches. The removal preconditions are satisfied. Remove the session
-  setter and one-purpose A/B harness in the next rollback-cleanup unit while
-  retaining the block256 kernel as the numerical fallback until the
-  packed-query rollback window closes.
-
 ## Laguna `dense_q4_prefill_mode=wmma_pack8`
 
 - Added 2026-07-25 as an explicit session-local LAP-5 candidate. Rows from 16
@@ -10877,3 +10857,15 @@ for this packed-query route. **Clearing action:** run
 in the ROCm environment, with a prompt reaching the dense-initial BLAS path.
 Confirm packed-query selection, blocking/stream/direct parity and resource
 cleanup. Do not infer public engagement from leaf numerical tests.
+
+### R0275 — Laguna public softmax-owner validation
+
+The redundant softmax constructor override, rebuild setter and one-purpose
+comparison harness are removed. Backend selection and the block256 numerical
+fallback primitive remain unchanged.
+
+**Dependency:** the unavailable Laguna checkpoint noted for R0273.
+**Clearing action:** run the R0273 gfx1151 public command with a dense-initial
+BLAS prompt, additionally confirming that the backend-selected wave-per-row
+softmax executes. Check blocking/stream/direct parity and teardown. Existing
+packed/wave/block leaf comparisons do not establish this public engagement.

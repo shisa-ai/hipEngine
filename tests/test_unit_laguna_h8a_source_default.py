@@ -93,8 +93,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_q5_f32_resident_global_cache` opt-out, so the runner and this GPU
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # R0273 removes only the packed-query selector/rebuild setter, not this owner.
-        "a432b04e0cf4b677800a6a5f925f23070076df10b49906b785d3e0b28f75aa74"
+        # R0273/R0275 retire only BLAS layout/reduction controls, not this owner.
+        "5f22633ba108d703a57cd690cef8c6baa2914cd5356e8fd05a29ad35ff3d05a9"
     ),
     # This GPU test renamed the shared ordered-F32 prefill session manager and
     # then dropped the retired R0249 opt-out assertions.

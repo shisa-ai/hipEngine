@@ -93,7 +93,6 @@ def _child(
         prefill_attention_hipblaslt_packed_query_producer=(
             settings["packed_query_producer"]
         ),
-        prefill_attention_hipblaslt_wave_rows_softmax=True,
         prefill_attention_hipblaslt_packed_output_gate=(
             settings["packed_output_gate"]
         ),

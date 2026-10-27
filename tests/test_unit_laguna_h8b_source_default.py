@@ -60,8 +60,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_activation_pack_reuse` opt-out, so the runner and the scoped-reuse
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # R0273 removes only the packed-query selector/rebuild setter, not this owner.
-        "a432b04e0cf4b677800a6a5f925f23070076df10b49906b785d3e0b28f75aa74"
+        # R0273/R0275 retire only BLAS layout/reduction controls, not this owner.
+        "5f22633ba108d703a57cd690cef8c6baa2914cd5356e8fd05a29ad35ff3d05a9"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

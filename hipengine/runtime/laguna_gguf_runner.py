@@ -2957,7 +2957,6 @@ class LagunaGGUFResidentSession:
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
         prefill_attention_hipblaslt_packed_query_producer: bool | None = None,
-        prefill_attention_hipblaslt_wave_rows_softmax: bool | None = None,
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         prefill_long_attention_hipblaslt: bool | None = None,
         prefill_block_attention_hipblaslt: bool | None = None,
@@ -3480,8 +3479,6 @@ class LagunaGGUFResidentSession:
         )
         self.prefill_attention_hipblaslt_wave_rows_softmax = bool(
             capability_wave_rows_softmax
-            if prefill_attention_hipblaslt_wave_rows_softmax is None
-            else prefill_attention_hipblaslt_wave_rows_softmax
         )
         self.prefill_attention_hipblaslt_packed_output_gate = bool(
             backend_package_capability(
@@ -4290,33 +4287,6 @@ class LagunaGGUFResidentSession:
         """Select tensorized rolling M128 SWA attention."""
 
         self.prefill_swa_attention_hipblaslt = bool(enabled)
-
-    def set_prefill_attention_hipblaslt_wave_rows_softmax(
-        self,
-        enabled: bool,
-    ) -> None:
-        """Select the explicit wave-per-row causal-softmax candidate."""
-
-        selected = bool(enabled)
-        if selected == self.prefill_attention_hipblaslt_wave_rows_softmax:
-            return
-        self.prefill_attention_hipblaslt_wave_rows_softmax = selected
-        if self.attention_hipblaslt is not None:
-            route = self.attention_hipblaslt
-            self.attention_hipblaslt = None
-            route.close()
-        if self.long_attention_hipblaslt is not None:
-            route = self.long_attention_hipblaslt
-            self.long_attention_hipblaslt = None
-            route.close()
-        if self.block_attention_hipblaslt is not None:
-            route = self.block_attention_hipblaslt
-            self.block_attention_hipblaslt = None
-            route.close()
-        if self.swa_attention_hipblaslt is not None:
-            route = self.swa_attention_hipblaslt
-            self.swa_attention_hipblaslt = None
-            route.close()
 
     def set_dense_q4_prefill_mode(self, mode: str) -> None:
         """Select the explicit dense/shared Q4 rows>1 projection route."""
