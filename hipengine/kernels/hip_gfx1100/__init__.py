@@ -371,9 +371,8 @@ GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT = {
 }
 # The physical pair helper owns a distinct split seam from the single-projection
 # wrapper. The complete C5-C8 gate retains grouped-grid ownership here while
-# repeated R6 pair fallback remains the exact explicit rollback.
+# repeated R6 primitives remain available for exact comparisons and fallback.
 GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6",
     "enabled_default": True,
     "variant": "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
     "shapes": frozenset(_Q4_T16_ROWTILE16_W2_R6_SHAPES),

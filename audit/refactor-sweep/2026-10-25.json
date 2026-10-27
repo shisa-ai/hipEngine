@@ -4597,13 +4597,13 @@
       "start_line": 4003,
       "end_line": 4009,
       "sha256": "0ce4c2b11e9a13957d194b4e132ea88c7fdb14da3057ccac055c080499582a71",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed grouped-Q4 R6 pair environment metadata and cached read; default, row/shape/registry checks and repeated primitives preserved. RED/GREEN actual-policy regression, full linear/backend units, GPU R6 bit parity, CPU fixtures/smoke and docs/audit pass. Public pair engagement/output/acceptance/cleanup remains open. Worklog: worklog/entries/20261027T145246.713814Z-cleanup-refactor-r0180-205c73.md."],
       "subitems": [
         {
           "line": 4005,
           "text": "- Promoted after exact marker ownership and complete C5-C8 qualification.",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

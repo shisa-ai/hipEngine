@@ -2791,13 +2791,6 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## 2026-09-01 gfx1100 grouped Q4 rows6 pair-seam rollback — closed
-
-- Promoted after exact marker ownership and complete C5-C8 qualification.
-  `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=0` retains the
-  interleaved repeated-R6 rollback for bisecting; remove the flag after the
-  grouped pair owner is stable across the next production campaign.
-
 ## 2026-09-01 gfx1100 grouped Q4 rows6 rollback — closed
 
 - The grouped-grid Q4 owner is retained by default for consecutive physical R6
@@ -10549,3 +10542,15 @@ scope remain; grouped R8 for C8, strict tails and repeated primitives are unchan
 widths, confirm selected launches, and compare output and acceptance with the
 registered repeated R6 primitive. Include ordinary decode outside physical scope
 and cancellation/cleanup. Direct GPU bit parity does not establish public routing.
+
+### R0180 — Public grouped Q4 R6 pair validation
+
+The grouped-pair environment override and its cached read are removed.
+Backend defaults, shape/row checks and registered-kernel checks remain.
+The independent single-owner grouped-Q4 override is unchanged.
+
+**Dependency:** public gfx1100 physical target execution reaching grouped pairs.
+**Clearing action:** run `hipengine serve` across admitted pair widths, trace
+both grouped output launches, and compare output/acceptance with the registered
+repeated-R6 composition. Include a shape outside pair policy and cancellation
+cleanup. Direct grouped-kernel bit parity is not public pair-route evidence.

@@ -7081,10 +7081,7 @@ def test_physical_q4_pair_grouped_rows6_policy_consolidates_both_outputs(
             (6,)
             if name == "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS"
             else {
-                "enabled_env": (
-                    "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6"
-                ),
-                "enabled_default": False,
+                "enabled_default": True,
                 "variant": variant,
                 "shapes": frozenset({(10, 20)}),
             }
@@ -7153,7 +7150,7 @@ def test_gfx1100_grouped_q4_pair_rows6_policy_defaults_on_and_is_shape_scoped(
             rows=24,
             in_features=5_120,
             out_features=17_408,
-        ) is None
+        ) == "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out"
     finally:
         gguf_linear_module._rowtile_variant_policy_env_cache.clear()
 

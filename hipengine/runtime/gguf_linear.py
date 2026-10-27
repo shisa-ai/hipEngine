@@ -3416,30 +3416,9 @@ def _q4_t16_grouped_pair_rows6_variant(
     except TypeError:
         return None
     variant = policy.get("variant")
-    enabled_env = policy.get("enabled_env")
-    if (
-        not isinstance(variant, str)
-        or not variant
-        or not isinstance(enabled_env, str)
-        or not enabled_env
-    ):
+    if not isinstance(variant, str) or not variant:
         return None
-    enabled_default = bool(policy.get("enabled_default", False))
-    cache_key = (enabled_env, enabled_default)
-    enabled = _rowtile_variant_policy_env_cache.get(cache_key)
-    if enabled is None:
-        raw = os.environ.get(
-            enabled_env,
-            "1" if enabled_default else "0",
-        ).strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            enabled = True
-        elif raw in {"0", "false", "no", "off"}:
-            enabled = False
-        else:
-            raise ValueError(f"{enabled_env} must be a boolean value")
-        _rowtile_variant_policy_env_cache[cache_key] = enabled
-    if not enabled:
+    if not bool(policy.get("enabled_default", False)):
         return None
     key = KernelKey(backend, "linear", "gguf_q4_k_t16_v1", variant)
     _ensure_linear_kernel_registered(key)
