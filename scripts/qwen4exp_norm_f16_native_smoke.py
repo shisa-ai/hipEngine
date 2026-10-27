@@ -49,10 +49,9 @@ def main():
     from scripts.gguf_mtp_bench import build_chat_prompt
     from scripts.qwen4exp_gdn_narrow_native_smoke import profile_record
     from scripts.qwen4exp_norm_f16_gate_support import (
-        ENV, PRODUCER_KEY, expected_calls, heldout_tokens, validate_producer_call,
+        PRODUCER_KEY, expected_calls, heldout_tokens, validate_producer_call,
     )
 
-    os.environ.pop(ENV, None)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     production, strict = [resolve_runtime_profile(model="qwen4_exp_gguf", backend="hip_gfx1151",
@@ -70,8 +69,8 @@ def main():
         generator = production.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
             model_path=args.model_root, weight_index=index, model_plugin=resolve_model(index.architecture or ""),
             backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
-        assert os.environ[ENV] == "1", "native production binder did not enable publication"
-        report["native_binder_value"] = os.environ[ENV]
+        assert generator.runner.norm_f16_publication_enabled, "native binder did not enable publication"
+        report["native_binder_value"] = generator.runner.norm_f16_publication_enabled
         counts = dict(publisher=0, cast=0, consumed=0)
         key = PRODUCER_KEY
         original_producer = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
@@ -113,10 +112,10 @@ def main():
             for mode in modes:
                 if first_native:
                     # The first request observes the binder, without an arm override.
-                    assert mode == "candidate" and os.environ[ENV] == "1"
+                    assert mode == "candidate" and generator.runner.norm_f16_publication_enabled
                     first_native = False
                 else:
-                    os.environ[ENV] = report["native_binder_value"] if mode == "candidate" else "0"
+                    generator.runner.norm_f16_publication_enabled = bool(report["native_binder_value"]) if mode == "candidate" else False
                 before = dict(counts)
                 with k320_selection(not args.gr_k320_full_rows or mode == "candidate"):
                     first = generator.runner.prefill(case["prompt_token_ids"])

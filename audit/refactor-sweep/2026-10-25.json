@@ -337,28 +337,28 @@
       "start_line": 328,
       "end_line": 356,
       "sha256": "73e088b0ea63a4b6f7c316521c0273490b8b9c2df16f73d7161d31e0858a4181",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-runner-local",
+      "evidence": ["Publication manifest fixed; policy bound to generator/runner/clones and workspace ContextVar, no environment reader/binding. Diagnostic runner controls restore on error; strict loan/shape/ownership contracts preserved. Full CPU after explicit cold-backend import repair, focused ownership, GPU loan parity and public bounded-fallback publisher engagement pass. Default newer direct path remains separate. Worklog: worklog/entries/20261027T114113.967118Z-cleanup-refactor-r0015-29eb86.md."],
       "subitems": [
         {
           "line": 330,
           "text": "- `f32_f16_publish` and `f32_f16_publish_unfused` are separately registered",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 335,
           "text": "- `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` is enabled by the named gfx1151",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 344,
           "text": "- Native model engagement, state/KV/logits and counterbalanced engine A/B are",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 352,
           "text": "- Remove the integration flag after one qualified release window, or remove",
-          "status": "pending"
+          "status": "resolved-runner-local"
         }
       ]
     },

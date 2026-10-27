@@ -18,10 +18,6 @@ from hipengine.execution_profiles import (
     resolve_runtime_profile,
 )
 
-from hipengine.runtime.gguf_linear import (
-    NORM_F16_PUBLICATION_ENV,
-)
-
 QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
@@ -286,9 +282,7 @@ _NORM_F16_EVIDENCE = "benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/RE
 
 
 def _norm_f16_selection(*, production: bool) -> VariantSelection:
-    enabled = production and os.environ.get(NORM_F16_PUBLICATION_ENV, "1").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
+    enabled = production
     return _selection(
         "gr_grouped_rmsnorm", _NORM_F16_SCOPE,
         "f32_f16_publish" if enabled else "strict",
@@ -1287,15 +1281,6 @@ def _bind(
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else ""
         ),
-        # Publish the manifest's bounded producer selection. Other quants and
-        # strict cannot inherit a preceding UD binder's publisher or opt-out.
-        NORM_F16_PUBLICATION_ENV: (
-            "1" if any(
-                row["scope"] == _NORM_F16_SCOPE
-                and row["selected_variant"] == "f32_f16_publish"
-                for row in resolved.manifest["selections"]
-            ) else "0"
-        ),
         # Certified iu8-WMMA gate/up suffix within the WMMA-MoE27 route.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
@@ -1393,6 +1378,10 @@ def _bind(
     # already built. A generator that builds its runner later still receives the
     # decision, and any c1 runner it clones inherits it; an unbound one keeps the
     # parent route.
+    generator.norm_f16_publication_enabled = any(
+        row["scope"] == _NORM_F16_SCOPE and row["selected_variant"] == "f32_f16_publish"
+        for row in resolved.manifest["selections"]
+    )
     generator.dense_wide_tail_variant = (
         next(row["selected_variant"] for row in resolved.manifest["selections"]
              if row["scope"] == _DENSE_WIDE_TAIL_SCOPE)
@@ -1450,6 +1439,7 @@ def _bind(
     generator.q8_mapped_down = q8_mapped_down
     runner = getattr(generator, "runner", None)
     if runner is not None:
+        runner.norm_f16_publication_enabled = generator.norm_f16_publication_enabled
         runner.dense_wide_tail_variant = generator.dense_wide_tail_variant
         runner.dense_f16_pair_enabled = dp2_pair_enabled
         runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled

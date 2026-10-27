@@ -5,7 +5,7 @@ import sys
 import pytest
 
 from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, build_parser
-from scripts.qwen4exp_norm_f16_gate_support import ENV, expected_calls, heldout_tokens, validate_producer_call
+from scripts.qwen4exp_norm_f16_gate_support import expected_calls, heldout_tokens, validate_producer_call
 
 
 @pytest.mark.parametrize("tokens,chunk,calls", [(512,4096,0),(1024,4096,0),(4095,4096,0),
@@ -23,7 +23,13 @@ def test_arm_switch_changes_only_publication():
     env={"other":"kept"}
     for mode,value in (("before","0"),("after","1")):
         _apply_mode(mode,environment=env,route_package="norm-f16-publish")
-        assert env=={"other":"kept",ENV:value}
+        assert env == {"other": "kept"}
+        from types import SimpleNamespace
+        from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+        owner = SimpleNamespace(norm_f16_publication_enabled=False)
+        with route_scope("norm-f16-publish", mode, owner):
+            assert owner.norm_f16_publication_enabled == (value == "1")
+        assert owner.norm_f16_publication_enabled is False
     with pytest.raises(ValueError): _apply_mode("bad",environment=env,route_package="norm-f16-publish")
     assert "norm-f16-publish" in build_parser()._option_string_actions["--route-package"].choices
 

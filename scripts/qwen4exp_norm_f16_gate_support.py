@@ -1,8 +1,18 @@
 """Qualified DP-5 publication scope and native engagement accounting."""
+from contextlib import contextmanager
 from hipengine.kernels.registry import KernelKey
 
-ENV = "HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH"
 PRODUCER_KEY = KernelKey("hip_gfx1151", "gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish")
+
+
+@contextmanager
+def publication_scope(runner, enabled):
+    prior = runner.norm_f16_publication_enabled
+    runner.norm_f16_publication_enabled = bool(enabled)
+    try:
+        yield
+    finally:
+        runner.norm_f16_publication_enabled = prior
 
 
 def expected_calls(tokens: int, chunk: int) -> int:

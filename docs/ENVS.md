@@ -811,7 +811,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
 | `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` | unset (F16 route sets `1`) | Hyper-connection read projections launched directly on F16 activations (bit-identical). |
 | `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | `1` | Scale-only GR read also publishes half(mixed); `0` keeps per-projection conversions. |
-| `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` | profile-selected | GR norm publishes an F16 copy for the following projections. |
 | `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | `1` | The scale-only norm launch also computes the inject logits (bit-identical); `0` keeps them separate. |
 | `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | `1` | Scale-only GR read for Q8_0 up projections; `0` is the rollback. |
 | `HIPENGINE_QWEN4_EXP_GR_WIDE` | unset (F16 route sets `1`) | Hyper-connection up projection on the F16 wide route. |
@@ -1148,6 +1147,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` is retired and ignored. The profile
+  binds publication to the owning runner and its prefill execution scope;
+  parent/candidate diagnostics change only their own runner's decision.
 
 - `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` is retired and ignored. The
   profile binds the tail variant to its generator and runners; prefill scopes

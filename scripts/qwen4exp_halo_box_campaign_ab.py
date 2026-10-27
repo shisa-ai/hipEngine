@@ -1589,6 +1589,12 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
     )
 
+    if route_package == "norm-f16-publish":
+        if runner is None:
+            raise ValueError("norm-f16-publish needs the owning runner")
+        from scripts.qwen4exp_norm_f16_gate_support import publication_scope
+        return publication_scope(runner, mode == "after")
+
     if route_package == "dense-wide-padded":
         if runner is None:
             raise ValueError("dense-wide-padded needs the owning runner")
@@ -1876,8 +1882,7 @@ def _apply_mode(
     if route_package == "norm-f16-publish":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        from scripts.qwen4exp_norm_f16_gate_support import ENV
-        environment[ENV] = "1" if mode == "after" else "0"
+        # route_scope owns this request-local publication decision.
         return
     if route_package == "dense-wide-padded":
         if mode not in {"before", "after"}:

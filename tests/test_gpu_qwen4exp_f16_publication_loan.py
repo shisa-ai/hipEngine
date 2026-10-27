@@ -64,11 +64,11 @@ def test_native_norm_consumer_single_use_and_nondefault_stream(monkeypatch):
         snapshots=[]
         with linear.dense_wide_tail_session("dense_wide256_padded_f16in_f32_f32_out"), linear.wide_f16_activation_session(workspace_ptr=hd.ptr,workspace_nbytes=hd.nbytes):
             for enabled in ("0","1","1","0"):
-                monkeypatch.setenv(linear.NORM_F16_PUBLICATION_ENV,enabled)
                 start=len(casts)
                 live=memory_stats()["current_allocated_bytes"]
-                runner._run_qwen4_exp_gr_norm_down(xd.ptr,gd.ptr,weight,scratch,rows=rows,
-                    branches=branches,hidden=hidden,low_rank=n,eps=1e-6,stream=stream,runtime=runtime)
+                with linear.norm_f16_publication_session(enabled == "1"):
+                    runner._run_qwen4_exp_gr_norm_down(xd.ptr,gd.ptr,weight,scratch,rows=rows,
+                        branches=branches,hidden=hidden,low_rank=n,eps=1e-6,stream=stream,runtime=runtime)
                 runtime.stream_synchronize(stream)
                 assert len(casts)-start == (enabled=="0")
                 assert memory_stats()["current_allocated_bytes"]==live

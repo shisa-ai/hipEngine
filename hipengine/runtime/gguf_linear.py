@@ -564,7 +564,19 @@ def _launch_prefill_f16_staged(
 # process-wide override. The pair loan is a request-local decision: the profile
 # publishes it to the runner that owns the prefill, that runner binds it for its
 # own launches, and only an explicit diagnostic scope can outrank it.
-NORM_F16_PUBLICATION_ENV = "HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH"
+_norm_f16_publication_policy: ContextVar[bool] = ContextVar(
+    "norm_f16_publication_policy", default=False,
+)
+
+
+@contextlib.contextmanager
+def norm_f16_publication_session(enabled: bool):
+    """Bind the owner's bounded norm publication decision for this execution."""
+    token = _norm_f16_publication_policy.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _norm_f16_publication_policy.reset(token)
 _WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
 _WIDE_F16_ACTIVATION_TARGET_SUFFIX = "_f16in_f32_f32_out"
 _dense_wide_tail_variant: ContextVar[str | None] = ContextVar(
@@ -1188,8 +1200,7 @@ def _launch_dense_wide_f16_staged(
 def wide_f16_activation_publication_enabled() -> bool:
     """Whether a producer may publish a side plane for the wide consumer."""
 
-    value = os.environ.get(NORM_F16_PUBLICATION_ENV, "").strip().lower()
-    return value in {"1", "true", "yes", "on"}
+    return _norm_f16_publication_policy.get()
 
 
 def _wide_f16_consumer_key(

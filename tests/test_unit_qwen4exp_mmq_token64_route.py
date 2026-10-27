@@ -189,15 +189,18 @@ def test_a_runner_cloned_after_the_bind_inherits_the_policy():
 
     generator = SimpleNamespace(dense_mmq_token64_enabled=True,
                                 dense_f16_pair_enabled=True,
+                                norm_f16_publication_enabled=True,
                                 dense_wide_tail_variant="dense_wide256_padded_f16in_f32_f32_out")
     clone = _inherit_lane_decisions(generator, SimpleNamespace())
     assert clone.dense_mmq_token64_enabled is True
     assert clone.dense_f16_pair_enabled is True
     assert clone.dense_wide_tail_variant == generator.dense_wide_tail_variant
+    assert clone.norm_f16_publication_enabled is True
     unbound = _inherit_lane_decisions(SimpleNamespace(), SimpleNamespace())
     assert unbound.dense_mmq_token64_enabled is False
     assert unbound.dense_f16_pair_enabled is False
     assert unbound.dense_wide_tail_variant is None
+    assert unbound.norm_f16_publication_enabled is False
 
 
 def test_the_campaign_arm_is_a_scoped_control_not_an_env_write():

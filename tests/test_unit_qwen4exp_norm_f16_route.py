@@ -39,7 +39,7 @@ def setup(monkeypatch):
             consumer_key=linear.KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PADDED)) == HALF
         calls.append(("down", a, k))
     monkeypatch.setattr(runner, "launch_gguf_linear", launch)
-    with linear.dense_wide_tail_session(PADDED):
+    with linear.dense_wide_tail_session(PADDED), linear.norm_f16_publication_session(True):
         yield calls
 
 
@@ -79,7 +79,9 @@ def test_scope_miss_keeps_parent(setup, monkeypatch, change):
 def test_disabled_keeps_parent(setup, monkeypatch, env, value):
     monkeypatch.setenv(env,value)
     monkeypatch.setattr(runner, "launch_gguf_linear", lambda *a, **k: setup.append(("down",a,k)))
-    with linear.wide_f16_activation_session(workspace_ptr=HALF, workspace_nbytes=COUNT*2):
+    from contextlib import nullcontext
+    with (linear.wide_f16_activation_session(workspace_ptr=HALF, workspace_nbytes=COUNT*2),
+          linear.norm_f16_publication_session(False) if env == ENV else nullcontext()):
         run()
     assert [v[0] for v in setup] == ["parent", "down"]
 
