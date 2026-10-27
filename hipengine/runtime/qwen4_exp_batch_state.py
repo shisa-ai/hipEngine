@@ -812,6 +812,17 @@ class Qwen4ExpBatchAttentionState:
             )
         return self.active
 
+    def reset_slot(self, slot: int, *, blocks=()) -> None:
+        """Clear this slot's owned physical KV blocks."""
+        from hipengine.runtime.batch_slot_reset import checked_slot, zero_block_runs
+
+        self._require_open()
+        parsed = checked_slot(slot, self.state_slots)
+        block_bytes = self.block_size * self.kv_heads * self.head_dim * DType.BF16.itemsize
+        zero_block_runs(self.runtime, (self.key_cache, self.value_cache), blocks, block_bytes)
+        if self.active is not None and parsed in self.active.slot_ids:
+            self.active = None
+
     def _require_packed_views(self, packed: Qwen4ExpBatchPackedMetadataViews) -> None:
         """Refuse packed views that cannot carry one int64 per state slot."""
 

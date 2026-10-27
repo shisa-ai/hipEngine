@@ -1008,7 +1008,7 @@ class Qwen4ExpBatchQsaIndexState:
             runtime=self.runtime,
         )
 
-    def reset_slot(self, slot: int) -> None:
+    def reset_slot(self, slot: int, *, blocks=()) -> None:
         """Release one slot for a new request (its keys become unreadable).
 
         This advances the slot's generation, which permanently invalidates any
@@ -1019,6 +1019,12 @@ class Qwen4ExpBatchQsaIndexState:
 
         self._require_open()
         parsed = self._require_slot(slot)
+        from hipengine.runtime.batch_slot_reset import zero_block_runs
+
+        zero_block_runs(
+            self.runtime, (self.raw_keys,), blocks,
+            self.block_size * self.index_dim * DType.FP32.itemsize,
+        )
         self.cursor_host[parsed] = 0
         self.pooled_count_host[parsed] = 0
         self.reset_generation[parsed] += 1

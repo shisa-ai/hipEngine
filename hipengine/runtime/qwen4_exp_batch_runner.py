@@ -1501,45 +1501,10 @@ class Qwen4ExpGGUFBatchRunner:
         attention_states = self._require_attention_states()
         held = self._slot_blocks[slot]
         blocks = [int(block) for block in self._block_host[slot, :held]]
-        row_bytes = (
-            attention_states[0].kv_heads * attention_states[0].head_dim
-            * DType.BF16.itemsize
-        )
-        block_bytes = attention_states[0].block_size * row_bytes
-        runs = _contiguous_runs(blocks)
-        for attention in attention_states:
-            for first, count in runs:
-                for cache in (attention.key_cache, attention.value_cache):
-                    self.runtime.memset(
-                        cache.ptr + first * block_bytes, 0, count * block_bytes
-                    )
-        for index_state in self.index_states:
-            base = index_state.raw_keys.ptr
-            index_block_bytes = (
-                index_state.block_size * index_state.index_dim * DType.FP32.itemsize
-            )
-            for first, count in runs:
-                self.runtime.memset(
-                    base + first * index_block_bytes, 0, count * index_block_bytes
-                )
-            # The owner's own reset advances its generation, which invalidates
-            # any rollback token captured by the previous request.
-            index_state.reset_slot(slot)
-        for gdn_state in self.gdn_states:
-            self.runtime.memset(
-                gdn_state.conv_slot_ptr(slot), 0, gdn_state.conv_bytes_per_slot
-            )
-            self.runtime.memset(
-                gdn_state.recurrent_slot_ptr(slot),
-                0,
-                gdn_state.recurrent_bytes_per_slot,
-            )
+        for state in (*attention_states, *self.index_states, *self.gdn_states):
+            state.reset_slot(slot, blocks=blocks)
         if self.ple_state is not None:
-            self.runtime.memset(
-                self.ple_state.history_slot_ptr(slot),
-                0,
-                self.ple_state.history_bytes_per_slot,
-            )
+            self.ple_state.reset_slot(slot, blocks=blocks)
 
     # -- c1 hand-off ------------------------------------------------------
 
@@ -2558,18 +2523,6 @@ class Qwen4ExpGGUFBatchRunner:
 
     def __exit__(self, *exc_info: object) -> None:
         self.close()
-
-
-def _contiguous_runs(blocks: Sequence[int]) -> list[tuple[int, int]]:
-    """``(first, count)`` runs of consecutive ids, in ascending order."""
-
-    runs: list[tuple[int, int]] = []
-    for block in sorted(blocks):
-        if runs and runs[-1][0] + runs[-1][1] == block:
-            runs[-1] = (runs[-1][0], runs[-1][1] + 1)
-        else:
-            runs.append((block, 1))
-    return runs
 
 
 def _token_ids(token_ids: object) -> np.ndarray:

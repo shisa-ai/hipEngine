@@ -107,12 +107,11 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   whole-block copy would move the source's unwritten tail into the new request.
   The serving path imports once per request at the end of prefill, so the cost
   is per admission, not per tick.
-- `_zero_slot` hand-rolls a memset per owner (KV blocks, index blocks, GDN
-  conv/recurrent, PLE history) and then calls the index owner's `reset_slot`.
-  It should become one `reset_slot` protocol on the shared owner base that the
-  four owners (attention, index, GDN, PLE) implement, matching the owner-base
-  consolidation already recorded for the mixer lineage. The index owner's
-  generation bump is part of that protocol, not an extra step.
+- Slot reset is now owner-local: attention, index, GDN and PLE implement one
+  `reset_slot` protocol. Shared block clearing validates ranges before writes;
+  index generation advances only after successful clearing. The runner delegates
+  without knowing buffer layout. Hand-off copying and admission-mirror cleanup
+  remain separate.
 - The batch runner keeps its own `_owners`/`_positions` host mirrors next to the
   owners' `prepare` active sets. Now that the batch runner is reachable from
   serving, one admission object should own the request-to-slot map and the

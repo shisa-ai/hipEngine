@@ -292,6 +292,16 @@ class Qwen4ExpBatchPleState:
 
     # -- lifecycle --------------------------------------------------------
 
+    def reset_slot(self, slot: int, *, blocks=()) -> None:
+        """Zero one request's PLE history without remapping peer slots."""
+        from hipengine.runtime.batch_slot_reset import checked_slot
+
+        self._require_open()
+        parsed = checked_slot(slot, self.state_slots)
+        self.runtime.memset(self.history_slot_ptr(parsed), 0, self.history_bytes_per_slot)
+        if self.active is not None and parsed in self.active.slot_ids:
+            self.active = None
+
     def close(self) -> None:
         if self.closed:
             return

@@ -318,6 +318,15 @@ class Qwen4ExpBatchGdnState:
 
     # -- lifecycle --------------------------------------------------------
 
+    def reset_slot(self, slot: int, *, blocks=()) -> None:
+        """Zero recurrent and convolution state for one physical request."""
+        self._require_open()
+        parsed = self._require_slot(slot)
+        self.runtime.memset(self.conv_slot_ptr(parsed), 0, self.conv_bytes_per_slot)
+        self.runtime.memset(self.recurrent_slot_ptr(parsed), 0, self.recurrent_bytes_per_slot)
+        if self.active is not None and parsed in self.active.slot_ids:
+            self.active = None
+
     def close(self) -> None:
         if self.closed:
             return

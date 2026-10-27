@@ -107,8 +107,8 @@
       "start_line": 154,
       "end_line": 189,
       "sha256": "dbf0b88360b58974c0966f675af3213a2ea023b87d0ac2ae667ce430ebf5e048",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-owner-reset",
+      "evidence": ["Reset protocol now belongs to attention/index/GDN/PLE owners; runner delegates. Range preflight and generation-after-success tested, full CPU and real-device reuse/rollback gates pass. Public fixed-width repeat exact with all owners and zero allocation teardown. Mixed-width repeat difference reproduces identically under committed reset control, not a regression or batch-invariance claim. Copy kernel and admission map remain open. Worklog: worklog/entries/20261027T095542.477175Z-cleanup-refactor-r0007-reset-622379.md."],
       "subitems": [
         {
           "line": 156,
@@ -118,7 +118,7 @@
         {
           "line": 165,
           "text": "- `_zero_slot` hand-rolls a memset per owner (KV blocks, index blocks, GDN",
-          "status": "pending"
+          "status": "resolved-owner-local"
         },
         {
           "line": 171,

@@ -36,6 +36,11 @@ from hipengine.runtime.qwen4_exp_batch_state import (
     STEP_POSITION_COLUMN,
     Qwen4ExpBatchStepMetadata,
 )
+from hipengine.runtime.qwen4_exp_batch_gdn import Qwen4ExpBatchGdnState
+from hipengine.runtime.qwen4_exp_batch_ple import Qwen4ExpBatchPleState
+from hipengine.runtime.qwen4_exp_batch_qsa_index import Qwen4ExpBatchQsaIndexState
+from hipengine.runtime.qwen4_exp_batch_state import Qwen4ExpBatchAttentionState
+from hipengine.runtime.batch_slot_reset import checked_slot
 from tests import _qwen4_exp_batch_fixtures as fixture
 
 
@@ -156,8 +161,21 @@ class _FakeRuntime:
         self.calls.append(("graph_destroy", int(graph)))
 
 
-class _FakeAttention:
-    def __init__(self, slots: int, blocks: int) -> None:
+class _ResetOwner:
+    active = None
+
+    def _require_open(self):
+        pass
+
+    def _require_slot(self, slot):
+        return checked_slot(slot, self.state_slots)
+
+
+class _FakeAttention(_ResetOwner):
+    reset_slot = Qwen4ExpBatchAttentionState.reset_slot
+
+    def __init__(self, slots: int, blocks: int, runtime=None) -> None:
+        self.runtime = runtime or _FakeRuntime()
         self.state_slots = slots
         self.blocks_per_request = blocks
         self.block_size = fixture.BLOCK_SIZE
@@ -223,15 +241,18 @@ class _FakeAttention:
         return self.active
 
 
-class _FakeIndex:
-    def __init__(self, slots: int) -> None:
+class _FakeIndex(_ResetOwner):
+    def __init__(self, slots: int, runtime=None) -> None:
+        self.runtime = runtime or _FakeRuntime()
         self.state_slots = slots
         self.index_heads = fixture.INDEX_HEADS
         self.index_dim = fixture.INDEX_DIM
         self.capacity = fixture.MAX_POSITIONS
         self.output_stride = fixture.OUTPUT_STRIDE
         self.raw_keys = DeviceBuffer(
-            0x600000, slots * self.capacity * self.index_dim * 4
+            0x600000,
+            slots * ((self.capacity + fixture.BLOCK_SIZE - 1) // fixture.BLOCK_SIZE)
+            * fixture.BLOCK_SIZE * self.index_dim * 4
         )
         self.block_size = fixture.BLOCK_SIZE
         self.cursor_host = np.zeros(slots, dtype=np.int64)
@@ -244,12 +265,9 @@ class _FakeIndex:
         self.resets: list[int] = []
         self.active = None
 
-    def reset_slot(self, slot):
+    def reset_slot(self, slot, *, blocks=()):
+        Qwen4ExpBatchQsaIndexState.reset_slot(self, slot, blocks=blocks)
         self.resets.append(int(slot))
-        self.cursor_host[slot] = 0
-        self.pooled_count_host[slot] = 0
-        self.reset_generation[slot] += 1
-        self.active = None
 
     def validate_rows(self, slot_ids):
         slots = tuple(int(slot) for slot in slot_ids)
@@ -278,8 +296,11 @@ class _FakeIndex:
         return self.active
 
 
-class _FakeGdn:
-    def __init__(self, slots: int) -> None:
+class _FakeGdn(_ResetOwner):
+    reset_slot = Qwen4ExpBatchGdnState.reset_slot
+
+    def __init__(self, slots: int, runtime=None) -> None:
+        self.runtime = runtime or _FakeRuntime()
         self.state_slots = slots
         self.conv_bytes_per_slot = fixture.GDN_QKV_WIDTH * fixture.GDN_CONV_KERNEL * 4
         self.recurrent_bytes_per_slot = (
@@ -303,8 +324,11 @@ class _FakeGdn:
         return SimpleNamespace(slot_ids=slots, rows=len(slots))
 
 
-class _FakePle:
-    def __init__(self, slots: int) -> None:
+class _FakePle(_ResetOwner):
+    reset_slot = Qwen4ExpBatchPleState.reset_slot
+
+    def __init__(self, slots: int, runtime=None) -> None:
+        self.runtime = runtime or _FakeRuntime()
         self.state_slots = slots
         self.history_bytes_per_slot = (
             (fixture.PLE_CONV_KERNEL - 1)
@@ -392,21 +416,21 @@ def _fake_runner(*, slots: int = 3) -> Qwen4ExpGGUFBatchRunner:
         for layer, kind in enumerate(config.layer_types)
         if kind == "qsa"
     }
-    runner.attention_states = (_FakeAttention(slots, 2),)
+    runner.attention_states = (_FakeAttention(slots, 2, runner.runtime),)
     # Static layout: every slot owns its full window of the page table.
     runner.pooled = False
     runner._pool_request = None
     runner._block_host = runner.attention_states[0].block_host
     runner._free_blocks = []
     runner._slot_blocks = [runner.attention_states[0].blocks_per_request] * slots
-    runner.index_states = (_FakeIndex(slots),)
+    runner.index_states = (_FakeIndex(slots, runner.runtime),)
     runner.step_metadata = Qwen4ExpBatchStepMetadata.allocate(
         layers=len(runner.attention_states),
         state_slots=slots,
         runtime=runner.runtime,
     )
-    runner.gdn_states = (_FakeGdn(slots), _FakeGdn(slots))
-    runner.ple_state = _FakePle(slots)
+    runner.gdn_states = (_FakeGdn(slots, runner.runtime), _FakeGdn(slots, runner.runtime))
+    runner.ple_state = _FakePle(slots, runner.runtime)
     runner.selection = SimpleNamespace(rows=slots, stride=fixture.OUTPUT_STRIDE)
     runner.gdn_scratch = SimpleNamespace(ptr=0xA00000, closed=False)
     runner.qsa_scratch = SimpleNamespace(ptr=0xB00000, closed=False)
@@ -554,10 +578,10 @@ def _use_two_qsa_layers(runner: Qwen4ExpGGUFBatchRunner) -> None:
         if kind == "qsa"
     }
     runner.attention_states = (
-        _FakeAttention(runner.state_slots, 2),
-        _FakeAttention(runner.state_slots, 2),
+        _FakeAttention(runner.state_slots, 2, runner.runtime),
+        _FakeAttention(runner.state_slots, 2, runner.runtime),
     )
-    runner.index_states = (_FakeIndex(runner.state_slots), _FakeIndex(runner.state_slots))
+    runner.index_states = (_FakeIndex(runner.state_slots, runner.runtime), _FakeIndex(runner.state_slots, runner.runtime))
     runner.step_metadata = Qwen4ExpBatchStepMetadata.allocate(
         layers=2, state_slots=runner.state_slots, runtime=runner.runtime
     )
