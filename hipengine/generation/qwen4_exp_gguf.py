@@ -25,7 +25,6 @@ from hipengine.generation.qwen4_exp_ar_batch import (
     QWEN4_EXP_MAX_BATCH_ROWS,
     QWEN4_EXP_STAGING_RUNNERS,
     Qwen4ExpARBatchOwner,
-    ar_batch_enabled,
     batch_slot_positions,
     make_qwen4_exp_ar_batch_runner,
 )
@@ -278,27 +277,19 @@ class Qwen4ExpGGUFTextGenerator:
         # decide. Every resident runner this generator constructs (its own and
         # each c2 pool row) inherits it.
         self.moe_graph_enabled = moe_graph_enabled
-        batching = ar_batch_enabled()
-        default_capacity = (
-            QWEN4_EXP_DEFAULT_REQUEST_CAPACITY if batching else QWEN4_EXP_STAGING_RUNNERS
-        )
         self._configured_resident_capacity = (
-            default_capacity if resident_capacity is None else int(resident_capacity))
-        # With the batch path, requests share one decode batch and only the c1
-        # staging runners (prefill, MTP rows, over-long requests) hold a full
-        # context each; without it every request owns a c1 runner.
-        maximum = QWEN4_EXP_MAX_BATCH_ROWS if batching else None
-        if self._configured_resident_capacity < 1 or (
-            maximum is not None and self._configured_resident_capacity > maximum
-        ):
+            QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+            if resident_capacity is None else int(resident_capacity)
+        )
+        maximum = QWEN4_EXP_MAX_BATCH_ROWS
+        if not 1 <= self._configured_resident_capacity <= maximum:
             raise ValueError(
                 "Qwen4Exp active request count must be within "
-                f"1..{maximum if maximum is not None else 'memory'}"
-                + (" (the indexed batch decode kernels take at most "
-                   f"{maximum} rows)" if maximum is not None else ""))
-        self._staging_capacity = (
-            min(self._configured_resident_capacity, QWEN4_EXP_STAGING_RUNNERS)
-            if batching else self._configured_resident_capacity
+                f"1..{maximum} (the indexed batch decode kernels take at most "
+                f"{maximum} rows)"
+            )
+        self._staging_capacity = min(
+            self._configured_resident_capacity, QWEN4_EXP_STAGING_RUNNERS,
         )
         # Publish the resolved capability on this instance only.
         self.server_plain_ar_max_active_requests = self._configured_resident_capacity
@@ -1208,9 +1199,8 @@ class Qwen4ExpResidentServingRunner(
 
         if self._ar_batch is not None or self._ar_batch_mode is not None:
             return
-        if not ar_batch_enabled() or self.generator._resident is None:
-            # The rollback lever, or a generator built around an external
-            # runner (tests): every request keeps its own c1 runner.
+        if self.generator._resident is None:
+            # External runners do not own the resident batch allocations.
             self._ar_batch_mode = "qwen4exp_c1_request_owned_step"
             return
         slots = self.capacity

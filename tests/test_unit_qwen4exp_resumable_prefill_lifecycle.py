@@ -37,7 +37,7 @@ from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation import GenerationExecutionFailed
 from hipengine.generation.batch_scheduler import ResidentBatchScheduler
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
-from hipengine.generation.qwen4_exp_ar_batch import AR_BATCH_ENV
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.qwen4_exp_gguf import (
     Qwen4ExpGGUFTextGenerator,
     Qwen4ExpResidentServingRunner,
@@ -54,9 +54,11 @@ from tests._qwen4exp_ar_batch_fixtures import (
 
 @pytest.fixture(autouse=True)
 def _request_owned_c1_path(monkeypatch):
-    """Drive the request-owned c1 path unless a test selects the AR batch."""
-
-    monkeypatch.setenv(AR_BATCH_ENV, "0")
+    """Drive c1 fixtures; expose the real path for the explicit batch test."""
+    original = Qwen4ExpResidentServingRunner._prepare_ar_batch
+    from tests._qwen4_exp_c1_control import select_request_owned_c1
+    select_request_owned_c1(monkeypatch)
+    return original
 
 
 class _SegmentingC1Runner(FakeC1Runner):
@@ -484,6 +486,9 @@ def test_prefill_budget_and_round_robin_rotation_survive_suspensions(monkeypatch
     """Suspension does not break the operator budget or the prefill rotation."""
 
     generator, created = _generator(monkeypatch, segments=2, capacity=3)
+    # This fixture specifically measures three concurrent c1 owners, rather
+    # than the production two-runner staging pool used by shared decode.
+    generator._staging_capacity = 3
     driver = SubmitPollTextGenerator(
         generator, config=_config(3, chunk=8, budget=4, decode_budget=4),
     )
@@ -554,8 +559,9 @@ def test_prefill_budget_and_round_robin_rotation_survive_suspensions(monkeypatch
         driver.close()
 
 
-def test_ar_batch_imports_a_resumed_prefill_exactly_once(monkeypatch):
+def test_ar_batch_imports_a_resumed_prefill_exactly_once(monkeypatch, _request_owned_c1_path):
     """The default shared-batch path imports the completed prefill once."""
+    monkeypatch.setattr(Qwen4ExpResidentServingRunner, "_prepare_ar_batch", _request_owned_c1_path)
 
     monkeypatch.delenv(AR_BATCH_ENV, raising=False)
     monkeypatch.setattr(

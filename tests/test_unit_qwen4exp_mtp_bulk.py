@@ -149,7 +149,8 @@ def test_public_submission_consumes_device_rows_once(monkeypatch):
     from types import SimpleNamespace as NS
     from tests.test_unit_qwen4exp_mtp_submission import _driver, _request, _finish
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_AR_BATCH", "0")
+    from tests._qwen4_exp_c1_control import select_request_owned_c1
+    select_request_owned_c1(monkeypatch)
     driver, target, draft = _driver()
     draft._prefill_workspace = NS(append_calls=0)
     original = target.prefill_append

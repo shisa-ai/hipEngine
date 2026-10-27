@@ -17,7 +17,7 @@ import pytest
 from hipengine.core.memory import DeviceBuffer
 from hipengine.dispatch import RequestState
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
-from hipengine.generation.qwen4_exp_ar_batch import AR_BATCH_ENV
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.qwen4_exp_gguf import (
     Qwen4ExpGGUFTextGenerator,
     Qwen4ExpResidentServingRunner,
@@ -338,7 +338,8 @@ class _Tokenizer:
 
 
 def _serving(monkeypatch, *, prefix_cache):
-    monkeypatch.setenv(AR_BATCH_ENV, "0")
+    from tests._qwen4_exp_c1_control import select_request_owned_c1
+    select_request_owned_c1(monkeypatch)
     arena = _Arena(1 << 24)
     primary = _ArenaRunner(arena)
     generator = Qwen4ExpGGUFTextGenerator(

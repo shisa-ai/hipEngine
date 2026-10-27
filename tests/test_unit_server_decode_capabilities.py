@@ -12,10 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.generation.qwen4_exp_ar_batch import (
-    AR_BATCH_ENV,
-    QWEN4_EXP_MAX_BATCH_ROWS,
-)
+from hipengine.generation.qwen4_exp_ar_batch import QWEN4_EXP_MAX_BATCH_ROWS
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.server import api as api_module
 from hipengine.server.api import _decode_capability_summary, _probe_decode_telemetry
 
@@ -93,7 +91,7 @@ def test_summary_reports_the_envelope_before_the_first_request(
     assert summary["path"] == "uninitialized"
     envelope = summary["ar_batch"]
     assert envelope["enabled"] is True
-    assert envelope["rollback_env"] == AR_BATCH_ENV
+    assert "rollback_env" not in envelope
     assert envelope["max_rows"] == QWEN4_EXP_MAX_BATCH_ROWS
     assert envelope["request_capacity"] == 8
     assert envelope["staging_runners"] == 2
@@ -101,13 +99,13 @@ def test_summary_reports_the_envelope_before_the_first_request(
     assert envelope["active"] is None
 
 
-def test_summary_follows_the_rollback_lever(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_summary_ignores_the_retired_rollback_lever(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(AR_BATCH_ENV, "0")
     envelope = _decode_capability_summary(
         _Engine(_payload({"decode_path": "qwen4exp_c1_request_owned_step", "ar_batch": None}))
     )["ar_batch"]
 
-    assert envelope["enabled"] is False
+    assert envelope["enabled"] is True
 
 
 def test_summary_passes_the_live_batch_state_through() -> None:

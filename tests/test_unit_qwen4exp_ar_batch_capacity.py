@@ -12,15 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.generation.qwen4_exp_ar_batch import (
-    AR_BATCH_ENV,
-    QWEN4_EXP_BATCH_SLOT_POSITIONS,
-    QWEN4_EXP_DEFAULT_REQUEST_CAPACITY,
-    QWEN4_EXP_MAX_BATCH_ROWS,
-    QWEN4_EXP_STAGING_RUNNERS,
-    ar_batch_enabled,
-    batch_slot_positions,
-)
+from hipengine.generation.qwen4_exp_ar_batch import QWEN4_EXP_BATCH_SLOT_POSITIONS, QWEN4_EXP_DEFAULT_REQUEST_CAPACITY, QWEN4_EXP_MAX_BATCH_ROWS, QWEN4_EXP_STAGING_RUNNERS, batch_slot_positions
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.server.api import ServerConfig, _gguf_mtp_batch_route_max_active_requests
 
@@ -54,14 +47,14 @@ def _generator(**kwargs) -> Qwen4ExpGGUFTextGenerator:
     )
 
 
-def test_batch_is_on_by_default_and_the_env_is_a_rollback(monkeypatch) -> None:
-    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
-    assert ar_batch_enabled()
-    for value in ("0", "false", "off"):
+def test_retired_batch_environment_does_not_change_capacity(monkeypatch) -> None:
+    for value in ("0", "false", "off", "1"):
         monkeypatch.setenv(AR_BATCH_ENV, value)
-        assert not ar_batch_enabled()
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
-    assert ar_batch_enabled()
+        generator = _generator()
+        try:
+            assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+        finally:
+            generator.close()
 
 
 def test_default_capacity_is_concurrent_with_two_staging_runners(monkeypatch) -> None:
@@ -97,17 +90,17 @@ def test_capacity_is_bounded_by_the_indexed_decode_kernels(monkeypatch) -> None:
         _generator(resident_capacity=0)
 
 
-def test_rollback_gives_every_request_its_own_runner(monkeypatch) -> None:
+def test_retired_rollback_keeps_shared_staging_policy(monkeypatch) -> None:
     monkeypatch.setenv(AR_BATCH_ENV, "0")
     generator = _generator(max_sequence_length=2048)
     try:
-        assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_STAGING_RUNNERS
+        assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
         assert generator._staging_capacity == QWEN4_EXP_STAGING_RUNNERS
     finally:
         generator.close()
     explicit = _generator(max_sequence_length=2048, resident_capacity=3)
     try:
-        assert explicit._staging_capacity == 3
+        assert explicit._staging_capacity == QWEN4_EXP_STAGING_RUNNERS
     finally:
         explicit.close()
 

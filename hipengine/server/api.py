@@ -1591,16 +1591,11 @@ def _decode_capability_summary(engine: Any | None) -> dict[str, Any]:
 
     # Imported here so the server module keeps no import-time dependency on the
     # provider's batch implementation.
-    from hipengine.generation.qwen4_exp_ar_batch import (
-        AR_BATCH_ENV,
-        QWEN4_EXP_MAX_BATCH_ROWS,
-        ar_batch_enabled,
-    )
+    from hipengine.generation.qwen4_exp_ar_batch import QWEN4_EXP_MAX_BATCH_ROWS
 
     active = decode.get("ar_batch")
     summary["ar_batch"] = {
-        "enabled": ar_batch_enabled(),
-        "rollback_env": AR_BATCH_ENV,
+        "enabled": True,
         "max_rows": QWEN4_EXP_MAX_BATCH_ROWS,
         "request_capacity": decode.get("request_capacity"),
         "staging_runners": decode.get("staging_runners"),

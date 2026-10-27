@@ -15,8 +15,6 @@ row verifies a candidate chain, which the one-token-per-slot batch step does
 not express. An automatic MTP row is returned to the batch when other requests
 arrive (see ``Qwen4ExpResidentServingRunner``).
 
-``HIPENGINE_QWEN4_EXP_AR_BATCH=0`` is the rollback lever: every request then
-owns a c1 runner for its whole life, as before the batch path shipped.
 Independent HTTP arrivals overlap because the generator declares the
 ``token_budget`` prefill/decode policy (``engine_loop_config_defaults``): prefill
 chunks rotate across requests and every decoding row steps each round. An
@@ -37,7 +35,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import operator
-import os
 import threading
 from typing import Any, Callable, Mapping, Sequence
 
@@ -45,8 +42,6 @@ import numpy as np
 
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpTokenResult
 
-#: Rollback lever (default on): ``0`` returns every request to a c1 runner.
-AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 #: Rows the indexed GDN, conv, and PLE decode kernels accept in one step.
 QWEN4_EXP_MAX_BATCH_ROWS = 64
 #: Default concurrent requests when the operator sets no active-request count.
@@ -57,15 +52,6 @@ QWEN4_EXP_STAGING_RUNNERS = 2
 #: slabs outside the shared pool, so a longer cap costs memory for every slot;
 #: a longer request decodes on its c1 staging runner instead.
 QWEN4_EXP_BATCH_SLOT_POSITIONS = 65536
-
-_DISABLED_VALUES = frozenset({"0", "false", "False", "off"})
-
-
-def ar_batch_enabled() -> bool:
-    """Whether plain AR rows decode through the shared batch (default on)."""
-
-    return os.environ.get(AR_BATCH_ENV, "1").strip() not in _DISABLED_VALUES
-
 
 def batch_slot_positions(max_sequence_length: int) -> int:
     """Per-slot extent of the batch for one serving context."""
@@ -697,14 +683,12 @@ def make_qwen4_exp_ar_batch_runner(
 
 
 __all__ = [
-    "AR_BATCH_ENV",
     "QWEN4_EXP_BATCH_SLOT_POSITIONS",
     "QWEN4_EXP_DEFAULT_REQUEST_CAPACITY",
     "QWEN4_EXP_MAX_BATCH_ROWS",
     "QWEN4_EXP_STAGING_RUNNERS",
     "Qwen4ExpARBatchOwner",
     "Qwen4ExpARBatchStepError",
-    "ar_batch_enabled",
     "batch_slot_positions",
     "make_qwen4_exp_ar_batch_runner",
 ]

@@ -235,24 +235,18 @@ def test_the_batch_decode_owner_keeps_its_rows_kernels():
     assert rows == "strict_rows_spans"
 
 
-def test_a_plain_ar_row_decodes_in_the_shared_batch_by_default(monkeypatch):
-    # The public serving route for a plain AR request is the shared batch, so a
-    # zero ordered-v2 count there is a routing fact. ``AR_BATCH=0`` is the
-    # documented rollback lever that keeps a request on its c1 runner; it is
-    # not a change this work makes.
+def test_retired_ar_rollback_is_not_a_runtime_control():
     from hipengine.generation import qwen4_exp_ar_batch as ar
 
-    monkeypatch.delenv(ar.AR_BATCH_ENV, raising=False)
-    assert ar.ar_batch_enabled() is True
-    monkeypatch.setenv(ar.AR_BATCH_ENV, "0")
-    assert ar.ar_batch_enabled() is False
+    assert not hasattr(ar, "AR_BATCH_ENV")
+    assert not hasattr(ar, "ar_batch_enabled")
 
 
 def test_a_plain_ar_row_is_batched_and_an_oversized_one_keeps_its_c1_runner():
     # Why a public 4171-token request shows no c1 ordered-v2 launches: a plain
     # AR row is a batch row, so it decodes through the shared owner's rows
-    # kernels. Only a row the batch cannot hold, an MTP row, or the AR_BATCH=0
-    # rollback keeps the c1 chain that selects the ordered leaf.
+    # kernels. A row the batch cannot hold or a separate MTP owner keeps the
+    # c1 chain that selects the ordered leaf.
     from hipengine.generation.qwen4_exp_gguf import (
         Qwen4ExpResidentServingRunner as resident,
     )

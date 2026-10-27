@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
-from hipengine.generation.qwen4_exp_ar_batch import AR_BATCH_ENV
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.generation.registry import GenerationRequest
 from tests._qwen4exp_ar_batch_fixtures import FakeTokenizer

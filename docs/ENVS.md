@@ -788,7 +788,6 @@ use.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
-| `HIPENGINE_QWEN4_EXP_AR_BATCH` | `1` | Shared Flash-Next decode batch for plain AR requests (paged block pool, two c1 staging runners). `0` is the rollback: every request owns a c1 runner, and the default active-request count drops to 2. |
 | `HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY` | `1` | MTP verifies a candidate chain in one prefill-shaped target pass; `0` steps the target serially per candidate (rollback/bisection). |
 | `HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL` | retired | No longer read. Text MTP proposals return token IDs through device-resident chaining, as mixed serving already does. The runner's explicit full-output interface remains available for diagnostics. |
 | `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` | `1` | Runner reset clears only the K/V a request wrote; `0` restores the full-capacity clear. |
@@ -1151,6 +1150,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_QWEN4_EXP_AR_BATCH` is retired and ignored. Resident plain-AR
+  requests use the shared batch; external runners and requests that do not fit
+  its resource contract retain their c1 execution paths.
 
 - `HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST` is retired and ignored. The
   `router_select+cast/fp32` registry family exposes the fused default and

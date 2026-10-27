@@ -33,7 +33,7 @@ import pytest
 
 from hipengine.generation.deadline import GenerationCancellationToken
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
-from hipengine.generation.qwen4_exp_ar_batch import AR_BATCH_ENV
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.qwen4_exp_mtp_stages import Qwen4ExpMTPProposal
 from hipengine.generation.registry import GenerationRequest
 from hipengine.runtime.qwen4_exp_mixed_target import Qwen4ExpMixedTargetResult

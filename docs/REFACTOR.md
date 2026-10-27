@@ -31,10 +31,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
 71.4 ms, width 8 88.5 ms
 (`worklog/entries/20261019T132824.038407Z-lhl-qwen4exp-batch-decode-host-overhead-bce862.md`).
 
-- **`HIPENGINE_QWEN4_EXP_AR_BATCH=0` is a rollback lever.** It restores one c1
-  runner per request. Remove it, and the c1 per-request decode branch of
-  `decode_batch` for plain rows, once a release has served the batch path
-  without a rollback; the c1 step stays for MTP rows and over-long requests.
 - **Metadata upload consolidation is complete.** The batch runner stages one
   packed metadata buffer per step, and the output head has graph capture/replay.
   The earlier per-step upload count is historical. Any further width-one tuning

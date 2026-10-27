@@ -34,10 +34,8 @@ from hipengine.generation import (
     PreparedPromptInput,
     TokenLogprob,
 )
-from hipengine.generation.qwen4_exp_ar_batch import (
-    AR_BATCH_ENV,
-    QWEN4_EXP_MAX_BATCH_ROWS,
-)
+from hipengine.generation.qwen4_exp_ar_batch import QWEN4_EXP_MAX_BATCH_ROWS
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.sampling import (
     NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
@@ -1654,7 +1652,7 @@ def test_decode_telemetry_endpoint_reports_physical_state_and_auth(
     assert advertised["ar_batch"]["active"] == body["decode"]["ar_batch"]
     assert advertised["ar_batch"]["mtp_rows_join_batch"] is False
     assert advertised["ar_batch"]["enabled"] is True
-    assert advertised["ar_batch"]["rollback_env"] == AR_BATCH_ENV
+    assert "rollback_env" not in advertised["ar_batch"]
     assert advertised["ar_batch"]["max_rows"] == QWEN4_EXP_MAX_BATCH_ROWS
 
     # An engine without the hook advertises no path and no envelope.

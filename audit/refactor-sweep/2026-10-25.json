@@ -67,7 +67,8 @@
         {
           "line": 107,
           "text": "- **`HIPENGINE_QWEN4_EXP_AR_BATCH=0` is a rollback lever.** It restores one c1",
-          "status": "pending"
+          "status": "resolved-removed",
+          "evidence": "Removed runtime toggle/capacity split/server rollback advertisement; preserved real external/resource/MTP c1 paths. CPU broad run plus scoped fixture repairs, integration bundle and public legacy-env width-two generation pass. Worklog: worklog/entries/20261027T103743.743786Z-cleanup-refactor-r0006-ar-4e6404.md."
         },
         {
           "line": 111,

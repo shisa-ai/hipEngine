@@ -23,7 +23,8 @@ def _request_owned_c1_path(monkeypatch):
     ``tests/test_unit_qwen4exp_ar_batch_decode.py``.
     """
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_AR_BATCH", "0")
+    from tests._qwen4_exp_c1_control import select_request_owned_c1
+    select_request_owned_c1(monkeypatch)
 
 
 def test_logprob_stream_capability_is_resident_owned(monkeypatch):

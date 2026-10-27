@@ -11,23 +11,22 @@ from hipengine.generation.qwen4_exp_gguf import (
     Qwen4ExpResidentServingRunner,
 )
 from hipengine.generation.deadline import GenerationCancellationToken
-from hipengine.generation.qwen4_exp_ar_batch import (
-    AR_BATCH_ENV,
-    QWEN4_EXP_DEFAULT_REQUEST_CAPACITY,
-    QWEN4_EXP_STAGING_RUNNERS,
-)
+from hipengine.generation.qwen4_exp_ar_batch import QWEN4_EXP_DEFAULT_REQUEST_CAPACITY, QWEN4_EXP_STAGING_RUNNERS
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.registry import GenerationRequest
 
 
 @pytest.fixture(autouse=True)
 def _request_owned_c1_path(monkeypatch):
-    """These tests cover the request-owned c1 path behind the rollback lever.
+    """Exercise c1 ownership with a test-owned serving-path override.
 
-    The shared batch path has its own suite in
-    ``tests/test_unit_qwen4exp_ar_batch_decode.py``.
+    Production has no rollback flag; shared-batch tests live in the batch suite.
     """
+    def prepare_c1(owner):
+        if owner._ar_batch is None and owner._ar_batch_mode is None:
+            owner._ar_batch_mode = "qwen4exp_c1_request_owned_step"
 
-    monkeypatch.setenv(AR_BATCH_ENV, "0")
+    monkeypatch.setattr(Qwen4ExpResidentServingRunner, "_prepare_ar_batch", prepare_c1)
 
 
 class _Tokenizer:
@@ -279,12 +278,12 @@ def test_native_prefill_cancellation_stops_work_and_reuses_clean_owner():
 def test_qwen4_exp_generator_advertises_bounded_native_capacity(monkeypatch) -> None:
     generator = _generator()
     try:
-        assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_STAGING_RUNNERS
+        assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
         runner = generator.create_resident_model_runner(capacity=2)
         assert runner.capacity == 2
     finally:
         generator.close()
-    monkeypatch.delenv(AR_BATCH_ENV)
+    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
     batched = _generator()
     try:
         assert batched.server_plain_ar_max_active_requests == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
@@ -298,7 +297,7 @@ def test_qwen4_exp_generator_advertises_bounded_native_capacity(monkeypatch) -> 
 def test_qwen4_exp_narrow_scratch_probe_reuses_live_wider_runner(monkeypatch) -> None:
     # A server started without --max-active-requests probes scratch at width 1
     # after the engine loop has already built the runner at the plugin's
-    # default width 2. The probe must reuse that runner instead of trying to
+    # default request capacity. The probe must reuse that runner instead of trying to
     # rebuild it at width 1, which failed startup.
     generator = _generator()
     monkeypatch.setattr(
@@ -307,7 +306,7 @@ def test_qwen4_exp_narrow_scratch_probe_reuses_live_wider_runner(monkeypatch) ->
     )
     try:
         live = generator.create_resident_model_runner(capacity=None)
-        assert live.capacity == 2
+        assert live.capacity == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
         report = generator.prepare_request_scratch(max_prompt_tokens=32, max_batch_size=1)
         assert generator._resident_model_runner is live
         assert report["max_batch_size"] == 1

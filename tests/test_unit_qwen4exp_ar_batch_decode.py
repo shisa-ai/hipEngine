@@ -24,11 +24,8 @@ import pytest
 from hipengine.dispatch import SlotMove, WorkItem, WorkKind
 from hipengine.generation.deadline import GenerationCancellationToken
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
-from hipengine.generation.qwen4_exp_ar_batch import (
-    AR_BATCH_ENV,
-    Qwen4ExpARBatchOwner,
-    Qwen4ExpARBatchStepError,
-)
+from hipengine.generation.qwen4_exp_ar_batch import Qwen4ExpARBatchOwner, Qwen4ExpARBatchStepError
+AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpResidentServingRunner
 from hipengine.generation.registry import GenerationRequest
 from tests._qwen4exp_ar_batch_fixtures import (
@@ -110,11 +107,16 @@ def _batch(native):
     return native.decode_telemetry()["ar_batch"]
 
 
-def test_rollback_keeps_the_request_owned_c1_step(monkeypatch) -> None:
-    """The rollback lever restores one c1 runner and one c1 step per row."""
+def test_external_runner_keeps_the_request_owned_c1_step(monkeypatch) -> None:
+    """An external runner lacks resident batch storage and keeps c1 ownership."""
 
-    monkeypatch.setenv(AR_BATCH_ENV, "0")
     generator, native = _native(monkeypatch)
+    resident = generator._resident
+    generator._resident = None
+    native._prepare_ar_batch()
+    # Supply owned weights for the existing c2 staging fixture after checking
+    # external-runner route selection; no production rollback control is used.
+    generator._resident = resident
     try:
         _prefill(native, 1, (1, 2))
         _prefill(native, 2, (3, 4))
