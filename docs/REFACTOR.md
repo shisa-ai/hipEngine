@@ -6782,35 +6782,6 @@ should be boring.
   retaining the 24-block GQA2 exp32 primitive as the exact
   compiler/occupancy rollback.
 
-## Laguna gfx1151 exact global producer-max selector
-
-- Added 2026-07-29 as the default-off session-scoped
-  `LagunaKVCache.global_mixed32_exp32_producer_max_vstage64_vec16_direct_assume_exp_fixedshape`
-  field, `LagunaGGUFResidentSession.set_decode_global_producer_max(...)`, and
-  `--compare-global-producer-max`. False restores the retained global
-  mixed32/exp32 owner.
-- The primitive is byte-exact at live513/576/639, improves the leaves
-  **4.50%/4.89%/4.88%**, removes one barrier, and lowers VGPR **56 -> 48**
-  without added LDS or scratch.
-- Promote only if seven matched resident p512/d128 pairs preserve exact
-  trajectories/state/lifecycle and pass the positive complete-model gate.
-  After clean selector-unset publication, remove the comparison flag and
-  session setter while retaining the architecture capability and registered
-  mixed32/exp32 rollback.
-- Promotion gate passed 2026-07-29: all seven pairs improve
-  **19.978296 -> 19.993586 tok/s (+0.0765%, -0.0383 ms/token)** with complete
-  sample separation and exact state/lifecycle. The gfx1151 capability is now
-  default-on.
-- Clean selector-unset publication passes at **19.986371 tok/s**, with exact
-  repeated state and the capability active. Remove the comparison CLI flag
-  and session setter at the next attention-census commit; retain the
-  architecture capability, cache field, and registered mixed32/exp32
-  rollback.
-- **Closed 2026-07-29:** remove `--compare-global-producer-max`, its session
-  setter, and the setter-only test after clean publication. The default-on
-  gfx1151 capability, fail-closed cache field, registered producer-max
-  primitive, and mixed32/exp32 rollback remain.
-
 ## Laguna gfx1151 SWA producer-value-tail diagnostic
 
 - Added 2026-07-30 as a separately registered exact mixed40 attention

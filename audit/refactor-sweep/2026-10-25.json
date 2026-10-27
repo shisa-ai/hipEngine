@@ -10156,38 +10156,38 @@
       "start_line": 7904,
       "end_line": 7932,
       "sha256": "acf9b724cf1f6955bf4bc916626a5c6c1f99c6006787affc0647c650c73eb67b",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Setter/comparison CLI absent; intended capability/cache-field/registered fallback preserved. Completed receipt removed. Worklog: worklog/entries/20261027T044726.544694Z-cleanup-refactor-r0352-7477f9.md."],
       "subitems": [
         {
           "line": 7906,
           "text": "- Added 2026-07-29 as the default-off session-scoped",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7911,
           "text": "- The primitive is byte-exact at live513/576/639, improves the leaves",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7914,
           "text": "- Promote only if seven matched resident p512/d128 pairs preserve exact",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7919,
           "text": "- Promotion gate passed 2026-07-29: all seven pairs improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7923,
           "text": "- Clean selector-unset publication passes at **19.986371 tok/s**, with exact",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7928,
           "text": "- **Closed 2026-07-29:** remove `--compare-global-producer-max`, its session",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
