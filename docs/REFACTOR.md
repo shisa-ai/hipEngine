@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF fused dual+SiLU gate/up prefill floor | `hipengine/runtime/gguf_linear.py::_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33` (was 512) for the dense H5120 K5120/N17408 `linear_pair_silu` owner. | Bit-identical to the unfused chain at that shape for rows 45/96/192/511/512 (fixture from rows 2), and W7900 Qwen3.8-27B-Q4_K_M measured **+4.2%/+4.2%/+4.9%** prefill at 45/96/192 rows. The same owner is 8.2% slower per cycle inside captured target-verify groups (16/32 rows, C4-C8 K3, replications 3/3), which is why the floor sits at 33 rather than at the small-B boundary: row count is a proxy for prefill-vs-verify context. | Replace the proxy with an explicit prefill-context selector: a session-scoped floor whose value participates in `_DISPATCH_RESOLVE_CACHE` / `_PAIR_DISPATCH_RESOLVE_CACHE` keys (a scope that does not would leak decisions across scopes). Then lower the bulk-prefill floor to the rows<=8 small-B boundary, qualify target verification separately at its own group widths, and delete the row-count proxy. |
 | GGUF prefill route-session stack | `Qwen35GGUFResidentSession.prefill` opens the wmma/q8/pack8/unequal-pair/F16 route sessions as one stack, while the packed admission entry `prefill_batch_native` now opens only `q4_t16_unequal_pair_prefill_session` (the route whose row floor was qualified). | Sessions are added per qualified route because each needed its own W7900 bit-parity + A/B evidence; the shipping AR route admits through `prefill_batch_native` (bound in `hipengine/generation/qwen35_gguf.py` 5 times), so a route enabled only in `prefill` is invisible to it - that is how the rows16 QKV dual landed with a flat topline until the packed entry was wired. | Extract one `_prefill_route_sessions(...)` context stack used by both entries (and by `_prefill_batch_native_impl` if a caller ever reaches it directly), then delete the per-entry session lists. Route-eligibility stays in the capability policies, not in call sites. |
 | GGUF bench shipping-route alias | `scripts/qwen35_gguf_bench.py --public-ar-profile` (plus the recorded `public_ar_profile` / `shipping_ar_route_mismatch` protocol fields and the stderr warning) selects `use_wmma_prefill=True` + `use_gemv_decode=True` instead of the low-level env-default-off selectors. | W7900 Qwen3.8-27B-Q4_K_M measured 45-token prefill 0.4577 s unset vs 0.2818 s shipping (+62.4%), 512 tokens +1.7%, identical generated id, final logit 22.1395 -> 21.9644. Without the alias the harness default route silently measures a route the product never runs; see worklog `20260829T215206.066388Z-lhl-w7900-qwen38-submodule-parity-1921c9`. | Collapse once the bench resolves its default through the same session-profile helper the product uses (so no separate alias is needed), or once every retained short-prompt prefill artifact has been re-measured on the shipping route and the low-level selectors are gone from the bench surface. |
 | GGUF duplicate AR loop ownership | `Qwen35GGUFResidentModelRunner` owns public blocking and OpenAI submit/poll execution, but `_generate_ar_serving_slots()` remains as a direct control/oracle and explicit compatibility fallback. | D1–E3/F1 now prove one shared model-owning loop through exact arbitrary-C burst/live admission, cancellation, SSE, shutdown, real KV ownership, observability, and retained server scaling on both gfx11 targets. The direct loop still supplies the independent c1/native-width oracle used by the retained E1/E2/E3 packets. | Both gfx11 triggers are met. During F2, move the oracle into an explicit test/benchmark helper and remove production call sites after one release window; keep registry-resolved unsupported-shape fallbacks. |
@@ -10633,3 +10632,35 @@ activation math as a side effect of repacking. Run
 compatible local quants on each applicable backend. Confirm actual layouts,
 effective selectors, no duplicate raw/T16 residency, bounded allocation and
 cleanup. No layout, default, API or environment behavior changes here.
+
+### R0281-SILU-FLOOR — Bulk-prefill and verifier fused-FFN policy
+
+The generic dense Q4T16 fused dual+SiLU owner still starts at row 33 for
+K5120/N17408. Later physical-target policy already overrides that generic floor:
+gfx1100 selects registered row32/row48 siblings for physical rows 32/36, and
+its optional production row-28 schedule preserves periodic strict layers.
+The earlier slower verifier comparison therefore does not describe every
+current physical owner. Preserve these scoped policies, the generic parent,
+retile fallback and exact unfused chain.
+
+**Remaining work:** replace the generic row-count proxy with explicit
+bulk-prefill versus verifier policy, shared by all production prefill entries.
+Do not lower the prefill floor as a cleanup side effect or treat this item as
+permission to remove current physical-target siblings. The fused dispatch is
+resolved directly by `launch_gguf_linear_pair_silu()`; its final choice is not
+stored in `_DISPATCH_RESOLVE_CACHE` or `_PAIR_DISPATCH_RESOLVE_CACHE`. Any new
+scope must participate in whichever cached decisions actually consume it,
+rather than adding unrelated cache-key fields from the old prescription.
+
+**Clearing action:** add nested/error/thread isolation and populated-cache
+control/candidate/control tests before introducing an execution-local prefill
+policy. Bind ordinary, packed and resumable prompt entries to the same owner;
+keep verification outside that scope. Exercise below/above/unrelated row counts,
+physical row28/32/36 schedules, quant/shape misses and registered-key fallback.
+Run `tests/test_unit_gguf_linear_dispatch.py`,
+`tests/test_unit_gguf_linear_dispatch_cache.py`,
+`tests/test_unit_q4_row48_control_retirement.py` and the host-only physical/floor
+nodes in `tests/test_gpu_gguf_q4_k_t16_dense.py`. Before changing a threshold,
+run its fused/unfused primitive oracle and same-host public prefill/verification
+comparison with selected variants, output/state, capture-inclusive wall and
+cleanup recorded. No floor, dispatch, arithmetic or default changes here.
