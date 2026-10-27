@@ -5544,33 +5544,35 @@
       "start_line": 4673,
       "end_line": 4703,
       "sha256": "69956deb89fac8cdba4c0c8fb1c86862a7828f39a88d29f6e78076edac79824c",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Serial-only blocker is obsolete: registered direct INT8 batch kernel and physical-C4 promotion verified against implementation, capability tests and 20260911T221928 audit. Mirror-free short layouts, shared-oracle prefill and uniform INT8 graphs exist. Mirrored layouts remain actual consumers; moved remaining consumer migration/public storage-lifecycle validation to bottom of REFACTOR with clearing actions. Original capacity numbers remain historical inventory, not admission limits. No runtime change or new GPU claim. Worklog: worklog/entries/20261027T173803.625903Z-cleanup-refactor-r0213-f079e8.md."
+      ],
       "subitems": [
         {
           "line": 4675,
           "text": "- Added 2026-08-15 after the dedicated-XTX context soak and corrected after the",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4680,
           "text": "- Current c>1 packed AR admits per-token/head INT8 only at short contexts where",
-          "status": "pending"
+          "status": "obsolete-direct-batch-landed"
         },
         {
           "line": 4687,
           "text": "- The short mirrored scheduler lifecycle itself is no longer a blocker:",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4691,
           "text": "- `IKV-C1` completed the explicit serial no-mirror anchor on 2026-08-16 for",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4696,
           "text": "- Removal trigger remains the approved",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },

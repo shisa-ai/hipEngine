@@ -3430,37 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Qwen3.8 c>1 mirrored-INT8 serving seam
-
-- Added 2026-08-15 after the dedicated-XTX context soak and corrected after the
-  actual-limit and controlled-SSE audits. Long c1 uses genuine no-mirror
-  FP32-scale INT8 at `8,519,680` bytes/page. The XTX one-request physical
-  ceiling is now 126K while four natural 112K requests remain the recommended
-  repeated row; W7900 reaches the model-native 256K limit.
-- Current c>1 packed AR admits per-token/head INT8 only at short contexts where
-  it also retains BF16 K/V, raising each page to `25,296,896` bytes. W7900
-  c2/c4/c8 pass 8K/request and all fail closed at 8.25K because direct packed
-  INT8 attention is not admitted. XTX actual execution passes reach 6K/request
-  at c2 (8K is 0/2 HIP OOM), 1.5K at physical c4 (no failure tested), and 2K at
-  offered c8 (no failure tested). Do not advertise any mirrored row as an INT8
-  memory saving.
-- The short mirrored scheduler lifecycle itself is no longer a blocker:
-  gfx1100 staggered c1->c4 SSE is 4/4 exact with occupancy
-  `0->1->4->3->2->1->0`, admitted/reclaimed `4/4`, and zero final ownership.
-  The seam is storage/attention/prefill/admission, not continuous membership.
-- `IKV-C1` completed the explicit serial no-mirror anchor on 2026-08-16 for
-  the exact gfx1100 artifact through logical c4: shifted logits/state/KV are
-  exact, active persistent BF16 bytes are zero, and cancellation/survivor
-  ownership drains cleanly. The route deliberately reports physical width 1
-  and makes no throughput claim.
-- Removal trigger remains the approved
-  [`IKV-C2`-`IKV-C7` campaign](campaigns/QWEN38-INT8-KV-CONTINUOUS.md): replace the serial
-  route with row-batched direct INT8 attention, complete prefill and admission
-  ownership, and rerun the artifact-scoped c1/c2/c4/c8 matrices. Remove the
-  mirrored short route when the replacement is exact, memory-positive,
-  non-regressive, and no supported caller needs it. Remove or demote the serial
-  path after the native batch route passes; retain a separately registered
-  numerical fallback as required by `AGENTS.md`.
 ## gfx1151 Q8T16 dual-WMMA alpha/beta rollback seam
 
 - Added 2026-08-15 for D08-X8 exact rows512/K1024/N16+N16 alpha/beta
@@ -10601,3 +10570,39 @@ mixed-prefill/decode, staggered admission, cancellation and cleanup on both
 backends and confirm the selected policy. TTFT/ITL comparisons evaluate the
 chosen behavior; they are not permission to run it. Historical fair-promotion
 evidence stays in the sweep inventory and original worklogs.
+
+### R0213 — Mirrored INT8 fallback migration and validation
+
+The serial-only description is obsolete. Native row-batched direct INT8
+attention is registered and consumed by packed decode; the gfx1100 physical-C4
+promotion is recorded in
+`worklog/entries/20260911T221928.116483Z-lhl-ikv-c2-completion-audit-e5b0e8.md`.
+Packed direct prefill and decode enforce their session-declared width bounds
+as distinct work classes. Shared-oracle prefill and uniform-INT8 graph support
+also exist. None of those implementations is blocked on the old IKV-C2 work.
+The earlier context-capacity rows are historical, not current admission limits.
+
+BF16 mirrors still serve short INT8 layouts when no mirror-free capability is
+selected. `_qwen35_gguf_kv_chunk_layout` omits mirrors for a selected mirror-free
+contract independently of the short-context threshold; `bf16_mirror` and
+`int8_direct` remain distinct attention sources. Deleting mirror allocation,
+copy or decode handling would break that supported storage route. Serial
+single-row kernels remain numerical and capability fallbacks.
+
+**Dependency:** finish the remaining replacement validation and migrate actual
+mirror consumers, not implement row-batched attention again. The historical
+campaign's c2/c4 memory-positive prefill and later lifecycle/quality/economics
+items are separate from its completed decode milestone; its closed front-matter
+and old active body are not a current runtime contract.
+**Clearing action:** exercise public direct and mirrored requests on both HIP
+backends with short, long, shifted and ragged allocations, cancellation, refill,
+resource rejection and cleanup; record selected storage/attention sources and
+actual persistent/transient ownership. Use the current planner to price these
+cases rather than reusing old capacity ceilings. Migrate or explicitly retire
+remaining mirrored callers before removing its allocation/copy/dispatch code.
+Run `tests/test_unit_qwen38_int8_kv_capability.py`,
+`tests/test_unit_qwen35_gguf_int8_kv_policy.py`,
+`tests/test_unit_gguf_packed_verify_layout.py` and
+`tests/test_unit_gguf_int8_mtp.py` alongside that public validation. Missing
+measurements do not disable the implemented direct path, and this disposition
+makes no new GPU, capacity or performance claim.
