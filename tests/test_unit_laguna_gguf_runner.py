@@ -1953,6 +1953,61 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
     ).parameters
 
 
+def test_retired_laguna_packed_query_attention_selector_fails_explicit_requests() -> None:
+    from hipengine.runtime.laguna_gguf_runner import (
+        LagunaGGUFResidentSession,
+    )
+
+    assert "prefill_attention_hipblaslt_packed_queries" not in signature(
+        LagunaGGUFResidentSession.__init__
+    ).parameters
+    for requested in (False, True):
+        with pytest.raises(TypeError, match="unexpected keyword"):
+            LagunaGGUFResidentSession(
+                prefill_attention_hipblaslt_packed_queries=requested
+            )
+    assert not hasattr(
+        LagunaGGUFResidentSession,
+        "set_prefill_attention_hipblaslt_packed_queries",
+    )
+    assert not hasattr(
+        LagunaGGUFResidentSession,
+        "prefill_attention_hipblaslt_packed_queries",
+    )
+
+
+def test_laguna_packed_query_attention_layout_follows_package_capability(
+    monkeypatch,
+) -> None:
+    assert runner_module._resolve_laguna_attention_packed_queries(
+        "hip_gfx1151"
+    )
+    assert not runner_module._resolve_laguna_attention_packed_queries(
+        "hip_gfx1100"
+    )
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
+        None,
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
+        None,
+    ) is None
+
+    from hipengine.kernels import hip_gfx1151 as package
+
+    monkeypatch.setattr(
+        package,
+        "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
+        False,
+    )
+    assert not runner_module._resolve_laguna_attention_packed_queries(
+        "hip_gfx1151"
+    )
+
+
 def test_rejected_laguna_raw_k_prefill_mmq_runtime_surface_is_removed() -> None:
     assert "raw_k_prefill_mmq" not in signature(
         runner_module.LagunaGGUFResidentSession.__init__

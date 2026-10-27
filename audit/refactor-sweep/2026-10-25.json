@@ -7163,23 +7163,23 @@
       "start_line": 6013,
       "end_line": 6027,
       "sha256": "9d13176a16de8837c03a7342d31f0d833b436aad4f88952656a3be333c04c72a",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed constructor selector and rebuild setter; backend layout and whole-BLAS/unsafe-shape fallbacks preserved. CPU full run plus focused live-pin repair, fixtures/smokes and packed/unpacked GPU oracle pass. Public Laguna checkpoint absent; bottom REFACTOR entry names gfx1151 gate and engagement clearing action. Worklog: worklog/entries/20261027T075235.718078Z-cleanup-refactor-r0273-09b19c.md."],
       "subitems": [
         {
           "line": 6015,
           "text": "- Added 2026-07-27 for the quality-gated two-call dense-initial attention",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 6019,
           "text": "- The route passes the tuned leaf, seven-pair pp512, CPU-reference,",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 6024,
           "text": "- Retain explicit false through the next selected-projection checkpoint, then",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

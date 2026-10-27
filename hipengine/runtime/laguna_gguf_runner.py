@@ -2260,6 +2260,13 @@ def resolve_laguna_activation_pack_reuse(backend: str) -> bool:
     )
 
 
+def _resolve_laguna_attention_packed_queries(backend: str) -> bool:
+    """Resolve the fixed dense-initial BLAS query layout from the package."""
+    return bool(backend_package_capability(
+        backend, "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES", False,
+    ))
+
+
 def _resolve_laguna_q5_activation_tile_k_row(backend: str) -> bool:
     """Detect bounded H5Y ownership from the quant-keyed package policy."""
 
@@ -2949,7 +2956,6 @@ class LagunaGGUFResidentSession:
         prefill_global_qrow6: bool | None = None,
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
-        prefill_attention_hipblaslt_packed_queries: bool | None = None,
         prefill_attention_hipblaslt_packed_query_producer: bool | None = None,
         prefill_attention_hipblaslt_wave_rows_softmax: bool | None = None,
         prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
@@ -3455,14 +3461,8 @@ class LagunaGGUFResidentSession:
             if prefill_attention_hipblaslt is None
             else prefill_attention_hipblaslt
         )
-        self.prefill_attention_hipblaslt_packed_queries = bool(
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
-                False,
-            )
-            if prefill_attention_hipblaslt_packed_queries is None
-            else prefill_attention_hipblaslt_packed_queries
+        self.prefill_attention_hipblaslt_packed_queries = (
+            _resolve_laguna_attention_packed_queries(self.backend)
         )
         self.prefill_attention_hipblaslt_packed_query_producer = bool(
             backend_package_capability(
@@ -4290,33 +4290,6 @@ class LagunaGGUFResidentSession:
         """Select tensorized rolling M128 SWA attention."""
 
         self.prefill_swa_attention_hipblaslt = bool(enabled)
-
-    def set_prefill_attention_hipblaslt_packed_queries(
-        self,
-        enabled: bool,
-    ) -> None:
-        """Pack query/output heads around the two-call BLAS candidate."""
-
-        selected = bool(enabled)
-        if selected == self.prefill_attention_hipblaslt_packed_queries:
-            return
-        self.prefill_attention_hipblaslt_packed_queries = selected
-        if self.attention_hipblaslt is not None:
-            route = self.attention_hipblaslt
-            self.attention_hipblaslt = None
-            route.close()
-        if self.long_attention_hipblaslt is not None:
-            route = self.long_attention_hipblaslt
-            self.long_attention_hipblaslt = None
-            route.close()
-        if self.block_attention_hipblaslt is not None:
-            route = self.block_attention_hipblaslt
-            self.block_attention_hipblaslt = None
-            route.close()
-        if self.swa_attention_hipblaslt is not None:
-            route = self.swa_attention_hipblaslt
-            self.swa_attention_hipblaslt = None
-            route.close()
 
     def set_prefill_attention_hipblaslt_wave_rows_softmax(
         self,

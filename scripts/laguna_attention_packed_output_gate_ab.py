@@ -90,7 +90,6 @@ def _child(
         prefill_chunk_size=512,
         prefill_attention_chunk_size=128,
         prefill_attention_hipblaslt=True,
-        prefill_attention_hipblaslt_packed_queries=True,
         prefill_attention_hipblaslt_packed_query_producer=(
             settings["packed_query_producer"]
         ),

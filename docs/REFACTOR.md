@@ -4697,21 +4697,6 @@ fallback count is not a success metric.
   keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
   one-release rollback window, then collapse both selectors.
 
-## Laguna packed-query F32 hipBLASLt attention selector
-
-- Added 2026-07-27 for the quality-gated two-call dense-initial attention
-  route. `prefill_attention_hipblaslt_packed_queries=false` restores the
-  admitted eight-QK/eight-PV route; unsafe attention shapes retain their
-  established `KVLiveSpans` fallbacks independently.
-- The route passes the tuned leaf, seven-pair pp512, CPU-reference,
-  pp512-all-exact KL, cached trace, and clean selector-unset gates. Production
-  improves **623.050/563.399/462.430 -> 629.101/566.858/463.903 tok/s**;
-  tracing cuts pp512 attention **82.763 -> 73.330 ms** and dispatches
-  **4,145 -> 2,417**.
-- Retain explicit false through the next selected-projection checkpoint, then
-  collapse the redundant positive selector/session rebuild path while keeping
-  the whole-BLAS-route rollback and every unsafe-shape `KVLiveSpans` fallback.
-
 ## Laguna direct packed-query producer rollback
 
 - Added 2026-07-27 as
@@ -10879,3 +10864,16 @@ engage the ordered-F32 owner and confirm resident-cache and activation-reuse
 selection, blocking/stream/direct parity, and cleanup. Until then this is a
 validation deferral, not a claim that the public path passed. It does not disable
 or restrict the implemented paths.
+
+### R0273 — Laguna public packed-query validation
+
+The redundant packed-query constructor selector and route-rebuild setter are
+removed. Backend capability metadata selects the layout; the whole-BLAS
+rollback, unpacked primitive and unsafe-shape `KVLiveSpans` fallbacks remain.
+
+**Dependency:** the same unavailable Laguna checkpoint noted above, on gfx1151
+for this packed-query route. **Clearing action:** run
+`python scripts/laguna_public_correctness.py "$LAGUNA_MODEL" --backend hip_gfx1151 --max-tokens 8 --output /tmp/laguna-packed-public.json`
+in the ROCm environment, with a prompt reaching the dense-initial BLAS path.
+Confirm packed-query selection, blocking/stream/direct parity and resource
+cleanup. Do not infer public engagement from leaf numerical tests.
