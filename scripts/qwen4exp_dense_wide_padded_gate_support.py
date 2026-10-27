@@ -1,7 +1,20 @@
 """Declared HC-down padded-tail diagnostic scope and engagement accounting."""
 
+from contextlib import contextmanager
+
 PARENT = "dense_wide256_f16in_f32_f32_out"
 CANDIDATE = "dense_wide256_padded_f16in_f32_f32_out"
+
+
+@contextmanager
+def parent_scope(runner):
+    """Keep both registry-substitution arms on their owned parent hook."""
+    prior = runner.dense_wide_tail_variant
+    runner.dense_wide_tail_variant = PARENT
+    try:
+        yield
+    finally:
+        runner.dense_wide_tail_variant = prior
 
 
 def admitted_shape(rows, k, n):

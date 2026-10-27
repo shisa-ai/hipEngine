@@ -188,13 +188,16 @@ def test_a_runner_cloned_after_the_bind_inherits_the_policy():
     from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
 
     generator = SimpleNamespace(dense_mmq_token64_enabled=True,
-                                dense_f16_pair_enabled=True)
+                                dense_f16_pair_enabled=True,
+                                dense_wide_tail_variant="dense_wide256_padded_f16in_f32_f32_out")
     clone = _inherit_lane_decisions(generator, SimpleNamespace())
     assert clone.dense_mmq_token64_enabled is True
     assert clone.dense_f16_pair_enabled is True
+    assert clone.dense_wide_tail_variant == generator.dense_wide_tail_variant
     unbound = _inherit_lane_decisions(SimpleNamespace(), SimpleNamespace())
     assert unbound.dense_mmq_token64_enabled is False
     assert unbound.dense_f16_pair_enabled is False
+    assert unbound.dense_wide_tail_variant is None
 
 
 def test_the_campaign_arm_is_a_scoped_control_not_an_env_write():

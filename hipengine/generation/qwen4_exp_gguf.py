@@ -308,6 +308,7 @@ class Qwen4ExpGGUFTextGenerator:
         # unbound generator keeps the parent route, and every c1 runner cloned
         # from it inherits the published decisions.
         self.dense_f16_pair_enabled = False
+        self.dense_wide_tail_variant = None
         self.dense_mmq_token64_enabled = False
         self.dense_mmq_raw_vector_enabled = False
         self.dense_mmq_vec4_enabled = False
@@ -1076,6 +1077,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     request.
     """
 
+    runner.dense_wide_tail_variant = getattr(generator, "dense_wide_tail_variant", None)
     runner.dense_f16_pair_enabled = bool(
         getattr(generator, "dense_f16_pair_enabled", False))
     runner.dense_mmq_token64_enabled = bool(

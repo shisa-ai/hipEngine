@@ -59,11 +59,7 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # so this gate keeps isolating the q5k gate/up arithmetic alone.
         environment["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] = "0"
     if package == "dense-wide-padded":
-        # Registry substitution owns the diagnostic comparison; keep native
-        # padded admission off in both arms so neither can bypass this hook.
-        from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
-        from scripts.qwen4exp_dense_wide_padded_gate_support import PARENT
-        environment[DENSE_WIDE_TAIL_VARIANT_ENV] = PARENT
+        # route_scope binds the runner's parent for both registry arms.
         return
     if package in {"gdn-narrow", "gdn-wave-norm"}:
         # Request-local on the runner; ``route_scope`` binds the arm around the

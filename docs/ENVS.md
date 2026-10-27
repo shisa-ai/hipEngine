@@ -807,7 +807,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` | profile-selected | Replaces the multi-column tile-16 GDN prefill body (for example with the row-split recurrence). |
 | `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` | unset (F16 route sets `1`) | Multi-row FP32 indexer projections on the small-matrix F16 WMMA GEMM. |
 | `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` | retired | No longer read. Whether the dense-wide F16 projections share one activation is a request-local decision the execution profile publishes to the runner that owns the prefill; regression tests assert this switch cannot enable it. |
-| `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` | profile-selected | Names the dense-wide tail owner for padded fragments. |
 | `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` | `1` | Three-launch hyper-connection read at one row (bit-identical); `0` restores the six-launch chain. |
 | `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
 | `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` | unset (F16 route sets `1`) | Hyper-connection read projections launched directly on F16 activations (bit-identical). |
@@ -1149,6 +1148,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` is retired and ignored. The
+  profile binds the tail variant to its generator and runners; prefill scopes
+  expose it to launch selection. Diagnostic parent controls are runner-local.
 
 - `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS` is retired and ignored. The registered
   K320 specialization follows the selected DPP parent for supported full-row

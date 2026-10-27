@@ -36,7 +36,6 @@ def main():
     from hipengine.kernels.registry import KernelKey, resolve, register
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
-    from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
     from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture, _git_metadata, _host_metadata
     from scripts.qwen4exp_layer2_profile_gate import _state_summary
     from scripts.gguf_gdn_semantic_gate import _load_suites
@@ -46,8 +45,6 @@ def main():
     )
     from scripts.qwen4exp_gdn_narrow_native_smoke import profile_record
 
-    env = DENSE_WIDE_TAIL_VARIANT_ENV
-    os.environ.pop(env, None)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     profiles = {p: resolve_runtime_profile(model="qwen4_exp_gguf", backend="hip_gfx1151",
@@ -67,8 +64,8 @@ def main():
         generator = production.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
             model_path=args.model_root, weight_index=index, model_plugin=resolve_model(index.architecture or ""),
             backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
-        assert os.environ[env] == CANDIDATE
-        report["native_binder_value"] = os.environ[env]
+        assert generator.runner.dense_wide_tail_variant == CANDIDATE
+        report["native_binder_value"] = generator.runner.dense_wide_tail_variant
         counts = {PARENT: 0, CANDIDATE: 0}
         for variant in counts:
             key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", variant)
@@ -92,9 +89,9 @@ def main():
             captures = []
             for mode in ("native", "parent", "native", "parent"):
                 if mode == "parent":
-                    os.environ[env] = PARENT
-                elif os.environ[env] != CANDIDATE:
-                    os.environ[env] = report["native_binder_value"]
+                    generator.runner.dense_wide_tail_variant = PARENT
+                elif generator.runner.dense_wide_tail_variant != CANDIDATE:
+                    generator.runner.dense_wide_tail_variant = report["native_binder_value"]
                 before = dict(counts)
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_state = _state_summary(generator.runner)

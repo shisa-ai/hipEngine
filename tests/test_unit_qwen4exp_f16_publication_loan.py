@@ -28,7 +28,6 @@ def publish(**kw):
 @pytest.fixture
 def fake_launch(monkeypatch):
     casts, calls = [], []
-    monkeypatch.setenv(linear.DENSE_WIDE_TAIL_VARIANT_ENV, TARGET)
     monkeypatch.setattr(linear, "is_registered", lambda key: True)
     monkeypatch.setattr(linear, "resolve", lambda **key: lambda *a, **k: calls.append((key, a, k)))
     monkeypatch.setattr("hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide.f32_to_f16",
@@ -41,7 +40,8 @@ def fake_launch(monkeypatch):
         stream = args.pop("stream")
         return linear._launch_dense_wide_f16_staged(None, weight, out_ptr=OUT,
             kwargs={"stream": stream}, quant=KEY.quant, layer=KEY.layer, **args)
-    return launch, casts, calls
+    with linear.dense_wide_tail_session(TARGET):
+        yield launch, casts, calls
 
 
 def test_accepts_exact_consumer_and_uses_variant_scoped_library(fake_launch):

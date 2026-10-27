@@ -201,28 +201,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   parent and strict unfused chain. Evidence:
   `benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/`.
 
-## Padded-fragment dense-wide production tail and rollback
-
-- The F16-input `dense_wide256_padded_f16in_f32_f32_out` leaf is selected
-  only by gfx1151 UD-Q4_K_XL production for K10240/N320, rows512–4096,
-  within the existing dense-wide layers13–47 scope. Backend registry-axis
-  metadata bounds the launch-time rewrite after successful F16 staging;
-  missing registration retains the F16 parent. Strict retains raw-F32 coltile.
-  F32-input padded siblings and other shapes remain diagnostic.
-- Named production registration now encodes the padded choice directly and
-  ignores pre-registration environment values. Binder output agrees with that
-  fixed manifest. `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` still controls
-  launch-time diagnostic selection after binding; migrate that control to
-  scoped diagnostic ownership, preserving parent/strict leaves and shape tests.
-- The full20-case state/KV/repeat gate and tracked-clean12-case three-pair
-  engine A/B pass. Natural complete-GEMM gain1.312–1.361x, scratch92→0B,
-  spills58→0; prefill+1.036%/+0.594%/+0.445%, total request wall−0.162%.
-  Two request cases lose0.214%/0.279%, so no all-case request/decode-speed
-  claim. Diagnostic substitution plumbing remains useful for explicit
-  parent/candidate gates; remove it only after a generic named-route gate
-  covers the same bounds and engagement assertions.
-  Evidence: `benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/`.
-
 
 ## Prefill chunk capacity guard
 

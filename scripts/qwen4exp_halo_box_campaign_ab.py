@@ -1589,6 +1589,12 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
     )
 
+    if route_package == "dense-wide-padded":
+        if runner is None:
+            raise ValueError("dense-wide-padded needs the owning runner")
+        from scripts.qwen4exp_dense_wide_padded_gate_support import parent_scope
+        return parent_scope(runner)
+
     if route_package == "pf13":
         if runner is None:
             # Binding nothing would measure whatever the plan published and
@@ -1876,11 +1882,7 @@ def _apply_mode(
     if route_package == "dense-wide-padded":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        # Both diagnostic arms enter through the parent registry hook, even
-        # after the named production plan starts selecting the padded leaf.
-        from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
-        from scripts.qwen4exp_dense_wide_padded_gate_support import PARENT
-        environment[DENSE_WIDE_TAIL_VARIANT_ENV] = PARENT
+        # route_scope binds the request-local parent for both registry arms.
         return
     if route_package == "gdn-narrow":
         if mode not in {"before", "after"}:

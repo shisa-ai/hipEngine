@@ -31,7 +31,6 @@ def test_native_norm_consumer_single_use_and_nondefault_stream(monkeypatch):
     register_gfx1151_kernels(replace=True)
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str,range(13,48))))
-    monkeypatch.setenv(linear.DENSE_WIDE_TAIL_VARIANT_ENV, "dense_wide256_padded_f16in_f32_f32_out")
     rows, branches, hidden, n = 4096, 4, 2560, 320
     k = branches * hidden
     rng = np.random.default_rng(3007)
@@ -63,7 +62,7 @@ def test_native_norm_consumer_single_use_and_nondefault_stream(monkeypatch):
             allocation=lambda _:SimpleNamespace(tensor=SimpleNamespace(ptr=wd.ptr),buffer=wd))
         scratch=SimpleNamespace(normalized=nd,low_rank=od)
         snapshots=[]
-        with linear.wide_f16_activation_session(workspace_ptr=hd.ptr,workspace_nbytes=hd.nbytes):
+        with linear.dense_wide_tail_session("dense_wide256_padded_f16in_f32_f32_out"), linear.wide_f16_activation_session(workspace_ptr=hd.ptr,workspace_nbytes=hd.nbytes):
             for enabled in ("0","1","1","0"):
                 monkeypatch.setenv(linear.NORM_F16_PUBLICATION_ENV,enabled)
                 start=len(casts)

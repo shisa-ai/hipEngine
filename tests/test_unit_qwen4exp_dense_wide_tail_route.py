@@ -39,7 +39,9 @@ def profile(kind=ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl"):
 def bind(result):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        result.binder(SimpleNamespace(), result)
+        target = SimpleNamespace()
+        result.binder(target, result)
+    return target
 
 
 def test_ud_manifest_and_binder_select_bounded_leaf():
@@ -48,8 +50,7 @@ def test_ud_manifest_and_binder_select_bounded_leaf():
     assert row["selected_variant"] == PADDED
     assert row["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     assert row["evidence_artifact"].endswith("dense-wide-padded-gate/README.md")
-    bind(result)
-    assert os.environ[ENV] == PADDED
+    assert bind(result).dense_wide_tail_variant == PADDED
     assert os.environ["HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256"] == result.manifest_sha256
 
 
@@ -62,25 +63,21 @@ def test_other_profiles_do_not_admit_padded(kind, quant, monkeypatch):
     monkeypatch.setenv(ENV, PADDED)
     result = profile(kind, quant)
     assert all(r["selected_variant"] != PADDED for r in result.manifest["selections"])
-    bind(result)
-    assert os.environ[ENV] == PARENT
+    assert bind(result).dense_wide_tail_variant == PARENT
 
 
 def test_named_manifest_is_stable_and_rebind_does_not_leak(monkeypatch):
     result = profile()
     bind(result)
     monkeypatch.setenv(ENV, PARENT)
-    bind(result)
-    assert os.environ[ENV] == PADDED
+    assert bind(result).dense_wide_tail_variant == PADDED
     clear_runtime_profile_registry_for_tests()
     monkeypatch.setenv(ENV, PARENT)
     rollback = profile()
     assert rollback.manifest_sha256 == result.manifest_sha256
     assert next(r for r in rollback.manifest["selections"] if r["scope"] == SCOPE)["selected_variant"] == PADDED
-    bind(rollback)
-    assert os.environ[ENV] == PADDED
-    bind(profile(ExecutionProfile.STRICT))
-    assert os.environ[ENV] == PARENT
+    assert bind(rollback).dense_wide_tail_variant == PADDED
+    assert bind(profile(ExecutionProfile.STRICT)).dense_wide_tail_variant == PARENT
 
 
 def test_unknown_legacy_override_does_not_change_named_selection(monkeypatch):
@@ -105,7 +102,8 @@ def test_unknown_legacy_override_does_not_change_named_selection(monkeypatch):
 def test_capability_shape_and_parent_boundary(backend, quant, target, rows, k, n, expected, monkeypatch):
     monkeypatch.setenv(ENV, PADDED)
     key = KernelKey(backend, "linear", quant, target)
-    assert linear._dense_wide_f16_tail_key(key, rows=rows, in_features=k, out_features=n).variant == expected
+    with linear.dense_wide_tail_session(PADDED):
+        assert linear._dense_wide_f16_tail_key(key, rows=rows, in_features=k, out_features=n).variant == expected
 
 
 def test_native_smoke_help_does_not_touch_hip():
@@ -142,7 +140,7 @@ def test_launch_stage_abi_library_and_fail_closed(workspace_bytes, enabled, regi
     monkeypatch.setattr("hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide.f32_to_f16",
                         lambda *a, **kw: casts.append((a, kw)))
     libraries = {f"gguf_q8_0:{PARENT}": object(), f"gguf_q8_0:{PADDED}": object()}
-    with linear.wide_f16_activation_session(workspace_ptr=0x5000, workspace_nbytes=workspace_bytes):
+    with linear.dense_wide_tail_session(PADDED), linear.wide_f16_activation_session(workspace_ptr=0x5000, workspace_nbytes=workspace_bytes):
         swapped = linear._launch_dense_wide_f16_staged(
             None, Weight(), 0x1000, 0x2000, 512, 10240, 320, {"stream": 7},
             backend="hip_gfx1151", quant="gguf_q8_0", layer="linear",

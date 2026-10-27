@@ -19,7 +19,6 @@ from hipengine.execution_profiles import (
 )
 
 from hipengine.runtime.gguf_linear import (
-    DENSE_WIDE_TAIL_VARIANT_ENV,
     NORM_F16_PUBLICATION_ENV,
 )
 
@@ -1288,14 +1287,6 @@ def _bind(
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
             else ""
         ),
-        # Publish the same bounded tail leaf declared in the UD manifest.
-        # Strict and Q4_K_M cannot inherit a preceding UD binder's selection.
-        DENSE_WIDE_TAIL_VARIANT_ENV: (
-            next(row["selected_variant"] for row in resolved.manifest["selections"]
-                 if row["scope"] == _DENSE_WIDE_TAIL_SCOPE)
-            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
-            else _DENSE_WIDE_TAIL_PARENT
-        ),
         # Publish the manifest's bounded producer selection. Other quants and
         # strict cannot inherit a preceding UD binder's publisher or opt-out.
         NORM_F16_PUBLICATION_ENV: (
@@ -1402,6 +1393,12 @@ def _bind(
     # already built. A generator that builds its runner later still receives the
     # decision, and any c1 runner it clones inherits it; an unbound one keeps the
     # parent route.
+    generator.dense_wide_tail_variant = (
+        next(row["selected_variant"] for row in resolved.manifest["selections"]
+             if row["scope"] == _DENSE_WIDE_TAIL_SCOPE)
+        if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+        else _DENSE_WIDE_TAIL_PARENT
+    )
     generator.dense_f16_pair_enabled = dp2_pair_enabled
     generator.dense_mmq_token64_enabled = dense_mmq_token64_enabled
     generator.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
@@ -1453,6 +1450,7 @@ def _bind(
     generator.q8_mapped_down = q8_mapped_down
     runner = getattr(generator, "runner", None)
     if runner is not None:
+        runner.dense_wide_tail_variant = generator.dense_wide_tail_variant
         runner.dense_f16_pair_enabled = dp2_pair_enabled
         runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled
         runner.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled

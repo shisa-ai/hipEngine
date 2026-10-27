@@ -10,9 +10,7 @@ from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
 @pytest.mark.parametrize("enabled", ["0", "1"])
 def test_tail_gate_modes_do_not_mutate_named_arithmetic(enabled):
     environment = {"unrelated": "kept"}
-    from hipengine.runtime.gguf_linear import DENSE_WIDE_TAIL_VARIANT_ENV
-    from scripts.qwen4exp_dense_wide_padded_gate_support import PARENT
-    expected = {"unrelated": "kept", DENSE_WIDE_TAIL_VARIANT_ENV: PARENT}
+    expected = {"unrelated": "kept"}
     apply_state_gate_mode(None, "dense-wide-padded", enabled, "unused", environment=environment)
     assert environment == expected
     _apply_mode("after" if enabled == "1" else "before", route_package="dense-wide-padded",

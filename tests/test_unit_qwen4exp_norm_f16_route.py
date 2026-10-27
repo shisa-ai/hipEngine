@@ -27,7 +27,6 @@ def setup(monkeypatch):
     monkeypatch.setenv(ENV, "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13,48))))
-    monkeypatch.setenv(linear.DENSE_WIDE_TAIL_VARIANT_ENV, PADDED)
     calls = []
     monkeypatch.setattr(runner, "qwen4_exp_grouped_rmsnorm_bf16_f32",
                         lambda *a, **k: calls.append(("parent", a, k)))
@@ -40,7 +39,8 @@ def setup(monkeypatch):
             consumer_key=linear.KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PADDED)) == HALF
         calls.append(("down", a, k))
     monkeypatch.setattr(runner, "launch_gguf_linear", launch)
-    return calls
+    with linear.dense_wide_tail_session(PADDED):
+        yield calls
 
 
 def run(w=None, rows=4096, branches=4, hidden=2560, low_rank=320):

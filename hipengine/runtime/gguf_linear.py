@@ -567,7 +567,19 @@ def _launch_prefill_f16_staged(
 NORM_F16_PUBLICATION_ENV = "HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH"
 _WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
 _WIDE_F16_ACTIVATION_TARGET_SUFFIX = "_f16in_f32_f32_out"
-DENSE_WIDE_TAIL_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT"
+_dense_wide_tail_variant: ContextVar[str | None] = ContextVar(
+    "dense_wide_tail_variant", default=None,
+)
+
+
+@contextlib.contextmanager
+def dense_wide_tail_session(variant: str | None):
+    """Bind the manifest-selected tail to this execution scope."""
+    token = _dense_wide_tail_variant.set(variant)
+    try:
+        yield
+    finally:
+        _dense_wide_tail_variant.reset(token)
 
 
 def _dense_wide_f16_tail_key(
@@ -575,7 +587,7 @@ def _dense_wide_f16_tail_key(
 ) -> KernelKey:
     """Select only a bound, backend-qualified F16 tail; otherwise keep parent."""
 
-    requested = os.environ.get(DENSE_WIDE_TAIL_VARIANT_ENV, "")
+    requested = _dense_wide_tail_variant.get()
     if not requested or requested == key.variant:
         return key
     policies = backend_package_capability(

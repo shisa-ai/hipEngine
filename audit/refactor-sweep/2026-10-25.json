@@ -389,23 +389,23 @@
       "start_line": 372,
       "end_line": 394,
       "sha256": "189a981e065452167bebc3f3c682204ff017d6b826b2ff647f9f19668483f7e0",
-      "status": "partial-manifest-stabilized",
-      "evidence": ["Named production registration now fixes padded selection regardless of pre-registration environment; binder/manifest agreement and strict selections preserved. RED/GREEN focused profiles, full CPU bundle and public padded-tail engagement with prior parent value pass. Launch-time environment reader and post-binder diagnostics remain open. Worklog: worklog/entries/20261027T111041.488466Z-cleanup-refactor-r0017-manifest-e3ca5c.md."],
+      "status": "resolved-runner-local",
+      "evidence": ["Named profile registration stabilized in b4f394fc3. Launch selection now uses runner-owned variant bound in an execution ContextVar, clone inheritance and scoped diagnostic parent controls; no environment reader/binding remains. Full CPU bundle, restoration/ownership tests, GPU publication loan and public padded/parent engagement with legacy env untouched pass. Preserve independent diagnostic substitution until equivalent generic gate coverage exists. Worklog: worklog/entries/20261027T112530.899759Z-cleanup-refactor-r0017-owner-0a24e2.md."],
       "subitems": [
         {
           "line": 374,
           "text": "- The F16-input `dense_wide256_padded_f16in_f32_f32_out` leaf is selected",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 380,
           "text": "- `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` is a temporary named-plan",
-          "status": "partial-registration-reader-removed"
+          "status": "resolved-runner-local"
         },
         {
           "line": 386,
           "text": "- The full20-case state/KV/repeat gate and tracked-clean12-case three-pair",
-          "status": "pending"
+          "status": "not-debt-retained"
         }
       ]
     },
