@@ -8174,17 +8174,6 @@ under the manifest; retain rollback and registered strict fallbacks.
   Remove the environment selector when the admitted profile owns dispatch
   directly and rollback needs expire; retain smaller-row/bundled fallbacks.
 
-## Qwen4Exp Q4 larger row-batch screen rejected
-
-- RB16/32 template instantiations and temporary wrappers/registry selectors
-  are removed after all12 masked uniform/skewed x tokens512/1024/2048
-  gate/up+SiLU cells lose to production RB8.
-- Keep the harness's inferred weight-pass counts as diagnostic metadata;
-  never label them measured DRAM/MALL traffic. Register counts grow88->120/176,
-  with zero scratch in observed traces.
-- Reopen only for a different resource/reuse mechanism, not the same template
-  enlargement. No persistent candidate flag or default change remains.
-
 ## Qwen4Exp Q8 wave-scale rollback
 
 - Separate registered `coltile8_rowbatch4_wave_scale_f32_f32_out` is retained

@@ -11817,23 +11817,23 @@
       "start_line": 9566,
       "end_line": 9576,
       "sha256": "5300a125fc898c5275748d17165d45f7685d17415074d67f7c3fbc932e53f690",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Rejected RB16/RB32 selected-Q4 wrappers/templates absent; diagnostic inferred weight-pass metadata preserved. Completed receipt removed. Worklog: worklog/entries/20261027T051248.504284Z-cleanup-refactor-r0417-8f8cc9.md."],
       "subitems": [
         {
           "line": 9568,
           "text": "- RB16/32 template instantiations and temporary wrappers/registry selectors",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 9571,
           "text": "- Keep the harness's inferred weight-pass counts as diagnostic metadata;",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 9574,
           "text": "- Reopen only for a different resource/reuse mechanism, not the same template",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
