@@ -2130,23 +2130,23 @@
       "start_line": 2435,
       "end_line": 2471,
       "sha256": "99bae7a04305df8701e910dfdc23c24ae16763542d0f9276a20fc12b29fae3d2",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-duplicate-rows",
+      "evidence": ["Full-attention per-row split leaf resolution verified in qwen35_gguf_runner.py; focused split-boundary/no-shared-cache/missing-leaf tests in test_live_gguf_native_spec_cycle.py and decode-state/probe unit targets pass (CPU mocks, not fresh GPU evidence). Remaining STAGED_LINEAR_ROWS_LONG control is owned by R0382; preserve that entry and registered strict fallback. Historical artifacts/worklogs remain unchanged; no new timing claim."],
       "subitems": [
         {
           "line": 2437,
           "text": "- Resolved: `_run_full_attention_attn_chain_rows_exact` no longer raises",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 2454,
           "text": "- Resolved for the measured artifact (2026-09-19): the staged *linear*-attention",
-          "status": "pending"
+          "status": "resolved-duplicate-R0382"
         },
         {
           "line": 2466,
           "text": "- Historical note: the only measured way to reach the batched long-row route",
-          "status": "pending"
+          "status": "verified-current"
         }
       ]
     },

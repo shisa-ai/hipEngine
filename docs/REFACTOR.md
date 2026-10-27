@@ -2367,43 +2367,6 @@ the allocation repair. The observations and proposal below are historical.
 - The invariant stands while the loop lives: a reused row's prefix pages are
   shared with another request, so no fallback may write them.
 
-## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17, resolved 2026-09-18)
-
-- Resolved: `_run_full_attention_attn_chain_rows_exact` no longer raises
-  `"staged full-attention chain currently requires non-split decode"` when the
-  span-wide attention limit crosses the split threshold. Every verifier row now
-  resolves its own c1 attention leaf (`_staged_full_attention_row_leaf`) — the
-  split-K gate leaf with the scalar owner's own chunk size and split tiling at or
-  above the threshold, and the short-context batch leaf or the plain leaf below
-  it, whichever the scalar owner would pick from `position + 1` — so the batched
-  projections, head norm/rotary, KV writes, and output projection stay batched
-  across the boundary while ordinary decoding keeps split-K attention. Eager
-  verification builds the per-row views the graph owner already gets from device
-  metadata (`_eager_native_row_views`), and `_staged_full_attention_rows_ready`
-  keeps the row-wise strict route for any row whose leaf does not resolve.
-  Measured on the eager long-context packet: cycle wall 8.129 s -> 7.893 s median
-  (-2.9%, 7 of 10 cases faster), 10/10 direct cases exact against the
-  serial-exact teacher, 16/32 split-K calls per case unchanged
-  (`worklog/entries/20260917T195925.422701Z-lhl-gguf-long-context-eager-staged-attention-2c4ca3.md`,
-  `benchmarks/results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json`).
-- Resolved for the measured artifact (2026-09-19): the staged *linear*-attention
-  chain is byte-exact above the split threshold on the current dense Q4_K_M
-  path, so the blanket row-wise rule no longer has a correctness reason to cover
-  it and the backend default admits the staged chain for that file type (see the
-  row-wise strict dispatch entry above). The row-wise c1 route stays registered
-  as the strict fallback for every other artifact identity and behind
-  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0`; it is not dead code. The recorded
-  0.90x/0.68x serving ratios were measured with the row-wise rule in force
-  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`).
-  The adapter's 1,023-token provider window that also refused serving MTP above a
-  1,022-token prompt was a separate blocker from this route and has since been
-  removed (see the entry above).
-- Historical note: the only measured way to reach the batched long-row route
-  before this was to raise the split threshold past the request's context (or
-  disable it with `0`), which cost normal decoding about 9% at 3,530 prompt
-  tokens. That workaround is no longer needed for full attention, and the
-  linear rows now have their own default-off admission instead.
-
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
 - Resolved 2026-09-17: an omitted `--speculative-candidate-budget`
