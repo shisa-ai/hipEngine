@@ -77,7 +77,7 @@ def test_profile_partitioned_bench_leaves_subgroup_route_env_unset(
     monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
     monkeypatch.delenv("HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR", raising=False)
     route_env = (
-        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE",
+        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE",
         "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT",
         "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE",
         "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS",
@@ -105,7 +105,7 @@ def test_c1_reference_temporarily_clears_parent_batch_route_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     route_env = {
-        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE": "1",
+        "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE": "1",
         "HIPENGINE_QWEN35_BATCH_SAMPLE_MODE": "batched_lm_head",
         "HIPENGINE_QWEN35_BATCH_SAMPLE_EQ_ROWS": "8",
         "HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE": "1",

@@ -4439,7 +4439,6 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
     force_selected_batch_moe = batch_decode_moe_path == "selected_batch"
     selected_batch_env_value = "1" if force_selected_batch_moe else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"] = selected_batch_env_value
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = selected_batch_env_value
     os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] = selected_batch_env_value
     os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] = (
         "1" if getattr(args, "batch_prefill_linear_path", "packed_segments") == "per_segment" else "0"
@@ -5260,7 +5259,7 @@ def main(argv: list[str] | None = None) -> int:
         "--batch-decode-moe-path",
         choices=("auto", "grouped_compact", "selected_batch", "selected_c1"),
         default="auto",
-        help="Global MoE path for c>N batch decode; selected_batch is one c-aware selected-MoE batch transition, while selected_c1 is its deprecated compatibility alias.",
+        help="Global MoE path for c>N batch decode; selected_batch is one c-aware selected-MoE batch transition. selected_c1 is a replay alias for archived benchmark commands.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",

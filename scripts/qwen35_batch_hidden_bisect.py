@@ -5712,7 +5712,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--batch-decode-moe-path",
         choices=("grouped_compact", "selected_batch", "selected_c1"),
         default="grouped_compact",
-        help="MoE path for native c>N batch decode; selected_batch is c-aware and selected_c1 is its deprecated compatibility alias.",
+        help="MoE path for native c>N batch decode; selected_batch is c-aware. selected_c1 is a replay alias for archived diagnostic commands.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",
@@ -6113,7 +6113,6 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     os.environ.setdefault("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
     selected_batch_env_value = "1" if batch_decode_moe_path == "selected_batch" else "0"
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"] = selected_batch_env_value
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = selected_batch_env_value
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] = (
         "1" if args.batch_decode_linear_path == "per_row" else "0"
     )

@@ -287,18 +287,12 @@ def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
     assert runner_module._retained_linear_row_chunk_size(6) == 0
 
 
-def test_qwen35_selected_batch_moe_env_precedes_legacy_alias(monkeypatch) -> None:
+def test_qwen35_selected_batch_moe_uses_only_canonical_env(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE", "0")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
-    assert runner_module._env_flag_override(
-        runner_module._SELECTED_BATCH_MOE_ENV,
-        runner_module._SELECTED_BATCH_MOE_LEGACY_ENV,
-    ) is False
+    assert runner_module._env_flag_override(runner_module._SELECTED_BATCH_MOE_ENV) is False
     monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE")
-    assert runner_module._env_flag_override(
-        runner_module._SELECTED_BATCH_MOE_ENV,
-        runner_module._SELECTED_BATCH_MOE_LEGACY_ENV,
-    ) is True
+    assert runner_module._env_flag_override(runner_module._SELECTED_BATCH_MOE_ENV) is None
 
 
 def test_qwen35_retained_batch_defaults_load_projection_artifact(
@@ -4433,7 +4427,7 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
 
 
 def test_qwen35_resident_run_layers_batch_decode_reports_selected_c1_with_per_row_full_fallback(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", "0")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
@@ -4514,7 +4508,7 @@ def test_qwen35_resident_run_layers_batch_decode_chunks_native_full_attention(
     force_native_row_chunk_output: bool,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_FULL_ATTN_NATIVE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE", "1")
     if row_chunk_env is None:
         monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE", raising=False)
     else:
@@ -7089,9 +7083,9 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
     ) -> tuple[Qwen35ParoResidentSession, list[tuple[int, tuple[int, ...]]], list[tuple[int, bool]], object]:
         monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
         if selected_c1_moe_env is None:
-            monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", raising=False)
+            monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE", raising=False)
         else:
-            monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", selected_c1_moe_env)
+            monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE", selected_c1_moe_env)
         if linear_row_chunk_env is None:
             monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE", raising=False)
         else:

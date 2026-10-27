@@ -167,7 +167,6 @@ _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
 _NATIVE_BATCH_DECODE_ENV = "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
 _SELECTED_BATCH_MOE_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"
-_SELECTED_BATCH_MOE_LEGACY_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
 _MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV = "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT"
 _DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
     "benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json"
@@ -6193,10 +6192,7 @@ class Qwen35ParoResidentSession:
         full_attention_context_kernel_variants: set[str] = set()
         row_chunked_full_attention_layers: list[int] = []
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
-        selected_batch_moe_override = _env_flag_override(
-            _SELECTED_BATCH_MOE_ENV,
-            _SELECTED_BATCH_MOE_LEGACY_ENV,
-        )
+        selected_batch_moe_override = _env_flag_override(_SELECTED_BATCH_MOE_ENV)
         force_selected_c1_moe = (
             (not dense_mlp)
             and rows > 1
