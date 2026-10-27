@@ -375,6 +375,44 @@ def test_bridge_rejects_tracked_dirty_provenance() -> None:
         validate_bridge_artifact(payload)
 
 
+def test_bridge_rejects_unexpected_untracked_provenance() -> None:
+    payload = _artifact()
+    payload["provenance"]["unexpected_untracked"] = ["scratch_probe.py"]
+
+    with pytest.raises(BridgeContractError, match="unexpected untracked"):
+        validate_bridge_artifact(payload)
+
+
+@pytest.mark.parametrize("field", ["staged_dirty", "unstaged_dirty"])
+def test_bridge_refuses_a_missing_or_malformed_dirty_flag(field: str) -> None:
+    """A missing flag is a contract breach, not a clean worktree."""
+
+    for value in ("absent", None, "false", 0):
+        payload = _artifact()
+        if value == "absent":
+            del payload["provenance"][field]
+        else:
+            payload["provenance"][field] = value
+        with pytest.raises(BridgeContractError, match=field):
+            validate_bridge_artifact(payload)
+
+
+@pytest.mark.parametrize("value", ["absent", None, "none", {}])
+def test_bridge_refuses_a_missing_or_malformed_untracked_list(value: object) -> None:
+    payload = _artifact()
+    if value == "absent":
+        del payload["provenance"]["unexpected_untracked"]
+    else:
+        payload["provenance"]["unexpected_untracked"] = value
+
+    with pytest.raises(BridgeContractError, match="unexpected_untracked"):
+        validate_bridge_artifact(payload)
+
+
+def test_bridge_accepts_a_clean_provenance_record() -> None:
+    validate_bridge_artifact(_artifact())
+
+
 def test_bridge_rejects_silent_route_substitution() -> None:
     payload = _artifact()
     payload["cells"][0]["arms"]["specdec2"]["realized_route"] = "legacy_native"

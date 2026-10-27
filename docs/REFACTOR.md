@@ -8348,13 +8348,17 @@ new schema-3 measurements and source revalidation. Legacy artifacts without
 that field retain a conservative coarse-dirty check; a missing or malformed
 cleanliness value does not establish a clean measurement.
 
-Remaining cleanup: the WMMA-layer and MMQ-plane gates still use
-`provenance.get("dirty")` as a fallback when the execution-affecting field is
-absent. Define their supported legacy-artifact contract before deleting that
-fallback. `scripts/specdec2_perf_bridge.py` deliberately gates staged/unstaged
-changes separately; review its publication contract before relaxing it. The
-other previously listed production/campaign/README refresh scripts no longer
-contain dirty-state logic. Do not close this row on the Q8 route repair alone.
+Fresh WMMA-layer and MMQ-plane gates require an explicit
+`execution_affecting_dirty=False` from their current collector. They do not
+consume legacy provenance. Missing or malformed classification blocks both
+measurement validity and qualification claims. The performance bridge keeps
+its separate tracked-clean publication contract and rejects missing or malformed
+tracked-dirty and unexpected-untracked fields. Legacy Q8 route revalidation
+uses a conservative coarse-dirty check only for artifacts without classification.
+
+The previously listed production/campaign/README refresh scripts no longer
+contain coarse dirty-state logic. This migration is complete; these supported
+provenance contracts are intentional, not pending cleanup.
 
 ## 2026-09-16 Qwen4Exp binder: pre-binder env conflicts are reported
 

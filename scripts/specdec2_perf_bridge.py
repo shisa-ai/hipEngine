@@ -847,9 +847,21 @@ def validate_bridge_artifact(payload: Mapping[str, Any]) -> None:
     provenance = payload.get("provenance")
     if not isinstance(provenance, Mapping):
         raise BridgeContractError("artifact has no provenance")
-    if bool(provenance.get("staged_dirty")) or bool(provenance.get("unstaged_dirty")):
+    # This record is written by ``_repo_provenance``, which always emits real
+    # booleans and a list. A missing or malformed field is a contract breach,
+    # not a clean worktree: ``bool(None)`` would otherwise pass silently.
+    for field in ("staged_dirty", "unstaged_dirty"):
+        if type(provenance.get(field)) is not bool:
+            raise BridgeContractError(
+                f"performance bridge provenance {field} must be a bool"
+            )
+    if not isinstance(provenance.get("unexpected_untracked"), (list, tuple)):
+        raise BridgeContractError(
+            "performance bridge provenance unexpected_untracked must be a list"
+        )
+    if provenance["staged_dirty"] or provenance["unstaged_dirty"]:
         raise BridgeContractError("performance bridge requires a tracked-clean worktree")
-    if provenance.get("unexpected_untracked"):
+    if provenance["unexpected_untracked"]:
         raise BridgeContractError("performance bridge has unexpected untracked files")
     workload = payload.get("workload")
     if not isinstance(workload, Mapping):

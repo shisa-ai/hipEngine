@@ -63,6 +63,59 @@ DEFAULT_FIXTURE = Path(
 )
 
 
+def _classified_worktree_clean(provenance: Mapping[str, Any]) -> bool:
+    """Whether this gate's own collector record classifies the worktree clean.
+
+    The record comes from the current collector, so only its exact ``False``
+    clears a capture; there is no coarse ``dirty`` fallback, and absent or
+    malformed is not evidence of cleanliness. Mirrored in the sibling WMMA gate.
+    """
+
+    return provenance.get("execution_affecting_dirty") is False
+
+
+def qualification_blockers(
+    *, quality_passed: bool, deterministic: bool, clean: bool
+) -> list[str]:
+    """Name every unmet condition that keeps this capture out of a claim."""
+
+    return [
+        blocker
+        for blocker, ok in (
+            ("calibrated quality thresholds", quality_passed),
+            ("same-schedule repeat determinism", deterministic),
+            ("execution-affecting worktree provenance", clean),
+        )
+        if not ok
+    ]
+
+
+def gate_claims(
+    *, quality_passed: bool, deterministic: bool, clean: bool
+) -> dict[str, Any]:
+    """The artifact claim fields for one capture.
+
+    ``profile_qualification_claim`` tracks ``measurement_valid``: an
+    execution-affecting or unclassified worktree invalidates the measurement, so
+    it cannot also support a qualification claim. The quality metrics stay
+    reported under ``quality`` and every unmet condition stays named in the
+    blockers, so a refusal is legible rather than silent.
+    """
+
+    measurement_valid = bool(quality_passed and deterministic and clean)
+    return {
+        "status": "complete" if measurement_valid else "invalid_or_screen_only",
+        "measurement_valid": measurement_valid,
+        "performance_claim": False,
+        "profile_qualification_claim": measurement_valid,
+        "qualification_blockers": qualification_blockers(
+            quality_passed=quality_passed,
+            deterministic=deterministic,
+            clean=clean,
+        ),
+    }
+
+
 def _load_fixture(path: Path) -> tuple[dict[str, Any], str]:
     raw = path.read_bytes()
     return json.loads(raw), hashlib.sha256(raw).hexdigest()
@@ -394,35 +447,16 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         and not quality.get("requires_outlier_review", False)
     )
     deterministic = bool(evaluated["repeat_determinism"]["passed"])
-    # Validity turns on whether the dirty worktree can change what executed,
-    # not on whether any file anywhere is dirty.
-    measurement_valid = bool(
-        quality_passed
-        and deterministic
-        and not provenance.get("execution_affecting_dirty", provenance.get("dirty"))
-    )
+    clean = _classified_worktree_clean(provenance)
     artifact: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
-        "status": "complete" if measurement_valid else "invalid_or_screen_only",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "measurement_valid": measurement_valid,
-        "performance_claim": False,
-        "profile_qualification_claim": quality_passed and deterministic,
-        "qualification_blockers": [] if measurement_valid else [
-            blocker
-            for blocker, ok in (
-                ("calibrated quality thresholds", quality_passed),
-                ("same-schedule repeat determinism", deterministic),
-                (
-                    "execution-affecting worktree provenance",
-                    not provenance.get(
-                        "execution_affecting_dirty", provenance.get("dirty")
-                    ),
-                ),
-            )
-            if not ok
-        ],
+        **gate_claims(
+            quality_passed=quality_passed,
+            deterministic=deterministic,
+            clean=clean,
+        ),
         "route": {
             "surface": "runner _q8_mmq_policy (dense-pair-gate pattern)",
             "warmup_request_after_policy_flip": True,

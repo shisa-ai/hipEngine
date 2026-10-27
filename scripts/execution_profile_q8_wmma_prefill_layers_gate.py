@@ -336,6 +336,17 @@ def _heldout_coverage(
     }
 
 
+def _classified_worktree_clean(provenance: Mapping[str, Any]) -> bool:
+    """Whether this gate's own collector record classifies the worktree clean.
+
+    The record comes from the current collector, so only its exact ``False``
+    clears a capture; there is no coarse ``dirty`` fallback, and absent or
+    malformed is not evidence of cleanliness. Mirrored in the sibling MMQ gate.
+    """
+
+    return provenance.get("execution_affecting_dirty") is False
+
+
 def qualification_verdict(coverage, *, quality_passed, deterministic, clean):
     checks = {
         "complete canonical numerical coverage": coverage["complete"],
@@ -1018,10 +1029,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         and not quality.get("requires_outlier_review", False)
     )
     deterministic = bool(evaluated["repeat_determinism"]["passed"])
-    # Validity turns on whether the dirty worktree can change what executed,
-    # not on whether any file anywhere is dirty: another agent's untracked
-    # notes cannot alter dispatch or arithmetic.
-    clean = not provenance.get("execution_affecting_dirty", provenance.get("dirty"))
+    clean = _classified_worktree_clean(provenance)
     coverage = qualification_coverage(
         captures=captures, fixture_sha256=fixture_sha256,
         prefill_chunk_size=int(args.prefill_chunk_size),

@@ -4,7 +4,8 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.execution_profile_q8_wmma_prefill_layers_gate import (
-    CANONICAL_FIXTURE_SHA256, qualification_coverage, qualification_verdict,
+    CANONICAL_FIXTURE_SHA256, _classified_worktree_clean, qualification_coverage,
+    qualification_verdict,
 )
 
 
@@ -84,3 +85,45 @@ def test_failed_gate_blocks_both_claims(failed):
     assert not v['measurement_valid']
     assert not v['canonical_numerical_qualification_claim']
     assert not v['profile_qualification_claim']
+
+
+def test_prose_only_dirty_worktree_still_qualifies():
+    """The collector's classification, not the coarse flag, decides validity."""
+
+    assert _classified_worktree_clean({
+        'dirty': True, 'staged_dirty': False, 'unstaged_dirty': True,
+        'dirty_paths': ['docs/REFACTOR.md'],
+        'untracked_paths': ['worklog/entries/20261027T000000.000000Z-note.md'],
+        'execution_affecting_dirty': False,
+        'execution_affecting_paths': [],
+    })
+
+
+@pytest.mark.parametrize('provenance', [
+    {'execution_affecting_dirty': True, 'dirty': True},
+    {'execution_affecting_dirty': True, 'dirty': False},
+    {'dirty': False},
+    {},
+    {'execution_affecting_dirty': None, 'dirty': False},
+    {'execution_affecting_dirty': 'false', 'dirty': False},
+    {'execution_affecting_dirty': 0, 'dirty': False},
+])
+def test_unclassified_or_dirty_provenance_refuses(provenance):
+    """No coarse fallback: the fresh collector's exact False is the only clean."""
+
+    assert not _classified_worktree_clean(provenance)
+
+
+def test_refused_provenance_is_named_in_the_blockers():
+    v = qualification_verdict(
+        coverage(), quality_passed=True, deterministic=True, clean=False,
+    )
+    assert 'execution-affecting worktree provenance' in v['qualification_blockers']
+    assert v['status'] == 'invalid_or_screen_only'
+
+
+def test_clean_provenance_is_not_a_blocker():
+    v = qualification_verdict(
+        coverage(), quality_passed=True, deterministic=True, clean=True,
+    )
+    assert 'execution-affecting worktree provenance' not in v['qualification_blockers']
