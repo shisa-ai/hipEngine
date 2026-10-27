@@ -3055,10 +3055,14 @@ fallback count is not a success metric.
   adapter is unreachable through the factory; capacity 1 still uses its
   complete-cycle implementation. Factory coverage includes capacities 2, 4 and 8
   and fails if any of them constructs the old adapter.
-- Direct diagnostic tests still exercise the old adapter's capacity-2 capability
-  and upload helpers. Separate these oracles before deleting `propose_batch`,
-  `execute_target_frontier`, physical provider repair and batch-accept resources;
-  preserve the C1 cycle, shared slab accounting, failure recovery and release.
+- The legacy adapter no longer advertises staged C2 capability or claim fit.
+  Its obsolete C2 proposal body is removed; the required lifecycle method now
+  reports that this adapter owns complete C1 cycles. Multi-slot production
+  proposals continue through the generalized adapter.
+- Direct diagnostic tests still exercise the old target and upload helpers.
+  Separate these oracles before deleting `execute_target_frontier`, physical
+  provider repair and batch-accept resources; preserve the C1 cycle, shared slab
+  accounting, failure recovery and release.
 - Removal trigger: after the batched provider passes complete C2 production and
   lifecycle gates, delete the unreachable capacity-2 methods/branches and keep
   only the retained C1 adapter plus the capacity-aware factory.

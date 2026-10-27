@@ -238,7 +238,7 @@ class Qwen35GGUFMoEMTP2Adapter:
 
     @property
     def staged_frontier(self) -> bool:
-        return int(getattr(self.owner, "capacity", 1)) > 1
+        return False
 
     def __init__(
         self,
@@ -834,14 +834,14 @@ class Qwen35GGUFMoEMTP2Adapter:
         capacity = int(getattr(self.owner, "capacity", 1))
         if (
             not self.enabled
-            or capacity not in {1, 2}
+            or capacity != 1
             or len(semantics) != capacity
         ):
             return None
         targets = []
         ceilings: list[int] = []
         modes = set()
-        sampled_qualified = capacity == 1 and self._sampled_route_qualified()
+        sampled_qualified = self._sampled_route_qualified()
         for item in semantics:
             rid = int(item.request_id)
             self._sampling_modes()[rid] = str(item.sampling_mode)
@@ -906,18 +906,15 @@ class Qwen35GGUFMoEMTP2Adapter:
         # Reporting that bound keeps depth selection in the shared planner: a
         # shallower legal cycle still runs, and only a step where even one
         # candidate has no bucket is planned K0 (the transition that advances
-        # the provider seed). The C2 lane executes through its packed physical
-        # frontier instead, which declares its own bucket misses.
-        depth = int(self.candidate_budget)
-        if capacity == 1:
-            depth = self._bucket_candidate_ceiling(targets[0], limit=depth)
-            if depth <= 0:
-                return None
+        # the provider seed).
+        depth = self._bucket_candidate_ceiling(
+            targets[0], limit=int(self.candidate_budget)
+        )
+        if depth <= 0:
+            return None
         max_context = min(ceilings)
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
-        if capacity > 1 and str(profile) != "production":
-            return None
         mode = next(iter(modes))
         return SpeculativeCapability(
             capability_key=(
@@ -962,7 +959,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         capacity = int(getattr(self.owner, "capacity", 1))
         return bool(
             self.enabled
-            and capacity in {1, 2}
+            and capacity == 1
             and len(plan.speculative_request_ids) == capacity
             and all(
                 int(request_id) in self._states
@@ -1006,121 +1003,9 @@ class Qwen35GGUFMoEMTP2Adapter:
         *,
         stream: int | None = None,
     ) -> CandidateGraph:
-        del stream
-        ids = tuple(int(value) for value in plan.speculative_request_ids)
-        if len(ids) != 2:
-            raise NotImplementedError("MoE staged proposal currently requires C2")
-        semantics = {
-            int(item.request_id): item for item in request_semantics
-        }
-        counts = tuple(
-            int(plan.candidate_counts[plan.request_ids.index(request_id)])
-            for request_id in ids
-        )
-        if any(count < 1 or count > self.candidate_budget for count in counts):
-            raise ValueError("MoE C2 proposal count is outside the adapter budget")
-        rows = tuple(self.owner._row(request_id) for request_id in ids)
-        states = tuple(self._states[request_id] for request_id in ids)
-        roots = []
-        positions = []
-        candidate_rows: list[tuple[int, ...]] = []
-        started = time.perf_counter()
-        for request_id, count, row, state in zip(
-            ids, counts, rows, states, strict=True
-        ):
-            if row.lease is None or row.slot is None:
-                raise RuntimeError("MoE C2 proposal lost resident target ownership")
-            target = row.lease.session
-            if int(target.position) != int(row.slot.seq_position):
-                raise RuntimeError("MoE C2 proposal target cursor is stale")
-            pending = state.context.pending_seed
-            if pending is None or int(getattr(pending, "hidden_ptr", 0)) <= 0:
-                raise RuntimeError("MoE C2 proposal has no resident pending seed")
-            root_token = int(row.slot.generated_ids[-1])
-            root_position = int(target.position)
-            self._check_draft_kv_room(
-                state,
-                cursor=int(state.cache_len),
-                rows=count,
-                context=f"MoE C2 proposal for request {request_id}",
-            )
-            tokens, topk, proposed_cache_len = (
-                state.draft.propose_chain_from_device_seed(
-                    int(pending.hidden_ptr),
-                    start_token=root_token,
-                    start_position=root_position,
-                    draft_n_max=count,
-                    top_k=1,
-                    rope_cos=self._assets.rope_cos,
-                    rope_sin=self._assets.rope_sin,
-                    dense_key_cache=state.key_cache,
-                    dense_value_cache=state.value_cache,
-                    dense_cache_len=int(state.cache_len),
-                    draft_p_min=0.0,
-                )
-            )
-            candidate_tokens = tuple(int(token) for token in tokens)
-            if (
-                len(candidate_tokens) != count
-                or len(topk) != count
-                or any(tuple(int(value) for value in values) != (candidate_tokens[index],)
-                       for index, values in enumerate(topk))
-            ):
-                raise RuntimeError("MoE C2 provider did not produce one top-1 chain")
-            if int(proposed_cache_len) != int(state.cache_len) + count:
-                raise RuntimeError("MoE C2 provider returned an invalid speculative cursor")
-            state.proposal_tokens = candidate_tokens
-            state.proposed_cache_len = int(proposed_cache_len)
-            roots.append(root_token)
-            positions.append(root_position)
-            candidate_rows.append(candidate_tokens)
-        proposal_seconds = time.perf_counter() - started
-        for state in states:
-            state.last_proposal_seconds = proposal_seconds
-        offsets = [0]
-        for values in candidate_rows:
-            offsets.append(offsets[-1] + len(values))
-        row_to_request = tuple(
-            request_id
-            for request_id, values in zip(ids, candidate_rows, strict=True)
-            for _ in values
-        )
-        draft_depths = tuple(
-            depth
-            for values in candidate_rows
-            for depth in range(1, len(values) + 1)
-        )
-        parents: list[int] = []
-        cursor = 0
-        for values in candidate_rows:
-            for index in range(len(values)):
-                parents.append(-1 if index == 0 else cursor + index - 1)
-            cursor += len(values)
-        return CandidateGraph(
-            provider_key=str(plan.provider_key),
-            method_key="mtp2",
-            policy_fingerprint="moe-nextn-request-major-c2",
-            cycle_id=int(plan.cycle_id),
-            transaction_id=int(plan.cycle_id),
-            request_ids=plan.request_ids,
-            resident_slots=plan.resident_slots,
-            root_positions=tuple(
-                int(semantics[request_id].context_tokens) - 1
-                for request_id in plan.request_ids
-            ),
-            row_offsets=tuple(offsets),
-            row_to_request=row_to_request,
-            parent_candidate_rows=tuple(parents),
-            draft_depths=draft_depths,
-            active_mask=(True,) * sum(counts),
-            candidate_tokens=tuple(
-                token for values in candidate_rows for token in values
-            ),
-            mode="verify_chain",
-            provider_metadata=(
-                ("physical_provider_rows", len(ids)),
-                ("provider_weight_sweeps", len(ids)),
-            ),
+        """Keep the lifecycle interface; this adapter owns complete C1 cycles."""
+        raise NotImplementedError(
+            "C1 MoE adapter uses execute_cycle; multi-slot proposals use the batched adapter"
         )
 
     def prepare_k0(

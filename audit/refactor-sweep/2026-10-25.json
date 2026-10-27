@@ -5045,7 +5045,7 @@
       "end_line": 4290,
       "sha256": "42662421d0d85842bb3a3bf57b37f1ae774d024a56284154c2709dcd73259cc3",
       "status": "partial",
-      "evidence": ["Factory bypass verified at capacities 2/4/8 with a failing legacy-constructor sentinel. Full MoE adapter/sampled/host-upload tests and docs/audit pass. Direct diagnostics still use prototype capability/upload helpers; separate oracles and remove staged methods/resources while preserving shared C1 recovery. Public lifecycle and deletion remain open. Worklog: worklog/entries/20261027T152644.315495Z-cleanup-refactor-r0192-98d0bd.md."],
+      "evidence": ["Factory bypass verified at capacities 2/4/8. Removed obsolete legacy C2 proposal body and staged capability/claims advertisement; C1 complete cycles and multi-slot factory unchanged. Required lifecycle method explicitly refuses unsupported staged proposal. Full MoE/sampled/upload/provider/lifetime tests and docs/audit pass. Target/accept diagnostics and batch resources still require extraction; public lifecycle remains open. Worklogs: worklog/entries/20261027T152644.315495Z-cleanup-refactor-r0192-98d0bd.md; worklog/entries/20261027T153516.382904Z-cleanup-refactor-r0192-proposal-94bb75.md."],
       "subitems": [
         {
           "line": 4281,

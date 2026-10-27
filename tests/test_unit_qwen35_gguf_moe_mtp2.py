@@ -411,7 +411,7 @@ def test_moe_cycle_asks_for_the_attention_schedule_its_bucket_declares() -> None
     assert long._bucket_candidate_ceiling(target_long, limit=2) == 0
 
 
-def test_moe_adapter_capability_exposes_exact_physical_c2() -> None:
+def test_legacy_moe_adapter_does_not_advertise_staged_c2() -> None:
     adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
     adapter.enabled = True
     adapter.candidate_budget = 2
@@ -448,14 +448,10 @@ def test_moe_adapter_capability_exposes_exact_physical_c2() -> None:
     two = SpeculativeRequestSemantics(8, "greedy", "verify_chain", 6, 8)
 
     assert adapter.capability((one,)) is None
-    capability = adapter.capability((one, two))
-    assert capability is not None
-    assert adapter.staged_frontier is True
-    assert capability.max_requests == 2
-    assert capability.max_frontier_rows == 6
-    assert capability.proposal_widths == (1, 2)
-    adapter.generator.execution_profile = SimpleNamespace(value="strict")
     assert adapter.capability((one, two)) is None
+    assert adapter.staged_frontier is False
+    with pytest.raises(NotImplementedError, match="uses execute_cycle"):
+        adapter.propose_batch(None, (one, two))
 
 
 def test_moe_adapter_accepts_generic_static_eligibility_registration() -> None:
