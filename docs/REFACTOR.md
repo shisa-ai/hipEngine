@@ -4666,8 +4666,10 @@ fallback count is not a success metric.
   remove the session selector after that rollback window.
 - The runtime session setter is removed. Production construction and diagnostic
   session configuration share layout/range validation; the valid backend default
-  is unchanged. Scaled and norm-direct diagnostic mode collapse remains open
-  because category and publication tooling still consumes those names.
+  is unchanged. Norm-direct mode and its dedicated comparison harness are removed.
+  Publication tooling still interprets that historical name. Scaled mode remains
+  the actual `prefill_350_candidate` category-control execution route; changing
+  that arm to range-direct would change the comparison, not just its name.
 - The 2026-07-26 exact range-qualified follow-up makes
   `hipblaslt_norm_direct` the gfx1151 default. Actual norm metadata proves a
   **16.34623** FP16 input bound; full logits, final/pre-final hidden, KV,

@@ -24,10 +24,8 @@ def test_laguna_f16_hipblaslt_mode_is_explicit_and_validated() -> None:
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_scaled")
         == "hipblaslt_scaled"
     )
-    assert (
+    with pytest.raises(ValueError, match="unsupported"):
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_norm_direct")
-        == "hipblaslt_norm_direct"
-    )
     assert (
         resolve_laguna_f16_prefill_mode("hip_gfx1151", "hipblaslt_range_direct")
         == "hipblaslt_range_direct"

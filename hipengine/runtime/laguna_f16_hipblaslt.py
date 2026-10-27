@@ -17,7 +17,6 @@ _MODES = frozenset(
     {
         "retained",
         "hipblaslt_scaled",
-        "hipblaslt_norm_direct",
         "hipblaslt_range_direct",
     }
 )
@@ -75,7 +74,7 @@ def validate_laguna_f16_prefill_mode(backend: str, weights, requested: str) -> s
             "Laguna hipBLASLt prefill requires dense F16 attention weights; "
             f"first unsupported={unsupported[0]}"
         )
-    if selected in {"hipblaslt_norm_direct", "hipblaslt_range_direct"}:
+    if selected == "hipblaslt_range_direct":
         bound = laguna_attention_norm_fp16_bound(
             weights.config.hidden_size,
             (getattr(layer.weight("attn_norm"), "source_abs_max", None)

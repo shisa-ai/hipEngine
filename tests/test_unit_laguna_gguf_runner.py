@@ -1741,8 +1741,6 @@ def test_laguna_direct_prefill_modes_require_safe_complete_range_metadata() -> N
         config=config,
         layers=tuple(Layer(0.294921875) for _ in range(config.block_count)),
     )
-    _set_f16_prefill_mode(session, "hipblaslt_norm_direct")
-    assert session.f16_prefill_mode == "hipblaslt_norm_direct"
     _set_f16_prefill_mode(session, "hipblaslt_range_direct")
     assert session.f16_prefill_mode == "hipblaslt_range_direct"
 
@@ -1751,7 +1749,7 @@ def test_laguna_direct_prefill_modes_require_safe_complete_range_metadata() -> N
         layers=(Layer(None), *tuple(Layer(0.294921875) for _ in range(config.block_count - 1))),
     )
     with pytest.raises(ValueError, match="missing"):
-        _set_f16_prefill_mode(session, "hipblaslt_norm_direct")
+        _set_f16_prefill_mode(session, "hipblaslt_range_direct")
 
     session.weights = SimpleNamespace(
         config=config,

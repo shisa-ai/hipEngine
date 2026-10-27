@@ -60,8 +60,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_activation_pack_reuse` opt-out, so the runner and the scoped-reuse
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # F16 preconditions moved to a shared validator; H8B ownership is unchanged.
-        "44b5a0ee8c46b29fa383ccc1cc601c8b7e821b8407a7e2d1ed5dbd161ca27aa9"
+        # Norm-only F16 mode retired; H8B ownership is unchanged.
+        "673ce78ad4d4ff24bd8fe68dd61181894ceb22a65cce7d8649459b7cab1da911"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

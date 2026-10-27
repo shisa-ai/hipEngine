@@ -5143,16 +5143,10 @@ class LagunaGGUFResidentSession:
             return
 
         route = self._ensure_f16_hipblaslt()
-        direct_norm = self.f16_prefill_mode in {
-            "hipblaslt_norm_direct",
-            "hipblaslt_range_direct",
-        }
+        direct_norm = self.f16_prefill_mode == "hipblaslt_range_direct"
         row_scales_ptr = scratch.token_ids.ptr
         if direct_norm:
-            if (
-                self.f16_prefill_mode != "hipblaslt_range_direct"
-                or not self.fuse_f16_boundaries
-            ):
+            if not self.fuse_f16_boundaries:
                 bf16_to_fp16(
                     scratch.norm.ptr,
                     scratch.gated_context.ptr,
