@@ -259,15 +259,9 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
 # Exact resident-to-packed Conv/GDN state gather uses the registered chunked
-# pointer-table copy leaf. Physical C5-C8 qualification retained it on gfx1100;
-# the environment arm keeps the per-layer D2D chain as an explicit rollback.
-GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER",
-    "enabled_default": True,
-}
-GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER_POLICY = (
-    GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY
-)
+# pointer-table copy leaf. Per-layer copies remain the strict fallback.
+GGUF_FUSED_LINEAR_STATE_TRANSFER = True
+GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER = True
 # Packed physical C5-C8 target verification is qualified to index the resident
 # multi-slot Conv/GDN slabs directly. Captured candidate rows read initial state
 # without mutation and the existing selected-row kernel remains the sole commit

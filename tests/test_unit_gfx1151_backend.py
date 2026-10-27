@@ -1825,6 +1825,12 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     ) is True
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER", False
     ) is False
 
 
@@ -3673,9 +3679,9 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         for name in gfx1100_only & live_read
         if name.startswith("GGUF_")
     }
-    # Direct resident verification now reads its capability at the call site,
-    # rather than passing the name through the environment-policy helper.
-    assert len(expected) == 23
+    # Direct resident and packed initial-state capabilities are now visible
+    # as direct reads rather than environment-policy helper arguments.
+    assert len(expected) == 24
 
     ledger_path = (
         Path(__file__).resolve().parents[1]

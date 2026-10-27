@@ -2791,14 +2791,6 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## 2026-09-01 gfx1100 fused packed-state transfer rollback — closed
-
-- The existing strict pointer-table pair-copy leaf is the retained gfx1100
-  default for resident-to-packed Conv/GDN imports, including physical C5-C8
-  packed-verifier initial-state gather. `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=0`
-  restores the per-layer HIP D2D chain. Remove the environment/cache policy
-  after the next stable milestone audit; keep the strict per-layer fallback.
-
 ## 2026-09-01 W1 wide-Q6 shared-weight candidate context — open
 
 - `target_verifier_wide_q6_shared4_session()` and the temporary
@@ -10558,3 +10550,16 @@ primitives are unchanged.
 single-owner grouped launches, and compare output/acceptance with repeated R6.
 Include non-grouped rows, a shape outside policy, and cancellation/cleanup.
 Direct grouped-kernel bit parity does not establish public wrapper engagement.
+
+### R0182 — Public fused packed-state transfer validation
+
+The packed-state environment override and unused environment-policy helper are
+removed. Existing plain backend capabilities own both transfer selectors;
+strict per-layer and single-slot fallback copies remain unchanged.
+
+**Dependency:** public gfx1100 physical MTP execution using packed state imports.
+**Clearing action:** run `hipengine serve`, trace the fused pointer-table gather
+where direct resident indexing is inapplicable, and compare imported Conv/GDN
+state with the per-layer parent. Include single-slot fallback, rejection,
+cancellation and resource cleanup. CPU ownership tests do not prove public GPU
+state-transfer engagement.

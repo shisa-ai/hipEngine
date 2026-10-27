@@ -4629,13 +4629,13 @@
       "start_line": 4017,
       "end_line": 4024,
       "sha256": "29d152db3820ab9f5aee82ec038ec8cbf5589b085b156b71f05409356733ecea",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Replaced gfx1100 environment policies with existing plain fused-transfer capabilities and removed unused helper. Per-layer/single-slot fallbacks and gfx1151 behavior preserved. RED/GREEN default, full packed-layout/backend/MTP2 seam units, CPU fixtures/smoke and docs/audit pass. Public GPU gather/state/cancellation/cleanup remains open. Worklog: worklog/entries/20261027T150128.281095Z-cleanup-refactor-r0182-e81b20.md."],
       "subitems": [
         {
           "line": 4019,
           "text": "- The existing strict pointer-table pair-copy leaf is the retained gfx1100",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

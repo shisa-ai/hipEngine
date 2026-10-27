@@ -513,8 +513,8 @@ def test_gfx1100_fused_linear_state_transfer_policy_is_default_on(
     assert owner._fused_linear_state_transfer_enabled() is True
     assert owner._fused_packed_verify_initial_state_transfer_enabled() is True
     monkeypatch.setenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", "0")
-    assert owner._fused_linear_state_transfer_enabled() is False
-    assert owner._fused_packed_verify_initial_state_transfer_enabled() is False
+    assert owner._fused_linear_state_transfer_enabled() is True
+    assert owner._fused_packed_verify_initial_state_transfer_enabled() is True
     monkeypatch.setenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", "1")
     assert owner._fused_linear_state_transfer_enabled() is True
     assert owner._fused_packed_verify_initial_state_transfer_enabled() is True
