@@ -6925,32 +6925,6 @@ should be boring.
   retain the constructor override, capability, registered quad, and unfused
   fallback.
 
-## Laguna gfx1151 source-F16 projection/head/KV selector
-
-- Added 2026-07-30 as
-  `LagunaGGUFResidentSession.set_f16_projection_head_kv_decode(...)` and
-  `--compare-f16-projection-head-kv-decode`. The candidate preserves one exact
-  fixed-K block per Q/K/V/gate output column and lets the final producer for
-  each head run the established RMSNorm/RoPE/BF16-KV body through bounded
-  resident completion counters.
-- Remove the comparison CLI and session setter after tracked-clean
-  selector-unset production and a complete 127-transition census either
-  publish or reject the default. If retained, keep the constructor override,
-  four-axis composite registrations, gfx1151 capability, counter scratch, and
-  exact quad-plus-head/KV fallback.
-- The provisional same-resident gate is exact and mechanically positive at
-  **22.016010 -> 22.017120 tok/s (+0.00504%)**, saving
-  **0.002932 ms/token** by paired median with five of seven wins. Publication
-  must confirm 48 composite calls/token, zero separate head/KV calls, and no
-  material tracked-clean wall regression before this seam is removed.
-- Publication/census passes mechanically: tracked-clean throughput is
-  aggregate-flat at **22.007742 tok/s (-0.1097%)**, while tracing confirms
-  **625 -> 577 dispatches/token**, zero old quad/head-KV launches,
-  **45.699715 -> 45.660100 ms/token** span, and
-  **2.006962 -> 1.882766 ms/token** span-minus-kernel time. The comparison
-  CLI and session setter are now eligible for immediate removal.
-- The comparison CLI, setter, and comparison-protocol fields are removed.
-
 ## Laguna gfx1151 source-F16 output/add/RMSNorm selector
 
 - Added 2026-07-30 as

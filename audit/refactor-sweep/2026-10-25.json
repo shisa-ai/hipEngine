@@ -10373,33 +10373,33 @@
       "start_line": 8047,
       "end_line": 8072,
       "sha256": "90832f04a1a8ec79af4fd24e2bd559b9910ae114b78d1b0f60c104cdefd3665f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Comparison CLI/setter absent; required constructor override and capability remain. Completed receipt removed without runtime changes. Worklog: worklog/entries/20261027T041434.702679Z-cleanup-refactor-r0359-529849.md."],
       "subitems": [
         {
           "line": 8049,
           "text": "- Added 2026-07-30 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8055,
           "text": "- Remove the comparison CLI and session setter after tracked-clean",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8060,
           "text": "- The provisional same-resident gate is exact and mechanically positive at",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8065,
           "text": "- Publication/census passes mechanically: tracked-clean throughput is",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8071,
           "text": "- The comparison CLI, setter, and comparison-protocol fields are removed.",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
