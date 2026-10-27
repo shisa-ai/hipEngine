@@ -2823,6 +2823,15 @@ should be removed or collapsed.
   profile scope selections directly into `Qwen35GGUFResidentSession`. Preserve
   the profile manifest selections, strict WMMA fallbacks, qualified
   R6/R8/R9/R12 actual-shape bounds, and benchmark rollback evidence.
+- R0184 prerequisite audit: `qwen35_dense_gfx1151_profiles._binder` still writes
+  the environment handoff, and `Qwen35GGUFResidentSession` freezes it after
+  resolving its backend. `_configure_session` is not a universal construction
+  hook: direct generation and NextN also construct resident sessions. Replace
+  the handoff with one typed construction input propagated through shared,
+  direct, batch and NextN paths, plus explicit strict/candidate inputs in the
+  numerical harness. Test two interleaved profile owners and nested diagnostic
+  restoration before retiring the variable; do not substitute a process-global
+  boolean or infer this arithmetic choice from the backend alone.
 
 ## 2026-08-21 codebase simplification review
 

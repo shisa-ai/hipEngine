@@ -4671,18 +4671,18 @@
       "start_line": 4042,
       "end_line": 4052,
       "sha256": "c3666bac5de887846491e80848cfda0a0b24e403b2a8323075a32b49f36775ef",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-prerequisite",
+      "evidence": ["Verified live gfx1151 strict/production binder and resident frozen boolean. Common generator configuration is not universal: direct and NextN constructors need typed propagation too. Profile and numerical-harness unit files pass; docs/audit pass. Runtime unchanged; retirement requires RF-1 typed construction input plus interleaved-profile and diagnostic restoration coverage. Worklog: worklog/entries/20261027T151010.021868Z-cleanup-refactor-r0184-2d9987.md."],
       "subitems": [
         {
           "line": 4044,
           "text": "- `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4048,
           "text": "- Remove the environment handoff when `ResolvedRuntimePlan` (RF-1) carries",
-          "status": "pending"
+          "status": "deferred-prerequisite"
         }
       ]
     },
