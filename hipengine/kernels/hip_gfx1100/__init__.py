@@ -24,8 +24,8 @@ LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {
 }
 # WPF-H6N keeps exact fixed-512 global dense-initial source ownership. WPF-H6W
 # promotes only late-start SWA global-score replay after complete state/topology
-# and positive fixed/512/1K/4K gates. H6Z is a separate default-off capability
-# for bounded late-start global qualification. H6A remains explicit complete
+# and positive fixed/512/1K/4K gates. The promoted source map below selects the
+# bounded late-start global score/weight replay. H6A remains explicit complete
 # rollback; starts0/128 and shape/metadata/registration/backend misses fail
 # closed to it.
 LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS = {
@@ -44,17 +44,9 @@ LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS = {
         "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
     ),
 }
-LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS = {
-    "global_m128_c4096_first_fill_exact": (
-        "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
-        "exact_spans"
-    ),
-    "swa_qrow4_m128_c512_no_wrap_exact": (
-        "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
-    ),
-}
 # WPF-H7Y's bounded 72-MiB mirror owner and fused writer are qualified but
-# remain default-off pending source promotion. H6Z/H6W stay the source rollback.
+# remain default-off pending source promotion. The promoted source map and H6W
+# stay the source rollback.
 LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS = {
     "global_m128_c4096_first_fill_exact": (
         "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
@@ -65,9 +57,15 @@ LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS = {
         "global_score_replay_exact_spans"
     ),
 }
-LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = dict(
-    LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS
-)
+LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {
+    "global_m128_c4096_first_fill_exact": (
+        "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
+        "exact_spans"
+    ),
+    "swa_qrow4_m128_c512_no_wrap_exact": (
+        "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+    ),
+}
 # WPF-H5R promotes exact cached-only SWA attention after KL0 complete state,
 # all 144 physical append-before-attention calls, and positive default-off clean
 # 512/1K/4K timing. The package-only role map restricts schedule reordering to
@@ -1506,7 +1504,6 @@ __all__ = [
     "LAGUNA_MIXED_Q6_FIXED_METADATA",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS",
-    "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS",
     "LAGUNA_PREFILL_KV_PREAPPEND",

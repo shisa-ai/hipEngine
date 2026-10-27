@@ -6514,18 +6514,18 @@
       "start_line": 5392,
       "end_line": 5407,
       "sha256": "1caf34a308aa6d3c57b270dfb40b07381e6512fe7ee5750312bd38f778961725",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed duplicate H6Z capability name/export and migrated policy fixtures to the unchanged production map. Executed old/new equality preserves source/H6A/H6W/H7Y maps; focused final-tree failing-file repair passes after broad335 intermediate-worktree race. Worklog: worklog/entries/20261027T022834.784822Z-cleanup-refactor-r0251-h6z-2e499f.md."],
       "subitems": [
         {
           "line": 5394,
           "text": "- Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5400,
           "text": "- The first clean committed production reprofile is now complete at **423.233",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

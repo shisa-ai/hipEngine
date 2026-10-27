@@ -91,15 +91,6 @@ LAGUNA_POLICY: dict[str, str] = {
         "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
     ),
 }""",
-    "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS": """LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS = {
-    "global_m128_c4096_first_fill_exact": (
-        "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
-        "exact_spans"
-    ),
-    "swa_qrow4_m128_c512_no_wrap_exact": (
-        "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
-    ),
-}""",
     "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS": """LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS = {
     "global_m128_c4096_first_fill_exact": (
         "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
@@ -110,9 +101,15 @@ LAGUNA_POLICY: dict[str, str] = {
         "global_score_replay_exact_spans"
     ),
 }""",
-    "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS": """LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = dict(
-    LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS
-)""",
+    "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS": """LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS = {
+    "global_m128_c4096_first_fill_exact": (
+        "global_context_rows_qrow4_dense_initial_global_score_weight_replay_"
+        "exact_spans"
+    ),
+    "swa_qrow4_m128_c512_no_wrap_exact": (
+        "swa_context_rows_qrow4_dense_initial_global_score_replay_exact_spans"
+    ),
+}""",
     "LAGUNA_PREFILL_KV_PREAPPEND": 'LAGUNA_PREFILL_KV_PREAPPEND = True',
     "LAGUNA_PREFILL_MATRIX_ROWS": 'LAGUNA_PREFILL_MATRIX_ROWS = 512',
     "LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS": """LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS = {

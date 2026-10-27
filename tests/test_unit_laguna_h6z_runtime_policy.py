@@ -11,7 +11,7 @@ import pytest
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
-_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS"
+_RETIRED_H6Z_DECLARATION = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS"
 _H6W_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS"
 _H6A_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS"
 _SOURCE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
@@ -229,7 +229,8 @@ def test_h6z_runtime_capability_and_rollbacks_survive_source_promotion() -> None
     assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6Z_POLICY
     assert getattr(hip_gfx1100, _H6W_CAPABILITY) == _SOURCE_POLICY
     assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _H6A_POLICY
-    assert not hasattr(hip_gfx1151, _CAPABILITY)
+    assert not hasattr(hip_gfx1100, _RETIRED_H6Z_DECLARATION)
+    assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
     assert not hasattr(hip_gfx1151, _H6W_CAPABILITY)
     assert not hasattr(hip_gfx1151, _H6A_CAPABILITY)
     assert is_registered(
@@ -260,8 +261,8 @@ def test_h6z_runtime_capability_and_rollbacks_survive_source_promotion() -> None
     ) == _Q5_WORKSPACE_BYTES
 
     # Intentional RED after leaf, source, rollback, backend, and workspace
-    # controls: runtime qualification adds only a separate H6Z capability.
-    assert getattr(hip_gfx1100, _CAPABILITY) == _H6Z_POLICY
+    # controls: runtime qualification selects the promoted source map directly.
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6Z_POLICY
 
 
 def test_h6z_runtime_routes_only_late_global_starts_and_reuses_h6w_owner(
@@ -269,6 +270,11 @@ def test_h6z_runtime_routes_only_late_global_starts_and_reuses_h6w_owner(
 ) -> None:
     from hipengine.kernels import hip_gfx1100
     from hipengine.runtime import laguna_kv as module
+
+    # Capture the promoted source policy before the explicit rollback below
+    # replaces the package attribute.
+    capability = dict(getattr(hip_gfx1100, _SOURCE_CAPABILITY))
+    assert capability == _H6Z_POLICY
 
     # Exercise the explicit H6N/H6A/H6W rollback before selected H6Z.
     monkeypatch.setattr(
@@ -309,8 +315,6 @@ def test_h6z_runtime_routes_only_late_global_starts_and_reuses_h6w_owner(
         source_cache.free()
     assert source_runtime.allocations == {}
 
-    capability = getattr(hip_gfx1100, _CAPABILITY)
-    assert capability == _H6Z_POLICY
     monkeypatch.setattr(hip_gfx1100, _SOURCE_CAPABILITY, capability)
     runtime = _FakeRuntime()
     cache = module.allocate_laguna_kv_cache(
@@ -415,6 +419,11 @@ def test_h6z_runtime_topology_and_unbound_policy_fail_closed(
 ) -> None:
     from hipengine.kernels import hip_gfx1100
 
+    # Capture the promoted source policy before _run_topology installs each
+    # candidate map on the package attribute.
+    capability = dict(getattr(hip_gfx1100, _SOURCE_CAPABILITY))
+    assert capability == _H6Z_POLICY
+
     source, source_mallocs = _run_topology(
         monkeypatch,
         _SOURCE_POLICY,
@@ -422,8 +431,6 @@ def test_h6z_runtime_topology_and_unbound_policy_fail_closed(
     )
     assert source == _SOURCE_TOPOLOGY
 
-    capability = getattr(hip_gfx1100, _CAPABILITY)
-    assert capability == _H6Z_POLICY
     candidate, candidate_mallocs = _run_topology(
         monkeypatch,
         capability,
@@ -472,6 +479,6 @@ def test_h6z_runner_reuses_q5_plane_after_allocation_in_same_stream_order() -> N
     assert "stream=stream" in projection_region
     assert "stream=stream" in attention_region
 
-    # Intentional RED after existing owner/order checks: H6Z must require no
-    # new runner allocation or sidecar and keeps source policy unchanged.
-    assert getattr(hip_gfx1100, _CAPABILITY) == _H6Z_POLICY
+    # Intentional RED after existing owner/order checks: the promoted source
+    # map requires no new runner allocation or sidecar.
+    assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) == _H6Z_POLICY

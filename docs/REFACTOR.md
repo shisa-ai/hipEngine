@@ -4572,22 +4572,6 @@ fallback count is not a success metric.
   explicit complete-pack H8A rollback. Remove that false opt-out after one
   later Q5/IQ-down checkpoint if no rollback is needed.
 
-## Laguna H6Z bounded default-off global-attention capability
-
-- Added 2026-08-01 for WPF-H6Z source adjudication and promoted after exact
-  complete-state, fixed, trace, and binding-4K gates. Selected gfx1100 source now
-  uses H6Z only for global starts256/384 at exact M128/C4096/H48/KV8/D128 and
-  reuses H6W's existing caller plane without allocation or workspace growth.
-  The named H6W map is the H6N-global rollback; H6A and unbound routes remain
-  complete fallbacks.
-- The first clean committed production reprofile is now complete at **423.233
-  tok/s / 1,195.702 ms / 2,192 dispatches** with exact selected topology and
-  H6W rollback evidence. Collapse any candidate-only resolver/test path that
-  independently restates selected H6Z ownership in a separate atomic cleanup
-  before the next source promotion. H7A's registry-leaf screen is now rejected
-  and fully removed, so it no longer blocks this cleanup. Keep the named H6W
-  rollback and required unfused H6N/H6A kernels; never retain two independently evolving H6Z dispatch routes.
-
 ## Laguna default-off F32 hipBLASLt attention selector
 
 - WPF-H5B's temporary gfx1100 policy/map/owner seam is removed. The complete
@@ -4665,15 +4649,13 @@ fallback count is not a success metric.
   ordered scratch allocation containing the F32 weight and BF16 activation
   planes. Keep H5X/H5L/H5G registered fallbacks and all Q6 routes unchanged;
   do not add a public/session selector, persistent sidecar, or duplicate owner.
-- WPF-H6E's source-adjudication trigger is closed: selector-unset 512/1K/4K is
-  **+0.515%/+0.425%/+0.259%**, 3/3 exact wins each, and fixed C4096/M512 is
-  **+0.266% with 5/5 wins**. `GGUF_Q6_F32_ORDERED_PREFILL_POLICY` now copies
-  the three qualified H6E values; `GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY` is
-  only a temporary duplicate release-checkpoint seam. Remove that duplicate
-  capability and collapse tests to the source map after one release checkpoint.
-  Keep H5W and H5I registered exact rollbacks and preserve the one combined
-  **161,120,256-byte** workspace / **600,141,856-byte** scratch owner. Do not
-  add a public/session selector, allocation, workspace, sidecar, or second ABI.
+- `GGUF_Q6_F32_ORDERED_PREFILL_POLICY` selects the H6U DPP-wave reduction
+  variants. `GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY` selects distinct non-DPP
+  variants and remains an exact rollback, not a duplicate of the source map.
+  Do not replace its tests with production-map tests: that would lose rollback
+  coverage. Keep H5W and H5I registered exact rollbacks and preserve the combined
+  workspace/scratch owner; do not add a public/session selector, allocation,
+  sidecar, or second ABI.
 
 ## Laguna default-off Q6 F16/rocBLAS selector
 

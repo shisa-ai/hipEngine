@@ -11,7 +11,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
 _SOURCE_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS"
-_H6Z_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS"
+_RETIRED_H6Z_DECLARATION = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6Z_ROLE_VARIANTS"
 _H6W_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6W_ROLE_VARIANTS"
 _H6A_CAPABILITY = "LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H6A_ROLE_VARIANTS"
 _GLOBAL_ROLE = "global_m128_c4096_first_fill_exact"
@@ -182,10 +182,10 @@ def test_h6z_source_default_changes_only_late_global_role(
 
     live_source = getattr(hip_gfx1100, _SOURCE_CAPABILITY)
     assert live_source == _H6Z_POLICY
-    assert getattr(hip_gfx1100, _H6Z_CAPABILITY) == _H6Z_POLICY
     assert getattr(hip_gfx1100, _H6W_CAPABILITY) == _H6W_POLICY
     assert getattr(hip_gfx1100, _H6A_CAPABILITY) == _H6A_POLICY
-    assert not hasattr(hip_gfx1151, _H6Z_CAPABILITY)
+    assert not hasattr(hip_gfx1100, _RETIRED_H6Z_DECLARATION)
+    assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
     assert not hasattr(hip_gfx1151, _H6W_CAPABILITY)
     assert not hasattr(hip_gfx1151, _H6A_CAPABILITY)
     assert is_registered(
