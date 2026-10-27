@@ -2985,8 +2985,6 @@ class LagunaGGUFResidentSession:
         use_moe_tail_next_rmsnorm: bool = True,
         use_moe_tail_wave0_tree: bool | None = None,
         use_head_kv_fusion: bool | None = None,
-        use_q5_wave32x2_output: bool | None = None,
-        use_q5_wave32x2_query_gate: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
         use_q5_fixed_meta_query_gate: bool | None = None,
         use_q5_shared_fixed_meta: bool | None = None,
@@ -3131,8 +3129,6 @@ class LagunaGGUFResidentSession:
         self._q5_output_variant, self._q5_query_gate_variant = (
             resolve_laguna_q5_wave32x2_variants(
                 self.backend,
-                output=use_q5_wave32x2_output,
-                query_gate=use_q5_wave32x2_query_gate,
                 fixed_meta_output=use_q5_fixed_meta_output,
                 fixed_meta_query_gate=use_q5_fixed_meta_query_gate,
             )

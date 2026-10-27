@@ -60,8 +60,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_activation_pack_reuse` opt-out, so the runner and the scoped-reuse
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # Norm-only F16 mode retired; H8B ownership is unchanged.
-        "673ce78ad4d4ff24bd8fe68dd61181894ceb22a65cce7d8649459b7cab1da911"
+        # Legacy Q5 wave32 constructor opt-outs retired; H8B ownership is unchanged.
+        "bbdac91322490c66ebd07796f9832c4ab9974b103939f10686ba50c052112185"
     ),
     "hipengine/runtime/laguna_moe.py": (
         # R0270 retires only the unused one-plane D4 gate selector; H8B scopes stay.

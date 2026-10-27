@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "D12 row 6173: retire two unused constructor role opt-outs, resolve unchanged backend defaults, preserve resolver diagnostics/fixed-meta controls/registered fallback chain. RED/GREEN and full CPU completed with sole H8A hash failure then focused pin repair pass; fixtures/smokes/docs/audit/worklog pass. Public checkpoint validation remains bottom R0281-D12. Worklog: worklog/entries/20261027T204500.188426Z-cleanup-refactor-r0281-d12-b08a36.md.",
         "D9 row 6172 moves to R0281-D9: profile caller still selects unfused chain; separate gfx1151 wave0-tree false restores older fused sibling. Keep distinct rollback levels and primitive fallback, defer public-vs-scoped plan ownership only. Three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T204222.252229Z-cleanup-refactor-r0281-d9-961e57.md.",
         "Serial prefill row 6169 moved to R0281-SERIAL: one-token production and multi-token independent oracle live, only interface ownership deferred. Grouped-down row 6171 consolidates into R0270 live mode decision; category consumers remain. Three host unit files/help and docs/audit/worklog pass; no runtime change. Worklog: worklog/entries/20261027T203856.966907Z-cleanup-refactor-r0281-prefill-ad3539.md.",
         "Token4/wave32/qrow2 attention rows 6164-6168 consolidate into bottom R0281-ATTN. Current qrow4 package defaults and later cache/BLAS overlays differ from old history; accepted variants, comparison callers and exact fallbacks live. Runner/category/target-AR/DFlash units and docs/audit/worklog pass, no runtime change. Worklog: worklog/entries/20261027T203537.603068Z-cleanup-refactor-r0281-attention-3a1070.md.",
@@ -7490,7 +7491,7 @@
         {
           "line": 6173,
           "text": "| Laguna D12 raw-Q5 wave32x2 selectors | `LagunaGGUFResidentSession(..., use_q5_wave32x2_output=..., use_q5_wave32x2_query_gate=...)` independently rolls the gfx1100 defaults back to the exact pack8 siblings for c=1 attention output and unequal query/gate. | Promoted together on gfx1100. Formal 50-warmup/15x200 actual-weight leaves improve 13.63-24.80% in HIP events; clean short/512/1K/near-4K kernel sum/span/child all improve; and the counterbalanced canonical gate moves h32 decode 47.046->48.987 tok/s with every category positive and prefill neutral. Synthetic/production leaves and full shared-weight state are exact; cached trace is local32/VGPR96/LDS0/scratch0. gfx1151, rows>1, shape/registry misses, and explicit disable retain pack8. | After one release/bisection window and the current DFlash/MTP refresh, remove positive constructor-selection semantics and keep at most a clear pack8 rollback. Never remove pack8 as the required fallback. |",
-          "status": "pending"
+          "status": "implemented-deferred-public-validation-R0281-D12"
         },
         {
           "line": 6174,
