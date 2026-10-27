@@ -6173,16 +6173,6 @@ should be boring.
   explicit Q4 pair-decode selector during immediate cleanup. Do not couple
   this cleanup to the independently retained Q6 row-vector kernel.
 
-## Laguna rejected Q6 down wave-column template branch
-
-- Added 2026-07-26 during the Q4/Q6 direct-consume split. Q6 quartet
-  decode/shuffle is no longer exported or runtime-selectable after regressing
-  actual pp512 **433.791 -> 428.184 tok/s (-1.293%)**, but its compile-time
-  template branch remains beside the retained Q4 implementation for now.
-- Removal trigger is satisfied by the Q4-only production checkpoint. Delete
-  the dead compile-time branch during immediate cleanup. Do not re-export it
-  without a new mapping and an independently positive Q6 gate.
-
 ## Laguna Q6 selected-down 32-row rollback
 
 - Added 2026-07-26 when the exact 64-row/local128 Q6 selected-down body became

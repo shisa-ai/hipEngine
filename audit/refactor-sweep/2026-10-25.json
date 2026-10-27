@@ -9141,18 +9141,18 @@
       "start_line": 7127,
       "end_line": 7136,
       "sha256": "5763cbb176d845e8b0d0552b8d9ad808cfcfd9d4382ec925b541d451f07801ac",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Q6 wave-column symbols/selection already absent; surviving wave-column branch serves live Q4 and must not be deleted. Removed stale instruction, no source change. Docs/audit pass. Worklog: worklog/entries/20261027T033543.258001Z-cleanup-refactor-r0317-2d21a3.md."],
       "subitems": [
         {
           "line": 7129,
           "text": "- Added 2026-07-26 during the Q4/Q6 direct-consume split. Q6 quartet",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7133,
           "text": "- Removal trigger is satisfied by the Q4-only production checkpoint. Delete",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
