@@ -192,8 +192,8 @@
       "start_line": 217,
       "end_line": 250,
       "sha256": "edcfa4d84bde6a7c61f0a611ef9a375f91902a4a3acaa72bae9c9e75b750c873",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-streaming-reconciled",
+      "evidence": ["Provider now declares committed_tokens streaming. Current MTP streaming/submission unit suites and controlled-speculation HTTP integration suite pass, including stop-safe output, terminal parity and slow-consumer cancellation/recovery. Removed obsolete buffered_public/PS7-pending premise. Resident session reuse, physical ownership and shared-target regression requirements remain open."],
       "subitems": [
         {
           "line": 219,
@@ -208,17 +208,17 @@
         {
           "line": 229,
           "text": "- Public streaming is declared `buffered_public`. EngineService withholds partial",
-          "status": "pending"
+          "status": "resolved-stale"
         },
         {
           "line": 234,
           "text": "- Control HTTP evidence: `tests/test_integration_server_controlled_speculation.py`",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 237,
           "text": "- Evidence: `tests/test_unit_qwen4exp_mtp_submission.py` and",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 239,

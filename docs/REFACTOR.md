@@ -114,14 +114,13 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   MTP commit/rollback tests and provider-scoped HTTP admission. Resident session
   reuse is still rejected before work; remove that guard only with a session
   ownership/rollback gate, not by silently using K0.
-- Public streaming is declared `buffered_public`. EngineService withholds partial
-  scheduler text for this declaration and publishes the authoritative terminal
-  output. Replace the Flash-Next declaration only after every committed MTP token
-  has a stop-safe, Unicode-safe delta and cancellation/backpressure tests pass.
-  Keep the generic buffered-provider service contract for providers that need it.
+- Committed-token streaming is implemented. Provider declarations use
+  `committed_tokens`; stream/terminal token and text parity, stops, structured
+  controls, slow-consumer cancellation and recovery have targeted tests.
+  Preserve the generic buffered-provider contract for other providers.
 - Control HTTP evidence: `tests/test_integration_server_controlled_speculation.py`
   and `worklog/entries/20261017T220002.030487Z-lhl-mtp-http-controls-e305ba.md`.
-  Live qualification remains PS6; incremental streaming remains PS7.
+  These are current control/ownership tests, not a new performance claim.
 - Evidence: `tests/test_unit_qwen4exp_mtp_submission.py` and
   `worklog/entries/20261017T192055.400855Z-lhl-qwen4exp-staged-mtp-serving-0ed770.md`.
 - **Shared MTP/AR target pass is opt-in**
