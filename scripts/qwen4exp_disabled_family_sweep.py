@@ -29,7 +29,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # Each entry: family name, the env key that enables it, the value that enables
-# it, and any companion key/value the family needs.
+# it, and any companion key/value the family needs. The GDN peer prefill family
+# is absent: its layer scope is request-local runner state now, and the
+# columnwarp owner ahead of it in the same chain is open on this lane, so an
+# environment-only arm measured the incumbent rather than the peer owner. The
+# layer2 gate does not reach it either: its candidates bind the peer scope but
+# also bind colwarps on, so the columnwarp owner still takes the chunk.
 FAMILIES: tuple[dict, ...] = (
     {
         "family": "PRODUCTION_MOE_PREFILL",
@@ -94,13 +99,6 @@ FAMILIES: tuple[dict, ...] = (
     {
         "family": "GR_IU8_DOWN",
         "env": {"HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1"},
-    },
-    {
-        "family": "GDN_PEER_PREFILL",
-        "env": {
-            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
-            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": ",".join(map(str, range(35, 48))),
-        },
     },
     {
         "family": "GDN_COLWARPS_PREFILL",

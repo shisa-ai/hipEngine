@@ -56,8 +56,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         PRODUCTION_MOE_PREFILL_ENV,
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL",
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
@@ -348,6 +346,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     # R0146: the grouped-MoE prefill switch is retired, so a leftover value is
     # inert and the binder must not own it any more.
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
+    # Same for the retired GDN peer gate: the owner is the runner's published
+    # scope now, so a leftover process value is inert and stays untouched.
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "0")
     production.binder(production_generator, production)
     assert configure_calls == [True]
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
@@ -493,13 +494,17 @@ def test_historical_q4km_binder_structure_not_qualification(
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS"
         ].split(",")
     ) == PRODUCTION_QSA_FLASH_PREFILL_LAYERS
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "1"
-    assert tuple(
-        int(value)
-        for value in os.environ[
-            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS"
-        ].split(",")
-    ) == PRODUCTION_GDN_PEER_PREFILL_LAYERS
+    # The GDN peer owner's gate and layer scope are request-local runner state
+    # published from the certified scope, so the binder writes no process-wide
+    # switch for them and the leftover value above is neither read nor rewritten.
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "0"
+    assert "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS" not in os.environ
+    assert production_generator.gdn_peer_prefill_layers == ",".join(
+        map(str, PRODUCTION_GDN_PEER_PREFILL_LAYERS)
+    )
+    assert fake_runner.gdn_peer_prefill_layers == (
+        production_generator.gdn_peer_prefill_layers
+    )
     assert os.environ["HIPENGINE_GGUF_Q8_0_WMMA_TILE_M"] == "64"
     assert os.environ["HIPENGINE_GGUF_Q8_0_WMMA_TILE_N"] == "32"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
@@ -562,8 +567,11 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
     for retired in RETIRED_DS4_MMQ_ENV:
         assert retired not in os.environ
+    # The retired peer gate keeps the leftover value the production bind above
+    # put in the environment; the strict binder neither reads nor rewrites it,
+    # and the runner carries no scope.
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS"] == ""
+    assert strict_generator.gdn_peer_prefill_layers is None
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"] == ""

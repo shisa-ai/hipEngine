@@ -263,20 +263,23 @@ def _launch_qwen4_exp_dense_pair(
                 stream=stream, runtime=runtime)
 
 
-def _qwen4_exp_layer_allowed(
-    weight: GGUFDeviceWeight,
-    *,
-    env_name: str,
-    default: str,
-) -> bool:
-    parts = weight.spec.slot_path.split(".")
+def _qwen4_exp_layer_scope_contains(slot_path: str, scope: str | None) -> bool:
+    """Does one weight's layer fall inside a ``"35-47"``/``"all"`` scope?
+
+    The parser is shared by every layer-gated selector, so an empty or absent
+    scope means "every layer" here. A selector whose absence means "off" owns
+    that reading itself (see :func:`_qwen4_exp_gdn_peer_layer_allowed`), which
+    keeps the parse and the gate from disagreeing.
+    """
+
+    parts = slot_path.split(".")
     if len(parts) <= 2 or parts[0] != "layers":
         return False
     try:
         layer = int(parts[1])
     except ValueError:
         return False
-    raw = os.environ.get(env_name, default)
+    raw = "" if scope is None else scope
     if raw in {"", "all"}:
         return True
     for token in raw.split(","):
@@ -292,6 +295,17 @@ def _qwen4_exp_layer_allowed(
     return False
 
 
+def _qwen4_exp_layer_allowed(
+    weight: GGUFDeviceWeight,
+    *,
+    env_name: str,
+    default: str,
+) -> bool:
+    return _qwen4_exp_layer_scope_contains(
+        weight.spec.slot_path, os.environ.get(env_name, default)
+    )
+
+
 def _qwen4_exp_q4_iu8_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
     """iu8-WMMA selected-dual prefill layer set (dp4a class, screened suffix)."""
 
@@ -302,13 +316,43 @@ def _qwen4_exp_q4_iu8_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> 
     )
 
 
+#: The certified global layer scope of the GDN peer prefill owner. The
+#: production plan publishes it on the owning runner (see
+#: :func:`gdn_peer_prefill`); ``True`` restores it for a diagnostic arm.
+GDN_PEER_CERTIFIED_SCOPE = ",".join(map(str, range(35, 48)))
+
+
+def qwen4_exp_gdn_peer_prefill_selected(
+    *, head_dim: int, published: str | None,
+) -> bool:
+    """Is the peer prefill owner in scope for this chunk's head width?
+
+    Geometry and the published gate only. ``published`` is the owning runner's
+    layer scope (see :func:`gdn_peer_prefill`), so an unbound runner or a plan
+    that publishes no scope keeps the serial sigmoid owners. The layer test is
+    :func:`_qwen4_exp_gdn_peer_layer_allowed`, and the columnwarp parent stays
+    ahead of both inside its own gate.
+    """
+
+    return head_dim == 128 and bool(published)
+
+
 def _qwen4_exp_gdn_peer_layer_allowed(
     weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    published: str | None,
 ) -> bool:
-    return _qwen4_exp_layer_allowed(
-        weights["attn_qkv"],
-        env_name="HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS",
-        default="35-47",
+    """Does this layer sit inside the peer owner's published scope?
+
+    Unlike the shared parser, an empty or absent scope means "no layer": the
+    published scope *is* the gate, so an unbound runner binds the serial owners
+    rather than every layer.
+    """
+
+    if not published:
+        return False
+    return _qwen4_exp_layer_scope_contains(
+        weights["attn_qkv"].spec.slot_path, published
     )
 
 
@@ -4123,6 +4167,50 @@ def gdn_tile16_prefill(runner: Any, enabled: bool | object = _GDN_TILE16_UNSET):
         runner.gdn_tile16_prefill = prior
 
 
+# GDN peer prefill ownership. The production plan publishes the certified global
+# layer scope on the owning runner instead of a process-wide switch: inside that
+# scope the peer owner reads the compact Q/K/V projections straight out of the
+# pre-projection buffer, every layer outside it keeps the columnwarp parent, and
+# the serial sigmoid owner stays registered below both. Strict, and every plan
+# that falls back to the strict binder, publishes no scope at all. Diagnostics
+# bind the scope on the runner they measure - `False` for the serial owners,
+# `"all"` or a numeric set for an explicit one - which is the same state the
+# plan publishes.
+_GDN_PEER_UNSET = object()
+
+
+def _gdn_peer_scope_value(scope: bool | str | None) -> str | None:
+    if scope is None or scope is False:
+        return None
+    if scope is True:
+        return GDN_PEER_CERTIFIED_SCOPE
+    return str(scope)
+
+
+@contextlib.contextmanager
+def gdn_peer_prefill(
+    runner: Any, scope: bool | str | None | object = _GDN_PEER_UNSET
+):
+    """Bind the GDN peer prefill owner's layer scope for a diagnostic arm.
+
+    ``False`` or ``None`` binds the serial sigmoid owners for the measured
+    window, ``True`` restores the certified global layers 35-47, and a string
+    names an explicit scope (``"all"`` for every layer, ``"0-34"`` or
+    ``"35,40,47"`` for a numeric set). Leaving ``scope`` unset keeps whatever
+    the runner carries. The binding is a mutable runner field, so it stays in
+    force across a prefill that suspends between layer yields, and the prior
+    value is restored on exit, including on an exception.
+    """
+
+    prior = getattr(runner, "gdn_peer_prefill_layers", None)
+    if scope is not _GDN_PEER_UNSET:
+        runner.gdn_peer_prefill_layers = _gdn_peer_scope_value(scope)
+    try:
+        yield prior
+    finally:
+        runner.gdn_peer_prefill_layers = prior
+
+
 # GDN conv prefill ownership. Production runs the exact bulk conv owner for
 # every chunk wider than one row and keeps the per-row decode-conv loop below it
 # as the arithmetic reference. It is request-local state: the prefill chunk path
@@ -7813,6 +7901,7 @@ def run_qwen4_exp_gdn_layer(
     defer_write: list | None = None,
     prefill_variant: str | None = None,
     gdn_tile16_prefill: bool = True,
+    gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
     q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
@@ -7838,6 +7927,9 @@ def run_qwen4_exp_gdn_layer(
 
     ``gdn_tile16_prefill`` is the owning runner's tile-16 prefill decision (see
     :func:`gdn_tile16_prefill`), forwarded to the token mixer.
+
+    ``gdn_peer_prefill_layers`` is the owning runner's peer prefill scope (see
+    :func:`gdn_peer_prefill`), forwarded to the token mixer.
 
     ``gdn_exact_bulk_conv`` is the owning runner's conv prefill decision (see
     :func:`gdn_exact_bulk_conv`), forwarded to the token mixer.
@@ -7959,6 +8051,7 @@ def run_qwen4_exp_gdn_layer(
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
         prefill_variant=prefill_variant,
         gdn_tile16_prefill=gdn_tile16_prefill,
+        gdn_peer_prefill_layers=gdn_peer_prefill_layers,
         gdn_exact_bulk_conv=gdn_exact_bulk_conv,
     )
     if layer_graph is not None:
@@ -8250,6 +8343,7 @@ def run_qwen4_exp_gdn_token_mixer(
     runtime: HipRuntime | None = None,
     prefill_variant: str | None = None,
     gdn_tile16_prefill: bool = True,
+    gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
 ) -> DeviceBuffer:
     """Execute strict Qwen4Exp GDN projections, Conv, recurrence, and output.
@@ -8260,6 +8354,9 @@ def run_qwen4_exp_gdn_token_mixer(
     ``gdn_tile16_prefill`` is the owning runner's tile-16 decision (see
     :func:`gdn_tile16_prefill`): False pins the columnwarp parent inside the
     columnwarp gate for a diagnostic arm.
+    ``gdn_peer_prefill_layers`` is the owning runner's peer prefill scope (see
+    :func:`gdn_peer_prefill`): the peer owner takes the layers inside it and
+    everything else, including an unbound runner, keeps the serial owners.
     ``gdn_exact_bulk_conv`` is the owning runner's conv prefill decision (see
     :func:`gdn_exact_bulk_conv`): False runs the per-row serial fallback for
     chunks wider than one row. Decode always runs the decode conv kernel.
@@ -8392,10 +8489,12 @@ def run_qwen4_exp_gdn_token_mixer(
                     runtime=active_runtime,
                 )
         peer_prefill = (
-            head_dim == 128
-            and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "")
-            not in {"", "0", "false", "False"}
-            and _qwen4_exp_gdn_peer_layer_allowed(weights)
+            qwen4_exp_gdn_peer_prefill_selected(
+                head_dim=head_dim, published=gdn_peer_prefill_layers
+            )
+            and _qwen4_exp_gdn_peer_layer_allowed(
+                weights, published=gdn_peer_prefill_layers
+            )
         )
         colwarps_prefill = (
             head_dim == 128
@@ -8880,6 +8979,16 @@ class Qwen4ExpGGUFResidentModelRunner:
     # parent on the one runner it measures; a fresh runner or a serving clone
     # inherits this default, never that binding.
     gdn_tile16_prefill: bool = True
+    # GDN peer prefill owner's layer scope, published by the profile binder as a
+    # request-local decision rather than a process-wide switch. ``None`` (an
+    # unbound runner, strict, and every plan that falls back to the strict
+    # binder) binds the serial sigmoid owners; a scope string such as the
+    # certified layers 35-47 lets the peer owner take those layers inside the
+    # prefill chunk path. Decode runs one row and the batch GDN mixer is
+    # decode-only, so neither reads it. A diagnostic scope binds this field on
+    # the one runner it measures; a fresh runner or a serving clone inherits the
+    # published value, never that binding.
+    gdn_peer_prefill_layers: str | None = None
     # GDN conv prefill owner: True runs the exact bulk conv for chunks wider
     # than one row, False the per-row serial fallback. Decode always runs the
     # decode conv kernel. The prefill chunk path is its only reader and forwards
@@ -10570,6 +10679,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
+                    gdn_peer_prefill_layers=self.gdn_peer_prefill_layers,
                     gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,

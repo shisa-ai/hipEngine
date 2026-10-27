@@ -141,7 +141,7 @@ PRODUCTION_Q4_DP4A_DECODE_LAYERS = (
 PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
-    "GDN_PEER_PREFILL", "Q4_DP4A64",
+    "Q4_DP4A64",
     "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "GR_WIDE",
 )
@@ -1182,6 +1182,20 @@ def _bind(
         if production
         else None
     )
+    # GDN peer prefill owner's layer scope, published as request-local state on
+    # the owning runner rather than the retired
+    # ``HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}`` pair. The production
+    # binder publishes the certified global layers 35-47 for every production
+    # plan except the UD lane, which the arithmetic-recovery sweep below keeps on
+    # the serial owners; the strict binder (which every plan that falls back to
+    # it runs) publishes no scope. The dispatch-time selector still guards the
+    # owner on head_dim 128 and on the layer's own slot path, and the columnwarp
+    # parent stays ahead of it inside its own gate.
+    gdn_peer_prefill_layers = (
+        ",".join(map(str, PRODUCTION_GDN_PEER_PREFILL_LAYERS))
+        if production and resolved.manifest.get("quant") != "gguf_ud_q4_k_xl"
+        else None
+    )
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         # Publish the router producer the manifest declares, so the runner's
@@ -1262,12 +1276,12 @@ def _bind(
         # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
         # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
         # profile binds them and no runner reads them.
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": (
-            ",".join(map(str, PRODUCTION_GDN_PEER_PREFILL_LAYERS))
-            if production
-            else ""
-        ),
+        #
+        # The GDN peer prefill owner's gate and layer scope were the pair
+        # HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}. Both are the owning
+        # runner's state now (``gdn_peer_prefill_layers``), published below, so
+        # no process key names them and the arithmetic-recovery sweep cannot
+        # rewrite them.
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": (
             ",".join(map(str, PRODUCTION_Q4_DP4A_DECODE_LAYERS))
@@ -1417,6 +1431,7 @@ def _bind(
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
     generator.gdn_prefill_variant = gdn_prefill_variant
+    generator.gdn_peer_prefill_layers = gdn_peer_prefill_layers
     generator.q51_down_m1 = q51_down_m1
     generator.q51_fold128_prefill = q51_fold128_prefill
     generator.q51_fold_pair_prefill = q51_fold_pair_prefill
@@ -1450,6 +1465,7 @@ def _bind(
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
         runner.gdn_prefill_variant = gdn_prefill_variant
+        runner.gdn_peer_prefill_layers = gdn_peer_prefill_layers
         runner.q51_down_m1 = q51_down_m1
         runner.q51_fold128_prefill = q51_fold128_prefill
         runner.q51_fold_pair_prefill = q51_fold_pair_prefill

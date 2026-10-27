@@ -701,21 +701,21 @@ Three paths re-open a swept flag, or keep a flag out of the sweep entirely:
   tests and public generation that confirms both the default and diagnostic
   parent routes actually run.
 
-Eight flags stay held off there, with their recorded withdrawal reason and
-reopen condition:
+The following route choices stay held off there, with their recorded withdrawal
+reason and reopen condition:
 
-| Flag(s) | Withdrawn for | Reopen condition |
+| Selector | Withdrawn for | Reopen condition |
 | --- | --- | --- |
 | `PRODUCTION_MOE_PREFILL`, `Q4_IU8_PREFILL` | perf in the disabled-family sweep, then rejected on the task gate (15/18) | a mechanism that fixes the three divergent prompts; a faster tiling does not clear it |
 | `GR_IU8` | accuracy (mean KL 1.40e-3) | a correction whose prefill-boundary KL is below ~5e-9 |
 | `GR_IU8_DOWN` | accuracy (mean KL 1.31e-3) | a further ~2x prefill-KL reduction |
 | `Q8_MMQ_PREFILL` | failed canonical depth | operand localization showing which role carries it |
-| `GDN_PEER_PREFILL` | perf, inside run-to-run spread | a complete-owner mechanism |
+| `runner.gdn_peer_prefill_layers` | perf, inside run-to-run spread | a complete-owner mechanism |
 | `Q4_DP4A64` | isolated long-context decode discrepancy | both decode gates named in "2026-08-29 Qwen4Exp late-layer production prefill" |
 | `QSA_FLASH_PREFILL` | part of the failed recovery composition | none recorded |
 
 `tests/test_unit_qwen4exp_arithmetic_recovery.py` pins the sweep membership and
-the post-sweep value of every flag, and
+the post-sweep flag values and runner-owned peer scope, and
 `tests/test_unit_qwen4_exp_profiles.py::test_production_binder_publishes_the_f16_routes_and_strict_retracts_them`
 pins the F16 re-admission. These tests cover binder behavior, not the prose here.
 
@@ -3047,11 +3047,6 @@ should be removed or collapsed.
   [qualification evidence](../benchmarks/results/2026-10-07-qwen4exp-mx1-f16-down-only-layer2-qualification/README.md).
   A successor must charge map construction, synchronization and readback in
   its full-operation timing.
-- `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}` is now an internal named
-  production-profile bridge selecting certified global layers 35–47. Strict
-  binds it off; the all-layer and suffix-34 candidates are measured failures.
-  Remove the process-global transport with the MMQ/DP4A bridges when profile
-  state is request-local; retain `qwen4exp_sigmoid_strict_prefill` fallback.
 - `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` selects a 64-thread decode reduction that
   improves warm decode by 6-8% but fails production mean/p95 KL
   (`0.002565/0.007202`). Keep it default-off only for exact-repack/reduction

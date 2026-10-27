@@ -883,7 +883,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL` | production profile | Uses the sigmoid register GDN recurrence prefill kernel for rows>=2 and the (16, 48, 128) head geometry. |
 | `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM` | retired | No longer read. Serial GDN prefill consumes runner-local profile selection with registered wide/register fallback. |
 | `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL` | retired | No longer read. The current GDN tile16-family owner remains selected inside its capability guards; scoped `gdn_tile16_prefill(runner, False)` compares the columnwarp parent on that runner. Strict fallback kernels remain registered. |
-| `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL` | production profile | Uses the peer-wave GDN prefill variant for head_dim 128, gated by the `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS` layer list. |
+| `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL` / `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS` | retired | No longer read. The profile publishes the peer layer scope on its runner; scoped diagnostics preserve explicit layer selection and the strict fallback. |
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` | production profile | Uses the columnwarp GDN prefill variant, gated by the `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS` | unset | Comma-separated layer list admitting the columnwarp GDN decode variant; empty under production. |
 | `HIPENGINE_QWEN4_EXP_MOE_GRAPH` | retired | No longer read. Backend capability selects the default c1 MoE graph path; explicit runner/generator `moe_graph_enabled` controls support eager/captured diagnostics. Automatic eager fallback remains. |

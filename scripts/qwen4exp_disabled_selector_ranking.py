@@ -34,7 +34,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.generation.qwen4_exp_profiles import (  # noqa: E402
     PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS,
-    PRODUCTION_GDN_PEER_PREFILL_LAYERS,
     PRODUCTION_Q4_IU8_PREFILL_LAYERS,
     PRODUCTION_QSA_FLASH_PREFILL_LAYERS,
 )
@@ -60,6 +59,15 @@ _L = lambda layers: ",".join(str(layer) for layer in layers)  # noqa: E731
 #   fallback and never reaches the plain iu8 owner below it. Reaching that owner
 #   needs a runner binding, as the layer2 gate's ``q4_exact_grouped_gate=False``
 #   candidate does.
+# * ``GDN_PEER_PREFILL`` has no arm here. Its layer scope is request-local runner
+#   state (``gdn_peer_prefill_layers``), and the columnwarp owner ahead of it in
+#   the same chain is open on this lane, so an environment-only arm could never
+#   have reached the peer owner even before the migration - it measured the
+#   incumbent. Neither does the layer2 gate reach it: ``gdn_isolated`` and
+#   ``production_gdn_restore`` bind the peer scope but also bind colwarps on, so
+#   the columnwarp owner still takes the chunk. Reaching the peer owner needs the
+#   columnwarp gate closed and the scope bound together, which no shipped plan
+#   and no candidate in this tree currently does.
 ARMS: dict[str, dict[str, str]] = {
     "baseline": {},
     "moe": {"HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1"},
@@ -72,12 +80,6 @@ ARMS: dict[str, dict[str, str]] = {
     "gr_iu8": {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"},
     "gr_iu8_down": {"HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1"},
     "gr_wide": {"HIPENGINE_QWEN4_EXP_GR_WIDE": "1"},
-    "gdn_peer": {
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": _L(
-            PRODUCTION_GDN_PEER_PREFILL_LAYERS
-        ),
-    },
     "gdn_colwarps": {
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _L(
@@ -102,10 +104,6 @@ ARMS: dict[str, dict[str, str]] = {
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": _L(
-            PRODUCTION_GDN_PEER_PREFILL_LAYERS
-        ),
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _L(
             PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS

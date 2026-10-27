@@ -5,6 +5,7 @@ One numerical run per arm: not a promotion, determinism or task certificate.
 """
 
 import argparse
+from contextlib import ExitStack, nullcontext
 import fcntl
 import hashlib
 import json
@@ -19,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -29,7 +31,7 @@ from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 PREFIX = "HIPENGINE_QWEN4_EXP_"
 ARMS = {
     "bound": {},
-    "gdn_strict": {PREFIX + key: "0" for key in ("GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL")},
+    "gdn_strict": {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
     "moe_strict": {PREFIX + key: "0" for key in ("PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL")},
     "dense_q8_gr_strict": {PREFIX + key: "0" for key in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN")},
     "decode_strict": {PREFIX + "Q4_DP4A64": "0"},
@@ -115,6 +117,36 @@ def gdn_isolation_overrides(strict_flags, production_flags):
     }
 
 
+def serial_gdn(env):
+    """Does this arm pin the serial GDN prefill owner?
+
+    The peer owner's layer scope is request-local runner state now, so an arm
+    that closes the columnwarp gate - the parent both owners sit inside - binds
+    it off on the runner it measures instead of writing a process value. Before
+    the migration the same arms zeroed the retired process gate; deriving the
+    decision from the columnwarp value keeps a new strict aggregate covered
+    without a second list to maintain.
+    """
+
+    return env.get(PREFIX + "GDN_COLWARPS_PREFILL") == "0"
+
+
+def phase_peer_scope(runner, flags):
+    """Bind the GDN peer prefill owner for one phase of a split trajectory.
+
+    The split arms set the prefill and decode flag sets independently, so the
+    peer owner's request-local scope has to follow the phase that is running: a
+    strict phase binds it off, and a production phase leaves the runner's
+    published scope in place. Decode runs one row and the mixer takes its decode
+    branch before the prefill chain, so the owner is unreachable there either
+    way. The prior scope is restored on exit, including on an exception.
+    """
+
+    if not serial_gdn(flags):
+        return nullcontext()
+    return gdn_peer_prefill(runner, False)
+
+
 def set_flags(flags):
     for key, value in flags.items():
         if value is None:
@@ -127,8 +159,9 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    runner.reset()
-    result = runner.prefill(prompt_ids)
+    with phase_peer_scope(runner, prefill_flags):
+        runner.reset()
+        result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
@@ -231,19 +264,24 @@ def main():
                 if os.environ.get(PREFIX + "Q8_MMQ_PREFILL") == "1":
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
-                for row in prompt_rows:
-                    key = row["id"]
-                    forced = [r["token_id"] for r in strict[key][:-1]]
-                    if arm in ("strict_prefill_production_decode",
-                               "production_prefill_strict_decode"):
-                        pre, dec = ({**bound, **strict_flags}, bound)
-                        if arm == "production_prefill_strict_decode":
-                            pre, dec = dec, pre
-                        candidate.extend(split_trajectory(
-                            generator.runner, tokens[key], forced, pre, dec))
-                    else:
-                        run = _candidate_trajectory(generator.runner, tokens[key], forced)
-                        candidate.extend(r["logits"] for r in run)
+                arm_scope = ExitStack()
+                if serial_gdn({**bound, **ARMS[arm]}):
+                    arm_scope.enter_context(
+                        gdn_peer_prefill(generator.runner, False))
+                with arm_scope:
+                    for row in prompt_rows:
+                        key = row["id"]
+                        forced = [r["token_id"] for r in strict[key][:-1]]
+                        if arm in ("strict_prefill_production_decode",
+                                   "production_prefill_strict_decode"):
+                            pre, dec = ({**bound, **strict_flags}, bound)
+                            if arm == "production_prefill_strict_decode":
+                                pre, dec = dec, pre
+                            candidate.extend(split_trajectory(
+                                generator.runner, tokens[key], forced, pre, dec))
+                        else:
+                            run = _candidate_trajectory(generator.runner, tokens[key], forced)
+                            candidate.extend(r["logits"] for r in run)
                 candidate_logits = np.stack(candidate)
                 quality = compare_profile_logits(strict_logits, candidate_logits, descriptors)
                 quality["all_rows"] = [

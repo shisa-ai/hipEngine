@@ -48,8 +48,6 @@ def test_layer_gated_selectors_carry_their_layer_companion(module):
     pairs = {
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL":
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
-        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL":
-            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL":
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
         "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL":
@@ -88,6 +86,10 @@ def test_arms_cover_every_disabled_prefill_selector(module):
     }
     # Decode-only: it does not affect prefill wall time, so it is out of scope.
     still_disabled.discard("Q4_DP4A64")
+    # The GDN peer owner is request-local runner state, not a recovery flag: the
+    # columnwarp owner ahead of it is open on this lane, so no environment arm
+    # could reach it. The layer2 gate's GDN candidates bind the scope instead.
+    still_disabled.discard("GDN_PEER_PREFILL")
     covered = {
         key.replace("HIPENGINE_QWEN4_EXP_", "")
         for overrides in module.ARMS.values()
@@ -104,10 +106,10 @@ def test_the_restored_flags_are_not_in_the_disabled_set(module):
 
     recovery = set(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
     restored = set(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
-    # The QSA prefill head grouping and the ordered-v2 sparse decode leaf are
-    # request-local runner state now, so they are neither recovery flags nor
-    # restored environment values.
-    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 12
+    # The QSA prefill head grouping, the ordered-v2 sparse decode leaf and the
+    # GDN peer prefill layer scope are request-local runner state now, so they
+    # are neither recovery flags nor restored environment values.
+    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 11
     assert len(PRODUCTION_Q8_QSA_RESTORED_FLAGS) == 4
     # Three selectors are restored; Q8_DOWN_VARIANT is a companion value.
     # Q4 decode now keeps the strict owner after the long-context failure.
@@ -116,7 +118,7 @@ def test_the_restored_flags_are_not_in_the_disabled_set(module):
     assert restored - recovery == {"Q8_DOWN_VARIANT"}
     still_disabled = [flag for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
                       if flag not in restored]
-    assert len(still_disabled) == 9
+    assert len(still_disabled) == 8
 
 
 def test_baseline_arm_enables_nothing(module):

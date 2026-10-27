@@ -46,7 +46,8 @@ if str(ROOT) not in sys.path:
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_prefill_variant, q4_exact_grouped_all, q4_exact_grouped_gate,
+    gdn_peer_prefill, gdn_prefill_variant,
+    q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8,
     qsa_ordered_decode_v2,
     qsa_prefill_head_mode,
@@ -109,6 +110,13 @@ class CandidateSpec:
     # production base, the ordered v1 parent on a strict one); the gate binds a
     # non-None value around the measured rows and restores it after.
     qsa_ordered_decode_v2: bool | None = None
+    # Explicit GDN peer prefill layer scope for this arm, same protocol. ``None``
+    # keeps the base profile's published scope (the certified layers 35-47 on a
+    # non-recovered production base, no scope on strict); ``False`` binds the
+    # serial sigmoid owners for the measured rows, and a scope string or ``True``
+    # binds the peer owner over that scope. The published value comes back on
+    # unwind.
+    gdn_peer_prefill: bool | str | None = None
     # Explicit exact grouped Q5_1 down chain gate for this arm, same protocol.
     # ``None`` keeps the base profile's published decision (on for every plan);
     # ``False`` closes the chain around the measured rows so the dispatch falls
@@ -146,14 +154,15 @@ class CandidateSpec:
 CONSERVATIVE_ARITHMETIC_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
-    "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
+    "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
     "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "GR_WIDE",
 )
-# The QSA prefill head grouping and the ordered-v2 sparse decode leaf are
-# request-local runner state, so this gate arms them through
-# CandidateSpec.qsa_prefill_head_mode and CandidateSpec.qsa_ordered_decode_v2,
-# not through environment switches.
+# The QSA prefill head grouping, the ordered-v2 sparse decode leaf and the GDN
+# peer prefill owner's layer scope are request-local runner state, so this gate
+# arms them through CandidateSpec.qsa_prefill_head_mode,
+# CandidateSpec.qsa_ordered_decode_v2 and CandidateSpec.gdn_peer_prefill, not
+# through environment switches.
 
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
@@ -276,8 +285,12 @@ CANDIDATES = {
         fallback_key=None,
         # The conservative arm keeps the ordered v1 parent the env zeroing above
         # selects, so the v2 leaf it rides is bound off explicitly rather than
-        # left at the production base's published value.
+        # left at the production base's published value. The GDN peer prefill
+        # owner is request-local state rather than one of those flags, so the
+        # arm closes its scope explicitly: on the UD base that is a no-op, and on
+        # any lane that publishes a scope it keeps the arm conservative.
         qsa_ordered_decode_v2=False,
+        gdn_peer_prefill=False,
     ),
     # The risk multiplier as a CONFIGURATION.  The production repair is a
     # bit-parity mechanism, and `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` sets the
@@ -643,8 +656,6 @@ CANDIDATES = {
         mechanism="current GDN suffix over strict non-GDN arithmetic",
         environment={
             "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1",
-            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
-            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": ",".join(map(str, range(35, 48))),
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
             "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_dpp_prefill",
@@ -653,6 +664,7 @@ CANDIDATES = {
         base_profile="strict",
         scenario_id="qwen4exp-ud-q4-k-xl-gdn-isolated",
         gdn_prefill_variant="qwen4exp_sigmoid_wave_norm_prefill",
+        gdn_peer_prefill=",".join(map(str, range(35, 48))),
         candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                        "qwen4exp_gdn_tiled16_dpp_prefill"),
         fallback_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
@@ -678,13 +690,13 @@ CANDIDATES = {
         mechanism="incumbent repair candidate: strict Q8 selected-down and GDN prefill",
         environment={
             "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-            "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "0",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
         },
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-production-fallback-review",
         candidate_key=None,
         fallback_key=None,
+        gdn_peer_prefill=False,
     ),
     **_f16_route_isolation_candidates(),
     "production_baseline": CandidateSpec(
@@ -1722,6 +1734,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # arm binds it and the profile's own decision comes back on unwind.
         dispatch_stack.enter_context(qsa_ordered_decode_v2(
             candidate_generator.runner, candidate_spec.qsa_ordered_decode_v2))
+    if candidate_spec.gdn_peer_prefill is not None:
+        # The GDN peer owner's layer scope is request-local too, so an arm that
+        # restores or closes it binds the scope on this runner and the base
+        # profile's published scope comes back on unwind.
+        dispatch_stack.enter_context(gdn_peer_prefill(
+            candidate_generator.runner, candidate_spec.gdn_peer_prefill))
     if candidate_spec.q51_exact_grouped_down is not None:
         # And for the exact grouped Q5_1 down chain gate: request-local state, so
         # an arm that needs the owners below the chain binds it off for the

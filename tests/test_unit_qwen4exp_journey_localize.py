@@ -1,6 +1,11 @@
 from types import SimpleNamespace
 
-from scripts.qwen4exp_journey_localize import ARMS, OUTLIER, PREFIX, clear_arm_graphs, strict_family_overrides, gdn_isolation_overrides
+import pytest
+
+from scripts.qwen4exp_journey_localize import (
+    ARMS, OUTLIER, PREFIX, clear_arm_graphs, gdn_isolation_overrides,
+    phase_peer_scope, serial_gdn, strict_family_overrides,
+)
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 
 
@@ -63,8 +68,8 @@ def test_remaining_family_flags_are_taken_from_strict_binding():
 
 def test_gdn_isolation_keeps_other_families_strict():
     strict = {PREFIX + name: "0" for name in (
-        "GDN_REGISTER_PREFILL", "GDN_PEER_PREFILL",
-        "GDN_COLWARPS_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
+        "GDN_REGISTER_PREFILL", "GDN_COLWARPS_PREFILL",
+        "Q8_0_SELECTED_WMMA_DOWN",
     )}
     production = {key: "1" for key in strict}
     production["UNRELATED"] = "ignored"
@@ -75,10 +80,104 @@ def test_gdn_isolation_keeps_other_families_strict():
         assert "UNRELATED" not in values
     assert arms["strict_plus_gdn"][PREFIX + "GDN_COLWARPS_PREFILL"] == "1"
     assert arms["strict_plus_gdn_serial"][PREFIX + "GDN_COLWARPS_PREFILL"] == "0"
-    assert arms["strict_plus_gdn_serial"][PREFIX + "GDN_PEER_PREFILL"] == "0"
+    # The peer owner's layer scope is request-local runner state, so the serial
+    # arm binds it on the runner instead of carrying a process value; the
+    # columnwarp value is what tells the arm loop to do that.
+    assert serial_gdn(arms["strict_plus_gdn_serial"]) is True
+    assert serial_gdn(arms["strict_plus_gdn"]) is False
     assert arms["strict_plus_gdn_multi"][PREFIX + "GDN_TILE16_VARIANT"] == (
         "qwen4exp_gdn_tiled16_multi_prefill"
     )
+
+
+def _split_runner(monkeypatch, module, seen, published="35-47"):
+    import numpy as np
+
+    result = SimpleNamespace(logits=np.array([1.0], dtype=np.float32))
+
+    def prefill(ids):
+        seen.append(("prefill", runner.gdn_peer_prefill_layers))
+        return result
+
+    def step(token):
+        seen.append(("step", runner.gdn_peer_prefill_layers))
+        return result
+
+    runner = SimpleNamespace(
+        gdn_peer_prefill_layers=published,
+        reset=lambda: None,
+        prefill=prefill,
+        step=step,
+    )
+    monkeypatch.setattr(module, "clear_arm_graphs", lambda runner: None)
+    monkeypatch.setattr(module, "set_flags", lambda flags: None)
+    return runner
+
+
+def test_split_trajectory_binds_the_peer_owner_off_for_a_strict_prefill_phase(monkeypatch):
+    """A strict prefill phase must not inherit the production peer scope.
+
+    The split arms set the prefill and decode flag sets independently, so the
+    phase-local binding is the only thing that reaches the strict prefill.
+    """
+
+    from scripts import qwen4exp_journey_localize as module
+
+    seen = []
+    runner = _split_runner(monkeypatch, module, seen)
+    module.split_trajectory(
+        runner, [3], [5],
+        {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
+        {PREFIX + "GDN_COLWARPS_PREFILL": "1"},
+    )
+    # Strict prefill runs the serial owners; the production decode phase leaves
+    # the published scope alone, and decode never selects the owner anyway.
+    assert seen == [("prefill", None), ("step", "35-47")]
+    assert runner.gdn_peer_prefill_layers == "35-47"
+
+
+def test_split_trajectory_keeps_the_published_scope_for_a_production_prefill_phase(monkeypatch):
+    from scripts import qwen4exp_journey_localize as module
+
+    seen = []
+    runner = _split_runner(monkeypatch, module, seen)
+    module.split_trajectory(
+        runner, [3], [5],
+        {PREFIX + "GDN_COLWARPS_PREFILL": "1"},
+        {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
+    )
+    assert seen == [("prefill", "35-47"), ("step", "35-47")]
+    assert runner.gdn_peer_prefill_layers == "35-47"
+
+
+def test_split_trajectory_restores_the_published_scope_after_a_failed_prefill(monkeypatch):
+    from scripts import qwen4exp_journey_localize as module
+
+    def boom(ids):
+        raise RuntimeError("boom")
+
+    runner = SimpleNamespace(
+        gdn_peer_prefill_layers="35-47", reset=lambda: None, prefill=boom,
+        step=lambda token: None,
+    )
+    monkeypatch.setattr(module, "clear_arm_graphs", lambda runner: None)
+    monkeypatch.setattr(module, "set_flags", lambda flags: None)
+    with pytest.raises(RuntimeError, match="boom"):
+        module.split_trajectory(
+            runner, [3], [5],
+            {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
+            {PREFIX + "GDN_COLWARPS_PREFILL": "1"},
+        )
+    assert runner.gdn_peer_prefill_layers == "35-47"
+
+
+def test_phase_scope_leaves_a_production_phase_unbound():
+    runner = SimpleNamespace(gdn_peer_prefill_layers="35-47")
+    with phase_peer_scope(runner, {PREFIX + "GDN_COLWARPS_PREFILL": "1"}):
+        assert runner.gdn_peer_prefill_layers == "35-47"
+    with phase_peer_scope(runner, {PREFIX + "GDN_COLWARPS_PREFILL": "0"}):
+        assert runner.gdn_peer_prefill_layers is None
+    assert runner.gdn_peer_prefill_layers == "35-47"
 
 
 def test_split_trajectory_reconstructs_prefix_then_switches_without_reset(monkeypatch):

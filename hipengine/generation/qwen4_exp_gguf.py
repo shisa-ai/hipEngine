@@ -327,6 +327,10 @@ class Qwen4ExpGGUFTextGenerator:
         # plan, so an unbound generator keeps it on: a batch owner built before
         # the bind still runs the production chain.
         self.q51_exact_grouped_down = True
+        # The GDN peer prefill owner's layer scope is published by the binder too
+        # (request-local, not a process switch); an unbound generator carries no
+        # scope, so every clone it builds keeps the serial sigmoid owners.
+        self.gdn_peer_prefill_layers = None
         # The chain's non-expertgrid fallback rung is published on too, so an
         # unbound generator keeps the out8 owner rather than the output1 base.
         self.q51_out8 = True
@@ -1094,6 +1098,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.qsa_ordered_decode_v2 = bool(
         getattr(generator, "qsa_ordered_decode_v2", False))
     runner.gdn_prefill_variant = getattr(generator, "gdn_prefill_variant", None)
+    runner.gdn_peer_prefill_layers = getattr(
+        generator, "gdn_peer_prefill_layers", None)
     runner.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
     runner.q51_fold128_prefill = bool(
         getattr(generator, "q51_fold128_prefill", False))

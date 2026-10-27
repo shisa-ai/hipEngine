@@ -14,7 +14,9 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.cpu_reference.qwen4_exp import sigmoid_gated_rmsnorm
+from hipengine.runtime import qwen4_exp_runner
 from hipengine.runtime.qwen4_exp_runner import (
+    GDN_PEER_CERTIFIED_SCOPE,
     Qwen4ExpGDNScratch,
     run_qwen4_exp_gdn_token_mixer,
 )
@@ -146,10 +148,24 @@ def test_qwen4_exp_runner_gdn_bulk_matches_serial_reduced(
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
+    # The peer owner's layer scope is request-local runner state, and the owner
+    # also reads the scope off the weight's own slot path, so the peer arm
+    # qualifies the synthetic weights the way a resident layer weight is
+    # qualified. An unqualified path would silently measure the serial owner, so
+    # the arm counts the peer launch and asserts it ran.
+    scope = GDN_PEER_CERTIFIED_SCOPE if peer_prefill else None
+    slot_prefix = "layers.35." if peer_prefill else ""
+    peer_calls: list[int] = []
     if peer_prefill:
-        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "1")
-    else:
-        monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", raising=False)
+        peer_kernel = qwen4_exp_runner.qwen4_exp_gdn_peer_prefill_f32
+
+        def counted(*args, **kwargs):
+            peer_calls.append(1)
+            return peer_kernel(*args, **kwargs)
+
+        monkeypatch.setattr(
+            qwen4_exp_runner, "qwen4_exp_gdn_peer_prefill_f32", counted
+        )
     rng = np.random.default_rng(3518)
     rows, k_heads, v_heads, kernel_size = 5, 2, 4, 4
     hidden, head_dim = (256, 128) if peer_prefill else (8, 4)
@@ -179,7 +195,7 @@ def test_qwen4_exp_runner_gdn_bulk_matches_serial_reduced(
     try:
         d_mixed = _upload(mixed, runtime, allocations)
         weights = {
-            name: _dense_f32_weight(name, array, runtime, allocations)
+            name: _dense_f32_weight(slot_prefix + name, array, runtime, allocations)
             for name, array in arrays.items()
         }
         d_conv_weight = _upload(conv_weight, runtime, allocations)
@@ -231,6 +247,7 @@ def test_qwen4_exp_runner_gdn_bulk_matches_serial_reduced(
         bulk_output = run_qwen4_exp_gdn_token_mixer(
             d_mixed.ptr,
             weights,
+            gdn_peer_prefill_layers=scope,
             conv_weight_ptr=d_conv_weight.ptr,
             dt_bias_ptr=d_dt.ptr,
             a_ptr=d_a.ptr,
@@ -262,6 +279,7 @@ def test_qwen4_exp_runner_gdn_bulk_matches_serial_reduced(
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
 
+    assert peer_calls == ([1] if peer_prefill else [])
     np.testing.assert_allclose(bulk, np.asarray(serial_rows), rtol=3e-4, atol=3e-4)
     np.testing.assert_allclose(bulk_conv, serial_conv, rtol=3e-6, atol=3e-6)
     np.testing.assert_allclose(bulk_matrix, serial_matrix, rtol=3e-4, atol=3e-4)
