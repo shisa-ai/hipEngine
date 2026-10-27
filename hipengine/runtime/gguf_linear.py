@@ -1355,8 +1355,6 @@ _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 # selector exists (docs/REFACTOR.md). The floor also stays clear of the
 # dedicated small-B rowtile/GEMV domain (rows<=8).
 _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33
-_Q4_T16_DUAL_SILU_RETILE_ENV = "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE"
-_Q4_T16_DUAL_SILU_RETILE_RESOLVED: bool | None = None
 _rowtile_variant_policy_env_cache: dict[tuple[str, bool], bool] = {}
 _Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS = 4_096
 _Q4_T16_DENSE_QUANTS = frozenset(
@@ -3292,20 +3290,9 @@ def _pack8_dual_wmma_silu_dispatch(
 
 
 def _q4_t16_dual_silu_retile_enabled() -> bool:
-    """Return the same-build rollback state for exact short-prefill retiles."""
+    """Select bounded retiles; diagnostic parent comparisons may replace this hook."""
 
-    global _Q4_T16_DUAL_SILU_RETILE_RESOLVED
-    if _Q4_T16_DUAL_SILU_RETILE_RESOLVED is None:
-        raw = os.environ.get(_Q4_T16_DUAL_SILU_RETILE_ENV, "1").strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            _Q4_T16_DUAL_SILU_RETILE_RESOLVED = True
-        elif raw in {"0", "false", "no", "off"}:
-            _Q4_T16_DUAL_SILU_RETILE_RESOLVED = False
-        else:
-            raise ValueError(
-                f"{_Q4_T16_DUAL_SILU_RETILE_ENV} must be a boolean value"
-            )
-    return _Q4_T16_DUAL_SILU_RETILE_RESOLVED
+    return True
 
 
 def _q4_t16_physical_dual_silu_variant(

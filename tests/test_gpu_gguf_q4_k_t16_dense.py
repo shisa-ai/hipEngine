@@ -1061,11 +1061,6 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     from hipengine.runtime import gguf_linear as gguf_linear_module
 
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE", raising=False)
-    monkeypatch.setattr(
-        gguf_linear_module,
-        "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
-        None,
-    )
     weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
     weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
     variants = (
@@ -1114,11 +1109,6 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     finally:
         for variant, key in keys.items():
             register(key, originals[variant], replace=True)
-        monkeypatch.setattr(
-            gguf_linear_module,
-            "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
-            None,
-        )
         clear_gguf_linear_dispatch_cache()
 
     assert launched
@@ -1363,23 +1353,17 @@ def test_q4_t16_physical_row48_flag_is_not_resolved_on_row_miss(monkeypatch) -> 
         ) == "dense_dual_wmma_prefill_row48_bf16_bf16_out"
 
 
-def test_q4_t16_dense_pair_silu_retile_rollback(monkeypatch) -> None:
+def test_q4_t16_dense_pair_silu_retile_ignores_retired_override(monkeypatch) -> None:
     from hipengine.runtime import gguf_linear as gguf_linear_module
 
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE", "0")
-    monkeypatch.setattr(
-        gguf_linear_module,
-        "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
-        None,
-        raising=False,
-    )
     weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
     weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
     key = KernelKey(
         "hip_gfx1100",
         "linear_pair_silu",
         "gguf_q4_k_t16_v1",
-        "dense_dual_wmma_prefill_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out",
     )
     original = resolve(
         backend=key.backend,
@@ -1401,12 +1385,6 @@ def test_q4_t16_dense_pair_silu_retile_rollback(monkeypatch) -> None:
         )
     finally:
         register(key, original, replace=True)
-        monkeypatch.setattr(
-            gguf_linear_module,
-            "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
-            None,
-            raising=False,
-        )
         clear_gguf_linear_dispatch_cache()
 
     assert len(calls) == 1

@@ -5201,18 +5201,18 @@
       "start_line": 4408,
       "end_line": 4422,
       "sha256": "47e39809614a66d0a18f621d8fe51e7bdb59a1a8a20b7a9bfbfe1006e7786d04",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed retile environment/cache; bounded backend policy and parent kernels preserved. Diagnostic comparison uses scoped callable override with nested/error restoration. RED/GREEN routing, full linear units, direct fused/unfused GPU checks and docs/audit pass. Public C1-C3 serving refresh remains open. Worklog: worklog/entries/20261027T160304.614159Z-cleanup-refactor-r0199-6b7f73.md."],
       "subitems": [
         {
           "line": 4410,
           "text": "- Added 2026-08-31 with task #37. The separately registered standard-Q4",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4419,
           "text": "- Removal trigger: after one release window with a defaults-only repeated",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

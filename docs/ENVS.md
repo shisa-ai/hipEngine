@@ -389,7 +389,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE` | `baseline` | Rollback seam | Linear-attention conv prefill mode: `baseline` or `tile32x128`. |
 | `HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE` | true | Retained default with rollback opt-out | Exact model/backend/shape-qualified c1 down+residual owner; `0` restores the generic owner. |
 | `HIPENGINE_GGUF_Q4K_ROWTILE` | true | Retained default with rollback opt-out | Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8 Q4_K verifier continuation blocks; `0` disables for bisection. |
-| `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE` | unset | Rollback seam | Rowtile variant policy for the Q4_T16 dual-SiLU prefill family. |
 | `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 single-wave rowtile variant. |
 | `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 shared-B row64 variant. |
 | `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` | unset | Diagnostic | Col8 pair-helper variant for Q8T16 decode (batch-route gate provenance key). |
@@ -1125,6 +1124,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE` is retired and ignored. Backend
+  shape/range policy selects exact prefill retiles; diagnostic comparisons use
+  a scoped parent selector and preserve registered parent kernels.
 
 - `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT` is retired and ignored. Ready AR
   items use the cohort API when the generator provides it; generators without

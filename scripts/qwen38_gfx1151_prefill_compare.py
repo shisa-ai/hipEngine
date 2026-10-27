@@ -51,15 +51,15 @@ def candidate_scope(mode):
         updates[ROW48_CAPABILITY] = 48
     originals = {name: (hasattr(hip_gfx1151, name), getattr(hip_gfx1151, name, None))
                  for name in updates}
-    retile = gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED
+    retile = gguf_linear._q4_t16_dual_silu_retile_enabled
     try:
         for name, value in updates.items():
             setattr(hip_gfx1151, name, value)
         if mode == "no_retiles":
-            gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED = False
+            gguf_linear._q4_t16_dual_silu_retile_enabled = lambda: False
         yield
     finally:
-        gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED = retile
+        gguf_linear._q4_t16_dual_silu_retile_enabled = retile
         for name, (present, previous) in originals.items():
             if present:
                 setattr(hip_gfx1151, name, previous)

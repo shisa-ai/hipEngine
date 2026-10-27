@@ -3197,13 +3197,11 @@ category and control/ownership gates before closing this entry.
   K16 WMMA, FP32 accumulation, BF16 projection boundary, and SiLU association.
   Backend policy selects row48 at rows33-48, row64 at rows49-64 and row128
   at rows65-128; rows129+ and every quant/shape/backend miss retain the
-  parent. `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=0` restores that parent on
-  the same build; the exact retiles are now the default after the complete
-  counterbalanced C1-C3 category+heldout gate passed. The resolved value is
-  cached on the launch path and cannot broaden beyond the measured bands.
-- Removal trigger: after one release window with a defaults-only repeated
-  C1-C3 gate, remove the environment lookup/cache while preserving the bounded
-  shape/range policy and permanent 256-row registered fallback.
+  parent. The environment lookup/cache is removed; the diagnostic prefill
+  comparison uses a scoped selector override restored in `finally`.
+- Remaining validation: defaults-only repeated C1-C3 public serving gate,
+  preserving the bounded shape/range policy and permanent 256-row parent.
+  Route tests and direct numerical checks do not establish public engagement.
 
 ## gfx1100 Q4-T16 row64 down-projection bisection
 
