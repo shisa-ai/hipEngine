@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "Q4 head row 6178 moves to bottom R0281-Q4HEAD: live target-AR control affects scalar raw projection only, not row/bulk/verifier or Q6 producer-top1. Defer diagnostic-vs-scoped-owner decision; preserve missing-key and exact fallback contracts. Runner/target-AR units and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205756.571310Z-cleanup-refactor-r0281-q4head-0ecd29.md.",
         "Mixed projection rows 6176/6177 consolidate into R0281-MIXED. Live target-AR comparison levels: local32, fixed-Q6/generic quad, then pair/singleton; fixed-Q6 false alone cannot bypass local32 success. Defer diagnostic-vs-scoped-policy ownership, preserve quant-tuple and miss ordering. Four unit files/help and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205524.346915Z-cleanup-refactor-r0281-mixed-1c7e8d.md.",
         "Q5 metadata rows 6174/6175 consolidate into bottom R0281-Q5META: live target-AR role/shared controls select distinct exact comparisons; query/gate pair applies after mixed-quad disable/miss. Defer supported diagnostic versus scoped-owner migration, preserve all fallbacks. Three unit files/help and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205211.312283Z-cleanup-refactor-r0281-q5meta-a3e721.md.",
         "D12 row 6173: retire two unused constructor role opt-outs, resolve unchanged backend defaults, preserve resolver diagnostics/fixed-meta controls/registered fallback chain. RED/GREEN and full CPU completed with sole H8A hash failure then focused pin repair pass; fixtures/smokes/docs/audit/worklog pass. Public checkpoint validation remains bottom R0281-D12. Worklog: worklog/entries/20261027T204500.188426Z-cleanup-refactor-r0281-d12-b08a36.md.",
@@ -7518,7 +7519,7 @@
         {
           "line": 6178,
           "text": "| Laguna Q4 LM-head local32 fixed-metadata rollback | `LagunaGGUFResidentSession(..., use_q4_lm_head_local32_fixed_meta=False)` and `laguna_target_ar_bench.py --disable-q4-lm-head-local32-fixed-meta` restore the registered local128 c=1 BF16/F32 LM head around gfx1100's local32 default; bulk-prefill/verifier projection, gfx1151, rows>1, and registry miss also retain local128. | Promoted. The full 100,352-logit actual head and default-vs-rollback model state are bit-exact; actual event/wall improve **30.04%/21.44%**. Both clean orders improve LM-head/kernel-sum time **29.07-30.79% / 0.34-1.10%** at unchanged 723 kernels/token. Both complete category orders move paired h32 **61.675 -> 61.992 tok/s (+0.512%)** with every train/heldout category positive. | Retain explicit `False` for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered local128 body for bulk/verifier, rows>1, key misses, and unsupported backends. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-Q4HEAD"
         },
         {
           "line": 6179,
