@@ -6028,18 +6028,20 @@
       "start_line": 5001,
       "end_line": 5016,
       "sha256": "aa81fcb416d67e361a0dc30b6f0edbdb270a1e94e3b74f29f161890c13c15ac6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-implementation",
+      "evidence": [
+        "CUDA c1 native prefill is implemented; serial prefill remains independent oracle. CUDA batched QK/KV and attention leaves exist, but resident orchestration still instantiates HIP resources. Move independent CUDA resident fixed-batch integration/lifecycle work to bottom with clearing commands; do not flip factory boolean. CPU-safe focused tests/docs/audit/worklog pass, device cases skipped; no runtime change. Worklog: worklog/entries/20261027T192823.267681Z-cleanup-refactor-r0231-c4f09f.md."
+      ],
       "subitems": [
         {
           "line": 5003,
           "text": "- **Serial compatibility path closed 2026-08-08.** `MapleCudaRunner` now owns",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5011,
           "text": "- The remaining compatibility owner is c1-only submit/poll. Replace it with a",
-          "status": "pending"
+          "status": "deferred-implementation"
         }
       ]
     },

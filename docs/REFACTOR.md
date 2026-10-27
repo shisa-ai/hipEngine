@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Maple CUDA sm_120a native-prefill follow-ups
-
-- **Serial compatibility path closed 2026-08-08.** `MapleCudaRunner` now owns
-  independent row-batched QKV/O, attention-prefill, router, stable int32 expert
-  compaction, grouped selected-expert, and weighted-residual CUDA families. The
-  public c1 generator calls the complete grouped native path; inherited
-  `prefill()` remains only the explicit correctness/baseline oracle. The full
-  18-prompt/90-position gate is KL 0 and state exact, 520/770 physical state is
-  exact, and cache-only Nsight names every expected family. Evidence:
-  `benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`.
-- The remaining compatibility owner is c1-only submit/poll. Replace it with a
-  CUDA resident fixed-batch owner only after independent per-request span/KV
-  arena, batched QK/KV+attention, sparse c2/c4/c8 admission/reclaim, row-reuse
-  head, lifecycle, and full natural+heldout trajectory gates pass. Do not route
-  CUDA through HIP builders or enable gfx11 batch metadata as a shortcut.
-
 ## Maple P4 public fixed-slot admission
 
 - Added and retained 2026-08-08. `MapleResidentModelRunner` is now the sole
@@ -10442,3 +10426,26 @@ and cleanup on gfx1151. Do not couple this structural cleanup to retuning the
 QKV layout or re-admitting the rejected residual composite. Historical tuning
 results remain in the sweep inventory and worklogs; no routing change or new
 performance claim accompanies this disposition.
+
+### R0231 — Maple CUDA resident fixed-batch owner
+
+CUDA c1 generation uses `MapleCudaRunner.prefill_native()` and CUDA decode.
+Inherited serial `prefill()` is an independent correctness oracle, not an
+unselected production route to delete. The original native-prefill result is
+`benchmarks/results/2026-08-08-cuda-sm120a-maple-native-prefill-retained.json`.
+
+**Dependency:** a CUDA resident-batch owner is not implemented. The CUDA
+package already provides per-request batched QK/KV-write and attention leaves,
+but `MapleBatchRunner` constructs HIP buffers and libraries, and the CUDA
+factory disables that resident owner. Do not flip the factory boolean or
+route CUDA through HIP builders to bypass the missing implementation.
+**Clearing action:** implement a CUDA owner with independent per-request
+span/KV arenas and CUDA libraries, wire existing batched leaves and row-reuse
+head execution, and enable it through the public factory. Validate sparse
+c2/c4/c8 admission, cancellation/reclaim, staggered refill, singleton-in-c8,
+full natural/heldout trajectories and cleanup. On CUDA hardware run
+`HIPENGINE_RUN_CUDA_MAPLE=1 python -m pytest tests/test_gpu_cuda_sm120a_maple.py -q`,
+then `python scripts/maple_public_batch_bench.py --backend cuda_sm120a --out /tmp/maple-cuda-public-batch.json`.
+Extend those gates to cover the new owner rather than counting serialized c1
+calls as batching. This is implementation work, not a missing-evidence gate;
+working c1 execution and its oracle remain unchanged.
