@@ -10517,28 +10517,28 @@
       "start_line": 8140,
       "end_line": 8159,
       "sha256": "33dd1e33e3e1f093ba8af93dc37930c9f20d83bf5a9dbb7a5ae1a7b9399995e9",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Comparison CLI/setter absent; required constructor rollback/capability/T16 and pack8 paths preserved. Completed receipt removed. Worklog: worklog/entries/20261027T042846.897059Z-cleanup-refactor-r0363-7f0b1d.md."],
       "subitems": [
         {
           "line": 8142,
           "text": "- Added 2026-07-31 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8147,
           "text": "- All seven same-resident p512/d128 candidates win",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8150,
           "text": "- Remove the comparison CLI and session setter after tracked-clean",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8155,
           "text": "- Tracked-clean publication passes at **22.555437 tok/s** and tracing records",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
