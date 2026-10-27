@@ -6329,33 +6329,33 @@
       "start_line": 5265,
       "end_line": 5290,
       "sha256": "d0fe47cc4fe8d8d44e36b964b14cd40a5b6766298b63d4df757c40dd84f16c9c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["3d51b7c46 removed comparison flag/session setter/test. Current source search confirms absence. Full PRODUCER_MAX_GATE capability true; laguna_kv.py capability defaults False and requires producer-max, with producer-max without gate fallback preserved. Removed completed receipt only; historical results remain in Git. Documentation/audit gates passed."],
       "subitems": [
         {
           "line": 5267,
           "text": "- Added 2026-07-29 as a default-off gfx1151 capability plus session/profile",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5270,
           "text": "- If matched resident p512/d128 decode is negative or indistinguishable, remove",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5277,
           "text": "- **Promotion gate passed 2026-07-29:** all seven exact resident pairs improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5281,
           "text": "- **Clean publication passed:** selector-unset production is",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5285,
           "text": "- **Closed 2026-07-29:** the census confirms SWA **-0.252%**, kernel sum",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

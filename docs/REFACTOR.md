@@ -4334,32 +4334,6 @@ fallback count is not a success metric.
   trajectory corruption. Revisit the 4,096-row plateau only if a later exact
   owner is non-regressive at 8K+ and keeps memory flat.
 
-## Laguna exact SWA producer-gate selector
-
-- Added 2026-07-29 as a default-off gfx1151 capability plus session/profile
-  comparison seam after the registered primitive passed byte-exact
-  wrap/eviction, leaf, and cached resource gates.
-- If matched resident p512/d128 decode is negative or indistinguishable, remove
-  the runtime capability, cache field, session setter, and
-  `--compare-swa-producer-gate` switch while retaining the exact registered
-  primitive for diagnostics. If positive, promote the architecture capability,
-  publish a clean selector-unset result, then remove the dedicated comparison
-  switch after the next attention census. Keep producer-max without
-  producer-gate as the exact rollback.
-- **Promotion gate passed 2026-07-29:** all seven exact resident pairs improve
-  **19.992650 -> 20.012052 tok/s (+0.097%)**. The gfx1151 architecture
-  capability is promoted. Keep the comparison switch through the pending clean
-  publication and post-promotion attention census, then remove it.
-- **Clean publication passed:** selector-unset production is
-  **20.003064 tok/s**, **+0.0835%** over the prior packet, with exact repeated
-  state/lifecycle. The comparison switch now remains only for the pending
-  post-promotion attention census and should be removed in that logical unit.
-- **Closed 2026-07-29:** the census confirms SWA **-0.252%**, kernel sum
-  **-0.043%**, unchanged resources, and the intended producer-gate symbol. The
-  profile comparison flag, session setter, and setter-only test are removed;
-  retain the architecture capability, fail-closed cache field, registered
-  primitive, and producer-max rollback.
-
 ## Laguna exact SWA producer-maximum selector
 
 - Added 2026-07-29 as a default-off gfx1151 capability plus session/profile
