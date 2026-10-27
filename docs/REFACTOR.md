@@ -3878,8 +3878,8 @@ fallback count is not a success metric.
   `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
   `[gguf_q6_k_t16_qmicro_planar_v1]=8`); the planar-Q6 export no longer falls
   to per-row for rows 5+. The separate FP32 LM-head rowtiles publish their own
-  primitive bounds (standard Q6=6, planar-qmicro=4), which the chunk planner
-  intersects with backend package policy (gfx1100=6, gfx1151=5). Remaining
+  primitive bounds (standard Q6=6, planar-qmicro=8), which the chunk planner
+  intersects with backend package policy (8 on both HIP backends). Remaining
   generic fallback ladders still demonstrate why one model-wide max-row value
   or variant name is not honest coverage.
 - Removal trigger: compact D1/D2 schemas, strict group-cost map, and direct
@@ -3909,8 +3909,8 @@ fallback count is not a success metric.
   state between c2 groups, and decomposed logical c1-c32 honestly. On 2026-08-17
   the packed lm-head/state paths were re-proven byte-exact at c4/c8 (steady,
   masked-lane shrink-sparse, fixed-width graph, and p512 state-oracle gates), so
-  the registered widths are now `(1, 2, 4, 8)`: logical c4/c8 lower to one
-  physical c4/c8 bucket. Matched W7900 p128/d8 c8 improved exact serial-c1
+  the registered shared-slot widths are now `(1, 2, 3, 4, 5, 6, 7, 8)`:
+  logical c4/c8 lower to one physical c4/c8 bucket. Matched W7900 p128/d8 c8 improved exact serial-c1
   **27.634 -> 44.031 tok/s (+59.27%)** (was +29.68% at c2), and p512/d128 c8
   reaches ~0.973x the old design. Serial remains the required numerical fallback.
 - Removal trigger: after BF16 long-context and artifact-qualified no-mirror INT8
