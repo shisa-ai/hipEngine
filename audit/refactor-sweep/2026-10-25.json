@@ -9586,43 +9586,43 @@
       "start_line": 7474,
       "end_line": 7529,
       "sha256": "67755686759c5b26dc59b4dee0cf132a85f1e84b4297b7830e50f5df945bb882",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified named role-split/absmax modes, calibration harness and category lane absent in source/scripts/tests; completed rejection receipt removed without touching generic multi-arm tooling. Worklog: worklog/entries/20261027T035722.267327Z-cleanup-refactor-r0332-53757f.md."],
       "subitems": [
         {
           "line": 7476,
           "text": "- Added 2026-07-27 as default-off selected gate/up modes",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7482,
           "text": "- D4-gate/D8-up clears the economic gate at **15.329 ms** saved in seven",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7487,
           "text": "- D8-gate/D4-up also fails, at max KL **0.203467** despite **317/320**",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7494,
           "text": "- The default-off M512 bucket now keeps production D8 below 512 rows and",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7502,
           "text": "- The extended-512 gate rejects the bucket at max KL **1.379757** across nine",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7511,
           "text": "- The fixed absmax rule passes calibration/heldout transfer, but sparse route",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 7522,
           "text": "- The clean extended-512 gate rejects the layer candidate at max KL",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
