@@ -4287,18 +4287,18 @@
       "start_line": 3836,
       "end_line": 3845,
       "sha256": "0c83ee4eb762c0a421b5c7578b6cc42d0c1014de36fc62b6de24cc1e42f095ab",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Environment opt-out removed; physical/state/shape admission and strict parent preserved. RED/GREEN routing, full CPU bundle and direct GPU bit parity pass. Public gfx1151 MTP compatibility passes but selector not engaged; bottom R0165 names gfx1100 physical-owner public gate. Worklog: worklog/entries/20261027T125027.960452Z-cleanup-refactor-r0165-dfd5b5.md."],
       "subitems": [
         {
           "line": 3838,
           "text": "- The complete counterbalanced C5-C8 category+heldout gate retained the exact",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3842,
           "text": "- `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=0` remains a same-build rollback.",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

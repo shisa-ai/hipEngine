@@ -2780,16 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
-
-- The complete counterbalanced C5-C8 category+heldout gate retained the exact
-  request-local physical K128/V128 wave-reduced row-state owner as the gfx1100
-  production default. Strict, FP16-state, peer, non-physical, and shape-miss
-  routes retain their prior owners.
-- `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=0` remains a same-build rollback.
-  Remove the environment opt-out after the next stable milestone audit; keep
-  the registered strict parent.
-
 ## 2026-09-01 gfx1100 Q4 row6 two-wave screen — closed
 
 - The first unrouted claim remains retracted as invalid history. The corrected
@@ -10554,3 +10544,17 @@ repetitions, then `validate_graph.py` and `tests/test_live_paro_mtp_graph.py`.
 Require faster paired execution without output/acceptance drift and successful
 public state/recovery checks before removing the eager preference. Preserve the
 eager comparison implementation; add no environment flag or MTP admission gate.
+
+### R0165 — Public physical GDN wave-reduction validation
+
+The environment opt-out is removed; physical exact-row scope, FP16-state
+selection and geometry fallbacks remain. Routing and direct GPU parent-parity
+checks pass. A gfx1151 public MTP request completed but did not call this selector.
+
+**Dependency:** a public request on the gfx1100 physical exact-row route.
+**Clearing action:** run `hipengine serve` with the dense GGUF MTP profile and
+an eligible physical target width, trace the wave-reduced state-row launch,
+and compare output/acceptance plus teardown against the registered strict parent.
+The existing numerical gate is
+`tests/test_gpu_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segments_state_rows_wave_reduce_is_parent_bit_exact`.
+Do not substitute successful c1 or unrelated-backend generation for engagement.

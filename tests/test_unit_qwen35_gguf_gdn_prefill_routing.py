@@ -1654,7 +1654,7 @@ def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch)
     )
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE", "0")
     assert _gdn_decode_order_segments_state_rows_kernel() is (
-        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce
     )
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE", "1")
     assert _gdn_decode_order_segments_state_rows_kernel() is (

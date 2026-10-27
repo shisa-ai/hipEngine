@@ -410,7 +410,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN` | unset | Rollback seam | IQ dense row-slab rule: unset picks the smallest slab at or above the row count (measured default); `1` restores the largest slab at or below it. |
 | `HIPENGINE_GGUF_IQ_GROUPED_PREFILL` | backend-scoped | Rollback seam | Grouped compact prefill session for IQ-quant MoE pairs; `0` disables. |
 | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS` | true | Retained default with rollback opt-out | Fuses the MoE tail with the next layer's input RMSNorm; `0` restores the separate chain (set to `0` in the MoE-graph parity test). |
-| `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE` | unset | Diagnostic | Wave-reduce variant of the GDN decode-order segments state-rows kernel. |
 | `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` | unset | B1 transfer | Explicit override for the target-side WMMA prefill transfer: `1`/on forces the transfer, `0`/off restores the GEMV owners everywhere. |
 | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE` | backend-scoped | Rollback seam | Long-context parallel-reduce decode route; `0` is the explicit opt-out kept by dispatch tests. |
 | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT` | backend default | Decode threshold | Minimum context length admitting the parallel-reduce route. |
@@ -1146,6 +1145,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE` is retired and ignored.
+  Physical exact-row scope selects the wave-reduced FP32 owner; FP16 state,
+  unsupported geometry and non-physical execution retain their existing owners.
 
 - `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX` is retired and ignored. Reused suffixes
   use the owner's batched method when eligible; one-token suffixes and owners

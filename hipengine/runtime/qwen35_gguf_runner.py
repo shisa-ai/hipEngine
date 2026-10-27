@@ -9511,7 +9511,6 @@ _GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHA
 _GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN"
 _GGUF_VERIFY_CAPTURE_BF16_GDN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT"
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
-_GGUF_GDN_STATE_ROWS_WAVE_REDUCE_ENV = "HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE"
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV"
 _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL"
 _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
@@ -11432,10 +11431,7 @@ def _gdn_decode_order_segments_state_rows_kernel(
 
     if _resolve_fp16_recurrent_state_flag(use_fp16_state):
         return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
-    if (
-        physical_exact_rowtiles_enabled()
-        and _env_flag(_GGUF_GDN_STATE_ROWS_WAVE_REDUCE_ENV, True)
-    ):
+    if physical_exact_rowtiles_enabled():
         return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce
     return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
 
