@@ -3022,12 +3022,11 @@ should be removed or collapsed.
 
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 
-- Remaining process controls are `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N` for the
-  compact F16 Q4 gate/up fallback and `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N` for
-  dense Q8 WMMA. They are not one grouped-MoE arithmetic candidate. Migrate
-  their tile choices to their owning execution scopes and diagnostic callers;
-  preserve existing defaults, supported tile validation and registered fallback
-  kernels. Verify each consumer, including dense Q8 users outside Qwen4Exp.
+- Remaining process controls are `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N` for
+  dense Q8 WMMA. Migrate their tile choices to their owning execution scopes
+  and diagnostic callers; preserve existing defaults, supported tile validation
+  and registered fallback kernels. Verify each consumer, including dense Q8
+  users outside Qwen4Exp.
 
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 

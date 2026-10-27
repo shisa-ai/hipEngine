@@ -4405,6 +4405,50 @@ def q51_wmma_down(
         runner.q51_wmma_down = prior
 
 
+# Compact F16 Q4_K gate/up tile pair. The binder publishes 16/16 to the owning
+# runner, and an unbound runner keeps the dispatch heuristic; a diagnostic arm
+# binds a pair on the runner it measures instead of writing a process-wide
+# switch. The pair only shapes the compact F16 fallback owner below the exact
+# grouped Q4_K chain and the iu8 owner, never their arithmetic.
+_Q4_TILE_UNSET = object()
+
+
+@contextlib.contextmanager
+def q4_tile_m(runner: Any, enabled: int | None | object = _Q4_TILE_UNSET):
+    """Bind the compact F16 Q4_K gate/up ``tile_m`` for a diagnostic arm.
+
+    An integer binds that tile height, and ``None`` restores the unbound
+    heuristic (64 from 512 rows up, 16 below); leaving ``enabled`` unset keeps
+    whatever the plan published. The binding is a mutable runner field, so it
+    stays in force for as long as the scope is open and the published value is
+    restored on exit, including on an exception.
+    """
+
+    prior = getattr(runner, "q4_tile_m", None)
+    if enabled is not _Q4_TILE_UNSET:
+        runner.q4_tile_m = enabled
+    try:
+        yield prior
+    finally:
+        runner.q4_tile_m = prior
+
+
+@contextlib.contextmanager
+def q4_tile_n(runner: Any, enabled: int | None | object = _Q4_TILE_UNSET):
+    """Bind the compact F16 Q4_K gate/up ``tile_n`` for a diagnostic arm.
+
+    Same protocol as :func:`q4_tile_m`; ``None`` restores the 16-wide default.
+    """
+
+    prior = getattr(runner, "q4_tile_n", None)
+    if enabled is not _Q4_TILE_UNSET:
+        runner.q4_tile_n = enabled
+    try:
+        yield prior
+    finally:
+        runner.q4_tile_n = prior
+
+
 # Q4 exact grouped gate/up gate. Production runs the exact grouped Q4_K gate/up
 # chain for every multi-row Q4_K/Q4_K chunk; the binder publishes that decision to
 # the owning runner, and the dispatch-time gate keeps its rows>=2, quant,
@@ -5280,6 +5324,27 @@ def _qwen4_exp_q51_wmma_down_enabled(
     return bool(production_grouped_moe or published)
 
 
+def _qwen4_exp_q4_compact_tiles(
+    *, rows: int, tile_m: int | None, tile_n: int | None,
+) -> tuple[int, int]:
+    """Resolve the compact F16 Q4_K dual gate/up tile pair for one dispatch.
+
+    Two plan-published runner fields, one launch shape. The profile binder
+    publishes 16/16 for every plan, which is what the retired process keys were
+    pinned to; an unbound runner (no binder) keeps the historical heuristic -
+    64 rows of work per tile from 512 rows up and 16 below it, with a 16-wide N
+    tile. Each side resolves on its own, exactly like the two keys it replaces,
+    and the owner's allowed-tile validation still rejects anything unsupported.
+    """
+
+    resolved_m = 64 if rows >= 512 else 16
+    resolved_n = 16
+    return (
+        resolved_m if tile_m is None else tile_m,
+        resolved_n if tile_n is None else tile_n,
+    )
+
+
 def qwen4_exp_grouped_row4_prefill_selected(
     weights: Mapping[str, GGUFDeviceWeight], *, rows: int, backend: str
 ) -> bool:
@@ -5956,6 +6021,8 @@ def run_qwen4_exp_moe(
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
     q4_out4: bool = True,
+    q4_tile_m: int | None = None,
+    q4_tile_n: int | None = None,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert.
 
@@ -6033,6 +6100,12 @@ def run_qwen4_exp_moe(
     for the whole multi-row prefill and falls through to the sorted/WMMA owners
     below it. It never selects on decode.
 
+    ``q4_tile_m`` / ``q4_tile_n`` are the owning runner's plan-published tile
+    pair for the compact F16 Q4_K dual gate/up fallback owner (see
+    :func:`q4_tile_m`); ``None`` on either side keeps the dispatch heuristic
+    for that side. The pair only shapes that owner's launch, below the exact
+    grouped Q4_K chain and the iu8 owner.
+
     ``q51_wmma_down`` is the owning runner's plan-published admission of the F16
     WMMA compact grouped Q5_1 down owner (see :func:`q51_wmma_down`). It only
     decides below the exact grouped Q5_1 down chain, and the production grouped
@@ -6075,6 +6148,8 @@ def run_qwen4_exp_moe(
                 q4_exact_grouped_gate=q4_exact_grouped_gate,
                 q4_exact_grouped_all=q4_exact_grouped_all,
                 q4_out4=q4_out4,
+                q4_tile_m=q4_tile_m,
+                q4_tile_n=q4_tile_n,
                 forkb_grouped_down=forkb_grouped_down,
                 q8_down_row4_prefill=q8_down_row4_prefill,
                 q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -6701,6 +6776,9 @@ def run_qwen4_exp_moe(
                     runtime=active_runtime,
                 )
             else:
+                compact_tile_m, compact_tile_n = _qwen4_exp_q4_compact_tiles(
+                    rows=rows, tile_m=q4_tile_m, tile_n=q4_tile_n
+                )
                 gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
                     scratch.expert_down.ptr,
                     scratch.group_expert_start.ptr,
@@ -6715,13 +6793,8 @@ def run_qwen4_exp_moe(
                     ffn,
                     experts,
                     wmma_total_rows,
-                    tile_m=int(
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_Q4_TILE_M",
-                            "64" if rows >= 512 else "16",
-                        )
-                    ),
-                    tile_n=int(os.environ.get("HIPENGINE_QWEN4_EXP_Q4_TILE_N", "16")),
+                    tile_m=compact_tile_m,
+                    tile_n=compact_tile_n,
                     stream=stream,
                     runtime=active_runtime,
                 )
@@ -7596,6 +7669,8 @@ def run_qwen4_exp_dense_qsa_layer(
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
     q4_out4: bool = True,
+    q4_tile_m: int | None = None,
+    q4_tile_n: int | None = None,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7697,6 +7772,8 @@ def run_qwen4_exp_dense_qsa_layer(
         q4_exact_grouped_gate=q4_exact_grouped_gate,
         q4_exact_grouped_all=q4_exact_grouped_all,
         q4_out4=q4_out4,
+        q4_tile_m=q4_tile_m,
+        q4_tile_n=q4_tile_n,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -7755,6 +7832,8 @@ def run_qwen4_exp_qsa_prefill_layer(
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
     q4_out4: bool = True,
+    q4_tile_m: int | None = None,
+    q4_tile_n: int | None = None,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -7917,6 +7996,8 @@ def run_qwen4_exp_qsa_prefill_layer(
         q4_exact_grouped_gate=q4_exact_grouped_gate,
         q4_exact_grouped_all=q4_exact_grouped_all,
         q4_out4=q4_out4,
+        q4_tile_m=q4_tile_m,
+        q4_tile_n=q4_tile_n,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -7982,6 +8063,8 @@ def run_qwen4_exp_gdn_layer(
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
     q4_out4: bool = True,
+    q4_tile_m: int | None = None,
+    q4_tile_n: int | None = None,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -8198,6 +8281,8 @@ def run_qwen4_exp_gdn_layer(
         q4_exact_grouped_gate=q4_exact_grouped_gate,
         q4_exact_grouped_all=q4_exact_grouped_all,
         q4_out4=q4_out4,
+        q4_tile_m=q4_tile_m,
+        q4_tile_n=q4_tile_n,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -9101,6 +9186,14 @@ class Qwen4ExpGGUFResidentModelRunner:
     # and the pair2/bundle preemptors inside it, and the iu8 chain above that is
     # unaffected. A diagnostic scope may outrank it.
     q4_out4: bool = True
+    # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
+    # profile binder for every plan and ``None`` (the dispatch heuristic) on an
+    # unbound runner: M is 64 from 512 rows up and 16 below, N is 16. The pair
+    # only shapes that fallback owner's launch below the exact grouped Q4_K
+    # chain and the iu8 owner. Multi-row batch capture identity includes the
+    # pair. A diagnostic scope may outrank the publication.
+    q4_tile_m: int | None = None
+    q4_tile_n: int | None = None
     # Q5_1 down M1 selection, published by the profile binder for the exact
     # grouped Q5_1 down chain's small-chunk scope: True on a production plan,
     # False on every plan that keeps the preceding expertgrid64 owner. The
@@ -10404,6 +10497,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,
                     q4_out4=self.q4_out4,
+                    q4_tile_m=self.q4_tile_m,
+                    q4_tile_n=self.q4_tile_n,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10457,6 +10552,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,
                     q4_out4=self.q4_out4,
+                    q4_tile_m=self.q4_tile_m,
+                    q4_tile_n=self.q4_tile_n,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10772,6 +10869,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,
                     q4_out4=self.q4_out4,
+                    q4_tile_m=self.q4_tile_m,
+                    q4_tile_n=self.q4_tile_n,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -10815,6 +10914,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,
                     q4_out4=self.q4_out4,
+                    q4_tile_m=self.q4_tile_m,
+                    q4_tile_n=self.q4_tile_n,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,

@@ -4141,7 +4141,8 @@
         {
           "line": 3694,
           "text": "- Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidates are",
-          "status": "pending"
+          "status": "pending",
+          "evidence": ["Compact Q4 tile process transport resolved with runner publication/scopes and capture identity. Defaults and tile validation preserved; public340, CPU341, GPU342 and docs/audit pass. Dense Q8 tile controls remain open. Worklog: worklog/entries/20261027T025147.903044Z-cleanup-refactor-r0160-q4-tiles-b897ea.md."]
         },
         {
           "line": 3709,

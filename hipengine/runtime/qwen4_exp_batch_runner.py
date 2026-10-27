@@ -421,6 +421,8 @@ def run_qwen4_exp_batch_gdn_layer(
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
     q4_out4: bool = True,
+    q4_tile_m: int | None = None,
+    q4_tile_n: int | None = None,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -512,6 +514,8 @@ def run_qwen4_exp_batch_gdn_layer(
             q4_exact_grouped_gate=q4_exact_grouped_gate,
             q4_exact_grouped_all=q4_exact_grouped_all,
             q4_out4=q4_out4,
+            q4_tile_m=q4_tile_m,
+            q4_tile_n=q4_tile_n,
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -622,6 +626,8 @@ def _run_layer_ffn(
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
     q4_out4: bool = True,
+    q4_tile_m: int | None = None,
+    q4_tile_n: int | None = None,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -677,6 +683,8 @@ def _run_layer_ffn(
         q4_exact_grouped_gate=q4_exact_grouped_gate,
         q4_exact_grouped_all=q4_exact_grouped_all,
         q4_out4=q4_out4,
+        q4_tile_m=q4_tile_m,
+        q4_tile_n=q4_tile_n,
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -732,6 +740,8 @@ def run_qwen4_exp_batch_qsa_layer(
     q4_exact_grouped_gate: bool = True,
     q4_exact_grouped_all: bool = True,
     q4_out4: bool = True,
+    q4_tile_m: int | None = None,
+    q4_tile_n: int | None = None,
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
@@ -823,6 +833,8 @@ def run_qwen4_exp_batch_qsa_layer(
             q4_exact_grouped_gate=q4_exact_grouped_gate,
             q4_exact_grouped_all=q4_exact_grouped_all,
             q4_out4=q4_out4,
+            q4_tile_m=q4_tile_m,
+            q4_tile_n=q4_tile_n,
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
@@ -918,6 +930,12 @@ class Qwen4ExpGGUFBatchRunner:
     # profile binder: the captured MoE segment bakes its gate/up launch in, so
     # this belongs in the capture key like the Q5_1 rungs above.
     q4_out4: bool = True
+    # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
+    # profile binder and ``None`` (the dispatch heuristic) on an unbound owner.
+    # The MoE runs eager inside the captured segment, so a decode capture
+    # records this launch and the pair belongs in the capture key.
+    q4_tile_m: int | None = None
+    q4_tile_n: int | None = None
     q51_down_m1: bool = False
     q51_fold128_prefill: bool = False
     q51_fold_pair_prefill: bool = False
@@ -1808,6 +1826,16 @@ class Qwen4ExpGGUFBatchRunner:
 
     # -- decode step ------------------------------------------------------
 
+    def _q4_tile_policy(self) -> tuple[int | None, int | None]:
+        """The compact F16 Q4_K gate/up tile pair a captured segment bakes in.
+
+        The pair is request-local runner state and the owner resolves it at
+        capture time, so a segment built under one pair must not replay under
+        another. ``None`` is the unbound heuristic and is part of the identity.
+        """
+
+        return (self.q4_tile_m, self.q4_tile_n)
+
     def _expert_down_policy(self) -> tuple[bool, ...]:
         """The expert-down decisions a captured layer segment depends on.
 
@@ -2102,7 +2130,8 @@ class Qwen4ExpGGUFBatchRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                     graph_cache=self._graphs,
-                    graph_key=(layer, rows) + self._expert_down_policy(),
+                    graph_key=(layer, rows) + self._expert_down_policy()
+                    + self._q4_tile_policy(),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -2112,6 +2141,8 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,
                     q4_out4=self.q4_out4,
+                    q4_tile_m=self.q4_tile_m,
+                    q4_tile_n=self.q4_tile_n,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
@@ -2142,7 +2173,8 @@ class Qwen4ExpGGUFBatchRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                     graph_cache=self._graphs,
-                    graph_key=(layer, rows) + self._expert_down_policy(),
+                    graph_key=(layer, rows) + self._expert_down_policy()
+                    + self._q4_tile_policy(),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -2152,6 +2184,8 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_exact_grouped_gate=self.q4_exact_grouped_gate,
                     q4_exact_grouped_all=self.q4_exact_grouped_all,
                     q4_out4=self.q4_out4,
+                    q4_tile_m=self.q4_tile_m,
+                    q4_tile_n=self.q4_tile_n,
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,

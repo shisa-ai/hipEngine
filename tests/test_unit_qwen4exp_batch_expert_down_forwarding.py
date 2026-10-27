@@ -11,9 +11,9 @@ Two contracts are under test:
   leaves the c1 path selects.
 * The captured ``post_mixer`` segment records the MoE launches, and the MoE runs
   eager inside it, so the selection is baked into the graph. The capture key
-  therefore carries all twelve decisions: a runner whose selection changes
-  captures a new segment instead of replaying one built under the old
-  selection.
+  therefore carries all twelve decisions, and the compact F16 Q4_K gate/up
+  tile pair with them: a runner whose selection or tile pair changes
+  captures a new segment instead of replaying one built under the old one.
 
 The chain gates and the two fallback rungs differ from the rungs around them in
 one way that matters here: every plan publishes them on, so an unbound batch
@@ -50,7 +50,8 @@ WMMA_DOWN_FIELD = "q51_wmma_down"
 #: The twelve decisions, in the order the runner publishes them. The order is the
 #: contract: ``_expert_down_policy`` and the ``(layer, rows) + policy`` capture
 #: key both read this sequence, and ``test_the_policy_tuple_is_boolean_normalized``
-#: pins it against the runner's own tuple.
+#: pins it against the runner's own tuple. The compact F16 Q4_K gate/up tile
+#: pair follows the tuple as ``_q4_tile_policy()``, so it is not listed here.
 POLICY_FIELDS = (
     "q51_down_m1",
     "q51_fold128_prefill",
@@ -152,9 +153,32 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
     keys = [key for _name, _width, _policy, key in seen]
     assert keys and all(key is not None for key in keys)
     for _name, width, policy, key in seen:
-        # ``(layer, rows)`` plus the twelve decisions, in publication order.
+        # ``(layer, rows)`` plus the twelve decisions in publication order,
+        # then the compact F16 Q4_K gate/up tile pair the segment bakes in.
         assert key[1] == width
-        assert key[2:] == policy
+        assert key[2:2 + len(POLICY_FIELDS)] == policy
+        assert key[2 + len(POLICY_FIELDS):] == runner._q4_tile_policy()
+
+
+@pytest.mark.parametrize("field", ("q4_tile_m", "q4_tile_n"))
+def test_a_flipped_tile_changes_the_capture_key(monkeypatch, field):
+    # The compact F16 Q4_K gate/up owner resolves its tile pair at capture
+    # time too, so a segment built under one pair must not replay under
+    # another.
+    seen = _recording_layers(monkeypatch, publish=True)
+    runner = _runner(slots=QWEN4_EXP_MAX_BATCH_ROWS, published=True)
+    for name in ("q4_tile_m", "q4_tile_n"):
+        setattr(runner, name, 16)
+    _step(runner, QWEN4_EXP_MAX_BATCH_ROWS)
+    baseline = [key for _name, _width, _policy, key in seen]
+    seen.clear()
+    setattr(runner, field, 32)
+    _step(runner, QWEN4_EXP_MAX_BATCH_ROWS)
+    flipped = [key for _name, _width, _policy, key in seen]
+    assert flipped, "the second step dispatched no layer"
+    for before, after in zip(baseline, flipped):
+        assert before != after, field
+        assert after[-2:] == runner._q4_tile_policy()
 
 
 @pytest.mark.parametrize("field", POLICY_FIELDS)
@@ -173,7 +197,7 @@ def test_a_flipped_rung_changes_the_capture_key(monkeypatch, field):
     assert flipped, "the second step dispatched no layer"
     for before, after in zip(baseline, flipped):
         assert before != after, field
-        assert after[2:] == tuple(
+        assert after[2:2 + len(POLICY_FIELDS)] == tuple(
             False if name == field else True for name in POLICY_FIELDS)
 
 

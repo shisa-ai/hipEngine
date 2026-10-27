@@ -1118,6 +1118,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q4_exact_grouped_all = bool(
         getattr(generator, "q4_exact_grouped_all", True))
     runner.q4_out4 = bool(getattr(generator, "q4_out4", True))
+    runner.q4_tile_m = getattr(generator, "q4_tile_m", None)
+    runner.q4_tile_n = getattr(generator, "q4_tile_n", None)
     runner.forkb_grouped_down = bool(
         getattr(generator, "forkb_grouped_down", False))
     runner.q8_down_row4_prefill = bool(

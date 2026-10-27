@@ -916,7 +916,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE` | retired | No longer read. The owning runner carries the register-cache fallback decision, with rows>=512, K640 and folded-pair parent guards unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH` | retired | No longer read. The owning runner carries the profile's row-publication decision; the register-cache parent and shape guards remain. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_1 iu8 route. |
-| `HIPENGINE_QWEN4_EXP_Q4_TILE_M` / `HIPENGINE_QWEN4_EXP_Q4_TILE_N` | binder: `16` / `16`; unbound M: `64` at rows>=512, otherwise `16` | Tile override for the compact F16 Q4_K gate/up fallback, not the iu8 owner. |
+| `HIPENGINE_QWEN4_EXP_Q4_TILE_M` / `HIPENGINE_QWEN4_EXP_Q4_TILE_N` | retired | No longer read. The binder publishes 16/16 on the runner for the compact F16 Q4 fallback; an unbound runner keeps M=64 at rows>=512, otherwise 16, and N=16. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED` / `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA` | retired | No longer read. Removed the legacy fixed-grid and host-loop expert-down dispatch branches; registered diagnostic kernels and the strict selected fallback remain. |
 | `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | retired | No longer read. The owning runner carries the mapped-down decision; admission still requires a map built by the current invocation and rows>=512. |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER` | retired | No longer read. The owning runner carries the register-down fallback decision; the rows>=512, K640 and bundle-parent guards remain. |

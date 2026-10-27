@@ -472,8 +472,14 @@ def test_historical_q4km_binder_structure_not_qualification(
     # route and retired outright; no profile names them any more.
     for retired in RETIRED_DS4_MMQ_ENV:
         assert retired not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_M"] == "16"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_N"] == "16"
+    # The compact F16 Q4_K gate/up tile pair is request-local runner state, so
+    # the binder publishes 16/16 on the carrier instead of a process key.
+    assert "HIPENGINE_QWEN4_EXP_Q4_TILE_M" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_Q4_TILE_N" not in os.environ
+    assert production_generator.q4_tile_m == 16
+    assert production_generator.q4_tile_n == 16
+    assert fake_runner.q4_tile_m == 16
+    assert fake_runner.q4_tile_n == 16
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"] == "1"
     assert tuple(
         int(value)

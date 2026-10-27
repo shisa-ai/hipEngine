@@ -1324,8 +1324,6 @@ def _bind(
         ),
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
-        "HIPENGINE_QWEN4_EXP_Q4_TILE_M": "16",
-        "HIPENGINE_QWEN4_EXP_Q4_TILE_N": "16",
         # Certified iu8-WMMA gate/up suffix within the WMMA-MoE27 route.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
@@ -1455,6 +1453,12 @@ def _bind(
     # The Q4 gate/up ladder's non-expertgrid fallback rung: every plan keeps the
     # out4 owner, and a diagnostic arm pins the strict base on its own runner.
     generator.q4_out4 = True
+    # The compact F16 Q4_K dual gate/up tile pair: every plan publishes 16/16,
+    # which is what the retired process keys were pinned to. ``None`` on either
+    # side is the unbound heuristic, so a runner built without this bind keeps
+    # it; a diagnostic arm binds a pair on the runner it measures.
+    generator.q4_tile_m = 16
+    generator.q4_tile_n = 16
     generator.forkb_grouped_down = forkb_grouped_down
     generator.q8_down_row4_prefill = q8_down_row4_prefill
     generator.q8_down_bundle_prefill = q8_down_bundle_prefill
@@ -1481,6 +1485,8 @@ def _bind(
         runner.q4_exact_grouped_gate = True
         runner.q4_exact_grouped_all = True
         runner.q4_out4 = True
+        runner.q4_tile_m = 16
+        runner.q4_tile_n = 16
         runner.forkb_grouped_down = forkb_grouped_down
         runner.q8_down_row4_prefill = q8_down_row4_prefill
         runner.q8_down_bundle_prefill = q8_down_bundle_prefill
