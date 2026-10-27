@@ -9,8 +9,8 @@ select a whole-block token budget and append only the actual incomplete tail.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
-import os
 from pathlib import Path
 from time import perf_counter
 
@@ -32,45 +32,106 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
 )
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
+from hipengine.runtime.qwen4_exp_runner import qsa_batched_selection
 from scripts.qwen4_exp_compare_logits import compare_logits
 
 
-def build_retrieval_prompt(tokenizer: object, *, target_tokens: int) -> tuple[str, int]:
-    prefix = (
-        "<|im_start|>system\nReasoning effort is set to low. Keep your thinking "
-        "brief and focused, moving directly to the conclusion without unnecessary "
-        "elaboration. You retrieve exact facts from long archives.<|im_end|>\n"
-        "<|im_start|>user\nYou are auditing an archive. Read all records and "
-        "answer the final question exactly.\n"
-    )
-    records = [
-        (
-            f"Archive record {index:04d}: The unique access code is VIOLET-7391. "
-            "Preserve this exact code for the audit.\n"
-            if index == 24
-            else f"Archive record {index:04d}: Inventory batch {10000 + index} is "
-            "ordinary, stable, and requires no action.\n"
+_NEEDLE_CODE = "VIOLET-7391"
+_NEEDLE_RECORD_INDEX = 24
+_ARCHIVE_RECORD_COUNT = 100
+_PROMPT_PREFIX = (
+    "<|im_start|>system\nReasoning effort is set to low. Keep your thinking "
+    "brief and focused, moving directly to the conclusion without unnecessary "
+    "elaboration. You retrieve exact facts from long archives.<|im_end|>\n"
+    "<|im_start|>user\nYou are auditing an archive. Read all records and "
+    "answer the final question exactly.\n"
+)
+_PROMPT_SUFFIX = (
+    "\nFinal audit question: What is the unique access code? "
+    "Answer with only the exact code.<|im_end|>\n<|im_start|>assistant\n"
+)
+_PROMPT_FILLER = (
+    "The archive checksum remains stable and the ordinary inventory records "
+    "require no action. "
+)
+
+
+def _archive_record(index: int) -> str:
+    if index == _NEEDLE_RECORD_INDEX:
+        return (
+            f"Archive record {index:04d}: The unique access code is "
+            f"{_NEEDLE_CODE}. Preserve this exact code for the audit.\n"
         )
-        for index in range(100)
-    ]
-    base = prefix + "".join(records)
-    suffix = (
-        "\nFinal audit question: What is the unique access code? "
-        "Answer with only the exact code.<|im_end|>\n<|im_start|>assistant\n"
+    return (
+        f"Archive record {index:04d}: Inventory batch {10000 + index} is "
+        "ordinary, stable, and requires no action.\n"
     )
-    filler = (
-        "The archive checksum remains stable and the ordinary inventory records "
-        "require no action. "
-    )
+
+
+def _render_retrieval_prompt(records: list[str]) -> str:
+    return _PROMPT_PREFIX + "".join(records) + _PROMPT_SUFFIX
+
+
+def retrieval_prompt_minimum_tokens(tokenizer: object) -> int:
+    """Tokens the mandatory payload needs: prefix, needle record, question."""
+
     encode = getattr(tokenizer, "encode")
-    while len(encode(base + filler + suffix)) <= target_tokens:
-        base += filler
-    prompt = base + suffix
+    return len(
+        encode(
+            _render_retrieval_prompt([_archive_record(_NEEDLE_RECORD_INDEX)])
+        )
+    )
+
+
+def build_retrieval_prompt(tokenizer: object, *, target_tokens: int) -> tuple[str, int]:
+    """Build a prompt that fits ``target_tokens`` and keeps the needle.
+
+    The needle record and the final question are mandatory. Ordinary records are
+    added around the needle in index order while they fit, then stable filler
+    fills the remaining budget, so a small target drops records instead of
+    returning an oversized prompt. A target below
+    :func:`retrieval_prompt_minimum_tokens` raises rather than overrunning the
+    sequence the caller sized from it.
+    """
+
+    encode = getattr(tokenizer, "encode")
+    minimum = retrieval_prompt_minimum_tokens(tokenizer)
+    if target_tokens < minimum:
+        raise ValueError(
+            f"QSA retrieval prompt needs at least {minimum} tokens for the "
+            "system prefix, needle record, and final question; "
+            f"target_tokens={target_tokens} cannot hold them"
+        )
+    needle_record = _archive_record(_NEEDLE_RECORD_INDEX)
+    before: list[str] = []
+    for index in range(_NEEDLE_RECORD_INDEX):
+        candidate = before + [_archive_record(index)]
+        if (
+            len(encode(_render_retrieval_prompt(candidate + [needle_record])))
+            > target_tokens
+        ):
+            break
+        before = candidate
+    after: list[str] = []
+    for index in range(_NEEDLE_RECORD_INDEX + 1, _ARCHIVE_RECORD_COUNT):
+        candidate = after + [_archive_record(index)]
+        if len(
+            encode(_render_retrieval_prompt(before + [needle_record] + candidate))
+        ) > target_tokens:
+            break
+        after = candidate
+    records = before + [needle_record] + after
+    while len(encode(_render_retrieval_prompt(records + [_PROMPT_FILLER]))) <= target_tokens:
+        records.append(_PROMPT_FILLER)
+    prompt = _render_retrieval_prompt(records)
     for count in range(64):
-        candidate = base + " a" * count + suffix
-        if len(encode(candidate)) <= target_tokens and len(encode(candidate)) > len(encode(prompt)):
+        candidate = _render_retrieval_prompt(records + [" a" * count])
+        if (
+            len(encode(candidate)) <= target_tokens
+            and len(encode(candidate)) > len(encode(prompt))
+        ):
             prompt = candidate
-    needle = len(encode(prompt[: prompt.index("VIOLET-7391")]))
+    needle = len(encode(prompt[: prompt.index(_NEEDLE_CODE)]))
     return prompt, needle
 
 
@@ -124,6 +185,13 @@ def main() -> int:
         "--depth-profile", action="store_true",
         help="Record structural QSA locality, PLE I/O, graph reuse, and KV-byte census",
     )
+    parser.add_argument(
+        "--per-row-selection", action="store_true",
+        help=(
+            "Measure the strict per-row selection fallback; the scores then come "
+            "from the index state rather than the batched prefill metadata"
+        ),
+    )
     args = parser.parse_args()
 
     info = load_gguf_index(discover_gguf_files(args.model)[0])
@@ -151,8 +219,19 @@ def main() -> int:
             generator.tokenizer, target_tokens=args.target_tokens
         )
         token_ids = generator.tokenizer.encode(prompt)
+        selection = (
+            qsa_batched_selection(runner, False)
+            if args.per_row_selection
+            else contextlib.nullcontext()
+        )
         started = perf_counter()
-        result = runner.prefill(token_ids)
+        with selection:
+            result = runner.prefill(token_ids)
+            # Read the arm inside the scope: the runner's published value comes
+            # back when it closes.
+            batched_selection = bool(
+                getattr(runner, "qsa_batched_selection", True)
+            )
         prefill_seconds = perf_counter() - started
 
         external = None
@@ -274,9 +353,6 @@ def main() -> int:
                     for item in runner.attention_states
                 )),
             }
-        batched_selection = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION", "1"
-        ) not in {"", "0", "false", "False"}
         score_source = state.scores
         score_offset = 0
         if batched_selection:
@@ -368,6 +444,7 @@ def main() -> int:
             "target_tokens": int(args.target_tokens),
             "tokens": len(token_ids),
             "prefill_chunk_size": int(runner.prefill_chunk_size),
+            "batched_selection": batched_selection,
             "needle_token_offset": needle,
             "prefill_seconds": prefill_seconds,
             "tokenizer_match": tokenizer_match,

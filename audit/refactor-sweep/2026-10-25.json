@@ -4086,13 +4086,13 @@
       "start_line": 3668,
       "end_line": 3674,
       "sha256": "722358d2e74c8481b4b4e24198569157f39b7e218d00bda271cf1272d20de217",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Retired process selector in favor of runner-local scope; default batched path and strict per-row diagnostic fallback retained without arithmetic changes. Fixed retrieval prompt budget; public295, CPU296, GPU297 and repaired retrieval299 exact answer/index/repeat/isolation/teardown pass. No new 16K/64K promotion claim. Worklog: worklog/entries/20261027T000244.592627Z-cleanup-refactor-r0157-qsa-selection-994924.md."],
       "subitems": [
         {
           "line": 3670,
           "text": "- `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` defaults on for exact chunk-level",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

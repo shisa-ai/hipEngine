@@ -861,7 +861,7 @@ use.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_QWEN4_EXP_BATCHED_POSITION` | `1` | One shared 192B H2D position upload instead of 24 per-layer 8B blocking `set_position` copies per decode step (bit-exact, ~1.3% median TG gain). `0` restores per-layer copies. |
-| `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` | `1` | Uses the batched QSA selection owner for multi-row decode; `0` restores the per-row selection. |
+| `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` | retired | No longer read. Chunked QSA prefill uses batched score/top-k/expansion by default; `qsa_batched_selection(runner, False)` selects the per-row diagnostic fallback on that runner. |
 | `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` | `0` (production binder sets `1`) | Master gate for the production grouped MoE prefill session (rows >= 16, supported quant shapes). |
 | `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1` | retired | No longer read. The profile publishes the Q5_1 down M1 choice on its runner; registered strict fallback kernels remain. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | `0` (production binder) | Q5_1 grouped WMMA down-projection admission under the production grouped MoE route. |

@@ -2674,6 +2674,36 @@ def qsa_prefill_head_mode(runner: Any, mode: str | None = None):
         runner.qsa_prefill_head_mode = prior
 
 
+# QSA chunk selection owner. Production takes the batched path (one score pass,
+# the top-k mask, one expansion per row) and keeps the strict per-row device
+# selection below it for a diagnostic arm. It is request-local state: the
+# prefill chunk path forwards the owning runner's decision to the token mixer,
+# so a harness binds the fallback on the runner it measures instead of writing a
+# process-wide switch.
+_QSA_BATCHED_SELECTION_UNSET = object()
+
+
+@contextlib.contextmanager
+def qsa_batched_selection(
+    runner: Any, enabled: bool | object = _QSA_BATCHED_SELECTION_UNSET
+):
+    """Bind the QSA chunk selection owner for a diagnostic arm.
+
+    ``False`` pins the per-row fallback for the measured window and ``True``
+    restores the batched owner; leaving ``enabled`` unset keeps whatever the
+    runner carries. The prior value is restored on exit, including on an
+    exception.
+    """
+
+    prior = getattr(runner, "qsa_batched_selection", True)
+    if enabled is not _QSA_BATCHED_SELECTION_UNSET:
+        runner.qsa_batched_selection = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.qsa_batched_selection = prior
+
+
 # QSA ordered-v2 sparse-decode selection. The production plan publishes the
 # ordered-v2 leaf for the c1 H256 indexed sparse decode scope; the binder
 # publishes that decision to the owning runner, and the dispatch-time selector
@@ -2809,6 +2839,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     rope_positions_ptr: int | None = None,
     cache_only: bool = False,
     head_mode: str | None = _QSA_HEAD_PARENT,
+    batched_selection: bool = True,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -2820,6 +2851,11 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     the fallback leaf: when ``qsa_wmma`` owns the chunk the grouping is resolved
     but that owner is not launched. It is ignored by the ``cache_only`` path,
     which returns before any attention dispatch.
+
+    ``batched_selection`` is the owning runner's QSA chunk selection decision
+    (see :func:`qsa_batched_selection`): True runs the batched score/top-k/expand
+    owner, False the strict per-row fallback. The shape and count guards below
+    apply to whichever arm runs.
     """
 
     count = int(rows)
@@ -3111,9 +3147,6 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             eps=eps,
             stream=stream,
         )
-        batched_selection = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION", "1"
-        ) not in {"", "0", "false", "False"}
         mask_direct = False
         if batched_selection:
             score_blocks = (start + count) // index_state.compression_ratio
@@ -7191,6 +7224,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     top_k: int,
     rope_positions_ptr: int | None = None,
     head_mode: str | None = _QSA_HEAD_PARENT,
+    batched_selection: bool = True,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
@@ -7212,6 +7246,9 @@ def run_qwen4_exp_qsa_prefill_layer(
     the scalar rows owner and is forwarded unchanged to the token mixer, which
     resolves that leaf but launches it only when WMMA attention does not own the
     chunk.
+
+    ``batched_selection`` is the owning runner's QSA chunk selection decision,
+    forwarded unchanged to the token mixer (see :func:`qsa_batched_selection`).
 
     ``q51_down_m1`` is the owning runner's plan-published Q5_1 down M1 decision,
     forwarded to the MoE down dispatch; it only selects inside the exact grouped
@@ -7298,6 +7335,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         index_rotary_dim=index_rotary_dim,
         rope_positions_ptr=rope_positions_ptr,
         head_mode=head_mode,
+        batched_selection=batched_selection,
         stream=stream,
         runtime=active_runtime,
     )
@@ -8408,6 +8446,11 @@ class Qwen4ExpGGUFResidentModelRunner:
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
     qsa_prefill_head_mode: str = "parent"
+    # QSA chunk selection owner: True runs the batched score/top-k/expand path,
+    # False the strict per-row fallback. The prefill chunk path is its only
+    # reader and forwards it to the token mixer, so a diagnostic binds the
+    # fallback on the one runner it measures.
+    qsa_batched_selection: bool = True
     # QSA ordered-v2 sparse decode, published by the profile binder from the
     # plan's own c1 H256 indexed sparse decode row: True on a production plan,
     # False on every plan that keeps the ordered v1 parent. The dispatch-time
@@ -10106,6 +10149,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
+                    batched_selection=self.qsa_batched_selection,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,

@@ -3064,13 +3064,6 @@ should be removed or collapsed.
   layers. Remove both flags and direct selected gate/up + gather fallback after
   natural 16K/64K and serving/cancellation/graph soak.
 
-## 2026-08-27 Qwen4Exp batched QSA selection bisection
-
-- `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` defaults on for exact chunk-level
-  paged scoring and radix selection. Remove the flag and scalar prompt loop
-  after natural 16K/64K plus serving/cancellation/graph soak; c1 device
-  selection remains the strict decode fallback.
-
 ## 2026-08-27 Qwen4Exp wave32 H128 sparse-attention bisection
 
 - `HIPENGINE_QWEN4_EXP_QSA_WAVE32` defaults on for the promoted production H128
