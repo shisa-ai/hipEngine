@@ -12,7 +12,8 @@ been measured against each other:
   ``selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out``, cooperative LDS
   metadata staging with the weight row reused across an expert's rows;
 * ``selected_dual_wmma_prefill_compact_bf16_bf16_out``, the MX-1 F16-WMMA owner with no
-  repair pass (the route ``HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4=0`` selects). MX-1's
+  repair pass (the route a closed ``runner.q4_exact_grouped_gate`` selects, which the
+  layer2 gate's ``f16_compact_gate_up`` candidate binds). MX-1's
   acceptance target is that this route come in at or below the production iu8-risk
   main kernel plus its repair; the main-kernel half of that comparison was never
   measured, which is what this arm adds. The repair half is not timed here - it is

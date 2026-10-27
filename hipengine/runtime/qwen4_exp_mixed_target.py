@@ -366,6 +366,10 @@ class Qwen4ExpMixedTargetPass:
                     q51_exact_grouped_down=getattr(
                         batch, "q51_exact_grouped_down", True),
                     q51_out8=getattr(batch, "q51_out8", True),
+                    q4_exact_grouped_gate=getattr(
+                        batch, "q4_exact_grouped_gate", True),
+                    q4_exact_grouped_all=getattr(
+                        batch, "q4_exact_grouped_all", True),
                     q4_out4=getattr(batch, "q4_out4", True),
                     q51_down_m1=getattr(batch, "q51_down_m1", False),
                     q51_fold128_prefill=getattr(

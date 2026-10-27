@@ -3044,14 +3044,6 @@ should be removed or collapsed.
   after serving/cancellation/graph soak; retain direct selected primitives as
   the strict unfused fallback.
 
-## 2026-08-27 Qwen4Exp exact grouped Q4_K bisection
-
-- `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` defaults on for the exact row-batched
-  gate/up path. `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL=0` restricts it to the
-  preceding Q5_1-down admission for bisection; default-on also covers Q8_0-down
-  layers. Remove both flags and direct selected gate/up + gather fallback after
-  natural 16K/64K and serving/cancellation/graph soak.
-
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 
 - Remaining Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidate

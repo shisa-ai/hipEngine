@@ -140,8 +140,12 @@ def test_the_chain_and_its_ladder_are_unchanged() -> None:
     for rung in ("q51_iu8_exact", "q51_fold128_prefill", "q51_fold_pair_prefill",
                  "q51_register_cache", "q51_row_publish"):
         assert rung in source, rung
-    # The other EXACT_GROUPED_Q4 gates are out of this unit's scope.
-    assert "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4" in source
+    # The Q4 gate/up chain's own gate is that chain's runner field now, not this
+    # chain's; the joint `_ALL` term lives in the Q4 chain's predicate helper and
+    # still reads the Q5_1 chain's local.
+    assert "q4_exact_grouped_gate=q4_exact_grouped_gate" in source
+    predicate = inspect.getsource(runner_module._qwen4_exp_q4_exact_grouped_chain)
+    assert "exact_grouped_down or exact_grouped_all" in predicate
 
 
 #: The functions that eventually dispatch the MoE from a layer body. The batch
@@ -245,17 +249,19 @@ def test_the_batch_capture_key_carries_the_gate() -> None:
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
         q51_out8=True,
+        q4_exact_grouped_gate=True,
+        q4_exact_grouped_all=True,
         q4_out4=True,
         forkb_grouped_down=False,
         q8_down_row4_prefill=False,
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, True, False, False, False)
+        False, False, False, True, True, True, True, True, False, False, False)
 
     owner.q51_exact_grouped_down = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, True, False, False, False)
+        False, False, False, False, True, True, True, True, False, False, False)
 
 
 def test_the_generator_default_keeps_the_chain_on() -> None:
@@ -406,20 +412,24 @@ def test_the_pair2_control_record_names_the_field_and_its_value() -> None:
 
 def test_the_pf13_gate_list_no_longer_names_the_retired_key() -> None:
     campaign = _load_campaign()
-    assert RETIRED_ENV not in campaign.PF13_GATE_ENV
-    assert campaign.PF13_GATE_FIELD == campaign.Q51_PAIR2_GATE_FIELD
+    # Both chain gates are runner fields now: the Q5_1 pair2 gate and the Q4
+    # gate/up gate. No process key names either of them.
+    assert campaign.PF13_GATE_FIELDS == (
+        campaign.Q51_PAIR2_GATE_FIELD, "q4_exact_grouped_gate")
+    assert not hasattr(campaign, "PF13_GATE_ENV")
 
 
 def test_the_pf13_scope_refuses_a_closed_chain_on_the_runner() -> None:
     campaign = _load_campaign()
     runner = SimpleNamespace(
         q51_exact_grouped_down=False,
+        q4_exact_grouped_gate=True, q4_exact_grouped_all=True,
         q51_down_m1=True, forkb_grouped_down=True,
         q51_fold128_prefill=True, q51_fold_pair_prefill=True,
         q51_register_cache=True, q51_row_publish=True,
         q8_down_row4_prefill=True, q8_down_bundle_prefill=True,
         q8_down_register=True)
-    environment = {"HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1"}
+    environment = {}
 
     with pytest.raises(ValueError, match=campaign.PF13_GATE_FIELD):
         with campaign.route_scope(
@@ -450,10 +460,12 @@ def test_the_layer2_down_arms_close_the_chain_on_the_runner() -> None:
         assert candidate.environment["HIPENGINE_QWEN4_EXP_T16_DOWN"] == "0"
         assert candidate.environment["HIPENGINE_QWEN4_EXP_Q5_1_WMMA"] == "1"
 
-    # The gate/up half stays a process key: this unit did not move it.
-    assert module.CANDIDATES["f16_compact_gate_up"].environment[
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4"] == "0"
-    assert module.CANDIDATES["f16_compact_gate_up"].q51_exact_grouped_down is None
+    # The gate/up half is the Q4 chain's own field now, bound by the spec rather
+    # than by a process key.
+    gate_up = module.CANDIDATES["f16_compact_gate_up"]
+    assert gate_up.environment == {}
+    assert gate_up.q4_exact_grouped_gate is False
+    assert gate_up.q51_exact_grouped_down is None
 
 
 # --- the retired key --------------------------------------------------------

@@ -421,12 +421,14 @@ def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
     # out from under the arm's declared "gate/up left at production" control.
     assert "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL" not in candidate.environment
     for gate_up_key in (
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4",
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
     ):
         assert gate_up_key not in candidate.environment, gate_up_key
+    # The gate/up chain's gate and joint term are runner fields, so "left at
+    # production" means the spec does not override them.
+    assert candidate.q4_exact_grouped_gate is None
+    assert candidate.q4_exact_grouped_all is None
 
 
 def test_mx1_full_route_candidate_closes_the_leg_preemptors() -> None:
@@ -447,17 +449,18 @@ def test_mx1_full_route_candidate_closes_the_leg_preemptors() -> None:
     assert candidate.environment == {
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
         "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
-        # The gate/up half: clear the exact grouped Q4 gate so the compact F16
-        # owner is selected, and open the Q5_1 WMMA down route.
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
+        # The gate/up half is the Q4 chain's own field (closed below); the one
+        # process key opens the Q5_1 WMMA down route.
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
     }
     assert candidate.q51_exact_grouped_down is False
-    # The production gate/up selector this arm moves is the Q4 exact gate; the
-    # down chain gate is runner state, and neither `EXACT_GROUPED_Q4_ALL` nor
-    # the iu8 exact selectors are overridden.
+    # Both chain gates are runner state, so the arm closes them through the
+    # spec's fields instead of process keys.
+    assert candidate.q4_exact_grouped_gate is False
+    # The production gate/up selector this arm moves is the Q4 exact gate; both
+    # chain gates are runner state, and neither the `_ALL` joint term nor the
+    # iu8 exact selectors are overridden.
     for key in (
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN",

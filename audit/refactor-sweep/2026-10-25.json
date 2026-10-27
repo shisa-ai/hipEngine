@@ -4070,13 +4070,13 @@
       "start_line": 3660,
       "end_line": 3667,
       "sha256": "b7b5c4c9828b7c7115176a76933b1ba4fccc37e4f89a9ad0457fdeb9321f20b5",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Both process selectors retired in favor of runner publication/scopes and capture keys. Defaults and restricted Q5-down joint predicate preserved. Direct selected/gather primitives remain the required strict unfused fallback, not deletion debt. Public321 four-arm comparison, CPU322, GPU323 and focused migrated fixtures pass. Worklog: worklog/entries/20261027T013719.990245Z-cleanup-refactor-r0156-q4-gates-8d8f04.md."],
       "subitems": [
         {
           "line": 3662,
           "text": "- `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` defaults on for the exact row-batched",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

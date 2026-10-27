@@ -51,11 +51,15 @@ _L = lambda layers: ",".join(str(layer) for layer in layers)  # noqa: E731
 # flag that would otherwise shadow it.
 #
 # Shadowing notes, read from the dispatch rather than assumed:
-# * ``Q4_IU8_PREFILL`` is unreachable while ``EXACT_GROUPED_Q4=1`` (the
-#   production default), because the exact-risk+repair branch is an earlier arm
-#   of the same ``if``/``elif`` chain in ``qwen4_exp_runner``. Enabling the fast
-#   suffix therefore requires turning the exact route off, and an arm that only
-#   sets ``Q4_IU8_PREFILL=1`` measures the exact route twice.
+# * ``Q4_IU8_PREFILL`` is unreachable while the exact grouped Q4 gate/up chain
+#   runs, because the exact-risk+repair branch is an earlier arm of the same
+#   ``if``/``elif`` chain in ``qwen4_exp_runner``. The chain's gate is
+#   request-local runner state (``q4_exact_grouped_gate``), so an environment-only
+#   arm cannot clear it: ``q4_iu8_fast`` closes the iu8-risk *variant* with
+#   ``Q4_IU8_EXACT=0``, which leaves the chain on its own out4/expertgrid
+#   fallback and never reaches the plain iu8 owner below it. Reaching that owner
+#   needs a runner binding, as the layer2 gate's ``q4_exact_grouped_gate=False``
+#   candidate does.
 ARMS: dict[str, dict[str, str]] = {
     "baseline": {},
     "moe": {"HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1"},

@@ -330,6 +330,8 @@ class Qwen4ExpGGUFTextGenerator:
         # The chain's non-expertgrid fallback rung is published on too, so an
         # unbound generator keeps the out8 owner rather than the output1 base.
         self.q51_out8 = True
+        self.q4_exact_grouped_gate = True
+        self.q4_exact_grouped_all = True
         self.q4_out4 = True
         self.q51_down_m1 = False
         self.q51_fold128_prefill = False
@@ -1103,6 +1105,10 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q51_exact_grouped_down = bool(
         getattr(generator, "q51_exact_grouped_down", True))
     runner.q51_out8 = bool(getattr(generator, "q51_out8", True))
+    runner.q4_exact_grouped_gate = bool(
+        getattr(generator, "q4_exact_grouped_gate", True))
+    runner.q4_exact_grouped_all = bool(
+        getattr(generator, "q4_exact_grouped_all", True))
     runner.q4_out4 = bool(getattr(generator, "q4_out4", True))
     runner.forkb_grouped_down = bool(
         getattr(generator, "forkb_grouped_down", False))

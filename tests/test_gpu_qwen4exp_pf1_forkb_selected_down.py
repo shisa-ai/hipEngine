@@ -310,7 +310,8 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     register_qwen35_router_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
     runtime = get_hip_runtime()
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1")
+    # The Q4 gate/up chain gate is request-local runner state, passed to the
+    # dispatch below; the arm keeps the grouped prefill composition on.
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
 
@@ -358,6 +359,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
                 experts=experts,
                 top_k=top_k,
                 runtime=runtime,
+                q4_exact_grouped_gate=True,
                 forkb_grouped_down=forkb,
             )
             runtime.device_synchronize()

@@ -207,9 +207,13 @@ def test_the_ladder_around_the_rung_is_unchanged() -> None:
 
 def test_the_chain_switches_still_sit_above_the_selector() -> None:
     dispatch = inspect.getsource(runner_module.run_qwen4_exp_moe)
-    assert "exact_grouped_q4_gate" in dispatch
-    assert GATE_ENV in dispatch
-    assert GATE_ALL_ENV in dispatch
+    assert "_qwen4_exp_q4_exact_grouped_chain(" in dispatch
+    # The chain's own switches are the owning runner's fields now, not process
+    # keys.
+    assert "q4_exact_grouped_gate=q4_exact_grouped_gate" in dispatch
+    assert "q4_exact_grouped_all=q4_exact_grouped_all" in dispatch
+    assert GATE_ENV not in dispatch
+    assert GATE_ALL_ENV not in dispatch
     assert IU8_EXACT_ENV in inspect.getsource(
         runner_module._qwen4_exp_q4_iu8_exact_enabled)
     assert dispatch.index("elif exact_grouped_q4_gate:") < dispatch.index(
@@ -353,17 +357,19 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
         q51_out8=True,
+        q4_exact_grouped_gate=True,
+        q4_exact_grouped_all=True,
         q4_out4=True,
         forkb_grouped_down=False,
         q8_down_row4_prefill=False,
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, True, False, False, False)
+        False, False, False, True, True, True, True, True, False, False, False)
 
     owner.q4_out4 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, False, False, False, False)
+        False, False, False, True, True, True, True, False, False, False, False)
 
 
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:
@@ -504,8 +510,9 @@ def _published(monkeypatch):
     for name in COMPETITOR_ENV:
         monkeypatch.delenv(name, raising=False)
     resolved = _resolve(ExecutionProfile.PRODUCTION)
-    resolved.binder(SimpleNamespace(), resolved)
-    yield {name: os.environ.get(name) for name in COMPETITOR_ENV}
+    generator = SimpleNamespace(runner=SimpleNamespace())
+    resolved.binder(generator, resolved)
+    yield {name: os.environ.get(name) for name in COMPETITOR_ENV}, generator
 
 
 def _gate_up_key(**kwargs):
@@ -569,10 +576,11 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
         ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV, T16_GATE_UP_ENV,
         EXPERT_GRID_ENV, PAIR_ENV, BUNDLE_ENV}
     assert envs == module.Q4_OUT4_PREEMPTING_ENV
-    # The chain's own switches are environment state, so the arm records and
+    # The chain's own switches are runner state, so the arm records and
     # requires them instead of forcing them.
-    assert module.RUNNER_ROUTE_REQUIRED_ENV["q4_out4"] == {
-        GATE_ENV: "1", GATE_ALL_ENV: "1"}
+    assert module.RUNNER_ROUTE_REQUIRED_FIELDS["q4_out4"] == {
+        "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True}
+    assert not hasattr(module, "RUNNER_ROUTE_REQUIRED_ENV")
     assert "q4_out4" not in module.ROUTES
     assert "q4_out4" not in module.RUNNER_ROUTE_OFF
     for field, _value in bindings:
@@ -581,13 +589,15 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
 
 def test_the_production_publication_keeps_the_rung_from_deciding(
         profiles, monkeypatch) -> None:
-    with _published(monkeypatch) as published:
+    with _published(monkeypatch) as (published, generator):
         assert published[ROUTED_F16_ENV] == "1"
         assert published[IU8_EXACT_ENV] == "1"
         assert published[PAIR_ENV] == "1"
         assert published[BUNDLE_ENV] == "1"
         assert published[EXPERT_GRID_ENV] is None   # default 64
-        assert os.environ[GATE_ENV] == "1"
+        # The chain's own switches are runner state, published on every plan.
+        assert generator.runner.q4_exact_grouped_gate is True
+        assert generator.runner.q4_exact_grouped_all is True
 
         # The real predicates, in dispatch order: the routed-F16 owner takes the
         # gate/up leg, and the iu8 chain sits above the ladder.
@@ -606,7 +616,7 @@ def test_the_route_closure_makes_the_strict_base_the_owner(
 
     bindings, envs, off = module.RUNNER_ROUTE_OFF_WITH_ENV["q4_out4"]
     runner = SimpleNamespace()
-    with _published(monkeypatch):
+    with _published(monkeypatch) as (_published_keys, generator):
         for name in envs:
             monkeypatch.setenv(name, off)
         with contextlib.ExitStack() as stack:
@@ -625,9 +635,9 @@ def test_the_route_closure_makes_the_strict_base_the_owner(
             monkeypatch.setenv(BUNDLE_ENV, "1")
             assert _gate_up_key(q4_out4=False).variant == BASE_VARIANT
             assert _gate_up_key(q4_out4=True).variant == OUT4_VARIANT
-            # The gate the arm records is still published.
-            assert os.environ[GATE_ENV] == "1"
-            assert os.environ[GATE_ALL_ENV] == "1"
+            # The gates the arm records are still published on the runner.
+            assert generator.runner.q4_exact_grouped_gate is True
+            assert generator.runner.q4_exact_grouped_all is True
 
 
 def test_the_route_closure_launches_only_the_owner_it_names(
@@ -641,7 +651,7 @@ def test_the_route_closure_launches_only_the_owner_it_names(
         (GRID64_VARIANT, OUT4_VARIANT, BASE_VARIANT, PAIR2_VARIANT,
          BUNDLE_VARIANT))
     runner = SimpleNamespace()
-    with _published(monkeypatch):
+    with _published(monkeypatch) as (_published_keys, _generator):
         # The lane's own arm first: the expert-grid family owns the launch (its
         # published pair2 preemptor at 1024 rows), so the rung's owners stay at
         # zero however the field is set.

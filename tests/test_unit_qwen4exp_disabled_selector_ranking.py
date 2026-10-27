@@ -63,7 +63,13 @@ def test_layer_gated_selectors_carry_their_layer_companion(module):
 
 
 def test_the_shadowed_selector_arm_disables_its_shadow(module):
-    """EXACT_GROUPED_Q4 shadows Q4_IU8_PREFILL in the same dispatch chain."""
+    """The exact iu8-risk variant shadows Q4_IU8_PREFILL in the same chain.
+
+    The chain's own gate is request-local runner state
+    (``q4_exact_grouped_gate``), so an environment-only arm cannot clear it;
+    ``q4_iu8_fast`` closes the iu8-risk *variant* instead, which leaves the chain
+    on its own out4/expertgrid fallback.
+    """
     shadow = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
     for name, overrides in module.ARMS.items():
         if "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL" in overrides:

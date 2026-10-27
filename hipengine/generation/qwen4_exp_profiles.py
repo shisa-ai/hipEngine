@@ -1403,8 +1403,6 @@ def _bind(
             else ""
         ),
         "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": resolved.manifest_sha256,
     }.items():
         profile_env[key] = value
@@ -1431,6 +1429,11 @@ def _bind(
     # The chain's non-expertgrid fallback rung: every plan keeps the out8
     # owner, and a diagnostic arm pins the output1 base on its own runner.
     generator.q51_out8 = True
+    # The Q4 gate/up chain's own gate and its `_ALL` joint term: every plan runs
+    # the chain on every Q4_K multi-row chunk, and a diagnostic arm closes or
+    # narrows it on its own runner.
+    generator.q4_exact_grouped_gate = True
+    generator.q4_exact_grouped_all = True
     # The Q4 gate/up ladder's non-expertgrid fallback rung: every plan keeps the
     # out4 owner, and a diagnostic arm pins the strict base on its own runner.
     generator.q4_out4 = True
@@ -1455,6 +1458,8 @@ def _bind(
         runner.q51_row_publish = q51_row_publish
         runner.q51_exact_grouped_down = True
         runner.q51_out8 = True
+        runner.q4_exact_grouped_gate = True
+        runner.q4_exact_grouped_all = True
         runner.q4_out4 = True
         runner.forkb_grouped_down = forkb_grouped_down
         runner.q8_down_row4_prefill = q8_down_row4_prefill

@@ -153,24 +153,23 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
 }
 
 # route -> runner fields that must stay published for the counted leaf to mean
-# what the arm says. ``q51_exact_grouped_down`` is the chain's own gate: the
+# what the arm says. ``q51_exact_grouped_down`` is the Q5_1 chain's own gate: the
 # output1 base is also the owner the dispatch falls through to *below* a closed
 # chain, so an arm with the gate off would count that launch and call it the
-# rung. The arm records the gate and refuses to measure with it off.
+# rung. ``q4_exact_grouped_gate``/``q4_exact_grouped_all`` are the Q4 gate/up
+# chain's gate and joint term: the strict base is likewise the owner the dispatch
+# falls through to below that chain, and `_ALL` is what keeps the chain on shapes
+# the Q5_1 down chain does not own. Every one of them is request-local runner
+# state, so the arm records them on the runner it measures and refuses to
+# measure with any of them off.
+Q4_EXACT_GROUPED_GATE_FIELD = "q4_exact_grouped_gate"
+Q4_EXACT_GROUPED_ALL_FIELD = "q4_exact_grouped_all"
 RUNNER_ROUTE_REQUIRED_FIELDS = {
     "q51_out8": {Q51_PAIR2_GATE_FIELD: True},
-}
-
-# route -> process keys that must stay at the given value for the counted leaf
-# to mean what the arm says. The Q4 gate/up chain's own switches are environment
-# state published by the profile, not runner fields: the strict base is also the
-# owner the dispatch falls through to *below* a closed chain, so an arm with the
-# gate off would count that launch and call it the rung. The arm records the
-# gate and refuses to measure with it off.
-Q4_GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4"
-Q4_GATE_ALL_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL"
-RUNNER_ROUTE_REQUIRED_ENV = {
-    "q4_out4": {Q4_GATE_ENV: "1", Q4_GATE_ALL_ENV: "1"},
+    "q4_out4": {
+        Q4_EXACT_GROUPED_GATE_FIELD: True,
+        Q4_EXACT_GROUPED_ALL_FIELD: True,
+    },
 }
 
 # The scalar sparse-prefill rows owner and its head-grouped leaves. Launches of
@@ -271,11 +270,12 @@ def main() -> None:
     else:
         scope = contextlib.nullcontext()
     required_fields = RUNNER_ROUTE_REQUIRED_FIELDS.get(a.route, {})
-    required_env = RUNNER_ROUTE_REQUIRED_ENV.get(a.route, {})
-    for name, value in required_env.items():
-        # Fail fast: the gate is what keeps the counted launch on this rung.
-        assert os.environ.get(name) == value, (
-            f"required process key not published: {name}")
+    for field, value in required_fields.items():
+        # Fail fast, before any measured work: the gate is what keeps the
+        # counted launch on this rung, and a closed chain falls through to the
+        # same owner below it.
+        assert getattr(generator.runner, field, None) is value, (
+            f"required runner field not published: {field}")
     # The head leaf is the scalar fallback, so the ablation needs WMMA off for
     # its launches to happen at all. Both the override and the launch counter
     # are registered on the stack that unwinds on any failure below.
@@ -324,9 +324,6 @@ def main() -> None:
             # a lost gate would make the arm count a launch it did not select.
             assert getattr(generator.runner, field) is value, (
                 f"required runner field changed: {field}")
-        for name, value in required_env.items():
-            assert os.environ.get(name) == value, (
-                f"required process key changed: {name}")
         if runner_mode is not None:
             # Configuration: the arm's own decision stayed bound.
             assert generator.runner.qsa_prefill_head_mode == runner_mode, (
@@ -343,7 +340,6 @@ def main() -> None:
             "route": a.route, "ablated_envs": list(envs),
             "ablated_runner_fields": bound_fields,
             "required_runner_fields": required_fields,
-            "required_process_keys": required_env,
             "env_values_at_end": engagement_asserts,
             "head_engagement": (
                 {

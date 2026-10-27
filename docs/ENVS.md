@@ -896,8 +896,7 @@ use.
 | --- | --- | --- |
 | `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL` | retired | No longer read. Grouped MoE admission follows the explicit routed, exact-grouped and production routes; the superseded grouped Q5_K experiment selector is removed. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` | retired | No longer read. Exact grouped Q5_1 down selection is runner-owned and remains enabled by default; scoped diagnostics retain the direct fallback. |
-| `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` | `1` | Exact grouped Q4_K gate/up route at rows>=2. |
-| `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL` | `1` | Extends the exact grouped Q4 route to all shapes (not only where the grouped-down route already applies). |
+| `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` / `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL` | retired | No longer read. Exact grouped Q4 gate/up admission is runner-owned; scoped controls preserve the direct fallback and the restricted policy's exact-Q5-down prerequisite. |
 | `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` | retired | No longer read. The profile publishes grouped Q8_0 down selection on its runner; scoped diagnostics preserve the strict comparison. |
 | `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL` | production profile | Grouped row4 GEMV prefill variant. |
 | `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` | production profile | Selected-dual grouped rowbatch8/out4 expertgrid64 bundle prefill for Q4_K. |

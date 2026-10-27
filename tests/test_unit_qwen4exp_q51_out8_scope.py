@@ -333,17 +333,19 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q51_fold_pair_prefill=False,
         q51_exact_grouped_down=True,
         q51_out8=True,
+        q4_exact_grouped_gate=True,
+        q4_exact_grouped_all=True,
         q4_out4=True,
         forkb_grouped_down=False,
         q8_down_row4_prefill=False,
         q8_down_bundle_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, True, True, False, False, False)
+        False, False, False, True, True, True, True, True, False, False, False)
 
     owner.q51_out8 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, True, False, False, False)
+        False, False, False, True, False, True, True, True, False, False, False)
 
 
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:

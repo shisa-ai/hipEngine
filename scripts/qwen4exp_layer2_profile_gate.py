@@ -46,7 +46,8 @@ if str(ROOT) not in sys.path:
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_prefill_variant, q4_out4, q51_exact_grouped_down, q51_out8,
+    gdn_prefill_variant, q4_exact_grouped_all, q4_exact_grouped_gate,
+    q4_out4, q51_exact_grouped_down, q51_out8,
     qsa_ordered_decode_v2,
     qsa_prefill_head_mode,
 )
@@ -128,6 +129,14 @@ class CandidateSpec:
     # arm that also needs the strict base to launch closes the chain's
     # iu8-risk+repair owner and the expert-grid family with it.
     q4_out4: bool | None = None
+    # Explicit Q4_K exact grouped gate/up gate and its `_ALL` joint term for this
+    # arm, same protocol. ``None`` keeps the base profile's publication (both on
+    # every plan). ``False`` on the gate is the route to the plain-iu8 and F16
+    # compact gate/up owners below the chain, and it also moves the grouped Q5_1
+    # down chain's input layout; ``False`` on `_ALL` only narrows the chain to
+    # chunks the exact grouped Q5_1 down chain already owns.
+    q4_exact_grouped_gate: bool | None = None
+    q4_exact_grouped_all: bool | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -305,8 +314,10 @@ CANDIDATES = {
     # binds it "bit-identical to the pair2 owner". The plain iu8 owner
     # publishes *identical arithmetic* without the risk criterion or the
     # repair pass, and it is already reachable: the dispatch tests
-    # exact_grouped_q4_gate BEFORE the q4_iu8 branch, so clearing the former
-    # selects the latter. The production profile already binds
+    # exact_grouped_q4_gate BEFORE the q4_iu8 branch, so closing the former
+    # selects the latter. The gate is request-local runner state
+    # (`q4_exact_grouped_gate`), bound by the candidate spec. The production
+    # profile already binds
     # Q4_IU8_PREFILL=1 but only on layers 35-47 while the repair route carries
     # no layer restriction, so the layer set is widened to cover exactly the
     # scope the repair currently serves. Q5_1 down is left at production
@@ -319,10 +330,12 @@ CANDIDATES = {
             "bit-parity repair removed; Q5_1 down unchanged at production"
         ),
         environment={
-            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "all",
         },
+        # The chain gate is runner state now, so the arm closes it through the
+        # spec's field instead of a process key.
+        q4_exact_grouped_gate=False,
         base_profile="production",
         scenario_id="qwen4exp-repair-free-gate-up",
         candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
@@ -354,14 +367,14 @@ CANDIDATES = {
             "F16 WMMA, F32 accumulate) with no repair pass; Q5_1 down "
             "unchanged at production"
         ),
-        environment={
-            # The ONLY change: clear the exact-grouped Q4 gate so the chain
-            # falls through to the F16 owner. Q4_IU8_PREFILL stays at its
-            # default 0 and the exact grouped Q5_1 down chain stays at its
-            # production publication, which isolates the gate/up half (the down
-            # leg's route is selected independently at its own dispatch site).
-            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
-        },
+        environment={},
+        # The ONLY change: close the exact-grouped Q4 chain gate (request-local
+        # runner state, so it is the spec's field and not a process key) so the
+        # chain falls through to the F16 owner. Q4_IU8_PREFILL stays at its
+        # default 0 and the exact grouped Q5_1 down chain stays at its
+        # production publication, which isolates the gate/up half (the down
+        # leg's route is selected independently at its own dispatch site).
+        q4_exact_grouped_gate=False,
         base_profile="production",
         scenario_id="qwen4exp-f16-compact-gate-up",
         candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
@@ -397,11 +410,12 @@ CANDIDATES = {
     #     them the production base binds `ROUTED_F16=1` and the arm counts zero
     #     F16 down calls while measuring another owner.
     # The gate/up leg is selected by the independent `exact_grouped_q4_gate`
-    # predicate, which stays true because `EXACT_GROUPED_Q4_ALL` keeps its
-    # production default of 1 when only the down chain is closed. No gate/up key
-    # is overridden, so gate/up stays on the production exact iu8-risk+repair
-    # route on the layers whose exact chain owns it (0-26); the 27-47 production
-    # grouped window keeps the gate/up owner production selects there.
+    # predicate, which stays true because `q4_exact_grouped_all` keeps its
+    # production publication of True when only the down chain is closed. No
+    # gate/up decision is overridden, so gate/up stays on the production exact
+    # iu8-risk+repair route on the layers whose exact chain owns it (0-26); the
+    # 27-47 production grouped window keeps the gate/up owner production selects
+    # there.
     "gdn_tiled16_multi": CandidateSpec(
         name="gdn_tiled16_multi",
         classification="T1",
@@ -576,7 +590,7 @@ CANDIDATES = {
             "grouped down (Q5_1), both with no repair pass"
         ),
         environment={
-            # Two flags and one runner field, because the down leg's own chain
+            # One flag and two runner fields, because the down leg's own chain
             # tests `exact_grouped_down` BEFORE `q5_wmma`:
             #   if routed_f16:              <- production base binds this on
             #   elif down == gguf_q5_1:
@@ -585,12 +599,14 @@ CANDIDATES = {
             #     elif q5_wmma:             <- F16 down owner
             # So the arm closes the routed F16 and T16 owners as well; without
             # that both legs are the routed F16 route and the compact aliases
-            # the counters watch never launch.
+            # the counters watch never launch. Both chain gates are runner state
+            # (`q51_exact_grouped_down`, `q4_exact_grouped_gate`), so they are
+            # the spec's fields rather than process keys.
             **_F16_DOWN_PREEMPTORS_OFF,
-            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "0",
             "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
         },
         q51_exact_grouped_down=False,
+        q4_exact_grouped_gate=False,
         base_profile="production",
         scenario_id="qwen4exp-mx1-full-route",
         # Both owners are invoked by direct module-attribute calls, so both
@@ -1725,6 +1741,18 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # published out4 owner comes back on unwind.
         dispatch_stack.enter_context(q4_out4(
             candidate_generator.runner, candidate_spec.q4_out4))
+    if candidate_spec.q4_exact_grouped_gate is not None:
+        # And for the Q4_K exact grouped gate/up chain gate: request-local state,
+        # so an arm that measures the plain-iu8 or F16 compact owner below the
+        # chain binds it off for the measured rows and the profile's own
+        # publication comes back on unwind.
+        dispatch_stack.enter_context(q4_exact_grouped_gate(
+            candidate_generator.runner, candidate_spec.q4_exact_grouped_gate))
+    if candidate_spec.q4_exact_grouped_all is not None:
+        # And for that chain's `_ALL` joint term, which can only narrow a chain
+        # the gate already opened.
+        dispatch_stack.enter_context(q4_exact_grouped_all(
+            candidate_generator.runner, candidate_spec.q4_exact_grouped_all))
     counter = {"calls": 0, "shapes": {}}
     batch_evidence = None
     batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}

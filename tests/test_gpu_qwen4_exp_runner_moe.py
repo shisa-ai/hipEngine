@@ -61,11 +61,11 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
 
     runtime = get_hip_runtime()
     # R0146 retired the grouped-MoE prefill switch; the grouped branch is now
-    # reached through the exact-grouped route predicates, so drive both paths
-    # with the supported exact-grouped control instead.
-    monkeypatch.setenv(
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1" if grouped_prefill else "0"
-    )
+    # reached through the exact-grouped route predicate, so drive both paths
+    # with the supported exact-grouped control instead. The chain gate is
+    # request-local runner state, so it is a dispatch argument, not a process
+    # key; the `_ALL` joint term keeps its published default.
+    grouped_gate = grouped_prefill
     rng = np.random.default_rng(510)
     hidden, ffn, experts, top_k = 256, 256, 4, 2
     mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
@@ -138,6 +138,7 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
             experts=experts,
             top_k=top_k,
             runtime=runtime,
+            q4_exact_grouped_gate=grouped_gate,
         )
         runtime.device_synchronize()
         actual_bits = _download(result.output, (rows, hidden), np.uint16, runtime)
@@ -271,7 +272,7 @@ def test_qwen4_exp_runner_moe_q8_0_down_grouped_strict_fallback(
 
     runtime = get_hip_runtime()
     # Grouped prefill for rows>=16 with a Q4_K/Q4_K gate/up pair; Q8_0 down.
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1")
+    # The chain gate is request-local runner state, passed to the dispatch below.
     # Ensure neither opt-in Q8_0 grouped owner is active (the buggy case).
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
@@ -352,6 +353,7 @@ def test_qwen4_exp_runner_moe_q8_0_down_grouped_strict_fallback(
             experts=experts,
             top_k=top_k,
             runtime=runtime,
+            q4_exact_grouped_gate=True,
         )
         runtime.device_synchronize()
         actual_bits = _download(result.output, (rows, hidden), np.uint16, runtime)

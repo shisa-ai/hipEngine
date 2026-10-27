@@ -666,6 +666,10 @@ def make_qwen4_exp_ar_batch_runner(
     batch.q51_exact_grouped_down = bool(
         getattr(generator, "q51_exact_grouped_down", True))
     batch.q51_out8 = bool(getattr(generator, "q51_out8", True))
+    batch.q4_exact_grouped_gate = bool(
+        getattr(generator, "q4_exact_grouped_gate", True))
+    batch.q4_exact_grouped_all = bool(
+        getattr(generator, "q4_exact_grouped_all", True))
     batch.q4_out4 = bool(getattr(generator, "q4_out4", True))
     batch.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
     batch.q51_fold128_prefill = bool(

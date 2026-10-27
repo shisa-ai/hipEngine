@@ -158,12 +158,12 @@ def test_the_strict_binder_publishes_the_parents(profiles) -> None:
 # --- diagnostics ------------------------------------------------------------
 
 
-#: A shipped-lane environment: the grouped chain's gates are on, every owner
-#: that preempts either leaf is published, and every replacement sibling is
-#: published on the runner.
+#: A shipped-lane environment: every owner that preempts either leaf is
+#: published, and every replacement sibling is published on the runner. The two
+#: chain gates are runner fields (``_published_runner``), so no process key
+#: carries them.
 def _published_environment() -> dict[str, str]:
     return {
-        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT": "1",
@@ -175,6 +175,7 @@ def _published_environment() -> dict[str, str]:
 def _published_runner() -> SimpleNamespace:
     return SimpleNamespace(
         q51_exact_grouped_down=True,
+        q4_exact_grouped_gate=True, q4_exact_grouped_all=True,
         q51_down_m1=True, forkb_grouped_down=True,
         q51_fold128_prefill=True, q51_fold_pair_prefill=True,
         q51_register_cache=True, q51_row_publish=True,
@@ -213,10 +214,11 @@ def test_the_pf13_arm_isolates_both_leaves_and_restores_everything() -> None:
         # Every preempting owner is closed, including the pair2 selection the M1
         # leaf sits below and the two grouped Q8_0 owners below fork-b.
         assert all(environment[key] == "0" for key in PF13_PREEMPTING_ENV)
-        # The chain's own gates are prerequisites, never forced: the Q5_1 chain
-        # gate is runner state and the Q4 gate a process key.
+        # The chains' own gates are prerequisites, never forced: both are runner
+        # state, so the scope leaves them exactly as published.
         assert runner.q51_exact_grouped_down is True
-        assert environment["HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4"] == "1"
+        assert runner.q4_exact_grouped_gate is True
+        assert runner.q4_exact_grouped_all is True
 
     assert environment == before
     assert runner.q51_down_m1 is True
@@ -258,34 +260,23 @@ def test_the_pf13_arm_restores_after_an_exception() -> None:
 
 def test_the_pf13_arm_refuses_a_closed_grouped_gate() -> None:
     from scripts.qwen4exp_halo_box_campaign_ab import (
-        PF13_GATE_ENV,
-        PF13_GATE_FIELD,
+        PF13_GATE_FIELDS,
         route_scope,
     )
 
-    # The Q5_1 chain gate is runner state: an arm that measures with it closed
-    # would count zero on both leaves, so the scope refuses.
-    runner = _published_runner()
-    runner.q51_exact_grouped_down = False
-    environment = _published_environment()
-    with pytest.raises(ValueError, match=PF13_GATE_FIELD):
-        with route_scope("pf13", "after", runner, environment=environment):
-            pass
-    assert runner.q51_down_m1 is True
-    assert runner.forkb_grouped_down is True
-    assert runner.q51_exact_grouped_down is False
-
-    for key in PF13_GATE_ENV:
-        environment = _published_environment()
-        environment[key] = "0"
+    # Both chain gates are runner state: an arm that measures with either closed
+    # cannot reach the counted leaves, so the scope refuses.
+    for field in PF13_GATE_FIELDS:
         runner = _published_runner()
-        with pytest.raises(ValueError, match=key):
+        setattr(runner, field, False)
+        environment = _published_environment()
+        with pytest.raises(ValueError, match=field):
             with route_scope("pf13", "after", runner, environment=environment):
                 pass
         # The refusal happens before anything is bound.
         assert runner.q51_down_m1 is True
         assert runner.forkb_grouped_down is True
-        assert environment[key] == "0"
+        assert getattr(runner, field) is False
 
 
 def test_the_pf13_arm_refuses_a_foreign_expert_grid_family() -> None:
@@ -310,8 +301,7 @@ def test_the_pf13_arm_refuses_to_measure_without_its_runner() -> None:
 
 def test_the_pf13_control_records_every_forced_value_and_its_prior() -> None:
     from scripts.qwen4exp_halo_box_campaign_ab import (
-        PF13_GATE_ENV,
-        PF13_GATE_FIELD,
+        PF13_GATE_FIELDS,
         PF13_LEAF_KEYS,
         PF13_PREEMPTING_ENV,
         PF13_SIBLING_FIELDS,
@@ -336,12 +326,7 @@ def test_the_pf13_control_records_every_forced_value_and_its_prior() -> None:
             key: environment.get(key) for key in PF13_PREEMPTING_ENV},
     }
     assert control["gates"] == {
-        "runner_field": {
-            "field": PF13_GATE_FIELD,
-            "published_value": True,
-        },
-        "environment": {
-            key: environment[key] for key in PF13_GATE_ENV},
+        "runner_fields": {field: True for field in PF13_GATE_FIELDS},
     }
     assert control["expert_grid"] == {"published": None, "effective": "64"}
     assert control["counted_leaves"] == {
@@ -465,6 +450,7 @@ def _install_campaign_fakes(monkeypatch, module, *, launches, case=None,
         resident=_fake_resident(),
         prefill_chunk_size=1024,
         q51_exact_grouped_down=True,
+        q4_exact_grouped_gate=True, q4_exact_grouped_all=True,
         q51_down_m1=True,
         forkb_grouped_down=True,
         q51_fold128_prefill=True,
@@ -504,8 +490,7 @@ def _install_campaign_fakes(monkeypatch, module, *, launches, case=None,
                 },
                 "gates": {
                     "q51_exact_grouped_down": runner_.q51_exact_grouped_down,
-                    "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": os.environ.get(
-                        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4"),
+                    "q4_exact_grouped_gate": runner_.q4_exact_grouped_gate,
                 },
             }
         )
@@ -599,11 +584,10 @@ def test_main_counts_both_leaves_and_records_the_isolation(
     assert control["replacement_siblings"]["bound_value"] is False
     assert control["preempting_owners"]["forced_value"] == "0"
     assert control["gates"] == {
-        "runner_field": {
-            "field": "q51_exact_grouped_down",
-            "published_value": True,
+        "runner_fields": {
+            "q51_exact_grouped_down": True,
+            "q4_exact_grouped_gate": True,
         },
-        "environment": {"HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1"},
     }
     assert control["expert_grid"] == {"published": None, "effective": "64"}
     # The artifact states the two owners each arm measures.
@@ -623,7 +607,7 @@ def test_main_counts_both_leaves_and_records_the_isolation(
         assert all(value == "0" for value in call["preemptors"].values())
         assert call["gates"] == {
             "q51_exact_grouped_down": True,
-            "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
+            "q4_exact_grouped_gate": True,
         }
     assert any(call["m1"] and call["forkb"] for call in fakes.seen)
     assert any(not call["m1"] and not call["forkb"] for call in fakes.seen)

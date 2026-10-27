@@ -1173,13 +1173,16 @@ PF13_SIBLING_FIELDS = (
     Q8_DOWN_BUNDLE_FIELD,
     "q8_down_register",
 )
-#: The grouped chain's own gates. They decide whether the chain runs at all, so
-#: the arm records them and refuses to measure with either off: a closed gate
-#: makes both leaves count zero and would be reported as a neutral A/B. The
-#: pair2 gate is request-local runner state (``PF13_GATE_FIELD``); the Q4 gate is
-#: still a process key.
+#: The grouped chains' own gates. They decide whether those chains run at all,
+#: so the arm records them and refuses to measure with either off: a closed gate
+#: makes the counted leaves unreachable and would be reported as a neutral A/B.
+#: Both are request-local runner state now, so the arm reads them on the runner
+#: it measures. The Q4 gate is required because it also selects the grouped Q5_1
+#: down chain's input layout; its `_ALL` joint term is moot here, because the
+#: arm requires the exact grouped Q5_1 down chain on and `_ALL` only matters
+#: where that chain is off.
 PF13_GATE_FIELD = Q51_PAIR2_GATE_FIELD
-PF13_GATE_ENV = ("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4",)
+PF13_GATE_FIELDS = (PF13_GATE_FIELD, "q4_exact_grouped_gate")
 #: The exact expert-grid family the M1 leaf belongs to. Its parent rung is what
 #: the ``before`` arm measures, so any other family would compare two unrelated
 #: owners and select no M1 leaf at all.
@@ -1214,15 +1217,11 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
             "and binding nothing would measure the plan's own PF-1/PF-3 "
             "decisions")
     closed = {"", "0", "false", "False"}
-    if not getattr(runner, PF13_GATE_FIELD, False):
-        raise ValueError(
-            f"runner.{PF13_GATE_FIELD} must be on for the grouped expert-down "
-            "chain; without it neither counted leaf can launch")
-    for key in PF13_GATE_ENV:
-        if environment.get(key, "") in closed:
+    for field in PF13_GATE_FIELDS:
+        if not getattr(runner, field, False):
             raise ValueError(
-                f"{key} must be on for the grouped expert-down chain; without "
-                "it neither counted leaf can launch")
+                f"runner.{field} must be on for the grouped expert-down "
+                "chains; without it the counted leaves cannot be reached")
     if environment.get(PF13_EXPERT_GRID_ENV, "64") not in {"64", "q5"}:
         raise ValueError(
             f"{PF13_EXPERT_GRID_ENV} must select the exact expert-grid family "
@@ -1320,12 +1319,8 @@ def pf13_control_record(runner=None, *, environment=os.environ):
                 key: environment.get(key) for key in PF13_PREEMPTING_ENV},
         },
         "gates": {
-            "runner_field": {
-                "field": PF13_GATE_FIELD,
-                "published_value": _value(PF13_GATE_FIELD),
-            },
-            "environment": {
-                key: environment.get(key) for key in PF13_GATE_ENV},
+            "runner_fields": {
+                field: _value(field) for field in PF13_GATE_FIELDS},
         },
         "expert_grid": {
             "published": environment.get(PF13_EXPERT_GRID_ENV),
