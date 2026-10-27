@@ -5181,7 +5181,7 @@
       "end_line": 4407,
       "sha256": "0c29ed648340906feeeb0df87bbc98f57cc40513c232fd2852390dc6902d46b1",
       "status": "deferred-public-validation",
-      "evidence": ["Removed AR cohort environment bypass; retained missing-API independent submission and MTP/streaming paths. RED/GREEN legacy-zero regression, full engine-service integration/request-lifetime tests and docs/audit pass. Real gfx1151 Qwen3.8 dense library plus FastAPI TestClient requests observed a two-item cohort, matching outputs, ready 200 and successful shutdown (bg-450). Full C1-C3 native-prefill/lifecycle/performance refresh remains open. Worklogs: worklog/entries/20261027T155711.403206Z-cleanup-refactor-r0198-330ad0.md; worklog/entries/20261027T163533.128359Z-cleanup-refactor-r0198-public-08b7e6.md."],
+      "evidence": ["Removed AR cohort environment bypass; retained missing-API independent submission and MTP/streaming paths. Integration/request-lifetime tests and docs/audit pass. Real gfx1151 dense Qwen HTTP C1/C2/C3 cells traced matching native-prefill widths and library outputs (bg-451); subsequent driver-lifespan error repaired with focused bg-452, which passed GenerationCancelled, unaffected neighbor, HTTP reuse, ready 200 and shutdown. Full repeated workload/performance and injected-failure refresh remains open. Worklogs: worklog/entries/20261027T155711.403206Z-cleanup-refactor-r0198-330ad0.md; worklog/entries/20261027T163533.128359Z-cleanup-refactor-r0198-public-08b7e6.md; worklog/entries/20261027T163913.377040Z-cleanup-refactor-r0198-public-matrix-723a3e.md."],
       "subitems": [
         {
           "line": 4394,
