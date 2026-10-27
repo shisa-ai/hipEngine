@@ -3017,17 +3017,19 @@ fallback count is not a success metric.
 
 - Added 2026-08-25 with SPECDEC2-PERF P2. Fresh strict C1/C2/C4 requests stream
   pre-output-norm target chunks directly into NextN and retain only one 10 KiB
-  carried BF16 row per request. `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT=0`
-  temporarily selects pre-mutation K0/AR for clean A/B and rollback; it does not
-  pay the obsolete prompt-sized replay. The older prompt-sized FP32 hidden
+  carried BF16 row per request. The process-wide
+  `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT` forced-K0 override is removed;
+  adapter capability and prefix-restoration checks remain. The older prompt-sized FP32 hidden
   capture plus post-prefill F32→BF16 replay remains only as an internal strict
   oracle for providers without the streaming prompt ABI while P2 is qualified.
 - Removal trigger: qualify streamed prefix restore/COW and every supported
   incremental-prefill/context transition with exact provider fingerprints,
   cancellation/failure cleanup, and complete same-suite non-regression. Then
-  remove `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT`, `_prompt_hidden_rows`, and
-  `_catch_up_provider{,_batch}` from production selection while retaining a
-  focused test oracle if still useful.
+  remove `_prompt_hidden_rows` and `_catch_up_provider{,_batch}` from production
+  selection while retaining a focused test oracle if still useful. Verify the
+  default streaming route through `hipengine serve`, including restored prefixes,
+  incremental prefill, cancellation and provider cleanup; unit adapter routing
+  alone does not close this requirement.
 
 ## SPECDEC2 MoE physical-C2 Q4 pair-reuse scope
 

@@ -335,7 +335,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER` | true | Retained default with rollback opt-out | Defers the verify scatter stage inside a streamed MTP server cycle; `0` restores the eager scatter order for bisection. |
 | `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP` | false (set by the server) | Internal coupling | Set to `1` by `hipengine serve` startup scratch-probe only when speculative MTP serving is enabled, so the warmup exercises the MTP route. Not a user knob. |
 | `HIPENGINE_GGUF_MTP_HOT_VOCAB` | `auto` under `production`; otherwise unset | Performance selector | Hot-vocab LM-head cache scope for the GGUF MTP server. Unset resolves `auto` under the production profile and no hot-vocab cache otherwise, and the server drops the cache (about 0.5 GiB on Qwen3.8-27B, about 2% slower MTP decode) when the context would otherwise fall short of the model maximum or the pinned context. An explicit value is always kept: `auto` keeps the packaged cache, a positive integer selects the head count, and `0`/`off` disables the cache. |
-| `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT` | true | Retained default with rollback opt-out | Streams prompt-prefill progress on the specdec2 GGUF server route; `0` restores non-streaming prompt handling for bisection. |
 | `HIPENGINE_GGUF_PACKED_KV_LEASE` | `0` | Diagnostic | Forces the packed-KV lease helper on for single-request (max_batch_size==1) sessions where it would otherwise stay off. |
 | `HIPENGINE_GGUF_MTP_VERIFY_MODE` | `native` | GGUF dense MTP server | `native` or `serial_exact`. `native`, the default, checks drafted tokens with the fast llama.cpp-style row-attention and GPU-side acceptance path; on the dense Qwen suites that measures about 1.5-1.7x normal decoding, with occasional differences in the token chosen. `serial_exact` replays normal single-request decoding for each candidate, so it agrees with normal decoding token for token, but it cannot be faster. |
 | `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` | unset | Legacy candidate-depth alias | Compatibility alias for `HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`, not an independent fallback. Both names must agree if set together; invalid or conflicting values fail. Direct generator callers and `LLM` preserve the explicit depth. A constructor argument takes precedence over environment settings. |
@@ -1128,6 +1127,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT` is retired and ignored. Prompt
+  streaming follows adapter capability and prefix-restoration checks; the
+  legacy provider oracle remains available where the streaming ABI is absent.
 
 - `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` is retired and ignored. The wide-Q6
   diagnostic candidate is controlled only by `target_verifier_wide_q6_shared4_session()`;

@@ -5002,13 +5002,13 @@
       "start_line": 4254,
       "end_line": 4269,
       "sha256": "5ccaefe8f9bf68837195572cecd773e2f9633a35aa86e846f9d50c597a836209",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Removed environment-only forced-K0 override; adapter/prefix checks and legacy provider oracle retained. RED/GREEN streaming adapter admission, prefix refusal, missing adapter and full MTP2 seam tests pass, as do fixtures/smoke/docs/audit. Public prefix/COW/incremental lifecycle validation and legacy replay removal remain open. Worklog: worklog/entries/20261027T151841.930940Z-cleanup-refactor-r0190-89a9e3.md."],
       "subitems": [
         {
           "line": 4256,
           "text": "- Added 2026-08-25 with SPECDEC2-PERF P2. Fresh strict C1/C2/C4 requests stream",
-          "status": "pending"
+          "status": "partial"
         },
         {
           "line": 4263,
