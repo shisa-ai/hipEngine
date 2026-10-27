@@ -16,7 +16,6 @@ import pytest
 
 from hipengine.loading.qwen35_gguf_policy import (
     HIPENGINE_C8_Q5_PLANAR_DP4A_ENV,
-    HIPENGINE_GGUF_C8_Q5_RAW_MMQ_ENV,
     gguf_ar_raw_iq_contract,
     gguf_fp16_recurrent_state_default,
     resolve_gguf_dense_flags,
@@ -76,7 +75,10 @@ def test_resolve_flags_qmicro_gate_is_case_sensitive_on_the_file_type_stamp():
     )
 
 
-def test_resolve_flags_q5_raw_mmq_env_override_gates_capability():
+HIPENGINE_GGUF_C8_Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
+
+
+def test_resolve_flags_q5_raw_mmq_ignores_retired_override():
     values = {"GGUF_C8_Q5_RAW_MMQ_SSM_OUT": True}
     reader = _stub_reader(values)
     # Default (env absent): raw-MMQ sidecar on where the backend declares it.
@@ -90,8 +92,8 @@ def test_resolve_flags_q5_raw_mmq_env_override_gates_capability():
         assert (
             resolve_gguf_dense_flags(
                 "b", None, capability_reader=reader, environ={HIPENGINE_GGUF_C8_Q5_RAW_MMQ_ENV: off}
-            )["dense_q5_raw_mmq_ssm_out"]
-            is False
+            )['dense_q5_raw_mmq_ssm_out']
+            is True
         )
     for on in ("1", "true", "yes", "on"):
         assert (

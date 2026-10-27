@@ -2780,19 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-02 gfx1100 C8 raw-Q5 MMQ — closed
-
-- The gfx1100-only eight-request physical R24/R32 `ssm_out` route is now the
-  production default. It retains raw sidecars beside exact T16 residents,
-  quantizes each layer input into bounded scratch, and launches the registered
-  operation-complete raw Q5 MMQ. The all-48 actual-weight screen, marker gate,
-  counterbalanced ten-prompt task gate, and strict-teacher R24/R32 numerics all
-  passed; the promoted-default task gate improves 87.186→89.377 tok/s (+2.51%).
-- `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0` remains same-build rollback. Request counts
-  other than eight, peer backends, shape misses, missing sidecars, and workspace
-  misses retain exact grouped T16 ownership. Remove the environment opt-out after the next stable milestone
-  audit; preserve the registered strict fallback.
-
 ## 2026-09-02 gfx1100 grouped Q5 R8 C8 rollback — open
 
 - Exact grouped-R8 now owns physical C8/R32 by default; explicit
@@ -10535,3 +10522,15 @@ source-Q5 selection at R32 and raw-MMQ fallback on R24/shape misses, then compar
 output/acceptance and teardown with the retained parent. Use
 `tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py::test_c8_q5_i64_j32_source_mmq_passes_production_outer_floor`
 as the separate numerical gate, not a substitute for public engagement.
+
+### R0171 — Public raw-Q5 sidecar and route validation
+
+The raw-Q5 environment switch is removed from both loading and runtime.
+Capability-owned planning and runtime request-count/sidecar/workspace fallbacks
+remain. The verifier diagnostic controls the parent route in its own scope.
+
+**Dependency:** gfx1100 public C8 physical MTP execution with raw-Q5 sidecars.
+**Clearing action:** run `hipengine serve` at eight active requests, confirm
+sidecar ownership and MMQ launches at admitted R24/R32 shapes, then compare
+output/acceptance and allocation cleanup with grouped T16. Include fewer-request
+and missing-workspace cases to verify fallback, without weakening admission.

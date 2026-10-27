@@ -56,7 +56,6 @@ KIND = "qwen38_production_q4_verifier_numerics"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 VERIFY_CAPTURE_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
-Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
 
 
 class GateError(RuntimeError):
@@ -74,6 +73,20 @@ def _environment(name: str, value: str) -> Iterator[None]:
             os.environ.pop(name, None)
         else:
             os.environ[name] = previous
+
+
+@contextmanager
+def raw_mmq_control(enabled: bool):
+    """Keep the diagnostic parent without changing sidecar allocation policy."""
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    original = runner._gguf_c8_q5_raw_mmq_enabled
+    if not enabled:
+        runner._gguf_c8_q5_raw_mmq_enabled = lambda *args, **kwargs: False
+    try:
+        yield
+    finally:
+        runner._gguf_c8_q5_raw_mmq_enabled = original
 
 
 @contextmanager
@@ -116,9 +129,7 @@ def _make_sessions(
                 "1" if q4_rowtile else "0",
             )
         )
-        stack.enter_context(
-            _environment(Q5_RAW_MMQ_ENV, "1" if q5_raw_mmq else "0")
-        )
+        stack.enter_context(raw_mmq_control(q5_raw_mmq))
         stack.enter_context(source_mmq_control(q5_source_mmq))
         owner = stack.enter_context(
             Qwen35GGUFResidentSession(
@@ -455,19 +466,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "strict": {
                 FP16_STATE_ENV: "0",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "0",
-                Q5_RAW_MMQ_ENV: "0",
             },
             "candidate": {
                 FP16_STATE_ENV: "1",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "1",
-                Q5_RAW_MMQ_ENV: (
-                    "1"
-                    if bool(
-                        args.candidate_q5_raw_mmq
-                        or args.candidate_q5_source_mmq
-                    )
-                    else "0"
-                ),
             },
         },
         build_profile="qwen38_q4_verifier_numerics",
@@ -477,6 +479,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         profiler={"enabled": False, "kind": None, "command": None},
     )
     provenance["diagnostic_controls"] = {
+        "raw_mmq": {"strict": False, "candidate": bool(args.candidate_q5_raw_mmq or args.candidate_q5_source_mmq)},
         "source_mmq": {"strict": False, "candidate": bool(args.candidate_q5_source_mmq)},
     }
     tracked_clean = not bool(

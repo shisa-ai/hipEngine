@@ -48,7 +48,6 @@ GGUF_DENSE_CAPABILITY_NAMES = (
     "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
 )
 
-HIPENGINE_GGUF_C8_Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
 HIPENGINE_C8_Q5_PLANAR_DP4A_ENV = "HIPENGINE_C8_Q5_PLANAR_DP4A"
 
 # GGML type ids whose raw storage triggers the AR raw-IQ contract (decode-repack
@@ -177,10 +176,9 @@ def resolve_gguf_dense_flags(
     Returns exactly the keyword arguments (minus ``decode_repack``) accepted by
     ``plan_qwen35_gguf_materialization`` and ``plan_qwen35_gguf_weight_spec``.
     Missing capabilities resolve to the same defaults the runtime reader uses
-    (bools False, containers empty). Environment overrides:
+    (bools False, containers empty). The raw-Q5 sidecar follows the backend's
+    ``GGUF_C8_Q5_RAW_MMQ_SSM_OUT`` capability. Environment override:
 
-    - ``HIPENGINE_GGUF_C8_Q5_RAW_MMQ`` (default on) gates the raw-MMQ Q5
-      sidecar on the ``GGUF_C8_Q5_RAW_MMQ_SSM_OUT`` capability;
     - ``HIPENGINE_C8_Q5_PLANAR_DP4A`` (default off) gates the optional planar
       Q5 sidecar on the same capability.
 
@@ -212,9 +210,7 @@ def resolve_gguf_dense_flags(
             capability_reader(backend, "GGUF_DENSE_Q4_T16_ATTN_Q_08B", False)
         ),
         "dense_q5_t16_ssm_out": bool(capability_reader(backend, "GGUF_DENSE_Q5_T16_SSM_OUT", False)),
-        "dense_q5_raw_mmq_ssm_out": (
-            _env_enabled(env, HIPENGINE_GGUF_C8_Q5_RAW_MMQ_ENV, "1") and q5_raw_mmq_capable
-        ),
+        "dense_q5_raw_mmq_ssm_out": q5_raw_mmq_capable,
         "dense_q5_qmicro_planar_ssm_out": (
             _env_enabled(env, HIPENGINE_C8_Q5_PLANAR_DP4A_ENV, "0") and q5_raw_mmq_capable
         ),

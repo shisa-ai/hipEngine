@@ -94,13 +94,13 @@ def test_q4_verifier_numerics_accepts_c8_source_q5_candidate() -> None:
 def test_c8_raw_q5_mmq_is_gfx1100_default_with_opt_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(gate.Q5_RAW_MMQ_ENV, raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", raising=False)
     assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=8) is True
     assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=7) is False
     assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1151", request_count=8) is False
 
-    monkeypatch.setenv(gate.Q5_RAW_MMQ_ENV, "0")
-    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=8) is False
+    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=8) is True
 
 
 def test_c8_source_q5_mmq_is_exact_width_default_with_rollback(
@@ -117,7 +117,7 @@ def test_c8_source_q5_mmq_is_exact_width_default_with_rollback(
 
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
-    assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is False
+    assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is True
 
 
 def test_q4_verifier_session_environment_lives_until_stack_close(
@@ -144,7 +144,7 @@ def test_q4_verifier_session_environment_lives_until_stack_close(
     for name in (
         gate.FP16_STATE_ENV,
         gate.TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
-        gate.Q5_RAW_MMQ_ENV,
+        "HIPENGINE_GGUF_C8_Q5_RAW_MMQ",
         "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -163,14 +163,15 @@ def test_q4_verifier_session_environment_lives_until_stack_close(
     assert len(sessions) == 2
     assert os.environ[gate.FP16_STATE_ENV] == "1"
     assert os.environ[gate.TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV] == "1"
-    assert os.environ[gate.Q5_RAW_MMQ_ENV] == "1"
+    assert "HIPENGINE_GGUF_C8_Q5_RAW_MMQ" not in os.environ
+    assert runner_module._gguf_c8_q5_raw_mmq_enabled('hip_gfx1100', request_count=8)
     assert "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ" not in os.environ
     assert runner_module._gguf_c8_q5_source_mmq_enabled('hip_gfx1100', request_count=8)
 
     stack.close()
     assert gate.FP16_STATE_ENV not in os.environ
     assert gate.TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV not in os.environ
-    assert gate.Q5_RAW_MMQ_ENV not in os.environ
+    assert "HIPENGINE_GGUF_C8_Q5_RAW_MMQ" not in os.environ
     assert "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ" not in os.environ
 
 

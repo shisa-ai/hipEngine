@@ -1413,9 +1413,8 @@ def test_gfx1151_q6_planar_exclusion_excludes_attn_qkv_and_gfx1100_does_not():
 
 
 def test_env_overrides_change_the_audit_plan(monkeypatch):
-    # HIPENGINE_GGUF_DECODE_REPACK gates decode repack; HIPENGINE_GGUF_C8_Q5_RAW_MMQ
-    # and HIPENGINE_C8_Q5_PLANAR_DP4A gate the Q5 sidecars -- all through the
-    # shared policy API, so audit and runtime see the same environment.
+    # Decode repack and planar sidecar controls remain explicit. Raw-MMQ
+    # follows capability even when its retired environment name is present.
     tensors = _replace_tensor(_fixture_tensors(), "blk.0.ssm_out.weight", _q5_ssm_out())
     maps = _mapped(tensors)
     monkeypatch.delenv("HIPENGINE_GGUF_DECODE_REPACK", raising=False)
@@ -1430,8 +1429,8 @@ def test_env_overrides_change_the_audit_plan(monkeypatch):
 
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
     no_raw = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
-    assert no_raw["package_flags"]["dense_q5_raw_mmq_ssm_out"] is False
-    assert "raw" not in no_raw["allocation"]["sidecars"]
+    assert no_raw["package_flags"]["dense_q5_raw_mmq_ssm_out"] is True
+    assert no_raw["allocation"]["sidecars"]["raw"]["count"] == 1
 
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "1")
     monkeypatch.setenv("HIPENGINE_C8_Q5_PLANAR_DP4A", "1")

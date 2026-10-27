@@ -4423,18 +4423,18 @@
       "start_line": 3919,
       "end_line": 3931,
       "sha256": "748682a0905bdfa881dece6aeca318445e191b62674c4f9c0852c5245a720306",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed raw-Q5 environment admission from loader and runtime coherently; backend capability, C8 count, sidecar/workspace fallbacks preserved. Diagnostic stack controls raw/source without environment writes. Full CPU plus focused stale audit-plan repair, nested restoration and raw Q5/Q6 GPU oracle pass. Public gfx1100 C8 engagement deferred with bottom clearing action. Worklog: worklog/entries/20261027T141031.779143Z-cleanup-refactor-r0171-b9860d.md."],
       "subitems": [
         {
           "line": 3921,
           "text": "- The gfx1100-only eight-request physical R24/R32 `ssm_out` route is now the",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3927,
           "text": "- `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0` remains same-build rollback. Request counts",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },
