@@ -4809,35 +4809,6 @@ fallback count is not a success metric.
   consider folding only the stable owner into package auto policy. No
   allocation, workspace, sidecar, or public selector was added.
 
-## Laguna source-IQ selected-down MMQ selector
-
-- WPF-H3's temporary default-off runtime seam is removed. The complete
-  18-prompt/576-step lane rejects source IQ3/IQ4 selected down at maximum KL
-  **0.373028 > 0.05** despite **567/576** top-1, deterministic repeats,
-  lifecycle recovery, and diagnostic prefill **1.192x** faster. A structural
-  IQ3-source/IQ4-exact followup is also rejected at maximum KL **0.372917**;
-  the source IQ3 arithmetic, not the two IQ4 layers, owns the failure.
-- No constructor switch, package capability, tile128 metadata owner, scratch
-  reuse route, or grouped source dispatch remains. Keep the separately
-  registered strict DS4 producer and IQ3/IQ4 consumers as leaf evidence; exact
-  grouped down remains production. All 45 IQ3 roles share K1024/N3072, so do
-  not add prompt- or layer-conditioned selection. Reopen only with materially
-  different arithmetic and a fresh complete quality gate.
-
-## Laguna source FlashAttention selector
-
-- WPF-H2's temporary default-off runtime seam is removed. The complete
-  18-prompt/576-step lane rejects all-layer source-F16 attention at maximum KL
-  **1.804860 > 0.05** despite **564/576** top-1, deterministic repeats,
-  lifecycle recovery, and diagnostic prefill **1.027x** faster. F32 PV,
-  full-attention-only, and SWA-only heldout screens also fail at maximum KL
-  **1.687078/0.589071/0.859783**.
-- No constructor switch, package capability, eager library owner, or KV/runtime
-  dispatch branch remains. Keep only the separately registered standalone
-  primitive and its leaf-parity evidence; the exact qrow4/M128 production chain
-  remains the required runtime path. Reopen only with materially different QK
-  arithmetic and a fresh complete quality gate, not another layer subset.
-
 ## Laguna P6 IQ2 MMQ32 diagnostic
 
 - The pre-existing explicit four-axis primitive expands raw IQ2 to signed-byte

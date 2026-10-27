@@ -6805,18 +6805,18 @@
       "start_line": 5737,
       "end_line": 5751,
       "sha256": "7bbb4b95cb768812797b7a18dc4e3ed903411c3b065ce5c6b353a3e7ef7883f8",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Runtime source-IQ selector absent, separately registered primitives preserved. Completed receipt removed; docs/audit pass. Worklog: worklog/entries/20261027T034815.303677Z-cleanup-refactor-r0260-r0261-32b96e.md."],
       "subitems": [
         {
           "line": 5739,
           "text": "- WPF-H3's temporary default-off runtime seam is removed. The complete",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5745,
           "text": "- No constructor switch, package capability, tile128 metadata owner, scratch",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -6826,18 +6826,18 @@
       "start_line": 5752,
       "end_line": 5765,
       "sha256": "417d0b4e739a33a7f3fb3460643196273edd77acb70afe5246894e273910f694",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Runtime source-FlashAttention selector absent, standalone primitive preserved. Completed receipt removed; docs/audit pass. Worklog: worklog/entries/20261027T034815.303677Z-cleanup-refactor-r0260-r0261-32b96e.md."],
       "subitems": [
         {
           "line": 5754,
           "text": "- WPF-H2's temporary default-off runtime seam is removed. The complete",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5760,
           "text": "- No constructor switch, package capability, eager library owner, or KV/runtime",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
