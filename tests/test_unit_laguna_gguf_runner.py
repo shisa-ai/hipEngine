@@ -1371,6 +1371,8 @@ def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
             events.append(self.name)
 
     shared_weights = SimpleNamespace(config=config, backend="hip_gfx1151")
+    # This allocation-unwind fixture has no projection weights or range metadata.
+    monkeypatch.setattr(runner_module, "resolve_laguna_f16_prefill_mode", lambda backend: "retained")
     monkeypatch.setattr(
         runner_module.LagunaGGUFResidentSession,
         "_validate_resident_weights",
@@ -1427,7 +1429,16 @@ def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     assert "libraries" not in events
 
 
-def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch) -> None:
+@pytest.mark.parametrize("unsafe_metadata", [None, "missing_norm", "infinite_value_bound"])
+def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch, unsafe_metadata) -> None:
+    validated_modes = []
+    original_validate = runner_module.LagunaGGUFResidentSession.set_f16_prefill_mode
+
+    def validate_mode(session, mode):
+        validated_modes.append(mode)
+        return original_validate(session, mode)
+
+    monkeypatch.setattr(runner_module.LagunaGGUFResidentSession, "set_f16_prefill_mode", validate_mode)
     monkeypatch.delenv("GPU_MAX_HW_QUEUES", raising=False)
     events: list[str] = []
     config = _config()
@@ -1517,6 +1528,10 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
             return self.weights[slot]
 
     weights.layers = tuple(F16Layer() for _ in range(config.block_count))
+    if unsafe_metadata == "missing_norm":
+        weights.layers[0].weights["attn_norm"].source_abs_max = None
+    elif unsafe_metadata == "infinite_value_bound":
+        weights.layers[0].weights["attn_v"].source_row_l2_max = float("inf")
     materialize_kwargs = {}
     kv_kwargs = {}
     monkeypatch.setattr(runner_module, "GGUFReader", lambda path: SimpleNamespace(info=object()))
@@ -1582,6 +1597,15 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         lambda *args, **kwargs: next(moe_scratches),
     )
 
+    if unsafe_metadata is not None:
+        with pytest.raises(ValueError, match="missing|finite"):
+            runner_module.LagunaGGUFResidentSession(
+                "/synthetic/laguna.gguf", backend="hip_gfx1151", runtime=Runtime(),
+            )
+        assert validated_modes == ["hipblaslt_range_direct"]
+        assert events == ["weights"]
+        return
+
     session = runner_module.LagunaGGUFResidentSession(
         "/synthetic/laguna.gguf",
         backend="hip_gfx1151",
@@ -1642,6 +1666,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.fuse_selected_silu_pack is False
     assert session.dense_q4_prefill_mode == "wmma_pack8"
     assert session.f16_prefill_mode == "hipblaslt_range_direct"
+    assert validated_modes == ["hipblaslt_range_direct"]
     assert session.fuse_f16_boundaries is True
     session.set_f16_boundary_fusion(False)
     assert session.fuse_f16_boundaries is False

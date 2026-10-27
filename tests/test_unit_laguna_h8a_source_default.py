@@ -93,8 +93,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_q5_f32_resident_global_cache` opt-out, so the runner and this GPU
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # BLAS/Q4 selector retirement leaves this cache/reuse owner unchanged.
-        "bc12f8ef6fe847411fdc4243fa3bb1426c3c2e5ab9aa264cef2fd3bc76555bd7"
+        # Constructor range validation now covers the default F16 route; H8A is unchanged.
+        "c78ed5983b024342cdad87c05d6be8b34755039a72a9ef36ff2caf95e8b83d72"
     ),
     # This GPU test renamed the shared ordered-F32 prefill session manager and
     # then dropped the retired R0249 opt-out assertions.

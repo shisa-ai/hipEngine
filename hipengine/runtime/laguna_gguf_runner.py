@@ -3922,7 +3922,7 @@ class LagunaGGUFResidentSession:
                     )
 
             self._validate_resident_weights()
-            if self.f16_prefill_mode == "hipblaslt_norm_direct":
+            if self.f16_prefill_mode != "retained":
                 self.set_f16_prefill_mode(self.f16_prefill_mode)
             self.full_rope = materialize_laguna_rope_tables(
                 self.context_length,

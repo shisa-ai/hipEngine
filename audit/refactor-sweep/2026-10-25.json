@@ -7112,7 +7112,7 @@
       "end_line": 5999,
       "sha256": "e6074d60572eed0b029751c15aef143ee27875a952a8c7f5e4473eb4a42f0670",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Prerequisite repair: constructor now validates all non-retained F16 routes, including the default range-direct path previously bypassing layout/range checks. RED/GREEN constructor/refusal/cleanup tests and full CPU bundle pass. Selector collapse and public model validation remain open. Worklog: worklog/entries/20261027T084538.963153Z-cleanup-refactor-r0271-validation-54bd0b.md."],
       "subitems": [
         {
           "line": 5973,

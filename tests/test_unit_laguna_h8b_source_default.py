@@ -60,8 +60,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_activation_pack_reuse` opt-out, so the runner and the scoped-reuse
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # BLAS/Q4 selector retirement leaves this cache/reuse owner unchanged.
-        "bc12f8ef6fe847411fdc4243fa3bb1426c3c2e5ab9aa264cef2fd3bc76555bd7"
+        # Constructor range validation now covers the default F16 route; H8B is unchanged.
+        "c78ed5983b024342cdad87c05d6be8b34755039a72a9ef36ff2caf95e8b83d72"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
