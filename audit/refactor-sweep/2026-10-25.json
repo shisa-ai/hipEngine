@@ -7338,8 +7338,10 @@
       "start_line": 6087,
       "end_line": 6118,
       "sha256": "846e7a2d16a50ded7b958fe539b1fae282b3d2146cdd812c5b34fc02c98a8a02",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-capture-inclusive-policy",
+      "evidence": [
+        "Remove stale priority history; move capture-inclusive/default and diagnostic-retirement decision to bottom. Later gfx1151 positive graph rows exclude capture, so do not claim they clear the earlier complete-route regression. Preserve eager override, storage-aware floors from R0088, key/cursor/budget checks, live bench/MTP consumers and bulk preset distinction. Scalar/floor/bench/MTP tests and docs/audit/worklog pass; no runtime or performance claim. Worklog: worklog/entries/20261027T201917.308379Z-cleanup-refactor-r0277-b8410a.md."
+      ],
       "subitems": []
     },
     {

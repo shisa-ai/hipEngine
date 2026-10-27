@@ -3430,41 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Priority Cleanup (do first)
-
-**Revalidate the gfx1151 GGUF graph default on the current stack and retire
-unrelated legacy graph blocks.** SOL-G5 reintroduced a state-bound runtime graph
-with a complete transition key. gfx1151 advertises its measured 128-step
-admission; gfx1100 now advertises a separately measured 24-step admission after
-passing all 24 hidden/GDN/KV/token transitions on W7900. Non-streaming c1 greedy
-generation uses the graph only at each backend's admitted horizon, with
-`HIPENGINE_GGUF_DECODE_GRAPH=0` retained for rollback. The explicit
-`qwen35_gguf_bench.py --graph-replay-decode` surface is required for the current
-default decision. The separate `scripts/gguf_mtp_bench.py --target-graph-verify`
-path is live: it defaults on and captures target decode graphs when the selected
-verification mode uses them. `--target-graph-batched-verify` remains an explicit
-strict full-prefix diagnostic. Audit their consumers before retiring either;
-neither is dead plumbing merely because it is separate from the c1 default.
-
-SOL-G4 provides the correct comparison floor: clean p512/d128 eager is
-`20.290 ms/token`, while a 24-step marker profile contains `18.402 ms/token` of
-GPU kernels (`88.62%` of profiled host wall). SOL-G5's clean production route
-at `7f611fe3` passed 128 launches and measured a capture-inclusive
-`20.334 -> 20.311 ms/token` (+0.112% throughput) edge. The 2026-07-12 TheRock
-HIP 7.15 refresh is still 128/128 exact but rejects the graph wall on both the
-scalar parent (`20.5230 -> 20.5736 ms/token`) and wave/block candidate
-(`20.4723 -> 20.5324`). Do not remove the rollback flag or broaden graph
-admission. A separate scoped decision must either reproduce a current graph win
-or restore eager as the gfx1151 production selector; the wave/block kernel
-itself helps both routes and is not the cause of this graph-policy result.
-
-The gfx1100 decision is independently strong: clean W7900 p512/d24 SOL-G5 at
-`833921ce` passed 24/24 byte-exact transitions and measured capture-inclusive
-`30.5364 -> 12.5139 ms/token` (**2.4402x**, five runs). Per-token recapture was
-only `22.22 tok/s`; the retained route is one state-bound capture followed by 24
-validated relaunches, not recapture. Keep the gfx1100 admission at 24 until a
-shorter-horizon audit establishes a lower break-even.
-
 ## Qwen GGUF external-DMS capture seam
 
 - The default-off `Qwen35GGUFResidentSession.prefill(..., dms_capture=...)`
@@ -10240,3 +10205,41 @@ with production. Run `tests/test_unit_laguna_selected_mmq_modes.py`,
 the applicable backend. Include non-aligned small/large rows, quant/shape
 misses, continuation and cleanup. No arithmetic or default changes accompany
 the gate/up-selector removal.
+
+### R0277 — GGUF capture-inclusive graph policy and diagnostic interfaces
+
+The old priority note mixes superseded stack results with an unresolved timing
+boundary. Later gfx1151 graph/eager rows in
+`benchmarks/results/2026-07-15-gfx1151-gguf-decode-closure-profile.json`
+are positive but exclude capture; they do not resolve the earlier
+capture-inclusive regression. Keep the current graph defaults and
+`HIPENGINE_GGUF_DECODE_GRAPH=0` eager override while the policy is decided.
+The graph key, cursor and cumulative transition-budget checks are required
+ownership, not removable legacy plumbing.
+
+Automatic scalar floors are backend- and storage-aware: base floors are
+24 on gfx1100 and 128 on gfx1151; gfx1100 uniform per-token-head INT8 uses
+128. R0088 already retired the INT8 opt-in. Direct capture below an automatic
+floor remains an explicit diagnostic, and packed capture has separate
+capabilities. Do not restore the old blanket statement that INT8 stays eager.
+The later Cleanup Ledger rows for graph rollback/benches and graph replay
+share this remaining policy/interface decision.
+
+**Decision needed:** keep the eager override and comparison interfaces as
+supported controls, or retire them after a current same-host,
+capture-inclusive public-route comparison. The bench defaults to graph
+requests; MTP's default target-graph flag still has consumers in applicable
+verification modes, while the resident preset selects bulk verification.
+Neither MTP mode is dead solely because it differs from scalar AR.
+**Clearing action:** run `scripts/gguf_decode_graph_g5.py --help`, then its
+state-parity and capture-inclusive comparison with an explicit local model,
+backend and compiler-version file. Compare actual `LLM.generate()` eager
+and automatic routes at below-/above-floor and unrelated horizons, including
+reset, cancellation and cleanup. Keep queue count and KV policy matched;
+separate capture, first replay and steady replay. Inspect mode consumers in
+`scripts/gguf_mtp_bench.py` before retiring its flags and migrate their
+comparison tests. Run `tests/test_unit_qwen35_gguf_decode_graph.py`,
+`tests/test_unit_qwen35_gguf_decode_graph_kv_floor.py`,
+`tests/test_unit_qwen35_gguf_bench_metadata.py` and
+`tests/test_unit_gguf_mtp_bench_metrics.py`. This unit changes no default,
+replay floor or implementation and makes no current performance claim.
