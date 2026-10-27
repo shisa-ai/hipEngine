@@ -6464,23 +6464,23 @@
       "start_line": 5355,
       "end_line": 5373,
       "sha256": "e10cda8f1993ddd862504e5ee8946da171c10fee759b36b527c42450f8fb037b",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Opt-out removed; capability/resource/shared-owner fallbacks preserved. Focused/full CPU and resident-cache GPU checks pass. Public gfx1100 Laguna owner validation deferred for absent local checkpoint, with clearing command at bottom of REFACTOR.md. Worklog: worklog/entries/20261027T074253.906360Z-cleanup-refactor-r0249-r0250-7c9bde.md."],
       "subitems": [
         {
           "line": 5357,
           "text": "- Added 2026-08-03 for exact owner-inclusive qualification. The gfx1100 source",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 5363,
           "text": "- Bounded and source qualification pass: all 24 complete planes, natural-M512",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 5368,
           "text": "- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },
@@ -6490,23 +6490,23 @@
       "start_line": 5374,
       "end_line": 5391,
       "sha256": "444502412924008e1f11a65f79c55f1a1bb9e522f0416e50882eebb3d669ea06",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Opt-out removed; context-local reuse and capability fallbacks preserved. Focused/full CPU and shared resident-cache GPU checks pass. Public gfx1100 Laguna engagement deferred for absent local checkpoint, clearing action at bottom of REFACTOR.md. Worklog: worklog/entries/20261027T074253.906360Z-cleanup-refactor-r0249-r0250-7c9bde.md."],
       "subitems": [
         {
           "line": 5376,
           "text": "- Added 2026-08-03 for complete all-class qualification. The gfx1100 source",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 5381,
           "text": "- Bounded qualification passes: complete state and exact **330\u2192223 pack /",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 5386,
           "text": "- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

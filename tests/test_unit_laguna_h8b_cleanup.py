@@ -21,7 +21,9 @@ _SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
 _REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
 
 
-def test_h8b_cleanup_collapses_positive_candidate_seam_after_publication() -> None:
+def test_h8b_cleanup_collapses_positive_candidate_seam_after_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime import laguna_gguf_runner as runner
 
@@ -47,17 +49,31 @@ def test_h8b_cleanup_collapses_positive_candidate_seam_after_publication() -> No
     assert _REMOVED_SUPPORTED_CAPABILITY not in hip_gfx1100.__all__
 
     resolve = runner.resolve_laguna_activation_pack_reuse
-    assert resolve("hip_gfx1100", None) is True
-    assert resolve("hip_gfx1100", False) is False
-    assert resolve("hip_gfx1151", None) is False
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolve("hip_gfx1100", True)
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolve("hip_gfx1151", True)
+    assert resolve("hip_gfx1100") is True
+    assert resolve("hip_gfx1151") is False
+    # R0250 retired the public rollback request: passing it now fails loudly as
+    # an unexpected argument instead of silently reverting to complete packs.
+    with pytest.raises(TypeError):
+        resolve("hip_gfx1100", False)
+    # Backend capability is the sole decision. Disabling it is the scoped
+    # rollback control; re-enabling it restores source ownership.
+    with monkeypatch.context() as scoped:
+        scoped.setattr(hip_gfx1100, _SOURCE_CAPABILITY, False)
+        assert resolve("hip_gfx1100") is False
+    assert resolve("hip_gfx1100") is True
 
     resolver_source = inspect.getsource(runner.resolve_laguna_activation_pack_reuse)
     session_source = inspect.getsource(runner.LagunaGGUFResidentSession.__init__)
     assert _REMOVED_SUPPORTED_CAPABILITY not in resolver_source
     assert _SOURCE_CAPABILITY in resolver_source
     assert "activation_pack_reuse_request = (" not in session_source
-    assert "use_activation_pack_reuse is False" in session_source
+    # R0250 retired the public false opt-out. The capability-derived attribute
+    # and the scope call sites remain; the retired keyword is rejected.
+    parameters = inspect.signature(
+        runner.LagunaGGUFResidentSession.__init__
+    ).parameters
+    assert "use_activation_pack_reuse" not in parameters
+    with pytest.raises(TypeError):
+        inspect.signature(runner.LagunaGGUFResidentSession.__init__).bind(
+            None, use_activation_pack_reuse=False
+        )

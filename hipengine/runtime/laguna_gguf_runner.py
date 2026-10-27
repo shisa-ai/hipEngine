@@ -2236,46 +2236,28 @@ def _resolve_laguna_f32_ordered_prefill_quants(backend: str) -> frozenset[str]:
     return selected
 
 
-def resolve_laguna_q5_f32_resident_global_cache(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve H8A source ownership or its explicit transient-H7G rollback."""
+def resolve_laguna_q5_f32_resident_global_cache(backend: str) -> bool:
+    """Resolve H8A source ownership from the backend capability."""
 
-    if requested is True:
-        raise ValueError(
-            "the resident global-Q5 F32 cache positive selector was removed; "
-            "use the source-qualified backend default"
-        )
-    source_enabled = bool(
+    return bool(
         backend_package_capability(
             backend,
             "LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE",
             False,
         )
     )
-    return source_enabled if requested is None else False
 
 
-def resolve_laguna_activation_pack_reuse(
-    backend: str,
-    requested: bool | None = None,
-) -> bool:
-    """Resolve H8B source ownership or its explicit complete-pack rollback."""
+def resolve_laguna_activation_pack_reuse(backend: str) -> bool:
+    """Resolve H8B source ownership from the backend capability."""
 
-    if requested is True:
-        raise ValueError(
-            "the activation-pack reuse positive selector was removed; "
-            "use the source-qualified backend default"
-        )
-    source_enabled = bool(
+    return bool(
         backend_package_capability(
             backend,
             "LAGUNA_ACTIVATION_PACK_REUSE",
             False,
         )
     )
-    return source_enabled if requested is None else False
 
 
 def _resolve_laguna_q5_activation_tile_k_row(backend: str) -> bool:
@@ -3035,9 +3017,7 @@ class LagunaGGUFResidentSession:
         use_q6_lm_head_top1_stage1: bool | None = None,
         use_router_projection_wave0_tree: bool | None = None,
         raw_k_prefill_rowbatch: int | None = None,
-        use_q5_f32_resident_global_cache: bool | None = None,
         resident_q5_f32_cache: LagunaQ5F32ResidentGlobalCache | None = None,
-        use_activation_pack_reuse: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -3417,18 +3397,8 @@ class LagunaGGUFResidentSession:
         self._q5_activation_tile_k_row = (
             _resolve_laguna_q5_activation_tile_k_row(self.backend)
         )
-        if (
-            resident_q5_f32_cache is not None
-            and use_q5_f32_resident_global_cache is False
-        ):
-            raise ValueError(
-                "a shared resident Q5 cache cannot be supplied while disabled"
-            )
         self.use_q5_f32_resident_global_cache = (
-            resolve_laguna_q5_f32_resident_global_cache(
-                self.backend,
-                use_q5_f32_resident_global_cache,
-            )
+            resolve_laguna_q5_f32_resident_global_cache(self.backend)
         )
         if (
             resident_q5_f32_cache is not None
@@ -3437,13 +3407,8 @@ class LagunaGGUFResidentSession:
             raise ValueError(
                 "a shared resident Q5 cache requires its source-qualified backend"
             )
-        self.use_activation_pack_reuse = (
-            False
-            if use_activation_pack_reuse is False
-            else resolve_laguna_activation_pack_reuse(
-                self.backend,
-                use_activation_pack_reuse,
-            )
+        self.use_activation_pack_reuse = resolve_laguna_activation_pack_reuse(
+            self.backend
         )
         self.prefill_kv_preappend = bool(
             backend_package_capability(

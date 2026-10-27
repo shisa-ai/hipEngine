@@ -56,12 +56,17 @@ _SOURCE_SHA256 = {
 }
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8, execution-profile, and raw-K rowbatch policies do not
-    # alter H8B's owner.
+    # alter H8B's owner. The 2026-10-27 R0250 cleanup removed the public
+    # `use_activation_pack_reuse` opt-out, so the runner and the scoped-reuse
+    # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "6f1e71d471e8549b5f297043e81a1ca7d076ee2f65973eea71ca83f6e2479c6f"
+        "d131d5a97597d64baa98555e78cc047b29fa0819d70ba167b7b78ba98d1a1f44"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
+    ),
+    "tests/test_unit_laguna_h8b_scoped_activation_pack_reuse.py": (
+        "a29b0a01d50e4a0ef590465cdb5dfe4054d3218d2cfa21f3437ec2f3eba9a266"
     ),
 }
 _SOURCE_TOPOLOGY = {
@@ -189,7 +194,13 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))
 
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters
-    assert "use_activation_pack_reuse" in parameters
+    # R0250 retired the public false opt-out; the capability-derived attribute
+    # and every internal scope call site stay.
+    assert "use_activation_pack_reuse" not in parameters
+    with pytest.raises(TypeError):
+        inspect.signature(runner.LagunaGGUFResidentSession.__init__).bind(
+            None, use_activation_pack_reuse=False
+        )
     resolver_source = inspect.getsource(runner.resolve_laguna_activation_pack_reuse)
     assert _REMOVED_SUPPORTED_CAPABILITY not in resolver_source
     assert _SOURCE_CAPABILITY in resolver_source
@@ -223,7 +234,9 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
         )
 
 
-def test_h8b_source_default_selects_complete_owner_and_preserves_rollback() -> None:
+def test_h8b_source_default_selects_complete_owner_and_preserves_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime.laguna_gguf_runner import (
         resolve_laguna_activation_pack_reuse,
@@ -231,18 +244,18 @@ def test_h8b_source_default_selects_complete_owner_and_preserves_rollback() -> N
 
     live_source = getattr(hip_gfx1100, _SOURCE_CAPABILITY)
 
-    # Source ownership is now the sole positive policy; explicit false keeps
-    # complete H8A rollback and the former positive candidate seam is removed.
+    # Source ownership is the sole positive policy. The complete-pack rollback
+    # is now the backend-capability-off state rather than a public argument.
     assert live_source is True
     assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
     assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
-    assert resolve_laguna_activation_pack_reuse("hip_gfx1100", None) is True
-    assert resolve_laguna_activation_pack_reuse("hip_gfx1100", False) is False
-    assert resolve_laguna_activation_pack_reuse("hip_gfx1151", None) is False
-    assert resolve_laguna_activation_pack_reuse("hip_gfx1151", False) is False
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolve_laguna_activation_pack_reuse("hip_gfx1100", True)
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolve_laguna_activation_pack_reuse("hip_gfx1151", True)
+    assert resolve_laguna_activation_pack_reuse("hip_gfx1100") is True
+    assert resolve_laguna_activation_pack_reuse("hip_gfx1151") is False
+    with pytest.raises(TypeError):
+        resolve_laguna_activation_pack_reuse("hip_gfx1100", False)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(hip_gfx1100, _SOURCE_CAPABILITY, False)
+        assert resolve_laguna_activation_pack_reuse("hip_gfx1100") is False
+    assert resolve_laguna_activation_pack_reuse("hip_gfx1100") is True
     assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))

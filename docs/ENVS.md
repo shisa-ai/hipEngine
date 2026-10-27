@@ -1149,6 +1149,10 @@ harnesses read them but do not own them.
 
 ## Names that are not environment variables
 
+- `HIPENGINE_GGUF_Q8_T16_THREADS` is retired and appears only in regression
+  tests. It is ignored; backend policy and explicit launch arguments select
+  thread width.
+
 These names appear in the tree but must not be confused with env knobs:
 
 - `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` is retired. Profile and session

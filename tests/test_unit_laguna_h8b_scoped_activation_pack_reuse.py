@@ -174,7 +174,9 @@ def test_h8b_frozen_target_sources_state_topology_and_admission_contract() -> No
             assert target_sources[relative] == expected
 
 
-def test_h8b_package_and_runtime_owner_follow_source_default() -> None:
+def test_h8b_package_and_runtime_owner_follow_source_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime import laguna_gguf_runner as runner
 
@@ -186,17 +188,24 @@ def test_h8b_package_and_runtime_owner_follow_source_default() -> None:
     assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
 
     resolver = getattr(runner, "resolve_laguna_activation_pack_reuse")
-    assert resolver("hip_gfx1100", None) is True
-    assert resolver("hip_gfx1100", False) is False
-    assert resolver("hip_gfx1151", None) is False
-    assert resolver("hip_gfx1151", False) is False
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolver("hip_gfx1100", True)
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolver("hip_gfx1151", True)
+    assert resolver("hip_gfx1100") is True
+    assert resolver("hip_gfx1151") is False
+    # R0250 retired the public rollback request; it now fails loudly.
+    with pytest.raises(TypeError):
+        resolver("hip_gfx1100", False)
+    # Backend capability is the sole decision; the capability-off state is the
+    # complete-pack rollback control.
+    with monkeypatch.context() as scoped:
+        scoped.setattr(hip_gfx1100, _SOURCE_CAPABILITY, False)
+        assert resolver("hip_gfx1100") is False
+    assert resolver("hip_gfx1100") is True
 
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters
-    assert _SESSION_PARAMETER in parameters
+    assert _SESSION_PARAMETER not in parameters
+    with pytest.raises(TypeError):
+        inspect.signature(runner.LagunaGGUFResidentSession.__init__).bind(
+            None, **{_SESSION_PARAMETER: False}
+        )
     init_source = inspect.getsource(runner.LagunaGGUFResidentSession.__init__)
     assert "resolve_laguna_activation_pack_reuse(" in init_source
     assert "self.use_activation_pack_reuse" in init_source

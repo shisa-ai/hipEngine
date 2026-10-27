@@ -4336,43 +4336,6 @@ fallback count is not a success metric.
   focused runtime test when no further materially different source mechanism
   needs the layout; never allocate mirrors on the active H6Z/H6W path.
 
-## Laguna H8A resident global-Q5 F32 cache production cleanup
-
-- Added 2026-08-03 for exact owner-inclusive qualification. The gfx1100 source
-  `LAGUNA_Q5_F32_RESIDENT_GLOBAL_CACHE` capability owns one immutable
-  **24-allocation / 1,811,939,328-byte** map for all 12 global `attn_q` and
-  `attn_output` raw-Q5 tensors. Explicit child sharing reuses the same owner;
-  every disabled, unsupported, unshared, allocation-failed, or non-target route
-  keeps the registered transient producer + H7G fallback.
-- Bounded and source qualification pass: all 24 complete planes, natural-M512
-  state, exact **24 setup / 0 request producer / 2,262-dispatch** topology,
-  fixed C4096/M512, and clean 512/1K/4K medians are positive and exact. Clean
-  committed production reaches **440.353 tok/s** with a **1,151.215-ms**
-  representative kernel sum, one queue, and zero compiler activity.
-- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`
-  capability and explicit positive selector are removed. Source ownership is
-  the sole positive route; `use_q5_f32_resident_global_cache=False` remains the
-  explicit transient-H7G rollback. Remove that false opt-out after one later Q5
-  family checkpoint if no rollback is needed.
-
-## Laguna H8B scoped activation-pack reuse production cleanup
-
-- Added 2026-08-03 for complete all-class qualification. The gfx1100 source
-  `LAGUNA_ACTIVATION_PACK_REUSE` capability owns one generic one-entry
-  context-local cache valid only inside attention Q/K/V, dense gate/up, or
-  shared-expert gate/up scopes. It publishes the exact
-  pointer/geometry/stream key only after a successful pack.
-- Bounded qualification passes: complete state and exact **330→223 pack /
-  2,262→2,155 dispatch** topology are preserved, fixed C4096/M512 improves
-  **+0.116%**, and clean 512/1K/4K improves **+0.148%/+0.175%/+0.152%**.
-  Source promotion and clean committed production pass at **440.893 tok/s /
-  2,155 dispatches**.
-- The clean checkpoint cleanup is complete: the duplicate `_SUPPORTED`
-  capability and explicit positive selector are removed. Source ownership is
-  the sole positive route; `use_activation_pack_reuse=False` remains the
-  explicit complete-pack H8A rollback. Remove that false opt-out after one
-  later Q5/IQ-down checkpoint if no rollback is needed.
-
 ## Laguna exact grouped-IQ prefill selector
 
 - Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving
@@ -10900,3 +10863,19 @@ flag and advice branch, update ENVS, and run
 coverage. Do not turn it into a reload-heavy default: the original controls
 forced 13.75-15.61 GB of request reads and about 6.1K major faults after load.
 No loader behavior changes in this disposition.
+
+### R0249/R0250 — Laguna public cache-owner validation
+
+The obsolete resident-cache and activation-reuse opt-out arguments are removed.
+Backend capabilities still select the owners; resource, unsupported-backend and
+unshared-cache fallbacks remain. Focused tests, the CPU bundle and resident-cache
+GPU checks pass. Historical results remain in the sweep inventory and worklogs.
+
+**Dependency:** a local Laguna checkpoint and a gfx1100 runtime for public owner
+engagement. No checkpoint is present at the repository's documented local paths.
+**Clearing action:** run `python scripts/laguna_public_correctness.py "$LAGUNA_MODEL" --backend hip_gfx1100 --max-tokens 8 --output /tmp/laguna-public.json`
+in the ROCm environment. Also exercise a sufficiently long public prefill to
+engage the ordered-F32 owner and confirm resident-cache and activation-reuse
+selection, blocking/stream/direct parity, and cleanup. Until then this is a
+validation deferral, not a claim that the public path passed. It does not disable
+or restrict the implemented paths.

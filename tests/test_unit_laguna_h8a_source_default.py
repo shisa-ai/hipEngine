@@ -89,13 +89,16 @@ _LINEAR_SYMBOL_SHA256 = {
 }
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8, execution-profile, and raw-K rowbatch policies do not
-    # alter H8A's owner.
+    # alter H8A's owner. The 2026-10-27 R0249 cleanup removed the public
+    # `use_q5_f32_resident_global_cache` opt-out, so the runner and this GPU
+    # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "6f1e71d471e8549b5f297043e81a1ca7d076ee2f65973eea71ca83f6e2479c6f"
+        "d131d5a97597d64baa98555e78cc047b29fa0819d70ba167b7b78ba98d1a1f44"
     ),
-    # This GPU test only renamed the shared ordered-F32 prefill session manager.
+    # This GPU test renamed the shared ordered-F32 prefill session manager and
+    # then dropped the retired R0249 opt-out assertions.
     "tests/test_gpu_laguna_h8a_resident_q5_global_cache.py": (
-        "616f0245296ffc56225a2c1c23673637479e6899f90a959b476a9f2aead23b21"
+        "2f8943f422ad7551bf1b820d113c5051d704b57d2b78e6caf020626e858403ad"
     ),
 }
 
@@ -178,7 +181,12 @@ def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))
     parameters = inspect.signature(runner.LagunaGGUFResidentSession.__init__).parameters
     assert "resident_q5_f32_cache" in parameters
-    assert "use_q5_f32_resident_global_cache" in parameters
+    # R0249 retired the public false opt-out; the shared-owner injection stays.
+    assert "use_q5_f32_resident_global_cache" not in parameters
+    with pytest.raises(TypeError):
+        inspect.signature(runner.LagunaGGUFResidentSession.__init__).bind(
+            None, use_q5_f32_resident_global_cache=False
+        )
     allocation_source = inspect.getsource(
         runner.LagunaQ5F32ResidentGlobalCache.allocate
     )
@@ -197,7 +205,9 @@ def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
         assert _sha256_text(inspect.getsource(getattr(gguf_linear, name))) == expected
 
 
-def test_h8a_source_default_selects_owner_and_preserves_transient_rollback() -> None:
+def test_h8a_source_default_selects_owner_and_preserves_transient_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from hipengine.kernels import hip_gfx1100, hip_gfx1151
     from hipengine.runtime.laguna_gguf_runner import (
         resolve_laguna_q5_f32_resident_global_cache,
@@ -205,17 +215,20 @@ def test_h8a_source_default_selects_owner_and_preserves_transient_rollback() -> 
 
     live_source = getattr(hip_gfx1100, _SOURCE_CAPABILITY)
 
-    # Source ownership is now the sole positive policy; explicit false keeps
-    # transient H7G rollback and the former positive candidate seam is removed.
+    # Source ownership is the sole positive policy. The transient H7G rollback
+    # is now the backend-capability-off state rather than a public argument.
     assert live_source is True
     assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)
     assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
-    assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", None) is True
-    assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", False) is False
-    assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1151", None) is False
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", True)
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        resolve_laguna_q5_f32_resident_global_cache("hip_gfx1151", True)
+    assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100") is True
+    assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1151") is False
+    with pytest.raises(TypeError):
+        resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100", False)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(hip_gfx1100, _SOURCE_CAPABILITY, False)
+        assert (
+            resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100") is False
+        )
+    assert resolve_laguna_q5_f32_resident_global_cache("hip_gfx1100") is True
     assert_laguna_policy_pinned(exclude=frozenset({_SOURCE_CAPABILITY}))

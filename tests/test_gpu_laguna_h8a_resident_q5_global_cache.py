@@ -614,22 +614,28 @@ def test_h8a_source_selected_shared_session_dispatch_and_unshared_fallback(
 
     assert not hasattr(hip_gfx1100, _REMOVED_SUPPORTED_CAPABILITY)
     assert not hasattr(hip_gfx1151, _REMOVED_SUPPORTED_CAPABILITY)
-    # Source selection keeps explicit disable and unshared transient fallbacks.
+    # Source selection keeps the capability-off and unshared transient fallbacks.
     policy_resolver = getattr(runner_module, _RESOLVER)
     assert getattr(hip_gfx1100, _SOURCE_CAPABILITY) is True
-    assert policy_resolver("hip_gfx1100", None) is True
-    assert policy_resolver("hip_gfx1100", False) is False
-    assert policy_resolver("hip_gfx1151", None) is False
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        policy_resolver("hip_gfx1100", True)
-    with pytest.raises(ValueError, match="positive selector was removed"):
-        policy_resolver("hip_gfx1151", True)
+    assert policy_resolver("hip_gfx1100") is True
+    assert policy_resolver("hip_gfx1151") is False
+    # R0249 retired the public rollback request; it is now an unexpected arg.
+    with pytest.raises(TypeError):
+        policy_resolver("hip_gfx1100", False)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(hip_gfx1100, _SOURCE_CAPABILITY, False)
+        assert policy_resolver("hip_gfx1100") is False
+    assert policy_resolver("hip_gfx1100") is True
 
     parameters = inspect.signature(
         runner_module.LagunaGGUFResidentSession.__init__
     ).parameters
     assert _SESSION_CACHE_PARAMETER in parameters
-    assert _SESSION_ENABLE_PARAMETER in parameters
+    assert _SESSION_ENABLE_PARAMETER not in parameters
+    with pytest.raises(TypeError):
+        inspect.signature(
+            runner_module.LagunaGGUFResidentSession.__init__
+        ).bind(None, **{_SESSION_ENABLE_PARAMETER: False})
 
     plane_class = getattr(gguf_linear, _PLANE_CLASS)
     raw_ptr = 0x1000_0000
