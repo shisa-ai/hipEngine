@@ -5065,8 +5065,8 @@
       "start_line": 4291,
       "end_line": 4302,
       "sha256": "a0b705a4ec39d32b38e01209de37cd2495e30cb2de98c1d5eb805f1cdacb84b9",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Live arithmetic scope preserved. Added nested-disable/error-restoration/independent-context tests; full adapter/C2 scope tests and docs/audit pass. Profile transport migration remains open. Worklog: worklog/entries/20261027T154759.095312Z-cleanup-refactor-r0193-r0194-8b5f45.md."],
       "subitems": [
         {
           "line": 4293,
@@ -5086,8 +5086,8 @@
       "start_line": 4303,
       "end_line": 4315,
       "sha256": "af9ced4c9868b590ada684158e7548ea9d7972de5eb863c6fc88fc95eb9422e5",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Corrected obsolete scalar-only/too-slow claim using existing 2026-08-28 automatic-promotion artifact's segmented implementation. Preserved replacement threshold, numerical/lifecycle gates and live exact scope. Nested/restoration/context tests and docs/audit pass. Profile migration/public validation remain open. Worklog: worklog/entries/20261027T154759.095312Z-cleanup-refactor-r0193-r0194-8b5f45.md."],
       "subitems": [
         {
           "line": 4305,

@@ -3080,20 +3080,27 @@ fallback count is not a success metric.
 - Remaining cleanup: replace the temporary ContextVar with a profile-resolved
   physical-C2 target manifest, preserving the C1 production and strict
   fallbacks plus the focused scope test. Qualification is not the remaining
-  prerequisite for that transport cleanup.
+  prerequisite for that transport cleanup. Preserve nested disabled scopes,
+  exception restoration and independent execution-context isolation when moving
+  the selection to a profile-owned plan; these are existing ownership contracts.
 
 ## SPECDEC2 MoE physical-C2 exact-linear fallback
 
 - Added 2026-08-27 after the packed rows6 linear-attention composite failed the
   binding MoE production gate. The request-local
-  `moe_physical_c2_exact_linear_session(...)` keeps one layer-major physical
-  target owner but executes two transaction-local R3 state segments and scalar
-  attention rows, then one row-batched MoE FFN. This is the strict-arithmetic
-  correctness fallback; it is intentionally too slow for automatic promotion.
-- Removal trigger: replace scalar Q8/Conv/GDN launches with independently
-  exact, row-amortized R6 kernels that preserve every selected state journal and
-  pass the complete quality gate at >=1.10x AR. Then delete this scope and keep
-  the row-exact implementation only as the registered fallback.
+  `moe_physical_c2_exact_linear_session(...)` selects the row-exact target path.
+  The initial scalar-heavy fallback was subsequently optimized: the promotion
+  artifact records R6 norm/projection, two R3 Conv segments and segmented GDN
+  journals, followed by row-batched MoE FFN. See
+  `benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`.
+  The old claim that this path is inherently too slow for automatic promotion
+  does not describe that implementation.
+- Remaining cleanup: carry the exact-linear selection in the profile-resolved
+  target manifest while preserving selected-state journals, C1 arithmetic and
+  nested/context-local restoration. Any replacement kernels must independently
+  pass the complete numerical and lifecycle gates and the original >=1.10x AR
+  performance target; do not remove the correctness
+  fallback merely because its original scalar implementation was slower.
 
 ## SPECDEC2 physical production scope
 
