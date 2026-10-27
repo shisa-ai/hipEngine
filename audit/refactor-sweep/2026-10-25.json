@@ -6958,23 +6958,25 @@
       "start_line": 5809,
       "end_line": 5826,
       "sha256": "c37bbbd58d7b3f493e62ee33a175a3ac28872f0f256ef89ee177df1cd6e1d21d",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-retirement",
+      "evidence": [
+        "Full-score still used by block-route profile/ceiling comparisons; long capability/setter gates bounded production too, so old deletion scope is unsafe. Algorithm override is shared with SWA ceiling. Bottom decision/dependency names caller migration and narrow full-score retirement without disabling bounded/short/SWA/spans. CPU-safe shape/algorithm and profile tests/docs/audit/worklog pass; no runtime/GPU claim. Worklog: worklog/entries/20261027T195558.019946Z-cleanup-refactor-r0264-767e68.md."
+      ],
       "subitems": [
         {
           "line": 5811,
           "text": "- Added 2026-07-27. The first capacity-sized full-score owner improved",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 5814,
           "text": "- The retained successor uses exact online softmax state across 4K key blocks.",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5819,
           "text": "- Remove the capacity-sized full-score owner, its",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         }
       ]
     },

@@ -3430,24 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna long-context F32 hipBLASLt rollback routes
-
-- Added 2026-07-27. The first capacity-sized full-score owner improved
-  mandatory 128K **22.088%**, but widened the complete BF16 K/V prefix and
-  materialized an F32 `[48,128,C]` score tile, costing **4.298 GB** scratch.
-- The retained successor uses exact online softmax state across 4K key blocks.
-  It improves the full-score owner another **12.521%** at mandatory 128K and
-  cuts scratch **96.655%** to **143,753,216 bytes**. gfx1151 now selects
-  `LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT`; the generic `KVLiveSpans` chain
-  remains the required fallback.
-- Remove the capacity-sized full-score owner, its
-  `LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT` capability/session setter, and
-  ceiling-only algorithm-override API after one later long-context publication
-  confirms the block route is sufficient for rollback. Keep the bounded owner,
-  its explicit rollback while SWA/query-chunk work is active, and the generic
-  numerical fallback. Retire the dedicated ceiling harness after the
-  block-size/algorithm policy no longer needs bisection.
-
 ## Laguna rolling-SWA hipBLASLt production route
 
 - Added and promoted 2026-07-28 after exact wrap-oracle plus
@@ -10285,3 +10267,30 @@ R0249/R0250's command and checkpoint dependency. Retain span-aware primitive
 fallbacks and the separately owned online arithmetic. A release window alone
 is not a reason to remove safe ordering or working policy. This disposition
 changes no runtime selection, storage or arithmetic.
+
+### R0264 — Laguna full-score long-attention diagnostic retirement
+
+The bounded 4K-key-block owner is the gfx1151 long-attention default. The
+capacity-sized full-score owner is also reachable: the profile harness
+compares `prefill_block_attention_hipblaslt=False/True`, and its dedicated
+ceiling harness sweeps matrix-library algorithms. Both owners use
+`LagunaAttentionHipblasLt`; short attention and rolling SWA also use that
+class or its subclass. The algorithm override is not a full-score-only API.
+
+**Dependency:** separate full-score diagnostics from long-attention
+execution policy before removal. `prefill_long_attention_hipblaslt` and
+`LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT` currently enable the bounded route
+too; deleting them as though they only enabled the old owner would disable
+production long attention. **Decision needed:** retain full-score as a
+supported diagnostic, or retire its comparison/ceiling callers.
+**Clearing action:** if retired, migrate the profile control to bounded versus
+generic span-aware execution, preserve bounded width/context policy, and
+remove only full-score lazy allocation/accounting/close plus unused controls.
+Audit shared algorithm callers in both long-context and SWA ceiling harnesses
+before narrowing that API. Run `tests/test_unit_laguna_long_context_profile.py`
+and `tests/test_gpu_laguna_kv_attention.py`; on gfx1151 compare public long
+prefill output/state and cleanup with prompts both inside and beyond the
+block boundary, including non-aligned tails, continuation and generic misses.
+Use R0249/R0250's public command/checkpoint dependency. Keep rolling SWA,
+short attention, generic `KVLiveSpans` fallback and bounded scratch. No
+capability, arithmetic or allocation behavior changes in this disposition.
