@@ -6298,28 +6298,28 @@
       "start_line": 5244,
       "end_line": 5264,
       "sha256": "41f29cdaf0f1a69b267ba374f38ae63a487f21e81735b7dec4d8cde0474e7783",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Comparison CLI/setter absent from scripts/runtime/tests. gfx1151 capability remains true; laguna_kv.py selects local1024 only with swa_local1024 and use_dense_ring, else local512. Completed receipt removed without runtime changes; historical results preserved in Git. Documentation/audit checks pass."],
       "subitems": [
         {
           "line": 5246,
           "text": "- Added 2026-07-31 as a default-off runtime capability and",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5250,
           "text": "- If any of seven same-resident p512/d128 pairs regresses or changes state,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5256,
           "text": "- **Promotion gate passed 2026-07-31:** all seven exact resident pairs improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5259,
           "text": "- **Closed 2026-07-31:** tracked-clean selector-unset production reaches",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

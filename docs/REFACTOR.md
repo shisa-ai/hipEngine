@@ -4334,27 +4334,6 @@ fallback count is not a success metric.
   trajectory corruption. Revisit the 4,096-row plateau only if a later exact
   owner is non-regressive at 8K+ and keeps memory flat.
 
-## Laguna gfx1151 exact SWA local1024 selector
-
-- Added 2026-07-31 as a default-off runtime capability and
-  `--compare-swa-local1024` profile seam after the exact dense-ring candidate
-  passed RED/GREEN, the real wrap oracle, a positive 21x100 leaf, and cached
-  resource tracing.
-- If any of seven same-resident p512/d128 pairs regresses or changes state,
-  remove the capability field, profile switch, registered local1024 route,
-  wrapper, export, and body specialization. If all seven improve, promote the
-  gfx1151 capability, publish a tracked-clean selector-unset result, then
-  remove the comparison switch after the next attention census. Keep
-  local512 as the exact rollback.
-- **Promotion gate passed 2026-07-31:** all seven exact resident pairs improve
-  **22.273482 -> 22.356330 tok/s (+0.37195%)**. The gfx1151 capability is
-  promoted.
-- **Closed 2026-07-31:** tracked-clean selector-unset production reaches
-  **22.335681 tok/s**, and the 127-transition census cuts SWA
-  **0.893032 -> 0.721795 ms/token (-19.175%)**. Remove the dedicated
-  comparison switch; retain local512 as the exact fallback for non-dense,
-  explicit-eviction, and peer-backend cases.
-
 ## Laguna exact SWA producer-gate selector
 
 - Added 2026-07-29 as a default-off gfx1151 capability plus session/profile
