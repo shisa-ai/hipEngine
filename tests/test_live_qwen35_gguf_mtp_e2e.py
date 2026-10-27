@@ -618,50 +618,6 @@ def gdn_decode_output_fusion_calls() -> Iterator[list[tuple[int, ...]]]:
 
 
 @pytest.fixture
-def shared_kv_write_calls() -> Iterator[list[tuple[int, ...]]]:
-    """Count exact shared-page verifier KV appends on real transactions."""
-
-    key = KernelKey(
-        "hip_gfx1100",
-        "paged_kv_write",
-        "gguf_q4_k_m",
-        "mixed_bf16_shared_batch_spans",
-    )
-    original = resolve(
-        backend=key.backend,
-        layer=key.layer,
-        quant=key.quant,
-        variant=key.variant,
-    )
-    calls: list[tuple[int, ...]] = []
-
-    def counted(*args, **kwargs):
-        spans = args[4]
-        row_positions = spans.row_positions
-        calls.append(
-            (
-                int(args[5]),
-                int(args[6]),
-                int(args[7]),
-                int(args[8]),
-                int(spans.base_offsets.numel),
-                int(spans.live_counts.numel),
-                int(
-                    row_positions is not None
-                    and row_positions.ptr == spans.live_counts.ptr
-                ),
-            )
-        )
-        return original(*args, **kwargs)
-
-    register(key, counted, replace=True)
-    try:
-        yield calls
-    finally:
-        register(key, original, replace=True)
-
-
-@pytest.fixture
 def shared_full_attn_batch_calls() -> Iterator[list[tuple[int, ...]]]:
     """Count exact shared-page verifier attention on real transactions."""
 
@@ -1072,7 +1028,6 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     q5_t16_ssm_out_calls: dict[str, list[tuple[int, int, int]]],
     chain_journal_calls: dict[str, list[tuple[int, ...]]],
     gdn_decode_output_fusion_calls: list[tuple[int, ...]],
-    shared_kv_write_calls: list[tuple[int, ...]],
     shared_full_attn_batch_calls: list[tuple[int, ...]],
     full_attn_k_grid_y_calls: list[tuple[int, int, int]],
     full_attn_v_qmicro_calls: dict[str, list[tuple[int, int, int]]],
@@ -1565,10 +1520,8 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     } == {(16, 48, 128, 128)}
     assert gdn_decode_output_fusion_calls
     assert set(gdn_decode_output_fusion_calls) == {(16, 48, 128, 128)}
-    # The exact shared-page writer remains a measured registry primitive only:
-    # its one-prompt W7900 marked wall gate regressed, so production stays on
-    # the scalar writers before the retained shared-page attention batch.
-    assert not shared_kv_write_calls
+    # Scalar writers feed the shared-page attention batch; the rejected
+    # shared-page writer primitive has been retired.
     assert shared_full_attn_batch_calls
     # Diagnostic full-logit N2 capture now exercises B2/rows3 through the
     # same exact shared-page attention owner as B1/B3.

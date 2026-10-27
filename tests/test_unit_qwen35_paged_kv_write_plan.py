@@ -44,18 +44,6 @@ def _spans(*, storage_dtype: str = "bf16", live_dtype: str = "int64", max_live: 
     )
 
 
-def _shared_batch_spans(*, rows: int = 2, table_len: int = 2) -> KVLiveSpans:
-    positions = _tensor(0x2000, (rows,), "int64")
-    return KVLiveSpans.paged_uniform(
-        block_table=_tensor(0x1000, (table_len,), "int32"),
-        live_counts=positions,
-        max_live_count=table_len * 4 - 1,
-        storage_dtype="bf16",
-        row_positions=positions,
-        span_role="verify_chain",
-    )
-
-
 def _int8_spans(
     *,
     block_table_shape: tuple[int, ...] = (2,),
@@ -99,21 +87,6 @@ def test_qwen35_paged_kv_write_registers_span_variants() -> None:
             variant="mixed_bf16_batch_spans",
         )
         is qwen35_write_paged_kv_mixed_value_bf16_batch_spans
-    )
-    shared_batch = getattr(
-        paged_kv_write_module,
-        "qwen35_write_paged_kv_mixed_value_bf16_shared_batch_spans",
-        None,
-    )
-    assert callable(shared_batch)
-    assert (
-        resolve(
-            backend="hip_gfx1100",
-            layer="paged_kv_write",
-            quant="gguf_q4_k_m",
-            variant="mixed_bf16_shared_batch_spans",
-        )
-        is shared_batch
     )
     assert (
         resolve(
@@ -201,19 +174,24 @@ def test_qwen35_paged_kv_write_registers_span_variants() -> None:
         )
 
 
-def test_qwen35_shared_batch_kv_write_is_not_aliased_to_gfx1151() -> None:
+def test_rejected_shared_batch_kv_write_is_retired() -> None:
     register_qwen35_paged_kv_write_kernels()
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
-    assert not is_registered(
-        KernelKey(
-            "hip_gfx1151",
-            "paged_kv_write",
-            "gguf_q4_k_m",
-            "mixed_bf16_shared_batch_spans",
-        )
+    assert not hasattr(
+        paged_kv_write_module,
+        "qwen35_write_paged_kv_mixed_value_bf16_shared_batch_spans",
     )
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        assert not is_registered(
+            KernelKey(
+                backend,
+                "paged_kv_write",
+                "gguf_q4_k_m",
+                "mixed_bf16_shared_batch_spans",
+            )
+        )
 
 
 def _grouped_int8_spans(granularity: str) -> KVLiveSpans:
@@ -287,24 +265,6 @@ def test_qwen35_paged_kv_write_wrapper_validates_before_gpu_load() -> None:
         qwen35_write_paged_kv_f32_spans(0, 0, 0, 0, _spans(max_live=8), 4, 1, 8)
     with pytest.raises(ValueError, match="rows"):
         qwen35_write_paged_kv_mixed_value_bf16_batch_spans(0, 0, 0, 0, _spans(), 0, 4, 1, 8)
-    shared_batch = getattr(
-        paged_kv_write_module,
-        "qwen35_write_paged_kv_mixed_value_bf16_shared_batch_spans",
-        None,
-    )
-    assert callable(shared_batch)
-    with pytest.raises(ValueError, match="rows must be 2 or 4"):
-        shared_batch(0, 0, 0, 0, _shared_batch_spans(rows=3), 3, 4, 1, 8)
-    with pytest.raises(ValueError, match="row_positions"):
-        spans = _shared_batch_spans()
-        spans = KVLiveSpans.paged_uniform(
-            block_table=spans.base_offsets,
-            live_counts=spans.live_counts,
-            max_live_count=spans.max_live_count,
-            storage_dtype=spans.storage_dtype,
-            span_role=spans.span_role,
-        )
-        shared_batch(0, 0, 0, 0, spans, 2, 4, 1, 8)
     with pytest.raises(ValueError, match="block_size must be positive"):
         qwen35_write_paged_kv_mixed_value_fp16_spans(0, 0, 0, 0, _spans(), 0, 1, 8)
     with pytest.raises(ValueError, match="rows"):

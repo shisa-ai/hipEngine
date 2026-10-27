@@ -5954,18 +5954,20 @@
       "start_line": 4957,
       "end_line": 4970,
       "sha256": "75f91253fe306f28256548c0fa61b7f7ff331fd95a5b1f0b7203e87bdad67b37",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Removed orphaned rejected rows2/4 writer wrapper/key/export/body, dedicated fixture and gfx1151 exclusion. Runtime uses scalar writes; real transaction fixture previously asserted zero candidate calls. Preserve scalar/ordinary batch/prompt/INT8 paths and actual transaction assertions. RED/GREEN, full CPU deterministic/fixtures/smokes, collection and docs/audit/worklog pass. Public gfx1151 requests 37/257/513 rebuild shared HIP source, execute surviving prompt/scalar writers, repeat IDs exactly and close at zero tracked bytes. No gfx1100/MTP speed claim. Worklog: worklog/entries/20261027T190417.981839Z-cleanup-refactor-r0228-78ed90.md."
+      ],
       "subitems": [
         {
           "line": 4959,
           "text": "- Added 2026-08-05 after the exact rows2/4 primitive passed reversed-page CPU",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4964,
           "text": "- Retain only the gfx1100 registry wrapper/body and focused regression fixture",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

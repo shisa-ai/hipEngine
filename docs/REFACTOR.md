@@ -3430,20 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Qwen3.6 shared-cache verifier KV batch primitive
-
-- Added 2026-08-05 after the exact rows2/4 primitive passed reversed-page CPU
-  and scalar cache oracles, GPU1 component timing, cache-only tracing, and the
-  W7900 B1-B3 transaction. Its production route is already removed: although
-  writers improve **65.05%** and 336 dispatches disappear, target host and
-  complete marked wall regress **1.405%/2.786%**.
-- Retain only the gfx1100 registry wrapper/body and focused regression fixture
-  while investigating a materially different graph/scheduling representation.
-  Reopen runtime ownership only if a tracked-clean W7900 trace improves both
-  target host and complete marked wall. If no such consumer is admitted by the
-  next Qwen3.6 kernel-catalog cleanup, delete the registry key, wrapper/export,
-  body, gfx1151 exclusion, and dedicated test together.
-
 ## Qwen3.6 alpha/beta plus snapshot-Conv composite primitive
 
 - Added 2026-08-05 after the exact rows1-4 primitive passed scalar/CPU oracles,

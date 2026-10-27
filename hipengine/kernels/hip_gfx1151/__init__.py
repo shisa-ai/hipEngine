@@ -2737,13 +2737,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_f32_weight",
             "rounded_bf16_out",
         ),
-        # Shared-cache verifier KV batching is qualified only for the W7900
-        # dense-H5120 N1 graph; gfx1151 retains scalar append aliases.
-        (
-            "paged_kv_write",
-            "gguf_q4_k_m",
-            "mixed_bf16_shared_batch_spans",
-        ),
         # The scalar Q5T16 ssm_out GDN+cast handoff is independently admitted
         # on gfx1151; verifier-chain ownership remains W7900-only. D08-P1
         # aliases the generic direct/rowtile/WMMA leaves for its QKV role.
