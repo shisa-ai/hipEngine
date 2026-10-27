@@ -7111,13 +7111,13 @@
       "start_line": 5971,
       "end_line": 5999,
       "sha256": "e6074d60572eed0b029751c15aef143ee27875a952a8c7f5e4473eb4a42f0670",
-      "status": "partial-setter-and-norm-removed",
+      "status": "deferred-decision-and-public-validation",
       "evidence": ["Constructor range-check bypass repaired in 7f3137aa9; setter removed with shared layout/range validator in 3ee3558ed. Norm-direct mode and dedicated harness removed; historical publication interpretation preserved. RED/GREEN, full CPU bundles and F16 boundary GPU checks pass. Scaled prefill_350 category comparison remains live; retention decision and public model validation are open. Worklogs: worklog/entries/20261027T084538.963153Z-cleanup-refactor-r0271-validation-54bd0b.md, worklog/entries/20261027T085524.959572Z-cleanup-refactor-r0271-setter-e47c31.md, worklog/entries/20261027T090221.199576Z-cleanup-refactor-r0271-norm-f6930c.md."],
       "subitems": [
         {
           "line": 5973,
           "text": "- Added 2026-07-25 as an explicit session-local LAP-6 candidate. Rows greater",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 5979,
@@ -7127,12 +7127,12 @@
         {
           "line": 5983,
           "text": "- The 2026-07-26 exact range-qualified follow-up makes",
-          "status": "pending"
+          "status": "deferred-lead-decision"
         },
         {
           "line": 5991,
           "text": "- The second 2026-07-26 range proof computes per-layer value/gate maximum row",
-          "status": "pending"
+          "status": "deferred-decision-and-public-validation"
         }
       ]
     },

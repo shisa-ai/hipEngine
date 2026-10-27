@@ -4652,41 +4652,6 @@ fallback count is not a success metric.
   rejected D4 gate default candidate at that boundary. Pre-admission pp512
   samples were 353.951/356.082/356.473 tok/s.
 
-## Laguna `f16_prefill_mode=hipblaslt_range_direct`
-
-- Added 2026-07-25 as an explicit session-local LAP-6 candidate. Rows greater
-  than one cast each BF16 producer row once into existing FP16-sized scratch,
-  use an exact power-of-two row scale, run cached zero-workspace hipBLASLt
-  FP16-input/F16-weight contractions with FP32 output, and restore the scale
-  before the next boundary. Decode and the retained custom projection route
-  remain unchanged.
-- Promoted as the gfx1151 package capability by the clean compounded category
-  gate. Clean selector-unset pp512/milestone publication and the final
-  hipBLASLt trace now pass. Retain exact tiled as rollback for one release;
-  remove the session selector after that rollback window.
-- The runtime session setter is removed. Production construction and diagnostic
-  session configuration share layout/range validation; the valid backend default
-  is unchanged. Norm-direct mode and its dedicated comparison harness are removed.
-  Publication tooling still interprets that historical name. Scaled mode remains
-  the actual `prefill_350_candidate` category-control execution route; changing
-  that arm to range-direct would change the comparison, not just its name.
-- The 2026-07-26 exact range-qualified follow-up makes
-  `hipblaslt_norm_direct` the gfx1151 default. Actual norm metadata proves a
-  **16.34623** FP16 input bound; full logits, final/pre-final hidden, KV,
-  cursor, token, and token-logit hashes match `hipblaslt_scaled`. Seven
-  explicit pairs improve **502.348 -> 505.887 tok/s (+0.704%)**. Keep
-  `hipblaslt_scaled` only as a one-release rollback for the range-qualified
-  producer boundary, then collapse it while retaining the general scaled cast
-  for the unnormalized attention-output projection.
-- The second 2026-07-26 range proof computes per-layer value/gate maximum row
-  L2 norms from the resident F16 source and applies Cauchy-Schwarz, FP32 dot,
-  BF16-rounding, and 2x online-attention safety factors. The worst gated
-  attention-output bound is **7,957.539**, still **4.116x** inside FP16 after
-  the runtime's separate 2x admission reserve. `hipblaslt_range_direct` now
-  removes the remaining output row reduction/scale and is the gfx1151 default;
-  keep `hipblaslt_norm_direct` and `hipblaslt_scaled` only for the same
-  one-release rollback window, then collapse both selectors.
-
 ## Priority Cleanup (do first)
 
 **Revalidate the gfx1151 GGUF graph default on the current stack and retire
@@ -10858,3 +10823,24 @@ Confirm the backend's default tile still runs, outputs match the unset control,
 and teardown is clean. Repeat with `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16`
 and confirm shape-selected Q4 tiles are unchanged. Explicit primitive tile
 arguments remain supported.
+
+### R0271 — Scaled F16 comparison retention and public validation
+
+The runtime setter and norm-direct mode are removed. Production range-direct
+construction validates dense-F16 layout and finite norm/gated-value bounds.
+Historical publication mappings remain readers of old artifacts, not execution
+selectors.
+
+**Decision needed:** keep or retire the `prefill_350_candidate` comparison in
+`scripts/laguna_grouped_down_category_bench.py`. Its scaled F16 route executes
+different arithmetic from range-direct; silently substituting the default would
+invalidate that comparison. **Clearing action:** if retained, name the diagnostic
+owner and close the route-retirement request as intentional reference code. If
+retired, remove that comparison arm and its executable scaled-mode plumbing,
+migrate category/publication tests without rewriting historical artifacts, and
+preserve general scaled-cast primitives needed outside the normalized boundary.
+
+**Validation dependency:** a local Laguna checkpoint. Run the R0273 gfx1151
+public command and confirm range-direct selection, output parity and teardown.
+Existing constructor tests verify missing/unsafe metadata rejection and owned
+weight cleanup but do not replace a real public request.
