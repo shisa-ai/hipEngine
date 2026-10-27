@@ -3430,42 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1100 in-tree retained-PM4 transport comparison seams
-
-- Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.
-  `HIPENGINE_SUBMISSION_TRANSPORT`, direct AQL, timestamp/quarantine lifecycle
-  controls, and `scripts/pm4_gguf_decode_gate.py` remain diagnostic/default-off;
-  native HIP graph remains the portable default.
-- Completed 2026-08-08: tracked-clean setup/performance plus the 19/19 natural,
-  heldout, 4K, rebuild, cancellation, shutdown, and memory matrix selects
-  stateful-register elision with local-cache dependency acquire as the sole
-  explicit-PM4 production encoder. The two experiment environment selectors are
-  removed from transport construction.
-- Completed 2026-08-08: packed c2/c4/c8 submission wiring is retained for
-  scoped gfx1100 production promotion. Full attribution found a 2.9–3.8 ms
-  per-token full-provenance JSON cost, not a PM4 dependency defect; deferring
-  proof generation moves clean replay from **+12.551%/+9.196%/+5.687%** to
-  **-6.626%/-4.126%/-2.466%**, with 5/5 wins and exact natural/lifecycle gates.
-  Never restore full native executable provenance serialization to the replay
-  hot path; refresh it explicitly at diagnostic or artifact boundaries.
-- The backend capability `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` is an exact
-  model/file-type/physical-width/replay-window map, not a blanket gfx1100 PM4
-  default. `HIPENGINE_SUBMISSION_TRANSPORT=hipgraph` is the whole-route rollback;
-  explicit `pm4|aql` remains diagnostic. Re-profile capture break-even before
-  lowering **160/64/96/80** at c1/c2/c4/c8 or admitting another model/quant,
-  graph family, multi-step tape, width, or backend. Remove the environment
-  rollback after one release window only if the scoped default remains exact and
-  non-regressive; retain the package policy boundary and HIP fallback.
-- Remove comparison-only `pm4_stateful*`/`pm4_timestamps` benchmark aliases and
-  low-level conservative/global encoder options once they no longer provide
-  useful rollback/bisection evidence. Retain direct AQL while it differentiates
-  ROCr dispatch from architecture-specific PM4 or is needed for inner-kernel
-  profiling that nested PM4 IBs cannot expose to `rocprofv3`.
-- Never delete the native HIP graph implementation: it remains the required
-  peer-architecture fallback and correctness oracle. Timestamp/quarantine
-  controls may be removed only after ROCm/ROCm#6529 is reproduced/closed or they
-  have conclusively failed to distinguish the lifecycle fault.
-
 ## Dense-H5120 exact unequal-Q4 pair context seam
 
 - Added 2026-08-13 for the exact Q4T16 linear-attention QKV/gate bulk-prefill
@@ -10597,3 +10561,31 @@ selection, compare against the registered singleton/add controls, and verify
 cleanup. Keep backend/shape policy and primitive fallbacks. These are concrete
 harness and input dependencies, not a release-window or missing-qualification
 restriction; both fused defaults remain enabled.
+
+### R0217 — PM4 diagnostic controls and transport rollback
+
+The redundant `pm4_stateful_local` benchmark alias is removed; canonical `pm4`
+already selects stateful registers and local-cache dependencies with timestamps
+off. `pm4_stateful` still selects global dependencies, and `pm4_timestamps`
+enables timestamps, so those labels are not duplicate encoders. The production
+transport factory selects the canonical encoder without the retired experiment
+environment controls. Backend policy selects automatic transport by geometry,
+file type, physical width and replay horizon; HIP graph remains the portable
+fallback. Explicit AQL and PM4 are supported diagnostic choices.
+
+**Decision needed:** retain the distinct global-dependency/timestamp modes and
+`HIPENGINE_SUBMISSION_TRANSPORT` rollback as supported diagnostics, or retire
+their comparison interfaces. **Dependency:** timestamp/quarantine retirement
+also needs a disposition of the recorded ROCm/ROCm#6529 lifecycle investigation.
+No gfx1100 runtime is available in this local sweep to exercise that fault or
+public PM4 selection; gfx1151 HIP execution does not substitute for it.
+**Clearing action:** if retained, name the diagnostic owner and close the
+remaining cleanup; if retired, migrate the lifecycle/graph benchmark callers
+and remove only unused encoder options. Run
+`tests/test_unit_pm4_graph_bench.py`, `tests/test_unit_pm4_transport.py` and
+`tests/test_unit_pm4_lifecycle_repro.py`, then on gfx1100 exercise public
+automatic and explicitly selected transport, rebuild/cancel/shutdown and
+resource cleanup. Preserve native HIP graph and distinct AQL profiling, and
+keep full provenance serialization out of replay. Original promotion and
+attribution results remain in the sweep inventory and worklogs; this cleanup
+changes no replay arithmetic, transport default or performance claim.

@@ -5651,38 +5651,40 @@
       "start_line": 4740,
       "end_line": 4775,
       "sha256": "03931909784e46b7eb81587cd0ddcc884a17bb289e57e8b5a66a5a905882e601",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Removed redundant pm4_stateful_local parser/dispatch alias (identical canonical pm4 flags, no timestamp); RED/GREEN parser and PM4 tests plus actual CLI help pass. Distinct pm4_stateful global-dependency and pm4_timestamps instrumentation modes remain. Production encoder/default unchanged. Moved remaining keep/retire diagnostics, ROCm#6529 disposition and gfx1100 public validation to bottom deferred section. No local gfx1100 runtime; no GPU or new performance claim. Worklog: worklog/entries/20261027T175646.948568Z-cleanup-refactor-r0217-1a0837.md."
+      ],
       "subitems": [
         {
           "line": 4742,
           "text": "- Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4746,
           "text": "- Completed 2026-08-08: tracked-clean setup/performance plus the 19/19 natural,",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4751,
           "text": "- Completed 2026-08-08: packed c2/c4/c8 submission wiring is retained for",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4758,
           "text": "- The backend capability `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` is an exact",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4766,
           "text": "- Remove comparison-only `pm4_stateful*`/`pm4_timestamps` benchmark aliases and",
-          "status": "pending"
+          "status": "partial-redundant-alias-removed"
         },
         {
           "line": 4771,
           "text": "- Never delete the native HIP graph implementation: it remains the required",
-          "status": "pending"
+          "status": "preserved"
         }
       ]
     },

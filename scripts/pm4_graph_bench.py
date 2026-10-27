@@ -40,7 +40,6 @@ _DEFAULT_TRANSPORTS = ("hipgraph", "aql", "pm4")
 _BENCHMARK_MODES = (
     *_DEFAULT_TRANSPORTS,
     "pm4_stateful",
-    "pm4_stateful_local",
     "pm4_timestamps",
 )
 _DEFAULT_MEMORY_RECOVERY_TOLERANCE = 64 * 1024 * 1024
@@ -49,8 +48,6 @@ _DEFAULT_MEMORY_RECOVERY_TOLERANCE = 64 * 1024 * 1024
 def _transport_spec(mode: str) -> tuple[str, bool | None, bool | None]:
     """Map one benchmark label to the production transport and PM4 encoder."""
 
-    if mode == "pm4_stateful_local":
-        return "pm4", True, True
     if mode == "pm4_stateful":
         return "pm4", True, False
     if mode in {"pm4", "pm4_timestamps"}:
@@ -311,7 +308,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not transports or any(mode not in _BENCHMARK_MODES for mode in transports):
         raise ValueError(
             "transports must be selected from hipgraph, aql, pm4, pm4_stateful, "
-            "pm4_stateful_local, and pm4_timestamps"
+            "and pm4_timestamps"
         )
     if args.backend != "hip_gfx1100" and any(
         _transport_spec(mode)[0] != "hipgraph" for mode in transports
@@ -373,7 +370,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     mode
                 )
                 capture_start_ns = time.perf_counter_ns()
-                if mode in {"pm4_stateful", "pm4_stateful_local", "pm4_timestamps"}:
+                if mode in {"pm4_stateful", "pm4_timestamps"}:
                     # Comparison aliases use separate contexts so the canonical
                     # PM4 encoder and the retained global-acquire diagnostic can
                     # coexist in one counterbalanced session.
