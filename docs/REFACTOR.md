@@ -3047,10 +3047,6 @@ should be removed or collapsed.
   [qualification evidence](../benchmarks/results/2026-10-07-qwen4exp-mx1-f16-down-only-layer2-qualification/README.md).
   A successor must charge map construction, synchronization and readback in
   its full-operation timing.
-- `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` selects a 64-thread decode reduction that
-  improves warm decode by 6-8% but fails production mean/p95 KL
-  (`0.002565/0.007202`). Keep it default-off only for exact-repack/reduction
-  bisection; remove it when that successor lands or at campaign closure.
 
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 

@@ -4156,7 +4156,8 @@
         {
           "line": 3725,
           "text": "- `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` selects a 64-thread decode reduction that",
-          "status": "pending"
+          "status": "resolved-removed",
+          "evidence": ["Retired engine selector, preserved strict logical256 t64 and registered direct diagnostic. Focused tests/public-GPU336 pass; CPU335 failures belong to separate Laguna fixture migration. Worklog: worklog/entries/20261027T022032.277327Z-cleanup-refactor-r0160-wave64-c03e5a.md."]
         }
       ]
     },

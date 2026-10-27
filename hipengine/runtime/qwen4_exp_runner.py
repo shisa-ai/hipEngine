@@ -5865,6 +5865,18 @@ def _ensure_qwen4_exp_moe_backend(backend: str) -> None:
         _MOE_BACKEND_REGISTRY_GENERATIONS.pop(backend, None)
 
 
+def _qwen4_exp_selected_gemv_variant(quant_key: str) -> str:
+    """The registered selected-GEMV owner for one expert projection.
+
+    Q5_1 uses the logical-256 t64 reduction. The wave64 variant remains
+    registered for direct numerical diagnostics, not selected by this dispatch.
+    """
+
+    if quant_key == "gguf_q5_1":
+        return "selected_gemv_logical256_t64_bf16_bf16_out"
+    return "selected_gemv_bf16_bf16_out"
+
+
 def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -6116,13 +6128,7 @@ def run_qwen4_exp_moe(
         selected_ptr: int | None = None,
     ) -> None:
         weight = weights[slot]
-        variant = "selected_gemv_bf16_bf16_out"
-        if weight.spec.quant_key == "gguf_q5_1":
-            variant = "selected_gemv_logical256_t64_bf16_bf16_out"
-            if os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_WAVE64", "") not in {
-                "", "0", "false", "False",
-            }:
-                variant = "selected_gemv_wave64_bf16_bf16_out"
+        variant = _qwen4_exp_selected_gemv_variant(weight.spec.quant_key)
         function = resolve(
             backend=backend,
             layer="linear",

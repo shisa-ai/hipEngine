@@ -909,7 +909,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` | `4.0` | Risk multiplier margin for the iu8 risk+repair Q4 route; the default keeps a >=4x margin at the measured 1.50-1.82x operation-complete speedup. |
 | `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` / `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS` | retired | No longer read. Superseded Q4_K ds4-MMQ selection and workspace plumbing are removed; registered kernels remain available for explicit diagnostics. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` / `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS` | retired | No longer read. Superseded Q5_1 ds4-MMQ selection and workspace plumbing are removed; active Q8 MMQ and strict fallback paths are unchanged. |
-| `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` | unset | Uses the wave64 Q5_1 selected GEMV decode variant. |
+| `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` | retired | No longer read. Q5_1 selected GEMV uses the logical256 t64 owner; the wave64 variant remains registered for direct diagnostics. |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT` | `0` | Default-off exact iu8-risk+repair selected Q5_K gate/up route (the layer-2 Q5_K layer). |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_K iu8 route; 16.0 keeps the route bit-identical to the strict parent in practice. |
 | `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL` | production profile | Selected grouped pair2 prefill for Q5_1 (rows>=64). |
