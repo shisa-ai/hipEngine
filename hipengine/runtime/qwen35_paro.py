@@ -11017,14 +11017,6 @@ def _paged_attn_gqa_grouped_min_context() -> int:
     return max(0, _env_int("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT", 4096))
 
 
-def _paged_attn_gqa_grouped_enabled() -> bool:
-    return _env_flag(
-        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX",
-        True,
-        "NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX",
-    )
-
-
 def _paged_attn_warp_split_enabled() -> bool:
     return _env_flag(
         "HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX",
@@ -11043,8 +11035,6 @@ def _qwen35_gqa_decode_shape(config, *, block_size: int) -> bool:
 
 
 def _use_paged_attn_gqa_grouped(max_live_count: int, num_splits: int) -> bool:
-    if not _paged_attn_gqa_grouped_enabled():
-        return False
     return int(num_splits) >= _paged_attn_gqa_grouped_min_splits() or int(
         max_live_count
     ) >= _paged_attn_gqa_grouped_min_context()

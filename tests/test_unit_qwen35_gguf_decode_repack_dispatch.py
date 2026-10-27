@@ -3,6 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
+
+import hipengine.runtime.qwen35_paro as paro_runtime
 
 import hipengine.runtime.qwen35_gguf_runner as qwen_runtime
 import hipengine.runtime.qwen35_gguf_layer_attn as layer_attention
@@ -245,6 +248,30 @@ def test_long_context_routes_full_attention_through_split_k_gqa_gate(monkeypatch
     assert split_args[9:18] == (256, scratch.full_attn_split_count, 256, 16, 2, 256, 256, 1, 256 ** -0.5)
 
 
+@pytest.mark.parametrize(
+    "selector", ("HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX", "NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX"),
+)
+@pytest.mark.parametrize("retired_value", ("0", "false"))
+def test_retired_grouped_context_selectors_do_not_disable_either_runtime(
+    monkeypatch, selector, retired_value,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX", raising=False)
+    monkeypatch.delenv("NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX", raising=False)
+    monkeypatch.setenv(selector, retired_value)
+    monkeypatch.setenv("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT", "4096")
+    monkeypatch.setenv("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS", "64")
+
+    for use_grouped in (
+        qwen_runtime._use_gguf_paged_attn_gqa_grouped,
+        paro_runtime._use_paged_attn_gqa_grouped,
+    ):
+        assert not use_grouped(257, 2)
+        assert not use_grouped(4095, 16)
+        assert use_grouped(4096, 16)
+        assert use_grouped(5633, 23)
+        assert use_grouped(257, 64)
+
+
 def test_dense_24q4kv_grouped_gqa_is_gfx1151_4k_only(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
@@ -288,8 +315,8 @@ def test_dense_24q4kv_grouped_gqa_is_gfx1151_4k_only(monkeypatch) -> None:
     opt_out = _scratch(position=4095, max_positions=4096)
     runner._run_full_attention_attn_only(0, 0x3000, 0x4000, opt_out, position=4095, stream=5)
     opt_out_names = [name for name, _, _ in calls]
-    assert "split_k_gate" in opt_out_names
-    assert "split_k_gqa_gate" not in opt_out_names
+    assert "split_k_gqa_gate" in opt_out_names
+    assert "split_k_gate" not in opt_out_names
     assert "split_k_warp_gate" not in opt_out_names
 
     calls.clear()

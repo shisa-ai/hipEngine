@@ -5852,23 +5852,25 @@
       "start_line": 4894,
       "end_line": 4905,
       "sha256": "be113911c7bd95b218974eaa62ab7e186fb9c249b3b07e115ac0d08dc9351dfe",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Retired HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX and NANOVLLM_AMD compatibility alias together from GGUF and PARO readers; moved environment names to retired/ignored section and removed ledger. No script caller remains. Preserve backend geometry/context policies, split/context thresholds, warp/generic producers and reducers. RED/GREEN tests pin ignored retired off values across both runtimes, threshold sides/unrelated rows and peer fallback. Full CPU/public validation in worklog: worklog/entries/20261027T184123.796503Z-cleanup-refactor-r0224-6a2a90.md."
+      ],
       "subitems": [
         {
           "line": 4896,
           "text": "- Added 2026-08-16 for dense H5120/L64/24Q/4KV/D256 BF16 decode from context",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4897,
           "text": "  4096. `HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX=0` restores the generic",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 4901,
           "text": "- Removal trigger: after one release window with exact 4K model, long-context,",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

@@ -32875,14 +32875,6 @@ def _gguf_paged_attn_gqa_grouped_min_context() -> int:
     return max(0, _env_int("HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT", 4096))
 
 
-def _gguf_paged_attn_gqa_grouped_enabled() -> bool:
-    return _env_flag(
-        "HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX",
-        True,
-        "NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX",
-    )
-
-
 def _gguf_paged_attn_warp_split_enabled() -> bool:
     return _env_flag(
         "HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX",
@@ -32964,8 +32956,6 @@ def _gguf_grouped_gqa_decode_shape(
 
 
 def _use_gguf_paged_attn_gqa_grouped(active_context: int, num_splits: int) -> bool:
-    if not _gguf_paged_attn_gqa_grouped_enabled():
-        return False
     return int(num_splits) >= _gguf_paged_attn_gqa_grouped_min_splits() or int(
         active_context
     ) >= _gguf_paged_attn_gqa_grouped_min_context()

@@ -479,7 +479,6 @@ These affect both PARO and GGUF decode paths where applicable.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_PAGED_ATTN_MAX_SPLITS` | `4096` | Maximum split count used by PARO resident split-K decode config. Compatibility alias: `NANOVLLM_AMD_PAGED_ATTN_MAX_SPLITS`. |
-| `HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX` | true | Enables grouped-GQA split decode for Qwen3.5/Qwen3.6 GQA shapes. Compatibility alias: `NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX`. |
 | `HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_SPLITS` | `64` | Minimum split count that selects grouped-GQA split decode. |
 | `HIPENGINE_PAGED_ATTN_GQA_GROUPED_MIN_CONTEXT` | `4096` | Minimum context length that selects grouped-GQA split decode. |
 | `HIPENGINE_PAGED_ATTN_WARP_SPLIT_CTX` | true | Enables warp-split GQA fallback where grouped-GQA is not selected. Compatibility alias: `NANOVLLM_AMD_PAGED_ATTN_WARP_SPLIT_CTX`. |
@@ -1241,6 +1240,11 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS` is retired and ignored. The registered
   K320 specialization follows the selected DPP parent for supported full-row
   geometry; diagnostic parent comparisons use a scoped script-local override.
+
+- `HIPENGINE_PAGED_ATTN_GQA_GROUPED_CTX` and
+  `NANOVLLM_AMD_PAGED_ATTN_GQA_GROUPED_CTX` are retired and ignored in both
+  GGUF and PARO. Backend shape policy and the context/split thresholds select
+  grouped attention; generic and warp producers remain available for misses.
 
 - `HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE` is retired and ignored.
   Backend/geometry/shape policy selects the c1 fused owner; registry and
