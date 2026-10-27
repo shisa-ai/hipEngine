@@ -6868,28 +6868,28 @@
       "start_line": 5780,
       "end_line": 5808,
       "sha256": "a8e86f54ecc8d659e724cffb0ab08ddc91d7eb792844df5966643daaf2a442dd",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified runtime selector/resolver/policy removal, explicit negative test remains. Completed receipt removed without changing kernels. Worklog: worklog/entries/20261027T040118.091251Z-cleanup-refactor-r0263-cc5257.md."],
       "subitems": [
         {
           "line": 5782,
           "text": "- Added 2026-07-28 as the default-off WPF-1B admission seam. The temporary",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5787,
           "text": "- D4, D8, and D8R8 runtime candidates are performance-positive but rejected by",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5792,
           "text": "- WPF-1R now closes bounded repair on the raw-Q5/Q6 roles themselves. One",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5801,
           "text": "- **Closed 2026-07-29:** remove the public `raw_k_prefill_mmq` constructor",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

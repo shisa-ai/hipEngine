@@ -4823,35 +4823,6 @@ fallback count is not a success metric.
   changed-arithmetic sibling. This result does not close WPF-1R's separate raw
   Q5/Q6 density screen.
 
-## Laguna raw-Q5/Q6 prefill MMQ selector
-
-- Added 2026-07-28 as the default-off WPF-1B admission seam. The temporary
-  `LagunaGGUFResidentSession(..., raw_k_prefill_mmq=True|False)` lazily owned one
-  bounded producer-row Q8_1 workspace and library on gfx1100. Quant-specific
-  crossover policy keys selected only N>=1024; N48/N72 and all misses retained
-  the exact rowbatch owner.
-- D4, D8, and D8R8 runtime candidates are performance-positive but rejected by
-  the complete quality lane at maximum KL **0.624304/0.400292/0.964321**. Do
-  not promote any direct policy and do not add D16 or another blind precision
-  sibling. The temporary owner ultimately selected D8R8 only as diagnostic
-  infrastructure for measuring mismatch/risk density.
-- WPF-1R now closes bounded repair on the raw-Q5/Q6 roles themselves. One
-  natural M512 pass captures all **381/381** projection tensors; 333 are
-  D8R8-eligible and 48 narrow gates remain exact. Measured BF16 mismatches touch
-  **72.266-100%** of output-weight rows in every eligible tensor and imply
-  **0.160-1.686x** exact-RB32 family reads. All 333 fail the 20% touched-row
-  stop; 331 already fail the 25% read stop. The conservative midpoint envelope
-  reaches **9.142-93.418%** coordinates and **2.925-29.894x** reads, so all 333
-  fail all three prospective gates. No repair queue/kernel/overflow route or
-  promotion lane was added.
-- **Closed 2026-07-29:** remove the public `raw_k_prefill_mmq` constructor
-  selector/setter, backend capabilities, lazy workspace/library owner,
-  quant-policy keys, context/ABI dispatch, benchmark flags/telemetry, and
-  owner-focused tests. Exact rowbatch32 and smaller-slab fallbacks remain.
-  Direct D4/D8/D8R8 wrappers and primitive keys remain only as published
-  ceiling/rejection evidence; no production owner can select them. Evidence:
-  `benchmarks/results/2026-07-29-gfx1100-laguna-q2-xl-q5-q6-d8r8-repair-density-rejected.json`.
-
 ## Laguna long-context F32 hipBLASLt rollback routes
 
 - Added 2026-07-27. The first capacity-sized full-score owner improved
