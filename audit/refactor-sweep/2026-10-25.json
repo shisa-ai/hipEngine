@@ -5694,18 +5694,20 @@
       "start_line": 4776,
       "end_line": 4788,
       "sha256": "be421335006483c3fa0bc68293f763f1c0898ce8aaca9f38ddfdb3c295f89a0b",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt",
+      "evidence": [
+        "ContextVar is active required prefill-only scope at both ordinary and packed public execution entries; registry shape alone cannot distinguish target verification. Existing backend/geometry policy, nested/cache-safe context and singleton fallback tests pass. Original rows512 text stale: implemented floor16 and prior 20260830 shipping-entry evidence verified. Hypothetical future quant-neutral replacement is not a current cleanup requirement; removed ledger entry without runtime change. Worklog: worklog/entries/20261027T180129.361149Z-cleanup-refactor-r0218-f1f728.md."
+      ],
       "subitems": [
         {
           "line": 4778,
           "text": "- Added 2026-08-13 for the exact Q4T16 linear-attention QKV/gate bulk-prefill",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 4783,
           "text": "- Removal trigger: after one release window with complete category, 512/1K/4K",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },

@@ -3430,19 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Dense-H5120 exact unequal-Q4 pair context seam
-
-- Added 2026-08-13 for the exact Q4T16 linear-attention QKV/gate bulk-prefill
-  owner. The architecture/geometry-scoped runner context prevents the
-  shape-general registry leaf from claiming unqualified models; rows below 512
-  and all misses retain the two exact singleton projections. There is no
-  environment selector, workspace, sidecar, or alternate payload.
-- Removal trigger: after one release window with complete category, 512/1K/4K
-  cross-board, and natural MTP safeguards stable, collapse the private boolean
-  context into a quant-neutral model-policy object if more exact pair owners are
-  admitted. Keep the separately registered singleton chain permanently as the
-  required numerical/peer-backend fallback.
-
 ## Dense-H5120 bounded Q4/Q5/Q6 source-F16 rollback seam
 
 - Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6
