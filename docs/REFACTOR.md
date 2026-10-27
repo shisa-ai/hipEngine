@@ -4915,8 +4915,11 @@ passing all 24 hidden/GDN/KV/token transitions on W7900. Non-streaming c1 greedy
 generation uses the graph only at each backend's admitted horizon, with
 `HIPENGINE_GGUF_DECODE_GRAPH=0` retained for rollback. The explicit
 `qwen35_gguf_bench.py --graph-replay-decode` surface is required for the current
-default decision, while `scripts/gguf_mtp_bench.py --target-graph-verify` /
-`--target-graph-batched-verify` remains separate stale diagnostic plumbing.
+default decision. The separate `scripts/gguf_mtp_bench.py --target-graph-verify`
+path is live: it defaults on and captures target decode graphs when the selected
+verification mode uses them. `--target-graph-batched-verify` remains an explicit
+strict full-prefix diagnostic. Audit their consumers before retiring either;
+neither is dead plumbing merely because it is separate from the c1 default.
 
 SOL-G4 provides the correct comparison floor: clean p512/d128 eager is
 `20.290 ms/token`, while a 24-step marker profile contains `18.402 ms/token` of
