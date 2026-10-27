@@ -8030,29 +8030,17 @@ prompts); both chunk resolutions now clamp to the row cap.
 
 ## Packed execution workspace doubles the declared-context page budget
 
-- Recorded 2026-09-09. `configure_engine_loop`
-  (`hipengine/generation/qwen35_gguf.py:5560-5592`) sizes the eager packed
-  workspace lease as `capacity * max(max_pages_per_request, 1024//256)`, so the
-  global KV arena is allocated at exactly **2x** the declared context: request
-  pages plus an equal pinned lease. Measured on the retained XTX audit
-  (`2026-09-07-rx7900xtx-int8-repair-capacity-audit.json`): pool pages are
-  126/256/384/424 for 63/128/192/212 request pages at 16,128/32,768/49,152/54,272
-  declared context, at 33,280 B/token, i.e. 32.5 KiB/token of duplicate budget on
-  INT8 and 64 KiB/token on BF16. The 4-point server peak fit is 99.4 KiB/token
-  against the direct engine's 33.6.
-- The lease is **not** simply over-reserved: although the packed verifier is
-  guarded to context < 1024 (`runtime/qwen35_gguf_runner.py:19907`) and slot-local
-  prefill never writes the packed KV planes (`copy_kv=not slot_local_full_prefill`),
-  `_sync_packed_decode_initial_state` (`runtime/qwen35_gguf_runner.py:25702-25713`)
-  copies the entire KV history into those planes on the prefill->decode
-  transition. Shrinking the lease alone converts a silent over-reservation into a
-  `RuntimeError` at long context.
-- Removal trigger: the CONCURRENCY2 task-5 follow-up already recorded in
-  `worklog/entries/20260818T121922.772662Z-lhl-concurrency2-task5-layout-rebind-c9eadd.md`
-  ("packed slots borrow the row's own lease pages; flush scatters only
-  conv/recurrent state"). Land that, then size the lease to
-  `capacity * (_PACKED_VERIFY_MIN_MAX_SEQUENCE // 256)` and re-measure the server
-  single-request context ceiling, which is stale at 54,272 independently of this.
+- The old eager full-context reservation is removed. `configure_engine_loop`
+  uses `packed_verify_workspace_lease_pages()`, which reserves only the packed
+  context floor per slot; longer contexts and wider layouts charge private KV
+  against the same pool budget. The helper deliberately ignores max_positions.
+- Keep the lease ownership and rebind regressions: reducing reservation must
+  not reintroduce copies into undersized packed planes or discard live page maps.
+- Remaining validation: refresh the XTX single-request server context ceiling
+  using the server-faithful allocation probe, then confirm the selected point
+  with the requested workload. The earlier 54,272-token result is an observed
+  historical pass, not a current maximum. Do not close this row on the sizing
+  helper alone; record the server-route result.
 
 ## `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` — promoted, remove after soak
 
