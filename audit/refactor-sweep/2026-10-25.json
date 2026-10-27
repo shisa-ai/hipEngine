@@ -11,8 +11,8 @@
       "start_line": 7,
       "end_line": 24,
       "sha256": "db97cfa62f62d7e61f9ff94629ca58263ea06b98dc93caa7dd1aa8e6987c41b0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-observed-regression",
+      "evidence": ["Verified qwen35_paro.speculative_graph_available returns false and adapter honors explicit graph plans; graph-cache contract tests pass. Recorded full comparison/confirmation rejects graph throughput. Moved to bottom R0001 with changed-implementation dependency and exact reproduction/validation/live-test clearing actions from benchmarks/results/2026-10-24-gfx1151-paro-graphs/NOTES.md. No new performance claim, default change or redundant rerun."],
       "subitems": []
     },
     {

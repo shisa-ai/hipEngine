@@ -4,24 +4,6 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## PARO one-candidate verifier graph preference
-
-The shared planner currently selects eager verification for ordinary PARO MTP
-requests. The adapter honors that choice while accepting explicit graph plans.
-The concrete cause is a repeated slowdown on Radeon 8060S (`gfx1151`), packed
-Qwen3.6-35B-A3B ParoQuant W4, BF16 KV, one request/candidate and 128 outputs:
-graph decode is 3.23% slower than eager over the full natural suite, confirmed
-at 3.06%. [Protocol and results](../benchmarks/results/2026-10-24-gfx1151-paro-graphs/NOTES.md)
-include all controls, route checks and separate synchronized attribution.
-
-Remove this eager preference when a graph implementation passes the public
-state/recovery oracle and the full paired comparison plus confirmation shows
-it is faster without output or acceptance drift. The exact clearing commands
-are the reproduction block in that result note: `reproduce_graph_candidate.py`
-with three and two repetitions, `validate_graph.py`, and
-`tests/test_live_paro_mtp_graph.py`. Keep the eager runtime implementation for
-strict comparison; do not add an environment flag or refuse MTP requests.
-
 ## DMS extent compaction: replace the memmove with a ring head
 
 The DMS append/decode kernel compacts the live extent on every decode step:
@@ -10781,3 +10763,18 @@ preserve general scaled-cast primitives needed outside the normalized boundary.
 public command and confirm range-direct selection, output parity and teardown.
 Existing constructor tests verify missing/unsafe metadata rejection and owned
 weight cleanup but do not replace a real public request.
+
+### R0001 — PARO verifier graph regression
+
+Ordinary PARO MTP requests use eager verification; explicit graph plans remain
+executable. The recorded gfx1151 graph comparison and confirmation were slower
+than eager, so this preference has an observed cause rather than missing evidence.
+See [protocol and results](../benchmarks/results/2026-10-24-gfx1151-paro-graphs/NOTES.md).
+
+**Dependency:** a graph implementation that removes that observed regression.
+**Clearing action:** use the linked reproduction block to run
+`reproduce_graph_candidate.py` with three repetitions and two confirmation
+repetitions, then `validate_graph.py` and `tests/test_live_paro_mtp_graph.py`.
+Require faster paired execution without output/acceptance drift and successful
+public state/recovery checks before removing the eager preference. Preserve the
+eager comparison implementation; add no environment flag or MTP admission gate.
