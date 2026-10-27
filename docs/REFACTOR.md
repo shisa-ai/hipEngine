@@ -2982,20 +2982,21 @@ fallback count is not a success metric.
 ## SPECDEC2 whole-request compatibility seam
 
 - Added 2026-08-24 for the approved [`SPECDEC2.md`](reference/SPECDEC2.md) campaign.
-  During S1-S4 the new Generation-2 one-cycle provider/target path coexists with
-  the synchronous `SubmitPollTextGenerator.submit_speculative_many_detailed()`
-  route, which currently finishes complete model-owned generation under the
-  submission/model-loop lock and then publishes synthetic `VERIFY_CHAIN`
-  metadata. Existing whole-request provider protocols and direct loops remain
-  only for rollback, parity, and exact-oracle use while the staged provider SPI
-  is qualified.
+  `SubmitPollTextGenerator.submit_speculative_many_detailed()` selects staged
+  submission first when the wrapped generator supplies staged support. Otherwise
+  its synchronous compatibility adapter finishes complete model-owned generation
+  under the submission/model-loop lock and publishes synthetic `VERIFY_CHAIN`
+  metadata. This adapter still supports generators without staged submission;
+  it is not the production selection for staged-capable generators.
 - Removal trigger: S3 must match direct c1 IDs/cycle semantics and exact
   hidden/Conv/GDN/KV/cursor/following-AR state; S4 must pass physical c2/c4,
   late-admission/refill, streaming, cancellation, and ownership gates. Then
   remove production selection of the synchronous route, synthetic post-hoc work
   metadata, and duplicate request/result ownership. Keep separately named
   direct controls and registered strict/eager/serial kernel fallbacks required
-  by the execution-profile contract.
+  by the execution-profile contract. Migrate each remaining non-staged provider
+  before removing its compatibility adapter; preserve explicit unsupported-mode
+  errors and verify staged providers never execute the whole-request path.
 
 ## SPECDEC2 gfx1100 packed-PARO C1 bring-up debt
 

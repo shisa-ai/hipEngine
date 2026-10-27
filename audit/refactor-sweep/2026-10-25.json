@@ -4960,13 +4960,13 @@
       "start_line": 4221,
       "end_line": 4238,
       "sha256": "e38a0df34be42f17f03aacccb687c4c657297bf6dc32bfd47f116ff78a8165e2",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Verified staged-first submission; synchronous compatibility is used only without staged support. Corrected ledger scope; retained adapter pending non-staged provider migration rather than deleting working support. Full request-lifetime/Gemma resident/Qwen4Exp submission units and docs/audit pass. Synthetic metadata and remaining provider migration still open. Worklog: worklog/entries/20261027T151435.396671Z-cleanup-refactor-r0188-a37c37.md."],
       "subitems": [
         {
           "line": 4223,
           "text": "- Added 2026-08-24 for the approved [`SPECDEC2.md`](reference/SPECDEC2.md) campaign.",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4231,
