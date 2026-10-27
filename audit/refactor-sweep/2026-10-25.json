@@ -11940,8 +11940,8 @@
       "start_line": 9727,
       "end_line": 9759,
       "sha256": "7e5099aff30a4c56bdcc15042fee3aa4675fabd576207e7256fb3f1296a76a1d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Completed caller audit and repairs d1c4faba5/1d3c6211d: fresh WMMA/MMQ require explicit classified clean, Q8 legacy revalidation conservative, bridge intentionally tracked-clean with typed fields; other listed scripts no coarse dirty checks. Focused tests/CLI help/docs/audit passed. Worklogs: worklog/entries/20261027T050728.010409Z-cleanup-refactor-r0424-a6d61b.md; worklog/entries/20261027T051714.408365Z-cleanup-refactor-r0424-final-b57159.md."],
       "subitems": []
     },
     {

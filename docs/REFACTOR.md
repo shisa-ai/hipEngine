@@ -8324,42 +8324,6 @@ re-resolving `config.kv_storage`. Before that, an artifact that failed closed to
 BF16 would reject an explicit BF16 request, because the comparison still believed
 the server was on INT8.
 
-## 2026-09-16 Artifact provenance: execution-affecting dirty classification
-
-Artifact provenance is schema 3. `collect_repo_state` now records
-`dirty_paths` / `untracked_paths` (capped at 64 entries each, with
-`dirty_path_count` and the existing `untracked_count` carrying the true totals)
-plus an `execution_affecting_dirty` flag derived from
-`is_execution_affecting()`. The classification is a denylist — `docs/`,
-`worklog/`, `benchmarks/results/`, `.claude/`, `.github/`, and any `*.md` are
-inert; everything else, including fixtures, `pyproject.toml`, and unrecognised
-paths, counts. The conservative answer is therefore the default.
-
-Two motivations. A bare `untracked_dirty` boolean meant any concurrent agent's
-scratch file invalidated every measurement in the shared worktree, which is what
-happened to both arms of
-`benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/`. And a bare
-boolean does not say *which* file was dirty, so a measurement cannot be judged
-after the fact — the passing 32-47 arm of that gate records
-`unstaged_dirty: true` with no way to recover what was modified.
-
-`scripts/q8t16_batch_route_perf.py` now uses the execution-affecting flag for
-new schema-3 measurements and source revalidation. Legacy artifacts without
-that field retain a conservative coarse-dirty check; a missing or malformed
-cleanliness value does not establish a clean measurement.
-
-Fresh WMMA-layer and MMQ-plane gates require an explicit
-`execution_affecting_dirty=False` from their current collector. They do not
-consume legacy provenance. Missing or malformed classification blocks both
-measurement validity and qualification claims. The performance bridge keeps
-its separate tracked-clean publication contract and rejects missing or malformed
-tracked-dirty and unexpected-untracked fields. Legacy Q8 route revalidation
-uses a conservative coarse-dirty check only for artifacts without classification.
-
-The previously listed production/campaign/README refresh scripts no longer
-contain coarse dirty-state logic. This migration is complete; these supported
-provenance contracts are intentional, not pending cleanup.
-
 ## 2026-09-16 Qwen4Exp binder: pre-binder env conflicts are reported
 
 The Qwen4Exp profile binder owns 66 env variables and overwrites all of them
