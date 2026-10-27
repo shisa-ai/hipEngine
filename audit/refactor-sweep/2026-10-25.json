@@ -10445,33 +10445,33 @@
       "start_line": 8096,
       "end_line": 8118,
       "sha256": "14c7e692510ab5b8a4c5a5cec02ed3cecddac6861eb9e2e4d03d972bbdea6f50",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Named setter absent; intended constructor rollback/capability/forwarding preserved. Completed receipt removed; docs/audit pass. Worklog: worklog/entries/20261027T042128.107955Z-cleanup-refactor-r0361-78bff9.md."],
       "subitems": [
         {
           "line": 8098,
           "text": "- Added 2026-07-30 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8103,
           "text": "- Seven exact same-resident p512/d128 pairs all improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8107,
           "text": "- Remove the session setter after tracked-clean selector-unset publication and",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8112,
           "text": "- Publication and census pass at **22.119461 tok/s** and exactly",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8115,
           "text": "- The session setter is removed. Retain only the constructor rollback,",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

@@ -6925,29 +6925,6 @@ should be boring.
   retain the constructor override, capability, registered quad, and unfused
   fallback.
 
-## Laguna gfx1151 selected-down parallel-weighted selector
-
-- Added 2026-07-30 as
-  `LagunaGGUFResidentSession.set_selected_down_natural_parallel_weighted_decode(...)`.
-  The candidate preserves all ten route-parallel natural Q4/planar-Q6
-  producers and uses tile-local completion counters to own the exact
-  slot-order weighted reducer.
-- Seven exact same-resident p512/d128 pairs all improve
-  **22.071805 -> 22.139076 tok/s (+0.30479%)**, saving
-  **0.141227 ms/token** by paired median. Natural Q4/Q6 leaves improve
-  **3.940%/3.752%**.
-- Remove the session setter after tracked-clean selector-unset publication and
-  a complete 127-transition census either publish or reject the default. If
-  retained, keep the constructor rollback, architecture capability,
-  four-axis composite registrations, bounded counter scratch, and exact
-  route-parallel projection plus standalone weighted-sum fallback.
-- Publication and census pass at **22.119461 tok/s** and exactly
-  **482 dispatches/token**. The session setter is now eligible for immediate
-  removal.
-- The session setter is removed. Retain only the constructor rollback,
-  architecture capability, composite registrations, bounded counter scratch,
-  and exact two-launch fallback.
-
 ## Laguna gfx1151 shared-down/D9 native host-batch selector
 
 - Added 2026-07-30 as
