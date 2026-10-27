@@ -6986,18 +6986,20 @@
       "start_line": 5827,
       "end_line": 5837,
       "sha256": "dbe7e9d68e34a1c2f53b32cf5709474fb8148b33c2c05857517b57d3cbeac6b0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-retirement",
+      "evidence": [
+        "Rolling SWA remains separate bounded gather/attention owner; profile still compares its setter, not absorbed by wide global queries. Move explicit diagnostic retirement decision to bottom with caller migration and public/lifecycle checks; preserve route/default/spans. Focused runner/profile and docs/audit/worklog pass. Worklog: worklog/entries/20261027T195859.003911Z-cleanup-refactor-r0265-r0267-f1520d.md."
+      ],
       "subitems": [
         {
           "line": 5829,
           "text": "- Added and promoted 2026-07-28 after exact wrap-oracle plus",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5833,
           "text": "- `LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT` and the session setter remain useful",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         }
       ]
     },
@@ -7007,18 +7009,20 @@
       "start_line": 5838,
       "end_line": 5848,
       "sha256": "389ed64a9dbd5b8d221403b5dec19267877d8fee7a846a36146add1e19655a38",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-retirement",
+      "evidence": [
+        "Global query width is implemented constructor/profile resource policy with supported-width/matrix-capacity validation; narrow SWA/tails stay independent. Defer whether to retain explicit comparison interface or migrate it, not whether supported widths can run. Focused runner/profile/docs/audit/worklog pass; no runtime change. Worklog: worklog/entries/20261027T195859.003911Z-cleanup-refactor-r0265-r0267-f1520d.md."
+      ],
       "subitems": [
         {
           "line": 5840,
           "text": "- Added and promoted 2026-07-28 after exhaustive M128..M2048 global/SWA",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5844,
           "text": "- Keep the explicit constructor/profile override through LC-4/LC-5 so dense",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         }
       ]
     },
@@ -7028,18 +7032,20 @@
       "start_line": 5849,
       "end_line": 5860,
       "sha256": "57db43d5e54497c360b81e68dcec0b7a2721c973950f5a9f86ec0a02b3acebbf",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-retirement",
+      "evidence": [
+        "Dense-contiguous full-attention selection has a live profile comparison/setter; span-aware generic semantics remain necessary. Defer interface retirement with caller migration, preserve production layout/default/fallbacks. Focused runner/profile/docs/audit/worklog pass; no runtime change. Worklog: worklog/entries/20261027T195859.003911Z-cleanup-refactor-r0265-r0267-f1520d.md."
+      ],
       "subitems": [
         {
           "line": 5851,
           "text": "- Added and promoted on gfx1151 in LC-4 after the exact 4K block sub-window",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5854,
           "text": "- Keep `prefill_dense_contiguous_cache`, the profile comparison switch, and",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement"
         }
       ]
     },

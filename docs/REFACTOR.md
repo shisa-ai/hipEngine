@@ -3430,40 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna rolling-SWA hipBLASLt production route
-
-- Added and promoted 2026-07-28 after exact wrap-oracle plus
-  4K/16K/64K/128K gates. The fixed owner gathers a 639-key union and owns
-  **33,554,432 bytes** scratch; decode, verifier, partial, evicted, and
-  nonconsecutive paths retain the registered generic fallback.
-- `LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT` and the session setter remain useful
-  while LC-3 widens attention query chunks. Collapse the explicit selector
-  after the wider-query route either absorbs this owner or proves the M128
-  route remains independently optimal. Do not remove the span-aware fallback.
-
-## Laguna global M2048 attention-query route
-
-- Added and promoted 2026-07-28 after exhaustive M128..M2048 global/SWA
-  screens and positive 4K/16K/64K/128K complete-model gates. The production
-  capability `LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS=2048` applies only to
-  complete global matrix chunks; SWA and partial tails remain M128.
-- Keep the explicit constructor/profile override through LC-4/LC-5 so dense
-  addressing and larger matrix chunks can be bisected independently. Collapse
-  it into the final chunk policy after those stages choose their retained
-  geometry. Never remove the generic span-aware fallback.
-
-## Laguna dense-contiguous global-cache widen
-
-- Added and promoted on gfx1151 in LC-4 after the exact 4K block sub-window
-  improved **0.250249 -> 0.234780 ms (-6.181%)** and the complete-model gates
-  remained neutral with exact state through 128K.
-- Keep `prefill_dense_contiguous_cache`, the profile comparison switch, and
-  the generic span-aware block kernel through LC-5/LC-6 for rollback and
-  non-dense semantics. After one release plus the final six-shape sweep,
-  collapse the selector if no regression appears. Never remove or weaken the
-  complete `KVLiveSpans` fallback for continuation, verifier, eviction, SWA,
-  decode, or unmeasured backends.
-
 ## Laguna MoE shared/routed branch-concurrency candidate
 
 - Added 2026-07-26 as an exact, default-off session and profile-harness
@@ -10294,3 +10260,33 @@ block boundary, including non-aligned tails, continuation and generic misses.
 Use R0249/R0250's public command/checkpoint dependency. Keep rolling SWA,
 short attention, generic `KVLiveSpans` fallback and bounded scratch. No
 capability, arithmetic or allocation behavior changes in this disposition.
+
+### R0265/R0266/R0267 — Laguna attention geometry and layout controls
+
+Rolling SWA, global query width and dense-contiguous cache access remain
+independent policy axes. Rolling SWA uses its own bounded gather/attention
+owner and a real profile comparison. `prefill_global_attention_chunk_size`
+selects supported widths within matrix capacity; wider complete global
+chunks do not absorb SWA or partial-tail handling. Dense-contiguous cache
+selection applies only to eligible full-attention views; span-aware execution
+remains necessary for non-dense semantics. Keep the implemented routes and
+backend defaults; the old LC-stage/release-window notes are not blockers.
+
+**Decision needed:** retain explicit constructor/profile controls as supported
+diagnostics and geometry policy, or move comparisons into scoped test owners
+and retire redundant mutation interfaces. The profile harness still calls
+`set_prefill_swa_attention_hipblaslt()` and
+`set_prefill_dense_contiguous_cache()` and supplies `--attention-rows`.
+**Clearing action:** if retiring controls, migrate those arms first, preserving
+actual generic-versus-selected execution and restoration after failures.
+Keep backend width defaults, matrix-capacity validation, bounded allocation
+and full `KVLiveSpans` fallbacks. Run
+`tests/test_unit_laguna_gguf_runner.py`,
+`tests/test_unit_laguna_long_context_profile.py` and
+`tests/test_gpu_laguna_kv_attention.py`; then use R0249/R0250's public gate
+with dense and rolling/wrapped prompts, non-aligned tails, continuation,
+verifier and shape misses on each applicable backend. Confirm selected width,
+owner/layout, output/state and cleanup. Global query geometry is a resource
+choice, not an evidence allowlist; do not remove a supported width merely
+because a benchmark did not cover it. No route, arithmetic or resource policy
+changes in this disposition.
