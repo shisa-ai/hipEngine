@@ -5880,18 +5880,20 @@
       "start_line": 4906,
       "end_line": 4922,
       "sha256": "554bf452bf58def8cfd5856cf4168e47872a55fa6b6b2681e362781c2db16d8c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Removed obsolete eager-only/B1-B3 graph description. Current NextN proposal history/graph ladder and native target ABI support B1-B7/rows2-8 subject to backend/context/shape checks. Later September actual-model native C1 K4-K7 execution supersedes intermediate row-cap/kernel blockers, but does not prove every terminal accepted count. Preserve configurable budget, serial oracle, fallbacks and default-selection policy; no runtime/default/performance change. Focused session/proposal-cache/depth tests and docs/audit/worklog gates pass. Worklog: worklog/entries/20261027T185226.192499Z-cleanup-refactor-r0225-63fdb2.md."
+      ],
       "subitems": [
         {
           "line": 4908,
           "text": "- Added 2026-08-15 so the public dense GGUF ladder can execute a real four-step",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4917,
           "text": "- Removal trigger: admit B4 to both proposal and target device graphs only after",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
