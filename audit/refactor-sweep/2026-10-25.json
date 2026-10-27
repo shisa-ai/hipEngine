@@ -5768,18 +5768,20 @@
       "start_line": 4829,
       "end_line": 4844,
       "sha256": "cb50af7c2a4523ca3ee7261364a3069a12734363c7f956fdd4028c64efa55140",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Retired unused scripts/qwen38_dense_pair_perf.py and its isolated summary test. Only live reference was that test; historical artifact still records exact command/source in Git history. Harness default candidate no longer equals required current package owner. Preserve reusable execution_profile_gguf_dense_pair_gate.py evaluator and active Q4_K_S split/rowtile, native Q4_K_M non-split and strict local32 kernels. Focused evaluator/backend/dispatch/liveness tests and CLI help, docs/audit/worklog gates pass. No runtime/default/arithmetic or benchmark-row change. Worklog: worklog/entries/20261027T182937.685063Z-cleanup-refactor-r0221-f2a718.md."
+      ],
       "subitems": [
         {
           "line": 4831,
           "text": "- Demoted for Q4_K_M on 2026-08-16 after production-numerics requalification.",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4839,
           "text": "- Removal trigger: after the Q4_K_M requalification artifact has served one",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

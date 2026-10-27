@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 Qwen3.8 Q4_K_M residual-Q8_1x2 diagnostic
-
-- Demoted for Q4_K_M on 2026-08-16 after production-numerics requalification.
-  The changed route passes the 450-row strict-teacher envelope at max KL
-  `0.0008333`, `99.778%` top-1, and exact three-run repeatability, but seven
-  current same-session p512/d128 pairs measure only `0.998071x` the exact
-  local32 owner with one candidate win. Q4_K_M therefore defaults this serial
-  c1 shape to exact local32; no rollback flag or duplicate payload was added.
-  Q4_K_S independently retains split-weight c1 and row-independent native
-  rows2-4 because those owners pass its exact trajectory and performance gates.
-- Removal trigger: after the Q4_K_M requalification artifact has served one
-  release window, remove only its comparison harness if unused. Keep the shared
-  Q8_1x2 producer and split-weight/rowtile registry keys while Q4_K_S owns them,
-  keep the non-split native Q4_K_M consumer while its policy owns it, and keep
-  the exact local32 fused/unfused chain permanently.
-
 ## gfx1151 Qwen3.8 compact-peer GDN rollback seam
 
 - Added 2026-08-15 for Q4_K_M `(16K,48V,128,128)`. The compact-peer route
