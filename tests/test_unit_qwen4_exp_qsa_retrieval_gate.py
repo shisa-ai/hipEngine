@@ -78,7 +78,9 @@ def test_gate_takes_the_selection_from_the_runner_not_the_environment() -> None:
     source = inspect.getsource(gate.main)
     assert "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION" not in source
     assert "qsa_batched_selection(runner, False)" in source
-    assert "--per-row-selection" in source
+    # The flag lives with the rest of the CLI surface, which moved into
+    # ``build_parser`` so the capacity mode is testable without a model.
+    assert "--per-row-selection" in inspect.getsource(gate.build_parser)
     tree = ast.parse(inspect.getsource(gate))
 
     def is_field_read(node: ast.AST) -> bool:
