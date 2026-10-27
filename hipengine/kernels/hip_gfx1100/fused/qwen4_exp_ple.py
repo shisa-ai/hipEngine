@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ctypes
-import operator
+from hipengine.kernels.indexed_state import indexed_state_indices
 from pathlib import Path
 
 import numpy as np
@@ -255,45 +255,12 @@ def qwen4_exp_ple_indexed_state_indices(
     uniqueness is enforced separately below.
     """
 
-    try:
-        values = [int(operator.index(value)) for value in state_indices]
-    except TypeError as error:
-        raise TypeError(
-            "state_indices must be a sequence of integers"
-        ) from error
-    count = int(rows)
-    slots = int(state_slots)
-    if not 1 <= count <= QWEN4_EXP_PLE_INDEXED_MAX_ROWS:
-        raise ValueError(
-            "indexed PLE decode rows must be in "
-            f"1..{QWEN4_EXP_PLE_INDEXED_MAX_ROWS}"
-        )
-    if slots <= 0:
-        raise ValueError("state_slots must be positive")
-    if slots > QWEN4_EXP_PLE_INDEXED_MAX_STATE_SLOTS:
-        raise ValueError(
-            "state_slots must be in "
-            f"1..{QWEN4_EXP_PLE_INDEXED_MAX_STATE_SLOTS}"
-        )
-    if len(values) != count:
-        raise ValueError("state_indices must contain one index per row")
-    seen: dict[int, int] = {}
-    for row, slot in enumerate(values):
-        if slot < 0:
-            raise ValueError("state_indices must be non-negative")
-        if slot >= slots:
-            raise ValueError(
-                f"state_indices[{row}]={slot} is outside the declared state slab "
-                f"of {slots} slots"
-            )
-        if slot in seen:
-            raise ValueError(
-                f"state_indices duplicate slot {slot}: rows {seen[slot]} and "
-                f"{row} name the same PLE history; independent rows must "
-                "select distinct slots"
-            )
-        seen[slot] = row
-    return np.ascontiguousarray(values, dtype=np.int64)
+    return indexed_state_indices(
+        state_indices, rows=rows, state_slots=state_slots,
+        max_rows=QWEN4_EXP_PLE_INDEXED_MAX_ROWS,
+        max_state_slots=QWEN4_EXP_PLE_INDEXED_MAX_STATE_SLOTS,
+        operation='PLE', state_name='PLE history',
+    )
 
 
 def qwen4_exp_ple_dilated_depthwise_conv_indexed_f32(

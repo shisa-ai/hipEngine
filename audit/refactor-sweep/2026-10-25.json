@@ -138,23 +138,23 @@
       "start_line": 190,
       "end_line": 201,
       "sha256": "4096e7a72440c62e9b709e140c8bff7040c914ded4cb98eaf1a2a3434f0fa70d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Shared host indexed_state_indices helper replaces GDN/Conv/PLE duplication with original limits/messages and no input mutation; device guards unchanged. Existing/new unit tests, full CPU bundle and all three indexed GPU files pass. Public two-request generation confirms physical width two and shared GDN/PLE admission; Conv public helper engagement not claimed. Worklog: worklog/entries/20261027T093523.078875Z-cleanup-refactor-r0008-8bf1d7.md."],
       "subitems": [
         {
           "line": 192,
           "text": "- The new GDN, F32 Conv and PLE primitives each validate bounded, unique state-slot",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 195,
           "text": "- Consolidate the host slot-vector admission helper when wiring the common",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 199,
           "text": "- Regression gates: `tests/test_unit_qwen4exp_{gdn,conv,ple}_indexed_decode.py`",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

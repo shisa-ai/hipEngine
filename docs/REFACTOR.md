@@ -132,18 +132,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   two imports, two 2-row steps, per-row forced-token identity, c1 chain
   agreement).
 
-## Flash-Next indexed decode admission duplication
-
-- The new GDN, F32 Conv and PLE primitives each validate bounded, unique state-slot
-  indices and repeat a device-side bitmap guard. They are not yet selected by
-  serving; the registered single-row owners remain fallbacks.
-- Consolidate the host slot-vector admission helper when wiring the common
-  batch owner, preserving diagnosable errors, bounds and no partial mutations.
-  Consider a shared device helper only if it preserves each kernel's barrier
-  placement and measured dispatch behavior. Do not remove ownership guards.
-- Regression gates: `tests/test_unit_qwen4exp_{gdn,conv,ple}_indexed_decode.py`
-  and `tests/test_gpu_qwen4exp_{gdn,conv,ple}_indexed_decode.py`.
-
 ## Flash-Next staged MTP physical width and controls
 
 - `Qwen4ExpServingMTP` uses exclusive target/draft pool owners and reversible
