@@ -2793,12 +2793,17 @@ should be removed or collapsed.
 
 ## 2026-09-01 W1 wide-Q6 shared-weight candidate context — open
 
-- `target_verifier_wide_q6_shared4_session()` and the temporary
-  `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` cross-thread experiment flag expose
-  exact Q4 shared-b2w2 and standard/planar-Q6 shared-weight owners at physical
-  R20/R24/R32 for W1. The screened Q5 WMMA addition is excluded after its
-  complete target stage regressed 0.25%. The context defaults off; current
-  chunk/direct owners remain strict fallbacks, and automatic C6/C8 stays K0.
+- `target_verifier_wide_q6_shared4_session()` exposes exact Q4 shared-b2w2
+  and standard/planar-Q6 shared-weight owners at physical R20/R24/R32 for W1.
+  The process-wide `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` fallback is retired;
+  nested disabled diagnostic scopes now remain disabled. The screened Q5 WMMA
+  addition is excluded after its complete target stage regressed 0.25%. The
+  context defaults off; current chunk/direct owners remain strict fallbacks,
+  and automatic C6/C8 stays K0.
+- The recorded no-promotion decisions are in
+  `benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-shared4-candidate.json`
+  and `benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q4-existing-candidate.json`.
+  Removing the environment fallback does not promote either candidate.
 - Synchronization resolved the historical symbol collision: gfx1151 retains
   its measured two-wave/two-tile `shared4` ABI while gfx1100 uses a distinct
   four-wave/three-tile `shared4_gfx1100` symbol. Do not collapse these

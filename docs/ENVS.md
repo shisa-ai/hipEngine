@@ -464,7 +464,6 @@ inputs, not production knobs, and the production profile binder sets
 | `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` | unset | Replays the selected-expert intermediate in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` | unset | Replays the shared-expert down projection in F32. |
 | `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` | set by the Qwen3.8 production profile binder | Production Q4 verifier rowtile admission. |
-| `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` | default off | Wide (logical width >= 8) Q6 shared4 verifier candidate table. |
 | `HIPENGINE_GGUF_ROUTER_F32W_COOP` | backend-scoped | F32-router cooperative scan route (cold-path policy key shared by runtime and batch gate). |
 | `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER` | backend-scoped | F32-router persistent-counter route. |
 
@@ -1129,6 +1128,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` is retired and ignored. The wide-Q6
+  diagnostic candidate is controlled only by `target_verifier_wide_q6_shared4_session()`;
+  a nested disabled scope cannot be overridden by process environment.
 
 - `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER` is retired and ignored.
   Backend capabilities select fused state transfer and packed initial-state

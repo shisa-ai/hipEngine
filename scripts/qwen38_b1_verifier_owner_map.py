@@ -323,8 +323,8 @@ def main() -> None:
             "rows_considered": [20, 24, 32],
             "default_resolution_rule": "rows>1 resolves the per-family "
             "t16_wmma_prefill_bf16_bf16_out variant; the wide-q6 shared4 "
-            "candidate table is default-off (env "
-            "HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4 + logical width >= 8)",
+            "candidate table is default-off (scoped "
+            "target_verifier_wide_q6_shared4_session + logical width >= 8)",
             "families": transfer_targets,
             "lm_head": {
                 "shape": (5_120, 248_320),
