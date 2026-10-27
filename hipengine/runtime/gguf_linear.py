@@ -130,9 +130,11 @@ from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
 from hipengine.kernels.registry import (
     _KERNELS as _REGISTRY_KERNELS,
     KernelKey,
+    MissingKernelError,
     generation,
     is_registered,
     register,
+    registered_keys,
     resolve,
 )
 from hipengine.loading.qwen35_gguf_materialize import (
@@ -3711,6 +3713,68 @@ def _raw_k_f32_ordered_prefill_dispatch(
     return GGUFLinearDispatch(key, abi)
 
 
+_RAW_K_FAMILY_PRESENCE: dict[tuple[str, str, str, str], tuple[int, bool]] = {}
+
+
+def _raw_k_family_is_registered(key: KernelKey, prefix: str) -> bool:
+    """Whether this family registers any kernel for the given variant prefix.
+
+    The answer is cached against the registry generation: an unchanged key
+    space reuses it, and any registration invalidates it.
+    """
+
+    current = generation()
+    cache_key = (key.backend, key.layer, key.quant, prefix)
+    cached = _RAW_K_FAMILY_PRESENCE.get(cache_key)
+    if cached is not None and cached[0] == current:
+        return cached[1]
+    present = any(
+        registered.backend == key.backend
+        and registered.layer == key.layer
+        and registered.quant == key.quant
+        and registered.variant.startswith(prefix)
+        for registered in registered_keys()
+    )
+    _RAW_K_FAMILY_PRESENCE[cache_key] = (current, present)
+    return present
+
+
+def _require_raw_k_rowbatch_family(
+    key: KernelKey, variant: str, prefix: str
+) -> None:
+    """Refuse a row slab that no kernel in this family implements.
+
+    The selector derives ``rowbatch<N>_<output>`` from the requested slab, so a
+    retired width has no key at any output dtype. The registry is the capability
+    source, and the family is registered on demand first so a cold process
+    answers from its registrations rather than from import order.
+
+    The predicate is the family prefix, not the exact key, because the slab can
+    exist while the requested output dtype does not: ``gguf_q8_0`` registers
+    ``rowbatch<N>_f32_f32_out`` and nothing else, so an exact test would refuse
+    a Q8 dtype this retirement never asked about. The retired unit is the slab.
+
+    Placement matters for the same reason. The row slab is an intermediate name:
+    ``_raw_k_wave_scale_dispatch``, ``_raw_k_coltile_pipelined_dispatch`` and
+    ``_q8_dense_wide_dispatch`` rewrite the leaf after this selector, and the
+    coltile and role branches inside it replace the variant before the return.
+    Validating the intermediate would refuse a supported final key. Nothing
+    downstream rewrites a ``rowbatch<N>_*`` leaf, so raising here cannot
+    preempt one.
+    """
+
+    candidate = KernelKey(key.backend, key.layer, key.quant, variant)
+    if is_registered(candidate) or _raw_k_family_is_registered(key, prefix):
+        return
+    # Nothing in the family matched. That is either the retirement case or a
+    # cold registry, and only a registration sweep can tell them apart; the
+    # sweep bumps the generation, so the cached presence recomputes below.
+    _ensure_linear_kernel_registered(candidate)
+    if is_registered(candidate) or _raw_k_family_is_registered(key, prefix):
+        return
+    raise MissingKernelError(candidate, (candidate,))
+
+
 def _raw_k_prefill_rowbatch_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -3833,6 +3897,14 @@ def _raw_k_prefill_rowbatch_dispatch(
                 )
                 if is_registered(role_dispatch_key):
                     selected_variant = role_variant
+    # Retirement is a row-slab question and this is the only point that knows
+    # the final variant. A coltile or role override has replaced the row slab
+    # with its own geometry, which this retirement does not cover, so only a
+    # selection still carrying the plain row slab can be a retired width.
+    if selected_variant.startswith(f"rowbatch{selected}_"):
+        _require_raw_k_rowbatch_family(
+            dispatch.key, selected_variant, f"rowbatch{selected}_"
+        )
     return GGUFLinearDispatch(
         KernelKey(
             dispatch.key.backend,

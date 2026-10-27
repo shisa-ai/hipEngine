@@ -4425,37 +4425,6 @@ fallback count is not a success metric.
   workspace/scratch owner; do not add a public/session selector, allocation,
   sidecar, or second ABI.
 
-## Laguna raw-Q5/Q6 prefill rowbatch selector
-
-- Added 2026-07-28 as the default-off WPF-1 runtime admission seam, promoted
-  rowbatch8 after its exact gates, then promoted rowbatch32 after WPF-1W clean
-  paired 512/1K gains of **7.783%/7.249%** and selector-unset publication at
-  **85.481/79.555 tok/s**. `LagunaGGUFResidentSession(...,
-  raw_k_prefill_rowbatch=0|4|8|16|32)` scopes fixed-grid-Y Q5/Q6 row reuse to one
-  bulk-prefill execution owner; zero is scalar rollback. gfx1151 excludes all
-  sixteen rowbatch plus eight output-column W7900 keys and remains zero.
-- WPF-C1 confirms RB32 remains the full-model winner at retained M256 and traces
-  its Y8 grid. WPF-2 then selects M512 without changing the RB32 owner; clean
-  publication reaches **99.230/91.559 tok/s**. Keep RB8 as the preceding
-  production control and zero as scalar rollback. The publication trigger is
-  now satisfied: remove rowbatch4/16 and their explicit CLI/registry surface in
-  a separate cleanup unit because no retained end-to-end policy selects either.
-  Preserve scalar registered fallback for unsupported shapes/backends.
-- WPF-1T first promoted exact `(4,8)` through the gfx1100 package for full
-  RB32 slabs with output width divisible by four. The no-override M512 state
-  gate is KL0 across all 48 boundaries/KV spans, clean 512/1K publishes
-  **169.253/159.229 tok/s**, and restored 4K passes at **123.084 tok/s**.
-  The bounded `(2,16)` decision is now complete: exactly four
-  `(quant, output, K, N)` keys save **36.773 ms (2.011%)** from the 381-call
-  Q5/Q6 family. The frozen seven-pair gate passes **+0.545%/+0.459%** at
-  512/1K; a package-path repeat remains exact and positive at
-  **+0.382%/+0.242%** but misses the repeated 1K `>0.3%` magnitude threshold.
-  Keep `(2,16)` only for those four measured keys and `(4,8)` everywhere else;
-  pooled 14-pair diagnostics are **+0.441%/+0.366%** with **14/14** and
-  **12/14** wins. The benchmark-only Laguna variant constructor/setter surface
-  is removed; explicit rowbatch selection still restores RB32. The internal
-  context-local `coltile` owner remains necessary to scope production dispatch.
-
 ## Laguna exact grouped-IQ prefill selector
 
 - Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving

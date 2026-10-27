@@ -6641,23 +6641,23 @@
       "start_line": 5510,
       "end_line": 5540,
       "sha256": "d4204e93f7adf74e9001b925373f175ab937438d4444a9ea95c43db58bca7492",
-      "status": "pending",
-      "evidence": ["2026-10-27 source review: explicit publication trigger authorizes raw-Q5/Q6 RB4/RB16 surface removal. Historical commands remain attached to historical revisions; they do not block current retirement. Preserve RB0/RB8/RB32 and live RB32 coltile2_rowbatch16/coltile4_rowbatch8, ordered-F32 and IQ-down variants. Exact removal map underway; implementation waits only for bg-355 runtime freeze to end, then targeted validation."],
+      "status": "resolved-removed",
+      "evidence": ["Removed raw Q5/Q6 RB4/RB16 wrappers/keys/instantiations and Laguna CLI widths. Preserved scalar/RB8/RB32, coltile2/RB16 and coltile4/RB8, ordered-F32, IQ-down and gfx1151 Q8. Final-route family validation respects role/geometry rewrites. Full CPU run plus focused stale-assertion repair, affected GPU file, public Qwen selector/Q8 engagement and docs/audit pass. Public model does not exercise raw Q5/Q6; numerical GPU coverage does. Worklog: worklog/entries/20261027T072745.177432Z-cleanup-refactor-r0256-4f0825.md."],
       "subitems": [
         {
           "line": 5512,
           "text": "- Added 2026-07-28 as the default-off WPF-1 runtime admission seam, promoted",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5519,
           "text": "- WPF-C1 confirms RB32 remains the full-model winner at retained M256 and traces",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5526,
           "text": "- WPF-1T first promoted exact `(4,8)` through the gfx1100 package for full",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

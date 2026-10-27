@@ -88,9 +88,10 @@ _LINEAR_SYMBOL_SHA256 = {
     ),
 }
 _POST_MERGE_SOURCE_SHA256 = {
-    # Later Qwen3.8 and execution-profile policies do not alter H8A's owner.
+    # Later Qwen3.8, execution-profile, and raw-K rowbatch policies do not
+    # alter H8A's owner.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "ae45f9e3e39fd93f971e5aa0b3394b3e5ce0a797b7cef8a9e1a20b1f2a133825"
+        "97f1c88f6d4692156af889853ec5441c6640f7d67b872cc0fac00d5cadeae1dd"
     ),
 }
 

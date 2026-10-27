@@ -5719,13 +5719,9 @@ extern "C" int hipengine_##NAME##_gemv_rowbatch##ROW_BATCH##_bf16_f32_out( \
       x, qweight, out, rows, in_features, out_features, threads, stream); \
 }
 
-HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 4)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 8)
-HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 16)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q5_k, 5, 32)
-HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 4)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 8)
-HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 16)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 32)
 
 #undef HIPENGINE_GGUF_K_ROWBATCH_EXPORTS

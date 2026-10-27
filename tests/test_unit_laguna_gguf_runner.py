@@ -1919,15 +1919,14 @@ def test_laguna_raw_k_prefill_rowbatch_widths_are_gfx1100_only() -> None:
 
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100") == 32
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151") == 0
-    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 4) == 4
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 8) == 8
-    assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 16) == 16
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 32) == 32
     assert resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 0) == 0
     with pytest.raises(ValueError, match="not supported"):
         resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1151", 32)
-    with pytest.raises(ValueError, match="row batch"):
-        resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", 64)
+    for retired in (4, 16, 64):
+        with pytest.raises(ValueError, match="row batch"):
+            resolve_laguna_raw_k_prefill_rowbatch("hip_gfx1100", retired)
 
     assert resolve_laguna_raw_k_prefill_variant("hip_gfx1100") == "coltile"
     assert resolve_laguna_raw_k_prefill_variant("hip_gfx1100", "rowbatch") == (

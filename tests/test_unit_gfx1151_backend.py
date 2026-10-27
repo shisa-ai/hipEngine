@@ -3317,7 +3317,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
                         quant,
                         f"rowbatch{row_batch}_bf16_{output_dtype}_out",
                     )
-                )
+                ) == (row_batch in (8, 32))
     assert (
         backend_package_capability(
             "hip_gfx1100",

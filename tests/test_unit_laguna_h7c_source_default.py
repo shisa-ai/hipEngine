@@ -44,12 +44,14 @@ _GENERIC_VARIANTS = {
 }
 _RUNTIME_DISPATCH_SHA256 = (
     # 665e9a147 added the Q8_0 rowbatch/coltile branch to this shared selector and
-    # 053165acc scoped it to gfx1151. For the Q5/Q6 roles below every branch is
-    # unchanged: the rowbatch capability read, the in_features multiple, the
-    # `prefill_` variant strip, the coltile2_rowbatch16/coltile4_rowbatch8 choice,
-    # and the role-variant lookup. `_assert_policy_routes` exercises those roles
-    # through the live selector.
-    "4c41d131adf76ed82199b1fde6b693a43c4ca62ce613048cacd53492aa1a4342"
+    # 053165acc scoped it to gfx1151. The plain-rowbatch rb4/rb16 retirement
+    # appended the family refusal after the role-variant lookup; it fires only on
+    # a plain `rowbatch<N>_` leaf, and the coltile roles below replace that slab
+    # first. For the Q5/Q6 roles below every branch is unchanged: the rowbatch
+    # capability read, the in_features multiple, the `prefill_` variant strip, the
+    # coltile2_rowbatch16/coltile4_rowbatch8 choice, and the role-variant lookup.
+    # `_assert_policy_routes` exercises those roles through the live selector.
+    "3be3ee53e39b01b61bf53eb6a6ce90bc85b35da7520127d1dadcf75fbb4e4970"
 )
 
 

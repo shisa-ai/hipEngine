@@ -989,8 +989,7 @@ LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
 # shapes. WPF-1T's exact constant-accumulator screen admits four adjacent output
 # columns for full RB32 slabs, then qualifies `(2,16)` only for four measured
 # `(quant, output variant, K, N)` configurations. Explicit rowbatch preserves
-# the preceding exact owner; zero/4/8/16/32 and unsupported widths remain
-# fallbacks.
+# the preceding exact owner; zero/8/32 and unsupported widths remain fallbacks.
 GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = True
 GGUF_RAW_K_PREFILL_ROWBATCH = 32
 GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = True
