@@ -6401,18 +6401,18 @@
       "start_line": 5314,
       "end_line": 5326,
       "sha256": "b953e9278da7fe213414c99a2c76d7b7e431044b71b56ee501f14455aad5b34a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["tests/test_unit_laguna_h7u_source_default.py passes: package parallel default, temporary H7U capability absent, explicit serial/parallel resolve, invalid mode rejects. Inspected runtime single capability resolver and set_group_compact_mode; required serial rollback remains unchanged. Completed receipt only removed; docs/audit gates pass."],
       "subitems": [
         {
           "line": 5316,
           "text": "- Cleanup completed 2026-08-02. Exact bounded fixed, source-default",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5321,
           "text": "- Keep the explicit registered serial scheduler and",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
