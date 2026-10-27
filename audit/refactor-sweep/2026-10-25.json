@@ -5740,23 +5740,25 @@
       "start_line": 4813,
       "end_line": 4828,
       "sha256": "1f0e53463915be154de721c3b66e411f3e97b4dfc955c7c16ac954de08ec36c7",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Removed redundant gfx1151 empty Q4/Q6 source-F16 declarations/exports and migrated tests: requested-backend capability defaults already use empty maps, preserving exact fallback with no peer inheritance. RED/GREEN plus resolver, dispatch and plan tests pass. Dense gfx1151 scratch remains dedicated (new non-anchor/4K coverage); unlike MoE, no dense liveness policy exists. Q5 dead-input cast is already in place. Remaining dense lifetime/owner-alias work moved to bottom with R0219 public-route dependency. No arithmetic or allocation change, no memory/performance claim. Worklog: worklog/entries/20261027T182246.881294Z-cleanup-refactor-r0220-b96656.md."
+      ],
       "subitems": [
         {
           "line": 4815,
           "text": "- Added 2026-08-15 for the 48 sole-Q5T16 K6,144/N5,120 recurrent outputs.",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 4820,
           "text": "- The source-F16 context adds bounded activation/tile/output scratch, raising",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4825,
           "text": "- Q4/Q6 source-F16 maps are explicit empty denials after complete pp512 losses.",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

@@ -983,6 +983,44 @@ def test_gfx1100_source_f16_owner_keeps_exact_fallback_beyond_scratch_rows(
     assert owner is fallback
 
 
+@pytest.mark.parametrize("file_type", ("MOSTLY_Q4_K_M", "MOSTLY_Q4_K_S"))
+def test_gfx1151_source_f16_policy_omissions_keep_other_quants_exact(file_type) -> None:
+    runner = _fake_dense_qwen38_q4ks_runner()
+    runner.weights.file_type_name = file_type
+    policy = gguf_runner._gguf_t16_f16_rocblas_prefill_policy(runner)
+
+    assert policy is not None
+    assert "gguf_q4_k_t16_v1" not in policy
+    assert "gguf_q6_k_t16_qmicro_planar_v1" not in policy
+    assert policy["gguf_q5_k_t16_v1"] == {
+        (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
+    }
+
+
+@pytest.mark.parametrize("rows", (257, 513, 1_025, 4_096))
+def test_gfx1151_dense_source_f16_planes_have_dedicated_owners(
+    monkeypatch, rows,
+) -> None:
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_dense_qwen38_q4ks_runner(),
+        rows=rows,
+        capacity=rows,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+
+    # Dense gfx1151 has no liveness policy. The MoE owner-slot policy does not
+    # apply to this geometry; preserve this boundary until a dense plan exists.
+    assert scratch.allocation_mode == "dedicated"
+    for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out"):
+        plane = getattr(scratch, name)
+        assert plane.ptr and plane.nbytes
+        assert plane in scratch.buffers
+    assert not scratch.allocation_groups
+
+
 def test_source_f16_runner_uses_quant_neutral_owner_names() -> None:
     fields = gguf_runner.Qwen35GGUFResidentSession.__dataclass_fields__
     assert fields["use_t16_f16_rocblas_prefill"].default is None
