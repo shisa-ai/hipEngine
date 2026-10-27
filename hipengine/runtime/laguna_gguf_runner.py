@@ -2982,7 +2982,6 @@ class LagunaGGUFResidentSession:
         use_split_attention: bool | None = None,
         use_split_gate_fusion: bool | None = None,
         use_swa_split_wave_local: bool | None = None,
-        use_moe_tail_next_rmsnorm: bool = True,
         use_moe_tail_wave0_tree: bool | None = None,
         use_head_kv_fusion: bool | None = None,
         use_q5_fixed_meta_output: bool | None = None,
@@ -3816,7 +3815,6 @@ class LagunaGGUFResidentSession:
             self.kernel_plan = resolve_laguna_eager_kernel_plan(
                 config,
                 backend=self.backend,
-                use_moe_tail_next_rmsnorm=use_moe_tail_next_rmsnorm,
                 use_moe_tail_wave0_tree=(
                     requested_moe_tail_wave0_tree
                 ),

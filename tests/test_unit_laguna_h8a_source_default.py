@@ -93,8 +93,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_q5_f32_resident_global_cache` opt-out, so the runner and this GPU
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # Serial prompt orchestration moved to the oracle helper; H8A cache ownership is unchanged.
-        "22d6f430afb14ce62986be7affb06078eecd571b4342c514704d5bc1a27dd5be"
+        # MoE-tail constructor comparison moved to a scoped helper; H8A cache ownership is unchanged.
+        "371c90790e63b0685df8f43fcab04d43dff62104f43de9d0770544a3c9983dcf"
     ),
     # This GPU test renamed the shared ordered-F32 prefill session manager and
     # then dropped the retired R0249 opt-out assertions.

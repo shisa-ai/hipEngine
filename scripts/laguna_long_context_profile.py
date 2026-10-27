@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 from datetime import datetime, timezone
 import json
 import math
@@ -21,6 +22,7 @@ from hipengine.core.memory import memory_stats
 from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
+from scripts.laguna_moe_tail_diagnostic import unfused_moe_tail
 from scripts.laguna_prefill_profile import _profile_token_stream
 from scripts.laguna_target_ar_bench import (
     DEFAULT_CACHE,
@@ -34,6 +36,12 @@ from scripts.laguna_target_ar_bench import (
     _sha256_bytes,
     _sha256_json,
 )
+
+
+def _configure_moe_tail_comparison(stack: ExitStack, owner, *, enabled: bool) -> None:
+    if not enabled:
+        stack.enter_context(unfused_moe_tail(owner))
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
@@ -695,6 +703,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.compare_f16_decode_fixedk:
         os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = "onebarrier"
     load_started = time.perf_counter()
+    diagnostic_scopes = ExitStack()
     try:
         owner = LagunaGGUFResidentSession(
             args.model,
@@ -714,7 +723,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
-            use_moe_tail_next_rmsnorm=args.moe_tail_next_rmsnorm,
             use_head_kv_fusion=args.head_kv_fusion,
             global_split_min_live=(
                 127 if args.decode_split_attention is True else None
@@ -776,6 +784,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_raw_k_prefill_rowbatch
                 else args.raw_k_prefill_rowbatch
             ),
+        )
+        _configure_moe_tail_comparison(
+            diagnostic_scopes, owner, enabled=args.moe_tail_next_rmsnorm,
         )
         active_matrix_rows = owner.prefill_chunk_size
         if args.warmup_rows > active_matrix_rows:
@@ -1194,6 +1205,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
         resident_nbytes = owner.resident_nbytes
     finally:
+        diagnostic_scopes.close()
         if owner is not None:
             owner.close()
         if (

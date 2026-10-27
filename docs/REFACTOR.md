@@ -10298,29 +10298,6 @@ empty/short/partial rows, continuation, verifier rows and cleanup. Do not
 collapse strict exact fallbacks into online arithmetic during interface cleanup.
 No variant, allocation, arithmetic or default changes in this consolidation.
 
-### R0281-D9 — Laguna MoE-tail composite comparison control
-
-`use_moe_tail_next_rmsnorm=False` still selects the registered unfused
-add/add/RMSNorm chain and is exposed by
-`scripts/laguna_long_context_profile.py --no-moe-tail-next-rmsnorm`.
-The gfx1151 backend also defaults the separate wave0-tree fused sibling;
-its false value restores the earlier fused composite, not the unfused chain.
-These are distinct comparison levels. Missing fused keys and ineligible
-rows retain the primitive chain regardless of public controls.
-
-**Decision needed:** retain the constructor/profile composite override as a
-supported diagnostic, or move comparisons to a scoped plan owner and retire
-the public control. The old one-release note is not a current failure.
-**Clearing action:** migrate the profile caller and plan tests together,
-preserving actual fused/unfused comparison and the separate fused-sibling
-rollback. Run `tests/test_unit_laguna_moe_tail_wave0_tree_runtime.py`,
-`tests/test_unit_laguna_gguf_runner.py`,
-`tests/test_unit_laguna_long_context_profile.py` and the corresponding GPU
-composite/primitive oracle; then R0249/R0250's public model gate with c1,
-multi-row/verifier and missing-key fallbacks, continuation and cleanup.
-Keep the architecturally required registered unfused chain. No fusion,
-arithmetic, default or public-control change in this reconciliation.
-
 ### R0281-D12 — Q5 constructor retirement public validation
 
 Unused `use_q5_wave32x2_output` and `use_q5_wave32x2_query_gate`
