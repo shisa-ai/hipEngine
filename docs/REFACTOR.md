@@ -3082,20 +3082,6 @@ should be removed or collapsed.
   (`0.002565/0.007202`). Keep it default-off only for exact-repack/reduction
   bisection; remove it when that successor lands or at campaign closure.
 
-## 2026-08-27 Qwen4Exp bounded chunked prefill
-
-- `Qwen4ExpGGUFResidentModelRunner.prefill()` delegates to the shipped
-  `prefill_chunked()` path using the runner's admitted chunk capacity.
-  `prefill_serial()` is the separate token-by-token reference, not the public
-  default. The old size-2 candidate and nine-token timing narrative describe
-  early bring-up and do not define current admission.
-- Remaining cleanup: consolidate redundant public entry points without removing
-  the serial oracle or changing chunk/cancellation ownership. Verify all callers
-  of `prefill_chunked()` before making it private, and preserve the public
-  `prefill()` interface and 2,052+ QSA transition coverage. Current chunk policy
-  is documented by `_AUTO_PREFILL_CHUNK_LADDER` and the generator constructor;
-  it is separate from the engine-loop scheduling cap.
-
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 
 - The strict Qwen4Exp runner currently downloads one FP32 block-score row per

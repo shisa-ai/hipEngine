@@ -253,7 +253,7 @@ def test_the_prefill_call_site_binds_the_runner_lane(monkeypatch):
 
         monkeypatch.setattr(runner, "_prefill_chunk", chunk)
         with pytest.raises(RuntimeError, match="stop before head"):
-            runner.prefill_chunked([1, 2, 3])
+            runner.prefill([1, 2, 3])
         assert seen == [Q8MMQLaneSelection(vec4=True)]
         assert not q8_mmq_vec4_enabled()
 

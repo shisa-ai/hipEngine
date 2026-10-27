@@ -4166,13 +4166,13 @@
       "start_line": 3730,
       "end_line": 3742,
       "sha256": "04d53627f969da5217852f92b62e311760a2533c9ff6bbd3d31a39389e2e8ea9",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed duplicate prefill_chunked public wrapper; prefill directly invokes unchanged private chunked implementation. Migrated every live caller, preserved serial/append/resumable lifecycle and options. RED/GREEN forwarding, CPU326, public2405-token/GPU325 and docs/audit gates pass. Worklog: worklog/entries/20261027T014909.329012Z-cleanup-refactor-r0161-prefill-e3cb10.md."],
       "subitems": [
         {
           "line": 3732,
           "text": "- `Qwen4ExpGGUFResidentModelRunner.prefill()` remains the strict serial default;",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

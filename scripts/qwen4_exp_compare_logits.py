@@ -215,12 +215,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             serial_logits = serial.logits.copy()
             teacher_to_serial = compare_logits(teacher_logits, serial_logits)
             started = perf_counter()
-            actual = generator.runner.prefill_chunked(hip_tokens.tolist())
+            actual = generator.runner.prefill(hip_tokens.tolist())
             prefill_timings["chunked_seconds"] = perf_counter() - started
             serial_to_chunked = compare_logits(serial_logits, actual.logits)
         else:
             prefill = (
-                generator.runner.prefill_chunked
+                generator.runner.prefill
                 if args.prefill_mode == "chunked"
                 else generator.runner.prefill_serial
             )

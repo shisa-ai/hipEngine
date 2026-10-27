@@ -177,7 +177,7 @@ def test_pair_scope_restores_on_a_failing_prefill(enabled, monkeypatch):
 
         monkeypatch.setattr(runner, "_prefill_chunk", chunk)
         with pytest.raises(RuntimeError, match="stop before head"):
-            runner.prefill_chunked([1, 2, 3])
+            runner.prefill([1, 2, 3])
         assert not wide_f16_pair_enabled()
 
 
@@ -195,7 +195,7 @@ def test_real_prefill_call_site_binds_and_restores_on_failure(enabled, monkeypat
         with wide_f16_activation_session(workspace_ptr=123, workspace_nbytes=456):
             outer = wide_f16_activation_workspace()
             with pytest.raises(RuntimeError, match="stop before head"):
-                runner.prefill_chunked([1, 2, 3])
+                runner.prefill([1, 2, 3])
             assert wide_f16_activation_workspace() == outer
         assert len(calls) == 1
 
@@ -212,7 +212,7 @@ def test_borrowed_smaller_workspace_keeps_original_staging_capacity(enabled, mon
         monkeypatch.setattr(runner, "_prefill_chunk", chunk)
         with use_workspace(runner, capture_workspace(small)):
             with pytest.raises(RuntimeError, match="stop before head"):
-                runner.prefill_chunked([1])
+                runner.prefill([1])
         assert runner.prefill_chunk_size == 32
         assert wide_f16_activation_workspace() is None
 

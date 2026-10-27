@@ -7,7 +7,7 @@ RT-1 peer-fairness gate for the qwen4exp prefill chunk.
 interchangeable and the ledger has conflated them:
 
 ``session.prefill_chunk_size``
-    The *runner-internal* chunk. ``prefill_chunked`` picks the prefill
+    The *runner-internal* chunk. ``prefill`` picks the prefill
     workspace whose ``prefill_chunk_size`` fits the token count, swaps it in,
     and runs the whole prompt inside one call. The generator's constructor owns
     this value: with no explicit chunk the capacity guard admits the largest
@@ -192,7 +192,7 @@ def _install_instrumentation(trace: dict[str, list[dict[str, Any]]]) -> None:
                 "n_tokens": len(token_ids),
                 "prefill_chunk_size": int(self.prefill_chunk_size),
                 # The workspace chunk is the value that actually drives
-                # prefill_chunked's selection; the attribute alone is not proof.
+                # the chunked implementation's selection; the attribute alone is not proof.
                 "workspace_chunks": [int(w.prefill_chunk_size) for w in workspaces],
             }
         )

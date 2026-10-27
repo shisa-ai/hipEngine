@@ -10737,24 +10737,6 @@ class Qwen4ExpGGUFResidentModelRunner:
             hidden_seeds=np.concatenate(captured, axis=0),
         )
 
-    def prefill_chunked(
-        self,
-        token_ids: list[int] | tuple[int, ...],
-        *,
-        capture_hidden_seeds: bool = False,
-        capture_logits: bool = True,
-        capture_target_hidden: bool = True,
-        embedding_overrides: Mapping[int, np.ndarray] | None = None,
-        mrope_positions: np.ndarray | None = None,
-        hidden_seed_consumer=None,
-    ) -> Qwen4ExpTokenResult:
-        options = dict(
-            capture_hidden_seeds=capture_hidden_seeds, capture_logits=capture_logits,
-            capture_target_hidden=capture_target_hidden,
-            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions,
-            hidden_seed_consumer=hidden_seed_consumer)
-        return self._prefill_chunked_impl(token_ids, **options)
-
     def _prefill_chunked_impl(self, token_ids, **kwargs):
         steps = self._prefill_chunked_steps(token_ids, **kwargs)
         while True:
@@ -10985,7 +10967,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         mrope_positions: np.ndarray | None = None,
         hidden_seed_consumer=None,
     ) -> Qwen4ExpTokenResult:
-        return self.prefill_chunked(
+        return self._prefill_chunked_impl(
             token_ids,
             capture_hidden_seeds=capture_hidden_seeds,
             capture_logits=capture_logits,
