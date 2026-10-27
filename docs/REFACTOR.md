@@ -3434,8 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna P0 IQ3 serial fallback | `LagunaGGUFResidentSession(..., iq3_c1_down_schedule="serial_weighted")` remains the second-level c=1 rollback behind the retained wave10 default and explicit wave4 rollback; unsupported backends continue to default serial. | Historical P0 promotion moved h32 **48.780 -> 50.254 tok/s (+3.022%)** with exact full state and every context/category positive. Wave4 is now the immediate fallback for the later retained wave10 composite. The slower `row4_reduce` runtime mode is removed; the exact sign-bit sibling remains diagnostic after failing clean span/child guards. The measured tile4 leaf remains explicit for DFlash verifier rows. | Fold this entry into the wave10 rollback after one release/defaults-only refresh. Never remove the registered serial producer/composite or unmeasured-backend fallback without independent evidence. |
-| Laguna IQ3 wave10-fused rollback | `LAGUNA_IQ3_WAVE10_FUSED=True` defaults gfx1100 c=1 decode to the exact local320 producer/reducer composite; `LagunaGGUFResidentSession(..., iq3_c1_down_schedule="wave4_reduce")` and `scripts/laguna_target_ar_bench.py --iq3-c1-down-schedule wave4_reduce` restore the registered producer-plus-reducer chain. Exact-key miss, rows/prefill, gfx1151, and unsupported backends retain prior registered schedules. | Promoted. Shared-weight full state/default-vs-wave4 is exact through 16 transitions. Cache-only tracing records **45 candidate + two unchanged reducers / 678 model kernels/token**, local320/VGPR88/LDS512/scratch0. Every short/512/1K/near-4K clean order improves inclusive IQ3 and kernel sum with span/child guards passing. Both complete 18-prompt orders move h32 **62.318 -> 63.270 tok/s (+1.528%)**, every train/heldout category improves at both horizons, and E2E/prefill/TTFT guards pass. | Retain explicit wave4 rollback for one release/bisection window and a defaults-only matched-completion refresh, then remove positive `wave10_fused` experiment semantics while permanently keeping the registered wave4+weighted and serial fallbacks for key miss, rows/prefill, and unsupported backends. |
 | Laguna P2 exact split attention rollback | `LagunaGGUFResidentSession(..., use_split_attention=False)`, `allocate_laguna_kv_cache(..., use_split_attention=False)`, and `laguna_target_ar_bench.py --disable-split-attention` restore the registered global/SWA token4 readers; explicit threshold arguments retain focused A/B control. | Promoted on gfx1100 at global `>=127` and SWA `>=65`. Actual layer event/wall gates and full state are exact; clean short/512/1K/near-4K attention improves **15.66-23.28%**, kernel sum **2.67-16.11%**, span **4.65-14.63%**, and child throughput **1.19-17.58%**. The complete two-order 18-prompt gate moves h32 **50.093 -> 51.436 tok/s (+2.681%)** and E2E **+0.496%**, with every train/heldout category positive. Two reusable buffers add 1,572,864 bytes. gfx1151 and unmeasured backends retain fallback. | After one release/bisection window and P2.2 adjudication, remove positive threshold experiment semantics and keep at most the clear disable rollback. Always retain the registered exact global/token4 readers for below-threshold and unsupported routes. |
 | Laguna P2 exact SWA tile16 rollback | `use_swa_split_tile16=False` / `--disable-swa-split-tile16` restores P2.1's one-slot score producer above gfx1100's retained live-257 tile16 default; explicit threshold remains for focused A/B. | Promoted. Two process orders improve pooled 512/1K/near-4K SWA attention **0.571%/0.344%/0.208%** and total attention **0.461%/0.272%/0.056%** with unchanged dispatches/memory. The complete fallback gate and a 150-transition default-vs-rollback gate are exact/non-regressive. | Fold into the P2 rollback row after one release/defaults-only long-context refresh; retain the registered P2.1 producer permanently for below-threshold and unsupported routes. |
 | Laguna P4.1 split-reducer gate-fusion rollback | `LagunaGGUFResidentSession(..., use_split_gate_fusion=False)`, `allocate_laguna_kv_cache(..., use_split_gate_fusion=False)`, and `laguna_target_ar_bench.py --disable-split-gate-fusion` restore the exact split reducer plus standalone softplus BF16 gate. | Promoted on gfx1100 split paths. First/last actual layers at live 128/257 are bit-exact and improve inclusive event **3.00-10.05%** and wall **2.89-9.60%**; full state/lifecycle are exact. The two-order category gate moves h32 **51.497 -> 51.825 tok/s (+0.637%)** with every train/heldout category decode row positive and no new allocation. Below-threshold, registry miss, gfx1151, and unsupported backends always use the registered unfused chain. | After one release/bisection window and a defaults-only matched-completion refresh, remove the positive constructor/CLI selection while retaining the architecturally required unfused registered fallback. |
@@ -10461,3 +10459,24 @@ selection, exact fallback bodies and backend capability behavior. Exercise
 actual Q4 full logits and a missing-key fallback, then R0249/R0250's public
 continuation/lifecycle gate; do not treat a Q6 producer-top1 run as exercising
 this Q4 path. No control, kernel or default changes in this reconciliation.
+
+### R0281-IQ3 — c1 IQ3 schedule comparison interface
+
+The gfx1100 package defaults `wave10_fused`; a missing wave10 key restores
+its `wave4_reduce` schedule, while packages without either capability default
+to `serial_weighted`. `iq3_c1_down_schedule` and target-AR's
+`--iq3-c1-down-schedule` still expose all three modes and report the resolved
+schedule. Wave4 uses a separate producer plus weighted reducer; wave10 and
+serial select different weighted composites. Multi-row execution bypasses
+this c1 composite owner. R0258 owns the separate grouped-prefill policy,
+not these c1 schedules; verifier output-tile selection is separate too.
+
+**Decision needed:** retain the constructor/CLI modes as supported diagnostics,
+or migrate schedule comparisons to a scoped owner before retiring the public
+selector. **Clearing action:** migrate both target-AR construction sites and
+result fields, preserving the wave10-miss fallback, wave4 producer/reducer and
+serial chain. Run the three `test_laguna_iq3_*` schedule/removed-signbit nodes
+in `tests/test_live_laguna_moe_gpu.py`, runner and target-AR units; then exact
+primitive comparisons and R0249/R0250's public c1/multi-row continuation and
+cleanup gate. Keep unsupported/backend fallbacks, grouped-prefill consumers
+and independent verifier tiles. No mode, kernel or default changes here.

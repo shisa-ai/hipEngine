@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "IQ3 c1 rows 6179/6180 consolidate into R0281-IQ3 live schedule comparison decision, distinct from R0258 grouped prefill and verifier tile selection. Preserve wave10 miss->wave4, serial composite, backend and multi-row fallback contracts. Three explicit host plan nodes plus runner/target-AR units and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210132.459602Z-cleanup-refactor-r0281-iq3-29157e.md.",
         "Q4 head row 6178 moves to bottom R0281-Q4HEAD: live target-AR control affects scalar raw projection only, not row/bulk/verifier or Q6 producer-top1. Defer diagnostic-vs-scoped-owner decision; preserve missing-key and exact fallback contracts. Runner/target-AR units and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205756.571310Z-cleanup-refactor-r0281-q4head-0ecd29.md.",
         "Mixed projection rows 6176/6177 consolidate into R0281-MIXED. Live target-AR comparison levels: local32, fixed-Q6/generic quad, then pair/singleton; fixed-Q6 false alone cannot bypass local32 success. Defer diagnostic-vs-scoped-policy ownership, preserve quant-tuple and miss ordering. Four unit files/help and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205524.346915Z-cleanup-refactor-r0281-mixed-1c7e8d.md.",
         "Q5 metadata rows 6174/6175 consolidate into bottom R0281-Q5META: live target-AR role/shared controls select distinct exact comparisons; query/gate pair applies after mixed-quad disable/miss. Defer supported diagnostic versus scoped-owner migration, preserve all fallbacks. Three unit files/help and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205211.312283Z-cleanup-refactor-r0281-q5meta-a3e721.md.",
@@ -7524,12 +7525,12 @@
         {
           "line": 6179,
           "text": "| Laguna P0 IQ3 serial fallback | `LagunaGGUFResidentSession(..., iq3_c1_down_schedule=\"serial_weighted\")` remains the second-level c=1 rollback behind the retained wave10 default and explicit wave4 rollback; unsupported backends continue to default serial. | Historical P0 promotion moved h32 **48.780 -> 50.254 tok/s (+3.022%)** with exact full state and every context/category positive. Wave4 is now the immediate fallback for the later retained wave10 composite. The slower `row4_reduce` runtime mode is removed; the exact sign-bit sibling remains diagnostic after failing clean span/child guards. The measured tile4 leaf remains explicit for DFlash verifier rows. | Fold this entry into the wave10 rollback after one release/defaults-only refresh. Never remove the registered serial producer/composite or unmeasured-backend fallback without independent evidence. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-IQ3"
         },
         {
           "line": 6180,
           "text": "| Laguna IQ3 wave10-fused rollback | `LAGUNA_IQ3_WAVE10_FUSED=True` defaults gfx1100 c=1 decode to the exact local320 producer/reducer composite; `LagunaGGUFResidentSession(..., iq3_c1_down_schedule=\"wave4_reduce\")` and `scripts/laguna_target_ar_bench.py --iq3-c1-down-schedule wave4_reduce` restore the registered producer-plus-reducer chain. Exact-key miss, rows/prefill, gfx1151, and unsupported backends retain prior registered schedules. | Promoted. Shared-weight full state/default-vs-wave4 is exact through 16 transitions. Cache-only tracing records **45 candidate + two unchanged reducers / 678 model kernels/token**, local320/VGPR88/LDS512/scratch0. Every short/512/1K/near-4K clean order improves inclusive IQ3 and kernel sum with span/child guards passing. Both complete 18-prompt orders move h32 **62.318 -> 63.270 tok/s (+1.528%)**, every train/heldout category improves at both horizons, and E2E/prefill/TTFT guards pass. | Retain explicit wave4 rollback for one release/bisection window and a defaults-only matched-completion refresh, then remove positive `wave10_fused` experiment semantics while permanently keeping the registered wave4+weighted and serial fallbacks for key miss, rows/prefill, and unsupported backends. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-IQ3"
         },
         {
           "line": 6181,
