@@ -10548,28 +10548,28 @@
       "start_line": 8160,
       "end_line": 8177,
       "sha256": "4ad47ff19373303470043992b22706c269b1efafbafb9d44aee2bb6437a1bb75",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified setter/CLI removal with existing negative contract tests and preserved constructor/capability/registered paths. Completed receipt removed. Worklog: worklog/entries/20261027T043254.284085Z-cleanup-refactor-r0364-668722.md."],
       "subitems": [
         {
           "line": 8162,
           "text": "- Added 2026-07-31 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8167,
           "text": "- Six of seven same-resident p512/d128 candidates improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8171,
           "text": "- Remove the comparison CLI and session setter after tracked-clean",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8174,
           "text": "- Tracked-clean publication passes at **22.581875 tok/s**. The comparison CLI,",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
