@@ -5138,18 +5138,18 @@
       "start_line": 4363,
       "end_line": 4377,
       "sha256": "f22b535b8a04ac7dfa1b2c2a5eedb78281dc1915b0ea607c7023352b1a28a8cd",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed max-request environment readers from server and adapter together. Backend policy, owner cap, derived bounds and strict fallback preserved. RED/GREEN adapter, full seam and targeted server admission/group-limit tests pass; docs/audit pass. Public C5/C8 D1/D24 grouping/lifecycle checks remain open. Worklog: worklog/entries/20261027T155317.132024Z-cleanup-refactor-r0196-f93861.md."],
       "subitems": [
         {
           "line": 4365,
           "text": "- Added 2026-08-31 with task #30. The gfx1100 production package qualifies one",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4373,
           "text": "- Removal trigger: after one release window with repeated full-category C5/C8",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

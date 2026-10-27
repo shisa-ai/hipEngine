@@ -135,7 +135,6 @@ from hipengine.speculative.transaction import (
 
 _NGRAM_MOD_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD"
 _NGRAM_MOD_N_MATCH_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH"
-_PHYSICAL_MAX_REQUESTS_ENV = "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS"
 _EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
 _Q6_MIXED_TARGET_ROWTILES_ENV = (
     "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
@@ -1031,13 +1030,7 @@ class Qwen35GGUFMTP2Adapter:
         policy_max_requests = max(
             width for width, _depth in self.physical_width_depths
         )
-        self._configured_physical_max_requests = min(
-            policy_max_requests,
-            _positive_env(
-                _PHYSICAL_MAX_REQUESTS_ENV,
-                policy_max_requests,
-            ),
-        )
+        self._configured_physical_max_requests = policy_max_requests
         physical_capacity = min(
             max(1, int(getattr(self.owner, "capacity", policy_max_requests))),
             self._configured_physical_max_requests,

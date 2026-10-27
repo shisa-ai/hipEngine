@@ -343,9 +343,6 @@ _SPECULATIVE_PROVIDER_ALLOWED_REQUEST_KEYS = frozenset(
 )
 _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS = 4
 _GGUF_MTP_MAX_ACTIVE_REQUESTS = 4
-_GGUF_MTP_MAX_ACTIVE_REQUESTS_ENV = (
-    "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS"
-)
 _UNSUPPORTED_GRAMMAR_FIELDS = (
     "grammar",
     "guided_grammar",
@@ -659,17 +656,7 @@ def _gguf_mtp_batch_route_max_active_requests(
         physical_max = max(physical_widths)
     except (AttributeError, ImportError, IndexError, TypeError, ValueError):
         return _GGUF_MTP_MAX_ACTIVE_REQUESTS
-    configured_raw = os.environ.get(_GGUF_MTP_MAX_ACTIVE_REQUESTS_ENV)
-    try:
-        configured_max = int(str(configured_raw).strip())
-    except (TypeError, ValueError):
-        configured_max = physical_max
-    if configured_max <= 0:
-        configured_max = physical_max
-    return max(
-        (width for width in physical_widths if width <= configured_max),
-        default=_GGUF_MTP_MAX_ACTIVE_REQUESTS,
-    )
+    return physical_max
 
 
 class OpenAIHTTPError(Exception):

@@ -1456,18 +1456,15 @@ def test_gfx1100_wide_physical_limit_has_same_build_rollback(
         target_verify_mode="native",
         candidate_budget=3,
     )
-    # The rollback env caps admitted width; the exact bound and its derived
-    # frontier padding follow the package policy, so assert the contract
-    # (a real reduction, consistent bound) rather than a policy-dependent
-    # constant that changes whenever the width/depth table is requalified.
+    # The retired override cannot change backend-owned admission.
     expected_bound = max(
         width for width, _depth in rollback._physical_width_depth_policy()
     )
-    assert expected_bound <= 4
+    assert expected_bound == wide_bound
     assert rollback.physical_max_requests == expected_bound
     assert rollback.physical_request_bound == expected_bound
-    assert rollback.physical_max_requests < wide_bound
-    assert rollback.physical_accept_max_rows <= wide_rows
+    assert rollback.physical_max_requests == wide_bound
+    assert rollback.physical_accept_max_rows == wide_rows
     rollback.close()
 
 

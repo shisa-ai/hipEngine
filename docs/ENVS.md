@@ -214,7 +214,6 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT` | unset (on) | none | When unset, the AR batcher groups ready rows into its default cohort; `0` disables the default-cohort grouping for tests/diagnostics. |
 | `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` | unset | none | Resolves the MTP2 context window used by the dense speculative route; unset takes the model's retained window. Benchmark harnesses export it through `scripts/bench_env_preflight.py` to catch wrappers that silently drop it. |
 | `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` | `4` | none | Bounded provider KV/state checkpoints for MTP restoration after a target radix-cache hit. Capture is disabled when target prefix caching is off. Set `0` for the memory/bisection rollback; prefix hits without a provider checkpoint cannot restore MTP provider state. |
-| `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS` | `4` | none | Server cap on concurrently active MTP2 (dense speculative) requests. |
 | `HIPENGINE_GEMMA4_ARTIFACT` | unset | none | Overrides the Gemma 4 campaign GGUF that `scripts/gemma4_campaign_bench.py` and the probes built on it default to. When unset, the first of the recorded locations that exists is used. Read by the scripts only, never by the runtime. |
 | `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` | unset (on) | none | Rollback lever for the fused int8-dp4a MMQ32 route on Gemma 4's `Q4_K` expert gate/up prefill, which is the default path and measures 1.27x on the 512/128 prefill. Set it to `0` to restore the fp32 grouped route. On realistic input the route matches its fp32 owner: ten consecutive tokens over 2004 ids of prose and all 23 over a truncated Python snippet, with the arms parting only at low-margin positions and, where they do, parting from llama.cpp together rather than from each other. Its raw-logit perturbation is three times smaller in distribution than out (3.46 against 9.76 max absolute difference), which is the mechanism behind that: the int8 activation-quantization step is small enough not to move a decision on input the model was trained for, and random ids leave the logits flat enough that it is. It is over the binding 0.05 `kl_max` bar at 7 of the 13 frozen-campaign prefill lengths with greedy decision flips at 24 and 64 ids, and at 1024 ids it is 7.3e-07; divergence counts are corpus-specific, because the trigger is the prompt's routing rather than its length, so the same length is bit-exact under one corpus and a decision flip under the other. Retained only as a rollback lever; removed once a teacher-forced gate verdict for the new default is on file. See `docs/REFACTOR.md`. |
 | `HIPENGINE_GEMMA4_MOE_DOWN_MMQ` | unset (off) | none | Enables the optional DS4 DP4A MMQ expert down owner with `1`. Automatic selection does not use it because the one-plane MMQ implementation fails nine of ten generated-history screens and three-plane feedback still fails seven. The exact-down control matches all 610 strict rows. Explicit pinned `mmq` selection remains available. The clearing command and removal condition are in `docs/REFACTOR.md`; `scripts/gemma4_generated_history_gate.py` reproduces the paired continuation screen without changing numerical thresholds. |
@@ -1127,6 +1126,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS` is retired and ignored. Server
+  physical MTP admission and adapter width selection follow backend policy;
+  owner capacity and strict-profile fallback still constrain execution.
 
 - `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT` is retired and ignored. Prompt
   streaming follows adapter capability and prefix-restoration checks; the

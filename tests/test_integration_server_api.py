@@ -7529,7 +7529,7 @@ def test_server_production_gguf_uses_backend_physical_mtp_route_limit() -> None:
     asyncio.run(run())
 
 
-def test_server_production_gguf_width_rollback_uses_largest_admitted_cell(
+def test_server_production_gguf_width_ignores_retired_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     llm = FakeLLM()
@@ -7549,7 +7549,7 @@ def test_server_production_gguf_width_rollback_uses_largest_admitted_cell(
 
     assert app.state.hipengine_generation_batcher._route_max_active_requests == {
         _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
-        _SPECULATIVE_MTP_BATCH_ROUTE: 2,
+        _SPECULATIVE_MTP_BATCH_ROUTE: 8,
         _SPECULATIVE_MTP_AUTO_ROUTE: 4,
     }
 

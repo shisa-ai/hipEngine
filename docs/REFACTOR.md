@@ -3151,18 +3151,14 @@ fallback count is not a success metric.
 
 ## gfx1100 dense SPECDEC2 C8 physical-width rollback
 
-- Added 2026-08-31 with task #30. The gfx1100 production package qualifies one
-  dense MTP2 physical group through eight requests; capability/frontier,
-  provider, cycle-hidden, padded target, and accept owners derive their bounds
-  from that package declaration. Strict remains on its existing C4/exact
-  fallback route. `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4` restores both
-  the explicit server route admission cap and the prior `[4,1]`/`[4,4]`
-  production decomposition on the same build; it cannot widen beyond the
-  package limit.
-- Removal trigger: after one release window with repeated full-category C5/C8
-  production D1/D24 evidence, exact control/ownership, deterministic/isolation
-  and lifecycle gates, remove the environment read while preserving the package
-  capability, derived owners, allocation-failure cleanup, and strict fallback.
+The maximum-request environment override is removed from server admission and
+adapter construction together. Backend width/depth policy, actual owner capacity,
+derived buffer bounds and strict-profile fallback remain unchanged.
+
+**Remaining validation:** exercise `hipengine serve` at C5/C8 using production
+D1/D24 workloads, confirming physical grouping, deterministic/isolation behavior,
+allocation-failure cleanup and cancellation. Preserve the original complete
+category and control/ownership gates before closing this entry.
 
 ## Qwen3.8 NextN selected-vocabulary proposal head
 
