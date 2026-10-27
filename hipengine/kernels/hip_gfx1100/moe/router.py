@@ -755,6 +755,29 @@ def qwen35_router_select_cast_bf16(
     _check_launch(runtime, err)
 
 
+def qwen35_router_select_cast_bf16_unfused(
+    logits_ptr: int, selected_ptr: int, routing_ptr: int,
+    hidden_f32_ptr: int, hidden_bf16_ptr: int,
+    tokens: int, logits_stride: int, num_experts: int, top_k: int, hidden_size: int,
+    *, threads: int = 512, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    """Strict select/cast chain; library denotes only the router library."""
+    from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
+
+    _check_router_select_shape(tokens, logits_stride, num_experts, top_k)
+    if hidden_size <= 0:
+        raise ValueError("hidden_size must be positive")
+    _check_threads(threads)
+    qwen35_router_select(
+        logits_ptr, selected_ptr, routing_ptr, tokens, logits_stride,
+        num_experts, top_k, threads=threads, stream=stream, library=library,
+        runtime=runtime,
+    )
+    f32_to_bf16(hidden_f32_ptr, hidden_bf16_ptr, tokens * hidden_size,
+                stream=stream, runtime=runtime)
+
+
 def qwen35_router_topk_shared_out_bf16(
     hidden_ptr: int,
     combined_weight_ptr: int,
@@ -1154,6 +1177,14 @@ def qwen35_router_topk_split_shared_coop_out_fp16(
 
 
 def register_qwen35_router_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey("hip_gfx1100", "router_select+cast", "fp32"),
+        qwen35_router_select_cast_bf16, replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "router_select+cast", "fp32", "strict_unfused"),
+        qwen35_router_select_cast_bf16_unfused, replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "router_logits", "bf16"),
         qwen35_router_logits_bf16,

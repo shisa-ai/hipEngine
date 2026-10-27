@@ -91,6 +91,7 @@ Paths below refer to the HIP source families unless a backend is named.
 | `dense_gemv`, `linear`, `linear_pair/triple/quad` | `linear/`, `quant/` | Project dense or quantized weights. |
 | `pack8_gemv`, `selected_*pack8_gemv`, `pack8_gemm` | `quant/paro_awq_gemv` | Project PARO packed weights. |
 | `lm_head`, `lm_head_argmax`, `argmax`, `topk` | `linear/lm_head` | Project or select output tokens. |
+| `router_select+cast` | `moe/router` | `fp32` composite with fused `default` and `strict_unfused` variants sharing the pointer ABI; the strict chain runs router selection followed by BF16 conversion. |
 | `router_logits`, `router_select`, `router_topk_*` | `moe/router` | Select experts and route weights. |
 | `moe_group_*`, `moe_gather_packed_hidden`, `moe_*tile_map` | `moe/group_scatter` | Group and pack expert work. |
 | `moe_linear`, `moe_linear+weighted_sum` | `quant/gguf_*` | Project selected experts and combine outputs. |

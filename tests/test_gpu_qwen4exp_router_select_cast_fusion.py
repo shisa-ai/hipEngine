@@ -17,7 +17,6 @@ from hipengine.core.memory import free, malloc
 from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_select,
-    qwen35_router_select_cast_bf16,
 )
 from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _alloc, _download, _upload
 
@@ -46,9 +45,16 @@ def _reference_bf16_bits(x: np.ndarray) -> np.ndarray:
     (4, 64, 4, 320),         # small
     (2, 512, 16, 2560),      # max top_k
 ])
+@pytest.mark.parametrize("variant", ["default", "strict_unfused"])
 def test_fused_router_select_cast_is_bit_identical_to_pair(
-    tokens, experts, top_k, hidden
+    tokens, experts, top_k, hidden, variant
 ):
+    from hipengine.kernels.backends import load_backend_kernel_package
+    from hipengine.kernels.registry import resolve
+
+    load_backend_kernel_package("hip_gfx1151")
+    composite = resolve(backend="hip_gfx1151", layer="router_select+cast",
+                        quant="fp32", variant=variant)
     runtime = get_hip_runtime()
     rng = np.random.default_rng(20261008)
     logits = rng.normal(0, 3.0, (tokens, experts)).astype(np.float32)
@@ -82,7 +88,7 @@ def test_fused_router_select_cast_is_bit_identical_to_pair(
             tokens, experts, experts, top_k, runtime=runtime,
         )
         f32_to_bf16(d_values.ptr, p_hidden_bf16.ptr, tokens * hidden, runtime=runtime)
-        qwen35_router_select_cast_bf16(
+        composite(
             d_logits.ptr, f_selected.ptr, f_routing.ptr,
             d_values.ptr, f_hidden_bf16.ptr,
             tokens, experts, experts, top_k, hidden, runtime=runtime,

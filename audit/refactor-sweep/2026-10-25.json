@@ -21,8 +21,8 @@
       "start_line": 25,
       "end_line": 38,
       "sha256": "3715add4eaf9e1eab434fe767d7c20625454068d3b1990ac586029e0bbf8f52d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Registered router_select+cast/fp32 fused default and strict_unfused chain; runtime resolves composite without environment branch. Focused registry/order/env tests, registered GPU bit parity, public MTP default-route trace with retired switch zero, CPU full run plus isolated tier repair and docs/audit pass. Worklog: worklog/entries/20261027T092839.755071Z-cleanup-refactor-r0002-8545ae.md."],
       "subitems": []
     },
     {

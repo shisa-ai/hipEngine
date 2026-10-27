@@ -95,10 +95,6 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_scatter,
     qwen35_moe_wmma_tile_map,
 )
-from hipengine.kernels.hip_gfx1100.moe.router import (
-    qwen35_router_select,
-    qwen35_router_select_cast_bf16,
-)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
 )
@@ -6181,45 +6177,14 @@ def run_qwen4_exp_moe(
             output_dtype=GGUF_OUTPUT_F32,
             stream=stream, runtime=active_runtime,
         )
-    if os.environ.get(
-        "HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST", "1"
-    ) not in {"", "0", "false", "False"}:
-        # Same selection and cast bits with one launch instead of two.
-        # The opt-out retains the strict unfused chain for fault isolation.
-        # Removal condition: docs/REFACTOR.md, router select/cast rollback.
-        qwen35_router_select_cast_bf16(
-            scratch.router_logits.ptr,
-            scratch.selected.ptr,
-            scratch.routing.ptr,
-            mixed_ptr,
-            scratch.hidden_bf16.ptr,
-            rows,
-            experts,
-            experts,
-            top_k,
-            hidden,
-            stream=stream,
-            runtime=active_runtime,
-        )
-    else:
-        qwen35_router_select(
-            scratch.router_logits.ptr,
-            scratch.selected.ptr,
-            scratch.routing.ptr,
-            rows,
-            experts,
-            experts,
-            top_k,
-            stream=stream,
-            runtime=active_runtime,
-        )
-        f32_to_bf16(
-            mixed_ptr,
-            scratch.hidden_bf16.ptr,
-            rows * hidden,
-            stream=stream,
-            runtime=active_runtime,
-        )
+    select_cast = resolve(
+        backend=backend, layer="router_select+cast", quant="fp32",
+    )
+    select_cast(
+        scratch.router_logits.ptr, scratch.selected.ptr, scratch.routing.ptr,
+        mixed_ptr, scratch.hidden_bf16.ptr, rows, experts, experts, top_k, hidden,
+        stream=stream, runtime=active_runtime,
+    )
     compact = rows * top_k
 
     def selected_projection(
