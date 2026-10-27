@@ -10409,33 +10409,33 @@
       "start_line": 8073,
       "end_line": 8095,
       "sha256": "9721b7a2932610c343441fb68ad438cf18b9df1d805ea0cab62aa87b82b2321f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Comparison CLI/setter absent; constructor rollback and default capability preserved as required. Completed receipt removed. Worklog: worklog/entries/20261027T041804.519542Z-cleanup-refactor-r0360-23686a.md."],
       "subitems": [
         {
           "line": 8075,
           "text": "- Added 2026-07-30 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8080,
           "text": "- Seven exact same-resident p512/d128 pairs all improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8083,
           "text": "- Remove the comparison CLI, setter, and protocol fields after tracked-clean",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8088,
           "text": "- Publication passes at **22.063262 tok/s (+0.25227%)** and exactly",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8092,
           "text": "- The comparison CLI, setter, and protocol fields are removed. Retain the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

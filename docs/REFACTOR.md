@@ -6925,29 +6925,6 @@ should be boring.
   retain the constructor override, capability, registered quad, and unfused
   fallback.
 
-## Laguna gfx1151 source-F16 output/add/RMSNorm selector
-
-- Added 2026-07-30 as
-  `LagunaGGUFResidentSession.set_f16_output_add_rmsnorm_decode(...)` and
-  `--compare-f16-output-add-rmsnorm-decode`. The candidate preserves every
-  fixed-K attention-output projection block and lets only the final producer
-  execute the established residual-add/RMSNorm tree.
-- Seven exact same-resident p512/d128 pairs all improve
-  **22.005296 -> 22.062263 tok/s (+0.25888%)**, saving
-  **0.113153 ms/token** by paired median with unchanged residency.
-- Remove the comparison CLI, setter, and protocol fields after tracked-clean
-  selector-unset production and a complete 127-transition census publish or
-  reject the default. If retained, keep the constructor override, four-axis
-  composite registration, gfx1151 capability, shared completion scratch, and
-  exact fixed-K projection plus add/RMSNorm fallback.
-- Publication passes at **22.063262 tok/s (+0.25227%)** and exactly
-  **529 dispatches/token**, with kernel span
-  **45.660100 -> 45.543776 ms/token**. The comparison CLI, setter, and
-  protocol fields are now eligible for immediate removal.
-- The comparison CLI, setter, and protocol fields are removed. Retain the
-  constructor rollback, capability, registered composite, shared counter
-  scratch, and exact unfused fallback.
-
 ## Laguna gfx1151 selected-down parallel-weighted selector
 
 - Added 2026-07-30 as
