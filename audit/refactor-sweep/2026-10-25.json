@@ -10342,28 +10342,28 @@
       "start_line": 8026,
       "end_line": 8046,
       "sha256": "66686bdb061a00094b4163bbdae7a4ddc4469ce3f369fc022643c8466aad4539",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Comparison CLI/setter absent; intended constructor/helper override and capability/quad/fallback preserved. Completed receipt removed. Worklog: worklog/entries/20261027T044351.285392Z-cleanup-refactor-r0358-dfb085.md."],
       "subitems": [
         {
           "line": 8028,
           "text": "- Added 2026-07-30 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8034,
           "text": "- Remove the comparison CLI and session setter after the same-resident",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8038,
           "text": "- The same-resident gate retains the capability at",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8042,
           "text": "- Publication and census pass at **22.031913 tok/s** and exactly",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
