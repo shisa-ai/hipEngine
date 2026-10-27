@@ -199,9 +199,6 @@ _Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16 = (
 _Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out"
 )
-_Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV = (
-    "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6"
-)
 _Q5_DENSE_ROWTILE12_COL8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out"
 )
@@ -1953,20 +1950,6 @@ def launch_physical_rows6_chunked(
     )
 
 
-def _q5_dense_rowtile_grouped_rows6_enabled() -> bool:
-    raw = os.environ.get(
-        _Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV,
-        "1",
-    ).strip().lower()
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(
-        f"{_Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV} must be a boolean value"
-    )
-
-
 def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -2009,7 +1992,6 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
         q5_t16_physical_rowtile_enabled()
         and physical_exact_rowtiles_enabled()
         and int(rows) in wide_exact_rows
-        and _q5_dense_rowtile_grouped_rows6_enabled()
     ):
         prefix_rows = 30 if int(rows) == 32 else 24
         _check_dense_q5_t16_shape(6, in_features, out_features, rowtile=True)
@@ -2047,7 +2029,6 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
         q5_t16_physical_rowtile_enabled()
         and int(rows) >= 12
         and int(rows) % 6 == 0
-        and _q5_dense_rowtile_grouped_rows6_enabled()
     ):
         _check_dense_q5_t16_shape(6, in_features, out_features, rowtile=True)
         _launch_dense_q5_t16(

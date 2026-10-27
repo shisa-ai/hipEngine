@@ -417,7 +417,6 @@ independent workload gates.
 | `HIPENGINE_C8_Q5_PLANAR_DP4A` | false | Diagnostic route | Gates the optional planar INT8 Q5 sidecar (uploaded at materialization) for the planar-dp4a route. |
 | `HIPENGINE_C8_Q6_DP4A_GROUPED` | false | Opt-in diagnostic | Routes planar-decode rows 8-64 to the grouped integer-dp4a Q6 sibling (x quantized to q8_1); the BF16 grouped owner stays the exact default and strict fallback. |
 | `HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL` | unset | Rollback seam | Selects the Q6 planar exact prefill owner over the default T16 route (resolved per session). |
-| `HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6` | unset | Rollback seam | Dense-rowtile grouped-rows6 target selector for the Q5_T16 gemv owner. |
 | `HIPENGINE_UD_REPACK_ELIGIBILITY` | unset | Rollback seam | Overrides model-wide UD repack eligibility (e.g. `model-wide`) so a synthetic geometry keeps its historical pack8/raw residents. |
 | `HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD` | unset | Specdec2 route | N-gram modifier-window size for the specdec2 ngram mode. |
 | `HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH` | unset | Specdec2 route | Required n-gram match count. |
@@ -1133,6 +1132,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6` is retired and ignored.
+  Physical-row scope selects grouped Q5 R6 prefixes; exact wide rows preserve
+  their strict tails, and ordinary decode remains outside that scope.
 
 - `HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES` is retired and ignored.
   Grouped Q6 launches follow physical mixed-row scope and shape policy;

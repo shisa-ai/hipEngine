@@ -1601,7 +1601,7 @@ def test_q5_t16_exact_c8_rows_select_grouped_rows8_with_rollback(
     ]
 
 
-def test_q5_t16_grouped_rows6_policy_has_explicit_repeated_rollback(
+def test_q5_t16_grouped_rows6_policy_ignores_retired_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, int]] = []
@@ -1621,8 +1621,7 @@ def test_q5_t16_grouped_rows6_policy_has_explicit_repeated_rollback(
         )
 
     assert calls == [
-        (selected_t16_mod._Q5_DENSE_ROWTILE_BF16, 6),
-        (selected_t16_mod._Q5_DENSE_ROWTILE_BF16, 6),
+        (selected_t16_mod._Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16, 12),
     ]
 
 

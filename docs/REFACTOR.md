@@ -2791,13 +2791,6 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## 2026-09-01 gfx1100 grouped Q5 rows6 rollback — closed
-
-- Promoted after exact tracked-clean marker ownership and complete C5-C8
-  qualification. `HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6=0` retains the
-  repeated-R6 path for bisection; remove the flag after the grouped owner is
-  stable across the next production campaign.
-
 ## 2026-09-01 gfx1100 grouped Q4 rows6 pair-seam rollback — closed
 
 - Promoted after exact marker ownership and complete C5-C8 qualification.
@@ -10545,3 +10538,14 @@ trace grouped prefix/tail launches, and compare outputs and acceptance with the
 registered repeated primitives. Include a shape outside the mixed policy and
 verify cancellation and cleanup. Direct grouped-versus-repeated GPU bit parity
 is separate from this public-route requirement.
+
+### R0179 — Public grouped Q5 R6 validation
+
+The grouped-Q5 R6 environment override is removed. Physical-row and exact-wide
+scope remain; grouped R8 for C8, strict tails and repeated primitives are unchanged.
+
+**Dependency:** public gfx1100 physical target execution reaching grouped R6.
+**Clearing action:** run `hipengine serve` across grouped R6 and exact-prefix/tail
+widths, confirm selected launches, and compare output and acceptance with the
+registered repeated R6 primitive. Include ordinary decode outside physical scope
+and cancellation/cleanup. Direct GPU bit parity does not establish public routing.

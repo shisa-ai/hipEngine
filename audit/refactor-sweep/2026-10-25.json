@@ -4581,13 +4581,13 @@
       "start_line": 3996,
       "end_line": 4002,
       "sha256": "1206120e25c4762321aae37b25e9c7be53bb4ea16c0e6495f89e926874163df7",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed grouped-Q5 R6 environment helper and both selector checks; physical scope, C7 strict tails, C8 R8, ordinary decode and repeated primitives preserved. RED/GREEN routing, full linear unit file, GPU R6 bit parity, CPU fixtures/smoke and docs/audit pass. Public grouped-R6 route/output/acceptance/cleanup remains open. Worklog: worklog/entries/20261027T144833.657486Z-cleanup-refactor-r0179-cfcd24.md."],
       "subitems": [
         {
           "line": 3998,
           "text": "- Promoted after exact tracked-clean marker ownership and complete C5-C8",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },
