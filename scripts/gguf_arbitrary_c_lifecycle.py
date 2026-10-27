@@ -59,7 +59,6 @@ _LIFECYCLE_ENV_KEYS = (
     "HIPENGINE_BUILD_CACHE_ROOT",
     "HIPENGINE_REQUIRE_CACHED_BUILD",
     "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
-    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT",
     "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL",
     "HIPENGINE_GGUF_ROUTER_F32W_COOP",
@@ -73,26 +72,11 @@ def _lifecycle_environment_snapshot(args: argparse.Namespace) -> dict[str, str |
     return environment
 
 
-def _resolve_widths() -> tuple[int, ...]:
-    """Resolve the active shared-slot AR physical width set for the gate.
+def _resolve_widths(backend: str = "hip_gfx1100") -> tuple[int, ...]:
+    """Use the same backend width declaration as the resident owner."""
+    from hipengine.generation.qwen35_gguf import _gguf_ar_physical_widths
 
-    Mirrors the owner's resolution: an explicit
-    ``HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`` override (comma/space
-    separated) selects the widths under test; otherwise the production default
-    (1..8, promoted 2026-08-20) is used. The mask/declared-width assertions
-    below then follow the same set the owner routes with.
-    """
-    override = os.environ.get(
-        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", ""
-    ).strip()
-    if not override:
-        return _DEFAULT_CERT_WIDTHS
-    widths = tuple(int(item) for item in override.replace(",", " ").split())
-    if not widths or widths[0] != 1 or tuple(sorted(set(widths))) != widths:
-        raise ValueError(
-            "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS must be sorted unique widths starting at c1"
-        )
-    return widths
+    return _gguf_ar_physical_widths(backend, use_capability=True)
 
 
 def _request(prompts: Sequence[Sequence[int]], *, max_tokens: int) -> GenerationRequest:
@@ -897,21 +881,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for event in timeline
                 if event["physical_group_plan"] is not None
             ]
+            physical_widths = _resolve_widths(str(runner._shared_runner.backend))
             declared_widths_only = all(
-                int(group["physical_rows"]) in _resolve_widths()
+                int(group["physical_rows"]) in physical_widths
                 for plan in all_plans
                 for group in plan["groups"]
             )
             no_serial_fallback = all(_all_native(plan) for plan in all_plans)
             expected_initial_masks = _expected_dense_group_masks(
-                logical_c, _resolve_widths(), composition=_d2_composition(logical_c)
+                logical_c, physical_widths, composition=_d2_composition(logical_c)
             )
             dense_hole_execution = _plan_uses_dense_execution_rows(hole_plan)
             expected_hole_masks = _expected_hole_group_masks(
                 logical_c,
                 cancel_slots,
                 compact=dense_hole_execution,
-                buckets=_resolve_widths(),
+                buckets=physical_widths,
                 composition=_d2_composition(logical_c),
             )
             expected_refill_masks = expected_initial_masks
@@ -1089,7 +1074,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         else "The gate preserves scheduler slot identity; no physical compaction is performed."
                     ),
                     "Every decode group must use only the active declared physical widths "
-                    f"{list(_resolve_widths())}.",
+                    f"{list(physical_widths)}.",
                     "Tokens, Conv/GDN state, and all live BF16 KV bytes are compared with c1 checkpoints; arithmetic drift remains reported even when an external numerical gate makes byte identity non-binding.",
                     "Same-run state/KV preservation across compaction, ownership, routes, masks, and graph invalidation remain hard requirements.",
                     "The CLI additionally binds tracked allocator recovery after model teardown.",

@@ -254,18 +254,19 @@ def test_gguf_arbitrary_c_lifecycle_derives_direct_width_masks() -> None:
     assert _expected_dense_group_masks(5, (1, 2, 4, 8)) == ["11111000"]
 
 
-def test_gguf_arbitrary_c_lifecycle_resolves_active_width_set(monkeypatch) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", raising=False)
-    assert _resolve_widths() == (1, 2, 3, 4, 5, 6, 7, 8)
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,4,8"
+def test_gguf_arbitrary_c_lifecycle_resolves_backend_width_set(monkeypatch) -> None:
+    from hipengine.generation import qwen35_gguf
+
+    declarations = {"narrow": (1, 2), "wide": (1, 2, 3, 4, 5, 6, 7, 8)}
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "backend_package_capability",
+        lambda backend, name, default: declarations[backend],
     )
-    assert _resolve_widths() == (1, 2, 4, 8)
-    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 2 4 8")
-    assert _resolve_widths() == (1, 2, 4, 8)
-    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")
-    with pytest.raises(ValueError, match="sorted unique widths starting at c1"):
-        _resolve_widths()
+    for value in ("1,2,4,8", "1 2 4 8", "1 3 2"):
+        monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", value)
+        assert _resolve_widths("narrow") == (1, 2)
+        assert _resolve_widths("wide") == tuple(range(1, 9))
 
 
 def test_gguf_arbitrary_c_lifecycle_requires_tracked_memory_recovery() -> None:

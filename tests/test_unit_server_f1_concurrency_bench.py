@@ -875,7 +875,7 @@ def test_effective_server_environment_records_revalidation_axes(
 
     assert environment["HIPENGINE_HIP_ARCH"] == "gfx1151"
     assert environment["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] == "0"
-    assert environment["HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS"] == "1,2,3"
+    assert "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS" not in environment
     assert environment["HIPENGINE_EXECUTION_PROFILE"] == "strict"
     assert environment["GPU_MAX_HW_QUEUES"] == "2"
     assert environment["HIPENGINE_COMPILER_VERSION_FILE"] == str(compiler_version)

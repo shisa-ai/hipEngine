@@ -20,11 +20,13 @@ def test_unequal_policy_is_restored_after_failure():
     assert getattr(hip_gfx1151, name, None) is previous
 
 
-def test_retile_scope_restores_cached_selector():
-    previous = gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED
-    with candidate_scope("no_retiles"):
-        assert gguf_linear._q4_t16_dual_silu_retile_enabled() is False
-    assert gguf_linear._Q4_T16_DUAL_SILU_RETILE_RESOLVED is previous
+def test_retile_scope_restores_selector_after_failure():
+    previous = gguf_linear._q4_t16_dual_silu_retile_enabled
+    with pytest.raises(RuntimeError, match="capture failed"):
+        with candidate_scope("no_retiles"):
+            assert gguf_linear._q4_t16_dual_silu_retile_enabled() is False
+            raise RuntimeError("capture failed")
+    assert gguf_linear._q4_t16_dual_silu_retile_enabled is previous
 
 
 def test_unknown_candidate_fails_closed():

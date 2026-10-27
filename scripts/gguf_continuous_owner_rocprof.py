@@ -462,7 +462,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     environment["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] = (
         "1" if bool(args.fp16_recurrent_state) else "0"
     )
-    environment.pop("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", None)
     environment.pop("HIPENGINE_REQUIRE_CACHED_BUILD", None)
 
     stages: dict[str, Any] = {}

@@ -373,7 +373,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` | narrow default | Prefix cache | Number of completed-source snapshots the radix prefix cache retains; defaults to `max(1, capacity)`. A wider count retains more state and pins more KV pages. The state-byte ceiling also limits retention; it does not include the pinned KV pages. |
 | `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` | Dense: `1073741824` (1 GiB); DMS: `4294967296` (4 GiB); Flash-Next: half of free device memory at the first checkpoint, at most 32 GiB | Prefix cache | Byte cap on retained prefix snapshots, allocated on demand. The DMS cap includes host-owned cold prompt KV and hidden rows for prefix extension. An explicit value overrides either default; lower it on memory-constrained hosts. |
 | `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` | `512` | Prefix cache | Maximum gapped-suffix tokens a prefix-cache hit may reuse; measured against the full prefill a hit replaces. |
-| `HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` | `1..8` | Diagnostic | Comma/space-separated override of the shared-slot AR physical width set; the packaged production default is every width 1-8 after direct c3/c5/c6/c7 lifecycle certification. |
 | `HIPENGINE_GGUF_PACKED_LAYER_OUTER` | true | Retained default with rollback opt-out | Session-paired (one pair per session) packed layer-outer executor; `0` restores the per-layer-keyed chunk-outer rollback owner. |
 | `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED` | unset | Unsafe diagnostic | Shorter spelling accepted alongside `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG` in the INT8-KV diagnostic override set. |
 | `HIPENGINE_GGUF_INT8_PREFILL_DIRECT` | unset | Correctness/perf gate | Selects the oracle-free direct INT8 prefill attention route (`twopass` candidate) instead of the oracle-bridge strict path (write-through BF16 oracle pair via AOTriton). |
@@ -1243,6 +1242,11 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS` is retired and ignored. The registered
   K320 specialization follows the selected DPP parent for supported full-row
   geometry; diagnostic parent comparisons use a scoped script-local override.
+
+- `HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` is retired and ignored.
+  Resident shared-slot AR uses the backend width declaration; the lifecycle
+  diagnostic reads that same declaration. Ceiling planning and the explicit
+  D2 cost experiment are unchanged.
 
 - `HIPENGINE_QWEN4_EXP_AR_BATCH` is retired and ignored. Resident plain-AR
   requests use the shared batch; external runners and requests that do not fit

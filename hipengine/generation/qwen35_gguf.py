@@ -524,15 +524,10 @@ def _gguf_prefix_suffix_segments(
         if cut >= 1 and len(chunk) - cut >= 2:
             return (chunk[:cut], chunk[cut:])
     return (chunk,)
-# Superset of every shared-slot AR physical width a backend may register and use.
-# Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
-# explicit env override before the default advertised capability is expanded
-# (see docs/reference/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
+# The standard non-resident path implements widths 1..8. Resident owners use
+# their backend's declared set; process environment cannot replace it.
 _GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
-# Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36):
-# every width in the superset is now an advertised default. The env override
-# HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS remains for diagnostics.
-_GGUF_AR_DEFAULT_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+_GGUF_AR_DEFAULT_PHYSICAL_WIDTHS = _GGUF_AR_PHYSICAL_BUCKET_WIDTHS
 
 
 def _gguf_ar_physical_widths(
@@ -542,20 +537,11 @@ def _gguf_ar_physical_widths(
 ) -> tuple[int, ...]:
     """Resolve the active shared-slot AR physical width set.
 
-    An explicit ``HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`` override
-    (comma/space separated) widens or narrows the set for diagnostics and
-    certification without changing the packaged production default. Otherwise
-    the registered backend capability is used when ``use_capability`` is set
-    (resident-batch owner), else the default advertised set. The result must be
-    a sorted, strictly-increasing subset of
-    ``_GGUF_AR_PHYSICAL_BUCKET_WIDTHS`` starting at c1.
+    Resident owners use the registered backend capability; other callers use
+    the standard non-resident set. The declaration must be a sorted, strictly
+    increasing subset of ``_GGUF_AR_PHYSICAL_BUCKET_WIDTHS`` starting at c1.
     """
-    override = os.environ.get(
-        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", ""
-    ).strip()
-    if override:
-        widths = tuple(int(item) for item in override.replace(",", " ").split())
-    elif use_capability and backend is not None:
+    if use_capability and backend is not None:
         widths = tuple(
             int(width)
             for width in backend_package_capability(

@@ -5363,13 +5363,14 @@
       "start_line": 4530,
       "end_line": 4558,
       "sha256": "163d8afd1f6de8b1ffdd81520ff7301721a8562a0eb56b3acbaf8d38b13f3946",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial",
+      "evidence": ["Retired ambient physical-width replacement; resident execution and lifecycle diagnostic use the backend declaration. Ceiling and explicit D2 cost planner unchanged. RED/GREEN, default CPU run plus focused ancestor-verified stale-test repair, fixture/smoke/docs/audit gates, and real gfx1151 public packed-width-two repeat under legacy narrow/invalid values pass. Remaining per-primitive planner/schema cleanup and optional D2 campaign stay open. Worklog: worklog/entries/20261027T165950.144426Z-cleanup-refactor-r0206-d6f028.md."],
       "subitems": [
         {
           "line": 4532,
           "text": "- Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` was promoted to",
-          "status": "pending"
+          "status": "partial-width-override-retired",
+          "evidence": "Backend declaration owns runtime and diagnostic width sets; explicit D2 experiment remains separate from production ceiling policy."
         },
         {
           "line": 4541,

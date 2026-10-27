@@ -3304,15 +3304,15 @@ category and control/ownership gates before closing this entry.
 
 ## Generation-2 GGUF width-selection hardcoding
 
-- Audited 2026-08-20. `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` was promoted to
-  `(1,2,3,4,5,6,7,8)` after direct c3/c5/c6/c7 lifecycle certification. The
-  artifact-backed D2 resolver remains explicit-config only through
-  `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`; ceiling is the production default. The
-  attempted default-promotion sweep was eager resident-session, not actual-
-  server evidence, and its composed-c13 lifecycle observation was dirty. The
-  2026-08-22 core-merge decision closes #29 on the safe ceiling default; a
-  future D2 promotion/removal campaign is optional performance work, not a
-  gfx1100 correctness or integration blocker.
+- Resident shared-slot AR widths come from the backend's
+  `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` declaration; the process-wide width
+  override is removed. The lifecycle diagnostic reads the same declaration.
+  The standard non-resident implementation supports widths 1 through 8.
+- The artifact-backed D2 cost resolver is an explicit planner experiment through
+  `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`; ceiling remains the production default.
+  Its earlier promotion sweep used eager resident sessions, not the server,
+  and recorded a dirty composed-c13 lifecycle result. A new D2 promotion
+  campaign is optional performance work, not a capability or integration gate.
 - Primitive selection is spread across quant/layout capability maps and
   per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
   true rowtiles through 8 (2026-08-20,

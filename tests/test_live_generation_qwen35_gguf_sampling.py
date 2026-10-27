@@ -369,7 +369,7 @@ def test_gfx1100_generator_factory_registers_plain_ar_width(monkeypatch) -> None
     }
 
 
-def test_gguf_ar_physical_widths_default_capability_and_override(
+def test_gguf_ar_physical_widths_default_capability_and_retired_override(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv(
@@ -389,20 +389,13 @@ def test_gguf_ar_physical_widths_default_capability_and_override(
     assert qwen35_gguf._gguf_ar_physical_widths(
         "hip_gfx1100", use_capability=True
     ) == (1, 2, 3, 4, 5, 6, 7, 8)
-    # The env override can still narrow/widen for diagnostics.
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,4,8"
-    )
-    assert qwen35_gguf._gguf_ar_physical_widths(
-        "hip_gfx1100", use_capability=True
-    ) == (1, 2, 4, 8)
-    # Invalid overrides fail closed.
-    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")
-    with pytest.raises(RuntimeError, match="sorted registered AR widths"):
-        qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100")
-    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 9")
-    with pytest.raises(RuntimeError, match="sorted registered AR widths"):
-        qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100")
+    # A retired process override cannot narrow, widen or invalidate the
+    # registered backend declaration.
+    for value in ("1,2,4,8", "1 3 2", "1 9"):
+        monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", value)
+        assert qwen35_gguf._gguf_ar_physical_widths(
+            "hip_gfx1100", use_capability=True
+        ) == (1, 2, 3, 4, 5, 6, 7, 8)
 
 
 def _request(**overrides) -> GenerationRequest:

@@ -80,7 +80,6 @@ _EFFECTIVE_SERVER_ENV_KEYS = (
     "HIPENGINE_EXECUTION_PROFILE",
     "HIPENGINE_SUBMISSION_TRANSPORT",
     "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
-    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN",
     "HIPENGINE_GGUF_GDN_PREFILL_MODE",
     "HIPENGINE_PREFILL_DECODE_POLICY",
@@ -1981,8 +1980,6 @@ def _resolve_correctness_contract(
             "production correctness requires explicit "
             "HIPENGINE_GGUF_FP16_RECURRENT_STATE=1"
         )
-    if effective_environment.get("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS") is not None:
-        raise ValueError("production correctness forbids a physical-width environment override")
 
     requested_bundle = Path(artifact_path).expanduser()
     if requested_bundle.is_symlink():
