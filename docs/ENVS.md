@@ -211,7 +211,6 @@ qwen35moe fast-path safety gate.
 | `HIPENGINE_MAX_CHAT_SESSIONS` | unset | `--max-chat-sessions` | Optional app-local chat session cap before HTTP 429 `engine_busy`; unset is unlimited. |
 | `HIPENGINE_REQUEST_TIMEOUT_MS` | unset | `--request-timeout-ms` | Default request deadline in milliseconds; omitted disables the default deadline. |
 | `HIPENGINE_DEBUG` | `false` | `--debug` | Logs full HTTP request/response payloads and extra server diagnostics. |
-| `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT` | unset (on) | none | When unset, the AR batcher groups ready rows into its default cohort; `0` disables the default-cohort grouping for tests/diagnostics. |
 | `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` | unset | none | Resolves the MTP2 context window used by the dense speculative route; unset takes the model's retained window. Benchmark harnesses export it through `scripts/bench_env_preflight.py` to catch wrappers that silently drop it. |
 | `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` | `4` | none | Bounded provider KV/state checkpoints for MTP restoration after a target radix-cache hit. Capture is disabled when target prefix caching is off. Set `0` for the memory/bisection rollback; prefix hits without a provider checkpoint cannot restore MTP provider state. |
 | `HIPENGINE_GEMMA4_ARTIFACT` | unset | none | Overrides the Gemma 4 campaign GGUF that `scripts/gemma4_campaign_bench.py` and the probes built on it default to. When unset, the first of the recorded locations that exists is used. Read by the scripts only, never by the runtime. |
@@ -1126,6 +1125,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT` is retired and ignored. Ready AR
+  items use the cohort API when the generator provides it; generators without
+  that API retain independent submission. Streaming and MTP routes are unchanged.
 
 - `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS` is retired and ignored. Server
   physical MTP admission and adapter width selection follow backend policy;

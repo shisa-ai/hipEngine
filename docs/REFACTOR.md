@@ -3181,14 +3181,14 @@ category and control/ownership gates before closing this entry.
   `EngineService.submit_request_batches` command, so every child is admitted
   before the next model poll while retaining its own collector, cancellation,
   completion, backpressure, and reclaim lifecycle. Dynamically arriving items
-  use free capacity in a later cohort. `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT=0`
-  restores the prior one-command-per-item race on the same build; non-independent
-  generators and streaming routes are unchanged.
-- Removal trigger: after one release window with clean repeated C1-C3 server
-  evidence showing full native-prefill groups, exact outputs, independent early
-  completion/failure/cancellation, and no C1 regression, remove only the env
-  lookup and old independent launch branch. Preserve the atomic EngineService
-  cohort seam and per-child handles.
+  use free capacity in a later cohort. The environment bypass is removed;
+  generators without the ready-cohort API retain independent submission.
+  Non-independent generators, MTP and streaming routes are unchanged.
+- Remaining validation: repeated C1-C3 public server runs must confirm full
+  native-prefill groups, exact outputs, independent early completion/failure/
+  cancellation and no C1 regression. The atomic EngineService cohort seam and
+  per-child handles remain; integration lifecycle tests alone do not establish
+  public native-prefill engagement.
 
 ## gfx1100 fused Q4-T16 prefill row-retile bisection
 

@@ -2688,7 +2688,6 @@ class _RequestControl:
 
 
 _STREAM_DONE = object()
-_DEFAULT_AR_READY_COHORT_ENV = "HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT"
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -4183,10 +4182,7 @@ class _GenerationBatcher:
                 "submit_independent_batches_detailed",
                 None,
             )
-            if not callable(submit_ready) or not _env_flag(
-                _DEFAULT_AR_READY_COHORT_ENV,
-                default=True,
-            ):
+            if not callable(submit_ready):
                 self._launch_independent_generation(first)
                 return
             key = self._group_key(first)

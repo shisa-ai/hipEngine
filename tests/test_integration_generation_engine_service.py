@@ -1290,9 +1290,16 @@ def test_generation_batcher_ready_cohort_isolates_child_failure() -> None:
     asyncio.run(run())
 
 
-def test_generation_batcher_ready_cohort_rollback_keeps_separate_calls(
+def test_generation_batcher_ready_cohort_ignores_retired_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    class Handle:
+        def __init__(self, prompt):
+            self.prompt = prompt
+
+        def result(self):
+            return GenerationOutput(text=f"generated:{self.prompt}")
+
     class IndependentLLM:
         supports_independent_generation = True
 
@@ -1301,9 +1308,9 @@ def test_generation_batcher_ready_cohort_rollback_keeps_separate_calls(
             self.calls: list[tuple[str, ...]] = []
 
         def submit_independent_batches_detailed(self, batches):
-            del batches
             self.batch_calls += 1
-            raise AssertionError("rollback must bypass ready cohorts")
+            return tuple(tuple(Handle(prompt) for prompt in prompts)
+                         for prompts, _sampling in batches)
 
         def generate_detailed(self, prompts, sampling_params):
             del sampling_params
@@ -1328,8 +1335,8 @@ def test_generation_batcher_ready_cohort_rollback_keeps_separate_calls(
             ["generated:one"],
             ["generated:two"],
         ]
-        assert fake.batch_calls == 0
-        assert set(fake.calls) == {("one",), ("two",)}
+        assert fake.batch_calls == 1
+        assert fake.calls == []
         await batcher.shutdown(grace_seconds=0.1)
 
     asyncio.run(run())
