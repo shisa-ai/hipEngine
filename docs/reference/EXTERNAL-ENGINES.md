@@ -143,7 +143,7 @@ Limits that matter for comparison:
 
 - One model and one tested hardware configuration; arbitrary GGUF models and
   other GPUs are not the target.
-- Its own weight format and SSD-resident n-gram table differ from a standard
+- Its own `strixw` weight format and SSD-resident n-gram table differ from a standard
   GGUF setup, so comparisons need to account for model artifacts and storage.
 
 ### Gufo
