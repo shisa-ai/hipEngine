@@ -3430,39 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 Qwen3.8 role-qualified Q6 rollback seams
-
-- Added 2026-08-15 after all-planar Q6 improved 512/1K/4K prefill by
-  22.11-23.65% and removed 49,479,680 bytes, but regressed complete AR by
-  0.14-0.19%. Actual-weight counterbalancing localized K=5,120/N=10,240 QKV c1
-  at +8.72% wall with 0/11 planar wins. The backend capability therefore keeps
-  one standard-T16 owner for those 24 tensors while down, narrow V, and root
-  remain sole planar. There is no duplicate payload or environment selector.
-- The exact planar down+residual alias is separately excluded on gfx1151. Its
-  same-planar projection plus primitive BF16 add fallback is 1.1735x/1.1144x/
-  1.1115x faster at rows2/3/4 with 15/15 wins and zero mismatches. Keep the
-  fused registry primitive for gfx1100 and diagnostics; it is not a gfx1151
-  production fallback chain.
-- P4's exact 24-KiB-LDS/248-VGPR four-wave shared-weight prefill owners are
-  limited to rows>=512 standard K5120/N10240 QKV and planar K17408/N5120
-  FFN-down. The actual leaves improve 2.961-3.548x and 1.421-1.502x; complete
-  incremental prefill improves 9.935-10.611% and 4.325-5.403%, respectively.
-  The universal planar route remains rejected because narrow V misses its 1K
-  leaf gate. There is no environment selector, sidecar, or workspace. Keep the
-  16x16 standard and one-wave planar primitives registered for short rows,
-  narrow V, root, peer backends, and all policy misses.
-- Refactor trigger: after one release window, consolidate the two parallel
-  `GGUF_Q6_*_PREFILL_SHARED4_{MIN_ROWS,SHAPES}` selectors/wrappers into one
-  generic quant/shape/min-row policy if another Q6 shape or backend is admitted.
-  Do not move the shape branch into engine/model dispatch; keep both exact
-  primitive fallbacks permanently.
-- Removal trigger: delete the QKV slot exclusion only after a byte-neutral
-  planar c1 consumer wins an actual >64-MiB rotating-weight screen and complete
-  512/1K/4K plus full natural AR/B1-B3 gates on gfx1151. Re-admit the fused
-  residual alias only after it beats the unfused same-planar chain at every
-  rows2-4 shape and remains non-regressive in the full category suite. Keep
-  standard T16 and projection+add registered as required numerical fallbacks.
-
 ## gfx1151 dense-27B grouped-GQA split-attention rollback seam
 
 - Added 2026-08-16 for dense H5120/L64/24Q/4KV/D256 BF16 decode from context
@@ -10556,3 +10523,30 @@ handoffs and teardown. Run
 and cleanup validation with R0219's packed-prefill integration. Preserve sole
 T16 residency and exact fallbacks. No workspace saving is claimed by this
 policy-declaration cleanup.
+
+### R0223 — Q6 prefill selector normalization
+
+Role-specific Q6 layout is supported policy, not rollback debt: recurrent QKV
+keeps its sole standard-T16 resident after an observed planar-c1 regression;
+other declared roles use sole planar storage. The excluded planar residual
+rowtile also has an observed regression, so gfx1151 uses projection plus BF16
+add for that case. Keep these policies, peer primitives and strict fallbacks.
+No duplicate payload or environment selector needs removal.
+
+**Decision needed:** keep separate standard/planar package wrappers or express
+their ordered row bands through a shared policy representation. The original
+two rows>=512 selectors have expanded: standard shared4 starts at 96 with
+earlier and overlapping sibling bands; planar shared4 starts at 256 with
+shape-specific, exact-row and bounded-interval overrides. A single min-row
+field cannot preserve that precedence. **Clearing action:** if normalization
+is chosen, map each current branch to an ordered quant/shape/row rule in the
+backend package, then compare selected function identities before/after over
+every interval boundary, exact-row override, unrelated row and shape miss.
+Keep engine/model dispatch free of backend/quant branches. Run
+`tests/test_unit_gfx1151_backend.py`,
+`tests/test_unit_loading_qwen35_gguf_policy.py` and
+`tests/test_unit_gguf_linear_dispatch.py`, then confirm public selected owners
+and cleanup on gfx1151. Do not couple this structural cleanup to retuning the
+QKV layout or re-admitting the rejected residual composite. Historical tuning
+results remain in the sweep inventory and worklogs; no routing change or new
+performance claim accompanies this disposition.

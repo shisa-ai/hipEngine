@@ -5814,33 +5814,35 @@
       "start_line": 4861,
       "end_line": 4893,
       "sha256": "9fda888956937da905b77fe631fcdc9f70fe6be275d0266034497478c5e03534",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Preserved supported sole-resident QKV layout and unfused residual policies justified by observed regressions. Original rows512/two-shared4 description stale: standard shared4 floor96 and planar256 now coexist with many ordered row/shape sibling overrides. Moved only generic wrapper normalization decision to bottom with branch-equivalence/boundary validation requirements; no runtime change. Backend/loading/dispatch tests and docs/audit/worklog gates pass. Worklog: worklog/entries/20261027T183646.802897Z-cleanup-refactor-r0223-878294.md."
+      ],
       "subitems": [
         {
           "line": 4863,
           "text": "- Added 2026-08-15 after all-planar Q6 improved 512/1K/4K prefill by",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 4869,
           "text": "- The exact planar down+residual alias is separately excluded on gfx1151. Its",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 4874,
           "text": "- P4's exact 24-KiB-LDS/248-VGPR four-wave shared-weight prefill owners are",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4882,
           "text": "- Refactor trigger: after one release window, consolidate the two parallel",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4887,
           "text": "- Removal trigger: delete the QKV slot exclusion only after a byte-neutral",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
