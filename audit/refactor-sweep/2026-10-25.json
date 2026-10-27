@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "PARO short-prompt row 6194 resolved as stale/not debt: default public resident owner already executes segmented packed prefill for lengths 1/2/3 below legacy conv width. Current public repeated lengths 1/2/3/4/7 confirm packed_segments/packed_varlen, identical IDs per prompt and zero final tracked allocations. Keep old c1 serial small-input algorithm and strict low-level single-request contract; parameterize helper tests across short/boundary/unrelated lengths and sampling false/true with metadata assertions. Generator/resident units and docs/audit/worklog pass; worklog/entries/20261027T230345.326880Z-cleanup-refactor-r0281-paro-short-1ac525.md.",
         "PARO ragged prefill row 6193 moves to bottom R0281-PARO-RAGGED. Automatic per-segment fallback remains working; current gfx1151 c3 p8/9/11 shrinking control is independent-c1 exact for tokens, all 30 linear and 10 full-KV families, preserves retired slots and drains tracked allocations. Force flags have live diagnostic callers and zero does not bypass automatic ragged fallback; original packed repair requires explicit test-only bypass. Preserve equal-length packed path and scoped comparison decision. Focused tests/docs/audit/worklog pass; worklog/entries/20261027T225807.809651Z-cleanup-refactor-r0281-paro-ragged-4633ca.md.",
         "PARO greedy AR graph row 6192 moves to bottom R0281-PARO-ARGRAPH. Current gfx1151 p512/d8 eager/graph/eager control repeats eager IDs and final logits exactly; graph shares seed and first diverges at decode index 2, with finite logits and zero tracked allocations after close. Preserve existing eager policy and gfx1100 graph; first-divergent-state repair, longer replay and public-route validation remain. Distinct from R0001 MTP verifier graph. Six focused graph/owner tests and docs/audit/worklog checks pass; worklog/entries/20261027T224932.969200Z-cleanup-refactor-r0281-paro-argraph-1d12bf.md.",
         "PARO attention row 6191 is not duplicate/dead-code debt: adaptive context_batch_spans is live in Qwen4Exp dense/sparse execution, PARO diagnostic chunk routes, registry and physical-block tests. Its 1024/256 geometry differs from c1_exact arithmetic and fixed256; PARO's pinned exact route is a separate contract. Remove the stale deletion row, preserve all bodies/keys/defaults. Existing R0421 owns backend-pin semantic separation. Focused dispatch/state/manifest/profile tests pass; worklog/entries/20261027T224513.810893Z-cleanup-refactor-r0281-paro-attn-758855.md.",
@@ -7613,7 +7614,7 @@
         {
           "line": 6194,
           "text": "| PARO short-prompt prefill | The public generator uses token-serial c1 steps when prompt tokens are fewer than `linear_conv_kernel_dim`; low-level `prefill_native()` remains strict. | Release fallback. A no-env gfx1151 wheel-path smoke generated from the one-token prompt `Hello`; normal prompts still use native prefill. | Replace the serial fallback only after a dedicated native short-prompt kernel matches c1 generated tokens plus recurrent/KV state for lengths 1-3. |",
-          "status": "pending"
+          "status": "not-debt-short-public-packed-path"
         },
         {
           "line": 6195,

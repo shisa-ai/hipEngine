@@ -134,11 +134,14 @@ def test_paro_resident_prepare_is_idempotent_while_requests_are_registered() -> 
         )
 
 
-def test_qwen35_paro_short_prompt_prefill_uses_serial_c1_steps() -> None:
+@pytest.mark.parametrize("tokens", ((10,), (10, 11), (10, 11, 12)))
+@pytest.mark.parametrize("sample", (False, True))
+def test_qwen35_paro_short_prompt_prefill_uses_serial_c1_steps(tokens, sample) -> None:
     calls = []
 
     class FakeSession:
         config = SimpleNamespace(linear_conv_kernel_dim=4)
+        last_prefill_execution = None
 
         def prefill_native(self, token_ids, *, sample: bool = True):  # pragma: no cover
             raise AssertionError("short prompt must not enter native prefill")
@@ -147,13 +150,27 @@ def test_qwen35_paro_short_prompt_prefill_uses_serial_c1_steps() -> None:
             calls.append((int(token_id), int(position), bool(sample)))
             return _result(100 + position, chr(ord("A") + position)) if sample else None
 
-    result = qwen35._prefill_prompt(FakeSession(), (10, 11), sample=True)
+    session = FakeSession()
+    result = qwen35._prefill_prompt(session, tokens, sample=sample)
 
-    assert result == _result(101, "B")
-    assert calls == [(10, 0, False), (11, 1, True)]
+    final_position = len(tokens) - 1
+    expected = _result(100 + final_position, chr(ord("A") + final_position)) if sample else None
+    assert result == expected
+    assert calls == [
+        (token_id, position, bool(sample and position == final_position))
+        for position, token_id in enumerate(tokens)
+    ]
+    assert session.last_prefill_execution == {
+        "path": "short_prompt_serial_c1",
+        "tokens": len(tokens),
+        "full_native": False,
+        "native_min_tokens": 4,
+    }
 
 
-def test_qwen35_paro_normal_prompt_prefill_stays_native() -> None:
+@pytest.mark.parametrize("tokens", ((10, 11, 12, 13), (10, 11, 12, 13, 14, 15, 16)))
+@pytest.mark.parametrize("sample", (False, True))
+def test_qwen35_paro_normal_prompt_prefill_stays_native(tokens, sample) -> None:
     calls = []
 
     class FakeSession:
@@ -166,10 +183,10 @@ def test_qwen35_paro_normal_prompt_prefill_stays_native() -> None:
         def step(self, token_id: int, *, position: int, sample: bool = True):  # pragma: no cover
             raise AssertionError("normal prompt must stay on native prefill")
 
-    result = qwen35._prefill_prompt(FakeSession(), (10, 11, 12, 13), sample=True)
+    result = qwen35._prefill_prompt(FakeSession(), tokens, sample=sample)
 
     assert result == _result(100, "A")
-    assert calls == [((10, 11, 12, 13), True)]
+    assert calls == [(tokens, sample)]
 
 
 def test_qwen35_paro_row_sampling_state_binds_thinking_budget() -> None:
