@@ -3634,9 +3634,9 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
     verdict; this test keeps that ledger and the live-read set in step.
 
     The ledger lives in the audit document rather than as an inline comment in
-    the gfx1151 package because four pinned-source tests
+    the gfx1151 package because pinned-source tests
     (``test_unit_laguna_h8a_source_default``, ``test_unit_laguna_h8b_source_default``,
-    ``test_gpu_laguna_h7u_parallel_moe_compaction``, ``test_gpu_laguna_h7y_swa_lane_major_cache``)
+    ``test_gpu_laguna_h7u_parallel_moe_compaction``)
     hash that package's bytes.
     """
 

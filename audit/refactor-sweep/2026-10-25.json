@@ -6443,18 +6443,18 @@
       "start_line": 5339,
       "end_line": 5354,
       "sha256": "12079a78ea581feb406faf4a25fbc011f51ebf45fca32d7a486ba3f1265938bf",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed rejected H7Y map, mirror owner, wrappers/keys and device bodies/launchers, candidate-only tests and stale alias exclusions. Promoted H6Z/H6W paths unchanged. RED/GREEN removal tests, full CPU bundle, retained GPU replay/lifecycle and docs/audit pass. Public Laguna model absent; bottom ledger clearing action retained. Worklog: worklog/entries/20261027T081802.910778Z-cleanup-refactor-r0248-ff4cba.md."],
       "subitems": [
         {
           "line": 5341,
           "text": "- Added 2026-08-03 for writer-inclusive qualification of the admitted H7Y",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5346,
           "text": "- Bounded qualification is complete: full state, exact **2,286-dispatch**",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

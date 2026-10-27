@@ -4320,22 +4320,6 @@ fallback count is not a success metric.
   trajectory corruption. Revisit the 4,096-row plateau only if a later exact
   owner is non-regressive at 8K+ and keeps memory flat.
 
-## Laguna H7Y bounded default-off lane-major SWA cache owner
-
-- Added 2026-08-03 for writer-inclusive qualification of the admitted H7Y
-  standalone leaf. The temporary
-  `LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_H7Y_ROLE_VARIANTS` map owns exact
-  **72 MiB / 72 allocations** of SWA K/V mirrors and selects one fused
-  natural+lane-major rows writer without adding dispatches.
-- Bounded qualification is complete: full state, exact **2,286-dispatch**
-  topology, writer-inclusive fixed C4096/M512, and clean 512/1K/4K medians pass.
-  Source promotion is separately rejected: exact selector-unset fixed M512
-  regresses **436.403→436.275 tok/s (-0.0294%)**. H6Z/H6W remains active and the
-  72-MiB owner stays default-off as an explicit diagnostic/rollback candidate.
-  Remove this candidate capability, mirror allocation route, fused writer, and
-  focused runtime test when no further materially different source mechanism
-  needs the layout; never allocate mirrors on the active H6Z/H6W path.
-
 ## Laguna exact grouped-IQ prefill selector
 
 - Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving
@@ -10863,3 +10847,15 @@ Backend producer selection and generic-row/unsafe-shape fallbacks remain.
 **Clearing action:** run the R0273 gfx1151 public gate with a dense-initial BLAS
 prompt and confirm direct packed-query production for the eligible tiles,
 generic production for other rows, output parity and clean teardown.
+
+### R0248 — Laguna public cache regression after H7Y retirement
+
+The rejected H7Y map, mirror owner, writer and attention kernels are removed.
+Promoted H6Z/H6W and their generic fallbacks remain; historical H7Y rejection
+artifacts are unchanged.
+
+**Dependency:** the unavailable Laguna checkpoint noted for R0249/R0250.
+**Clearing action:** run their gfx1100 public generation gate with a prefill
+long enough to exercise H6Z/H6W, confirm the selected variants and natural-cache
+allocation lifecycle, and compare blocking/stream/direct outputs. The removed
+H7Y route must not be selected or allocate mirrors.

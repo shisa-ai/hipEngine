@@ -3817,6 +3817,10 @@ without rerun or subset salvage
 [standalone](../benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-swa-lane-major-cache-candidate.json) ·
 [target](../benchmarks/results/2026-08-02-gfx1100-laguna-q2-xl-post-h7x-swa-lane-major-cache-target.json)).
 
+The rejected H7Y candidate's mirror owner, writer and attention kernels were
+removed in the 2026-10-27 cleanup; the source-rejection artifacts above remain
+historical evidence. H6Z/H6W production and fallback paths are unchanged.
+
 Reject the next two changed-arithmetic repair premises before adding code. On
 the exact natural-M512 trajectory, H5A Q5 SGEMM changes only **123,111 /
 134,742,016 BF16 outputs (0.0914%)**, but candidate-boundary mismatches reach
