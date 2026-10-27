@@ -160,3 +160,127 @@ def test_row_subset_logits_agree_with_the_full_projection(tiny_checkpoint):
     peak_all = float(np.max(np.abs(every)))
     assert every.shape == (tokens.size, _VOCAB)
     assert float(np.max(np.abs(every[[1, 3]] - subset))) <= 5.0e-2 * peak_all
+
+
+@pytest.mark.parametrize("keys", [7, 37, 128, 129, 1024])
+def test_tiled_attention_matches_the_exact_kernel(keys):
+    """The tiled route is the default for head_dim 128; the exact one is strict.
+
+    Shared memory in the tiled kernel is a fixed K/V tile, so ``keys`` only
+    changes how many tiles are walked -- the point of the parameterization is
+    that 1024 keys and 1 key take the same code path, and that a key count which
+    is not a multiple of the tile exercises the partial tail.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.dense_prefill_attention import (
+        causal_keep_mask,
+        dense_causal_prefill_bf16,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(keys)
+    tokens, heads, kv_heads, head_dim = 7, 4, 2, 128
+    width = heads * head_dim
+    kv_width = kv_heads * head_dim
+
+    q = _f32_to_bf16_bits(rng.standard_normal((tokens, width)).astype(np.float32) * 0.5)
+    k = _f32_to_bf16_bits(rng.standard_normal((keys, kv_width)).astype(np.float32) * 0.5)
+    v = _f32_to_bf16_bits(rng.standard_normal((keys, kv_width)).astype(np.float32) * 0.5)
+    mask = causal_keep_mask(keys)[keys - tokens :]
+
+    def run(q_buf, k_buf, v_buf, mask_ptr, strict):
+        out = malloc(tokens * width * 2, runtime=runtime)
+        try:
+            dense_causal_prefill_bf16(
+                q_buf.ptr,
+                k_buf.ptr,
+                v_buf.ptr,
+                mask_ptr,
+                out.ptr,
+                tokens=tokens,
+                keys=keys,
+                num_heads=heads,
+                num_kv_heads=kv_heads,
+                head_dim=head_dim,
+                scale=head_dim**-0.5,
+                strict=strict,
+                runtime=runtime,
+            )
+            host = np.empty((tokens, width), dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(host), out, tokens * width * 2, runtime=runtime)
+            return host
+        finally:
+            free(out, runtime=runtime)
+
+    buffers = []
+    try:
+        for host in (q, k, v, mask):
+            buf = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(buf, host_array_ptr(host), host.nbytes, runtime=runtime)
+            buffers.append(buf)
+        q_buf, k_buf, v_buf, mask_buf = buffers
+
+        exact = run(q_buf, k_buf, v_buf, mask_buf.ptr, True)
+        tiled = run(q_buf, k_buf, v_buf, mask_buf.ptr, False)
+        # A null mask asserts the causal precondition; it must agree with the
+        # explicit causal mask, because the walk already excludes those keys.
+        implicit = run(q_buf, k_buf, v_buf, 0, False)
+    finally:
+        for buf in buffers:
+            free(buf, runtime=runtime)
+
+    reference = _bf16_bits_to_f32(exact)
+    tiled_f32 = _bf16_bits_to_f32(tiled)
+
+    # An independent oracle, so a shared bug in both kernels cannot pass: FP64
+    # softmax over the same BF16 operands, in the same causal frame.
+    oracle = _attention_oracle(q, k, v, mask, heads=heads, kv_heads=kv_heads, head_dim=head_dim)
+    scale = float(np.abs(oracle).max()) or 1.0
+    # Both kernels emit BF16, whose ULP at the largest magnitude here is 2**-8
+    # of it. A tolerance below that would assert that the FP64 oracle and a
+    # BF16 store round identically, which is not a property of either.
+    assert np.max(np.abs(tiled_f32 - oracle)) <= 5e-3 * scale
+    assert np.max(np.abs(reference - oracle)) <= 5e-3 * scale
+    assert np.array_equal(implicit, tiled), "a null mask must equal the causal mask"
+
+
+def _attention_oracle(q, k, v, mask, *, heads, kv_heads, head_dim):
+    """FP64 causal attention over BF16 operands, grouped-query aware."""
+
+    qf = _bf16_bits_to_f32(q).astype(np.float64)
+    kf = _bf16_bits_to_f32(k).astype(np.float64)
+    vf = _bf16_bits_to_f32(v).astype(np.float64)
+    group = heads // kv_heads
+    out = np.zeros_like(qf)
+    for head in range(heads):
+        kv_head = head // group
+        qh = qf[:, head * head_dim : (head + 1) * head_dim]
+        kh = kf[:, kv_head * head_dim : (kv_head + 1) * head_dim]
+        vh = vf[:, kv_head * head_dim : (kv_head + 1) * head_dim]
+        scores = qh @ kh.T * head_dim**-0.5
+        scores = np.where(mask.astype(bool), scores, -np.inf)
+        scores -= scores.max(axis=1, keepdims=True)
+        weights = np.exp(scores)
+        weights /= weights.sum(axis=1, keepdims=True)
+        out[:, head * head_dim : (head + 1) * head_dim] = weights @ vh
+    return out
+
+
+def _bf16_bits_to_f32(host: np.ndarray) -> np.ndarray:
+    return (host.astype(np.uint32) << 16).view(np.float32).reshape(host.shape)
+
+
+def _f32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    """Round-to-nearest-even float32 -> BF16 bit patterns, as uint16."""
+
+    bits = values.astype(np.float32).view(np.uint32)
+    rounded = bits + 0x7FFF + ((bits >> 16) & 1)
+    return (rounded >> 16).astype(np.uint16)

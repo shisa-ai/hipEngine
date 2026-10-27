@@ -109,19 +109,14 @@ def test_generator_defaults_the_context_to_the_checkpoint_limit(checkpoint):
     assert generator.context_length == int(TINY_LLAMA_CONFIG["max_position_embeddings"])
 
 
-def test_generator_defaults_the_context_to_the_kernel_bound(tmp_path: Path):
-    """A checkpoint declaring more positions gets the kernel's bound, not a round number."""
-
-    from hipengine.runtime.llama_dense import MAX_DENSE_DECODE_CONTEXT
+def test_generator_defaults_the_context_to_the_checkpoint_positions(tmp_path: Path):
+    """No round number and no kernel ceiling: the checkpoint's own position count."""
 
     wide = dict(TINY_LLAMA_CONFIG)
     wide["max_position_embeddings"] = 32768
     path, _f32, _bf16 = write_tiny_llama_checkpoint(tmp_path / "wide-default", config=wide)
     generator = _generator(path)
-    assert generator.context_length == MAX_DENSE_DECODE_CONTEXT
-    # The prompt bound stays tighter than the cache, and both are reachable.
-    assert generator.max_prompt_tokens < generator.context_length
-    generator.declare_max_sequence_length(generator.context_length)
+    assert generator.context_length == 32768
 
 
 def test_generator_refuses_a_context_beyond_the_checkpoint(checkpoint):
@@ -129,79 +124,63 @@ def test_generator_refuses_a_context_beyond_the_checkpoint(checkpoint):
         _generator(checkpoint, context_length=int(TINY_LLAMA_CONFIG["max_position_embeddings"]) + 1)
 
 
-def test_generator_refuses_a_context_beyond_the_decode_attention_budget(tmp_path: Path):
-    from hipengine.generation.llama_dense import LlamaDenseGenerator
+def test_context_past_the_old_lds_ceiling_is_served(tmp_path: Path):
+    """16128 was the exact kernel's LDS row, not the path's capability."""
+
+    from hipengine.runtime.llama_dense import max_dense_context
 
     wide = dict(TINY_LLAMA_CONFIG)
-    wide["max_position_embeddings"] = 32768
+    wide["max_position_embeddings"] = 65536
     path, _f32, _bf16 = write_tiny_llama_checkpoint(tmp_path / "wide", config=wide)
-    with pytest.raises(ValueError, match="dense decode attention budget"):
-        LlamaDenseGenerator(
-            model_path=path,
-            weight_index=_index(path),
-            model_plugin=None,
-            context_length=32768,
-        )
+    generator = _generator(path, context_length=65536)
+    assert generator.context_length == 65536
+    assert max_dense_context(generator.spec) == 65536
+    # This fixture's head width is not one the tiled kernel carries, so the
+    # prompt bound still comes from the exact fallback -- the cache capacity does
+    # not. That separation is the point: 16128 was never the path's capability.
+    assert generator.max_prompt_tokens == 15856
 
 
-def test_cache_refuses_a_context_beyond_its_score_row():
-    from hipengine.runtime.llama_dense import MAX_DENSE_DECODE_CONTEXT, LlamaKVCache
-
-    class _Spec:
-        kv_width = 8
-        num_hidden_layers = 1
-
-    with pytest.raises(ValueError, match="paged decode path"):
-        LlamaKVCache(_Spec(), MAX_DENSE_DECODE_CONTEXT + 1, runtime=None)
-
-
-def _geometry(head_dim: int):
+def _geometry(head_dim: int, *, positions: int = 32768):
     class _Spec:
         pass
 
     _Spec.head_dim = head_dim
+    _Spec.num_attention_heads = 8
+    _Spec.num_key_value_heads = 4
+    _Spec.max_position_embeddings = positions
     return _Spec()
 
 
 @pytest.mark.parametrize(
-    ("head_dim", "expected"),
+    ("head_dim", "positions", "expected"),
     [
-        # ``max(head_dim + keys + threads, keys + 528)`` floats of LDS: below a
-        # 528-float reduction the bound is geometry-independent.
-        (32, 15856),
-        (128, 15856),
-        # The 256/512 class kernel moves its logits to request-owned global
-        # scratch instead of refusing, so those widths reach the cache bound.
-        (512, 16128),
+        # The tiled kernel serves head_dim 128 at any key count, so the prompt
+        # bound is the checkpoint's.
+        (128, 32768, 32768),
+        (128, 524288, 524288),
+        # Any other width falls back to the exact kernel, whose FP32 logit row is
+        # ``max(head_dim + keys + threads, keys + 528)`` floats of LDS.
+        (32, 32768, 15856),
+        (64, 32768, 15856),
+        # A checkpoint with fewer positions than the LDS row binds first.
+        (32, 4096, 4096),
     ],
 )
-def test_prefill_bound_follows_the_attention_lds_row(head_dim, expected):
+def test_prefill_bound_follows_the_selected_kernel(head_dim, positions, expected):
     from hipengine.runtime.llama_dense import max_dense_prefill_tokens
 
-    assert max_dense_prefill_tokens(_geometry(head_dim)) == expected
-
-
-def test_prefill_bound_is_tighter_than_the_decode_cache():
-    from hipengine.runtime.llama_dense import (
-        MAX_DENSE_DECODE_CONTEXT,
-        max_dense_prefill_tokens,
-    )
-
-    # A prompt that filled the cache would leave no room to generate, so the
-    # prompt bound can never exceed the cache capacity.
-    for head_dim in (32, 64, 128, 256):
-        assert max_dense_prefill_tokens(_geometry(head_dim)) <= MAX_DENSE_DECODE_CONTEXT
+    assert max_dense_prefill_tokens(_geometry(head_dim, positions=positions)) == expected
 
 
 def test_generator_refuses_a_prompt_beyond_the_prefill_bound(tmp_path: Path):
-    """An over-long prompt is refused before the resident weights load."""
-
-    from hipengine.runtime.llama_dense import MAX_DENSE_DECODE_CONTEXT
+    """On the fallback geometry an over-long prompt is refused before the load."""
 
     wide = dict(TINY_LLAMA_CONFIG)
     wide["max_position_embeddings"] = 32768
     path, _f32, _bf16 = write_tiny_llama_checkpoint(tmp_path / "wide", config=wide)
-    generator = _generator(path, context_length=MAX_DENSE_DECODE_CONTEXT)
+    generator = _generator(path)
+    # head_dim 32 is not carried by the tiled kernel, so the exact LDS row binds.
     assert generator.max_prompt_tokens < generator.context_length
 
     generator._validate_prompt_length(generator.max_prompt_tokens, 1)
@@ -212,6 +191,26 @@ def test_generator_refuses_a_prompt_beyond_the_prefill_bound(tmp_path: Path):
     with pytest.raises(ValueError, match="dense causal prefill attention"):
         generator.generate_detailed(_request(prompts=(prompt,)))
     assert generator._runner is None, "the refusal must precede the weight load"
+
+
+def test_an_explicit_strict_profile_selects_the_exact_kernel(checkpoint):
+    """`execution_profile="strict"` must reach the kernel, not be dropped."""
+
+    default = _generator(checkpoint)
+    assert default.execution_profile is None
+    assert default.strict_arithmetic is False
+
+    strict = _generator(checkpoint, execution_profile="strict")
+    assert strict.execution_profile == "strict"
+    assert strict.strict_arithmetic is True
+
+    production = _generator(checkpoint, execution_profile="production")
+    assert production.strict_arithmetic is False
+
+
+def test_an_unknown_profile_is_refused_by_name(checkpoint):
+    with pytest.raises(Exception, match="strict|production|batch"):
+        _generator(checkpoint, execution_profile="turbo")
 
 
 def test_generator_refuses_a_prompt_that_leaves_no_room_to_generate(checkpoint):

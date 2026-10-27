@@ -34,6 +34,9 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
+from hipengine.kernels.hip_gfx1100.attention.dense_flash_prefill import (
+    dense_flash_prefill_admits,
+)
 from hipengine.kernels.hip_gfx1100.attention.dense_prefill_attention import (
     causal_keep_mask,
     dense_causal_prefill_bf16,
@@ -172,12 +175,28 @@ class LlamaPrefillRunner:
         loaded: "LlamaLoadedModel",
         *,
         runtime: HipRuntime | None = None,
+        strict: bool = False,
     ) -> None:
         self.loaded = loaded
         self.spec = loaded.spec
         self.runtime = runtime or get_hip_runtime()
+        #: Selects the exact block attention instead of the tiled kernel.
+        self.strict = bool(strict)
         self._scratch: _PrefillScratch | None = None
         self._attention_scratch = Gemma4AttentionScratch()
+        # Whether the tiled kernel carries this geometry. It decides two things:
+        # the prompt bound (tiled serves any key count) and whether a causal mask
+        # has to exist at all (the tiled walk enforces causality by itself).
+        self._attention_is_tiled = not self.strict and (
+            dense_flash_prefill_admits(
+                tokens=1,
+                keys=1,
+                num_heads=int(self.spec.num_attention_heads),
+                num_kv_heads=int(self.spec.num_key_value_heads),
+                head_dim=int(self.spec.head_dim),
+            )
+            is None
+        )
 
     # -- lifecycle ---------------------------------------------------------
     def close(self) -> None:
@@ -259,6 +278,13 @@ class LlamaPrefillRunner:
         )
 
     def _upload_mask(self, rows: int, scratch: _PrefillScratch) -> None:
+        """Upload the explicit causal mask.
+
+        Only the exact fallback reads it. The tiled route is told ``0`` instead
+        -- its walk is already bounded by causality -- which is what keeps a long
+        prompt from allocating and copying a ``rows x rows`` byte array.
+        """
+
         mask = causal_keep_mask(rows)
         copy_host_to_device(scratch.mask, host_array_ptr(mask), rows * rows, runtime=self.runtime)
 
@@ -349,7 +375,8 @@ class LlamaPrefillRunner:
         scratch = self._scratch_for(rows)
         self._gather_embeddings(tokens, scratch)
         self._upload_rope_tables(position_values, rows, scratch)
-        self._upload_mask(rows, scratch)
+        if not self._attention_is_tiled:
+            self._upload_mask(rows, scratch)
 
         for layer_id in range(spec.num_hidden_layers):
             weights = self.loaded.layers[layer_id]
@@ -407,13 +434,17 @@ class LlamaPrefillRunner:
                 scratch.query.ptr,
                 scratch.key.ptr,
                 scratch.value.ptr,
-                scratch.mask.ptr,
+                # 0 = the causal mask; the tiled kernel's walk already enforces
+                # it and the exact fallback re-uploads the real mask when it is
+                # the selected route.
+                0 if self._attention_is_tiled else scratch.mask.ptr,
                 scratch.attention.ptr,
                 tokens=rows,
                 num_heads=spec.num_attention_heads,
                 num_kv_heads=spec.num_key_value_heads,
                 head_dim=spec.head_dim,
                 scale=spec.attention_scale,
+                strict=self.strict,
                 runtime=self.runtime,
                 scratch=self._attention_scratch,
             )

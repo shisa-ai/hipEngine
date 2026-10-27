@@ -38,8 +38,8 @@ from hipengine.loading.llama_safetensors import (
 from hipengine.loading.safetensors import WeightIndex
 from hipengine.models.llama import LlamaCapabilityMiss, LlamaSpec
 from hipengine.runtime.llama_dense import (
-    MAX_DENSE_DECODE_CONTEXT,
     LlamaDenseRunner,
+    default_dense_context_length,
     max_dense_prefill_tokens,
 )
 from hipengine.tokenization.llama_dense import LlamaDenseTokenizer
@@ -57,6 +57,10 @@ class LlamaDenseGenerator:
     model_plugin: Any
     backend: str = "hip_gfx1151"
     context_length: int | None = None
+    #: An explicitly requested arithmetic profile. ``strict`` selects the exact
+    #: block attention; anything else -- including the default -- takes the tiled
+    #: kernel with the exact one as its fallback.
+    execution_profile: str | None = None
     spec: LlamaSpec = field(init=False)
     tokenizer: LlamaDenseTokenizer = field(init=False)
     max_prompt_tokens: int = field(init=False)
@@ -79,21 +83,35 @@ class LlamaDenseGenerator:
         self.model_path = Path(self.weight_index.model_path).expanduser().resolve()
         self.backend = resolve_backend(self.backend)
         self.spec = load_llama_spec(self.weight_index)
+        self.execution_profile = self._validate_execution_profile(self.execution_profile)
         self.context_length = (
-            # The default is what the path can serve, not a round number: the
-            # cache is the checkpoint's position count capped by the decode
-            # kernel's LDS row. Anything lower would refuse context the kernels
-            # run, and it costs only KV memory -- 3.4 GB here against ~50 GB of
-            # headroom. A prompt is separately bounded by the prefill row, which
-            # `_validate_prompt_length` reports by name.
-            min(self.spec.max_position_embeddings, MAX_DENSE_DECODE_CONTEXT)
+            # The default is what this machine can serve: the checkpoint's
+            # positions, capped by the cache that fits beside the resident
+            # weights. Both attention passes tile keys, so no kernel bound is
+            # tighter than that -- only memory is.
+            default_dense_context_length(self.spec, self.weight_index)
             if self.context_length is None
             else self._validate_context(self.context_length)
         )
         self.tokenizer = self._build_tokenizer()
-        self.max_prompt_tokens = max_dense_prefill_tokens(self.spec)
+        self.max_prompt_tokens = min(
+            max_dense_prefill_tokens(self.spec), self.context_length
+        )
 
     # -- construction ------------------------------------------------------
+    @staticmethod
+    def _validate_execution_profile(value: str | None) -> str | None:
+        if value is None:
+            return None
+        from hipengine.execution_profiles import resolve_requested_execution_profile
+
+        # Unknown selectors raise here rather than being silently ignored.
+        return resolve_requested_execution_profile(value).value
+
+    @property
+    def strict_arithmetic(self) -> bool:
+        return self.execution_profile == "strict"
+
     def _validate_context(self, tokens: int) -> int:
         context = int(tokens)
         if context <= 0:
@@ -102,12 +120,6 @@ class LlamaDenseGenerator:
             raise ValueError(
                 f"context_length {context} exceeds the checkpoint's "
                 f"{self.spec.max_position_embeddings} positions"
-            )
-        if context > MAX_DENSE_DECODE_CONTEXT:
-            raise ValueError(
-                f"context_length {context} exceeds the dense decode attention budget of "
-                f"{MAX_DENSE_DECODE_CONTEXT} tokens; this path stages one FP32 score row "
-                "in 64 KiB of LDS, and a longer context needs the paged decode path"
             )
         return context
 
@@ -179,7 +191,9 @@ class LlamaDenseGenerator:
         started = time.perf_counter()
         loaded = materialize_llama_weights(self.weight_index, self.spec)
         try:
-            runner = LlamaDenseRunner(loaded, max_context=self.context_length)
+            runner = LlamaDenseRunner(
+                loaded, max_context=self.context_length, strict=self.strict_arithmetic
+            )
         except Exception:
             loaded.free()
             raise
@@ -363,12 +377,14 @@ def _make_generator(
     model_plugin: Any,
     backend: str,
     max_sequence_length: int | None = None,
+    execution_profile: str | None = None,
 ) -> LlamaDenseGenerator:
     generator = LlamaDenseGenerator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
         backend=backend,
+        execution_profile=execution_profile,
     )
     if max_sequence_length is not None:
         generator.declare_max_sequence_length(int(max_sequence_length))

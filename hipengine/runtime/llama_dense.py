@@ -11,14 +11,13 @@ cache row is ``[kv_width]`` per position, which is the ``[num_kv_heads,
 head_dim]`` layout that kernel indexes, so one contiguous copy per layer appends
 a token.
 
-That kernel keeps its score row in workgroup shared memory, so ``max_context`` is
-bounded by the LDS budget rather than by the checkpoint's position limit.
-:data:`MAX_DENSE_DECODE_CONTEXT` is the largest context the cache can hold.
-
-The prompt pass has its own, usually tighter, bound: the causal prefill kernel
-stages one FP32 logit row per key in LDS too. :func:`max_dense_prefill_tokens`
-asks the attention launcher what it serves for a geometry, so a prompt longer
-than it can run is refused by name instead of failing inside the kernel.
+Both passes tile keys with an online softmax, so neither stages a per-key row in
+shared memory and the context is not capped by the 64 KiB LDS budget. What bounds
+a request is the checkpoint's declared positions (:func:`max_dense_context`) and,
+past that, the memory a KV cache and a causal mask need. The exact block
+attention remains the strict fallback and is still LDS-bounded, so
+:func:`max_dense_prefill_tokens` reports the tighter prompt bound only for a head
+geometry the tiled kernel does not carry.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
-from hipengine.core.hip import HipRuntime
+from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -38,10 +37,12 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
-from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
-    qwen35_full_attn_decode_context_bf16,
+from hipengine.kernels.hip_gfx1100.attention.dense_flash_prefill import (
+    dense_flash_prefill_admits,
 )
-from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+from hipengine.kernels.hip_gfx1100.attention.dense_prefill_attention import (
+    dense_causal_prefill_bf16,
+)
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_bf16_add,
     gguf_rmsnorm_bf16_f32_weight,
@@ -66,45 +67,131 @@ if TYPE_CHECKING:
 _BF16_NBYTES = 2
 _F32_NBYTES = 4
 
-#: The dense decode kernel stages one FP32 score row plus a 256-slot reduction
-#: scratch in LDS, so the servable context is the 64 KiB workgroup budget.
-_DECODE_LDS_BYTES = 64 * 1024
-_DECODE_THREADS = 256
-MAX_DENSE_DECODE_CONTEXT = _DECODE_LDS_BYTES // _F32_NBYTES - _DECODE_THREADS
+#: The exact block attention stages one FP32 logit row per key in LDS, so it is
+#: bounded by the 64 KiB workgroup budget. It is the strict fallback now, not the
+#: default: the tiled route's shared memory does not mention the context.
+_EXACT_LDS_BYTES = 64 * 1024
+_EXACT_LDS_FLOATS = _EXACT_LDS_BYTES // _F32_NBYTES
+
+
+def max_dense_context(spec: "LlamaSpec") -> int:
+    """The longest context this path can serve.
+
+    Both attention passes tile keys with an online softmax, so neither stages a
+    per-key row in shared memory and neither imposes a context ceiling. What
+    bounds a request is the checkpoint's declared positions and, past that, the
+    memory a KV cache needs -- a resource failure, not a capability one.
+
+    This is the capability answer. The generator's *default* is separately
+    clamped by what actually fits, because a checkpoint may declare more
+    positions than the cache can hold beside its own weights.
+    """
+
+    return int(spec.max_position_embeddings)
+
+
+def kv_bytes_per_token(spec: "LlamaSpec") -> int:
+    """BF16 K and V for one position, across every layer."""
+
+    return int(spec.num_hidden_layers) * 2 * int(spec.kv_width) * _BF16_NBYTES
+
+
+#: Host- and device-side working set a prefill needs beyond the KV cache and
+#: the resident weights: the attention scratch, logits, and the tokenizer's
+#: buffers. Reserved out of the default context budget so a default that fits
+#: the cache still fits the pass that fills it.
+_PREFILL_SCRATCH_RESERVE = 4 << 30
+
+
+def default_dense_context_length(spec: "LlamaSpec", weight_index: object) -> int:
+    """The context this machine serves by default.
+
+    The checkpoint's positions, capped by the cache that fits beside the weights
+    this checkpoint will occupy. The cap is memory, not a round number: it is
+    derived from ``hipMemGetInfo`` and the index's own tensor shapes, so the same
+    checkpoint gets a larger default on a larger card and a smaller one where it
+    would not fit.
+
+    Half of the post-weights budget is available to the cache, so a default
+    context never leaves the machine with less free memory than the cache itself
+    holds. Asking for a larger ``context_length`` is honoured; if it does not fit
+    the allocation fails, which is a resource error, not a refusal.
+    """
+
+    checkpoint = max_dense_context(spec)
+    per_token = kv_bytes_per_token(spec)
+    if per_token <= 0:
+        return checkpoint
+    try:
+        free_bytes, total_bytes = get_hip_runtime().mem_get_info()
+    except Exception:
+        # No device to ask. The checkpoint's positions are still the right
+        # answer; sizing happens when the cache is built.
+        return checkpoint
+    budget = min(int(free_bytes), int(total_bytes))
+    budget -= resident_weight_bytes(weight_index) + _PREFILL_SCRATCH_RESERVE
+    if budget <= 0:
+        return 1
+    return int(max(1, min(checkpoint, (budget // 2) // per_token)))
+
+
+def resident_weight_bytes(weight_index: object) -> int:
+    """Bytes the loader will hold resident, from the index alone.
+
+    The loader materializes BF16 for every tensor it reads, so a float8 source
+    costs two bytes per element once resident -- which is why an FP8 checkpoint
+    occupies twice its on-disk size. Tensors whose dtype has no known width are
+    counted as BF16, which is the loader's own target type.
+    """
+
+    tensors = getattr(weight_index, "tensors", {}) or {}
+    total = 0
+    for info in tensors.values():
+        count = 1
+        for dim in info.shape:
+            count *= int(dim)
+        total += count * _BF16_NBYTES
+    return total
 
 
 def max_dense_prefill_tokens(spec: "LlamaSpec") -> int:
-    """The longest prompt the strict causal prefill attention serves.
+    """The longest prompt the selected prefill kernel serves.
 
-    The prefill launcher admits a key count only when its LDS row fits, and that
-    row is ``max(head_dim + keys + threads, keys + 528)`` floats -- so the bound
-    is a property of the head geometry, not a constant. Above it the launcher
-    raises, which is the right answer for a caller that asked for the shape but
-    the wrong one to discover after a 66 GB weight load, so this asks the same
-    question up front. It never exceeds the decode cache capacity: a prompt that
-    fills the cache leaves no room to generate.
-
-    The predicate is monotonic in ``keys``, which is what makes the bisection
-    sound rather than a search.
+    The tiled kernel serves every key count, so the prompt bound is the
+    checkpoint's position count. Only a geometry the tiled kernel does not carry
+    -- anything but ``head_dim`` 128 -- falls back to the exact block kernel,
+    whose FP32 logit row is ``max(head_dim + keys + threads, keys + 528)`` floats
+    and is therefore bounded by the 64 KiB LDS budget. That bound is a property
+    of the head geometry, so it is derived from the launcher's own rule rather
+    than restated here; the predicate is monotonic in ``keys``, which is what
+    makes the bisection sound.
     """
 
     head_dim = int(spec.head_dim)
-    low, high = 1, MAX_DENSE_DECODE_CONTEXT
-    if not _prefill_fits(head_dim, low):
+    if dense_flash_prefill_admits(
+        tokens=1,
+        keys=1,
+        num_heads=int(spec.num_attention_heads),
+        num_kv_heads=int(spec.num_key_value_heads),
+        head_dim=head_dim,
+    ) is None:
+        return max_dense_context(spec)
+    low, high = 1, max_dense_context(spec)
+    if not _exact_prefill_fits(head_dim, low):
         raise ValueError(
             f"the causal prefill attention cannot serve head_dim={head_dim} at any "
             "context length"
         )
     while low < high:
         middle = (low + high + 1) // 2
-        if _prefill_fits(head_dim, middle):
+        if _exact_prefill_fits(head_dim, middle):
             low = middle
         else:
             high = middle - 1
     return low
 
 
-def _prefill_fits(head_dim: int, keys: int) -> bool:
+def _exact_prefill_fits(head_dim: int, keys: int) -> bool:
     try:
         gemma4_attention_shared_bytes(head_dim=head_dim, keys=keys)
     except NotImplementedError:
@@ -123,12 +210,6 @@ class LlamaKVCache:
         context = int(max_context)
         if context <= 0:
             raise ValueError("max_context must be positive")
-        if context > MAX_DENSE_DECODE_CONTEXT:
-            raise ValueError(
-                f"max_context {context} exceeds the dense decode attention budget of "
-                f"{MAX_DENSE_DECODE_CONTEXT} tokens (64 KiB LDS score row); a longer "
-                "context needs the paged decode path"
-            )
         self.spec = spec
         self.max_context = context
         self.runtime = runtime
@@ -266,23 +347,44 @@ class LlamaKVCache:
 
 @dataclass
 class _DecodeScratch:
-    """Per-step FP32 staging the BF16 prefill scratch does not carry."""
+    """Per-step staging the BF16 prefill scratch does not carry.
 
-    query_f32: DeviceBuffer
-    attention_f32: DeviceBuffer
+    A decode step is the tiled kernel at ``tokens == 1`` with a null mask, which
+    already means "every key up to this position": ``position_base`` is the last
+    cached position, so the causal walk bound covers the whole context. That
+    leaves no per-step attention buffer -- only the logit vector the
+    language-model head writes.
+
+    A geometry the tiled kernel does not carry falls back to the exact block
+    decode, which reads a mask unconditionally. There the row is allocated once
+    at cache capacity and filled with ones, because a decode step sees every
+    cached key.
+    """
+
     logits: DeviceBuffer
+    mask: DeviceBuffer | None = None
 
     @classmethod
-    def allocate(cls, spec: "LlamaSpec", *, runtime: HipRuntime) -> "_DecodeScratch":
+    def allocate(
+        cls,
+        spec: "LlamaSpec",
+        *,
+        max_context: int,
+        runtime: HipRuntime,
+        needs_mask: bool,
+    ) -> "_DecodeScratch":
+        mask = None
+        if needs_mask:
+            mask = malloc(int(max_context), runtime=runtime)
+            runtime.memset(mask.ptr, 1, int(max_context))
         return cls(
-            query_f32=malloc(spec.q_width * _F32_NBYTES, runtime=runtime),
-            attention_f32=malloc(spec.q_width * _F32_NBYTES, runtime=runtime),
-            logits=malloc(spec.vocab_size * _F32_NBYTES, runtime=runtime),
+            logits=malloc(spec.vocab_size * _F32_NBYTES, runtime=runtime), mask=mask
         )
 
     def close(self, *, runtime: HipRuntime) -> None:
-        for buffer in (self.logits, self.attention_f32, self.query_f32):
-            free(buffer, runtime=runtime)
+        free(self.logits, runtime=runtime)
+        if self.mask is not None:
+            free(self.mask, runtime=runtime)
 
 
 class LlamaDenseRunner(LlamaPrefillRunner):
@@ -294,8 +396,9 @@ class LlamaDenseRunner(LlamaPrefillRunner):
         *,
         max_context: int,
         runtime: HipRuntime | None = None,
+        strict: bool = False,
     ) -> None:
-        super().__init__(loaded, runtime=runtime)
+        super().__init__(loaded, runtime=runtime, strict=strict)
         self.cache = LlamaKVCache(self.spec, max_context, runtime=self.runtime)
         self._decode: _DecodeScratch | None = None
 
@@ -318,7 +421,12 @@ class LlamaDenseRunner(LlamaPrefillRunner):
 
     def _decode_scratch(self) -> _DecodeScratch:
         if self._decode is None:
-            self._decode = _DecodeScratch.allocate(self.spec, runtime=self.runtime)
+            self._decode = _DecodeScratch.allocate(
+                self.spec,
+                max_context=self.max_context,
+                runtime=self.runtime,
+                needs_mask=not self._attention_is_tiled,
+            )
         return self._decode
 
     # -- passes ------------------------------------------------------------
@@ -426,24 +534,26 @@ class LlamaDenseRunner(LlamaPrefillRunner):
                 1,
                 np.array([next_position], dtype=np.int64),
             )
-            bf16_to_f32(scratch.query.ptr, decode.query_f32.ptr, spec.q_width, runtime=self.runtime)
-            qwen35_full_attn_decode_context_bf16(
-                decode.query_f32.ptr,
+            # The tiled prefill kernel is also the decode kernel at tokens == 1:
+            # it tiles keys with an online softmax, so its shared memory does not
+            # mention the context and there is no LDS ceiling to refuse. One
+            # launch replaces the FP32-widened block decode and its BF16
+            # narrowing, so Q and the attention output stay BF16 end to end.
+            dense_causal_prefill_bf16(
+                scratch.query.ptr,
                 self.cache.key(layer_id).ptr,
                 self.cache.value(layer_id).ptr,
-                decode.attention_f32.ptr,
-                self.cache.context_len_ptr,
-                self.cache.max_context,
-                spec.num_attention_heads,
-                spec.num_key_value_heads,
-                spec.head_dim,
-                spec.attention_scale,
-                runtime=self.runtime,
-            )
-            f32_to_bf16(
-                decode.attention_f32.ptr,
+                # 0 means every cached key is visible: at tokens == 1 the causal
+                # bound is the last position, i.e. the whole context.
+                0 if self._attention_is_tiled else decode.mask.ptr,
                 scratch.attention.ptr,
-                spec.q_width,
+                tokens=1,
+                keys=next_position + 1,
+                num_heads=spec.num_attention_heads,
+                num_kv_heads=spec.num_key_value_heads,
+                head_dim=spec.head_dim,
+                scale=spec.attention_scale,
+                strict=self.strict,
                 runtime=self.runtime,
             )
             dense_gemv_out_bf16(
@@ -546,6 +656,9 @@ class LlamaDenseRunner(LlamaPrefillRunner):
 __all__ = [
     "LlamaDenseRunner",
     "LlamaKVCache",
-    "MAX_DENSE_DECODE_CONTEXT",
+    "default_dense_context_length",
+    "kv_bytes_per_token",
+    "max_dense_context",
     "max_dense_prefill_tokens",
+    "resident_weight_bytes",
 ]

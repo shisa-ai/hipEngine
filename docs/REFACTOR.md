@@ -16,40 +16,49 @@ IDs, closed statuses and local links; it also runs in the documentation gate.
 Preserve supported fallback paths and apply the verification rules in
 [AGENTS.md](../AGENTS.md) and [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md).
 
-## Dense Llama attention has no flash owner at head_dim 128
+## Dense Llama attention only tiles head_dim 128
 
-Recorded 2026-10-27. `hipengine/kernels/hip_gfx1100/attention/dense_prefill_attention.py`
-runs the repository's exact masked block attention for dense Llama-family
-prefill. The vendored AOTriton image set on this architecture only carries
-`head_dim` 256 tiles, so a 128-wide dense head has no flash image to route to.
-The exact kernel is the correctness owner for both the prefill pass and the DMS
-tap contract.
+Recorded 2026-10-27, rewritten 2026-10-28 when the flash route landed.
+`hipengine/kernels/hip_gfx1100/attention/dense_flash_prefill.py` is the tiled
+causal attention for dense Llama-family prompts and decode steps, and
+`dense_causal_prefill_bf16` routes to it by default with the exact block kernel
+as the strict fallback. Its K/V tile is fixed, so shared memory does not mention
+the context and the path has no LDS-derived context ceiling; a null
+`keep_mask` means "the causal mask", so a prompt does not materialize a
+`tokens x keys` byte array either.
 
-`hipengine/runtime/llama_dense.py` takes the same head width to the tree's dense
-decode attention, which stages one FP32 score row plus a 256-slot reduction
-scratch in workgroup LDS. That is a 64 KiB budget, so
-`MAX_DENSE_DECODE_CONTEXT` (16128 tokens) is the longest context the cache can
-hold, and `LlamaKVCache` refuses a longer one by name. Nanbeige 4.3 33B
-declares 524288 positions, so the decode ceiling is the kernel's, not the
+What remains: the tiled kernel's register tile is specialized for `head_dim`
+128. Any other width falls back to the exact block attention, which is
+LDS-bounded and needs a real mask -- `max_dense_prefill_tokens` derives its
+prompt bound from that launcher's own admission rule, and `_DecodeScratch`
+allocates an all-ones mask row only for that geometry. A dense checkpoint with a
+different head width therefore serves the exact kernel's context bound, not the
 checkpoint's.
 
-The prompt pass has a second, tighter budget: the exact causal prefill kernel
-stages one FP32 logit row per key, `max(head_dim + keys + threads, keys + 528)`
-floats, so at a 128-wide head no prompt longer than 15856 tokens is admitted.
-`max_dense_prefill_tokens` derives that from the attention launcher's own
-admission rule and the generator refuses a longer prompt by name before the
-weights load, rather than letting it fail inside the kernel after a 66 GB load.
-
-Removal condition: a native flash prefill kernel for `head_dim` 128 is registered
-and its logits match the exact kernel within the BF16 representation tolerance on
-the same prompt, at which point
-`hipengine/kernels/hip_gfx1100/attention/dense_prefill_attention.py` routes to it
-and keeps the exact kernel as the strict fallback. The LDS ceiling goes in the
-same change: route dense decode through the paged attention path, whose per-block
-score row is not sized by the context, and route the prompt pass through the
-tiled flash prefill, whose K/V tile is fixed, then delete `MAX_DENSE_DECODE_CONTEXT`
-and `max_dense_prefill_tokens` with it. Validate with
+Removal condition: the tiled kernel carries a second head width, at which point
+the exact fallback no longer needs a mask for any dense geometry and
+`max_dense_prefill_tokens` and `_DecodeScratch.mask` go with it. Validate with
 `uv run pytest tests/test_gpu_llama_dense_prefill.py tests/test_gpu_llama_dense_decode.py`.
+
+## Dense Llama has no registered execution-profile plan
+
+Recorded 2026-10-28. `hipengine/generation/llama_dense.py` selects its own
+arithmetic: `execution_profile="strict"` sets `strict_arithmetic`, which puts
+both attention passes on the exact block kernel, and the default takes the tiled
+one. `LLM(..., execution_profile="strict")` does not reach it, because
+`(llama_dense, <backend>, bf16)` has no registered plan and
+`resolve_runtime_profile` raises `MissingRuntimeProfilePlanError` before a
+generator is constructed. The omission is not specific to this path -- every
+unregistered combination behaves that way -- so the exact fallback is reachable
+from the runner and from direct generator construction, not from the public
+selector.
+
+Removal condition: register a strict plan for `(llama_dense, hip_gfx1100, bf16)`
+and its gfx1151 peer, which makes `execution_profile` resolve instead of raising
+before a generator is constructed. Validate with
+`uv run pytest tests/test_unit_llama_dense_generation.py` plus one
+`LLM(..., execution_profile="strict")` construction that reports
+`strict_arithmetic=True`.
 
 
 ## Outstanding work
