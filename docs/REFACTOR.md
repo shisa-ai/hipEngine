@@ -3430,29 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 Q8T16 dual-WMMA alpha/beta rollback seam
-
-- Added 2026-08-15 for D08-X8 exact rows512/K1024/N16+N16 alpha/beta
-  promotion. `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL=0` restores the two
-  singleton registered Q8T16 WMMA projections. Shape/backend/registry misses
-  also fail closed to those primitives; no resident or scratch allocation
-  depends on the pair owner.
-- Removal trigger: after one release window with Q4/Q8 p512, decode, cumulative
-  semantic, and lifecycle gates stable, remove the selector/cache dimension.
-  Keep the singleton kernels as required numerical and peer-backend fallbacks.
-
-## gfx1151 dense-BF16 WMMA residual rollback seam
-
-- Added 2026-08-15 for D08-X6 exact rows512 FFN-down plus residual promotion.
-  `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL=0` preserves the already-retained WMMA
-  projection plus standalone `gguf_bf16_add` chain for paired bisection. Registry
-  and shape misses also fail closed to that primitive chain; no resident or
-  scratch bytes depend on the fused owner.
-- Removal trigger: after one release window with Q4/Q8 p512, eager/graph decode,
-  cumulative semantic, and lifecycle gates stable, remove the environment
-  selector and dead default-off branch. Keep the registered primitive chain as
-  the required numerical and peer-backend fallback.
-
 ## gfx1100 in-tree retained-PM4 transport comparison seams
 
 - Added 2026-08-07 for explicit `hipgraph|aql|pm4` isolation and promotion.
@@ -10593,3 +10570,30 @@ Run `tests/test_unit_qwen38_int8_kv_capability.py`,
 `tests/test_unit_gguf_int8_mtp.py` alongside that public validation. Missing
 measurements do not disable the implemented direct path, and this disposition
 makes no new GPU, capacity or performance claim.
+
+### R0214/R0215 — Cumulative-semantic rollback-control migration
+
+`HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL` and
+`HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL` default on. Their off values still select
+real control arms in `scripts/qwen35_08b_cumulative_semantic.py`: strict and
+X8 rollback use separate Q8T16 projections; X6 rollback uses projection plus
+standalone BF16 add. Removing the environment reads without migrating those
+arms would silently compare the candidate with itself. Registered singleton
+projections and addition also handle shape/backend/registry misses and must
+remain regardless of selector retirement.
+
+**Dependency:** move these diagnostic controls out of production environment
+selection and validate the actual Qwen3.5-0.8B Q4_K_M and Q8_0 callers. Neither
+checkpoint is present in the local `/models/gguf` catalogue used for this sweep;
+other available Qwen models do not establish engagement of the narrow
+rows512/K1024/N16+N16 pair.
+**Clearing action:** replace the harness's X6/X8 environment controls with
+scoped diagnostic overrides that restore on success and exception, remove the
+production readers and Q8 pair-cache environment dimension, and update ENVS.
+Run `tests/test_unit_qwen35_08b_cumulative_semantic.py` and
+`tests/test_unit_gguf_linear_dispatch.py`; with those checkpoints available,
+exercise public p512 generation and eager/graph decode, trace pair/residual
+selection, compare against the registered singleton/add controls, and verify
+cleanup. Keep backend/shape policy and primitive fallbacks. These are concrete
+harness and input dependencies, not a release-window or missing-qualification
+restriction; both fused defaults remain enabled.

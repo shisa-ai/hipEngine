@@ -5582,18 +5582,20 @@
       "start_line": 4704,
       "end_line": 4714,
       "sha256": "934492e66cc3089a2b4f9548db56581745e3a133c0db7f81dacb3400f925e00b",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Active cumulative-semantic strict/X8 roles still depend on the environment opt-out; silent removal would invalidate controls. Q8 pair cache also keys the value. Moved concrete scoped-control migration and public narrow-shape engagement dependency to bottom of REFACTOR. Local Qwen3.5-0.8B Q4/Q8 checkpoints absent; fused defaults and singleton fallbacks unchanged. Focused dispatch/cumulative tests pass. Worklog: worklog/entries/20261027T175356.715114Z-cleanup-refactor-r0214-r0215-aebccf.md."
+      ],
       "subitems": [
         {
           "line": 4706,
           "text": "- Added 2026-08-15 for D08-X8 exact rows512/K1024/N16+N16 alpha/beta",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4711,
           "text": "- Removal trigger: after one release window with Q4/Q8 p512, decode, cumulative",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },
@@ -5603,18 +5605,20 @@
       "start_line": 4715,
       "end_line": 4726,
       "sha256": "4c7cf6dd406584ccb025564109dd7427474ccf9258381dd183f200143a7b15b7",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": [
+        "Active cumulative-semantic X6 role still consumes the environment opt-out. Moved scoped diagnostic-control migration and missing local Qwen3.5-0.8B Q4/Q8 public input dependency to bottom of REFACTOR. Preserve dense projection/add primitives, shape/backend/registry declines and enabled fused default. Focused dispatch/cumulative tests pass; no new GPU claim. Worklog: worklog/entries/20261027T175356.715114Z-cleanup-refactor-r0214-r0215-aebccf.md."
+      ],
       "subitems": [
         {
           "line": 4717,
           "text": "- Added 2026-08-15 for D08-X6 exact rows512 FFN-down plus residual promotion.",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 4722,
           "text": "- Removal trigger: after one release window with Q4/Q8 p512, eager/graph decode,",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },
