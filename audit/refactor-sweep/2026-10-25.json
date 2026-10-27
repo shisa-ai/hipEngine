@@ -413,28 +413,28 @@
       "start_line": 395,
       "end_line": 419,
       "sha256": "9b885f79d8375c9f8340052341443fc4d657dcd22da6a56fa011cfcdef278496",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": ["Runtime selector/cache-key/profile/gate removal verified by source and passing retirement/profile tests. Diagnostic leaf has live direct screen/localization/tile-sweep consumers and independent accuracy/repeatability/strict-fallback oracles; intentional reference code, no runtime binding. Historical failure artifacts and reopening restrictions preserved. Worklog: worklog/entries/20261027T091609.509879Z-cleanup-refactor-r0018-791dc6.md."],
       "subitems": [
         {
           "line": 397,
           "text": "- The failed `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` runtime selector,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 401,
           "text": "- The independent `dense_split64x128_f32_f32_out` diagnostic leaf remains in",
-          "status": "pending"
+          "status": "not-debt-retained"
         },
         {
           "line": 406,
           "text": "- Compensated F32 high-high accumulation, positive/negative WMMA averaging and",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 412,
           "text": "- Out-of-range operands still trigger the diagnostic leaf's in-kernel strict",
-          "status": "pending"
+          "status": "not-debt-retained"
         }
       ]
     },

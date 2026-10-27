@@ -336,30 +336,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   covers the same bounds and engagement assertions.
   Evidence: `benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/`.
 
-## Dense split-operand WMMA runtime cleanup — complete
-
-- The failed `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` runtime selector,
-  cache-key fields, profile-binder entry and full-model gate modes are removed.
-  The obsolete environment variable has no runtime reader. Admitted raw-F32,
-  late dense-wide and staged-F32 routes are unchanged.
-- The independent `dense_split64x128_f32_f32_out` diagnostic leaf remains in
-  `quant/gguf_q8_0_dense_wide.{hip,py}`, with its GPU numerical RED fixtures,
-  CPU/F64 operation screen and private-buffer natural-input collector. It has
-  no generator/runtime binding. The low-level registry key is for diagnostics,
-  not production admission.
-- Compensated F32 high-high accumulation, positive/negative WMMA averaging and
-  cross-plane summation pass projection fixtures but fail the complete
-  canonical production envelope: mean KL 1.4386e-3, p95 7.5336e-3, max
-  0.059744, top-1 1526/1548. Projection error rankings do not prove model
-  causation or justify another unchanged qualification run. Reopen only with
-  a new arithmetic or ownership mechanism and a predeclared screen.
-- Out-of-range operands still trigger the diagnostic leaf's in-kernel strict
-  F32 fallback. Preserve immutable results at
-  `benchmarks/results/2026-10-05-qwen4exp-dense-split-wmma/` and
-  `benchmarks/results/2026-10-05-qwen4exp-dense-split-model/`. Remove the
-  diagnostic leaf only after its independently useful oracle coverage moves
-  to a replacement; never remove committed failure evidence.
-
 
 ## Prefill chunk capacity guard
 
