@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "Split/tile16 rows 6181/6182 consolidate into R0281-SPLIT live resource/profile interface decision. Both gfx11 packages now declare thresholds; session/allocator and target-AR/profile controls affect workspace and dispatch. Preserve invalid-combination errors/capacity filtering and exact fallbacks. Fake-runtime node plus three unit files and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210445.240109Z-cleanup-refactor-r0281-split-b70b05.md.",
         "IQ3 c1 rows 6179/6180 consolidate into R0281-IQ3 live schedule comparison decision, distinct from R0258 grouped prefill and verifier tile selection. Preserve wave10 miss->wave4, serial composite, backend and multi-row fallback contracts. Three explicit host plan nodes plus runner/target-AR units and docs/audit/worklog pass. Worklog: worklog/entries/20261027T210132.459602Z-cleanup-refactor-r0281-iq3-29157e.md.",
         "Q4 head row 6178 moves to bottom R0281-Q4HEAD: live target-AR control affects scalar raw projection only, not row/bulk/verifier or Q6 producer-top1. Defer diagnostic-vs-scoped-owner decision; preserve missing-key and exact fallback contracts. Runner/target-AR units and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205756.571310Z-cleanup-refactor-r0281-q4head-0ecd29.md.",
         "Mixed projection rows 6176/6177 consolidate into R0281-MIXED. Live target-AR comparison levels: local32, fixed-Q6/generic quad, then pair/singleton; fixed-Q6 false alone cannot bypass local32 success. Defer diagnostic-vs-scoped-policy ownership, preserve quant-tuple and miss ordering. Four unit files/help and docs/audit/worklog pass. Worklog: worklog/entries/20261027T205524.346915Z-cleanup-refactor-r0281-mixed-1c7e8d.md.",
@@ -7535,12 +7536,12 @@
         {
           "line": 6181,
           "text": "| Laguna P2 exact split attention rollback | `LagunaGGUFResidentSession(..., use_split_attention=False)`, `allocate_laguna_kv_cache(..., use_split_attention=False)`, and `laguna_target_ar_bench.py --disable-split-attention` restore the registered global/SWA token4 readers; explicit threshold arguments retain focused A/B control. | Promoted on gfx1100 at global `>=127` and SWA `>=65`. Actual layer event/wall gates and full state are exact; clean short/512/1K/near-4K attention improves **15.66-23.28%**, kernel sum **2.67-16.11%**, span **4.65-14.63%**, and child throughput **1.19-17.58%**. The complete two-order 18-prompt gate moves h32 **50.093 -> 51.436 tok/s (+2.681%)** and E2E **+0.496%**, with every train/heldout category positive. Two reusable buffers add 1,572,864 bytes. gfx1151 and unmeasured backends retain fallback. | After one release/bisection window and P2.2 adjudication, remove positive threshold experiment semantics and keep at most the clear disable rollback. Always retain the registered exact global/token4 readers for below-threshold and unsupported routes. |",
-          "status": "pending"
+          "status": "deferred-policy-interface-R0281-SPLIT"
         },
         {
           "line": 6182,
           "text": "| Laguna P2 exact SWA tile16 rollback | `use_swa_split_tile16=False` / `--disable-swa-split-tile16` restores P2.1's one-slot score producer above gfx1100's retained live-257 tile16 default; explicit threshold remains for focused A/B. | Promoted. Two process orders improve pooled 512/1K/near-4K SWA attention **0.571%/0.344%/0.208%** and total attention **0.461%/0.272%/0.056%** with unchanged dispatches/memory. The complete fallback gate and a 150-transition default-vs-rollback gate are exact/non-regressive. | Fold into the P2 rollback row after one release/defaults-only long-context refresh; retain the registered P2.1 producer permanently for below-threshold and unsupported routes. |",
-          "status": "pending"
+          "status": "deferred-policy-interface-R0281-SPLIT"
         },
         {
           "line": 6183,

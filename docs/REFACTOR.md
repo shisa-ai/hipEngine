@@ -3434,8 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna P2 exact split attention rollback | `LagunaGGUFResidentSession(..., use_split_attention=False)`, `allocate_laguna_kv_cache(..., use_split_attention=False)`, and `laguna_target_ar_bench.py --disable-split-attention` restore the registered global/SWA token4 readers; explicit threshold arguments retain focused A/B control. | Promoted on gfx1100 at global `>=127` and SWA `>=65`. Actual layer event/wall gates and full state are exact; clean short/512/1K/near-4K attention improves **15.66-23.28%**, kernel sum **2.67-16.11%**, span **4.65-14.63%**, and child throughput **1.19-17.58%**. The complete two-order 18-prompt gate moves h32 **50.093 -> 51.436 tok/s (+2.681%)** and E2E **+0.496%**, with every train/heldout category positive. Two reusable buffers add 1,572,864 bytes. gfx1151 and unmeasured backends retain fallback. | After one release/bisection window and P2.2 adjudication, remove positive threshold experiment semantics and keep at most the clear disable rollback. Always retain the registered exact global/token4 readers for below-threshold and unsupported routes. |
-| Laguna P2 exact SWA tile16 rollback | `use_swa_split_tile16=False` / `--disable-swa-split-tile16` restores P2.1's one-slot score producer above gfx1100's retained live-257 tile16 default; explicit threshold remains for focused A/B. | Promoted. Two process orders improve pooled 512/1K/near-4K SWA attention **0.571%/0.344%/0.208%** and total attention **0.461%/0.272%/0.056%** with unchanged dispatches/memory. The complete fallback gate and a 150-transition default-vs-rollback gate are exact/non-regressive. | Fold into the P2 rollback row after one release/defaults-only long-context refresh; retain the registered P2.1 producer permanently for below-threshold and unsupported routes. |
 | Laguna P4.1 split-reducer gate-fusion rollback | `LagunaGGUFResidentSession(..., use_split_gate_fusion=False)`, `allocate_laguna_kv_cache(..., use_split_gate_fusion=False)`, and `laguna_target_ar_bench.py --disable-split-gate-fusion` restore the exact split reducer plus standalone softplus BF16 gate. | Promoted on gfx1100 split paths. First/last actual layers at live 128/257 are bit-exact and improve inclusive event **3.00-10.05%** and wall **2.89-9.60%**; full state/lifecycle are exact. The two-order category gate moves h32 **51.497 -> 51.825 tok/s (+0.637%)** with every train/heldout category decode row positive and no new allocation. Below-threshold, registry miss, gfx1151, and unsupported backends always use the registered unfused chain. | After one release/bisection window and a defaults-only matched-completion refresh, remove the positive constructor/CLI selection while retaining the architecturally required unfused registered fallback. |
 | Laguna current-P4 head RMSNorm+RoPE+KV rollback | `LagunaGGUFResidentSession(..., use_head_kv_fusion=False)` and `scripts/laguna_target_ar_bench.py --disable-head-kv-fusion` restore the registered two-launch head-plus-writer chain around the gfx1100 default. | Promoted on gfx1100 c=1. Global/SWA boundary fixtures, 48 hidden/47 routed boundaries, active K/V and every span field, reset, and lifecycle are exact; first/last actual layers improve inclusive event **33.05-39.36%** and wall **33.41-39.13%**. Pooled short and all long clean kernel/span/child rows improve; the two-order 18-prompt gate moves h32 **51.872 -> 52.391 tok/s (+1.001%)** with every train/heldout category decode positive and all guards passing. Rows/prefill, P2/P4.1 bodies, gfx1151, and unsupported backends remain unchanged. | Retain `False`/CLI rollback for one release and a defaults-only matched-completion refresh, then remove positive constructor selection while permanently keeping the registered unfused chain for rows/prefill and unsupported backends. |
 | Laguna SWA split wave-local reducer rollback | `LagunaGGUFResidentSession(..., use_swa_split_wave_local=False)` and `scripts/laguna_target_ar_bench.py --disable-swa-split-wave-local` restore the exact shared-statistics gated reducers around the gfx1100 wave-local default. | Promoted. Full logits, 48 hidden/47 routed boundaries, active K/V and every span byte, reset, and lifecycle are exact. First/last actual layers improve **4.84-18.96%**; two clean process orders improve reducer/SWA **4.63-5.22% / 4.24-4.55%**, kernel sum **0.94-1.98%**, and span **0.61-1.69%** at every context. The complete two-order gate moves h32 **52.211 -> 52.514 tok/s (+0.580%)** with every category decode positive and all guards passing. | Retain explicit false for one release/bisection window and a defaults-only matched-completion refresh, then remove positive constructor semantics while permanently keeping the registered shared-statistics reducer for unsupported backends and rollback. |
@@ -10480,3 +10478,26 @@ in `tests/test_live_laguna_moe_gpu.py`, runner and target-AR units; then exact
 primitive comparisons and R0249/R0250's public c1/multi-row continuation and
 cleanup gate. Keep unsupported/backend fallbacks, grouped-prefill consumers
 and independent verifier tiles. No mode, kernel or default changes here.
+
+### R0281-SPLIT — Split-attention and tile16 comparison controls
+
+Both gfx11 packages now define global/SWA split and SWA tile16 thresholds.
+The session and KV allocator expose `use_split_attention`,
+`use_swa_split_tile16` and explicit crossover values. Target-AR and the
+long-context profile still pass these settings and report resolved values.
+They affect workspace allocation as well as launch selection; contradictory
+disable-plus-threshold requests are errors, not silently ignored controls.
+Capacity filtering and below-threshold paths preserve ordinary readers.
+Gate fusion and wave-local reduction are separate comparisons.
+
+**Decision needed:** retain explicit crossover/disable controls as supported
+resource and profiling policy, or migrate callers to a scoped KV policy owner
+before retiring constructor/allocator/CLI arguments. **Clearing action:**
+migrate both harnesses and their result fields with the session/allocator,
+preserving workspace lifetime, invalid-combination errors, package defaults
+and registered score/token4 fallbacks. Run the fake-runtime bounded-workspace
+node in `tests/test_gpu_laguna_kv_attention.py`, runner, target-AR and
+long-context-profile units. Exercise actual global/SWA lengths below, above
+and unrelated to each crossover, wrap/continuation and multi-row fallback,
+then R0249/R0250's public generation and allocation-cleanup gate. No control,
+threshold, allocation or attention implementation changes here.
