@@ -138,6 +138,27 @@ def summarize_by_configuration(
     return result
 
 
+_UNSET_PROVENANCE_FLAG = object()
+
+
+def _execution_affecting_dirty(provenance: Mapping[str, Any]) -> bool:
+    """Whether a source artifact's worktree state can change what executed.
+
+    Schema-3 provenance records ``execution_affecting_dirty``, which excuses
+    edits under ``docs/``, ``worklog/``, ``benchmarks/results/`` and other prose
+    trees while still refusing kernel, runtime, model, and harness changes.
+    Artifacts emitted before schema 3 carry only the coarse ``dirty`` flag, and
+    for those a doc edit and a kernel edit are indistinguishable, so the strict
+    reading is the only safe one. A present-but-not-``False`` flag is also
+    refused: only the collector's exact ``False`` clears a measurement.
+    """
+
+    flag = provenance.get("execution_affecting_dirty", _UNSET_PROVENANCE_FLAG)
+    if flag is _UNSET_PROVENANCE_FLAG:
+        return provenance.get("dirty") is not False
+    return flag is not False
+
+
 def revalidate_generated_id_policy(
     source: Mapping[str, Any],
     *,
@@ -161,7 +182,7 @@ def revalidate_generated_id_policy(
         int(protocol.get("counterbalanced_pairs", 0)) < 7
         or int(protocol.get("prompt_tokens", 0)) != 512
         or int(protocol.get("decode_steps", 0)) != 128
-        or provenance.get("dirty") is not False
+        or _execution_affecting_dirty(provenance)
         or memory.get("teardown_exact") is not True
     ):
         raise ValueError("revalidation source does not satisfy the timing protocol")
@@ -398,7 +419,7 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     measurement_valid = bool(
         complete_protocol
-        and not provenance.get("dirty")
+        and not _execution_affecting_dirty(provenance)
         and initial_current == final_current
     )
     return {

@@ -8354,19 +8354,18 @@ boolean does not say *which* file was dirty, so a measurement cannot be judged
 after the fact — the passing 32-47 arm of that gate records
 `unstaged_dirty: true` with no way to recover what was modified.
 
-`scripts/execution_profile_q8_wmma_prefill_layers_gate.py` and
-`scripts/execution_profile_q8_mmq_plane_gate.py` key `measurement_valid` and
-their qualification blocker on the new flag. Seven other call sites still use
-the coarse `not provenance.get("dirty")` and raise rather than record a blocker:
-`scripts/qwen36_moe_mtp2_production_gate.py`,
-`scripts/qwen36_dense_mtp2_c2_production_gate.py`,
-`scripts/specdec2_perf_bridge.py`, `scripts/qwen4exp_halo_box_campaign_ab.py`,
-`scripts/q8t16_batch_route_perf.py`, `scripts/run_gfx1151_readme_refresh.sh`,
-and `scripts/run_w7900_readme_refresh.sh`. Removal condition: migrate those to
-the same helper once the publication protocols have been re-read, then delete
-the `provenance.get("dirty")` fallback argument from the two migrated gates.
-Retained-row publication scripts may deliberately want the stricter rule; decide
-per script rather than sweeping.
+`scripts/q8t16_batch_route_perf.py` now uses the execution-affecting flag for
+new schema-3 measurements and source revalidation. Legacy artifacts without
+that field retain a conservative coarse-dirty check; a missing or malformed
+cleanliness value does not establish a clean measurement.
+
+Remaining cleanup: the WMMA-layer and MMQ-plane gates still use
+`provenance.get("dirty")` as a fallback when the execution-affecting field is
+absent. Define their supported legacy-artifact contract before deleting that
+fallback. `scripts/specdec2_perf_bridge.py` deliberately gates staged/unstaged
+changes separately; review its publication contract before relaxing it. The
+other previously listed production/campaign/README refresh scripts no longer
+contain dirty-state logic. Do not close this row on the Q8 route repair alone.
 
 ## 2026-09-16 Qwen4Exp binder: pre-binder env conflicts are reported
 
