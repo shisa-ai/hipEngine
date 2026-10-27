@@ -3430,25 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Qwen3.6 planar-Q6 Q8_1 scalar-dot diagnostic — closed
-
-- The registered planar-Q6/Q8_1 projection/residual primitive remains as
-  correctness and hardware evidence: its W7900 profile cuts the qualified
-  rows1-4 family **46.900 -> 40.992 ms (-12.60%)**, and the full category gate
-  improves B1/B2/B3 **1.875%/1.106%/2.315%**. It is not a production owner
-  because true AR regresses **23.271 -> 21.821 tok/s (-6.235%)**.
-- A cache-representative X8 c1 rescue wins its 56-weight component loop
-  **6.269 -> 5.803 ms (1.080x)** on W7900, but adds **3,371,827,200 bytes / 3.140
-  GiB**. The binding same-commit one-prompt gate improves B3 **65.896 -> 67.592
-  tok/s (+2.573%)** while regressing AR **24.194 -> 22.533 tok/s (-6.867%)**.
-- Runtime ownership and `HIPENGINE_GGUF_Q6_PLANAR_Q8_1` were removed after that
-  rejection. The X8 allocation, helper, registry key, adapter candidate, tests,
-  and `HIPENGINE_GGUF_Q6_X8_C1_SIDECAR` were removed together. Retain only the
-  planar registered leaf, generic q8-input adapter, and focused diagnostics;
-  reopen production only for a byte-neutral/sole-resident c1 representation
-  that preserves transaction-consistent rows2-4 arithmetic and wins AR.
-  Artifact: `benchmarks/results/2026-08-06-qwen36-27b-planar-q6-q8-1-runtime-rejected.json`.
-
 ## Qwen3.6 shared-cache verifier KV batch primitive
 
 - Added 2026-08-05 after the exact rows2/4 primitive passed reversed-page CPU

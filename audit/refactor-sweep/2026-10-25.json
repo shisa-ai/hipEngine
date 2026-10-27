@@ -5926,23 +5926,25 @@
       "start_line": 4938,
       "end_line": 4956,
       "sha256": "9393bf46d9946d7e498e347947198f78badb8694a3ce2f5430d0035437cfe352",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt",
+      "evidence": [
+        "Removed closed runtime/X8 history from live ledger. Retired selector readers/allocation absent; planar projection/residual registered diagnostic and q8-input adapter have focused tests plus explicit leaf consumers. Preserve independent diagnostic rather than treating rejected runtime promotion as a primitive deletion trigger. CPU contract nodes and docs/audit/worklog pass; no kernel/runtime/device/performance change. Worklog: worklog/entries/20261027T185901.660060Z-cleanup-refactor-r0227-735379.md."
+      ],
       "subitems": [
         {
           "line": 4940,
           "text": "- The registered planar-Q6/Q8_1 projection/residual primitive remains as",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 4945,
           "text": "- A cache-representative X8 c1 rescue wins its 56-weight component loop",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 4949,
           "text": "- Runtime ownership and `HIPENGINE_GGUF_Q6_PLANAR_Q8_1` were removed after that",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
