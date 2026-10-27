@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| PARO width-plan execution and rollback flags | The greedy generator and `scripts/qwen35_batch_retained_bench.py` each execute `BatchWidthPartitionPlan` groups and collect similar telemetry; `_generate_batch_sampled()` remains diagnostic. `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` and the legacy-named `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` remain explicit rollback opt-outs. | G3 retains an identity-matched schema-2 gfx1151 c2/c4/c8 profile. G4/G5 attach it to the shared stable-slot owner; blocking F1, native/serial SSE, live admission, c8 repeatability, and a no-flag OpenAI c4 confirmation are exact. gfx1151 backend capabilities now enable the hash/sync-checked packaged profile by default even outside a repository CWD; explicit `=0` still selects the serial fallback. gfx1100 remains package-default off pending owner c4/c8 symmetry. | After one release window and a defaults-only gfx1151 refresh, remove the two positive opt-in semantics and rename/collapse them to one clear rollback selector; consolidate duplicate generator/benchmark plan execution after gfx1100 owner c4/c8 is independently retained. Keep profile identity checks, unsupported-shape partitions, and exact serial fallback permanently. |
 | PARO selected-MoE compatibility alias | `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE` and CLI `--batch-decode-moe-path selected_c1` remain compatibility aliases even though true per-row paths still use `selected_c1_per_row_*` labels. | Runtime metadata emits canonical `moe_decode_path=selected_batch` plus `moe_selected_batch_layers`; retained validators accept either exact grouped-compact or selected-batch layers while still requiring zero per-row fallback layers. The canonical env/CLI spelling is `SELECTED_BATCH_MOE` / `selected_batch`, and the old alias has lower precedence. Clean current-revision gfx1100 c2 is now retained at **121.923 tok/s** selected-batch versus c1 **116.022** and serial c2 **100.925**; all-layer/lifecycle/category/profiler gates pass and `auto` resolves selected-batch. Evidence: `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json`. | Remove the legacy env/CLI alias after one compatibility window from the retained c2 promotion. Keep explicit per-row fallback names and counters permanently. |
 | PARO short-context c>N attention | The optimized 1,024-thread `bf16_context_batch_spans` kernel remains registered beside the default 256-thread dense-order `bf16_context_batch_c1_exact_spans` route. | The optimized route is faster but introduces FP32 reduction drift that changes the full-model c2 trajectory; the exact route preserves physical batch block rows and matches dense c1 bit-for-bit. There is no runtime env flag and dispatch selects the exact variant through the registry. | Remove the duplicate optimized route or replace it only after a c-aware implementation is bit-exact to dense c1 at the 513-token model shape, passes full L40 c2 token/hidden/state/KV gates, and is non-regressive in repeated p512/d128 timing. |
 | PARO gfx1151 greedy decode graph | `capture_decode_graph()` remains available, but public greedy c1 consults a resident-session architecture policy before capture. | The 2026-07-13 gfx1151 p512/d8 graph/eager fixture gate rejected generated-token equality, and graph wall was slightly slower (`0.133842` vs `0.133048` s). gfx1151 therefore uses canonical eager resident steps; gfx1100 retains its previously validated graph path. | Repair and re-admit gfx1151 only after a current-stack graph/eager gate matches generated tokens plus hidden/Conv/GDN/KV state across long replay and improves capture-inclusive wall. If no repair is planned, move the rejected graph probe to a diagnostic-only harness and keep eager as the permanent gfx1151 policy. |
@@ -10297,6 +10296,44 @@ each applicable backend with wrapped SWA, dense/global and non-dense spans,
 empty/short/partial rows, continuation, verifier rows and cleanup. Do not
 collapse strict exact fallbacks into online arithmetic during interface cleanup.
 No variant, allocation, arithmetic or default changes in this consolidation.
+
+### R0281-PARO-WIDTH — PARO batch policy and diagnostic controls
+
+Width-group execution is shared by the greedy compatibility generator, persistent
+resident loop and `scripts/qwen35_batch_retained_bench.py` through
+`hipengine/runtime/qwen35_paro_decode_groups.py`. The caller still owns width
+planning, request ordering, deadlines, sampling and telemetry. The executor
+preserves sparse slots and group order and retries only a native
+`NotImplementedError` through the existing serial implementation.
+
+**Remaining work:** the two environment controls are not synonyms.
+`HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` also selects per-layer linear-output,
+attention and projection defaults; `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE`
+controls native decode. Both still have benchmark/test callers. Choose supported
+separate policy controls or migrate those callers to explicit diagnostic scopes
+before retiring their production environment readers; a rename alone does not
+merge their behavior. The sampled-batch diagnostic is independent and must not
+be substituted for the public per-request sampler.
+
+The native-width cost profile loader also checks model identity and recorded
+measurement ranges. Those checks describe current code, not kernel capability;
+missing or mismatched evidence is not a reason to disable implemented native
+execution. Replace admission checks with backend/quant/KV/shape capability and
+recorded concrete failures, retaining measured costs only for automatic choice
+among working variants. Do not add new artifact allowlists or preserve the old
+instruction to require identity checks permanently.
+
+**Clearing action:** separate these policies, migrate actual callers, then run
+`tests/test_unit_qwen35_paro_decode_groups.py`,
+`tests/test_unit_qwen35_batch_partition_bench.py`,
+`tests/test_unit_generation_qwen35_paro.py`,
+`tests/test_unit_qwen35_resident_batch_layout.py` and batch-width loader tests.
+Exercise public native and serial c1/c2/c4/c8, sparse slots, staggered admission,
+cancellation and cleanup, with the chosen path reported. The available local
+checkpoint exercised the shared executor through public serial fallback; it did
+not exercise native-width selection. gfx1100 is a separate workstation check.
+No kernel, arithmetic, default, flag or profile-admission change in the executor
+extraction.
 
 ### R0281-D12 — Q5 constructor retirement public validation
 

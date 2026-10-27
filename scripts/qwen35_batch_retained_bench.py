@@ -44,6 +44,7 @@ from hipengine.dispatch import (
 from hipengine.generation import GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS, GeneratedToken, GraphBucketCache, ResidentBatchScheduler
 from hipengine.kvcache import ResolvedKVPolicy
 from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, detect_hip_target_arches
+from hipengine.runtime.qwen35_paro_decode_groups import execute_paro_decode_groups
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from scripts import gpu_smi
 from scripts.qwen35_batch_artifact_schema import (
@@ -3859,55 +3860,20 @@ def _decode_scheduler_step_native(
             "blockers": [],
         }
 
-    result_by_request: dict[int, Any] = {}
-    effective_groups: list[tuple[str, int]] = []
-    native_group_calls = 0
-    serial_rows = 0
-    cursor = 0
-    for requested_mode, width in requested_groups:
-        group_rows = sorted_rows[cursor : cursor + width]
-        cursor += width
-        group_slots = [int(item[0]) for item in group_rows]
-        group_request_ids = [int(item[1]) for item in group_rows]
-        group_token_ids = [int(item[2]) for item in group_rows]
-        group_positions = [int(item[3]) for item in group_rows]
-        effective_mode = requested_mode
-        if requested_mode == "native":
-            try:
-                group_results = session.step_batch_native(
-                    group_token_ids,
-                    positions=group_positions,
-                    slots=group_slots,
-                    sample=True,
-                    device_resident=device_resident,
-                )
-                native_group_calls += 1
-            except NotImplementedError:
-                effective_mode = "serial"
-                group_results = session.step_batch_serial(
-                    group_token_ids,
-                    positions=group_positions,
-                    slots=group_slots,
-                    sample=True,
-                )
-                serial_rows += width
-        else:
-            group_results = session.step_batch_serial(
-                group_token_ids,
-                positions=group_positions,
-                slots=group_slots,
-                sample=True,
-            )
-            serial_rows += width
-        if len(group_results) != len(group_request_ids):
-            raise RuntimeError(
-                f"decode group returned {len(group_results)} results for "
-                f"{len(group_request_ids)} requests"
-            )
-        result_by_request.update(zip(group_request_ids, group_results, strict=True))
-        effective_groups.append((effective_mode, width))
-    if cursor != len(sorted_rows):
-        raise RuntimeError("decode width partition did not consume every live row")
+    decode_execution = execute_paro_decode_groups(
+        session,
+        [int(item[2]) for item in sorted_rows],
+        positions=[int(item[3]) for item in sorted_rows],
+        slots=[int(item[0]) for item in sorted_rows],
+        groups=requested_groups,
+        native_kwargs={"device_resident": device_resident},
+    )
+    effective_groups = decode_execution.effective_groups
+    native_group_calls = sum(mode == "native" for mode, _width in effective_groups)
+    serial_rows = sum(width for mode, width in effective_groups if mode == "serial")
+    result_by_request = dict(zip(
+        (int(item[1]) for item in sorted_rows), decode_execution.results, strict=True,
+    ))
     results = tuple(result_by_request[request_id] for request_id in request_ids)
     generated: list[GeneratedToken] = []
     for request_id, result in zip(request_ids, results, strict=True):

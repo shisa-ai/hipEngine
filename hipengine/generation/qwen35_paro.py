@@ -56,6 +56,7 @@ from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.tokenization.qwen35_paro import normalize_token_ids
 from hipengine.loading import WeightIndex
+from hipengine.runtime.qwen35_paro_decode_groups import execute_paro_decode_groups
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
     Qwen35ParoNextTokenRunner,
@@ -1457,81 +1458,31 @@ class Qwen35ParoOneTokenGenerator:
                     positions=tuple(int(item[3]) for item in sorted_step_rows),
                 ).groups
             decode_started_at = time.perf_counter()
-            result_by_request: dict[int, Qwen35ParoAutoregressiveStepResult | None] = {}
-            effective_groups: list[tuple[str, int]] = []
-            cursor = 0
-            step_native_rows = 0
-            step_exact_hybrid_rows = 0
-            step_serial_rows = 0
-            for group in decode_groups:
-                group_rows = sorted_step_rows[cursor : cursor + group.width]
-                cursor += group.width
-                group_slots = [int(item[0]) for item in group_rows]
-                group_request_ids = [int(item[1]) for item in group_rows]
-                group_token_ids = [int(item[2]) for item in group_rows]
-                group_positions = [int(item[3]) for item in group_rows]
-                results: tuple[Qwen35ParoAutoregressiveStepResult | None, ...]
-                if group.mode == "native":
-                    use_exact_hybrid = exact_hybrid_c2 and group.width == 2
-                    try:
-                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                        if use_exact_hybrid:
-                            results = session.step_batch_native(
-                                group_token_ids,
-                                positions=group_positions,
-                                slots=group_slots,
-                                sample=True,
-                                exact_hybrid=True,
-                            )
-                        else:
-                            results = session.step_batch_native(
-                                group_token_ids,
-                                positions=group_positions,
-                                slots=group_slots,
-                                sample=True,
-                            )
-                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                        if use_exact_hybrid:
-                            exact_hybrid_decode_group_calls += 1
-                            step_exact_hybrid_rows += group.width
-                            effective_groups.append(("exact_hybrid", group.width))
-                        else:
-                            native_decode_group_calls += 1
-                            step_native_rows += group.width
-                            effective_groups.append(("native", group.width))
-                    except NotImplementedError:
-                        serial_decode_fallback = True
-                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                        results = session.step_batch_serial(
-                            group_token_ids,
-                            positions=group_positions,
-                            slots=group_slots,
-                            sample=True,
-                        )
-                        raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                        serial_decode_row_calls += group.width
-                        step_serial_rows += group.width
-                        effective_groups.append(("serial", group.width))
-                else:
-                    serial_decode_fallback = True
-                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                    results = session.step_batch_serial(
-                        group_token_ids,
-                        positions=group_positions,
-                        slots=group_slots,
-                        sample=True,
-                    )
-                    raise_if_generation_deadline_expired(deadline_at, cancellation_token=cancellation_token)
-                    serial_decode_row_calls += group.width
-                    step_serial_rows += group.width
-                    effective_groups.append(("serial", group.width))
-                if len(results) != len(group_request_ids):
-                    raise RuntimeError(
-                        f"decode group returned {len(results)} results for {len(group_request_ids)} requests"
-                    )
-                result_by_request.update(zip(group_request_ids, results, strict=True))
-            if cursor != len(sorted_step_rows):
-                raise RuntimeError("decode width partition did not consume every live row")
+            decode_execution = execute_paro_decode_groups(
+                session,
+                [int(item[2]) for item in sorted_step_rows],
+                positions=[int(item[3]) for item in sorted_step_rows],
+                slots=[int(item[0]) for item in sorted_step_rows],
+                groups=tuple((group.mode, group.width) for group in decode_groups),
+                native_kwargs={"exact_hybrid": True} if exact_hybrid_c2 else None,
+                check_control=lambda: raise_if_generation_deadline_expired(
+                    deadline_at, cancellation_token=cancellation_token,
+                ),
+            )
+            effective_groups = [
+                ("exact_hybrid" if mode == "native" and exact_hybrid_c2 else mode, width)
+                for mode, width in decode_execution.effective_groups
+            ]
+            step_native_rows = sum(width for mode, width in effective_groups if mode == "native")
+            step_exact_hybrid_rows = sum(width for mode, width in effective_groups if mode == "exact_hybrid")
+            step_serial_rows = sum(width for mode, width in effective_groups if mode == "serial")
+            native_decode_group_calls += sum(mode == "native" for mode, _width in effective_groups)
+            exact_hybrid_decode_group_calls += sum(mode == "exact_hybrid" for mode, _width in effective_groups)
+            serial_decode_row_calls += step_serial_rows
+            serial_decode_fallback = serial_decode_fallback or bool(step_serial_rows)
+            result_by_request = dict(zip(
+                (int(item[1]) for item in sorted_step_rows), decode_execution.results, strict=True,
+            ))
             results = tuple(result_by_request[request_id] for request_id in request_ids_for_step)
             if step_native_rows and step_serial_rows == 0:
                 native_decode_steps += 1
@@ -3256,87 +3207,41 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
         if width_plan.blockers:
             for blocker in width_plan.blockers:
                 self._fallback_reasons[str(blocker)] += len(ordered)
-        result_by_request: dict[int, Qwen35ParoAutoregressiveStepResult] = {}
-        cursor = 0
         self._clear_session_sampler()
-        for group in width_plan.groups:
-            group_rows = ordered[cursor:cursor + int(group.width)]
-            cursor += int(group.width)
-            tokens = tuple(int(row.generated_steps[-1].token_id) for row in group_rows)
-            group_positions = tuple(
-                len(row.prompt_ids) + len(row.generated_steps) - 1
-                for row in group_rows
-            )
-            slots = tuple(int(row.model_slot) for row in group_rows)
-            results: tuple[Qwen35ParoAutoregressiveStepResult | None, ...]
-            if group.mode == "native":
-                try:
-                    results = tuple(
-                        self._session.step_batch_native(
-                            tokens,
-                            positions=group_positions,
-                            slots=slots,
-                            sample=True,
-                        )
-                    )
-                    self._route_counts["native_group_calls"] += 1
-                    self._route_counts["native_rows"] += len(group_rows)
-                    for row in group_rows:
-                        row.native_decode_steps += 1
-                        row.last_execution_path = "paro_resident_native_width_decode"
-                except NotImplementedError:
-                    self._fallback_reasons["native_width_runtime_unavailable"] += len(group_rows)
-                    results = self._serial_greedy_group(
-                        group_rows,
-                        tokens=tokens,
-                        positions=group_positions,
-                        slots=slots,
-                    )
+        execution = execute_paro_decode_groups(
+            self._session,
+            [int(row.generated_steps[-1].token_id) for row in ordered],
+            positions=positions,
+            slots=[int(row.model_slot) for row in ordered],
+            groups=tuple((group.mode, group.width) for group in width_plan.groups),
+        )
+        if execution.native_fallback_rows:
+            self._fallback_reasons["native_width_runtime_unavailable"] += execution.native_fallback_rows
+        cursor = 0
+        for mode, width in execution.effective_groups:
+            group_rows = ordered[cursor:cursor + width]
+            cursor += width
+            if mode == "native":
+                self._route_counts["native_group_calls"] += 1
+                self._route_counts["native_rows"] += width
+                for row in group_rows:
+                    row.native_decode_steps += 1
+                    row.last_execution_path = "paro_resident_native_width_decode"
             else:
-                results = self._serial_greedy_group(
-                    group_rows,
-                    tokens=tokens,
-                    positions=group_positions,
-                    slots=slots,
-                )
-            if len(results) != len(group_rows):
-                raise RuntimeError(
-                    f"PARO decode group returned {len(results)} result(s) for {len(group_rows)} rows"
-                )
-            for row, result in zip(group_rows, results, strict=True):
-                if result is None:
-                    raise RuntimeError("PARO decode group did not sample a token")
-                result_by_request[row.request_id] = result
-        if cursor != len(ordered):
-            raise RuntimeError("PARO width plan did not consume every live row")
+                self._route_counts["serial_row_calls"] += width
+                for row in group_rows:
+                    row.serial_decode_steps += 1
+                    row.last_execution_path = "paro_resident_serial_decode"
+        result_by_request: dict[int, Qwen35ParoAutoregressiveStepResult] = {}
+        for row, result in zip(ordered, execution.results, strict=True):
+            if result is None:
+                raise RuntimeError("PARO decode group did not sample a token")
+            result_by_request[row.request_id] = result
         manifest = getattr(self._session, "last_batch_decode_execution", None)
         if isinstance(manifest, Mapping):
             self._last_execution_manifest = copy.deepcopy(dict(manifest))
         for row in rows:
             self._record_step(row, result_by_request[row.request_id])
-
-    def _serial_greedy_group(
-        self,
-        rows: Sequence[_ParoResidentLoopRow],
-        *,
-        tokens: tuple[int, ...],
-        positions: tuple[int, ...],
-        slots: tuple[int, ...],
-    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
-        assert self._session is not None
-        results = tuple(
-            self._session.step_batch_serial(
-                tokens,
-                positions=positions,
-                slots=slots,
-                sample=True,
-            )
-        )
-        self._route_counts["serial_row_calls"] += len(rows)
-        for row in rows:
-            row.serial_decode_steps += 1
-            row.last_execution_path = "paro_resident_serial_decode"
-        return results
 
     def _step_sampled_row(self, row: _ParoResidentLoopRow) -> None:
         assert self._session is not None and row.model_slot is not None
