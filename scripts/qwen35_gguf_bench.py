@@ -39,7 +39,11 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
-from hipengine.generation.qwen35_gguf import _gguf_decode_graph_enabled
+from hipengine.generation.qwen35_gguf import (
+    _GGUF_PUBLIC_USE_GEMV_DECODE,
+    _gguf_decode_graph_enabled,
+    _resident_session_wmma_prefill_default,
+)
 from hipengine.loading.gguf import GGUFModelInfo, scan_gguf
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -47,44 +51,60 @@ from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, re
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 _QUANT_ATTN_AOTRITON_MIN_TOKENS = {"gguf_ud_q3_k_m": 0}
-# The shipping GGUF AR session passes these projection/decode selectors
-# explicitly (hipengine/generation/qwen35_gguf.py), so leaving them unset in a
-# benchmark measures a route the product does not use. Measured on W7900 with
-# Qwen3.8-27B-Q4_K_M, 45-token prefill: 0.4577 s unset vs 0.2818 s with the
-# shipping kwargs (+62.4%); 512 tokens +1.7%.
-PUBLIC_AR_PROFILE_KWARGS: dict[str, bool] = {"use_wmma_prefill": True, "use_gemv_decode": True}
+
+
+def _public_ar_session_selectors() -> dict[str, bool]:
+    """Resolve the same defaults used when public AR sessions are acquired."""
+
+    return {
+        "use_wmma_prefill": _resident_session_wmma_prefill_default(),
+        "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
+    }
 
 
 def apply_public_ar_profile(args: argparse.Namespace) -> bool:
-    """Apply the shipping GGUF AR session kwargs, rejecting explicit conflicts.
+    """Default to public selectors while preserving explicit diagnostics.
 
-    Returns True when the profile was applied. An explicit ``--no-...`` for one
-    of the profile kwargs is a contradiction rather than a silent override, so
-    it raises instead of quietly changing the measured route.
+    Legacy ``--public-ar-profile`` asserts those selectors and rejects conflicts;
+    ``--no-public-ar-profile`` preserves the old low-level/env-default route.
     """
 
-    if not bool(getattr(args, "public_ar_profile", False)):
+    legacy_profile = getattr(args, "public_ar_profile", None)
+    if legacy_profile is False:
         return False
-    for name, value in PUBLIC_AR_PROFILE_KWARGS.items():
+    for name, value in _public_ar_session_selectors().items():
         current = getattr(args, name, None)
-        if current is not None and current != value:
+        if legacy_profile is True and current is not None and current != value:
+            option = ("--no-" if not current else "--") + name.replace("_", "-")
             raise ValueError(
-                f"--public-ar-profile conflicts with --no-{name.replace('_', '-')}; "
+                f"--public-ar-profile conflicts with {option}; "
                 "drop one of them so the measured route is unambiguous"
             )
-        setattr(args, name, value)
+        if current is None:
+            setattr(args, name, value)
     return True
 
 
 def shipping_ar_route_mismatch(
     public_ar_profile: bool,
     effective_use_wmma_prefill: Sequence[bool | None],
+    effective_use_gemv_decode: Sequence[bool | None] = (),
 ) -> bool:
-    """True when measured runs cannot be read as the shipping AR route."""
+    """Compare reported selectors with public defaults, regardless of alias use.
 
-    if public_ar_profile:
-        return False
-    return any(value is False for value in effective_use_wmma_prefill)
+    The first argument is kept for callers of the historical two-argument helper.
+    A missing selector is unknown, not evidence of a different route.
+    """
+
+    expected = _public_ar_session_selectors()
+    return any(
+        value is not None and value != expected[name]
+        for name, values in (
+            ("use_wmma_prefill", effective_use_wmma_prefill),
+            ("use_gemv_decode", effective_use_gemv_decode),
+        )
+        for value in values
+    )
 
 
 def main() -> int:
@@ -224,24 +244,24 @@ def main() -> int:
     parser.add_argument(
         "--public-ar-profile",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=None,
         help=(
-            "Run the shipping GGUF AR session selectors (use_wmma_prefill=True, "
-            "use_gemv_decode=True) instead of the low-level opt-in defaults, which "
-            "resolve off unless the HIPENGINE_* env vars are set."
+            "Legacy alias asserting the public AR selectors, now the default. "
+            "--no-public-ar-profile restores low-level/env defaults; individual "
+            "selector flags remain available for diagnostics."
         ),
     )
     parser.add_argument(
         "--use-wmma-prefill",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Override the GGUF WMMA prefill opt-in for the resident session; omit to use HIPENGINE_GGUF_WMMA_PREFILL.",
+        help="Override public WMMA prefill selection; omit to use the public session default, including HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL.",
     )
     parser.add_argument(
         "--use-gemv-decode",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Override the GGUF rows=1 GEMV decode opt-in for the resident session; omit to use HIPENGINE_GGUF_GEMV_DECODE.",
+        help="Override public rows=1 GEMV decode selection (default: enabled).",
     )
     add_kv_policy_args(
         parser,
@@ -490,7 +510,8 @@ def main() -> int:
         "use_gemv_decode": args.use_gemv_decode,
         "requested_use_wmma_prefill": args.use_wmma_prefill,
         "requested_use_gemv_decode": args.use_gemv_decode,
-        "public_ar_profile": bool(args.public_ar_profile),
+        "public_ar_profile": bool(public_ar_profile_applied),
+        "requested_public_ar_profile": args.public_ar_profile,
         "public_ar_profile_applied": bool(public_ar_profile_applied),
         "kv_storage_dtype": kv_policy.storage_dtype.value,
         "kv_policy": kv_policy_json(kv_policy),
@@ -499,6 +520,7 @@ def main() -> int:
         "shipping_ar_route_mismatch": shipping_ar_route_mismatch(
             bool(args.public_ar_profile),
             [run.get("effective_use_wmma_prefill") for run in measured_runs],
+            [run.get("effective_use_gemv_decode") for run in measured_runs],
         ),
         "fastpath_safety": [run.get("fastpath_safety") for run in runs],
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
@@ -510,23 +532,21 @@ def main() -> int:
             "--bulk-prefill-attention-mode=bulk selects the fast fully bulk scheduler and is the qwen35moe delegated default.",
             "--bulk-prefill-attention-mode=native preserves row-serial attention while using row-bulk FFN/MoE as a qwen35moe diagnostic fallback.",
             "--use-expert-sidecar enables explicit qwen35moe GGUF expert pack8 sidecar kernels for bulk prefill; generated sidecars live in the requested cache dir.",
-            "--use-wmma-prefill opts GGUF bulk prefill into P8 WMMA dispatch, including qwen35moe compact grouped selected-MoE when the raw kernels are available.",
-            "--use-gemv-decode opts rows=1 GGUF decode into the P9 pack8 GEMV decode path, including graph-capture decode.",
+            "WMMA prefill and rows=1 GEMV decode default to public AR session selectors; --no-use-wmma-prefill and --no-use-gemv-decode select diagnostic alternatives.",
             "GGUF prefill chunking uses the same PrefillConfig auto policy as PARO unless --prefill-chunk-size or explicit per-surface chunk flags override it.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
             "--rocprof-selected-region wraps only the requested timed phase with ROCTX profiler resume/pause controls.",
             "--persistent-session creates one resident session and resets sequence state between warmup/measured runs, avoiding repeated GGUF load/decode-repack work. Historical artifacts used the default per-run session mode.",
-            "shipping_ar_route_mismatch=true means effective_use_wmma_prefill is False in a measured run, i.e. the default low-level selectors were measured and the numbers are not shipping AR-route rates; use --public-ar-profile for those.",
+            "shipping_ar_route_mismatch=true means a reported effective WMMA/GEMV selector differs from the public session default. Missing selector reports are unknown, not proof of route parity.",
         ],
     }
     text = json.dumps(output, indent=2, ensure_ascii=False)
     print(text)
     if output["shipping_ar_route_mismatch"]:
         print(
-            "WARNING: measured route leaves use_wmma_prefill off while the shipping GGUF AR "
-            "session passes True; prefill rates here understate the product route "
-            "(W7900 Qwen3.8-27B-Q4_K_M: +62.4% at 45 tokens). Rerun with --public-ar-profile "
-            "for shipping-route numbers.",
+            "WARNING: measured WMMA/GEMV selectors differ from the public GGUF AR session "
+            "defaults. These rates describe a diagnostic route. Drop selector overrides "
+            "and --no-public-ar-profile to use public session defaults.",
             file=sys.stderr,
         )
     if args.json is not None:
