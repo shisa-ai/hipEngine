@@ -4444,18 +4444,18 @@
       "start_line": 3932,
       "end_line": 3938,
       "sha256": "5fe7969aa5d69dec1a8bacef7f7717db49d331d59c727bcd12ec1f236f28b105",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Grouped-Q5 C8 environment control removed; backend default and physical exact-row/R32 predicate preserved. C7/prefix/strict parent composition remains. RED/GREEN selection, full CPU bundle and direct grouped-R8 bit parity pass. Public gfx1100 C8/R32 route/output/acceptance/teardown requirement remains at bottom. Worklog: worklog/entries/20261027T142139.658766Z-cleanup-refactor-r0172-870247.md."],
       "subitems": [
         {
           "line": 3934,
           "text": "- Exact grouped-R8 now owns physical C8/R32 by default; explicit",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3936,
           "text": "- Remove the environment override and its selector test after the next stable",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

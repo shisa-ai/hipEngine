@@ -2780,13 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-02 gfx1100 grouped Q5 R8 C8 rollback — open
-
-- Exact grouped-R8 now owns physical C8/R32 by default; explicit
-  `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8=0` retains grouped R30 plus strict R2.
-- Remove the environment override and its selector test after the next stable
-  milestone; keep the grouped-R8 policy/kernel and registered strict fallback.
-
 ## 2026-09-02 gfx1100 periodic-strict fused Q4 R28 rollback — open
 
 - Explicit `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28=0` restores exact
@@ -10534,3 +10527,15 @@ remain. The verifier diagnostic controls the parent route in its own scope.
 sidecar ownership and MMQ launches at admitted R24/R32 shapes, then compare
 output/acceptance and allocation cleanup with grouped T16. Include fewer-request
 and missing-workspace cases to verify fallback, without weakening admission.
+
+### R0172 — Public grouped Q5 C8 validation
+
+The grouped-Q5 R8 environment opt-out is removed; physical row admission and
+registered grouped-R6/strict-tail parents remain.
+
+**Dependency:** gfx1100 public C8/R32 physical target execution.
+**Clearing action:** run `hipengine serve` with eight live MTP requests, trace
+grouped-Q5 R8 launches, and compare output/acceptance and teardown with the
+registered padded-prefix/strict-tail parent composition. The direct numerical
+gate is `tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q5_t16_grouped_rows8_matches_repeated_rows8_bits`;
+it does not establish public engagement.

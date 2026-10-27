@@ -482,7 +482,6 @@ not by backend-branched runtime code.
 | `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER` | true | Exact resident-to-packed Conv/GDN state gather through the registered chunked pointer-table copy leaf. `0` restores the per-layer D2D transfer chain as explicit rollback. |
 | `HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE` | true | Packed C5-C8 target verification indexes the resident multi-slot Conv/GDN slabs directly without mutation. `0` restores the fused resident-to-packed import. |
 | `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` | false | Default-off screen selecting the dense dual WMMA row32/row48 variants for specdec2 production R28 rows. |
-| `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8` | true | Q5_T16 grouped rows-8 owner for physical C8 verifier packets. |
 | `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6` | true | Grouped-rows6 variant of the rowtile16 W2 Q4_T16 prefill owner (kernel-side seam of the backend capability policy). |
 | `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE` | true | Q5_T16 single-wave rowtile owner; `0` restores the four-wave owner for rollback and bisection. |
 | `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6` | true | Grouped-grid ownership for the rowtile16 W2 grouped pair at rows 6; `0` restores repeated R6 pair fallback. |
@@ -1138,6 +1137,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8` is retired and ignored. Backend
+  policy and physical exact-row scope select grouped Q5 R8; other rows keep
+  their existing grouped-prefix and strict-tail composition.
 
 - `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` is retired and ignored. Backend capability
   owns raw-Q5 sidecar planning; runtime request-count, sidecar and workspace

@@ -1597,8 +1597,7 @@ def test_q5_t16_exact_c8_rows_select_grouped_rows8_with_rollback(
             1, 2, 3, 32, 6_144, 5_120
         )
     assert calls == [
-        (selected_t16_mod._Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16, 30),
-        (selected_t16_mod._Q5_DENSE_ROWTILE_BF16, 2),
+        (selected_t16_mod._Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16, 32),
     ]
 
 
