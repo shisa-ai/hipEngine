@@ -11,8 +11,13 @@ from scripts import mtp_chain_e2e_smoke as bench
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
 @pytest.mark.parametrize("canonicalize", [None, "0", "false", "1"])
-@pytest.mark.parametrize("budget,target_contract", [(1, True), (3, False)])
-def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canonicalize, budget, target_contract):
+@pytest.mark.parametrize("overlap", [None, "0", "false", "1"])
+@pytest.mark.parametrize("budget,target_contract,tree_mode", [(1, True, "chain"), (3, False, "chain"), (3, False, "branching_topk")])
+def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canonicalize, overlap, budget, target_contract, tree_mode):
+    if overlap is None:
+        monkeypatch.delenv("HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER", overlap)
     if canonicalize is None:
         monkeypatch.delenv("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", raising=False)
     else:
@@ -22,7 +27,6 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
     else:
         monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS", retired)
     monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT", str(int(target_contract)))
-    monkeypatch.setenv("HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER", "0")
     advances, saves, restores, priming, accepted = [], [], [], [], []
     buffers, freed = [], []
 
@@ -43,12 +47,16 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
         def prefill_from_target_hidden_rows(self, *args, **kwargs):
             priming.append(kwargs)
 
+        def vocab_topk(self, *, k):
+            return list(range(20, 20 + k)), [10.0] + [0.0] * (k - 1)
+
         def save_state(self, slot):
             snapshot = (slot, self.position, self.cache_len, self.current.token)
             saves.append(snapshot)
             return snapshot
 
         def restore_state(self, snapshot, **kwargs):
+            assert kwargs.get("stream", 0) == 0
             restores.append(snapshot)
             _, self.position, self.cache_len, token = snapshot
             self.current = SimpleNamespace(token=token)
@@ -87,15 +95,19 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
 
         def verify_chain_bulk_and_commit(self, batch, **kwargs):
             assert kwargs["canonicalize_after"] is False
+            assert kwargs.get("synchronize_after_commit", True) is True
             count = (0, min(1, budget), budget)[len(accepted) % 3]
             accepted.append(count)
             return SimpleNamespace(
-                accepted_count=count, next_token=30 + len(accepted),
+                accepted_count=count, accepted_tokens=tuple(range(40, 40 + count)),
+                next_token=30 + len(accepted),
                 target_top1=tuple(range(30, 30 + budget + 1)),
                 target_top1_values=(1.0,) * (budget + 1),
                 graph=None, gpu_accept_match_cpu=True,
                 selected_target_hidden_ptr=0x3000,
             )
+
+        verify_tree_bulk_and_commit = verify_chain_bulk_and_commit
 
     def allocate(nbytes, **kwargs):
         result = SimpleNamespace(ptr=0x4000, nbytes=nbytes)
@@ -111,9 +123,11 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
 
     generated, result = bench._run_spec_persistent_device(
         Path("model"), (7,), decode_tokens=14, candidate_budget=budget,
-        backend="hip_gfx1100", chain_attn_mode="c1_loop",
+        backend="hip_gfx1100", chain_attn_mode="c1_loop", tree_mode=tree_mode,
+        confidence_threshold=0.5 if tree_mode == "branching_topk" else 0.0,
     )
     assert len(generated) == 14
+    assert result["overlap_verify_commit_proposer"] is False
     assert result["canonicalize_after_verify"] is False
     assert result["proposer_skip_unused_reads"] is True
     assert priming[0]["read_expert_topk"] is False
@@ -121,12 +135,13 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
     assert advances
     assert all(row["read_expert_topk"] is False for row in advances)
     assert all(row["read_lm_head_value"] is False for row in advances)
+    assert all(row.get("stream", 0) == 0 for row in advances)
     assert any(row.get("need_result") is False for row in advances)
     if budget > 1:
         assert restores  # rejected/partially accepted cycles restore a saved prefix
     assert set(accepted) == {0, min(1, budget), budget}
     assert result["proposal_snapshot_saves"] == len(saves)
-    if budget > 1:
+    if budget > 1 and tree_mode == "chain":
         assert result["proposal_snapshot_skips"] > 0
         assert all(row[0] != budget - 1 for row in saves)
     assert freed == buffers

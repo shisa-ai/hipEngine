@@ -329,12 +329,6 @@ def _summarize_acceptance_diagnostics(
     }
 
 
-def _mtp_overlap_verify_commit_proposer_enabled() -> bool:
-    """Run proposer update on a side stream while verifier commit drains."""
-
-    return _env_flag("HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER", False)
-
-
 def _mtp_proposer_target_contract_enabled() -> bool:
     """Use selected final target hidden plus the target-owned W8 scorer."""
 
@@ -385,7 +379,6 @@ def _validate_proposer_target_contract_scope(
     confidence_threshold: float,
     draft_p_min: float,
     ar_fallback_zero_streak: int,
-    overlap_verify_commit_proposer: bool,
 ) -> None:
     if not enabled:
         return
@@ -396,7 +389,6 @@ def _validate_proposer_target_contract_scope(
         confidence_threshold=float(confidence_threshold),
         draft_p_min=float(draft_p_min),
         ar_fallback_zero_streak=int(ar_fallback_zero_streak),
-        overlap_verify_commit_proposer=bool(overlap_verify_commit_proposer),
     )
 
 
@@ -422,24 +414,6 @@ def _advance_proposer_from_selected_target(
         read_lm_head_value=bool(read_lm_head_value),
         stream=int(stream),
     )
-
-
-class _OptionalHipStream:
-    def __init__(self, runtime: Any, *, enabled: bool) -> None:
-        self.runtime = runtime
-        self.enabled = bool(enabled)
-        self.stream = 0
-
-    def __enter__(self) -> int:
-        if self.enabled:
-            self.stream = int(self.runtime.stream_create())
-        return self.stream
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        if self.stream:
-            self.runtime.stream_synchronize(self.stream)
-            self.runtime.stream_destroy(self.stream)
-            self.stream = 0
 
 
 def _capture_tensor(buffer: DeviceBuffer, rows: int, hidden: int) -> Tensor:
@@ -1097,7 +1071,6 @@ def _run_spec_persistent_device(
     started = time.perf_counter()
     active_budgets: list[int] = []
     canonicalize_after_verify = False
-    overlap_verify_commit_proposer = _mtp_overlap_verify_commit_proposer_enabled()
     proposer_target_contract = _mtp_proposer_target_contract_enabled()
     _validate_proposer_target_contract_scope(
         enabled=proposer_target_contract,
@@ -1107,7 +1080,6 @@ def _run_spec_persistent_device(
         confidence_threshold=float(confidence_threshold),
         draft_p_min=float(draft_p_min),
         ar_fallback_zero_streak=int(ar_fallback_zero_streak),
-        overlap_verify_commit_proposer=overlap_verify_commit_proposer,
     )
     # Always load libroctx64 so range_push/pop markers fire even when the
     # selected-region window is off (rocprofv3 1.1.0 path). The resume/pause
@@ -1179,7 +1151,7 @@ def _run_spec_persistent_device(
                 compiler_version=session.compiler_version,
                 require_cached_build=bool(require_cached_build),
                 scoring_head=scoring_head,
-            ) as proposer, _OptionalHipStream(session.runtime, enabled=overlap_verify_commit_proposer) as proposer_update_stream:
+            ) as proposer:
                 draft_vocab_cap = int(proposer.draft_vocab)
                 prefill_started = time.perf_counter()
                 proposer.prefill_from_target_hidden_rows(
@@ -1526,7 +1498,7 @@ def _run_spec_persistent_device(
                             chain_attn_mode=chain_attn_mode,
                             graph_mode=graph_mode,
                             canonicalize_after=canonicalize_after_verify,
-                            synchronize_after_commit=not overlap_verify_commit_proposer,
+                            synchronize_after_commit=True,
                         )
                         accepted_tokens = candidates[: int(verify.accepted_count)]
                     rocprof_window.range_pop()
@@ -1578,7 +1550,7 @@ def _run_spec_persistent_device(
                         )
                     update_started = time.perf_counter()
                     rocprof_window.range_push(f"mtp_proposer_update_{cycles}")
-                    update_stream = proposer_update_stream if (overlap_verify_commit_proposer and not use_tree) else 0
+                    update_stream = 0
                     if len(generated) < int(decode_tokens):
                         if use_tree:
                             # Tree accepts may follow the sibling branch, so
@@ -1700,7 +1672,7 @@ def _run_spec_persistent_device(
         ),
         "proposer_private_lm_head_loaded": not proposer_target_contract,
         "canonicalize_after_verify": bool(canonicalize_after_verify),
-        "overlap_verify_commit_proposer": bool(overlap_verify_commit_proposer),
+        "overlap_verify_commit_proposer": False,
         "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results/snapshots are skipped.",
         "rocprof_window": rocprof_window_meta,
         "cycle_marker_ns": [

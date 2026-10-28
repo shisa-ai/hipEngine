@@ -139,7 +139,6 @@ def test_target_contract_scope_fails_closed_outside_b1_graph_off_chain() -> None
         confidence_threshold=0.0,
         draft_p_min=0.0,
         ar_fallback_zero_streak=0,
-        overlap_verify_commit_proposer=False,
     )
 
     with pytest.raises(ValueError, match="B=1 only"):
@@ -151,7 +150,6 @@ def test_target_contract_scope_fails_closed_outside_b1_graph_off_chain() -> None
             confidence_threshold=0.0,
             draft_p_min=0.0,
             ar_fallback_zero_streak=0,
-            overlap_verify_commit_proposer=False,
         )
     with pytest.raises(ValueError, match="graph_mode=off"):
         validate(
@@ -162,7 +160,6 @@ def test_target_contract_scope_fails_closed_outside_b1_graph_off_chain() -> None
             confidence_threshold=0.0,
             draft_p_min=0.0,
             ar_fallback_zero_streak=0,
-            overlap_verify_commit_proposer=False,
         )
 
 

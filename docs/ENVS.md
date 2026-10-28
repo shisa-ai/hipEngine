@@ -543,7 +543,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` | true | Runs the resident MTP draft MoE on device (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER` | true | Q6 top-1 gather kernel in the resident MTP drafter (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` | false | Opt-in device-side draft chain execution. |
-| `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER` | false | Runs the proposer update on a side stream while the verifier commit drains; default-off experiment. |
 
 ## PARO variables
 
@@ -1288,6 +1287,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER` is retired and ignored.
+  The persistent PARO diagnostic harness synchronizes verifier commit before
+  proposer repair/update on the default stream. Runtime stream-capable APIs
+  are unchanged.
 - `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` is retired and ignored.
   PARO target verification projects logits then runs row argmax. The fused
   primitive remains available to the native MTP proposer and direct parity

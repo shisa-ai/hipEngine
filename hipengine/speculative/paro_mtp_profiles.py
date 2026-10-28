@@ -68,7 +68,6 @@ def validate_paro_mtp_route_scope(
     confidence_threshold: float = 0.0,
     draft_p_min: float = 0.0,
     ar_fallback_zero_streak: int = 0,
-    overlap_verify_commit_proposer: bool = False,
 ) -> None:
     """Reject configurations outside the registered B1 fixed-chain route."""
 
@@ -82,8 +81,8 @@ def validate_paro_mtp_route_scope(
         or float(draft_p_min) != 0.0
     ):
         raise ValueError("PARO MTP registered route supports fixed chain policy only")
-    if int(ar_fallback_zero_streak) != 0 or bool(overlap_verify_commit_proposer):
-        raise ValueError("PARO MTP registered route does not support fallback or overlap")
+    if int(ar_fallback_zero_streak) != 0:
+        raise ValueError("PARO MTP registered route does not support fallback")
 
 
 def _route_factory(route: ParoMtpRoute):
