@@ -8326,7 +8326,8 @@
         {
           "line": 6313,
           "text": "| Env flag surface | Benchmark and diagnostic flags still cover rejected or superseded experiments. | The 2026-07-10 release audit removed env requirements from public backend/quant/GGUF fast-path selection. Accuracy-traded MTP, unsafe kernels, profiler synchronization, and rejected paths remain explicit diagnostics. | Move rejected runtime flags into benchmark-only configuration as each associated MTP/PARO investigation closes; retain correctness fallbacks for one release window after a default promotion. |",
-          "status": "pending"
+          "status": "resolved-duplicate-policy-and-feature-owners",
+          "evidence": "Remove generic row6313: no independent selector or fix is named. RF-1 owns explicit immutable runtime policy, RF-3/deletion queue owns rejected-route cleanup, and per-feature rows/bottom R0281-DRAFT-X8/SELECTED-X8/PARO-PROVIDER/SELECTED-DP4A keep concrete live decisions and clearing actions. This is duplicate removal, not completion of those open owners. Docs/audit/whitespace/worklog gates pass. Worklog: worklog/entries/20261028T190955.182559Z-cleanup-refactor-r0281-env-umbrella-30d3aa.md."
         },
         {
           "line": 6314,
