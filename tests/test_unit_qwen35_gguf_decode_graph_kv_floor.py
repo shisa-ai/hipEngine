@@ -465,3 +465,46 @@ def test_resident_c1_never_captures_below_the_resolved_floor(
     else:
         assert session.captures == []
         assert session.eager_steps == 1
+
+
+@pytest.mark.parametrize("site", ["private_greedy", "resident_c1"])
+@pytest.mark.parametrize("override", [None, "0", "false", "1"])
+@pytest.mark.parametrize("floor", [24, 128])
+@pytest.mark.parametrize("remaining", [17, 37, 173])
+def test_decode_graph_override_preserves_eager_and_automatic_scalar_routes(
+    monkeypatch, site: str, override: str | None, floor: int, remaining: int,
+) -> None:
+    if override is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_DECODE_GRAPH", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_DECODE_GRAPH", override)
+    session = _FakeDecodeSession(floor)
+    use_graph = override not in {"0", "false"} and remaining >= floor
+    if site == "private_greedy":
+        request = SimpleNamespace(
+            max_tokens=remaining + 1, ignore_eos=True,
+            cancellation_token=None, deadline_at=None,
+        )
+        result = _greedy_generator()._generate_greedy(session, [1, 2, 3], request)
+        assert len(result) == remaining + 1
+        transitions = remaining
+    else:
+        slot = SimpleNamespace(
+            session=session, prev_token=13, seq_position=100,
+            generated_ids=[11] * 5, c1_decode_graph=None,
+        )
+        row = SimpleNamespace(slot=slot, lease=None, request=SimpleNamespace(max_tokens=5 + remaining))
+        runner = object.__new__(gguf_generation.Qwen35GGUFResidentModelRunner)
+        runner._rows = {1: row}
+        runner._step_native_c1_graph(row)
+        transitions = 1
+    assert len(session.captures) == int(use_graph)
+    assert session.eager_steps == (0 if use_graph else transitions)
+    if use_graph:
+        assert session.captures[0]["max_replay_steps"] == remaining
+        assert session.graphs[0].replay_calls == transitions
+        if site == "private_greedy":
+            assert session.graphs[0].closed is True
+        else:
+            runner._close_c1_decode_graph(row)
+            assert session.graphs[0].closed is True
