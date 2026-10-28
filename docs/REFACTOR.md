@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MTP server stream verify | `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY` is a default-on opt-out around running independent chunk-4 packed target verifier chunks on separate owner-session streams at c>N. | Default-on after the 2026-07-05 natural24 c=8 rerun. It keeps the four-slot verifier cap but overlaps the two c=8 chunks, moving warm c=8 MTP **48.72 -> 52.18 tok/s** and `slots_verify_phase_ms` **15354.902 -> 12345.442**. c=4 remains on the single-chunk path. | Remove the env opt-out after c=2/c=4/c=8 reruns and profiler evidence show the stream verify path is non-regressive; replace it if a tuned rows>=16 verifier or true batched scheduler supersedes chunk-stream overlap. |
 | GGUF row-shaped target executor | `Qwen35GGUFResidentSession.step_rows()` still loops physical slots through the retained c=1 layer path; `verify_rows()` likewise advances each linear-chain row serially. They are explicit correctness/speculative bridges rather than the default independent-decode route. | UD-Q3_K_M C=2/4/8 uses native indexed Conv/GDN, batched `KVLiveSpans` attention, selected-row MoE, row lm-head/argmax, and shape-specific HIP graphs; synchronous greedy prompt lists select the scheduler-owned native path. The serial executor remains the independent layer/full-logit oracle. Task #31's transactional MTP verifier deliberately reuses the exact c=1 row arithmetic and journals each row rather than weakening correctness. | Keep `step_rows()` as an explicit unsupported-shape/bisection oracle. Replace the eager serial MTP chain only when a native dependency-aware root+candidate forward preserves the B=1/2/3 scalar-logit and state/KV commit gates and is same-suite non-regressive; do not remove unfused numerical fallbacks. |
 | GGUF prompt-list scheduling | The promoted scheduler is synchronous and greedy-only: it does not persist across `generate()` calls, serve HTTP arrivals, cancel/disconnect rows, share prefixes, grow/shrink an elastic KV pool, or batch non-greedy sampling. Prefill into a reclaimed slot is still per-request rather than a packed multi-prompt slab. | Stable request ids, 2–8 physical slots, EOS/length reclaim, downward recurrent-state/live-KV compaction, mixed readmission/prefill between decode steps, C/context/mask graph buckets, row argmax, and admission/completion timestamps are retained and exact. Fixed C=2/4/8 scaling is accepted; one in-call 4-request/capacity-2 schedule exercises three admission waves, three compactions, and two readmissions with `serial_decode_fallback=false`. | Move this ownership into the persistent server engine loop, add cancellation/disconnect and elastic/prefix-shared KV, then native per-row non-greedy sampling and packed mixed-prompt prefill. Keep the synchronous path until the persistent route passes the same exactness/provenance gates. |
 | UD-Q3_K_M grouped raw-IQ prefill | `HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0` is the temporary rollback around the default-on expert-major scalar IQ3/IQ4 route; direct selected kernels remain the required fallback. | Promoted after mixed-prompt native-row-bulk parity (`KL=0`, top-1 `1.0`), exact 512/4K trajectories, zero scratch/copies, raw-IQ time `994.668 -> 613.995 ms` (-38.27%), and total kernel sum `4396.145 -> 4078.667 ms` (-7.22%). The formal 512/128 headline is correctly labeled flat within spread (`16.648 -> 16.685 tok/s`, +0.22%); promotion retains the verified sub-window win, not a noisy topline claim. WMMA and scalar RT2 remain rejected/test-only. | Keep the opt-out for one rollback/bisection window through task #20/#15 D0. Remove the env branch after the next defaults-only 512/4K milestone rerun confirms the grouped symbols and direct fallback tests remain healthy. |
@@ -11082,17 +11081,21 @@ widths below/above eight and an unrelated width, ragged/shrinking groups,
 selected route, repeat output and teardown. Historical F1 throughput stays in
 its original artifacts; no new timing claim is made by this triage.
 
-### R0281-MTP-DRAFT-EXECUTOR — Compatibility draft worker lifetime
+### R0281-MTP-DRAFT-EXECUTOR — Compatibility draft/verifier worker lifetime
 
-The compatibility `_try_draft_mtp_serving_slots_streams` path creates a
-`ThreadPoolExecutor` per draft phase. The per-slot HIP streams already survive
+The compatibility `_try_draft_mtp_serving_slots_streams` and
+`_try_verify_mtp_serving_cycle_chunks_streams` paths create a
+`ThreadPoolExecutor` per phase. Their per-slot HIP streams already survive
 between cycles and are released by `_close_mtp_serving_slots`. The resident
-MTP2 adapter owns a separate staged proposal path; it does not read the old
-`HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` switch. That rollback reader is now
-removed: supported multi-slot compatibility drafts use streams by default.
-Singletons, one-token tails, missing pending seeds and missing runtime hooks
-retain pre-launch serial fallback. This is device-stream scheduling, not
-buffered versus streamed client token emission as the old env description said.
+MTP2 adapter owns separate staged proposal/target paths; it does not read the
+old `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` or
+`HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY` switches. Both rollback readers are
+removed: supported multi-slot drafts and multi-chunk verification use streams
+by default. Draft singletons, one-token tails, missing seeds and missing
+runtime hooks retain pre-launch serial fallback. Verification retains the
+four-slot chunk cap and missing-runtime/kernel-hook pre-launch fallback; any
+chunk failure after launch raises rather than resubmitting mutated work.
+These controls selected device scheduling, not client token/result delivery.
 
 **Remaining work:** decide whether to retire compatibility execution through
 the existing loop extraction or give its worker pool a bounded request/owner
@@ -11103,7 +11106,7 @@ resources are released. Profile this path first if claiming pool reuse improves
 complete wall; old server throughput comparisons do not establish current
 worker overhead or a resident MTP2 benefit.
 
-**Clearing action:** run stream-draft and MTP2 nodes in
+**Clearing action:** run stream-draft, chunked-verifier and MTP2 nodes in
 `tests/test_live_generation_qwen35_gguf_sampling.py`,
 `tests/test_unit_gguf_mtp_serving_chunk_policy.py` and the GGUF MTP2 seam tests.
 Worker-lifetime changes need direct compatibility requests and public

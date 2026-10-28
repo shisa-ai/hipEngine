@@ -578,7 +578,6 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_HOT_VOCAB_ENV = "HIPENGINE_GGUF_MTP_HOT_VOCAB"
-_GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 # Provider prefix checkpoints: one entry per captured prefix, each holding a
 # copy of that prefix's provider KV and recurrent state. Bounded capture keeps
@@ -897,10 +896,6 @@ def _gguf_mtp_hot_vocab_setting(execution_profile: str) -> str | None:
     if value.lower() in {"", "0", "false", "off", "none"}:
         return None
     return value
-
-
-def _gguf_mtp_server_stream_verify_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_STREAM_VERIFY_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_target_verify_mode() -> str:
@@ -5810,7 +5805,7 @@ class Qwen35GGUFBringupGenerator:
                 take -= 1
             chunks.append(drafted_cycles[index:index + take])
             index += take
-        if len(chunks) > 1 and _gguf_mtp_server_stream_verify_enabled():
+        if len(chunks) > 1:
             streamed_results = self._try_verify_mtp_serving_cycle_chunks_streams(chunks)
             if streamed_results is not None:
                 return streamed_results

@@ -72,7 +72,7 @@ def test_verifier_chunks_preserve_order_without_singleton_tail(monkeypatch, coun
     generator = _generator()
     calls = []
     owner = object()
-    monkeypatch.setattr(qwen35_gguf, "_gguf_mtp_server_stream_verify_enabled", lambda: False)
+    monkeypatch.setattr(generator, "_try_verify_mtp_serving_cycle_chunks_streams", lambda chunks: None)
 
     def verify(chunk, *, verify_owner_session):
         assert verify_owner_session is owner
@@ -93,7 +93,7 @@ def test_verifier_uses_stream_chunks_or_serial_capability_fallback(monkeypatch, 
     generator = _generator()
     streamed = []
     serial = []
-    monkeypatch.setattr(qwen35_gguf, "_gguf_mtp_server_stream_verify_enabled", lambda: True)
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY", "0")
 
     def streams(chunks):
         streamed.append([list(chunk) for chunk in chunks])
@@ -116,7 +116,7 @@ def test_verifier_uses_stream_chunks_or_serial_capability_fallback(monkeypatch, 
 def test_verifier_declines_only_before_any_chunk_advances(monkeypatch, failure_index):
     generator = _generator()
     calls = []
-    monkeypatch.setattr(qwen35_gguf, "_gguf_mtp_server_stream_verify_enabled", lambda: False)
+    monkeypatch.setattr(generator, "_try_verify_mtp_serving_cycle_chunks_streams", lambda chunks: None)
 
     def verify(chunk, *, verify_owner_session):
         index = len(calls)
@@ -130,6 +130,72 @@ def test_verifier_declines_only_before_any_chunk_advances(monkeypatch, failure_i
     else:
         assert generator._try_verify_mtp_serving_cycles_batch(list(range(8))) is None
     assert len(calls) == failure_index + 1
+
+
+@pytest.mark.parametrize("count", [5, 7, 8, 9])
+@pytest.mark.parametrize("capable", [False, True])
+def test_stream_verifier_uses_capability_fallback_before_any_submission(monkeypatch, count, capable):
+    generator = _generator()
+    calls = []
+    streams = []
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY", "0")
+    cycles = []
+    for index in range(count):
+        runtime = SimpleNamespace(
+            stream_create=lambda **kwargs: 900,
+            stream_synchronize=lambda stream: None,
+            stream_destroy=lambda stream: None,
+        )
+        if not capable:
+            runtime.stream_synchronize = None
+        cycles.append(SimpleNamespace(slot=SimpleNamespace(
+            request_id=index, verify_stream=0, timing={},
+            session=SimpleNamespace(runtime=runtime, verify_target_blocks_batch=lambda jobs: None),
+        )))
+
+    def verify(chunk, *, stream=0, verify_owner_session=None):
+        ids = [cycle.slot.request_id for cycle in chunk]
+        calls.extend(ids)
+        streams.append(stream)
+        return ids
+
+    generator._verify_mtp_serving_cycle_chunk = verify
+    result = generator._try_verify_mtp_serving_cycles_batch(cycles)
+
+    assert result == list(range(count))
+    assert sorted(calls) == list(range(count))
+    assert all(stream != 0 for stream in streams) is capable
+    assert all(stream == 0 for stream in streams) is (not capable)
+
+
+@pytest.mark.parametrize("failure", ["none", "exception"])
+def test_stream_verifier_drains_launched_chunks_without_serial_resubmission(monkeypatch, failure):
+    generator = _generator()
+    calls = []
+    cycles = []
+    for index in range(8):
+        runtime = SimpleNamespace(stream_create=lambda **kwargs: 900,
+                                  stream_synchronize=lambda stream: None,
+                                  stream_destroy=lambda stream: None)
+        cycles.append(SimpleNamespace(slot=SimpleNamespace(
+            request_id=index, verify_stream=0, timing={},
+            session=SimpleNamespace(runtime=runtime, verify_target_blocks_batch=lambda jobs: None),
+        )))
+
+    def verify(chunk, *, stream=0, verify_owner_session=None):
+        assert stream != 0, "launched chunks must not replay serially"
+        ids = [cycle.slot.request_id for cycle in chunk]
+        calls.extend(ids)
+        if ids[0] == 0:
+            if failure == "exception":
+                raise RuntimeError("injected chunk result failure")
+            return None
+        return ids
+
+    generator._verify_mtp_serving_cycle_chunk = verify
+    with pytest.raises(RuntimeError, match="after launch|injected chunk"):
+        generator._try_verify_mtp_serving_cycles_batch(cycles)
+    assert sorted(calls) == list(range(8)), "every launched future must drain once"
 
 
 @pytest.mark.parametrize("count", [5, 7, 8, 13])

@@ -1937,7 +1937,8 @@ def test_gguf_speculative_mtp_batch_verifier_chunks_above_four_slots() -> None:
     assert all("target_verify_batch_ms" in slot.timing for slot in slots)
 
 
-def test_gguf_speculative_mtp_batch_verifier_streams_chunks_above_four_slots(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "false"])
+def test_gguf_speculative_mtp_batch_verifier_streams_chunks_above_four_slots(monkeypatch, retired) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -2013,7 +2014,10 @@ def test_gguf_speculative_mtp_batch_verifier_streams_chunks_above_four_slots(mon
         for slot in slots
     ]
 
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY", "1")
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY", retired)
     monkeypatch.setattr(qwen35_gguf, "_free_mtp_buffers", lambda buffers, *, runtime: None)
 
     generator = _generator()
