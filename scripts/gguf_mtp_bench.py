@@ -970,16 +970,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--target-b1-branch-safe-block-verify",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Diagnostic: for B1/root-top-k routes, verify [prev, draft0] in one target block. "
-            "Use row 1 only when row 0 strictly accepts draft0; otherwise restore/replay row 0 "
-            "and fall back to a serial corrective step for accepted root branches."
-        ),
-    )
-    parser.add_argument(
         "--target-block-wmma-prefill",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1595,7 +1585,6 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.target_block_direct_state_commit = True
     if getattr(args, "target_block_direct_partial_replay_mode", "serial-exact") == "serial-exact":
         args.target_block_direct_partial_replay_mode = "direct-commit"
-    args.target_b1_branch_safe_block_verify = False
 
     args.adaptive_draft_window = False
     args.adaptive_ar_fallback = False
@@ -1825,8 +1814,6 @@ def main(argv: list[str] | None = None):
         parser.error("--record-target-topk-scores requires --target-block-verify")
     if args.target_topk_score_count < 1:
         parser.error("--target-topk-score-count must be positive")
-    if args.target_b1_branch_safe_block_verify and not args.target_block_verify:
-        parser.error("--target-b1-branch-safe-block-verify requires --target-block-verify")
     if args.fused_b1_block_probe:
         if not args.target_block_verify:
             parser.error("--fused-b1-block-probe requires --target-block-verify")
@@ -2599,7 +2586,6 @@ def main(argv: list[str] | None = None):
             native_spec_device_accept_commit_used = False
             serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
             device_verify_rows_required = bool(args.resident_mtp_device_seed and args.mtp_device_kv_cache)
-            b1_branch_safe_block_verify_used = False
             target_verify_layer_passes = 0
             target_verify_rows_evaluated = 0
             target_verify_serial_rows = 0
@@ -2689,208 +2675,6 @@ def main(argv: list[str] | None = None):
                 target_lm_head_score_rows = rows
                 target_lm_head_logits_available = bool(rows)
 
-            can_b1_branch_safe_block_verify = (
-                bool(args.target_b1_branch_safe_block_verify)
-                and bool(args.target_block_verify)
-                and cycle_block_verify_allowed
-                and len(draft_tokens) == 1
-                and int(cycle_draft_n_max) == 1
-                and cycle_root_topk_accept > 1
-                and cycle_sibling_topk_accept == 1
-                and not args.topk_branch_redraft
-                and int(verify_input_token) == current_device_token
-            )
-            if can_b1_branch_safe_block_verify:
-                t0 = time.perf_counter()
-                direct_state_commit = bool(args.target_block_direct_state_commit)
-                target_block_direct_state_commit_effective = bool(direct_state_commit)
-                block_inputs = [int(verify_input_token), int(draft_tokens[0])]
-                direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
-                    args.target_block_verify_mode,
-                    start_position=seq_position,
-                    rows=len(block_inputs),
-                )
-                direct_partial_commit_exact_mode = target_block_direct_partial_commit_is_exact(
-                    args.target_block_verify_mode
-                )
-                direct_partial_commit_llama_style = target_block_direct_partial_commit_is_llama_style(
-                    args.target_block_verify_mode,
-                    args.target_block_direct_partial_replay_mode,
-                )
-                direct_partial_commit_supported = bool(direct_partial_commit_exact_mode) or bool(
-                    direct_partial_commit_llama_style
-                )
-                target_block_direct_commit_exact = bool(direct_state_commit_exact_mode)
-                snapshot = None
-                if target_block_needs_linear_state_snapshot(
-                    direct_state_commit=direct_state_commit,
-                    direct_state_commit_exact_mode=direct_state_commit_exact_mode,
-                    direct_partial_commit_exact_mode=direct_partial_commit_exact_mode,
-                    direct_partial_commit_llama_style=direct_partial_commit_llama_style,
-                ):
-                    snapshot = session._linear_state_snapshot()
-                try:
-                    if args.target_block_verify_mode == "serial-exact":
-                        block_result = session.verify_target_block_serial_exact(
-                            block_inputs,
-                            capture_linear_state_rows=direct_state_commit,
-                        )
-                        record_target_verify(
-                            len(block_inputs),
-                            serial_rows=len(block_inputs),
-                        )
-                    else:
-                        if args.native_spec_target_cycle:
-                            block_result = session.verify_target_block_native_cycle(
-                                block_inputs,
-                                cycle_id=int(cycle),
-                                bulk_attention_mode=args.target_block_verify_mode,
-                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                                capture_linear_state_rows=direct_state_commit,
-                                capture_lm_head_logits=bool(args.record_target_topk_scores),
-                                record_stage_timings=bool(args.record_cycle_stage_timings),
-                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
-                                defer_linear_state_commit=direct_state_commit,
-                                device_accept_commit=bool(args.native_spec_device_accept_commit),
-                                remaining_decode=(
-                                    int(remaining_output_tokens)
-                                    if args.native_spec_device_accept_commit
-                                    else None
-                                ),
-                            )
-                        else:
-                            block_result = session.verify_target_block(
-                                block_inputs,
-                                bulk_attention_mode=args.target_block_verify_mode,
-                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                                capture_linear_state_rows=direct_state_commit,
-                                capture_lm_head_logits=bool(args.record_target_topk_scores),
-                                record_stage_timings=bool(args.record_cycle_stage_timings),
-                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
-                                defer_linear_state_commit=direct_state_commit,
-                            )
-                        native_spec_target_cycle_used = bool(
-                            native_spec_target_cycle_used
-                            or session.last_native_spec_target_submitted
-                        )
-                        record_native_spec_target_timings()
-                        record_target_verify(
-                            len(block_inputs),
-                            layer_passes=1,
-                            graph_rows=(
-                                len(block_inputs)
-                                if session.last_native_spec_target_submitted
-                                else 0
-                            ),
-                            block_passes=1,
-                            block_rows=len(block_inputs),
-                        )
-                    block_target_tokens = [int(token) for token in block_result.token_ids]
-                    target_block_raw_tokens = list(block_target_tokens)
-                    record_target_lm_head_scores(block_result, block_inputs, block_target_tokens)
-                    if len(block_target_tokens) != 2:
-                        raise RuntimeError("B1 branch-safe block verifier expected exactly two target rows")
-                    target0 = int(block_target_tokens[0])
-                    target_block_consumed_rows = 2 if target0 == int(draft_tokens[0]) else 1
-                    if target0 == int(draft_tokens[0]):
-                        if direct_state_commit:
-                            if not block_result.linear_state_rows_captured:
-                                raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
-                            if direct_state_commit_exact_mode:
-                                session._commit_verify_linear_state_row(1, position=seq_position + 2)
-                                record_direct_commit()
-                                target_tokens.extend(block_target_tokens)
-                                if serial_hidden_host_required:
-                                    target_hidden_seeds.extend(
-                                        np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                        for row in range(2)
-                                    )
-                            else:
-                                session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                                replay_result = session.verify_target_block_serial_exact(block_inputs)
-                                record_target_verify(
-                                    len(block_inputs),
-                                    serial_rows=len(block_inputs),
-                                    replay_rows=len(block_inputs),
-                                )
-                                replay_tokens = [int(token) for token in replay_result.token_ids]
-                                if replay_tokens != block_target_tokens:
-                                    raise RuntimeError("B1 branch-safe serial-exact replay diverged from block rows")
-                                target_tokens.extend(replay_tokens)
-                                if serial_hidden_host_required:
-                                    target_hidden_seeds.extend(
-                                        np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                        for row in range(2)
-                                    )
-                        else:
-                            target_tokens.extend(block_target_tokens)
-                            if serial_hidden_host_required:
-                                target_hidden_seeds.extend(
-                                    np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                    for row in range(2)
-                                )
-                        current_device_token = int(block_target_tokens[1])
-                    else:
-                        record_target_verify(0, discarded_rows=1)
-                        row0_direct_committed = False
-                        if direct_state_commit and direct_partial_commit_supported:
-                            if not block_result.linear_state_rows_captured:
-                                raise RuntimeError("direct B1 branch commit requested without captured linear-state rows")
-                            session._commit_verify_linear_state_row(0, position=seq_position + 1)
-                            record_direct_commit()
-                            row0_direct_committed = True
-                        else:
-                            if snapshot is None:
-                                raise RuntimeError("B1 branch-safe row-0 replay requires a linear-state snapshot")
-                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                            replay0 = session.step(
-                                int(verify_input_token),
-                                return_logits=False,
-                                capture_hidden_seed_fp32=True,
-                            )
-                            record_target_verify(1, serial_rows=1, replay_rows=1)
-                            if int(replay0.token_id) != target0:
-                                raise RuntimeError("B1 branch-safe row-0 replay diverged from block row 0")
-                        target_tokens.append(target0)
-                        current_device_token = target0
-                        if serial_hidden_host_required:
-                            if row0_direct_committed:
-                                target_hidden_seeds.append(
-                                    np.ascontiguousarray(block_result.hidden_seeds[0:1], dtype=np.float32)
-                                )
-                            else:
-                                target_hidden_seeds.append(copy_pending_hidden_seed())
-                        root_topk_tokens = (
-                            [int(token) for token in draft_top10_tokens[0][:cycle_root_topk_accept]]
-                            if draft_top10_tokens
-                            else []
-                        )
-                        if target0 in root_topk_tokens:
-                            topk_branch_accepted = True
-                            topk_branch_depth = 0
-                            topk_branch_depths.append(0)
-                            topk_branch_accept_count = 1
-                            target_result = session.step(
-                                target0,
-                                return_logits=False,
-                                capture_hidden_seed_fp32=True,
-                            )
-                            record_target_verify(1, serial_rows=1)
-                            corrective = int(target_result.token_id)
-                            current_device_token = corrective
-                            target_tokens.append(corrective)
-                            if serial_hidden_host_required:
-                                target_hidden_seeds.append(copy_pending_hidden_seed())
-                        # Else row 0 is the visible corrective token after a reject;
-                        # row 1 was computed from an unaccepted draft and is ignored.
-                finally:
-                    if snapshot is not None:
-                        session._free_linear_state_snapshot(snapshot)
-                block_verify_used = True
-                b1_branch_safe_block_verify_used = True
-                elapsed_ms = (time.perf_counter() - t0) * 1000
-                add_cycle_stage("target_b1_branch_block_verify_total", elapsed_ms)
-                ar_decode_ms += elapsed_ms
             can_block_verify = (
                 bool(args.target_block_verify)
                 and cycle_block_verify_allowed
@@ -3761,7 +3545,7 @@ def main(argv: list[str] | None = None):
                 "target_lm_head_score_rows": target_lm_head_score_rows,
                 "target_hidden_seed_rows": target_hidden_seed_rows,
                 "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings and block_verify_used),
-                "target_b1_branch_safe_block_verify": bool(b1_branch_safe_block_verify_used),
+                "target_b1_branch_safe_block_verify": False,
                 "target_graph_batched_verify": False,
                 "target_verify_layer_passes": int(target_verify_layer_passes),
                 "target_verify_rows_evaluated": int(target_verify_rows_evaluated),
@@ -3826,7 +3610,6 @@ def main(argv: list[str] | None = None):
     )
     if target_graph_verify_fallback_reason:
         print(f"Target graph verify fallback: {target_graph_verify_fallback_reason}")
-    print(f"Target B1 branch-safe block verify: {args.target_b1_branch_safe_block_verify}")
     print(f"Root top-k accept: {args.root_topk_accept}")
     print(f"Sibling top-k accept: {args.sibling_topk_accept}")
     print(f"Sibling tail min previous accepted: {args.sibling_tail_min_prev_accepted}")
@@ -4025,7 +3808,7 @@ def main(argv: list[str] | None = None):
             "target_block_direct_state_commit": bool(args.target_block_direct_state_commit),
             "target_block_replay_state_commit": False,
             "target_block_direct_partial_replay_mode": str(args.target_block_direct_partial_replay_mode),
-            "target_b1_branch_safe_block_verify": bool(args.target_b1_branch_safe_block_verify),
+            "target_b1_branch_safe_block_verify": False,
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
             "target_graph_context_cap": int(target_graph_context_cap),
             "target_graph_verify_fallback_reason": target_graph_verify_fallback_reason,

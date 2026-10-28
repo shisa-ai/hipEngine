@@ -206,12 +206,31 @@ def test_mtp_policy_accepts_adaptive_production_selector_flags() -> None:
     assert args.adaptive_ar_fallback is True
 
 
-def test_b1_branch_safe_block_verify_flag_parses_with_target_block_verify() -> None:
-    args = build_arg_parser().parse_args(
-        ["--target-block-verify", "--target-b1-branch-safe-block-verify"]
+@pytest.mark.parametrize("option", ["--target-b1-branch-safe-block-verify", "--no-target-b1-branch-safe-block-verify"])
+def test_retired_b1_branch_safe_option_is_rejected(option, capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        build_arg_parser().parse_args([option])
+    assert excinfo.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_b1_branch_safe_retirement_keeps_false_artifacts_without_runtime_selector() -> None:
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(bench))
+    assert not hasattr(build_arg_parser().parse_args([]), "target_b1_branch_safe_block_verify")
+    assert not any(
+        isinstance(node, ast.Attribute) and node.attr == "target_b1_branch_safe_block_verify"
+        or isinstance(node, ast.Name) and node.id in {"can_b1_branch_safe_block_verify", "b1_branch_safe_block_verify_used"}
+        for node in ast.walk(tree)
     )
-    assert args.target_block_verify is True
-    assert args.target_b1_branch_safe_block_verify is True
+    artifacts = [
+        value for node in ast.walk(tree) if isinstance(node, ast.Dict)
+        for key, value in zip(node.keys, node.values)
+        if isinstance(key, ast.Constant) and key.value == "target_b1_branch_safe_block_verify"
+    ]
+    assert len(artifacts) == 2
+    assert all(isinstance(value, ast.Constant) and value.value is False for value in artifacts)
 
 
 def test_native_complete_cycle_flag_parses_default_off() -> None:
@@ -1139,7 +1158,6 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
             "--target-block-min-rows",
             "4",
             "--no-target-block-direct-state-commit",
-            "--target-b1-branch-safe-block-verify",
             "--adaptive-draft-window",
             "--adaptive-ar-fallback",
             "--adaptive-ar-fallback-cooldown",
@@ -1173,7 +1191,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.target_block_min_rows == 2
     assert args.target_block_direct_state_commit is True
     assert args.target_block_direct_partial_replay_mode == "direct-commit"
-    assert args.target_b1_branch_safe_block_verify is False
+    assert not hasattr(args, "target_b1_branch_safe_block_verify")
     assert args.adaptive_draft_window is False
     assert args.adaptive_ar_fallback is False
     assert args.adaptive_ar_fallback_max_accepted == 0

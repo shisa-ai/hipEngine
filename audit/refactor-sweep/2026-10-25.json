@@ -8182,7 +8182,8 @@
         {
           "line": 6289,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --target-b1-branch-safe-block-verify` and suite route `resident-b1-branch-safe-block-cap32k-device-seed`. | Default-off rejected diagnostic. It probes a B1/root-topK block verifier that batches `[prev, draft0]`, uses row 1 only for strict draft top-1 accepts, and restores/replays row 0 for root-topK branch accepts/rejects. Row-0 direct commit is now exact in the direct route, but both branch-safe variants are smoke-negative: restore/replay B1 AR **54.93 tok/s**, MTP **31.11 tok/s = 0.566x AR**; direct row-0 B1 AR **54.97 tok/s**, MTP **26.66 tok/s = 0.4849x AR**; accepted/output **0.400**. | Remove or move to a dedicated experiment harness unless a future verifier-row lifecycle plus full-suite row beats true AR. Do not re-run as a goal path while branch-safe B1 remains slower than the retained serial/cap32k routes. |",
-          "status": "pending"
+          "status": "fixed-b1-branch-safe-bench-experiment-retired",
+          "evidence": "Remove default-off B1 branch-safe CLI positive/negative, entire isolated experiment branch and two suite aliases; retain false workload/cycle artifact fields. Root-top-k serial/graph, generic strict block and direct-commit paths unchanged, AST comparison proves only declared retirement. RED4fail;GREEN269focused,CPU bg64519646pass271skip10subtests/fixtures/smokes. gfx1151 actual before/after B1root40 fourcycles identical tokens/acceptance/cursor/replay/direct metadata; no branch-topk acceptance observed, no speed claim. CLI refuses removed inputs,docs/audit/tiers/worklog/diff pass. Worklog: worklog/entries/20261028T162530.749398Z-cleanup-refactor-r0281-b1-branch-safe-2abea6.md."
         },
         {
           "line": 6290,

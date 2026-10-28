@@ -213,17 +213,26 @@ def test_suite_exposes_context_cap32k_device_seed_route() -> None:
     ]
 
 
-def test_suite_exposes_b1_branch_safe_block_device_seed_route() -> None:
-    assert suite.MTP_ROUTES["resident-b1-branch-safe-block-cap32k-device-seed"] == [
-        "--resident-mtp-draft",
-        "--resident-mtp-device-seed",
-        "--target-block-verify",
-        "--target-b1-branch-safe-block-verify",
-        "--adaptive-ar-fallback",
-        "--mtp-draft-vocab-cap",
-        "32768",
-        "--adaptive-full-vocab-after-cap-miss",
-    ]
+def test_retired_b1_branch_safe_suite_aliases_are_absent() -> None:
+    assert not any("b1-branch-safe" in name for name in suite.MTP_ROUTES)
+    assert not any(
+        "--target-b1-branch-safe-block-verify" in args
+        for args in suite.MTP_ROUTES.values()
+    )
+
+
+@pytest.mark.parametrize("variant", ["block", "direct"])
+def test_suite_refuses_retired_b1_branch_safe_route_before_outputs(monkeypatch, tmp_path, capsys, variant) -> None:
+    monkeypatch.setattr(sys, "argv", [
+        "gguf_ar_mtp_suite.py", "--scope", "full", "--mtp-route",
+        f"resident-b1-branch-safe-{variant}-cap32k-device-seed",
+        "--raw-root", str(tmp_path / "raw"), "--dry-run",
+    ])
+    with pytest.raises(SystemExit) as excinfo:
+        suite.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    assert not (tmp_path / "raw").exists()
 
 
 def test_suite_exposes_hybrid_strict_block_cap32k_route() -> None:

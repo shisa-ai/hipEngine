@@ -41,6 +41,13 @@ after each cycle. Device-cache accepted-row repair and native complete-cycle
 cache ownership remain unchanged. Both controls remain available, and
 `--llama-compat` enables them.
 
+The rejected B1/root-top-k block experiment's
+`--target-b1-branch-safe-block-verify` and negative switch are removed, along
+with the `resident-b1-branch-safe-block-cap32k-device-seed` and
+`resident-b1-branch-safe-direct-cap32k-device-seed` suite aliases. Its cycle
+and workload artifact fields remain `false`. Ordinary root-top-k verification,
+strict block verification and selected-row direct commit are unchanged.
+
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked
 pointer-table kernel when their layout contracts hold. Per-layer copy
