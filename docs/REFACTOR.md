@@ -3430,12 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Cleanup Ledger
-
-| Area | Debt | Current status | Removal trigger |
-| --- | --- | --- | --- |
-| GGUF MTP resident draft Q6 top-1 q8_1/dp4a | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A` / `--resident-mtp-draft-q6-top1-dp4a` opt-in around the llama-compat resident draft Q6_K lm-head top-1/gather path. It q8_1-quantizes the BF16 head input and calls `pack8_gemv_decode_q8_1_dp4a_top1_gather_f32`, matching llama.cpp's quantized matvec economy more closely than the exact raw-Q6 path. The diagnostic `HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS` / `--resident-mtp-draft-q6-top1-stage1-threads {64,128}` exists only to A/B the stage1 scheduler; suite routes `...x8q6-t64` and `...x8q6-t64-allsync` force 64 threads. | Default-off, accuracy-traded. 2026-07-01 full-suite `llama-compat-device-chain-dp4a-q6top1dp4a` B2: **58.83 -> 59.63 tok/s** (+1.36%), `cycle_wall_ms_per_output` **17.019 -> 16.793**, `draft_initial` **3.564 -> 3.293 ms/output**, acceptance unchanged (`acc/output 0.578`, draft acceptance 0.685). All-sync smoke confirmed `draft_run_lm_head` **1.471 -> 1.253 ms/output**; the q6-X8 stage split now attributes the retained 128-thread aggregate to Q6 top-1 stage1 **1.218 ms/output** plus stage2/gather **0.041 ms/output**, while norm+cast+q8_1 quantize is **0.030 ms/output**. The 64-thread scheduler check is rejected on the real route: all-sync stage1 **1.218 vs 1.246 ms/output** and same-session async **69.06 tok/s / 14.501 ms** vs t64 **68.79 tok/s / 14.557 ms**, identical acceptance. Unit gate matches a CPU q8_1/Q6_K oracle; rocprofv3 confirms both 128-thread and 64-thread stage1 kernels ran. Artifacts `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-full.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-top1split128-allsync-smoke.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-top1split-allsync-smoke.json`, and `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-smoke.json`. | Keep the q8_1/dp4a draft head as an explicit llama-compat diagnostic until full-suite heldouts decide whether the accuracy-traded draft head should be folded into the named compat route. Do not promote to the exact/default resident draft path. Remove the t64 thread flag/routes after the next draft lm-head optimization because the scheduler-width copy is rejected; standalone activation-quantization/cast and final reduce/gather tweaks are already ruled out, so future work should target Q6_K stage1 compute/layout or a broader llama-style MMVQ layout. |
-
 ### Active mechanical rocprof cache workflow cleanup
 
 - `HIPENGINE_BUILD_CACHE_ROOT` and `HIPENGINE_REQUIRE_CACHED_BUILD` provide a
@@ -11340,7 +11334,7 @@ a normal public MTP request as a separate provider-preservation check. Any
 changed-arithmetic default still needs its execution-profile numerical/task
 gates; historical throughput is not that evidence.
 
-### R0281-DRAFT-X8 — Resident Q6 top-1 layout and sidecar ownership
+### R0281-DRAFT-X8 — Resident Q6 top-1 arithmetic, layout and sidecar ownership
 
 The compatibility generator still selects Q6 top-1 dp4a with draft shape
 `x8`; bench/profiler and named `x8top1` suite routes also consume it. The
@@ -11356,9 +11350,21 @@ output, synchronized stage timing uses stage1 plus stage2/gather; the normal
 path uses the combined top-1/gather wrapper. Missing requested sidecars raise
 rather than silently switching layouts. The shared wrapper thread control
 also serves non-draft callers and cannot be removed with this shape choice.
+The benchmark/profiler thread options and the wrapper's explicit 64/128-thread
+support remain available for direct experiments and historical replay. Only the
+rejected `x8q6-t64` and `x8q6-t64-allsync` suite aliases and fixed budgets are
+removed; their recorded comparisons remain in the sweep inventory and artifacts.
+
+`HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A` selects changed arithmetic, not a
+rollback of the exact top-1/gather path. The standalone constructor keeps its
+raw-Q6 default, while compatibility generation already requests q8_1/dp4a.
+Migrate that activation choice and shared scheduler provenance with the layout
+owner below; do not make a live compatibility head default-off based on the
+standalone constructor, or remove exact/Q8_1 comparison oracles.
 
 **Decision needed:** preserve explicit draft layout comparisons or migrate
-shape, dp4a activation and sidecar construction into one owner-local plan.
+shape, dp4a activation, scheduler selection and sidecar construction into one
+owner-local plan.
 Keep target materialization and the Generation-2 NextN provider separate.
 Other shape-specific rejected candidates have their own ledger entries;
 this item does not authorize deleting their common kernels or wrappers.
