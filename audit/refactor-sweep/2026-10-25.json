@@ -8068,7 +8068,8 @@
         {
           "line": 6270,
           "text": "| MTP verifier rejected gate | `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` opt-in for M13.B.3 staged selected gate/up rotate+GEMV. | Default-off; staged/keyed gate-up path is exact but later W7900 verifier-window measurement regressed kernel time (`15.344 -> 15.611 ms/pass`) despite launch-count reduction. | Remove or demote to kernel test-only unless a no-spin/no-barrier-reset design beats the unfused chain on the current D32 prompt suite. |",
-          "status": "pending"
+          "status": "fixed-rejected-selected-staged-rotate-runtime-retired",
+          "evidence": "Removed selected-staged Python/native selection and selected-only C/ctypes function-pointer/barrier fields. Kept the shared-expert barrier owner and registered staged primitive. Host ABI offsets/order/error propagation, 193 targeted tests, public MTP Python/native controls at stale values, GPU projection checks and full CPU/docs/audit gates pass. Worklog: worklog/entries/20261028T122219.847160Z-cleanup-refactor-r0281-selected-staged-5b415e.md."
         },
         {
           "line": 6271,

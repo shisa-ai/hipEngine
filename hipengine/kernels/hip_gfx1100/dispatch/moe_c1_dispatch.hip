@@ -76,19 +76,6 @@ typedef hipengine_err_t (*gemv_awq_selected_dual_pack8_transposed_fp16_fn)(
     int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
     void*);
 
-// gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16:
-//   x, rotated, selected, pairs, theta, channel_scales,
-//   qw_a, qz_a, s_a, qw_b, qz_b, s_b, out, barrier,
-//   x_rows, rows, in_features, out_packed_a, out_packed_b, num_experts,
-//   group_size, krot, threads, barrier_count_target, barrier_ready_value, stream
-typedef hipengine_err_t (*gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16_fn)(
-    void*, void*, void*, void*, void*, void*,
-    void*, void*, void*, void*, void*, void*,
-    void*, void*,
-    int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,
-    int64_t, int64_t, int64_t, int64_t, int64_t,
-    void*);
-
 // gemv_awq_selected_pack8_transposed_fp16 (strided, "selected_single"):
 //   x, selected, qw, qz, s, out,
 //   rows, in_features, out_packed, num_experts, group_size, threads, stream
@@ -184,7 +171,6 @@ struct MoeC1Fns {
     void* paro_rotate1_fp16;
     void* paro_rotate2_fp16;
     void* gemv_awq_selected_dual_pack8_transposed_fp16;
-    void* gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16;
     void* gemv_awq_selected_pack8_transposed_fp16;
     void* silu_mul_dual_rotate_out_fp16;
     void* silu_mul_separate_out_fp16;
@@ -211,15 +197,12 @@ struct MoeC1Args {
     void* out;
     int64_t tokens;
     void* stream;
-    int64_t selected_rotate_barrier_target;
-    int64_t selected_rotate_barrier_epoch;
 
     // ---- Layer-constant scratch pointers ----
     void* router_logits;
     void* selected_experts;
     void* routing_weights;
     void* gate_up_input;       // selected gate-up rotated input
-    void* selected_rotate_fuse_barrier;
     void* gate_up;             // selected dual gate*up packed output
     void* down_input;          // after silu+rotate
     void* down_out;            // selected down output
@@ -325,30 +308,6 @@ static inline hipengine_err_t dispatch_selected_gate_up(
     const MoeC1Args* args,
     int64_t selected_rows)
 {
-    if (args->selected_rotate_barrier_target > 0 && args->selected_rotate_barrier_epoch > 0) {
-        auto fn = reinterpret_cast<gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16_fn>(
-            fns->gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16);
-        DISPATCH_CHECK(fn(
-            args->hidden, args->gate_up_input, args->selected_experts,
-            args->selected_gate_up_pairs, args->selected_gate_up_theta,
-            args->selected_gate_up_channel_scales,
-            args->selected_stacked_gate_qweight,
-            args->selected_stacked_gate_qzeros,
-            args->selected_stacked_gate_scales,
-            args->selected_stacked_up_qweight,
-            args->selected_stacked_up_qzeros,
-            args->selected_stacked_up_scales,
-            args->gate_up, args->selected_rotate_fuse_barrier,
-            args->tokens, selected_rows, args->hidden_size,
-            args->out_packed_selected_gate, args->out_packed_selected_up,
-            args->num_experts, args->group_size, args->krot_selected_gate_up,
-            args->selected_threads,
-            args->selected_rotate_barrier_target,
-            args->selected_rotate_barrier_epoch,
-            args->stream));
-        return 0;
-    }
-
     {
         auto fn = reinterpret_cast<paro_rotate1_fp16_fn>(fns->paro_rotate1_fp16);
         DISPATCH_CHECK(fn(
@@ -437,7 +396,7 @@ hipengine_err_t hipengine_moe_c1_dispatch_linear_fp16(
             args->stream));
     }
 
-    // ---- 2-3. Selected gate-up: optional staged rotate + selected dual GEMV ----
+    // ---- 2-3. Selected gate-up: rotate + selected dual GEMV ----
     DISPATCH_CHECK(dispatch_selected_gate_up(fns, args, selected_rows));
 
     // ---- 4-5. Selected down: SiLU/rotate + selected down GEMV ----
@@ -699,7 +658,7 @@ hipengine_err_t hipengine_moe_c1_dispatch_full_fp16(
             args->stream));
     }
 
-    // ---- 2-3. Selected gate-up: optional staged rotate + selected dual GEMV ----
+    // ---- 2-3. Selected gate-up: rotate + selected dual GEMV ----
     DISPATCH_CHECK(dispatch_selected_gate_up(fns, args, selected_rows));
 
     // ---- 4-5. Selected down: SiLU/rotate + selected down GEMV ----

@@ -2690,7 +2690,9 @@ def test_selected_moe_retired_fused_rotate_does_not_disable_c_dispatch(monkeypat
     assert calls[0]["scratch"] is scratch and calls[0]["out"] is scratch.moe_out
     assert calls[0]["tokens"] == 3 and calls[0]["stream"] == 0x72
     assert calls[0]["force_small_batch_shared_expert"] is True
-    assert calls[0]["selected_rotate_barrier_target"] == calls[0]["selected_rotate_barrier_epoch"] == 0
+    assert "selected_rotate_barrier_target" not in calls[0]
+    assert "selected_rotate_barrier_epoch" not in calls[0]
+    assert "selected_rotate_fuse_barrier" not in calls[0]
 
 
 def test_rejected_selected_fused_rotate_remains_a_registered_primitive() -> None:
@@ -2704,13 +2706,17 @@ def test_rejected_selected_fused_rotate_remains_a_registered_primitive() -> None
     ) is gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16
 
 
-def test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "1", "true"])
+def test_qwen35_decode_state_selected_moe_fp16_ignores_retired_staged_rotate(monkeypatch, retired) -> None:
     qwen_runtime._reset_shared_rotate_fuse_barrier_state()
-    monkeypatch.setenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", "1")
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", retired)
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
-    scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
-    hidden = _tensor(0xCA00, (2, 4096), "fp16")
+    scratch = state.reserve_moe_c1_scratch(tokens=3, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (3, 4096), "fp16")
     calls = []
 
     def record(label):
@@ -2718,31 +2724,32 @@ def test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate(monkeypa
             calls.append((label, args, kwargs))
         return fake
 
-    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("unexpected_rotate1"))
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_fp16", record("unexpected_selected_dual"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("rotate1"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_fp16", record("selected_dual"))
     monkeypatch.setattr(
-        qwen_runtime,
-        "gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16",
-        record("staged_keyed"),
+        qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16",
+        record("rejected_staged"), raising=False,
     )
+    out1 = state.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=3, stream=0x77)
+    out2 = state.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=3, stream=0x77)
+    assert out1 is out2 is scratch.gate_up
+    assert [label for label, _args, _kwargs in calls] == ["rotate1", "selected_dual"] * 2
+    assert calls[0][1][:2] == (hidden.ptr, scratch.gate_up_input.ptr)
+    assert calls[1][1][:2] == (scratch.gate_up_input.ptr, scratch.selected_experts.ptr)
+    assert all(kwargs["stream"] == 0x77 for _name, _args, kwargs in calls)
+    assert scratch.shared_rotate_fuse_barrier.ptr not in state._shared_rotate_fuse_barrier_state
+    assert not [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
 
-    out1 = state.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=2)
-    out2 = state.selected_moe_gate_up_pack8_fp16(hidden, scratch, tokens=2)
 
-    assert out1 is scratch.gate_up
-    assert out2 is scratch.gate_up
-    labels = [label for label, _args, _kwargs in calls]
-    assert labels == ["staged_keyed", "staged_keyed"]
-    first_args = calls[0][1]
-    second_args = calls[1][1]
-    assert first_args[0:3] == (hidden.ptr, scratch.gate_up_input.ptr, scratch.selected_experts.ptr)
-    assert first_args[12:16] == (scratch.gate_up.ptr, scratch.shared_rotate_fuse_barrier.ptr, 2, 16)
-    # 4096 hidden / group 128 -> 32 groups; one staged rotation and two rows
-    # => 64 rotate blocks per selected-gate launch.
-    assert first_args[22:24] == (64, 1)
-    assert second_args[22:24] == (128, 2)
-    barrier_memsets = [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
-    assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
+def test_selected_moe_staged_gate_up_remains_a_registered_primitive() -> None:
+    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+        gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16,
+    )
+    assert resolve(
+        backend="hip_gfx1100", layer="rotate+selected_dual_pack8_gemv",
+        quant="w4_paro", variant="transposed_staged_keyed_fp16",
+    ) is gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16
 
 
 def test_selected_moe_staged_down_remains_a_registered_primitive() -> None:
