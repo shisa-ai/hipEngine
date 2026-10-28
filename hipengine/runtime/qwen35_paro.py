@@ -151,7 +151,6 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_pack8_transposed_fp16,
     gemv_awq_selected_dual_pack8_transposed_bf16,
     gemv_awq_selected_dual_pack8_transposed_fp16,
-    gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16,
     gemv_awq_selected_dual_pack8_transposed_rotate_staged_keyed_fp16,
     gemv_awq_selected_pack8_transposed_bf16,
     gemv_awq_selected_pack8_transposed_fp16,
@@ -8273,38 +8272,6 @@ class Qwen35ParoDecodeState:
         gate_qweight = self.tensor(f"{prefix}.stacked_gate_qweight_pack8_decode")
         up_qweight = self.tensor(f"{prefix}.stacked_up_qweight_pack8_decode")
         rows = tokens * self.config.num_experts_per_tok
-        if _moe_fused_rotate_enabled():
-            # M13.B.1: fused rotate + selected dual pack8 GEMV.  Bit-exact with
-            # the unfused chain below via an LDS scalar_t round-trip in the
-            # kernel.  scratch.gate_up_input is unused on this path but stays
-            # allocated for the unfused fallback.
-            gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16(
-                hidden.ptr,
-                scratch.selected_experts.ptr,
-                gate_up_pairs.ptr,
-                self.tensor(f"{prefix}.gate_up_weight_theta").ptr,
-                self.tensor(f"{prefix}.gate_up_weight_channel_scales").ptr,
-                gate_qweight.ptr,
-                self.tensor(f"{prefix}.stacked_gate_qzeros").ptr,
-                self.tensor(f"{prefix}.stacked_gate_scales").ptr,
-                up_qweight.ptr,
-                self.tensor(f"{prefix}.stacked_up_qzeros").ptr,
-                self.tensor(f"{prefix}.stacked_up_scales").ptr,
-                scratch.gate_up.ptr,
-                tokens,
-                rows,
-                hidden.shape[-1],
-                _out_packed_from_transposed_qweight(gate_qweight),
-                _out_packed_from_transposed_qweight(up_qweight),
-                self.config.num_experts,
-                group_size,
-                _rotation_krot(gate_up_pairs),
-                threads=threads,
-                stream=stream,
-                library=_library_for(library, "awq"),
-                runtime=self.runtime,
-            )
-            return scratch.gate_up
         if tokens > 1 and _selected_moe_staged_rotate_enabled() and hasattr(scratch, "shared_rotate_fuse_barrier"):
             runtime = self.runtime or get_hip_runtime()
             barrier_target, barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
@@ -9891,7 +9858,6 @@ class Qwen35ParoDecodeState:
         - paro_w4 shared expert (not legacy w8a16).
         - ``tokens > 1`` (decode tokens=1 uses coop router; C path doesn't).
         - ``group_size == 128`` (cached value; mismatches fall back).
-        - M13.B.1 fused-rotate disabled (else selected gate-up flow differs).
         - M13.B.2 fused-shared-rotate disabled (else shared expert flow differs).
         - Linear-attn layer-type OR full-attn at tokens<=small_batch_threshold.
         - Shared-expert krots match (rotate2 fast path).
@@ -9904,8 +9870,6 @@ class Qwen35ParoDecodeState:
         if tokens < 2:
             return None
         if group_size != 128:
-            return None
-        if _moe_fused_rotate_enabled():
             return None
         if _shared_expert_fused_rotate_enabled():
             return None
@@ -10980,27 +10944,6 @@ def _env_enabled(name: str, *, default: bool) -> bool:
     if value is None or value.strip() == "":
         return default
     return value.strip().lower() not in {"0", "false", "no", "off"}
-
-
-def _moe_fused_rotate_enabled() -> bool:
-    """M13.B.1 gate for the fused rotate + selected_dual_pack8 GEMV kernel.
-
-    Defaults to ``off`` based on the M13.B.1 measurement: the existing
-    ``gemv_awq_selected_dual_pack8_*_rotate_out_kernel`` design re-does the
-    full LDS rotation in every ``(out_pack, row)`` block.  At the verifier
-    shape (tokens=4, top_k=8, out_packs~192) this multiplies rotation work
-    by ~1500× vs the unfused paro_rotate1 + selected_dual chain, blowing up
-    ``moe_gate_up_dual_gemv`` kernel time by +12.4 ms/pass for only -40
-    paro_rotate launches/pass saved.  Enable via
-    ``HIPENGINE_MOE_FUSED_ROTATE={1,on,yes,true}`` only at shapes where the
-    redundant in-LDS rotation cost is acceptable (e.g. very small
-    ``out_pack × top_k`` totals).  A future properly-staged variant (HBM
-    barrier, rotate once per x_row) is tracked as M13.B.3-style work.  The
-    kernel itself is bit-exact with the unfused chain via an LDS scalar_t
-    round-trip after rotation (Option C).
-    """
-
-    return _env_enabled("HIPENGINE_MOE_FUSED_ROTATE", default=False)
 
 
 def _selected_moe_staged_rotate_enabled() -> bool:

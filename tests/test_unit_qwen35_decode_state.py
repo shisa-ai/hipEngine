@@ -2624,6 +2624,86 @@ def test_qwen35_decode_state_selected_moe_gate_up_and_down(monkeypatch) -> None:
     assert down_kwargs == {"threads": 128, "stream": 0, "library": None, "runtime": runtime}
 
 
+@pytest.mark.parametrize("retired", [None, "0", "1", "true"])
+@pytest.mark.parametrize("tokens", [1, 3, 7])
+def test_selected_moe_fp16_ignores_retired_fused_rotate(monkeypatch, retired, tokens) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_MOE_FUSED_ROTATE", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_MOE_FUSED_ROTATE", retired)
+    monkeypatch.setenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", "0")
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (tokens, 4096), "fp16")
+    calls = []
+
+    def record(label):
+        def fake(*args, **kwargs):
+            calls.append((label, args, kwargs))
+        return fake
+
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("rotate"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_fp16", record("gemv"))
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16",
+                        record("rejected_fused"), raising=False)
+    out = state.selected_moe_gate_up_pack8_fp16(
+        hidden, scratch, tokens=tokens, stream=0x71, library={"rotate": "rotate-lib", "awq": "awq-lib"},
+    )
+    assert out is scratch.gate_up
+    assert [name for name, _args, _kwargs in calls] == ["rotate", "gemv"]
+    assert calls[0][1] == (hidden.ptr, scratch.gate_up_input.ptr, 0xB9A0, 0xB9B0, 0xB9C0,
+                           tokens, 4096, 128, 32)
+    assert calls[1][1] == (scratch.gate_up_input.ptr, scratch.selected_experts.ptr,
+                           0xB100, 0xB200, 0xB300, 0xB400, 0xB500, 0xB600, scratch.gate_up.ptr,
+                           tokens, tokens * 8, 4096, 96, 96, 128, 128)
+    assert calls[0][2] == {"stream": 0x71, "library": "rotate-lib", "runtime": runtime}
+    assert calls[1][2] == {"threads": 64, "stream": 0x71, "library": "awq-lib", "runtime": runtime}
+
+
+@pytest.mark.parametrize("retired", [None, "1", "true"])
+def test_selected_moe_retired_fused_rotate_does_not_disable_c_dispatch(monkeypatch, retired) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_MOE_FUSED_ROTATE", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_MOE_FUSED_ROTATE", retired)
+    monkeypatch.setenv("HIPENGINE_MOE_C1_C_DISPATCH", "1")
+    monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", "0")
+    monkeypatch.setenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", "0")
+    runtime = FakeRuntime()
+    state = _state(runtime, _prepared_moe_weights())
+    scratch = state.reserve_moe_c1_scratch(tokens=3, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (3, 4096), "fp16")
+    residual = _tensor(0xCB00, (3, 4096), "fp16")
+    calls = []
+    state._moe_c1_dispatch_cache = SimpleNamespace(
+        layer_kind="full_attention", supports_call=lambda **_kw: True,
+        dispatch=lambda **kw: calls.append(kw),
+    )
+    result = state._try_moe_c1_c_dispatch(
+        hidden=hidden, residual=residual, out=None, scratch=scratch, tokens=3,
+        group_size=128, force_small_batch_shared_expert=True, stream=0x72,
+    )
+    assert result is scratch.moe_out
+    assert len(calls) == 1
+    assert calls[0]["hidden"] is hidden and calls[0]["residual"] is residual
+    assert calls[0]["scratch"] is scratch and calls[0]["out"] is scratch.moe_out
+    assert calls[0]["tokens"] == 3 and calls[0]["stream"] == 0x72
+    assert calls[0]["force_small_batch_shared_expert"] is True
+    assert calls[0]["selected_rotate_barrier_target"] == calls[0]["selected_rotate_barrier_epoch"] == 0
+
+
+def test_rejected_selected_fused_rotate_remains_a_registered_primitive() -> None:
+    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+        gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16,
+    )
+    assert resolve(
+        backend="hip_gfx1100", layer="rotate+selected_dual_pack8_gemv",
+        quant="w4_paro", variant="transposed_fp16",
+    ) is gemv_awq_selected_dual_pack8_transposed_rotate_out_fp16
+
+
 def test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate(monkeypatch) -> None:
     qwen_runtime._reset_shared_rotate_fuse_barrier_state()
     monkeypatch.setenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", "1")

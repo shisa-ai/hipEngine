@@ -8062,7 +8062,8 @@
         {
           "line": 6269,
           "text": "| MTP verifier rejected gate | `HIPENGINE_MOE_FUSED_ROTATE` opt-in for M13.B.1 selected-dual rotate+GEMV. | Default-off; 2026-05-23 W7900 gate stayed exact and removed 40 rotate launches/pass, but regressed total kernel time `17.32 -> 29.76 ms/pass` because the fused kernel repeated the rotation per `(out_pack,row)` block. | Remove or demote to kernel test-only after break-even path stabilizes; only keep runtime access if a new non-redundant staged design replaces it. |",
-          "status": "pending"
+          "status": "fixed-rejected-selected-fused-rotate-runtime-retired",
+          "evidence": "Removed Python fused primitive selection/import/helper and the flag-based native C dispatch veto, preserving standalone registration and independent staged/shared controls. RED/GREEN stale-value routing/argument tests, public MTP Python/native repeats with prior-control IDs and zero allocation teardown, GPU projection and primitive smoke, CPU deterministic/docs/audit gates pass. Worklog: worklog/entries/20261028T121351.712898Z-cleanup-refactor-r0281-moe-fused-rotate-335d33.md."
         },
         {
           "line": 6270,

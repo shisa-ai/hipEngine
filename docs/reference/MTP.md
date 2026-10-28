@@ -91,6 +91,10 @@ former runtime selection.
 > scalar-column schedule otherwise. `HIPENGINE_GDN_TLOOP_C1_EXACT` and the
 > explicit exact primitives remain available for serial-c1 comparisons.
 >
+> The rejected selected-MoE fused-rotation runtime selector
+> `HIPENGINE_MOE_FUSED_ROTATE` has also been removed. The standalone primitive
+> stays registered; stale values no longer bypass native C dispatch.
+>
 > For the current cross-provider milestone definitions and consolidated W7900/
 > gfx1151 performance status, use
 > [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The `0.758x / 27.8 ms`

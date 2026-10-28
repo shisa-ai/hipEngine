@@ -521,7 +521,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_LINEAR_AB_DUAL_SEPARATE` | true | Uses the separate-output dual A/B GEMV for small-batch decode rows; `0` restores the single GEMV fallback. |
 | `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED` | true | Fuses shared-prefill SiLU-mul + rotate into one launch (default on after the 2026-08-16 gfx1151 byte-equality gate); `0` opts out. |
 | `HIPENGINE_FUSED_RMSNORM_ROTATE` | false | Opt-in fused RMSNorm+rotate for linear layers (exact-AR preserved; pending verifier economics). |
-| `HIPENGINE_MOE_FUSED_ROTATE` | false | Opt-in fused in-LDS rotate for the selected MoE chain; only worthwhile at very small `out_pack x top_k` totals. |
 | `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` | false | Opt-in fused rotate for the shared expert; off until a fresh W7900 exact/rocprof row proves the net launch reduction. |
 | `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` | false | Opt-in staged-keyed selected-MoE rotate; staged-kernel duration and verifier economics regressed. |
 | `HIPENGINE_PARO_FFN_MEGAKERNEL` | false | Opt-in single-kernel selected FFN for the verify path (tokens > 1); AR decode keeps the unfused path so the AR baseline is untouched. |
@@ -1287,6 +1286,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_MOE_FUSED_ROTATE` is retired and ignored.
+  Selected MoE uses separate rotation and projection by default; this old
+  value no longer blocks native C dispatch. The fused primitive remains
+  registered for direct diagnostics.
 - `HIPENGINE_GDN_CHAIN_TLOOP_VTILE` is retired and ignored.
   Chain GDN uses tile-4 for value widths divisible by four and the scalar-column
   schedule otherwise. The serial-c1 exact route is unchanged.
