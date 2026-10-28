@@ -193,17 +193,18 @@ def test_suite_exposes_cap32k_device_seed_route() -> None:
     ]
 
 
-def test_suite_exposes_cap32k_device_seed_kv_route() -> None:
-    assert suite.MTP_ROUTES["resident-cap32k-device-seed-kv"] == [
-        "--resident-mtp-draft",
-        "--resident-mtp-device-seed",
-        "--mtp-device-kv-cache",
-        "--adaptive-ar-fallback",
-        "--no-target-block-verify",
-        "--mtp-draft-vocab-cap",
-        "32768",
-        "--adaptive-full-vocab-after-cap-miss",
-    ]
+def test_suite_refuses_retired_no_context_device_kv_alias(monkeypatch, tmp_path, capsys) -> None:
+    assert "resident-cap32k-device-seed-kv" not in suite.MTP_ROUTES
+    monkeypatch.setattr(sys, "argv", [
+        "gguf_ar_mtp_suite.py", "--scope", "full", "--mtp-route",
+        "resident-cap32k-device-seed-kv",
+        "--raw-root", str(tmp_path / "raw"), "--dry-run",
+    ])
+    with pytest.raises(SystemExit) as excinfo:
+        suite.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    assert not (tmp_path / "raw").exists()
 
 
 def test_suite_exposes_context_cap32k_device_seed_route() -> None:

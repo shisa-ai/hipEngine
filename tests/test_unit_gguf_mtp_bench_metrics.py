@@ -1040,6 +1040,17 @@ def test_arg_parser_exposes_resident_mtp_device_seed() -> None:
     assert args.resident_mtp_device_seed is True
 
 
+def test_device_only_draft_cache_remains_selectable_without_prompt_replay() -> None:
+    args = build_arg_parser().parse_args([
+        "--resident-mtp-draft", "--resident-mtp-device-seed", "--mtp-device-kv-cache",
+        "--mtp-draft-vocab-cap", "32768",
+    ])
+    assert args.resident_mtp_draft is True
+    assert args.resident_mtp_device_seed is True
+    assert args.mtp_device_kv_cache is True
+    assert args.mtp_context_replay is False
+
+
 def test_arg_parser_exposes_resident_mtp_device_chain() -> None:
     args = build_arg_parser().parse_args(["--resident-mtp-draft", "--resident-mtp-device-chain"])
 

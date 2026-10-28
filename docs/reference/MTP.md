@@ -81,6 +81,13 @@ target seed; native complete-cycle execution owns the corresponding update.
 The host-seed path remains a separate benchmark comparison. Device seeding
 does not mean all prompt, diagnostic or accepted-row KV repair is host-free.
 
+The suite alias `resident-cap32k-device-seed-kv` is removed. Device-only draft
+cache evaluation remains available by passing `--resident-mtp-draft
+--resident-mtp-device-seed --mtp-device-kv-cache` to the standalone bench
+without `--mtp-context-replay`. Verifier-row staging and device-base accepted-row
+KV writing remain available; prompt priming is not a prerequisite for the
+cache capability.
+
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked
 pointer-table kernel when their layout contracts hold. Per-layer copy

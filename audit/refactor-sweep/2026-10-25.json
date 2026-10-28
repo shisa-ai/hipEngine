@@ -8212,7 +8212,8 @@
         {
           "line": 6294,
           "text": "| GGUF MTP diagnostics | Suite route `resident-cap32k-device-seed-kv` plus `scripts/gguf_mtp_bench.py` path combining `--resident-mtp-device-seed` and `--mtp-device-kv-cache`. | Default-off rejected diagnostic. The route uses new device verifier-row staging and device-base accepted-row KV commit plumbing, but without llama.cpp prompt/context catch-up it collapses draft acceptance: B3 smoke **38.94 tok/s = 0.7124x AR**, draft_acceptance **0.032**; B1 smoke **39.73 tok/s = 0.7235x AR**, draft_acceptance **0.017**. | Keep `Qwen35GGUFResidentSession.stage_current_hidden_seed_as_verify_row()` and `Qwen35GGUFResidentMTPDraftRunner.write_kv_rows_from_device_seed_base()` as lifecycle primitives. Remove or move the no-context-replay suite route unless a future prompt-catch-up resident lifecycle uses it and beats true AR on full suite. |",
-          "status": "pending"
+          "status": "fixed-no-context-device-kv-suite-alias-retired",
+          "evidence": "Retire unused suitealias resident-cap32k-device-seed-kv only. Preserve explicit resident/device-seed/deviceKV combination without promptcatchup, verifierrowstaging/devicebaseacceptedKVwriter and neighboringcontextalias. REDaliasfail;390focused suite/bench/context/proposer/hiddenseed/MTP2pass. AST onlydictentry deletion,actualretiredCLIexit2nooutputs and neighbor dryrunpass. CPUbg64919687pass271skip10subtests/fixtures/smokes;docs/audit/tiers/diff/worklogpass. No runtime/GPU/performance change. Worklog: worklog/entries/20261028T165820.809329Z-cleanup-refactor-r0281-device-kv-alias-c53595.md."
         },
         {
           "line": 6295,

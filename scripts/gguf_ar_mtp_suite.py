@@ -110,15 +110,6 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--mtp-draft-vocab-cap", "32768",
         "--adaptive-full-vocab-after-cap-miss",
     ],
-    "resident-cap32k-device-seed-kv": [
-        "--resident-mtp-draft",
-        "--resident-mtp-device-seed",
-        "--mtp-device-kv-cache",
-        "--adaptive-ar-fallback",
-        "--no-target-block-verify",
-        "--mtp-draft-vocab-cap", "32768",
-        "--adaptive-full-vocab-after-cap-miss",
-    ],
     "resident-context-cap32k-device-seed": [
         "--resident-mtp-draft",
         "--resident-mtp-device-seed",
