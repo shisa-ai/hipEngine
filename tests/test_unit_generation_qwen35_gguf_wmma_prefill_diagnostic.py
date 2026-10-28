@@ -104,3 +104,47 @@ def test_out_of_scope_literals_are_still_named():
         "the single remaining literal belongs to _generate_dense_speculative_mtp_detailed; if the "
         "count moved, a route was either wired (update the guard) or newly pinned"
     )
+
+
+@pytest.mark.parametrize("pool_name", ["ar_batch", "continuous_ar_dynamic_kv", "mtp_target", "compact_dms_request"])
+def test_resolved_prefill_choice_partitions_pool_and_reuses_matching_session(monkeypatch, pool_name):
+    from types import SimpleNamespace
+
+    module = _module()
+    cls = module.Qwen35GGUFBringupGenerator
+    generator = object.__new__(cls)
+    generator._prepared_kv_signature = ("fixture",)
+    generator._prepared_max_sequence_length = 64
+    monkeypatch.setattr(cls, "_configure_session", lambda self, session: None)
+    constructed = []
+
+    def construct(self, runner, **kwargs):
+        session = SimpleNamespace(
+            max_sequence_length=kwargs["max_sequence_length"],
+            use_wmma_prefill=kwargs["use_wmma_prefill"],
+            reset=lambda: None,
+        )
+        constructed.append(session)
+        return session
+
+    monkeypatch.setattr(cls, "_construct_shared_session", construct)
+
+    def acquire(value):
+        monkeypatch.setenv(ENV, value)
+        return generator._acquire_shared_session(
+            object(), pool_name=pool_name,
+            use_wmma_prefill=module._resident_session_wmma_prefill_default(),
+            use_gemv_decode=True,
+        )
+
+    enabled, enabled_key, reused = acquire("1")
+    assert not reused and enabled.use_wmma_prefill is True
+    generator._release_shared_session(enabled_key, enabled)
+    disabled, disabled_key, reused = acquire("0")
+    assert not reused and disabled.use_wmma_prefill is False
+    assert enabled_key != disabled_key
+    assert enabled.use_wmma_prefill is True
+    generator._release_shared_session(disabled_key, disabled)
+    again, key, reused = acquire("true")
+    assert reused and again is enabled and key == enabled_key
+    assert len(constructed) == 2

@@ -8380,8 +8380,10 @@
       "start_line": 6333,
       "end_line": 6348,
       "sha256": "9acf0f88c81ec07591d2679f971688aa0ffb4fb4cd2031fc25615256240ea241",
-      "status": "pending",
-      "evidence": [],
+      "status": "in-progress-row-triage",
+      "evidence": [
+        "Row6341 completed control gap;remaining diagnostic/session-plan decision moved bottom R0282-PREFILL-POLICY. Runtime unchanged,4pool characterization cases and93focused tests pass;see worklog/entries/20261028T201442.428322Z-cleanup-refactor-r0282-prefill-policy-1d5966.md. Other rows remain individually pending."
+      ],
       "subitems": [
         {
           "line": 6339,
@@ -8396,7 +8398,8 @@
         {
           "line": 6341,
           "text": "| All-GEMV small-row prefill A/B (`hipengine/generation/qwen35_gguf.py:1107`, `:1180`) | Both shipping call sites pass `use_wmma_prefill=True` literally into `_acquire_shared_session`, and `HIPENGINE_GGUF_WMMA_PREFILL` is opt-in only (`\"\"`/`0` resolve False but cannot override an explicit True), so the route cannot be turned off from a bench or a diagnostic override - `setattr` misses it too because the constant is bound as a default argument. Thread one diagnostic knob from `LLM(...)` to those two sites if the Q6 tile sweep does not close the 45-row gap. | The hardcoded True as the production default; the env var's opt-in-only precedence. | Delete the knob once a measured dispatch rule picks the route by row count, or drop the A/B entirely if small tiles close the gap. **Landed 2026-08-30 as `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL`** (`_resident_session_wmma_prefill_default`, 16 tests): read at session-acquire time at the `ar_batch`/`mtp_target` sites, unset means the shipped True, an unrecognised value raises instead of silently keeping the route. Deliberately a call-time resolver rather than an `LLM(...)` kwarg - the blocker was precedence, not plumbing; see the Q4K_ROWTILE null result for what a pinned flag does to an env A/B. Other `use_wmma_prefill=True` literals in this module (non-resident routes) are untouched on purpose. |",
-          "status": "pending"
+          "status": "implemented-control-deferred-session-plan-ownership",
+          "evidence": "Old literal-only implementation task superseded:10generator+DMS call-time sites,bench shares resolver,distinct denseMTP literal kept. Add4real pool acquire/release tests opposite-choice isolation/live preference/matching reuse;93focused parser/profile/CLI/capacity pass. Bottom R0282-PREFILL-POLICY owns retain-or-session-plan decision with clearing checks;historical rows/artifacts preserved. No runtime/default/kernel/GPU/perf change. Worklog: worklog/entries/20261028T201442.428322Z-cleanup-refactor-r0282-prefill-policy-1d5966.md."
         },
         {
           "line": 6342,

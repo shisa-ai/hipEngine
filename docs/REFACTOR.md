@@ -3438,7 +3438,6 @@ should be boring.
 
 | Path | Cleanup target | Keep | Remove / collapse trigger |
 | --- | --- | --- | --- |
-| All-GEMV small-row prefill A/B (`hipengine/generation/qwen35_gguf.py:1107`, `:1180`) | Both shipping call sites pass `use_wmma_prefill=True` literally into `_acquire_shared_session`, and `HIPENGINE_GGUF_WMMA_PREFILL` is opt-in only (`""`/`0` resolve False but cannot override an explicit True), so the route cannot be turned off from a bench or a diagnostic override - `setattr` misses it too because the constant is bound as a default argument. Thread one diagnostic knob from `LLM(...)` to those two sites if the Q6 tile sweep does not close the 45-row gap. | The hardcoded True as the production default; the env var's opt-in-only precedence. | Delete the knob once a measured dispatch rule picks the route by row count, or drop the A/B entirely if small tiles close the gap. **Landed 2026-08-30 as `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL`** (`_resident_session_wmma_prefill_default`, 16 tests): read at session-acquire time at the `ar_batch`/`mtp_target` sites, unset means the shipped True, an unrecognised value raises instead of silently keeping the route. Deliberately a call-time resolver rather than an `LLM(...)` kwarg - the blocker was precedence, not plumbing; see the Q4K_ROWTILE null result for what a pinned flag does to an env A/B. Other `use_wmma_prefill=True` literals in this module (non-resident routes) are untouched on purpose. |
 | Bench tools whose invocation a committed artifact records (`gguf_prefill_row_rollup.py`, `gguf_engine_submodule_decomposition.py`) | Cover the CLI with a synthetic-packet test before the next refactor and keep every artifact's `source_command` executable. A rewrite of the prefill rollup deleted `--prior-config-changed` and replaced max-per-width spread with an aggregate, breaking a published repro recipe and weakening its band. | Fail-closed refusals; effect size kept distinct from drift. | Shared packet reader once a second tool needs the guards. | Partially resolved 2026-08-30: `scripts/check_published_command_drift.py` now gates the set that matters - artifacts cited by `benchmarks/README.md` - by AST-extracting each cited tool's declared flags and refusing commands that use flags the tool no longer declares, commands pointing outside the repo, and commands citing tools that are not in the tree (51 cited artifacts, 0 violations, 4 pre-existing other-lane problems recorded with dates rather than rewritten). It found a second instance the same day: the headline grouped-prefill promotion artifact recorded `--require-mtp`, which argparse no longer accepts, and also omitted `--model` after the tool default moved to Qwen3.6-27B, so a literal rerun would have measured a different model. Still open: per-tool CLI tests for the rollup and the decomposition tool, and 125 historical drifts across all 1579 recorded `scripts/*.py` commands, which are not a fixable backlog.
 | 35B MTP chain verifier | Collapse the sprint-era stack of env flags into the default dispatch path and document the current optimal B=1 chain route, while keeping B=2/B=3 available for adaptive-density policy experiments. | Numerical fallbacks, exactness tests, and rollback toggles that are still needed for one release window. | Retained `>1.0x` same-suite row plus one follow-up defaults-only rerun after the adaptive-policy decision. |
 | 35B MTP tree/top-k | Keep tree code default-off until it beats chain on the same wall and prompt suite; do not let tree-specific dispatch obscure the chain hot path. | Tree correctness tests and graph replay scaffolding. | If tree remains negative after the verifier wall cut, demote branch/top-k runtime flags to explicit experiment scripts. |
@@ -12001,3 +12000,34 @@ proposal/commit/reset/reuse and teardown through public and compatibility
 requests. Keep embedding gathers, stream ownership and primitive oracles.
 Historical performance claims remain in the sweep inventory and artifacts;
 retiring ambient selection changes no chain body or arithmetic.
+
+### R0282-PREFILL-POLICY — Resident prefill diagnostic ownership
+
+The small-row control gap is implemented, not an open feature task.
+`_resident_session_wmma_prefill_default()` resolves
+`HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` at session acquisition: unset/empty
+keeps WMMA, explicit false disables that preference and invalid values raise.
+Ten generator sites and the compact-DMS owner use it; the dense speculative
+MTP route retains its separate literal selection. The benchmark consumes the
+same default and keeps explicit `--[no-]use-wmma-prefill` comparisons.
+
+Session pool keys include the resolved preference. Opposite choices cannot
+reuse each other's pooled session; changing the environment does not retune an
+already-live session. This selector does not promise that every projection
+uses a different kernel: layout, geometry and capability dispatch still apply.
+The historical all-GEMV rejection and measurements remain in the original
+sweep inventory, later prefill ledger entries and result artifacts.
+
+**Decision needed:** keep the diagnostic selector or replace it with an
+explicit session-owned prefill plan. Preserve working comparison routes and
+the production WMMA default; an old negative timing result alone is not a
+reason to delete supported GEMV kernels or change another provider's policy.
+
+**Clearing action:** migrate generator/DMS acquisition, pooled and unpooled
+sessions, warmup, benchmark precedence and effective-route provenance together.
+Cover unset/on/off/invalid values, opposite-choice pool isolation, matching
+reuse, AR/MTP/DMS owners, and the dense speculative exception. A runtime change
+also needs public requests with route attribution, reset/reuse and teardown;
+changing arithmetic or automatic selection requires its applicable profile
+checks. The existing parser, pool and benchmark characterization tests bind
+this referral without changing runtime behavior.
