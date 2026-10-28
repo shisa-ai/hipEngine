@@ -8236,7 +8236,8 @@
         {
           "line": 6298,
           "text": "| GGUF Q8T16 prefill LCP-3 four-wave | `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=0|1`, the `wmma_prefill_4wave_bf16_bf16_out` registry variant, and gfx1151 automatic wrapper retain a four-wave duplicate plus the GPF-5A two-wave rollback. | Default-on on gfx1151 through 64K. Clean 512/4K full-model state is 83/83 exact and five-pair prefill improves **1214.510 -> 1220.993 (+0.53%)** and **1269.030 -> 1288.986 tok/s (+1.57%)**; dominant 4K projection micros improve **7.50%-14.08%**. gfx1100 remains production. | After one rollback release and gfx1100 transfer evidence, replace the two-wave body/automatic wrapper and remove its selector if no regression appears. Keep the production long-context path while the predecessor's measured 128K regression remains. |",
-          "status": "pending"
+          "status": "deferred-shared-wave-policy-migration",
+          "evidence": "Consolidate with row6309 at bottom R0281-Q8-WAVES. Shared dispatch/session/override precedence has live Qwen/Gemma, 1408 expert and f16w consumers; direct numerical oracles retained. Correct ENVS precedence and ceilings, no runtime/kernel/default change. 34 policy/wrapper/registry/f16w plus5 request-ceiling/backend tests pass; docs/audit/worklog/diff checks required. Worklog: worklog/entries/20261028T173501.646272Z-cleanup-refactor-r0281-q8-waves-8a729f.md."
         },
         {
           "line": 6299,
@@ -8291,7 +8292,8 @@
         {
           "line": 6309,
           "text": "| GGUF Q8T16 prefill GPF-5A | `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE=0|1` selects production/two-wave on gfx1100 and remains the first gfx1151 rollback beneath the promoted four-wave route; request-scoped package ceilings restore production above 65,536 gfx1151 prompt tokens and above 4,096 gfx1100 prompt tokens. | Exact 32-column waves share 1 KiB LDS; 80 VGPR/zero scratch. Published gfx1151 512-64K prefill is **889.904/919.598/762.940/648.948/546.296 tok/s (+1.01% to +8.57%)**; same-commit 128K rejects two-wave **382.041 vs 392.219 tok/s (-2.59%)**. Independent W7900 focus improves 512/4K **645.901/676.444 -> 654.872/683.164 tok/s (+1.389%/+0.993%)** with exact primitive bytes, so gfx1100 is intentionally capped at the measured 4K scope. | Keep env rollback and both architecture ceilings for one release. Expand the gfx1100 ceiling only after a clean hardware-local long-context A/B; collapse the duplicate only if a replacement schedule passes 128K too. |",
-          "status": "pending"
+          "status": "deferred-shared-wave-policy-migration",
+          "evidence": "Same owner and clearing action as row6298, bottom R0281-Q8-WAVES. Two-wave is a live explicit comparison and gfx1100 automatic request path, not dead duplication. Preserve legacy2WAVE override semantics, context restore, direct/decoding/f16w fallback and backend ceilings. No new performance claim or execution change. 39 focused checks and docs/audit/worklog/diff gates; worklog/entries/20261028T173501.646272Z-cleanup-refactor-r0281-q8-waves-8a729f.md."
         },
         {
           "line": 6310,
