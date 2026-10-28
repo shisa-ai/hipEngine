@@ -8074,7 +8074,8 @@
         {
           "line": 6271,
           "text": "| MTP verifier rejected gate | `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` opt-in for M13.B.2 shared-expert rotate+dual GEMV. | Default-off; exact, but the saved rotate launch was replaced by a barrier reset in the original path and the keyed-barrier follow-up was neutral (`15.350 -> 15.365 ms/pass`). | Remove or demote to kernel test-only unless a future full-layer C-dispatch path can reuse it without adding per-launch synchronization overhead. |",
-          "status": "pending"
+          "status": "fixed-rejected-shared-fused-rotate-and-dead-barrier-retired",
+          "evidence": "Removed shared-expert fused runtime branch/helper/native veto and last unused shared keyed barrier scratch, host counters and graph/reset toggles. Preserved direct primitives and independent non-keyed attention fusion. RED/GREEN and 637 focused tests, stale-value public Python/native MTP and graph replay controls, GPU projection/staged primitive checks, full CPU/docs/audit gates pass. Worklog: worklog/entries/20261028T123229.956972Z-cleanup-refactor-r0281-shared-fused-7883cc.md."
         },
         {
           "line": 6272,

@@ -91,11 +91,12 @@ former runtime selection.
 > scalar-column schedule otherwise. `HIPENGINE_GDN_TLOOP_C1_EXACT` and the
 > explicit exact primitives remain available for serial-c1 comparisons.
 >
-> The rejected selected-MoE runtime selectors `HIPENGINE_MOE_FUSED_ROTATE`
-> and `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` have also been removed. Their
-> standalone primitives stay registered; stale values no longer bypass native
-> C dispatch or prepare a selected-MoE barrier. Shared-expert barrier ownership
-> is unchanged.
+> The rejected MoE runtime selectors `HIPENGINE_MOE_FUSED_ROTATE`,
+> `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` and
+> `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` have also been removed. Their
+> standalone primitives stay registered. Python and native MoE dispatch use
+> separate input rotation and projection; unused keyed barrier scratch, host
+> counters and the associated graph-capture toggle are removed.
 >
 > For the current cross-provider milestone definitions and consolidated W7900/
 > gfx1151 performance status, use

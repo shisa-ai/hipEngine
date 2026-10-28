@@ -119,8 +119,6 @@ from hipengine.runtime.qwen35_paro import (
     Qwen35ParoGroupedMoeScratch,
     Qwen35ParoLinearAttentionScratch,
     Qwen35ParoMoeScratch,
-    _reset_shared_rotate_fuse_barrier_state,
-    _set_shared_rotate_fuse_barrier_memset_mode,
     _use_moe_grouped_compact_prefill,
     _verify_moe_grouped_min_tokens,
 )
@@ -2061,7 +2059,6 @@ class Qwen35ParoResidentSession:
         self._slot_full_cache_cache: dict[tuple[int, int], tuple[Tensor, Tensor]] = {}
         self._full_cache_all_slots_cache: dict[int, tuple[Tensor, Tensor]] = {}
         self.prefill_workspace = RuntimeWorkspace(runtime=self.runtime)
-        _reset_shared_rotate_fuse_barrier_state()
         self.prefill_hidden_buffer: DeviceBuffer | None = None
         self.prefill_hidden_capacity_rows = 0
         self._prefill_scratch_state: Qwen35ParoDecodeState | None = None
@@ -12175,13 +12172,6 @@ class Qwen35ParoResidentSession:
         # capture would either skip the recording or fault at replay.  The
         # direct pass also doubles as the cycle-1 forward; capture then
         # records a second (replayable) instance of the same kernel sequence.
-        #
-        # Keyed staged-rotate barriers must run in capture-safe memset mode for
-        # every pass that may be captured: the cumulative host epoch is baked
-        # by-value into the graph, so replays of a keyed capture skip the
-        # producer→consumer sync (#107 drift) and later keyed direct launches
-        # spin on epochs the device never reaches (#107 hang).
-        _set_shared_rotate_fuse_barrier_memset_mode(True)
         self._launch_verify_chain_forward_accept(
             batch,
             base_slot=base_slot,

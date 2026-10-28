@@ -138,7 +138,6 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     gemv_awq_dual_pack8_transposed_fp16,
     gemv_awq_dual_pack8_transposed_rotate_staged_bf16,
     gemv_awq_dual_pack8_transposed_rotate_staged_fp16,
-    gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16,
     gemv_awq_pack8_output_tiled_bf16,
     gemv_awq_pack8_output_tiled_fp16,
     gemv_awq_dual_pack8_output_tiled_split_transposed_fp16,
@@ -182,30 +181,6 @@ from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.moe_c1_dispatch import moe_c1_c_dispatch_enabled
 from hipengine.runtime.workspace import RuntimeWorkspace
-
-
-_SHARED_ROTATE_FUSE_BARRIER_STATE: dict[int, tuple[int, int]] = {}
-
-# When true, keyed staged-rotate barriers fall back to memset-per-launch
-# (zero the barrier on-stream, target=blocks, epoch=1). Cumulative host
-# epochs are baked by-value into HIP-graph captures, so replays skip the
-# producer/consumer sync (race) and later direct launches spin forever on
-# epochs the device never reaches (#107). Memset-per-launch is stream-ordered
-# and capture-safe: the memset is recorded into the graph with the kernel.
-_SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE = False
-
-
-def _set_shared_rotate_fuse_barrier_memset_mode(enabled: bool) -> None:
-    """Toggle capture-safe memset-per-launch keyed barriers (verify graph mode)."""
-
-    global _SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE
-    _SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE = bool(enabled)
-
-
-def _reset_shared_rotate_fuse_barrier_state() -> None:
-    """Clear process-local keyed barrier counters for a new resident session."""
-
-    _SHARED_ROTATE_FUSE_BARRIER_STATE.clear()
 
 
 # Paged-KV write, paged-attention prefill, and paged-attention decode are the
@@ -515,8 +490,6 @@ class Qwen35ParoMoeScratch:
     shared_down_input: Tensor
     shared_out: Tensor
     moe_out: Tensor
-    # M13.B.2: barrier int32[2] for fused shared-expert rotate+dual GEMV.
-    shared_rotate_fuse_barrier: Tensor
 
 
 @dataclass(frozen=True)
@@ -572,8 +545,6 @@ class Qwen35ParoGroupedMoeScratch:
     shared_down_input: Tensor
     shared_out: Tensor
     moe_out: Tensor
-    # M13.B.2: barrier int32[2] for fused shared-expert rotate+dual GEMV.
-    shared_rotate_fuse_barrier: Tensor
 
 
 class Qwen35ParoDecodeState:
@@ -595,12 +566,6 @@ class Qwen35ParoDecodeState:
         self.runtime = runtime
         self.workspace = workspace or RuntimeWorkspace(runtime=runtime)
         self._rotate_fuse_ready: set[int] = set()
-        # M14.fuse.barrier: per-barrier cumulative (rotate_count, ready_epoch)
-        # for keyed HBM-staged rotate+dual-GEMV launches.  This is module-global
-        # because verifier layers can pass a scratch barrier owned by the
-        # runner's prefill workspace rather than by the layer runtime's own
-        # workspace.  Qwen35ParoResidentSession resets it at session start.
-        self._shared_rotate_fuse_barrier_state = _SHARED_ROTATE_FUSE_BARRIER_STATE
         # M14.dispatch.1-beta: lazy per-layer cache for the C-side MoE C1
         # dispatcher.  Key: layer_kind ('linear_attention' | 'full_attention').
         # Populated on first matching call from run_moe_c1_fp16.
@@ -3592,7 +3557,6 @@ class Qwen35ParoDecodeState:
             shared_down_input=self._row_slice_tensor_view(scratch.shared_down_input, row_start, rows),
             shared_out=self._row_slice_tensor_view(scratch.shared_out, row_start, rows),
             moe_out=self._row_slice_tensor_view(scratch.moe_out, row_start, rows),
-            shared_rotate_fuse_barrier=scratch.shared_rotate_fuse_barrier,
         )
 
     def prepare_full_attention_qkv_fp16_decode_rows(
@@ -8696,131 +8660,76 @@ class Qwen35ParoDecodeState:
         fuse_prefill_silu_rotate = (
             not small_batch and _shared_prefill_silu_rotate_fused_enabled()
         )
-        # M13.B.2: in the small-batch path, replace `paro_rotate2 +
-        # gemv_awq_dual_pack8_transposed` with the HBM-staged fused kernel
-        # when gate_krot == up_krot (the kernel takes a single krot).  The
-        # staged kernel rotates exactly once per (group, row) and barriers
-        # before the GEMV phase so it's bit-exact with the unfused chain.
-        # Skipped when krots differ (rare upstream variant; falls back to two
-        # paro_rotate1 launches + the unfused dual GEMV).
-        fused_shared_rotate = (
-            small_batch
-            and gate_krot == up_krot
-            and _shared_expert_fused_rotate_enabled()
-            and hasattr(scratch, "shared_rotate_fuse_barrier")
-        )
-        if not fused_shared_rotate:
-            if gate_krot == up_krot:
-                paro_rotate2_fp16(
-                    hidden.ptr,
-                    scratch.shared_gate_input.ptr,
-                    scratch.shared_up_input.ptr,
-                    gate_pairs.ptr,
-                    up_pairs.ptr,
-                    self.tensor(f"{gate_base}.theta").ptr,
-                    self.tensor(f"{up_base}.theta").ptr,
-                    self.tensor(f"{gate_base}.channel_scales").ptr,
-                    self.tensor(f"{up_base}.channel_scales").ptr,
-                    tokens,
-                    cfg.hidden_size,
-                    group_size,
-                    gate_krot,
-                    stream=stream,
-                    library=_library_for(library, "rotate"),
-                    runtime=self.runtime,
-                )
-            else:
-                paro_rotate1_fp16(
-                    hidden.ptr,
-                    scratch.shared_gate_input.ptr,
-                    gate_pairs.ptr,
-                    self.tensor(f"{gate_base}.theta").ptr,
-                    self.tensor(f"{gate_base}.channel_scales").ptr,
-                    tokens,
-                    cfg.hidden_size,
-                    group_size,
-                    gate_krot,
-                    stream=stream,
-                    library=_library_for(library, "rotate"),
-                    runtime=self.runtime,
-                )
-                paro_rotate1_fp16(
-                    hidden.ptr,
-                    scratch.shared_up_input.ptr,
-                    up_pairs.ptr,
-                    self.tensor(f"{up_base}.theta").ptr,
-                    self.tensor(f"{up_base}.channel_scales").ptr,
-                    tokens,
-                    cfg.hidden_size,
-                    group_size,
-                    up_krot,
-                    stream=stream,
-                    library=_library_for(library, "rotate"),
-                    runtime=self.runtime,
-                )
+        if gate_krot == up_krot:
+            paro_rotate2_fp16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_pairs.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+        else:
+            paro_rotate1_fp16(
+                hidden.ptr,
+                scratch.shared_gate_input.ptr,
+                gate_pairs.ptr,
+                self.tensor(f"{gate_base}.theta").ptr,
+                self.tensor(f"{gate_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                gate_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
+            paro_rotate1_fp16(
+                hidden.ptr,
+                scratch.shared_up_input.ptr,
+                up_pairs.ptr,
+                self.tensor(f"{up_base}.theta").ptr,
+                self.tensor(f"{up_base}.channel_scales").ptr,
+                tokens,
+                cfg.hidden_size,
+                group_size,
+                up_krot,
+                stream=stream,
+                library=_library_for(library, "rotate"),
+                runtime=self.runtime,
+            )
 
         if small_batch:
-            if fused_shared_rotate:
-                runtime = self.runtime or get_hip_runtime()
-                barrier_target, barrier_epoch = self._next_shared_rotate_fuse_barrier_key(
-                    scratch.shared_rotate_fuse_barrier,
-                    rows=tokens,
-                    in_features=cfg.hidden_size,
-                    group_size=group_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16(
-                    hidden.ptr,
-                    scratch.shared_gate_input.ptr,
-                    scratch.shared_up_input.ptr,
-                    gate_pairs.ptr,
-                    up_pairs.ptr,
-                    self.tensor(f"{gate_base}.theta").ptr,
-                    self.tensor(f"{up_base}.theta").ptr,
-                    self.tensor(f"{gate_base}.channel_scales").ptr,
-                    self.tensor(f"{up_base}.channel_scales").ptr,
-                    gate_qweight.ptr,
-                    self.tensor(f"{gate_base}.qzeros").ptr,
-                    self.tensor(f"{gate_base}.scales").ptr,
-                    up_qweight.ptr,
-                    self.tensor(f"{up_base}.qzeros").ptr,
-                    self.tensor(f"{up_base}.scales").ptr,
-                    scratch.shared_up.ptr,
-                    scratch.shared_rotate_fuse_barrier.ptr,
-                    tokens,
-                    cfg.hidden_size,
-                    _out_packed_from_generic_transposed_qweight(gate_qweight),
-                    _out_packed_from_generic_transposed_qweight(up_qweight),
-                    group_size,
-                    gate_krot,
-                    barrier_target,
-                    barrier_epoch,
-                    stream=stream,
-                    library=_library_for(library, "awq"),
-                    runtime=runtime,
-                )
-            else:
-                gemv_awq_dual_pack8_transposed_fp16(
-                    scratch.shared_gate_input.ptr,
-                    scratch.shared_up_input.ptr,
-                    gate_qweight.ptr,
-                    self.tensor(f"{gate_base}.qzeros").ptr,
-                    self.tensor(f"{gate_base}.scales").ptr,
-                    up_qweight.ptr,
-                    self.tensor(f"{up_base}.qzeros").ptr,
-                    self.tensor(f"{up_base}.scales").ptr,
-                    scratch.shared_up.ptr,
-                    tokens,
-                    cfg.hidden_size,
-                    _out_packed_from_generic_transposed_qweight(gate_qweight),
-                    _out_packed_from_generic_transposed_qweight(up_qweight),
-                    group_size,
-                    threads=threads,
-                    stream=stream,
-                    library=_library_for(library, "awq"),
-                    runtime=self.runtime,
-                )
+            gemv_awq_dual_pack8_transposed_fp16(
+                scratch.shared_gate_input.ptr,
+                scratch.shared_up_input.ptr,
+                gate_qweight.ptr,
+                self.tensor(f"{gate_base}.qzeros").ptr,
+                self.tensor(f"{gate_base}.scales").ptr,
+                up_qweight.ptr,
+                self.tensor(f"{up_base}.qzeros").ptr,
+                self.tensor(f"{up_base}.scales").ptr,
+                scratch.shared_up.ptr,
+                tokens,
+                cfg.hidden_size,
+                _out_packed_from_generic_transposed_qweight(gate_qweight),
+                _out_packed_from_generic_transposed_qweight(up_qweight),
+                group_size,
+                threads=threads,
+                stream=stream,
+                library=_library_for(library, "awq"),
+                runtime=self.runtime,
+            )
             silu_mul_dual_rotate_out_fp16(
                 scratch.shared_up.ptr,
                 down_pairs.ptr,
@@ -9815,7 +9724,6 @@ class Qwen35ParoDecodeState:
         - paro_w4 shared expert (not legacy w8a16).
         - ``tokens > 1`` (decode tokens=1 uses coop router; C path doesn't).
         - ``group_size == 128`` (cached value; mismatches fall back).
-        - M13.B.2 fused-shared-rotate disabled (else shared expert flow differs).
         - Linear-attn layer-type OR full-attn at tokens<=small_batch_threshold.
         - Shared-expert krots match (rotate2 fast path).
         """
@@ -9827,8 +9735,6 @@ class Qwen35ParoDecodeState:
         if tokens < 2:
             return None
         if group_size != 128:
-            return None
-        if _shared_expert_fused_rotate_enabled():
             return None
 
         layer_id = self.layer_weights.layer_id
@@ -10605,9 +10511,6 @@ class Qwen35ParoDecodeState:
             ),
             shared_out=self.workspace.reserve_tensor("moe.grouped.shared_out", (tokens, cfg.hidden_size), lowp),
             moe_out=self.workspace.reserve_tensor("moe.grouped.out", (tokens, cfg.hidden_size), lowp),
-            shared_rotate_fuse_barrier=self.workspace.reserve_tensor(
-                f"moe.grouped.layer{self.layer_weights.layer_id}.shared_rotate_fuse_barrier", (2,), DType.INT32,
-            ),
         )
 
     def reserve_moe_c1_scratch(
@@ -10677,53 +10580,7 @@ class Qwen35ParoDecodeState:
             ),
             shared_out=self.workspace.reserve_tensor(f"{prefix}.shared_out", (tokens, cfg.hidden_size), lowp),
             moe_out=self.workspace.reserve_tensor(f"{prefix}.out", (tokens, cfg.hidden_size), lowp),
-            shared_rotate_fuse_barrier=self.workspace.reserve_tensor(
-                f"{prefix}.layer{self.layer_weights.layer_id}.shared_rotate_fuse_barrier", (2,), DType.INT32,
-            ),
         )
-
-    def _next_shared_rotate_fuse_barrier_key(
-        self,
-        barrier: Tensor,
-        *,
-        rows: int,
-        in_features: int,
-        group_size: int,
-        stream: int,
-        runtime,
-        rotations: int = 2,
-    ) -> tuple[int, int]:
-        """Return cumulative barrier target/epoch for a keyed staged rotate GEMV.
-
-        The underlying kernel increments ``barrier[0]`` once for every
-        (rotation, group, row) staging block and publishes ``barrier[1]`` when
-        the cumulative target is reached.  Initializing once per barrier pointer
-        preserves stream ordering while avoiding M13.B.2's per-launch memset.
-        """
-
-        if rows <= 0 or in_features <= 0 or group_size <= 0 or rotations <= 0 or in_features % group_size:
-            raise ValueError("invalid keyed staged-rotate barrier shape")
-        rotate_blocks = (in_features // group_size) * rotations * rows
-        ptr = int(barrier.ptr)
-        if _SHARED_ROTATE_FUSE_BARRIER_MEMSET_MODE:
-            # Capture-safe mode (#107): zero the barrier on-stream before every
-            # staged launch so the captured graph replays a self-contained
-            # memset→produce→consume sequence. Reset host counters so a later
-            # keyed (non-capture) launch starts from a zeroed barrier.
-            self._memset_tensor(barrier, stream=stream, runtime=runtime)
-            self._shared_rotate_fuse_barrier_state[ptr] = (0, 0)
-            return rotate_blocks, 1
-        count, epoch = self._shared_rotate_fuse_barrier_state.get(ptr, (0, 0))
-        if count == 0 and epoch == 0:
-            self._memset_tensor(barrier, stream=stream, runtime=runtime)
-        if count + rotate_blocks > 0x7FFFFFFF or epoch + 1 > 0x7FFFFFFF:
-            self._memset_tensor(barrier, stream=stream, runtime=runtime)
-            count = 0
-            epoch = 0
-        count += rotate_blocks
-        epoch += 1
-        self._shared_rotate_fuse_barrier_state[ptr] = (count, epoch)
-        return count, epoch
 
     def _memset_tensor(self, tensor: Tensor, *, stream: int, runtime, value: int = 0) -> None:
         nbytes = tensor.numel * tensor.dtype.itemsize
@@ -10936,26 +10793,6 @@ def _paro_ffn_megakernel_library(library=None):
 
         _PARO_FFN_MEGAKERNEL_LIBRARY = build_paro_moe_ffn_fused(load=True)
     return _PARO_FFN_MEGAKERNEL_LIBRARY
-
-
-def _shared_expert_fused_rotate_enabled() -> bool:
-    """M13.B.2 gate for the shared-expert fused rotate + dual_pack8 GEMV path.
-
-    Replaces ``paro_rotate2_fp16 + gemv_awq_dual_pack8_transposed_fp16``
-    with the HBM-staged keyed-barrier kernel
-    ``gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16``.  Unlike
-    the M13.B.1 selected variant, this kernel uses an HBM staging buffer
-    so each row rotates exactly once (no per-block redundancy), and the
-    M14.fuse.barrier keyed counter avoids the per-launch
-    ``hipMemsetAsync(barrier, 0, 8)`` that cancelled the original M13.B.2
-    dispatch saving.
-
-    Default remains ``off`` until a fresh W7900 exact/rocprof row proves
-    the expected net launch reduction and no hidden barrier-spin loss.
-    Enable via ``HIPENGINE_SHARED_EXPERT_FUSED_ROTATE={1,on,yes,true}``.
-    """
-
-    return _env_enabled("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", default=False)
 
 
 def _shared_prefill_silu_rotate_fused_enabled() -> bool:

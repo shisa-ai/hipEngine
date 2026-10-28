@@ -521,7 +521,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_LINEAR_AB_DUAL_SEPARATE` | true | Uses the separate-output dual A/B GEMV for small-batch decode rows; `0` restores the single GEMV fallback. |
 | `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED` | true | Fuses shared-prefill SiLU-mul + rotate into one launch (default on after the 2026-08-16 gfx1151 byte-equality gate); `0` opts out. |
 | `HIPENGINE_FUSED_RMSNORM_ROTATE` | false | Opt-in fused RMSNorm+rotate for linear layers (exact-AR preserved; pending verifier economics). |
-| `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` | false | Opt-in fused rotate for the shared expert; off until a fresh W7900 exact/rocprof row proves the net launch reduction. |
 | `HIPENGINE_PARO_FFN_MEGAKERNEL` | false | Opt-in single-kernel selected FFN for the verify path (tokens > 1); AR decode keeps the unfused path so the AR baseline is untouched. |
 | `HIPENGINE_LAGUNA_F16_PREFILL` | retired | No longer read. Diagnostics use `f16_prefill_strategy(mode)` in `hipengine.runtime.f16_weight_linear`; target-AR exposes `--f16-prefill-strategy`. Automatic backend policy and shape fallbacks are unchanged. |
 | `HIPENGINE_LAGUNA_F16_DECODE` | unset | gfx1151 Laguna F16-weight decode route: `gemv` or `onebarrier`; used by the long-context profiling harness for A/B arms. |
@@ -1285,10 +1284,14 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` is retired and ignored.
+  Shared experts use separate input rotation and projection. The unused keyed
+  barrier scratch, host counters and graph-capture toggle are removed; direct
+  staged primitive APIs and independent attention fusion remain available.
 - `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` is retired and ignored.
   Selected gate/up execution uses separate rotation and projection in Python
-  and native C dispatch. Selected-only barrier fields are removed; the shared
-  expert still owns its independent barrier, and staged primitives stay registered.
+  and native C dispatch. Selected-only barrier fields are removed; staged
+  primitives stay registered.
 - `HIPENGINE_MOE_FUSED_ROTATE` is retired and ignored.
   Selected MoE uses separate rotation and projection by default; this old
   value no longer blocks native C dispatch. The fused primitive remains

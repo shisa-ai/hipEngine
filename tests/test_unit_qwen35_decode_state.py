@@ -1302,10 +1302,11 @@ def test_qwen35_decode_state_moe_c1_scratch_prefix_covers_outputs() -> None:
 
     assert row.shared_out.ptr != batch.shared_out.ptr
     assert row.moe_out.ptr != batch.moe_out.ptr
-    assert row.shared_rotate_fuse_barrier.ptr != batch.shared_rotate_fuse_barrier.ptr
+    assert not hasattr(row, "shared_rotate_fuse_barrier")
+    assert not hasattr(batch, "shared_rotate_fuse_barrier")
     assert state.workspace.allocation("moe.decode_row.shared_out").tensor is row.shared_out
     assert state.workspace.allocation("moe.decode_row.out").tensor is row.moe_out
-    assert state.workspace.allocation("moe.decode_row.layer0.shared_rotate_fuse_barrier").tensor is row.shared_rotate_fuse_barrier
+    assert not any("shared_rotate_fuse_barrier" in name for name in state.workspace.names)
 
 
 def test_qwen35_decode_state_reuses_and_replaces_named_scratch() -> None:
@@ -2668,7 +2669,7 @@ def test_selected_moe_retired_fused_rotate_does_not_disable_c_dispatch(monkeypat
     else:
         monkeypatch.setenv("HIPENGINE_MOE_FUSED_ROTATE", retired)
     monkeypatch.setenv("HIPENGINE_MOE_C1_C_DISPATCH", "1")
-    monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", "0")
+    monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", "1")
     monkeypatch.setenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", "0")
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
@@ -2708,7 +2709,6 @@ def test_rejected_selected_fused_rotate_remains_a_registered_primitive() -> None
 
 @pytest.mark.parametrize("retired", [None, "0", "1", "true"])
 def test_qwen35_decode_state_selected_moe_fp16_ignores_retired_staged_rotate(monkeypatch, retired) -> None:
-    qwen_runtime._reset_shared_rotate_fuse_barrier_state()
     if retired is None:
         monkeypatch.delenv("HIPENGINE_SELECTED_MOE_STAGED_ROTATE", raising=False)
     else:
@@ -2737,8 +2737,9 @@ def test_qwen35_decode_state_selected_moe_fp16_ignores_retired_staged_rotate(mon
     assert calls[0][1][:2] == (hidden.ptr, scratch.gate_up_input.ptr)
     assert calls[1][1][:2] == (scratch.gate_up_input.ptr, scratch.selected_experts.ptr)
     assert all(kwargs["stream"] == 0x77 for _name, _args, kwargs in calls)
-    assert scratch.shared_rotate_fuse_barrier.ptr not in state._shared_rotate_fuse_barrier_state
-    assert not [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
+    assert not hasattr(scratch, "shared_rotate_fuse_barrier")
+    assert not hasattr(state, "_shared_rotate_fuse_barrier_state")
+    assert not any("shared_rotate_fuse_barrier" in name for name in state.workspace.names)
 
 
 def test_selected_moe_staged_gate_up_remains_a_registered_primitive() -> None:
@@ -2902,13 +2903,23 @@ def test_qwen35_decode_state_fuses_large_prefill_shared_silu_and_down_rotate(mon
     )
 
 
-def test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier(monkeypatch) -> None:
-    qwen_runtime._reset_shared_rotate_fuse_barrier_state()
-    monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", "1")
+@pytest.mark.parametrize("retired", [None, "0", "1", "true"])
+@pytest.mark.parametrize("tokens,unequal_krot", [(1, False), (3, False), (7, True)])
+def test_shared_expert_fp16_ignores_retired_fused_rotate(monkeypatch, retired, tokens, unequal_krot) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", retired)
     runtime = FakeRuntime()
-    state = _state(runtime, _prepared_moe_weights())
-    scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
-    hidden = _tensor(0xCA00, (2, 4096), "fp16")
+    weights = _prepared_moe_weights()
+    if unequal_krot:
+        key = "layers.0.mlp.shared_expert.up_proj.pairs"
+        tensors = dict(weights.tensors)
+        tensors[key] = _allocation(key, 0xBE50, (16, 128), "int16")
+        weights = DeviceWeightMap(tensors)
+    state = _state(runtime, weights)
+    scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (tokens, 4096), "fp16")
     calls = []
 
     def record(label):
@@ -2916,43 +2927,37 @@ def test_qwen35_decode_state_shared_expert_fp16_fused_rotate_uses_keyed_barrier(
             calls.append((label, args, kwargs))
         return fake
 
-    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", record("unexpected_rotate2"))
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", record("unexpected_dual_gemv"))
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_rotate_staged_fp16", record("unexpected_non_keyed"))
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16", record("keyed"))
-    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", record("silu_rotate"))
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", record("single_pack8"))
+    for name, label in (
+        ("paro_rotate1_fp16", "rotate1"), ("paro_rotate2_fp16", "rotate2"),
+        ("gemv_awq_dual_pack8_transposed_fp16", "dual_gemv"),
+        ("gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16", "rejected_keyed"),
+        ("silu_mul_dual_rotate_out_fp16", "silu_rotate"),
+        ("gemv_awq_pack8_transposed_fp16", "single_pack8"),
+    ):
+        monkeypatch.setattr(qwen_runtime, name, record(label), raising=False)
+    for _repeat in range(2):
+        result = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=tokens, stream=0x78)
+        assert result is scratch.shared_out
+    rotation = ["rotate1", "rotate1"] if unequal_krot else ["rotate2"]
+    assert [label for label, _args, _kwargs in calls] == (rotation + ["dual_gemv", "silu_rotate", "single_pack8"]) * 2
+    assert all(kwargs["stream"] == 0x78 for _label, _args, kwargs in calls)
+    projection = calls[len(rotation)][1]
+    assert projection[:2] == (scratch.shared_gate_input.ptr, scratch.shared_up_input.ptr)
+    assert projection[8:10] == (scratch.shared_up.ptr, tokens)
+    assert not hasattr(scratch, "shared_rotate_fuse_barrier")
+    assert not hasattr(state, "_shared_rotate_fuse_barrier_state")
+    assert not any("shared_rotate_fuse_barrier" in name for name in state.workspace.names)
 
-    out1 = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
-    out2 = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=2)
-    sibling_layer = Qwen35ParoLayerDeviceWeights(
-        config=_config(), layer_id=0, weights=_prepared_moe_weights()
+
+def test_shared_expert_keyed_rotation_remains_a_registered_primitive() -> None:
+    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+        gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16,
     )
-    sibling = Qwen35ParoDecodeState(layer_weights=sibling_layer, workspace=state.workspace, runtime=runtime)
-    sibling_scratch = sibling.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
-    out3 = sibling.shared_expert_paro_w4_fp16(hidden, sibling_scratch, tokens=2)
-
-    assert out1 is scratch.shared_out
-    assert out2 is scratch.shared_out
-    assert out3 is sibling_scratch.shared_out
-    labels = [label for label, _args, _kwargs in calls]
-    assert labels == [
-        "keyed", "silu_rotate", "single_pack8",
-        "keyed", "silu_rotate", "single_pack8",
-        "keyed", "silu_rotate", "single_pack8",
-    ]
-    keyed_first = calls[0][1]
-    keyed_second = calls[3][1]
-    keyed_third = calls[6][1]
-    # 4096 hidden / group 128 -> 32 groups; two rotations and two rows => 128
-    # staged rotate blocks per launch.  The keyed API accumulates counts and
-    # epochs instead of resetting the barrier each launch.
-    assert keyed_first[23:25] == (128, 1)
-    assert keyed_second[23:25] == (256, 2)
-    assert keyed_third[23:25] == (384, 3)
-    assert sibling_scratch.shared_rotate_fuse_barrier.ptr == scratch.shared_rotate_fuse_barrier.ptr
-    barrier_memsets = [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
-    assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
+    assert resolve(
+        backend="hip_gfx1100", layer="rotate+dual_pack8_gemv",
+        quant="w4_paro", variant="transposed_keyed_fp16",
+    ) is gemv_awq_dual_pack8_transposed_rotate_staged_keyed_fp16
 
 
 def test_qwen35_decode_state_dispatches_legacy_shared_expert_w8a16_bf16(monkeypatch) -> None:
@@ -3379,11 +3384,9 @@ def test_qwen35_decode_state_free_releases_workspace() -> None:
     state.free()
 
     assert runtime.allocations == {}
-    # 33 attention/moe scratch tensors (including rotate_fuse_barrier and the
-    # always-reserved MoE shared_rotate_fuse_barrier) + 5 shared-expert scratch
-    # tensors (shared_gate_input, shared_up_input, shared_gate_out, shared_up_out,
-    # shared_down_input).
-    assert len(runtime.freed) == 38
+    # Attention/MoE scratch plus shared-expert buffers; the retired shared
+    # rotation route no longer reserves its barrier tensor.
+    assert len(runtime.freed) == 37
 
 
 def test_qwen35_decode_state_reserves_parent_mixed_fp16_scratch() -> None:

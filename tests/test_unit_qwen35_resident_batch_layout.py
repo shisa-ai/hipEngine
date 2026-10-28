@@ -6533,7 +6533,6 @@ class _FakePrefillState:
             shared_down_input=tensor,
             shared_out=tensor,
             moe_out=tensor,
-            shared_rotate_fuse_barrier=tensor,
         )
         self.grouped_reservations.append(scratch)
         return scratch
