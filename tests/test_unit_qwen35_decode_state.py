@@ -476,11 +476,6 @@ def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_tokens_uses_vector_
     calls = []
 
     monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_fp16", lambda *args, **kwargs: calls.append(("split", args, kwargs)))
-    monkeypatch.setattr(
-        qwen_runtime,
-        "qwen35_split_qgate_fp16_key_f32",
-        lambda *args, **kwargs: calls.append(("split_key", args, kwargs)),
-    )
     monkeypatch.setattr(qwen_runtime, "fp16_to_f32", lambda *args, **kwargs: calls.append(("cast", args, kwargs)))
     monkeypatch.setattr(
         qwen_runtime,
@@ -514,55 +509,55 @@ def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_tokens_uses_vector_
     assert calls[2][1][10] == 2
 
 
-def test_qwen35_decode_state_prepare_full_attention_qkv_fp16_split_key_fuse_can_opt_in(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("tokens,bf16_query", [(1, False), (3, False), (7, True)])
+def test_qwen35_decode_state_prepare_full_attention_always_splits_then_casts(monkeypatch, retired, tokens, bf16_query) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _full_attention_weights())
-    scratch = state.reserve_full_attention_scratch(tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
-    cos_table = _tensor(0xD200, (4, 256), "fp32")
-    sin_table = _tensor(0xD300, (4, 256), "fp32")
-    positions = _tensor(0xD400, (2,), "int64")
-    calls = []
+    scratch = state.reserve_full_attention_scratch(tokens=tokens, num_splits=1, activation_dtype="fp16", gated_dtype="fp16")
+    cos_table = _tensor(0xD200, (16, 256), "fp32")
+    sin_table = _tensor(0xD300, (16, 256), "fp32")
+    positions = _tensor(0xD400, (tokens,), "int64")
+    query_bf16 = _tensor(0xD500, scratch.query.shape, "bf16") if bf16_query else None
+    calls, trace = [], []
 
-    monkeypatch.setenv("HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED", "1")
-    monkeypatch.setattr(qwen_runtime, "qwen35_split_qgate_fp16", lambda *args, **kwargs: calls.append(("split", args, kwargs)))
-    monkeypatch.setattr(
-        qwen_runtime,
-        "qwen35_split_qgate_fp16_key_f32",
-        lambda *args, **kwargs: calls.append(("split_key", args, kwargs)),
-    )
-    monkeypatch.setattr(qwen_runtime, "fp16_to_f32", lambda *args, **kwargs: calls.append(("cast", args, kwargs)))
-    monkeypatch.setattr(
-        qwen_runtime,
-        "qwen35_head_rmsnorm_partial_rotary_position_f32_bf16",
-        lambda *args, **kwargs: calls.append(("scalar_rotary", args, kwargs)),
-    )
-    monkeypatch.setattr(
-        qwen_runtime,
-        "qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16",
-        lambda *args, **kwargs: calls.append(("vector_rotary", args, kwargs)),
-    )
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED", retired)
+    for name, label in (
+        ("qwen35_split_qgate_fp16", "split"),
+        ("fp16_to_f32", "cast"),
+        ("qwen35_head_rmsnorm_partial_rotary_position_f32_bf16", "scalar_rotary"),
+        ("qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16", "vector_rotary"),
+        ("qwen35_head_rmsnorm_partial_rotary_positions_q_bf16_key_f32", "bf16_rotary"),
+    ):
+        monkeypatch.setattr(qwen_runtime, name, lambda *args, _label=label, **kwargs: calls.append((_label, args, kwargs)))
 
-    state.prepare_full_attention_qkv_fp16(
+    query, key, value, gate = state.prepare_full_attention_qkv_fp16(
         scratch,
         cos_table=cos_table,
         sin_table=sin_table,
         position=positions,
-        max_positions=4,
-        tokens=2,
+        max_positions=16,
+        tokens=tokens,
+        query_bf16_out=query_bf16,
+        producer_trace=lambda name, tensor: trace.append((name, tensor)),
+        library={"qwen_rotary": "rotary-lib", "cast": "cast-lib"},
+        stream=13,
     )
 
-    assert [kind for kind, _args, _kwargs in calls] == ["split_key", "vector_rotary"]
-    assert calls[0][1][0] == scratch.q_proj.ptr
-    assert calls[0][1][1] == scratch.key_bf16.ptr
-    assert calls[0][1][2] == scratch.query_raw.ptr
-    assert calls[0][1][3] == scratch.key_raw.ptr
-    assert calls[0][1][4] == scratch.gate.ptr
-    assert calls[0][1][5:9] == (
-        2,
-        state.config.num_attention_heads,
-        state.config.num_key_value_heads,
-        state.config.head_dim,
-    )
+    rotary = "scalar_rotary" if tokens == 1 else ("bf16_rotary" if bf16_query else "vector_rotary")
+    assert [kind for kind, _args, _kwargs in calls] == ["split", "cast", rotary]
+    assert calls[0][1] == (scratch.q_proj.ptr, scratch.query_raw.ptr, scratch.gate.ptr, tokens, state.config.num_attention_heads, state.config.head_dim)
+    assert calls[1][1] == (scratch.key_bf16.ptr, scratch.key_raw.ptr, tokens * state.config.num_key_value_heads * state.config.head_dim)
+    assert [kwargs["library"] for _, _, kwargs in calls] == ["rotary-lib", "cast-lib", "rotary-lib"]
+    assert all(kwargs["stream"] == 13 and kwargs["runtime"] is runtime for _, _, kwargs in calls)
+    assert query is (query_bf16 if bf16_query else scratch.query)
+    assert key is scratch.key and value is scratch.value and gate is scratch.gate
+    assert [name for name, _ in trace] == ["query_raw_after_split", "gate_after_split", "key_raw_after_cast", "query_after_prepare", "key_after_prepare"]
+    assert trace[0][1] is scratch.query_raw and trace[2][1] is scratch.key_raw
+    assert trace[3][1] is query
 
 
 def test_qwen35_decode_state_decode_batch_full_attention_can_force_per_row_context(monkeypatch) -> None:
