@@ -691,6 +691,60 @@ def test_draft_dense_q8_stage_parser_refuses_unknown_stage(monkeypatch, enabled:
         resident_draft_mod._parse_draft_dense_q8_dp4a_stages(enabled=enabled)
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("record", [False, True])
+@pytest.mark.parametrize("stream", [0, 7])
+@pytest.mark.parametrize("depths", [1, 3])
+def test_chain_sync_diagnostics_require_timing_sink_and_preserve_output(
+    monkeypatch, enabled, record, stream, depths,
+) -> None:
+    class Runtime:
+        def __init__(self):
+            self.syncs = []
+
+        def device_synchronize(self):
+            self.syncs.append(("device", 0))
+
+        def stream_synchronize(self, value):
+            self.syncs.append(("stream", value))
+
+    def readback(dst, src, nbytes, **kwargs):
+        out = (ctypes.c_int32 * (nbytes // 4)).from_address(dst)
+        for index in range(len(out)):
+            out[index] = index + 3
+
+    monkeypatch.setattr(resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(resident_draft_mod, "copy_device_to_host", readback)
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.runtime = Runtime()
+    runner.sync_stage_timings = enabled
+    runner.hidden_size, runner.qk_head_dim, runner.vocab = 4, 2, 8
+    runner.token_embd_f32 = np.arange(32, dtype=np.float32).reshape(8, 4)
+    for index, name in enumerate(("token_embed", "cos_all", "sin_all", "pos_all", "ctx_all", "topk_all", "_embed_table_f32")):
+        setattr(runner, name, DeviceBuffer(0x1000 + index * 0x100, 1024))
+    runner._ensure_embed_table = lambda: None
+    calls = []
+    runner._run_one = lambda *args, **kwargs: calls.append(kwargs)
+    timings = {} if record else None
+    tokens, topk_rows, cache_len = runner._propose_chain_device(
+        current_seed=DeviceBuffer(0x8000, 16), next_seed=DeviceBuffer(0x9000, 16),
+        start_token=1, start_position=0, draft_n_max=depths, top_k=1,
+        rope_cos=np.ones((8, 2), dtype=np.float32), rope_sin=np.zeros((8, 2), dtype=np.float32),
+        dense_key_cache=None, dense_value_cache=None, dense_cache_len=5,
+        stage_timings=timings, stream=stream,
+    )
+    assert tokens == list(range(3, 3 + depths))
+    assert topk_rows == [[token] for token in tokens]
+    assert cache_len == 5
+    assert len(calls) == depths
+    assert all(call["stream"] == stream and call["stage_timings"] is timings for call in calls)
+    expected_syncs = 1 + (depths if enabled and record else 0)
+    assert runner.runtime.syncs == [("stream", stream) if stream else ("device", 0)] * expected_syncs
+    if record:
+        assert {"draft_device_topk_gather", "draft_device_chain_drain", "draft_topk_d2h", "draft_topk_readback"} <= timings.keys()
+        assert all(value >= 0 for value in timings.values())
+
+
 def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:
     class Runtime:
         def __init__(self) -> None:

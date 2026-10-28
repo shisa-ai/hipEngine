@@ -8507,23 +8507,25 @@
       "start_line": 6402,
       "end_line": 6415,
       "sha256": "befedc2bd8fe7c94e7a525f3c14769d1ecb7e5787edc970b69ed85ed14138e5b",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-explicit-draft-profiling-ownership",
+      "evidence": [
+        "Live explicit sync diagnostic in bench+standalone profiler,requires flag AND sink,stream-local when nonzero;required finaldrain independent. Q6 staged decomposition distinct normal composite,events/rocprof not automatically equivalent. Add16depth/stream/sink/control CPU chain cases,4profiler-mode parser cases and expand actual child constructor forwarding across5stale settings x4modes;392focused pass. Move scoped replacement/retention criterion bottom R0285;no execution/default/math/device/performance change. Worklog: worklog/entries/20261028T215358.283217Z-cleanup-refactor-r0285-draft-timing-69309f.md."
+      ],
       "subitems": [
         {
           "line": 6403,
           "text": "- Added 2026-07-01. Bench flag inserts `hipDeviceSynchronize()` boundaries inside",
-          "status": "pending"
+          "status": "audited-flag-and-sink-stream-aware-diagnostic"
         },
         {
           "line": 6407,
           "text": "- Purpose: split the previous `draft_device_chain_drain` bucket into",
-          "status": "pending"
+          "status": "live-staged-q6-and-operation-attribution-preserved"
         },
         {
           "line": 6412,
           "text": "- Remove when: the resident draft LM-head/top-k or verifier layer-time follow-up has",
-          "status": "pending"
+          "status": "deferred-equivalent-profiling-policy-decision"
         }
       ]
     },

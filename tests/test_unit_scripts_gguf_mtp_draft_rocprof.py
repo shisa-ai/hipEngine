@@ -9,9 +9,36 @@ import pytest
 from scripts import gguf_mtp_draft_rocprof as profiler
 
 
+@pytest.mark.parametrize("sync,event", [(False, False), (True, False), (False, True), (True, True)])
+def test_draft_profiler_preserves_independent_timing_mode_arguments(monkeypatch, sync, event):
+    class ReachedChild(Exception):
+        pass
+
+    captured = []
+
+    def child(args):
+        captured.append(args)
+        raise ReachedChild
+
+    monkeypatch.setattr(profiler, "_run_child", child)
+    argv = ["gguf_mtp_draft_rocprof.py", "--child", "--record-stage-timings"]
+    if sync:
+        argv.append("--sync-stage-timings")
+    if event:
+        argv.append("--gpu-event-stage-timings")
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(ReachedChild):
+        profiler.main()
+    args, = captured
+    assert args.sync_stage_timings is sync
+    assert args.gpu_event_stage_timings is event
+    assert args.record_stage_timings is True
+
+
 @pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])
+@pytest.mark.parametrize("sync,event", [(False, False), (True, False), (False, True), (True, True)])
 def test_draft_profiler_reports_shared_dual_without_retired_env_reader(
-    monkeypatch, tmp_path, retired: str | None,
+    monkeypatch, tmp_path, retired: str | None, sync: bool, event: bool,
 ) -> None:
     from hipengine.core import memory
     from hipengine.runtime import qwen35_gguf_runner as target
@@ -35,12 +62,14 @@ def test_draft_profiler_reports_shared_dual_without_retired_env_reader(
         def __exit__(self, *args):
             pass
 
+    constructed = []
+
     class Draft:
         num_kv_heads = 1
         qk_head_dim = 4
 
         def __init__(self, *args, **kwargs):
-            pass
+            constructed.append(kwargs)
 
         def close(self):
             pass
@@ -57,10 +86,18 @@ def test_draft_profiler_reports_shared_dual_without_retired_env_reader(
     monkeypatch.setattr(profiler, "_bulk_prefill_with_hidden_trace", lambda *args: (0, empty, empty))
     monkeypatch.setattr(profiler, "llama_cpp_mtp_catchup_rows", lambda *args: ([], empty))
     output = tmp_path / "child.json"
-    monkeypatch.setattr(sys, "argv", [
+    argv = [
         "gguf_mtp_draft_rocprof.py", "--child", "--steps", "0", "--warmup", "0",
-        "--child-json", str(output),
-    ])
+        "--child-json", str(output), "--record-stage-timings",
+    ]
+    if sync:
+        argv.append("--sync-stage-timings")
+    if event:
+        argv.append("--gpu-event-stage-timings")
+    monkeypatch.setattr(sys, "argv", argv)
     assert profiler.main() == 0
+    options, = constructed
+    assert options["sync_stage_timings"] is sync
+    assert options["gpu_event_stage_timings"] is event
     assert json.loads(output.read_text())["q8_shared_dual"] is True
     assert not hasattr(profiler, "_resident_q8_shared_dual_enabled")

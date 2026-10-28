@@ -3430,20 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--resident-mtp-draft-sync-stage-timings` (default OFF, attribution-only)
-- Added 2026-07-01. Bench flag inserts `hipDeviceSynchronize()` boundaries inside
-  the resident MTP draft `_run_one()` path when `--record-cycle-stage-timings` is
-  enabled. Suite route `llama-compat-device-chain-dp4a-draftsync` wires it into the
-  llama.cpp replication lane.
-- Purpose: split the previous `draft_device_chain_drain` bucket into
-  `draft_run_project`, `draft_run_qkv_kvwrite`, `draft_run_attention`,
-  `draft_run_ffn_up_shared`, `draft_run_moe_down_combine`, `draft_run_lm_head`, and
-  `draft_device_topk_gather`. The flag changes timing by adding synchronization and
-  is not a performance path.
-- Remove when: the resident draft LM-head/top-k or verifier layer-time follow-up has
-  its own lower-overhead profiler/rocprof attribution, or after the llama.cpp
-  replication lane is closed. Until then keep it only as a named diagnostic route.
-
 ## `--target-block-sync-stage-timings` (default OFF, attribution-only)
 - Added 2026-07-01. Bench flag inserts `hipDeviceSynchronize()` boundaries inside
   the target block verifier when `--record-cycle-stage-timings` is enabled. Suite
@@ -12069,3 +12055,38 @@ plus affected DFlash2 kernel/forward tests. A runtime selection change needs
 real provider requests with variant attribution, reset/reuse and teardown;
 arithmetic changes need their execution-profile checks. Historical comparisons
 remain in the sweep inventory and original artifacts.
+
+### R0285 — Resident draft synchronized profiling ownership
+
+`--resident-mtp-draft-sync-stage-timings` is an explicit diagnostic passed to
+`Qwen35GGUFResidentMTPDraftRunner.sync_stage_timings`, not a product rollback.
+The benchmark requires a resident draft and cycle timing collection. The
+standalone `gguf_mtp_draft_rocprof.py` also forwards `--sync-stage-timings`;
+its `--record-stage-timings` controls whether the sink is collected.
+
+Extra synchronization requires both the flag and a timing sink. Draft layer
+sub-stages and device top-k/gather drain the supplied stream, or the device
+when the stream is zero. The final chain drain/readback is required even with
+instrumentation off. Synchronized Q6 top-1 uses separate stage1 and
+stage2/gather launches for attribution; normal execution keeps its composite
+wrapper. These instrumented buckets are not uninstrumented throughput.
+
+HIP-event stage timing is a separate diagnostic. It preserves queued work and
+resolves events after the final drain; rocprof adds kernel/host evidence with
+another scope. Their existence does not establish an equivalent replacement
+for synchronized per-operation buckets or justify deleting strict primitives.
+
+**Decision needed:** retain the explicit synchronized comparison, or replace
+it with one profiling policy across runner, benchmark cache key/provenance,
+profiler parent/child and named `draftsync`/`allsync` suite routes. Coordinate
+with target attribution rather than changing either execution mode silently.
+Keep instrumentation off by default; do not infer retirement from a campaign's
+closed status or promote diagnostic synchronization to remove a switch.
+
+**Clearing action:** demonstrate matching bucket/phase coverage and output
+under the proposed replacement, including stream zero/nonzero, absent/present
+sink, multiple depths, Q6 raw/X8 top-1 staging and event failure/close paths.
+Run resident-draft, metrics/suite and draft-profiler unit tests plus real
+proposal/commit/reset/close comparisons. Runtime wiring changes need public
+and compatibility requests with output and selected instrumentation recorded;
+any timing claim compares complete windows under a matched protocol.
