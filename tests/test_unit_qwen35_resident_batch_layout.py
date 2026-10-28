@@ -52,6 +52,68 @@ def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
+@pytest.mark.parametrize("retired", [None, "off", "on", "1", "bogus"])
+@pytest.mark.parametrize("rows", [1, 3, 19])
+@pytest.mark.parametrize("multi_row", [False, True])
+def test_verify_lm_head_always_projects_then_argmax(
+    monkeypatch: pytest.MonkeyPatch, retired, rows: int, multi_row: bool,
+) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", retired)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.config = SimpleNamespace(hidden_size=32, rms_norm_eps=1e-6)
+    session.device = Device("hip", 0)
+    session.vocab_size = 257
+    session.lm_head_threads = 128
+    session.runtime = object()
+    session.libraries = {key: object() for key in ("norm", "cast", "w8a16", "lm_head")}
+    for index, name in enumerate((
+        "batch_norm_out", "batch_norm_out_bf16", "verify_lm_logits",
+        "verify_lm_block_values", "verify_lm_block_indices", "verify_top1_i32",
+        "verify_top1_values",
+    )):
+        setattr(session, name, DeviceBuffer(0x1000 + index * 0x100, 4096))
+    session.norm_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x8000))
+    session.lm_head_weight = SimpleNamespace(tensor=SimpleNamespace(ptr=0x9000))
+    session.lm_head_scale = SimpleNamespace(tensor=SimpleNamespace(ptr=0xA000))
+    session._w8a16_lm_head_multi_row_enabled = lambda: multi_row
+    hidden = _tensor(0xB000, (rows, 32), DType.FP16)
+    calls = []
+    for name in (
+        "paro_rmsnorm_out_fp16", "fp16_to_bf16", "w8a16_linear_bf16_f32_multi_row",
+        "w8a16_linear_bf16_f32_out", "argmax_f32_rows_i32",
+    ):
+        def record(*args, _name=name, **kwargs):
+            calls.append((_name, args, kwargs))
+        monkeypatch.setattr(runner_module, name, record)
+    monkeypatch.setattr(
+        runner_module, "w8a16_lm_head_argmax_rows_bf16",
+        lambda *a, **k: pytest.fail("retired fused verifier must not run"), raising=False,
+    )
+
+    session._sample_verify_rows_from_hidden(hidden, rows, stream=13)
+
+    projection = "w8a16_linear_bf16_f32_multi_row" if rows > 1 and multi_row else "w8a16_linear_bf16_f32_out"
+    assert [name for name, _, _ in calls] == [
+        "paro_rmsnorm_out_fp16", "fp16_to_bf16", projection, "argmax_f32_rows_i32",
+    ]
+    assert calls[0][1] == (hidden.ptr, 0x8000, 0x1000, rows, 32, 1e-6)
+    assert calls[1][1] == (0x1000, 0x1100, rows * 32)
+    assert calls[2][1] == (0x1100, 0x9000, 0xA000, 0x1200, rows, 32, 257)
+    assert calls[3][1] == (0x1200, 0x1300, 0x1400, 0x1500, 0x1600, rows, 257)
+    for index, library in enumerate(("norm", "cast", "w8a16", "lm_head")):
+        expected = {"stream": 13, "library": session.libraries[library], "runtime": session.runtime}
+        if index >= 2:
+            expected["threads"] = 128
+        assert calls[index][2] == expected
+
+
+def test_paro_has_no_fused_verifier_lm_head_selector() -> None:
+    assert not hasattr(runner_module, "_dflash_verify_fused_lm_head_enabled")
+
+
 def test_paro_has_no_rejected_suffix_row_chunk_route() -> None:
     from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
 

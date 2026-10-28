@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "Fused LM-head row6265 resolved: remove rejected target-verifier selector/import/branch, script settings/provenance field and obsolete env test; preserve scalar/multi-row projection then argmax and native borrowed proposer/direct parity primitive. RED19fail12pass GREEN648focused,6GPU primitive checks pass. Six eagerB1/replayB3 controls plus6fresh public controls match IDs unset/off/on, harness acceptance and actual replay;48target norm/cast/project/argmax sequences,63preserved fused proposer calls,zero allocations. CPU deterministic/docs/tiers/audit/worklog/help pass,no arithmetic/default/performance claim. Overlapping R0282 row6346 updated with drafter items still pending. worklog/entries/20261028T112620.878028Z-cleanup-refactor-r0281-fused-lm-head-def123.md.",
         "Accept-position row6264 resolved: remove rejected implicit cursor-update selector/helper and graph key bit; ordinary chain/tree always set position separately, explicit native graph-owned update remains. RED8fail/136pass GREEN496focused; six real reject/partial/full ordinary/explicit cursor oracle cases at nonzero slot preserve neighbors. Six eager/auto controls plus six fresh public controls match IDs unset0/1, harness accepted lengths and replay; 51 packed calls/78 separate setters/no implicit updates, zero allocations. CPU deterministic/docs/tiers/audit/worklog pass; native gfx1100 provider not claimed E2E on gfx1151, no kernel/math/default/performance claim. worklog/entries/20261028T111022.652916Z-cleanup-refactor-r0281-accept-position-b9b6ab.md.",
         "Full QKV split row6263 resolved: remove rejected fused runtime import/selector/helper/branch;keep split+cast arguments,rotary choices/traces and direct fused primitive tests. RED2fail10pass135deselected GREEN435focused;2GPU primitive parity pass. Six real eager/auto decode-batched controls plus6fresh public detailed and generate/AR match IDs/acceptance unset0/1,actual replay,930observed splitthen-cast calls(300scalar630multirow incl3/4/17/37),zero allocations. CPU deterministic/docs/tiers/audit/worklog pass,no kernel/math/default/performance claim. worklog/entries/20261028T110254.495395Z-cleanup-refactor-r0281-full-qkv-split-55da63.md.",
         "Canonicalize row6262 resolved: remove env reader/helper in smoke and layer/state drift scripts;always pass false,keep result field and resident explicit canonicalize_after API/default/graph keepalive/c1handoff unchanged. RED16fail16pass GREEN614focused incl stale settings and all diagnostic callsite AST. Seven real controls cover stale0false eager MTP-to-AR,graph replay and explicittrue;true rebuilds all scratch to1row and matches lazy IDs/acceptance,7ARcycles each. Six fresh public detailed plus generate/AR pass,43falsecalls/1explicittrue,zero allocations. CPU deterministic,3scripthelp,docs/tiers/audit/worklog pass,no runtime/kernel/math/default/performance claim. worklog/entries/20261028T105259.993633Z-cleanup-refactor-r0281-canonicalize-5d1f11.md.",
@@ -8038,7 +8039,7 @@
         {
           "line": 6265,
           "text": "| MTP/DFlash verifier LM-head | `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` opt-in for fused W8A16 LM-head + argmax rows. | Default-off; 2026-06-11/12 MTP retests regressed, and clean gfx1151 SOL-S7 now reconfirms exact-but-slower DFlash (`9.676 -> 9.177 tok/s`, -5.16%). The fused body outweighs the saved argmax launch; synchronized accept-readback is only 0.042% of wall. | Removal trigger is satisfied. Demote the runtime branch to a kernel-test-only parity path in a scoped cleanup; do not expose it as a tuning option unless a new schedule beats unfused on gfx1100 and gfx1151. |",
-          "status": "pending"
+          "status": "fixed-rejected-fused-verifier-lm-head-retired"
         },
         {
           "line": 6266,
@@ -8364,7 +8365,7 @@
         {
           "line": 6346,
           "text": "| DFlash drafter/verifier flags | Audit `HIPENGINE_DFLASH_DRAFTER_DENSE`, `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`, and `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD`. | Default-on exact dense WMMA if the fresh 27B gate confirms it; tests for rejected fused kernels. | Fresh 27B DFlash rerun decides: promote exact positive flags to defaults, remove negative runtime branches, or demote them to test-only overrides. |",
-          "status": "pending"
+          "status": "partial-verifier-lm-head-retired-drafter-items-open"
         },
         {
           "line": 6347,

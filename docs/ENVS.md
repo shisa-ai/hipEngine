@@ -534,7 +534,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_EVIE_GDN_RECURRENCE` | unset | Evie GDN prefill recurrence owner: unset uses the normalized cluster8 kernel (bit-repeatable, ~9%/page faster than k2); `k2` restores the split fallback for rollback/bisection. |
 | `HIPENGINE_DFLASH_DRAFTER_DENSE` | `wmma` | Dense-project DFlash drafter body: `wmma` (default after R3.4 validated exact-AR plus a per-prompt perf gain) or `naive` to revert. |
 | `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM` | `off` | Fused add+RMSNorm drafter variant; `fused`/`on` selects it, with the unfused `dflash_add_bf16` + `dflash_rmsnorm_bf16` chain as the registered fallback. |
-| `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` | `off` | Fused LM-head kernel inside the DFlash verifier window; bit-exact vs the unfused path because the cooperative per-vocab-row dot product order is preserved. |
 | `HIPENGINE_MTP_DRAFT_VOCAB_CAP` | internal default | Prefix cap for the private F16 scorer used by manual native-proposer diagnostics; zero/empty selects full vocabulary and other values clamp to model vocabulary. A borrowed target W8A16 scorer, including public Generation-2 PARO MTP, always uses full vocabulary and ignores this cap. |
 | `HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE` | false | Opt-in indexed (slot-local) proposer KV write path. |
 | `HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED` | true | Fused router top-k inside the proposer kernel (rollback opt-out). |
@@ -1289,6 +1288,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` is retired and ignored.
+  PARO target verification projects logits then runs row argmax. The fused
+  primitive remains available to the native MTP proposer and direct parity
+  diagnostics.
 - `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` is retired and ignored.
   Ordinary PARO verifier commits set position/context separately. Native
   graph-owned commits still explicitly request packed cursor updates; their

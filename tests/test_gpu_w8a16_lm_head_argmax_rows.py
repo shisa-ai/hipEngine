@@ -191,21 +191,3 @@ def test_w8a16_lm_head_argmax_rows_rejects_invalid(_lm_head_lib, _runtime):
         w8a16_lm_head_argmax_rows_bf16(0, 0, 0, 0, 0, 0, 0, 0, 2048, 16384, library=_lm_head_lib, runtime=_runtime)
     with pytest.raises(ValueError):
         w8a16_lm_head_argmax_rows_bf16(0, 0, 0, 0, 0, 0, 0, 4, 2048, 16384, threads=64, library=_lm_head_lib, runtime=_runtime)
-
-
-def test_dflash_verify_fused_lm_head_env(monkeypatch):
-    from hipengine.runtime.qwen35_paro_runner import _dflash_verify_fused_lm_head_enabled
-
-    monkeypatch.delenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", raising=False)
-    assert _dflash_verify_fused_lm_head_enabled() is False
-    monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", "off")
-    assert _dflash_verify_fused_lm_head_enabled() is False
-    monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", "0")
-    assert _dflash_verify_fused_lm_head_enabled() is False
-    monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", "on")
-    assert _dflash_verify_fused_lm_head_enabled() is True
-    monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", "1")
-    assert _dflash_verify_fused_lm_head_enabled() is True
-    monkeypatch.setenv("HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD", "bogus")
-    with pytest.raises(ValueError):
-        _dflash_verify_fused_lm_head_enabled()

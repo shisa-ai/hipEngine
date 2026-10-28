@@ -121,6 +121,14 @@ def test_fast_review_manifest_is_unselected_with_strict_fallback() -> None:
     assert len(result["candidate_review_sha256"]) == 64
 
 
+def test_verifier_routes_do_not_configure_retired_fused_lm_head() -> None:
+    retired = "HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD"
+    assert retired not in mtp_paro_verifier_numerics._ROUTE_FLAGS
+    for flags in (mtp_paro_verifier_numerics._STRICT_FLAGS, mtp_paro_verifier_numerics._FAST_FLAGS):
+        assert retired not in flags
+        assert set(flags) == set(mtp_paro_verifier_numerics._ROUTE_FLAGS)
+
+
 def test_simultaneous_evaluator_is_absent() -> None:
     assert not hasattr(mtp_paro_verifier_numerics, "run")
     assert callable(mtp_paro_verifier_numerics.run_sequential)
