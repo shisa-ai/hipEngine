@@ -25,6 +25,12 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
 
 
+def test_gdn_chain_tile_schedule_has_no_environment_override() -> None:
+    from pathlib import Path
+    source = Path(__file__).resolve().parents[1] / "hipengine/kernels/hip_gfx1100/linear_attn/gdn.hip"
+    assert "HIPENGINE_GDN_CHAIN_TLOOP_VTILE" not in source.read_text()
+
+
 def setup_function() -> None:
     clear_registry_for_tests()
 

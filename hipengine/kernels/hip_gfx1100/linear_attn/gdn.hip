@@ -5345,17 +5345,10 @@ int launch_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop(
   // per-token reductions are pure warp shuffles (no LDS, no __syncthreads);
   // fall back to 64 for head_k_dim in {192,256} to keep dk_per_thread<=DK_MAX.
   const int threads = (head_k_dim <= 128) ? 32 : 64;
-  // dv-tiling: collapse the grid by VTILE (4096 -> 1024 blocks at 32x128) when
-  // head_v_dim is divisible; VTILE=1 is the bit-identical unfused fallback.
+  // dv-tiling uses VTILE=4 when the value width is divisible; other widths
+  // use the scalar-column schedule.
   constexpr int kChainVTile = 4;
-  int requested_vtile = kChainVTile;
-  if (const char* raw_vtile = std::getenv("HIPENGINE_GDN_CHAIN_TLOOP_VTILE")) {
-    const int parsed = std::atoi(raw_vtile);
-    if (parsed == 1 || parsed == kChainVTile) {
-      requested_vtile = parsed;
-    }
-  }
-  const bool use_tile = requested_vtile == kChainVTile && (head_v_dim % kChainVTile) == 0;
+  const bool use_tile = (head_v_dim % kChainVTile) == 0;
 #define HIPENGINE_LAUNCH_GDN_CHAIN_TLOOP(VT, GRID_Y)                              \
   hipLaunchKernelGGL(                                                            \
       (qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_kernel<scalar_t, VT>), \

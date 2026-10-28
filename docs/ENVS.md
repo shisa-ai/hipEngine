@@ -1287,6 +1287,9 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_GDN_CHAIN_TLOOP_VTILE` is retired and ignored.
+  Chain GDN uses tile-4 for value widths divisible by four and the scalar-column
+  schedule otherwise. The serial-c1 exact route is unchanged.
 - `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER` is retired and ignored.
   The persistent PARO diagnostic harness synchronizes verifier commit before
   proposer repair/update on the default stream. Runtime stream-capable APIs

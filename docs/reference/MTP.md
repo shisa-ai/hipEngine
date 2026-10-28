@@ -86,6 +86,11 @@ former runtime selection.
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 >
+> The temporary `HIPENGINE_GDN_CHAIN_TLOOP_VTILE` selector has been removed.
+> Fast chain GDN uses tile-4 for value widths divisible by four and the
+> scalar-column schedule otherwise. `HIPENGINE_GDN_TLOOP_C1_EXACT` and the
+> explicit exact primitives remain available for serial-c1 comparisons.
+>
 > For the current cross-provider milestone definitions and consolidated W7900/
 > gfx1151 performance status, use
 > [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The `0.758x / 27.8 ms`
