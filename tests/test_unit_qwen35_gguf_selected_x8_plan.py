@@ -65,3 +65,30 @@ def test_explicit_raw_selected_down_precedes_x8_replacement(monkeypatch, qtype) 
 def test_selected_down_x8_explicit_argument_overrides_ambient_mode(monkeypatch, value, expected) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_X8_REPACK", "invalid")
     assert materialize.gguf_selected_x8_repack_mode(value) == expected
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("raw", [False, True])
+@pytest.mark.parametrize("decode_repack", [False, True])
+@pytest.mark.parametrize("slot", ["ffn_gate_exps", "ffn_up_exps", "ffn_down_exps"])
+def test_q4_gate_up_x8_keeps_its_loader_scope_and_raw_precedence(
+    monkeypatch, enabled: bool, raw: bool, decode_repack: bool, slot: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_GATE_UP_X8", "1" if enabled else "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_GATE_UP_RAW", "1" if raw else "0")
+    tensor = _expert_tensor(slot, GGMLQuantizationType.Q4_K)
+    spec = materialize.plan_qwen35_gguf_weight_spec(
+        f"layers.0.{slot}", tensor, decode_repack=decode_repack,
+    )
+    gate_up = slot != "ffn_down_exps"
+    if not decode_repack or (raw and gate_up):
+        assert spec.quant_key == "gguf_q4_k"
+        assert spec.allocation_names == ("raw",)
+    else:
+        x8 = enabled and gate_up
+        assert spec.quant_key == ("gguf_q4_k_x8_v1" if x8 else "gguf_q4_k_t16_v1")
+        assert spec.allocation_names == ("tiles",)
+        if x8:
+            assert dict(materialize.planned_qwen35_gguf_weight_allocation_nbytes(spec)) == {
+                "tiles": tensor.nbytes,
+            }

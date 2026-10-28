@@ -27,6 +27,8 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from hipengine.loading.qwen35_gguf_materialize import gguf_selected_gate_up_x8_enabled
+
 GGUF_PATH = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 DEFAULT_PROMPT = "What is the capital of France?"
 DEFAULT_ROOT_TOPK_ACCEPT = 40
@@ -1103,15 +1105,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--selected-gate-up-x8",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "OPT-IN accuracy-traded llama-compat diagnostic: materialize selected gate/up "
-            "Q4_K experts with the X8 q8_1/dp4a replacement layout. Default off."
-        ),
-    )
-    parser.add_argument(
         "--selected-gate-up-raw",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1757,10 +1750,6 @@ def main(argv: list[str] | None = None):
         # Must be set before materialization so selected-down expert tensors are
         # repacked into the X8 replacement layout.
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = str(args.selected_down_x8_repack)
-    if getattr(args, "selected_gate_up_x8", False):
-        # Must be set before materialization so selected gate/up expert tensors
-        # are repacked into the X8 replacement layout.
-        os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_X8"] = "1"
     if getattr(args, "selected_gate_up_raw", False):
         # Must be set before materialization so selected gate/up expert tensors
         # stay in raw GGUF layout. With --verify-dp4a, the runtime uses the raw
@@ -4186,7 +4175,7 @@ def main(argv: list[str] | None = None):
             ),
             "selected_down_x8_repack": str(args.selected_down_x8_repack),
             "selected_down_x8_repack_env": os.environ.get("HIPENGINE_GGUF_SELECTED_X8_REPACK"),
-            "selected_gate_up_x8": bool(args.selected_gate_up_x8),
+            "selected_gate_up_x8": gguf_selected_gate_up_x8_enabled(),
             "selected_gate_up_x8_env": os.environ.get("HIPENGINE_GGUF_SELECTED_GATE_UP_X8"),
             "selected_gate_up_raw": bool(args.selected_gate_up_raw),
             "selected_gate_up_raw_env": os.environ.get("HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"),

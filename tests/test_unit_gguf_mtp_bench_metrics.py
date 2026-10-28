@@ -1019,10 +1019,25 @@ def test_arg_parser_exposes_selected_down_x8_repack_mode() -> None:
     assert args.selected_down_x8_repack == "q6"
 
 
-def test_arg_parser_exposes_selected_gate_up_x8_mode() -> None:
-    args = build_arg_parser().parse_args(["--selected-gate-up-x8"])
+@pytest.mark.parametrize("option", ["--selected-gate-up-x8", "--no-selected-gate-up-x8"])
+def test_retired_selected_gate_up_x8_option_is_rejected(option: str) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        build_arg_parser().parse_args([option])
+    assert excinfo.value.code == 2
 
-    assert args.selected_gate_up_x8 is True
+
+@pytest.mark.parametrize("value,expected", [("1", True), ("true", True), ("false", False), ("0", False)])
+def test_bench_keeps_ambient_x8_layout_for_parity_callers(monkeypatch, value, expected) -> None:
+    monkeypatch.setattr(bench.os, "environ", dict(bench.os.environ))
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_GATE_UP_X8", value)
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+    assert not hasattr(build_arg_parser().parse_args([]), "selected_gate_up_x8")
+    # Stop at argument validation, after route environment is applied and before loading.
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--root-topk-accept", "0"])
+    assert excinfo.value.code == 2
+    assert bench.gguf_selected_gate_up_x8_enabled() is expected
+    assert bench.os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_X8"] == value
 
 
 def test_arg_parser_exposes_selected_gate_up_raw_mode() -> None:

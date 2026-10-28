@@ -42,6 +42,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # first, as every sibling script does.
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.loading.qwen35_gguf_materialize import gguf_selected_gate_up_x8_enabled
+
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPT_IDS = "760,4087,369,220,16,17,18,19"
 SERIAL_MARKER_PREFIX = "gguf_mtp_verify_serial_"
@@ -84,8 +87,6 @@ def _apply_route_env(args: argparse.Namespace) -> None:
     selected_down_x8 = str(getattr(args, "selected_down_x8_repack", "off"))
     if selected_down_x8 != "off":
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = selected_down_x8
-    if getattr(args, "selected_gate_up_x8", False):
-        os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_X8"] = "1"
     if getattr(args, "q8_t16_pair_rowtile", False):
         os.environ["HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"] = "1"
     if getattr(args, "q8_t16_rowtile_all", False):
@@ -304,7 +305,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
         "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
-        "selected_gate_up_x8": bool(args.selected_gate_up_x8),
+        "selected_gate_up_x8": gguf_selected_gate_up_x8_enabled(),
         "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
         "q8_t16_rowtile_all": bool(args.q8_t16_rowtile_all),
         "host_ms": host_ms,
@@ -422,8 +423,6 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--verify-dense-q8-dp4a-f32")
     if str(args.selected_down_x8_repack) != "off":
         child_base.extend(["--selected-down-x8-repack", str(args.selected_down_x8_repack)])
-    if args.selected_gate_up_x8:
-        child_base.append("--selected-gate-up-x8")
     if args.q8_t16_pair_rowtile:
         child_base.append("--q8-t16-pair-rowtile")
     if args.q8_t16_rowtile_all:
@@ -486,7 +485,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
         "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
-        "selected_gate_up_x8": bool(args.selected_gate_up_x8),
+        "selected_gate_up_x8": gguf_selected_gate_up_x8_enabled(),
         "q8_t16_pair_rowtile": bool(args.q8_t16_pair_rowtile),
         "q8_t16_rowtile_all": bool(args.q8_t16_rowtile_all),
         "steps": int(args.steps),
@@ -849,11 +848,6 @@ def main() -> int:
         help="Also route F32-activation dense Q8 singleton verifier projections through raw-Q8 dp4a.",
     )
     parser.add_argument("--selected-down-x8-repack", choices=("off", "q5", "q6", "both"), default="off")
-    parser.add_argument(
-        "--selected-gate-up-x8",
-        action="store_true",
-        help="Enable the selected gate/up Q4_K X8 replacement-layout diagnostic.",
-    )
     parser.add_argument(
         "--q8-t16-pair-rowtile",
         action="store_true",

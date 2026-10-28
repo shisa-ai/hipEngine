@@ -29,6 +29,34 @@ def test_profiler_refuses_retired_shared_q8_option(monkeypatch) -> None:
     assert excinfo.value.code == 2
 
 
+@pytest.mark.parametrize("option", ["--selected-gate-up-x8", "--no-selected-gate-up-x8"])
+def test_profiler_refuses_retired_gate_up_x8_option(monkeypatch, option) -> None:
+    monkeypatch.setattr(profiler, "_run_child", lambda args: 0)
+    monkeypatch.setattr(sys, "argv", ["gguf_mtp_verifier_rocprof.py", "--child", option])
+    with pytest.raises(SystemExit) as excinfo:
+        profiler.main()
+    assert excinfo.value.code == 2
+
+
+@pytest.mark.parametrize("value,expected", [("1", True), ("true", True), ("false", False), ("0", False)])
+def test_profiler_preserves_ambient_x8_layout_without_the_retired_switch(monkeypatch, value, expected) -> None:
+    monkeypatch.setattr(profiler.os, "environ", dict(profiler.os.environ))
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_GATE_UP_X8", value)
+    observed = {}
+
+    def run_child(args):
+        assert not hasattr(args, "selected_gate_up_x8")
+        profiler._apply_route_env(args)
+        observed["enabled"] = profiler.gguf_selected_gate_up_x8_enabled()
+        return 0
+
+    monkeypatch.setattr(profiler, "_run_child", run_child)
+    monkeypatch.setattr(sys, "argv", ["gguf_mtp_verifier_rocprof.py", "--child"])
+    assert profiler.main() == 0
+    assert observed["enabled"] is expected
+    assert profiler.os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_X8"] == value
+
+
 def test_module_puts_its_own_worktree_first_on_sys_path() -> None:
     """Child mode re-runs this file, so sys.path[0] is scripts/ and hipengine
     would otherwise resolve to the editable install's other worktree."""

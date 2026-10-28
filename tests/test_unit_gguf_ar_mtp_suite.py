@@ -7,6 +7,12 @@ import pytest
 from scripts import gguf_ar_mtp_suite as suite
 
 
+def test_retired_gate_up_x8_suite_aliases_are_absent() -> None:
+    assert not any("x8gateup" in name for name in suite.MTP_ROUTES)
+    assert not any("x8gateup" in name for name in suite.MTP_ROUTE_DEFAULT_BUDGETS)
+    assert all("--selected-gate-up-x8" not in args for args in suite.MTP_ROUTES.values())
+
+
 def test_suite_hardware_label_follows_explicit_gfx1100_arch(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_HW_LABEL", raising=False)
     monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
@@ -257,15 +263,6 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--resident-mtp-draft-q6-top1-dp4a",
         "--selected-down-x8-repack",
         "q6",
-    ]
-    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup"] == [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--selected-down-x8-repack",
-        "q6",
-        "--selected-gate-up-x8",
     ]
     assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup"] == [
         "--llama-compat",
@@ -528,17 +525,6 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--selected-down-x8-repack",
         "q6",
     ]
-    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-allsync"] == [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--resident-mtp-draft-sync-stage-timings",
-        "--target-block-sync-stage-timings",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--selected-down-x8-repack",
-        "q6",
-        "--selected-gate-up-x8",
-    ]
     assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-allsync"] == [
         "--llama-compat",
         "--resident-mtp-device-chain",
@@ -615,9 +601,6 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-q6top1dp4a"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup"
-    ] == [2]
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup"
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
@@ -652,9 +635,6 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-allsync"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-allsync"
-    ] == [2]
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup-allsync"
     ] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-rawgateup-allsync"
@@ -825,9 +805,8 @@ def test_suite_llama_compat_q6top1dp4a_x8q6_dry_run_defaults_to_b2(
     assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
 
 
-def test_suite_llama_compat_q6top1dp4a_x8q6_x8gateup_dry_run_defaults_to_b2(
-    monkeypatch, tmp_path, capsys
-) -> None:
+@pytest.mark.parametrize("suffix", ["", "-allsync"])
+def test_suite_refuses_retired_gate_up_x8_routes(monkeypatch, tmp_path, capsys, suffix) -> None:
     monkeypatch.setattr(
         sys,
         "argv",
@@ -836,27 +815,17 @@ def test_suite_llama_compat_q6top1dp4a_x8q6_x8gateup_dry_run_defaults_to_b2(
             "--scope",
             "full",
             "--mtp-route",
-            "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup",
+            f"llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup{suffix}",
             "--raw-root",
             str(tmp_path / "raw"),
             "--dry-run",
         ],
     )
-
-    assert suite.main() == 0
-
-    out = capsys.readouterr().out
-    assert "--budgets 2" in out
-    assert "--extra-arg=--llama-compat" in out
-    assert "--extra-arg=--resident-mtp-device-chain" in out
-    assert "--extra-arg=--verify-dp4a" in out
-    assert "--extra-arg=--resident-mtp-draft-q6-top1-dp4a" in out
-    assert "--extra-arg=--selected-down-x8-repack" in out
-    assert "--extra-arg=q6" in out
-    assert "--extra-arg=--selected-gate-up-x8" in out
-    assert '"mtp_route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-x8gateup"' in out
-    assert '"budgets": [\n    2\n  ]' in out
-    assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
+    with pytest.raises(SystemExit) as excinfo:
+        suite.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    assert not (tmp_path / "raw").exists()
 
 
 def test_suite_llama_compat_q6top1dp4a_x8q6_rawgateup_dry_run_defaults_to_b2(
