@@ -3438,7 +3438,6 @@ should be boring.
 
 | Path | Cleanup target | Keep | Remove / collapse trigger |
 | --- | --- | --- | --- |
-| 35B MTP chain verifier | Collapse the sprint-era stack of env flags into the default dispatch path and document the current optimal B=1 chain route, while keeping B=2/B=3 available for adaptive-density policy experiments. | Numerical fallbacks, exactness tests, and rollback toggles that are still needed for one release window. | Retained `>1.0x` same-suite row plus one follow-up defaults-only rerun after the adaptive-policy decision. |
 | 35B MTP tree/top-k | Keep tree code default-off until it beats chain on the same wall and prompt suite; do not let tree-specific dispatch obscure the chain hot path. | Tree correctness tests and graph replay scaffolding. | If tree remains negative after the verifier wall cut, demote branch/top-k runtime flags to explicit experiment scripts. |
 | 27B dense DFlash | Separate deployable online routing from profile-history diagnostics. The current positive production row is the online whole-cycle confidence gate; older prompt-history route/terminal-tail rows are retained evidence, not the default API shape. | Online gate config, oracle/calibration tooling, exact AR comparisons. | After the DFlash hardening rerun and decode API update, trim profile-history routing from the main hot path or move it behind an explicit research harness. |
 | DFlash drafter flags | Audit `HIPENGINE_DFLASH_DRAFTER_DENSE` and `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`; the rejected target fused LM-head selector is removed and its primitive coverage remains. | Default-on exact dense WMMA if the fresh 27B gate confirms it; tests for rejected fused kernels. | Fresh 27B DFlash rerun decides: promote exact positive flags to defaults, remove negative runtime branches, or demote them to test-only overrides. |
@@ -11448,6 +11447,28 @@ selector and public adapter tests, borrowed/private scoring and lifecycle tests,
 plus actual strict/production public generation with selector unset/0/1 and
 reset/close coverage. Any removal of private branching needs an explicit
 replacement or retirement decision, not just a release-window expiry.
+
+R0282's older chain-verifier row belongs to this ownership decision, not a
+separate B1 default change. The historical profile harness registers B1
+fixed-chain/graph-off routes: strict uses `c1_loop`, production uses
+`decode_batched`. Public Generation-2 chooses those attention modes from its
+execution profile directly; its automatic candidate depth is two, with explicit
+depths one through three. Keep capability, tail-room planning, prefix repair
+and session sizing separate from the historical profile scope. The completed
+[depth unit](../worklog/entries/20261024T174430.936309Z-paro-mtp-depth-paro-mtp-depth-chain-96ac00.md)
+owns that public change and its validation; no new timing claim is made here.
+
+`HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP` and `HIPENGINE_VERIFY_GPU_ACCEPT`
+already default on. Their off paths retain unfused/CPU-reference comparisons;
+GPU acceptance also supports `validate`. The chain t-loop requires singleton,
+linear-parent, all-active topology, not B1 depth. Native selected-commit and
+DFlash verification also consume this machinery. Include these shared controls
+and graph-cache keys in any execution-owner-local verifier-plan migration;
+do not remove their reference paths or change provider-specific capture and
+commit semantics as a side effect of retiring manual profile selectors.
+Cover topology/depth, on/off/validate, graph-key isolation and accept payload
+parity alongside the profile/public-depth tests above, then exercise real
+public strict/production requests plus any affected DFlash/native callers.
 
 ### R0281-TOPK — GGUF benchmark proposal-policy ownership
 
