@@ -22154,10 +22154,10 @@ class Qwen35GGUFResidentSession:
     ) -> Qwen35GGUFTargetRowsResult:
         """Execute a correctness-first linear target chain over shared row state.
 
-        This fallback mutates its dedicated resident target slots in row order;
-        scheduler-owned transactional import/commit remains the integration
-        boundary for Task #31. Tree branches fail closed until parent-state
-        snapshots are wired.
+        This diagnostic fallback mutates its dedicated resident target slots
+        in row order; it does not own transactional import or accepted-row
+        commit. Unsupported topology is refused before any row executes.
+        Tree branches require parent-state snapshots.
         """
 
         if batch.mode != "verify_chain":
@@ -22170,24 +22170,25 @@ class Qwen35GGUFResidentSession:
             request_id: slot
             for slot, request_id in enumerate(batch.request_ids)
         }
+        # Refuse unsupported topology before any scalar row advances its slot.
+        root_rows = set(batch.root_rows)
         last_row_by_request: dict[int, int] = {}
-        row_results: list[Qwen35GGUFTargetRowsResult] = []
-        for row, (token, position, request_id, parent_row) in enumerate(
-            zip(
-                batch.tokens,
-                batch.positions,
-                batch.row_to_request,
-                batch.parent_rows,
-                strict=True,
-            )
+        for row, (request_id, parent_row) in enumerate(
+            zip(batch.row_to_request, batch.parent_rows, strict=True)
         ):
-            if row in set(batch.root_rows):
+            if row in root_rows:
                 if parent_row != -1:
                     raise ValueError("target verify root rows must have parent -1")
             elif parent_row != last_row_by_request.get(request_id):
                 raise NotImplementedError(
                     "branched target verification requires parent-state snapshots"
                 )
+            last_row_by_request[request_id] = row
+
+        row_results: list[Qwen35GGUFTargetRowsResult] = []
+        for token, position, request_id in zip(
+            batch.tokens, batch.positions, batch.row_to_request, strict=True,
+        ):
             slot = slot_by_request[request_id]
             row_results.append(
                 self.step_rows(
@@ -22200,7 +22201,6 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                 )
             )
-            last_row_by_request[request_id] = row
 
         capture_ids = tuple(sorted({int(layer_id) for layer_id in capture_layer_ids}))
         return Qwen35GGUFTargetRowsResult(
