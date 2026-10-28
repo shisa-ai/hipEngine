@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF llama-compat native MTP cycle | Benchmark flags `--native-spec-target-cycle`, `--native-spec-device-accept-commit`, `--native-spec-complete-cycle`, and `--native-spec-proposal-graph` retain N1 target-only, N2 device-policy, N3 complete-adapter, and N3P proposal-submission boundaries over separate reusable B1/B2 graph buckets. | Explicit accuracy-traded gfx1100 scope. N1 remains the 122.667 tok/s topline over llama.cpp's 115.444 floor. N2 owns strict acceptance, selected hidden/Conv/GDN state, target cursor, and one bounded payload. N3 makes proposal, N2, MTP-KV repair, reseed, and cursor/result accounting one public single-request adapter call; its clean committed gate is exact for 240 IDs / 96 cycles and aggregate-neutral at 118.592 vs clean N2 117.557 tok/s (+0.88%). N3P stages dynamic proposal inputs into fixed runner buffers and replays one B1/B2 NextN graph before the unchanged target graph. A detached clean publication is exact at 118.183 tok/s / 8.610 ms-output; a same-source pair is 117.589 N3P vs 116.793 N3 tok/s, and cached eight-cycle tracing replaces 542 `hipLaunchKernel` plus 80 synchronous `hipMemcpy` calls with eight proposal `hipGraphLaunch` calls. N3P still has two native graph submissions per public cycle, not one combined submission, and gfx1151 remains unregistered. | Migrate the provider-neutral adapter to PARO/DFlash (N4), independently gate gfx1151, and decide whether combining proposal+target behind one native boundary yields a measurable gain. Remove benchmark-only N1/N2/N3 splits after cross-provider full-suite/profiler gates. Keep independent B1/B2 buckets and exact unsupported-shape fallback. |
 | PARO MTP / DFlash native target graph | `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1` explicitly routes eligible shared single-request B1/B2/B3/B4/B5/B8 target graph replays through the registered gfx1100 `w4_paro/native_v1_target_graph` NativeSpecCycle boundary. `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0` temporarily rolls capture-width-zero FP16 PARO MTP back from selected linear-state commit/device cursor ownership to the neutral N4+ provider commit. | N4 remains globally default-off. Inside explicit N4, PARO selected commit is default-on after three exact 240-ID arms, every split/category, accepted-row/B2 state gates, and consistent capture-adjusted wins. It uses graph-owned combined state-pointer tables and declares `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS`; BF16 DFlash hidden/KV repair, proposal, and scheduler result construction remain unchanged. Cached profiles mechanically change **80.6875 -> 75.6875 APIs**, **2 -> 1 sync**, **36.1875 -> 34.1875 host launches**, and **1248.5 -> 1247.5 kernels**; mean wall is neutral. Pointer/shape/stream/inactive drift retains validation/direct fallback, and gfx1151 remains unregistered. No AR speed row/global default is retained. | Remove `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT` after one release window and a defaults-only explicit-N4 refresh remains exact and mechanically non-regressive. Keep the global N4 switch until complete PARO proposal ownership and independent full category+heldout PARO/DFlash gates have a measured complete-wall advantage over direct graph control; gate gfx1151 separately. Remove the bound-control experimental split once that provider boundary is the only admitted implementation. Do not remove or downgrade the current model artifact. |
 | GGUF AR server stream decode | `HIPENGINE_GGUF_AR_STREAM_DECODE` is a default-on fallback/opt-out around per-slot HIP stream decode when packed AR is disabled or unavailable, and also gates the historical parallel c4+c4 chunk path above four rows. | Direct physical-c8 beats c4+c4 on both targets. F1 measures the same-loop packed-off serial C13 bridge at **31.708/42.764 tok/s** versus grouped packed C13 **111.380/72.522 tok/s (3.513x/1.696x)** on gfx1100/gfx1151; every static/live packed route records zero serial/resident fallback, including real c8→c13 admission. | Both gfx11 triggers are met. Keep the bridge as an explicit unsupported-shape/test oracle and rollback for one release window, then remove the public env opt-out during F2 while retaining backend capability fallback. |
 | GGUF MTP server stream draft | `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` is a default-on opt-out around per-slot HIP stream draft proposal for c>N GGUF MTP serving. | Default-on after the 2026-07-05 natural24 server run. It moves packed-verifier c=2/c=4/c=8 MTP **45.57/47.48/47.18 -> 46.75/49.65/48.72 tok/s** and beat the then-current stream-AR rows by **1.058x/1.063x/1.021x**; the later packed-AR route supersedes that same-server AR comparison, so current MTP is below AR. It currently creates a `ThreadPoolExecutor` per draft phase and the c=8 wall remains verifier-heavy. | Remove the env opt-out and/or replace the per-cycle executor with a persistent scheduler after c>N server reruns and profiler evidence show the stream path is non-regressive. Keep the opt-out while tuning verifier wall and thread-pool overhead. |
@@ -10957,3 +10956,51 @@ metrics nodes in `tests/test_integration_server_api.py`. A behavior change also
 needs mixed-arrival public serving validation of bounded decode interruption,
 completion, cancellation and cleanup; cold-prefill throughput alone does not
 validate fairness.
+
+### R0281-NATIVE-CYCLE — Native diagnostic interfaces and graph composition
+
+The four `scripts/gguf_mtp_bench.py` switches are live diagnostic interfaces:
+`--native-spec-target-cycle` selects the target submission (N1),
+`--native-spec-device-accept-commit` adds target acceptance/commit (N2),
+`--native-spec-complete-cycle` joins proposal, target and provider repair behind
+one adapter call (N3), and `--native-spec-proposal-graph` adds the separate
+proposal submission (N3P). `scripts/gguf_ar_mtp_suite.py` constructs all four
+routes; `scripts/gguf_mtp_verifier_rocprof.py` consumes the target switch.
+Deleting these inputs would remove distinct comparison boundaries, not dead
+runtime branches.
+
+GGUF target launchers are registered for both gfx1100 and gfx1151 under
+`w4_gguf/native_v1_b2_target_graph`. The separate
+`w4_gguf/native_v1_b2_proposal_graph` launcher is registered only for gfx1100.
+That proposal launcher is not the shared NextN proposal-stage cache, which
+already has a gfx1151 consumer. Keep their backend scopes distinct. The
+complete-cycle adapter accepts B1/B2 even though target-only graphs support
+other buckets. Unsupported capture/configuration falls back before mutation;
+launch/readback failures must not replay an already-mutated transaction.
+
+The provider-neutral PARO/DFlash target boundary is implemented and has its own
+ledger item. A complete cross-provider proposal/target lifecycle and a combined
+proposal-plus-target submission remain separate work, not prerequisites for
+running existing GGUF graphs. Historical comparisons remain in the July 19
+`llama-compat-native-cycle-n2`, `-n3` and `-n3p` result artifacts; no new timing
+claim is made here.
+
+**Decision needed:** retain these diagnostic stages as supported interfaces,
+or replace them with one explicit stage selector while preserving route names,
+effective options, result metadata and profiler comparisons. Treat combined
+graph composition as an independent experiment; do not remove working controls
+or change arithmetic/defaults merely to reduce the flag count.
+
+**Clearing action:** run `tests/test_unit_gguf_mtp_bench_metrics.py`,
+`tests/test_unit_gguf_ar_mtp_suite.py`,
+`tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py`,
+`tests/test_unit_native_spec_cycle.py` and
+`tests/test_unit_mtp_resident_draft_device_commit.py`, plus native launcher
+registration, fallback, complete-cycle and bucket/cache nodes in
+`tests/test_gpu_native_spec_cycle_graph.py` and
+`tests/test_live_gguf_native_spec_cycle.py`. An interface migration also needs
+real diagnostic and public requests confirming selected submission stages,
+accepted-row/cursor ownership, B1/B2 and unsupported-shape behavior, repeat
+output and teardown. A combined-graph or arithmetic experiment additionally
+needs its applicable numerical and complete-wall gates, separately from this
+interface cleanup.

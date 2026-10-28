@@ -176,6 +176,41 @@ def test_native_complete_cycle_flag_parses_default_off() -> None:
     ).native_spec_proposal_graph is True
 
 
+@pytest.mark.parametrize("option,field", [
+    ("native-spec-target-cycle", "native_spec_target_cycle"),
+    ("native-spec-device-accept-commit", "native_spec_device_accept_commit"),
+    ("native-spec-complete-cycle", "native_spec_complete_cycle"),
+    ("native-spec-proposal-graph", "native_spec_proposal_graph"),
+])
+def test_native_cycle_diagnostic_flags_preserve_default_and_explicit_off(option, field) -> None:
+    parser = build_arg_parser()
+    assert getattr(parser.parse_args([]), field) is False
+    assert getattr(parser.parse_args([f"--{option}"]), field) is True
+    assert getattr(parser.parse_args([f"--{option}", f"--no-{option}"]), field) is False
+
+
+@pytest.mark.parametrize("argv,expected_error", [
+    (["--native-spec-target-cycle"], "--native-spec-target-cycle requires --target-block-verify"),
+    (["--native-spec-device-accept-commit"], "--native-spec-device-accept-commit requires --native-spec-target-cycle"),
+    (["--native-spec-complete-cycle"], "--native-spec-complete-cycle requires --native-spec-device-accept-commit"),
+    (["--native-spec-proposal-graph"], "--native-spec-proposal-graph requires --native-spec-complete-cycle"),
+    (["--target-block-verify", "--native-spec-target-cycle", "--target-block-wmma-prefill"],
+     "--native-spec-target-cycle requires --no-target-block-wmma-prefill"),
+    (["--target-block-verify", "--native-spec-target-cycle", "--target-block-verify-mode", "serial-exact"],
+     "--native-spec-target-cycle requires --target-block-verify-mode bulk"),
+])
+def test_native_cycle_diagnostic_stage_dependencies_fail_before_loading(
+    monkeypatch, capsys, argv, expected_error,
+) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+    # main writes diagnostic environment before validating stage dependencies.
+    monkeypatch.setattr(bench.os, "environ", dict(bench.os.environ))
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--root-topk-accept", "1", *argv])
+    assert excinfo.value.code == 2
+    assert expected_error in capsys.readouterr().err
+
+
 def test_fused_b1_block_probe_flag_parses() -> None:
     args = build_arg_parser().parse_args(["--fused-b1-block-probe"])
 
