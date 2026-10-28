@@ -6824,8 +6824,9 @@ def _bulk_linear_commit_session() -> Qwen35ParoResidentSession:
     return session
 
 
+@pytest.mark.parametrize("fused_flag", [None, "0", "false", "1"])
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
-def test_qwen35_resident_bulk_linear_commit_always_uses_chunked_kernel(monkeypatch: pytest.MonkeyPatch, retired) -> None:
+def test_qwen35_resident_bulk_linear_commit_always_uses_chunked_kernel(monkeypatch: pytest.MonkeyPatch, retired, fused_flag) -> None:
     calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
     def fake_copy_host_array_to_device(*args, **kwargs):
@@ -6834,6 +6835,10 @@ def test_qwen35_resident_bulk_linear_commit_always_uses_chunked_kernel(monkeypat
     def fake_chunked(*args, **kwargs):
         calls.append(("chunked", args, kwargs))
 
+    if fused_flag is None:
+        monkeypatch.delenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", fused_flag)
     if retired is None:
         monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
     else:
@@ -6871,7 +6876,7 @@ def test_qwen35_resident_bulk_linear_commit_refreshes_only_changed_source_tables
     assert len(commits) == 3
 
 
-@pytest.mark.parametrize("reason", ["host_row", "other_slot", "fused_off", "no_tables"])
+@pytest.mark.parametrize("reason", ["host_row", "other_slot", "no_scratch", "incomplete_scratch", "no_tables"])
 def test_qwen35_resident_bulk_linear_commit_preserves_per_layer_fallback(monkeypatch, reason):
     session = _bulk_linear_commit_session()
     copies = []
@@ -6880,7 +6885,10 @@ def test_qwen35_resident_bulk_linear_commit_preserves_per_layer_fallback(monkeyp
         _tensor(0xB0000 + layer * 0x1000 + slot * 0x100, (16,), DType.FP32),
         _tensor(0xC0000 + layer * 0x1000 + slot * 0x100, (32,), DType.FP32),
     )
-    session._fused_linear_state_commit_enabled = lambda: reason != "fused_off"
+    if reason == "no_scratch":
+        session.linear_scratch = {}
+    elif reason == "incomplete_scratch":
+        session.linear_layer_ids = (1, 3, 5)
     if reason == "no_tables":
         session.linear_state_dst_conv_table_buf = None
     monkeypatch.setattr(runner_module, "linear_state_pair_commit_chunked_i32", lambda *a, **k: pytest.fail("fallback launched chunked kernel"))
@@ -8198,16 +8206,20 @@ def test_paro_native_spec_target_replay_reuses_bound_control() -> None:
     assert bound_launches == [(4, 14)]
 
 
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
 def test_paro_native_spec_target_commit_request_is_paro_registered_only(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, retired,
 ) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", retired)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.backend = "hip_gfx1100"
     session.linear_layer_ids = (0, 2)
     session.linear_state_dst_conv_table_buf = DeviceBuffer(0x1000, 16)
     session.linear_state_dst_recurrent_table_buf = DeviceBuffer(0x1100, 16)
     session._verify_gpu_accept_enabled = lambda: True
-    session._fused_linear_state_commit_enabled = lambda: True
     session._native_spec_provider_target_factory = lambda: object()
     batch = SimpleNamespace(
         mode="verify_chain",

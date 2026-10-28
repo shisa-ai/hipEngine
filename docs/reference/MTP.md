@@ -41,6 +41,12 @@ after each cycle. Device-cache accepted-row repair and native complete-cycle
 cache ownership remain unchanged. Both controls remain available, and
 `--llama-compat` enables them.
 
+The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
+selected-row/packed commits and PARO device-row commits select the chunked
+pointer-table kernel when their layout contracts hold. Per-layer copy
+fallbacks remain for nonuniform GGUF state and PARO host-row, nonzero-slot or
+missing-table/scratch cases; the selector no longer changes native eligibility.
+
 The selected-MoE staged-down runtime selector and Python/C dispatcher branches
 are removed. Selected down execution uses SiLU/rotate then projection;
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is ignored. The independent staged primitive

@@ -11271,7 +11271,7 @@ class Qwen35ParoResidentSession:
             return False
         if not self._verify_gpu_accept_enabled():
             return False
-        if not self._fused_linear_state_commit_enabled() or not self.linear_layer_ids:
+        if not self.linear_layer_ids:
             return False
         if (
             getattr(self, "linear_state_dst_conv_table_buf", None) is None
@@ -14471,13 +14471,12 @@ class Qwen35ParoResidentSession:
         Fallback path: legacy per-layer ``hipMemcpyAsync`` loop, used when the
         device-resident commit row is unavailable (``commit_row_ptr is None``),
         when ``base_slot != 0`` (commit tables are built for slot 0), or when
-        ``HIPENGINE_FUSED_LINEAR_STATE_COMMIT`` is explicitly disabled.
+        the pointer tables or complete per-layer scratch are unavailable.
         """
 
         if (
             commit_row_ptr is not None
             and base_slot == 0
-            and self._fused_linear_state_commit_enabled()
             and getattr(self, "linear_state_dst_conv_table_buf", None) is not None
             and self.linear_scratch
             and len(self.linear_scratch) == len(self.linear_layer_ids)
@@ -14844,12 +14843,6 @@ class Qwen35ParoResidentSession:
         self.linear_state_src_recurrent_cached = np.zeros((len(linear_layer_ids),), dtype=np.uint64)
         self.linear_state_conv_row_nbytes = conv_row_nbytes
         self.linear_state_recurrent_row_nbytes = recurrent_row_nbytes
-
-    def _fused_linear_state_commit_enabled(self) -> bool:
-        value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
-        if value is None or value.strip() == "":
-            return True
-        return value.strip().lower() not in {"0", "false", "no", "off"}
 
     def _w8a16_lm_head_multi_row_enabled(self) -> bool:
         value = os.environ.get("HIPENGINE_W8A16_LM_HEAD_MULTI_ROW")

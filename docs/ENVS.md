@@ -503,7 +503,7 @@ value; leave them unset in production and use the override only for bisection.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_MOE_C1_C_DISPATCH` | true | Master gate for the C-side MoE c=1 dispatch helper (default on after M14.dispatch.1 prewarm validation). `0` restores the Python router wrappers; diagnostics that need to intercept router calls set it themselves. |
-| `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` | true | Fused linear-attention state commit kernel; `0` restores the unfused commit chain in both PARO and GGUF runners. |
+| `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` | retired | No runtime reader. GGUF selected-row/packed and PARO device-row commits use the chunked kernel when their pointer-table/layout contracts hold; per-layer copies remain for unsupported layouts, host rows, nonzero slots and missing tables. |
 | `HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED` | true | Fuses the linear-attention shared down/combine epilogue; `0` restores the parallel epilogue. |
 | `HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED` | true | Fuses the linear-attention shared SiLU-rotate slice; `0` restores the unfused chain. |
 | `HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED` | true | Fuses the full-attention shared down/combine epilogue; `0` restores the parallel epilogue. |

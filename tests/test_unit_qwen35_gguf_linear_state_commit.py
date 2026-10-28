@@ -74,8 +74,9 @@ def _fake_gguf_commit_session() -> Qwen35GGUFResidentSession:
     return session
 
 
+@pytest.mark.parametrize("fused_flag", [None, "0", "false", "1"])
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
-def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch, retired) -> None:
+def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch, retired, fused_flag) -> None:
     allocated: list[DeviceBuffer] = []
     h2d_calls: list[tuple[int, int]] = []
     commit_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
@@ -95,7 +96,10 @@ def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch, 
     def fake_chunked(*args, **kwargs):
         commit_calls.append((args, kwargs))
 
-    monkeypatch.delenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", raising=False)
+    if fused_flag is None:
+        monkeypatch.delenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", fused_flag)
     if retired is None:
         monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
     else:
@@ -157,3 +161,119 @@ def test_gguf_verify_linear_state_commit_rejects_partial_captured_rows(monkeypat
         session._commit_verify_linear_state_row(1, position=17, stream=5)
 
     assert chunked_calls == []
+
+
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+def test_gguf_packed_commit_selects_each_slots_final_row(monkeypatch, retired) -> None:
+    session = _fake_gguf_commit_session()
+    session._verify_linear_conv_state_rows = tuple(
+        None if buffer is None else DeviceBuffer(buffer.ptr, 4 * 64)
+        for buffer in session._verify_linear_conv_state_rows
+    )
+    session._verify_linear_recurrent_state_rows = tuple(
+        None if buffer is None else DeviceBuffer(buffer.ptr, 4 * 128)
+        for buffer in session._verify_linear_recurrent_state_rows
+    )
+    session._verify_linear_state_rows_capacity = 4
+    session.runner.weights = SimpleNamespace(config=SimpleNamespace(
+        layer_types=(gguf_runner.LINEAR_ATTENTION, gguf_runner.FULL_ATTENTION, gguf_runner.LINEAR_ATTENTION),
+    ))
+    allocations = []
+    uploads = {}
+    launches = []
+
+    def allocate(nbytes, **kwargs):
+        buffer = DeviceBuffer(0xD000 + 0x100 * len(allocations), nbytes)
+        allocations.append(buffer)
+        return buffer
+
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", retired)
+    monkeypatch.setattr(gguf_runner, "malloc", allocate)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device",
+                        lambda buffer, array, *a, **k: uploads.update({buffer.ptr: array.copy()}))
+    monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_chunked_i32",
+                        lambda *a, **k: launches.append((a, k)))
+    destinations = {
+        0: (DeviceBuffer(0x100000, 128), DeviceBuffer(0x200000, 256)),
+        2: (DeviceBuffer(0x300000, 128), DeviceBuffer(0x400000, 256)),
+    }
+    session._commit_packed_decode_linear_state_rows(
+        SimpleNamespace(slot_count=2, cu_seqlens=(0, 1, 4)),
+        SimpleNamespace(linear_state_pair=destinations.__getitem__),
+        runtime=session.runtime, stream=7,
+    )
+    assert len(launches) == 1
+    args, kwargs = launches[0]
+    assert args[2] == 64 and args[5] == 128 and args[7] == 4
+    assert kwargs["stream"] == 7
+    np.testing.assert_array_equal(uploads[args[0]], [0x9000, 0x9000 + 3 * 64, 0xA000, 0xA000 + 3 * 64])
+    np.testing.assert_array_equal(uploads[args[3]], [0xB000, 0xB000 + 3 * 128, 0xC000, 0xC000 + 3 * 128])
+    np.testing.assert_array_equal(uploads[args[1]], [0x100000, 0x100040, 0x300000, 0x300040])
+    np.testing.assert_array_equal(uploads[args[4]], [0x200000, 0x200080, 0x400000, 0x400080])
+    np.testing.assert_array_equal(uploads[args[6]], [0])
+    assert session.runtime.memcpy_async_calls == []
+
+
+def test_gguf_commit_preserves_nonuniform_per_layer_copy_fallback(monkeypatch) -> None:
+    session = _fake_gguf_commit_session()
+    session.scratch.layer_conv_states = (DeviceBuffer(0x1000, 64), None, DeviceBuffer(0x2000, 96))
+    monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_chunked_i32",
+                        lambda *a, **k: pytest.fail("nonuniform state launched fused commit"))
+    monkeypatch.setattr(gguf_runner, "set_decode_position_i64", lambda *a, **k: None)
+    session._commit_verify_linear_state_row(1, position=17, stream=5)
+    assert [(dst, src, size) for dst, src, size, _, _ in session.runtime.memcpy_async_calls] == [
+        (0x1000, 0x9040, 64), (0x3000, 0xB080, 128),
+        (0x2000, 0xA060, 96), (0x4000, 0xC080, 128),
+        (0x5000, 0x8010, 16),
+    ]
+    assert session.position == 17
+
+
+def test_gguf_packed_commit_preserves_nonuniform_per_layer_copy_fallback(monkeypatch) -> None:
+    session = _fake_gguf_commit_session()
+    session.runner.weights = SimpleNamespace(config=SimpleNamespace(
+        layer_types=(gguf_runner.LINEAR_ATTENTION, gguf_runner.FULL_ATTENTION, gguf_runner.LINEAR_ATTENTION),
+    ))
+    session.scratch.layer_conv_states = (DeviceBuffer(0x1000, 64), None, DeviceBuffer(0x2000, 96))
+    session._verify_linear_conv_state_rows = (DeviceBuffer(0x9000, 4 * 64), None, DeviceBuffer(0xA000, 4 * 96))
+    session._verify_linear_recurrent_state_rows = (DeviceBuffer(0xB000, 4 * 128), None, DeviceBuffer(0xC000, 4 * 128))
+    session._verify_linear_state_rows_capacity = 4
+    monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_chunked_i32",
+                        lambda *a, **k: pytest.fail("nonuniform packed state launched fused commit"))
+    destinations = {
+        0: (DeviceBuffer(0x100000, 128), DeviceBuffer(0x200000, 256)),
+        2: (DeviceBuffer(0x300000, 192), DeviceBuffer(0x400000, 256)),
+    }
+    session._commit_packed_decode_linear_state_rows(
+        SimpleNamespace(slot_count=2, cu_seqlens=(0, 1, 4)),
+        SimpleNamespace(linear_state_pair=destinations.__getitem__),
+        runtime=session.runtime, stream=7,
+    )
+    assert [(dst, src, size) for dst, src, size, _, _ in session.runtime.memcpy_async_calls] == [
+        (0x100000, 0x9000, 64), (0x200000, 0xB000, 128),
+        (0x100040, 0x90C0, 64), (0x200080, 0xB180, 128),
+        (0x300000, 0xA000, 96), (0x400000, 0xC000, 128),
+        (0x300060, 0xA120, 96), (0x400080, 0xC180, 128),
+    ]
+
+
+def test_gguf_fused_commit_failure_does_not_retry_or_publish_hidden_cursor(monkeypatch) -> None:
+    session = _fake_gguf_commit_session()
+    for index, name in enumerate(("src_conv", "dst_conv", "src_recurrent", "dst_recurrent")):
+        setattr(session, f"_verify_linear_state_{name}_table_buf", DeviceBuffer(0xD000 + index * 0x100, 16))
+    session._verify_linear_state_commit_row_i32_buf = DeviceBuffer(0xD400, 4)
+    session._ensure_verify_linear_state_commit_tables = lambda **kwargs: True
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", lambda *a, **k: None)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("commit launch failed")
+
+    monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_chunked_i32", fail)
+    with pytest.raises(RuntimeError, match="commit launch failed"):
+        session._commit_verify_linear_state_row(1, position=17, stream=5)
+    assert session.runtime.memcpy_async_calls == []
+    assert session.position == 0
+    assert not session._hidden_seed_fp32_populated

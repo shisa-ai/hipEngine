@@ -26914,148 +26914,147 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session is closed")
         cfg = self.runner.weights.config
         used_fused_commit = False
-        if self._fused_linear_state_commit_enabled():
-            conv_sources: list[int] = []
-            recurrent_sources: list[int] = []
-            conv_dests: list[int] = []
-            recurrent_dests: list[int] = []
-            conv_row_nbytes = 0
-            recurrent_row_nbytes = 0
-            for layer_id, layer_type in enumerate(cfg.layer_types):
-                if layer_type != LINEAR_ATTENTION:
-                    continue
-                src_pair = self._verify_linear_state_row_pair(layer_id)
-                if src_pair is None:
-                    raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
-                src_conv_rows, src_recurrent_rows = src_pair
-                dst_conv, dst_recurrent = packed_state.linear_state_pair(layer_id)
-                single_conv_state = self.scratch.layer_conv_states[layer_id]
-                single_recurrent_state = self.scratch.layer_recurrent_states[layer_id]
-                if single_conv_state is None or single_recurrent_state is None:
-                    raise RuntimeError(f"session layer {layer_id} missing linear state")
-                conv_nbytes = int(single_conv_state.nbytes)
-                recurrent_nbytes = int(single_recurrent_state.nbytes)
-                if conv_row_nbytes not in {0, conv_nbytes}:
-                    conv_sources = []
-                    break
-                if recurrent_row_nbytes not in {0, recurrent_nbytes}:
-                    conv_sources = []
-                    break
-                conv_row_nbytes = conv_nbytes
-                recurrent_row_nbytes = recurrent_nbytes
-                for slot_index in range(int(layout.slot_count)):
-                    final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
-                    if final_row < int(layout.cu_seqlens[slot_index]):
-                        raise RuntimeError("packed AR decode slot has no final row to commit")
-                    conv_sources.append(int(src_conv_rows.ptr) + final_row * conv_nbytes)
-                    recurrent_sources.append(int(src_recurrent_rows.ptr) + final_row * recurrent_nbytes)
-                    conv_dests.append(int(dst_conv.ptr) + slot_index * conv_nbytes)
-                    recurrent_dests.append(int(dst_recurrent.ptr) + slot_index * recurrent_nbytes)
-            n_entries = len(conv_sources)
-            if n_entries > 0 and n_entries == len(recurrent_sources):
-                tables_ready = (
-                    self._verify_linear_state_src_conv_table_buf is not None
-                    and self._verify_linear_state_src_recurrent_table_buf is not None
-                    and self._verify_linear_state_dst_conv_table_buf is not None
-                    and self._verify_linear_state_dst_recurrent_table_buf is not None
-                    and self._verify_linear_state_commit_row_i32_buf is not None
-                    and int(self._verify_linear_state_layer_count) == n_entries
-                    and int(self._verify_linear_state_conv_row_nbytes) == conv_row_nbytes
-                    and int(self._verify_linear_state_recurrent_row_nbytes) == recurrent_row_nbytes
+        conv_sources: list[int] = []
+        recurrent_sources: list[int] = []
+        conv_dests: list[int] = []
+        recurrent_dests: list[int] = []
+        conv_row_nbytes = 0
+        recurrent_row_nbytes = 0
+        for layer_id, layer_type in enumerate(cfg.layer_types):
+            if layer_type != LINEAR_ATTENTION:
+                continue
+            src_pair = self._verify_linear_state_row_pair(layer_id)
+            if src_pair is None:
+                raise RuntimeError(f"linear-state rows for layer {layer_id} were not captured")
+            src_conv_rows, src_recurrent_rows = src_pair
+            dst_conv, dst_recurrent = packed_state.linear_state_pair(layer_id)
+            single_conv_state = self.scratch.layer_conv_states[layer_id]
+            single_recurrent_state = self.scratch.layer_recurrent_states[layer_id]
+            if single_conv_state is None or single_recurrent_state is None:
+                raise RuntimeError(f"session layer {layer_id} missing linear state")
+            conv_nbytes = int(single_conv_state.nbytes)
+            recurrent_nbytes = int(single_recurrent_state.nbytes)
+            if conv_row_nbytes not in {0, conv_nbytes}:
+                conv_sources = []
+                break
+            if recurrent_row_nbytes not in {0, recurrent_nbytes}:
+                conv_sources = []
+                break
+            conv_row_nbytes = conv_nbytes
+            recurrent_row_nbytes = recurrent_nbytes
+            for slot_index in range(int(layout.slot_count)):
+                final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                if final_row < int(layout.cu_seqlens[slot_index]):
+                    raise RuntimeError("packed AR decode slot has no final row to commit")
+                conv_sources.append(int(src_conv_rows.ptr) + final_row * conv_nbytes)
+                recurrent_sources.append(int(src_recurrent_rows.ptr) + final_row * recurrent_nbytes)
+                conv_dests.append(int(dst_conv.ptr) + slot_index * conv_nbytes)
+                recurrent_dests.append(int(dst_recurrent.ptr) + slot_index * recurrent_nbytes)
+        n_entries = len(conv_sources)
+        if n_entries > 0 and n_entries == len(recurrent_sources):
+            tables_ready = (
+                self._verify_linear_state_src_conv_table_buf is not None
+                and self._verify_linear_state_src_recurrent_table_buf is not None
+                and self._verify_linear_state_dst_conv_table_buf is not None
+                and self._verify_linear_state_dst_recurrent_table_buf is not None
+                and self._verify_linear_state_commit_row_i32_buf is not None
+                and int(self._verify_linear_state_layer_count) == n_entries
+                and int(self._verify_linear_state_conv_row_nbytes) == conv_row_nbytes
+                and int(self._verify_linear_state_recurrent_row_nbytes) == recurrent_row_nbytes
+            )
+            if not tables_ready:
+                table_nbytes = n_entries * np.dtype(np.uint64).itemsize
+                new_buffers = (
+                    malloc(table_nbytes, runtime=runtime),
+                    malloc(table_nbytes, runtime=runtime),
+                    malloc(table_nbytes, runtime=runtime),
+                    malloc(table_nbytes, runtime=runtime),
+                    malloc(DType.INT32.itemsize, runtime=runtime),
                 )
-                if not tables_ready:
-                    table_nbytes = n_entries * np.dtype(np.uint64).itemsize
-                    new_buffers = (
-                        malloc(table_nbytes, runtime=runtime),
-                        malloc(table_nbytes, runtime=runtime),
-                        malloc(table_nbytes, runtime=runtime),
-                        malloc(table_nbytes, runtime=runtime),
-                        malloc(DType.INT32.itemsize, runtime=runtime),
-                    )
-                    self._verify_linear_state_src_conv_table_buf = new_buffers[0]
-                    self._verify_linear_state_src_recurrent_table_buf = new_buffers[1]
-                    self._verify_linear_state_dst_conv_table_buf = new_buffers[2]
-                    self._verify_linear_state_dst_recurrent_table_buf = new_buffers[3]
-                    self._verify_linear_state_commit_row_i32_buf = new_buffers[4]
-                    self._verify_linear_state_src_conv_host = np.zeros((n_entries,), dtype=np.uint64)
-                    self._verify_linear_state_src_recurrent_host = np.zeros((n_entries,), dtype=np.uint64)
-                    self._verify_linear_state_src_conv_cached = np.zeros((n_entries,), dtype=np.uint64)
-                    self._verify_linear_state_src_recurrent_cached = np.zeros((n_entries,), dtype=np.uint64)
-                    self._verify_linear_state_dst_conv_host = np.zeros((n_entries,), dtype=np.uint64)
-                    self._verify_linear_state_dst_recurrent_host = np.zeros((n_entries,), dtype=np.uint64)
-                    self._verify_linear_state_conv_row_nbytes = conv_row_nbytes
-                    self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
-                    self._verify_linear_state_layer_count = n_entries
-                    self._buffers = (*self._buffers, *new_buffers)
-                assert self._verify_linear_state_src_conv_host is not None
-                assert self._verify_linear_state_src_recurrent_host is not None
-                assert self._verify_linear_state_src_conv_cached is not None
-                assert self._verify_linear_state_src_recurrent_cached is not None
-                assert self._verify_linear_state_dst_conv_host is not None
-                assert self._verify_linear_state_dst_recurrent_host is not None
-                self._verify_linear_state_src_conv_host[:] = np.asarray(conv_sources, dtype=np.uint64)
-                self._verify_linear_state_src_recurrent_host[:] = np.asarray(recurrent_sources, dtype=np.uint64)
-                self._verify_linear_state_dst_conv_host[:] = np.asarray(conv_dests, dtype=np.uint64)
-                self._verify_linear_state_dst_recurrent_host[:] = np.asarray(recurrent_dests, dtype=np.uint64)
-                if not np.array_equal(self._verify_linear_state_src_conv_host, self._verify_linear_state_src_conv_cached):
-                    copy_host_array_to_device(
-                        self._verify_linear_state_src_conv_table_buf,
-                        self._verify_linear_state_src_conv_host,
-                        self._verify_linear_state_src_conv_host.nbytes,
-                        runtime=runtime,
-                    )
-                    np.copyto(self._verify_linear_state_src_conv_cached, self._verify_linear_state_src_conv_host)
-                if not np.array_equal(
+                self._verify_linear_state_src_conv_table_buf = new_buffers[0]
+                self._verify_linear_state_src_recurrent_table_buf = new_buffers[1]
+                self._verify_linear_state_dst_conv_table_buf = new_buffers[2]
+                self._verify_linear_state_dst_recurrent_table_buf = new_buffers[3]
+                self._verify_linear_state_commit_row_i32_buf = new_buffers[4]
+                self._verify_linear_state_src_conv_host = np.zeros((n_entries,), dtype=np.uint64)
+                self._verify_linear_state_src_recurrent_host = np.zeros((n_entries,), dtype=np.uint64)
+                self._verify_linear_state_src_conv_cached = np.zeros((n_entries,), dtype=np.uint64)
+                self._verify_linear_state_src_recurrent_cached = np.zeros((n_entries,), dtype=np.uint64)
+                self._verify_linear_state_dst_conv_host = np.zeros((n_entries,), dtype=np.uint64)
+                self._verify_linear_state_dst_recurrent_host = np.zeros((n_entries,), dtype=np.uint64)
+                self._verify_linear_state_conv_row_nbytes = conv_row_nbytes
+                self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
+                self._verify_linear_state_layer_count = n_entries
+                self._buffers = (*self._buffers, *new_buffers)
+            assert self._verify_linear_state_src_conv_host is not None
+            assert self._verify_linear_state_src_recurrent_host is not None
+            assert self._verify_linear_state_src_conv_cached is not None
+            assert self._verify_linear_state_src_recurrent_cached is not None
+            assert self._verify_linear_state_dst_conv_host is not None
+            assert self._verify_linear_state_dst_recurrent_host is not None
+            self._verify_linear_state_src_conv_host[:] = np.asarray(conv_sources, dtype=np.uint64)
+            self._verify_linear_state_src_recurrent_host[:] = np.asarray(recurrent_sources, dtype=np.uint64)
+            self._verify_linear_state_dst_conv_host[:] = np.asarray(conv_dests, dtype=np.uint64)
+            self._verify_linear_state_dst_recurrent_host[:] = np.asarray(recurrent_dests, dtype=np.uint64)
+            if not np.array_equal(self._verify_linear_state_src_conv_host, self._verify_linear_state_src_conv_cached):
+                copy_host_array_to_device(
+                    self._verify_linear_state_src_conv_table_buf,
+                    self._verify_linear_state_src_conv_host,
+                    self._verify_linear_state_src_conv_host.nbytes,
+                    runtime=runtime,
+                )
+                np.copyto(self._verify_linear_state_src_conv_cached, self._verify_linear_state_src_conv_host)
+            if not np.array_equal(
+                self._verify_linear_state_src_recurrent_host,
+                self._verify_linear_state_src_recurrent_cached,
+            ):
+                copy_host_array_to_device(
+                    self._verify_linear_state_src_recurrent_table_buf,
                     self._verify_linear_state_src_recurrent_host,
-                    self._verify_linear_state_src_recurrent_cached,
-                ):
-                    copy_host_array_to_device(
-                        self._verify_linear_state_src_recurrent_table_buf,
-                        self._verify_linear_state_src_recurrent_host,
-                        self._verify_linear_state_src_recurrent_host.nbytes,
-                        runtime=runtime,
-                    )
-                    np.copyto(self._verify_linear_state_src_recurrent_cached, self._verify_linear_state_src_recurrent_host)
-                copy_host_array_to_device(
-                    self._verify_linear_state_dst_conv_table_buf,
-                    self._verify_linear_state_dst_conv_host,
-                    self._verify_linear_state_dst_conv_host.nbytes,
+                    self._verify_linear_state_src_recurrent_host.nbytes,
                     runtime=runtime,
                 )
-                copy_host_array_to_device(
-                    self._verify_linear_state_dst_recurrent_table_buf,
-                    self._verify_linear_state_dst_recurrent_host,
-                    self._verify_linear_state_dst_recurrent_host.nbytes,
-                    runtime=runtime,
+                np.copyto(self._verify_linear_state_src_recurrent_cached, self._verify_linear_state_src_recurrent_host)
+            copy_host_array_to_device(
+                self._verify_linear_state_dst_conv_table_buf,
+                self._verify_linear_state_dst_conv_host,
+                self._verify_linear_state_dst_conv_host.nbytes,
+                runtime=runtime,
+            )
+            copy_host_array_to_device(
+                self._verify_linear_state_dst_recurrent_table_buf,
+                self._verify_linear_state_dst_recurrent_host,
+                self._verify_linear_state_dst_recurrent_host.nbytes,
+                runtime=runtime,
+            )
+            assert self._verify_linear_state_commit_row_i32_buf is not None
+            commit_row = np.asarray([0], dtype=np.int32)
+            copy_host_array_to_device(
+                self._verify_linear_state_commit_row_i32_buf,
+                commit_row,
+                commit_row.nbytes,
+                runtime=runtime,
+            )
+            if self._dflash_commit_library is None:
+                self._dflash_commit_library = build_dflash_commit(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
                 )
-                assert self._verify_linear_state_commit_row_i32_buf is not None
-                commit_row = np.asarray([0], dtype=np.int32)
-                copy_host_array_to_device(
-                    self._verify_linear_state_commit_row_i32_buf,
-                    commit_row,
-                    commit_row.nbytes,
-                    runtime=runtime,
-                )
-                if self._dflash_commit_library is None:
-                    self._dflash_commit_library = build_dflash_commit(
-                        load=True,
-                        compiler_version=self.compiler_version,
-                        require_cached=self.require_cached_build,
-                    )
-                linear_state_pair_commit_chunked_i32(
-                    self._verify_linear_state_src_conv_table_buf.ptr,
-                    self._verify_linear_state_dst_conv_table_buf.ptr,
-                    int(conv_row_nbytes),
-                    self._verify_linear_state_src_recurrent_table_buf.ptr,
-                    self._verify_linear_state_dst_recurrent_table_buf.ptr,
-                    int(recurrent_row_nbytes),
-                    self._verify_linear_state_commit_row_i32_buf.ptr,
-                    int(n_entries),
-                    stream=stream,
-                    library=self._dflash_commit_library,
-                    runtime=runtime,
-                )
-                used_fused_commit = True
+            linear_state_pair_commit_chunked_i32(
+                self._verify_linear_state_src_conv_table_buf.ptr,
+                self._verify_linear_state_dst_conv_table_buf.ptr,
+                int(conv_row_nbytes),
+                self._verify_linear_state_src_recurrent_table_buf.ptr,
+                self._verify_linear_state_dst_recurrent_table_buf.ptr,
+                int(recurrent_row_nbytes),
+                self._verify_linear_state_commit_row_i32_buf.ptr,
+                int(n_entries),
+                stream=stream,
+                library=self._dflash_commit_library,
+                runtime=runtime,
+            )
+            used_fused_commit = True
         if used_fused_commit:
             return
         for layer_id, layer_type in enumerate(cfg.layer_types):
@@ -28379,12 +28378,6 @@ class Qwen35GGUFResidentSession:
             )
         )
 
-    def _fused_linear_state_commit_enabled(self) -> bool:
-        value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
-        if value is None:
-            return True
-        return value.strip().lower() not in {"0", "false", "no", "off"}
-
     def _ensure_verify_linear_state_commit_tables(self, *, runtime: HipRuntime) -> bool:
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -28510,7 +28503,7 @@ class Qwen35GGUFResidentSession:
             raise ValueError("row_index is outside captured linear-state rows")
         runtime = self.runtime or get_hip_runtime()
         used_fused_commit = False
-        if self._fused_linear_state_commit_enabled() and self._ensure_verify_linear_state_commit_tables(runtime=runtime):
+        if self._ensure_verify_linear_state_commit_tables(runtime=runtime):
             assert self._verify_linear_state_commit_row_i32_buf is not None
             commit_row = np.asarray([row_index], dtype=np.int32)
             copy_host_array_to_device(
