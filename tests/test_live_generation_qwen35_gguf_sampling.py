@@ -1722,7 +1722,8 @@ def test_gguf_speculative_mtp_partial_commit_uses_captured_row() -> None:
     assert [slot.generated_ids, slot.prev_token, slot.seq_position] == [[1, 8], 8, 5]
 
 
-def test_gguf_speculative_mtp_stream_draft_uses_slot_streams(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "false"])
+def test_gguf_speculative_mtp_stream_draft_uses_slot_streams(monkeypatch, retired) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -1796,7 +1797,10 @@ def test_gguf_speculative_mtp_stream_draft_uses_slot_streams(monkeypatch) -> Non
         for slot_id in range(2)
     ]
 
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT", "1")
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT", retired)
     monkeypatch.setattr(qwen35_gguf, "_free_mtp_buffers", lambda buffers, *, runtime: None)
     generator = _generator()
     drafted = generator._try_draft_mtp_serving_slots_streams(

@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MTP server stream draft | `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` is a default-on opt-out around per-slot HIP stream draft proposal for c>N GGUF MTP serving. | Default-on after the 2026-07-05 natural24 server run. It moves packed-verifier c=2/c=4/c=8 MTP **45.57/47.48/47.18 -> 46.75/49.65/48.72 tok/s** and beat the then-current stream-AR rows by **1.058x/1.063x/1.021x**; the later packed-AR route supersedes that same-server AR comparison, so current MTP is below AR. It currently creates a `ThreadPoolExecutor` per draft phase and the c=8 wall remains verifier-heavy. | Remove the env opt-out and/or replace the per-cycle executor with a persistent scheduler after c>N server reruns and profiler evidence show the stream path is non-regressive. Keep the opt-out while tuning verifier wall and thread-pool overhead. |
 | GGUF MTP server stream verify | `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY` is a default-on opt-out around running independent chunk-4 packed target verifier chunks on separate owner-session streams at c>N. | Default-on after the 2026-07-05 natural24 c=8 rerun. It keeps the four-slot verifier cap but overlaps the two c=8 chunks, moving warm c=8 MTP **48.72 -> 52.18 tok/s** and `slots_verify_phase_ms` **15354.902 -> 12345.442**. c=4 remains on the single-chunk path. | Remove the env opt-out after c=2/c=4/c=8 reruns and profiler evidence show the stream verify path is non-regressive; replace it if a tuned rows>=16 verifier or true batched scheduler supersedes chunk-stream overlap. |
 | GGUF row-shaped target executor | `Qwen35GGUFResidentSession.step_rows()` still loops physical slots through the retained c=1 layer path; `verify_rows()` likewise advances each linear-chain row serially. They are explicit correctness/speculative bridges rather than the default independent-decode route. | UD-Q3_K_M C=2/4/8 uses native indexed Conv/GDN, batched `KVLiveSpans` attention, selected-row MoE, row lm-head/argmax, and shape-specific HIP graphs; synchronous greedy prompt lists select the scheduler-owned native path. The serial executor remains the independent layer/full-logit oracle. Task #31's transactional MTP verifier deliberately reuses the exact c=1 row arithmetic and journals each row rather than weakening correctness. | Keep `step_rows()` as an explicit unsupported-shape/bisection oracle. Replace the eager serial MTP chain only when a native dependency-aware root+candidate forward preserves the B=1/2/3 scalar-logit and state/KV commit gates and is same-suite non-regressive; do not remove unfused numerical fallbacks. |
 | GGUF prompt-list scheduling | The promoted scheduler is synchronous and greedy-only: it does not persist across `generate()` calls, serve HTTP arrivals, cancel/disconnect rows, share prefixes, grow/shrink an elastic KV pool, or batch non-greedy sampling. Prefill into a reclaimed slot is still per-request rather than a packed multi-prompt slab. | Stable request ids, 2–8 physical slots, EOS/length reclaim, downward recurrent-state/live-KV compaction, mixed readmission/prefill between decode steps, C/context/mask graph buckets, row argmax, and admission/completion timestamps are retained and exact. Fixed C=2/4/8 scaling is accepted; one in-call 4-request/capacity-2 schedule exercises three admission waves, three compactions, and two readmissions with `serial_decode_fallback=false`. | Move this ownership into the persistent server engine loop, add cancellation/disconnect and elastic/prefix-shared KV, then native per-row non-greedy sampling and packed mixed-prompt prefill. Keep the synchronous path until the persistent route passes the same exactness/provenance gates. |
@@ -11082,3 +11081,33 @@ Reader migration needs real default, explicit serial and stream requests at
 widths below/above eight and an unrelated width, ragged/shrinking groups,
 selected route, repeat output and teardown. Historical F1 throughput stays in
 its original artifacts; no new timing claim is made by this triage.
+
+### R0281-MTP-DRAFT-EXECUTOR — Compatibility draft worker lifetime
+
+The compatibility `_try_draft_mtp_serving_slots_streams` path creates a
+`ThreadPoolExecutor` per draft phase. The per-slot HIP streams already survive
+between cycles and are released by `_close_mtp_serving_slots`. The resident
+MTP2 adapter owns a separate staged proposal path; it does not read the old
+`HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` switch. That rollback reader is now
+removed: supported multi-slot compatibility drafts use streams by default.
+Singletons, one-token tails, missing pending seeds and missing runtime hooks
+retain pre-launch serial fallback. This is device-stream scheduling, not
+buffered versus streamed client token emission as the old env description said.
+
+**Remaining work:** decide whether to retire compatibility execution through
+the existing loop extraction or give its worker pool a bounded request/owner
+lifetime. Do not add another global switch. A persistent pool must retain
+per-slot seed/KV ownership, ordered results, deadline/cancellation handling,
+complete future draining, failure cleanup and shutdown before its device
+resources are released. Profile this path first if claiming pool reuse improves
+complete wall; old server throughput comparisons do not establish current
+worker overhead or a resident MTP2 benefit.
+
+**Clearing action:** run stream-draft and MTP2 nodes in
+`tests/test_live_generation_qwen35_gguf_sampling.py`,
+`tests/test_unit_gguf_mtp_serving_chunk_policy.py` and the GGUF MTP2 seam tests.
+Worker-lifetime changes need direct compatibility requests and public
+`LLM.generate()`/serving validation separately, recording which route actually
+runs, repeat output, shrinking groups, deadline/cancellation/failure, drained
+futures and zero leaked streams/allocations. Do not label a compatibility-only
+worker change as a resident scheduler improvement.

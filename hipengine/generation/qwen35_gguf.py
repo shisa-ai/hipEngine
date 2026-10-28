@@ -578,7 +578,6 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_HOT_VOCAB_ENV = "HIPENGINE_GGUF_MTP_HOT_VOCAB"
-_GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 # Provider prefix checkpoints: one entry per captured prefix, each holding a
@@ -898,10 +897,6 @@ def _gguf_mtp_hot_vocab_setting(execution_profile: str) -> str | None:
     if value.lower() in {"", "0", "false", "off", "none"}:
         return None
     return value
-
-
-def _gguf_mtp_server_stream_draft_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_STREAM_DRAFT_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_stream_verify_enabled() -> bool:
@@ -5592,7 +5587,7 @@ class Qwen35GGUFBringupGenerator:
         *,
         base_env: dict[str, str | None],
     ) -> list[_GGUFMTPDraftedCycle] | None:
-        if len(live_slots) <= 1 or not _gguf_mtp_server_stream_draft_enabled():
+        if len(live_slots) <= 1:
             return None
         for slot in live_slots:
             remaining = int(request.max_tokens) - len(slot.generated_ids)

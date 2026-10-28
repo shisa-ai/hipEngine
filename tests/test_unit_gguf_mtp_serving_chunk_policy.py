@@ -11,6 +11,47 @@ def _generator():
     return object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
 
 
+@pytest.mark.parametrize("count", [0, 1, 2, 3, 4, 8])
+@pytest.mark.parametrize("precondition", ["ready", "tail", "seed", "runtime"])
+def test_stream_draft_keeps_singleton_tail_seed_and_runtime_fallback(
+    monkeypatch, count, precondition,
+):
+    generator = _generator()
+    calls = []
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT", "0")
+    slots = []
+    for index in range(count):
+        runtime = SimpleNamespace(
+            stream_create=lambda **kwargs: 700,
+            stream_synchronize=lambda stream: None,
+            stream_destroy=lambda stream: None,
+        )
+        if precondition == "runtime" and index == count - 1:
+            runtime.stream_synchronize = None
+        slots.append(SimpleNamespace(
+            request_id=index, draft_stream=0, generated_ids=([1, 2] if precondition == "tail" else [1]),
+            resident_context=SimpleNamespace(pending_seed=None if precondition == "seed" else object()),
+            session=SimpleNamespace(runtime=runtime), timing={},
+        ))
+
+    def draft(slot, assets, request, **kwargs):
+        calls.append((slot.request_id, kwargs["draft_stream"]))
+        return slot.request_id
+
+    generator._draft_mtp_serving_slot = draft
+    request = SimpleNamespace(max_tokens=3, deadline_at=None)
+    result = generator._try_draft_mtp_serving_slots_streams(slots, object(), request, base_env={})
+
+    ready = count > 1 and precondition == "ready"
+    if ready:
+        assert result == list(range(count))
+        assert sorted(calls) == [(index, 700) for index in range(count)]
+    else:
+        assert result is None
+        assert calls == []
+        assert all(slot.draft_stream == 0 for slot in slots)
+
+
 @pytest.mark.parametrize(
     "count,widths",
     [
