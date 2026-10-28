@@ -97,6 +97,9 @@ former runtime selection.
 > standalone primitives stay registered. Python and native MoE dispatch use
 > separate input rotation and projection; unused keyed barrier scratch, host
 > counters and the associated graph-capture toggle are removed.
+> `HIPENGINE_FUSED_RMSNORM_ROTATE` is also retired: verifier linear attention
+> runs input normalization before rotation, while the fused primitive stays
+> registered for direct comparisons.
 >
 > For the current cross-provider milestone definitions and consolidated W7900/
 > gfx1151 performance status, use

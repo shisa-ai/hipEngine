@@ -3439,6 +3439,66 @@ def test_qwen35_decode_state_runs_linear_attention_fp16_out_proj_chain(monkeypat
     assert order == ["rotate2", "dual_pack8", "dense_dual", "conv", "gdn", "cast", "rotate1", "pack8"]
 
 
+@pytest.mark.parametrize("retired", [None, "0", "1", "true"])
+@pytest.mark.parametrize("tokens", [1, 3, 7])
+def test_chain_tloop_ignores_retired_rmsnorm_rotate(monkeypatch, retired, tokens) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_FUSED_RMSNORM_ROTATE", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_FUSED_RMSNORM_ROTATE", retired)
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    linear = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype="fp16")
+    moe = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype="fp16")
+    hidden = _tensor(0xC000, (tokens, 4096), "fp16")
+    conv = _tensor(0xC100, (8192, 4), "fp32")
+    recurrent = _tensor(0xC200, (32, 128, 128), "fp32")
+    order = []
+
+    def norm(source, target, **kw):
+        assert source is hidden and target is linear.attn_input
+        assert kw["tokens"] == tokens and kw["stream"] == 0x73
+        order.append("norm")
+        return target
+
+    def rotate(source, target, **kw):
+        assert source is linear.attn_input and target is linear
+        assert kw["tokens"] == tokens and kw["stream"] == 0x73
+        order.append("rotate")
+
+    def record(name, result=None):
+        def call(*_a, **_kw):
+            order.append(name)
+            return result
+        return call
+
+    monkeypatch.setattr(state, "input_rmsnorm_fp16", norm)
+    monkeypatch.setattr(state, "rotate_linear_attention_inputs_fp16", rotate)
+    monkeypatch.setattr(qwen_runtime, "paro_rmsnorm_rotate2_fp16", record("rejected_fused"), raising=False)
+    for name, label in (("project_linear_attention_qkv_z_fp16", "qkv"), ("project_linear_attention_ab_fp16", "ab")):
+        monkeypatch.setattr(state, name, record(label))
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_chain_conv_decode_fp16_tloop", record("conv"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16", record("gdn"))
+    monkeypatch.setattr(state, "project_linear_attention_out_fp16", record("out", linear.out_proj))
+    monkeypatch.setattr(state, "post_attention_add_rmsnorm_fp16", record("post", (moe.normed, moe.residual)))
+    monkeypatch.setattr(state, "run_moe_c1_fp16", record("moe", moe.moe_out))
+    result = state.run_linear_attention_moe_chain_tloop_layer_fp16(
+        hidden, conv_state=conv, recurrent_state=recurrent,
+        chain_conv_state=linear.tree_conv_state, chain_recurrent_state=linear.tree_recurrent_state,
+        linear_scratch=linear, moe_scratch=moe, tokens=tokens, stream=0x73,
+    )
+    assert result is moe.moe_out
+    assert order == ["norm", "rotate", "qkv", "ab", "conv", "gdn", "out", "post", "moe"]
+
+
+def test_rejected_rmsnorm_rotate_stays_registered() -> None:
+    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.rotary.paro_rotate import paro_rmsnorm_rotate2_fp16
+    assert resolve(
+        backend="hip_gfx1100", layer="paro_rmsnorm_rotate2", quant="w4_paro", variant="fp16",
+    ) is paro_rmsnorm_rotate2_fp16
+
+
 @pytest.mark.parametrize("force_small_batch,expected", [(False, False), (True, True)])
 def test_qwen35_decode_state_chain_tloop_honors_small_batch_shared_expert(
     monkeypatch,

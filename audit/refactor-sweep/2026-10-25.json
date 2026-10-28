@@ -8080,7 +8080,8 @@
         {
           "line": 6272,
           "text": "| MTP verifier rejected gate | `HIPENGINE_FUSED_RMSNORM_ROTATE` opt-in for M15.4 fused input RMSNorm + PARO rotate2. | Default-off; current-stack retest on 2026-06-11 stayed exact but regressed verifier kernel `13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass`. | After the MTP break-even path is stable, remove the runtime gate or demote it to a kernel test-only path unless a new implementation avoids the one-block RMSNorm occupancy trap. |",
-          "status": "pending"
+          "status": "fixed-rejected-rmsnorm-rotate-runtime-retired",
+          "evidence": "Removed the sole verifier fused norm/rotate runtime branch, import and now-unused selector/shape helpers; kept separate default normalization/rotation and standalone fused primitive. RED/GREEN, 627 focused tests, public stale-value norm/rotate route controls, direct GPU fused parity and graph replay, CPU/docs/audit gates pass. Worklog: worklog/entries/20261028T124016.847013Z-cleanup-refactor-r0281-rmsnorm-rotate-ff4e70.md."
         },
         {
           "line": 6273,
