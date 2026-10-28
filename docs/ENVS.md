@@ -596,10 +596,10 @@ an env variable.
 | `HIPENGINE_SHARED_DOWN_COMBINE_PREFILL_MIN_TOKENS` | `2` | Retained prefill tiling | Minimum tokens for shared down/combine token tiling. |
 | `HIPENGINE_PARO_ROTATE_DUAL_PACK8_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |
 | `HIPENGINE_PARO_FULL_ATTN_KV_PACK8_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |
-| `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION` | `auto` (unset) | Capacity/perf policy | Streams the direct INT8 prefill attention path that reads the retained INT8 store directly instead of a temporary BF16 oracle; `auto` requires a very long prompt under low memory pressure. |
+| `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION` | `auto` (unset) | Capacity/perf policy | `streaming` reads retained INT8 directly; `oracle` uses a temporary BF16 pair. Uniform `auto` requires the minimum prompt length and either total memory at/below the configured limit or free memory at/below oracle bytes plus reserve. Tail-four `auto` keeps the mixed BF16-oracle bridge. |
 | `HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS` | `229376` (224K) | Capacity policy | Minimum prompt tokens before `auto` selects the streaming direct INT8 prefill. |
 | `HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB` | `26.0` | Capacity policy | Total-memory GiB threshold below which `auto` considers the streaming INT8 prefill. |
-| `HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB` | `1024` | Capacity policy | MiB reserved for the write-through BF16 oracle pair when the oracle-bridge prefill path runs. |
+| `HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB` | `1024` | Capacity policy | Free-memory headroom added to the page-rounded BF16 oracle-pair estimate when `auto` tests pressure; not an allocation. Equality selects streaming once the prompt-length condition holds. |
 | `HIPENGINE_PARO_ROUTER_TOPK_COOP` | false | Rejected/diagnostic | Leave unset unless reproducing router-coop probes. |
 | `HIPENGINE_LINEAR_GDN_PREFILL_ROTATE_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |
 | `HIPENGINE_PREFILL_ROUTER_SHARED_GATE_SIGMOID_FUSED` | false | Rejected/diagnostic | Leave unset unless reproducing fusion probes. |

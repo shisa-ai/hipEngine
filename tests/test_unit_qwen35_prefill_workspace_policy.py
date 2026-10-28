@@ -93,6 +93,55 @@ def test_int8_prefill_attention_auto_requires_very_long_low_memory_pressure(monk
     assert fragmented_high_memory._prefill_int8_attention_path(262143) == "streaming_direct"
 
 
+@pytest.mark.parametrize("tokens", [229375, 229376, 229377, 245123])
+@pytest.mark.parametrize("pressure_source", ["total", "free", "none"])
+def test_int8_prefill_auto_crosses_length_and_resource_bounds(
+    monkeypatch, tokens: int, pressure_source: str,
+) -> None:
+    for name in (
+        "HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION",
+        "HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS",
+        "HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB",
+        "HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    session = _session_with_prefill_config(
+        PrefillConfig(), storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+    )
+    session.runtime.total_bytes = int(26 * 1024**3) + (pressure_source != "total")
+    oracle_and_reserve = session._prefill_int8_oracle_bytes(tokens) + 1024 * 1024**2
+    session.runtime.free_bytes = oracle_and_reserve + (pressure_source != "free")
+
+    expected = "streaming_direct" if tokens >= 229376 and pressure_source != "none" else "oracle_bf16"
+    assert session._prefill_int8_attention_path(tokens) == expected
+
+
+def test_int8_prefill_resource_overrides_and_meminfo_failure(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION", "auto")
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB", "0")
+    session = _session_with_prefill_config(
+        PrefillConfig(), storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        free_gib=1, total_gib=24,
+    )
+    tokens = 12345
+    assert session._prefill_int8_attention_path(tokens) == "oracle_bf16"
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB", "24")
+    assert session._prefill_int8_attention_path(tokens) == "streaming_direct"
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB", "1024")
+    assert session._prefill_int8_attention_path(tokens) == "streaming_direct"
+
+    def unavailable():
+        raise RuntimeError("meminfo unavailable")
+
+    session.runtime.mem_get_info = unavailable
+    assert session._prefill_int8_attention_path(tokens) == "oracle_bf16"
+    monkeypatch.setenv("HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION", "streaming")
+    assert session._prefill_int8_attention_path(tokens) == "streaming_direct"
+
+
 def test_tail4_hadamard_prefill_defaults_to_bf16_oracle_with_direct_diagnostic(monkeypatch) -> None:
     session = _session_with_prefill_config(
         PrefillConfig(attn_aotriton_min_tokens=512),

@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Qwen3.5/PARO INT8 KV prefill | `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION`, `HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS`, `HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB`, and `HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB` gate direct streaming INT8 prefill after the 2026-06-15 GPU1 sweep found a severe 128K prefill regression. | Default `auto`: use the fast temporary BF16-oracle/AOTriton bridge unless prompts are at least `224Ki` rows **and** device/meminfo pressure says the oracle is unsafe (`total <= 26 GiB` or free memory cannot cover oracle bytes plus a 1 GiB reserve). This keeps W7900/Strix-style larger-memory runs on the fast path while preserving the 24GB 262K scratch win. Direct streaming is not throughput-promoted (`1020.723 -> 23.425 tok/s` at 128K/128). | Remove the gate after a memory-safe fast INT8 prefill path matches the BF16-oracle/AOTriton speed envelope at `512/128`, `4K/128`, and `128K/128` while retaining the 262K no-oracle memory gate; otherwise demote direct streaming to a dedicated diagnostic/scratch-probe path. |
 | Qwen3.5 GGUF/PARO tail-four mixed KV | Explicit `tail4_hadamard_group32` policy plus the BF16-attention/packed-retention prefill bridge; PARO keeps `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION=streaming` as the direct-INT8 diagnostic. | Explicit-only and **not supported/default**. Clean therock-7.15 35B GGUF gates pass all 11 prompts at 512/8 and 4K/16 plus bounded `mixed_v1` at 128K/16, save exactly 18.75% persistent K/V, and retain zero persistent BF16 shadow, but reject on prefill/decode and allocator high water. Exact-file Qwen3.8-27B now also passes complete 512/8 and 4K/16 plus bounded 32K/16. Its graph decode improves `2.58%` and live ownership falls `0.236 GiB`, but prefill falls `0.342%` and four 32K oracle pairs raise tracked peak `0.268 GiB`; binding the retained cache directly to the no-oracle Hadamard prefill path produces non-finite logits. Native PARO separately fails its quality/capacity gates. | Keep as a reproducible diagnostic. The geometry/policy planner now selects a bounded shared-oracle owner for memory-positive GGUF tail-four layouts, but this qualification reran only pure INT8; rerun complete tail-four quality, server high-water, performance, graph, and natural MTP before changing its status. PARO still requires a quality-safe layout and physical capacity pass. Remove rejected direct/oracle plumbing only after a promoted design supersedes it. |
 | Qwen3.5 GGUF/PARO native sampler | `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` is the PARO rollback opt-out; `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` enables the separate GGUF correctness candidate. | PARO remains default-on for supported c1 and scheduler-owned c>N serial-per-slot rows. GGUF is explicit-only: supported c1 and dense compatible c>N rows use native row/rows selection with zero full-vocabulary D2H; forced/dynamic/unsupported combinations remain host-backed. The W7900 c4 correctness artifact passes fixed-seed/state/KV/finish/ownership gates, but A3 stops before timing: native-eligible auto tools fail the frozen turn-1 strict-envelope oracle, while 4/4 exact forced-tool turns report `host_logits_sample` / `native_gpu_unsupported_request`. No active-SSE/tool-ready claim exists. | The A3 non-promotion trigger has fired. In a dedicated cleanup unit, remove the GGUF env branch and resident workspace wiring while retaining the standalone sampler/kernel correctness gates, unless a model-general native forced/dynamic-queue or constrained auto-tool design is approved and separately correctness-gated first. Separately remove the PARO opt-out after its release window. |
 | GGUF MoE decode graph | `HIPENGINE_GGUF_MOE_GRAPH` opt-in around per-layer rows==1 MoE FFN capture/replay (`hipengine/runtime/moe_graph.py` + `_run_decode_layer_graphed`). | Default-off. Proven bit-exact on 35B-A3B Q4_K_M (KL=0, 40 captures / 3800 replays / 0 rejects). Cuts the FFN ~64% in launch count (~440->40/token) but multi-trial (3x32 steps) shows a **consistent ~0.84% wall regression** (eager 18.12 vs graph 18.27 ms/step, non-overlapping p10-p90 bands) — NOT noise. The host was already ahead of the GPU (decode is bandwidth/compute bound), so removing launches reclaims no wall and the graph launch overlaps marginally worse with the surrounding eager attention. Fails the non-regressive gate, so NOT promoted. Kept as the validated A/B lever proving launch-count is not the decode bottleneck. Artifact `benchmarks/results/2026-06-28-moe-graph-rows1-ab.json`, WORKLOG 2026-06-28. | Remove the flag + `MoeGraphCache` wiring once the bandwidth-bound conclusion is accepted and no rows=4 verifier-graph follow-up is planned. Re-A/B (and only then reconsider default-on) if a future per-GEMV bandwidth cut shifts the bottleneck back to host-dispatch and makes the launch saving net-positive on wall. Keep `moe_graph.py` + its unit gate as a reusable tool even if the runner wiring is removed. |
@@ -11271,3 +11270,36 @@ reconstruction nodes, then the affected device parity nodes if kernels change.
 A wrapper/library change also needs public Laguna/Qwen MMQ route engagement and
 cleanup. This disposition changes no kernel, CLI, runtime route or default and
 makes no new performance claim.
+
+### R0281-PARO-INT8-PREFILL — Oracle/streaming resource-policy ownership
+
+`Qwen35ParoResidentSession` still implements direct retained-INT8 attention and
+temporary BF16-oracle attention. Uniform `auto` requires the configured minimum
+prompt length and either a total-memory limit or a free-memory comparison against
+a page-rounded oracle pair plus reserve. Equality counts as pressure. Failed
+meminfo reads keep the oracle route; explicit `streaming` or `oracle` overrides
+the automatic choice. Tail-four `auto` retains its mixed BF16-oracle bridge,
+while explicit streaming remains a separate diagnostic. BF16 storage and its
+AOTriton threshold are unchanged.
+
+The four `HIPENGINE_QWEN35_INT8_PREFILL_*` controls are therefore resource/path
+policy, not a blanket INT8 feature enable. Prefill results also publish their
+resolved values/path. Removing the slow direct route would remove a memory-
+pressure alternative, not merely an unused performance candidate. The old speed
+and capacity rows remain historical evidence in the sweep inventory.
+
+**Decision needed:** retain operator resource overrides, or move them into the
+resolved prefill/resource plan and update result metadata. A faster memory-safe
+alternative is separate kernel work, not a prerequisite to exercising either
+implemented route. Preserve explicit invalid-value errors, mixed-layout policy,
+shared scratch/oracle lifetimes and capability fallbacks.
+
+**Clearing action:** migrate both ordinary and packed prefill metadata/readers,
+workspace-policy tests and any external diagnostic callers together; update
+ENVS. Run `tests/test_unit_qwen35_prefill_workspace_policy.py`,
+`tests/test_unit_qwen35_resident_batch_layout.py` and the native mixed-KV suite
+contracts. Exercise public uniform and mixed requests with oracle/direct
+selection, short/long/ragged prompts, resource rejection, reset/cancellation
+and cleanup. Verify actual attention sources and transient oracle owners. Any
+new attention arithmetic needs independent quality/state gates and matched
+memory/performance measurements; this disposition changes none of them.
