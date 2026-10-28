@@ -3434,8 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --mtp-context-replay` slow default-off prompt-catchup replay path. | Useful to bracket llama.cpp-style MTP prompt catch-up while the resident bulk target path exposes only the final hidden row. Current smoke is acceptance-negative and should not be the default benchmark path. | Remove or move to a dedicated debug harness after bulk prefill exposes all-row fp32 hidden seeds and the real MTP KV/RoPE path is implemented, or if that path supersedes replay diagnostics. |
-| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --mtp-device-kv-cache` default-off device-resident MTP dense KV context. | Implemented for B1 llama.cpp-parity investigation: MTP attention writes post-RoPE K/V to persistent device buffers, draft steps attend over the cache, and accepted target rows use a KV-write-only commit path. Smoke is much faster than host replay/prefix diagnostics but still below the retained no-cache default, so it is opt-in only. | Promote to default only if a same-protocol full-suite row improves raw tok/s, accepted/output, and draft_acceptance; otherwise move to a dedicated debug harness or replace with a paged/KVLiveSpans implementation once bulk hidden-row capture lands. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --target-graph-batched-verify` full-accept-required verifier graph replay experiment. | Default-off; records generated target IDs and FP32 hidden seeds for a whole strict verifier block. The 2026-06-25 merge-sort B3 smoke stayed exact but was speed-neutral/slower because target kernels still execute sequentially inside the graph and hidden-row recording adds overhead. | Remove unless a true rollback-safe block verifier starts using the recorded hidden rows, or promote only after full-suite evidence shows a speed win over one-step graph replay without requiring prompt-specific full acceptance. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --target-block-verify[=bulk/native]` rollback-safe target continuation block verifier. | Default-off; snapshots linear-attention conv/recurrent state with persistent buffers, runs row-bulk target continuation over `[prev]+drafts`, records target IDs + FP32 hidden seeds, and restores/replays the consumed prefix on partial accept. Tiny B3/B5 verifier blocks now default to `--no-target-block-wmma-prefill` because selected/WMMA prefill regressed the B3+32k smoke (`37.8 tok/s`); the GEMV verifier fallback lifts the same smoke to `48.1 tok/s` with `15/15` accepts, but B5 partial rollback remains slow. | Keep as a correctness scaffold and small-B scheduler harness. Promote only if verifier `ar_decode_ms` beats one-step graph replay on full-suite/heldout without reducing acceptance; otherwise replace the linear-attention/rollback pieces with a dedicated small-B continuation kernel and do not re-enable selected-prefill for tiny verifier blocks without evidence. |
 | GGUF NativeSpecCycle target route | `scripts/gguf_mtp_bench.py --native-spec-target-cycle` and the legacy-named `native_v1_b2_target_graph` provider route. N1 VERIFY admits independent B1/B2/B3 shape buckets; N2 remains B1/B2. | Retained for explicit accuracy-traded `llama-compat` on both admitted gfx11 backends. One fixed-address graph per admitted bucket uses live device token/position/context/cursor metadata. gfx1100 clean repeats reach **123.332/122.667 tok/s**, preserve every prior 240-ID/96-cycle trajectory and 80.45% acceptance, and clear the 115.444 tok/s llama.cpp floor. The independent gfx1151 transfer reaches **80.132 tok/s** for N1 and **80.099** for public N3 versus **70.020** direct commit (+14.39% N3); all 240 IDs/97 cycle semantics, the real N1/N2 state/KV oracle, and the cached profiler gate pass. Exact dense Qwen3.6 B3 has changing-position plus reject/partial/full transaction coverage and is retained after clean natural25 moved B1/B2/B3 20.846/22.102/21.840 -> 23.225/24.820/25.193 tok/s with every prompt/category/heldout row exact and non-regressive. Other exact/default MTP routes remain unchanged, and the gfx1151 N3P proposal graph remains unregistered. | Keep target-only N1 as the proven performance/rollback boundary while gfx1100 N3 remains below it. Remove the user-facing target-only flag only when complete-cycle ownership is non-regressive on both backends. Rename the legacy `b2` helper/class/registry surface only in a coordinated ABI migration rather than forking another route. Do not route accuracy-traded policy into exact/default MTP; the dense extension itself remains exact. |
@@ -11520,3 +11518,35 @@ plus parser/suite/workbench contracts. A runtime migration needs real
 linear/root/sibling/redraft cycle, hidden/KV/cursor, reset and close checks;
 confirm public generation is unchanged. Any new performance claim needs its
 own matched protocol, not the retired ledger row's numbers.
+
+### R0281-CONTEXT — GGUF benchmark prompt priming and draft KV policy
+
+`--mtp-context-replay` captures every prompt hidden row through bulk target
+prefill and constructs the shifted llama.cpp-style prompt inputs. With
+`--mtp-device-kv-cache`, resident `write_kv_rows` or the legacy KV-only draft
+call primes device KV before measured cycles. Without device KV, the flag
+captures host prompt rows only; it does not replay a growing host history.
+The unused per-cycle host token/hidden-history append is removed.
+
+Device KV also works without prompt catch-up. It retains the cycle-start row,
+replaces accepted speculative rows with verifier-derived hidden rows and drops
+rejected rows by resetting the cache length. Native complete-cycle execution
+owns its own repair/cursor result instead. These flags are forced by
+llama-compat and remain explicit in suite/workbench context comparisons;
+complete-cycle diagnostics require device KV. They are not limited to B1.
+
+**Decision needed:** preserve these independent prompt/cache comparisons or
+replace the switches with an explicit benchmark context policy across their
+callers. Prompt priming, cache placement and public NextN prompt streaming are
+different owners; do not replace one with another or change the standalone
+single-seed default merely to remove a switch. Historical timing results do
+not decide whether an implemented cache configuration may execute.
+
+**Clearing action:** migrate all-row prompt capture/shift, resident and legacy
+KV writers, device-seed staging, native proposal cache ownership, suite/workbench
+arguments and context/cache provenance together. Retain no-cache, device-only
+and prompt-primed cases, B1 and deeper drafts, reject/partial/full repair,
+capacity exhaustion, cached-session reset and close checks. Run real host/device
+seed cycles and verify output, acceptance, hidden/KV/cursor continuity; confirm
+the public NextN provider is unchanged. Do not remove the compatibility cache
+until its replacement implements those same lifetime and commit semantics.

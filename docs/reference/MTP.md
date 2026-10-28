@@ -16,6 +16,14 @@ handling still use eager verification. The `--mtp-draft-warmup` and
 `--target-graph-verify` CLI switches, including their `--no-` forms, are
 removed; dated commands below may record the former controls.
 
+`--mtp-context-replay` captures bulk target prompt hidden rows and shifts them
+for llama.cpp-style draft prompt priming. With `--mtp-device-kv-cache`, the
+resident or legacy KV writer primes the device cache before cycles; without
+it, only host prompt rows are captured. No host token/hidden history grows
+after each cycle. Device-cache accepted-row repair and native complete-cycle
+cache ownership remain unchanged. Both controls remain available, and
+`--llama-compat` enables them.
+
 The selected-MoE staged-down runtime selector and Python/C dispatcher branches
 are removed. Selected down execution uses SiLU/rotate then projection;
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is ignored. The independent staged primitive

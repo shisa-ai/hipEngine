@@ -8116,12 +8116,14 @@
         {
           "line": 6278,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --mtp-context-replay` slow default-off prompt-catchup replay path. | Useful to bracket llama.cpp-style MTP prompt catch-up while the resident bulk target path exposes only the final hidden row. Current smoke is acceptance-negative and should not be the default benchmark path. | Remove or move to a dedicated debug harness after bulk prefill exposes all-row fp32 hidden seeds and the real MTP KV/RoPE path is implemented, or if that path supersedes replay diagnostics. |",
-          "status": "pending"
+          "status": "deferred-gguf-context-policy-migration",
+          "evidence": "Moved to bottom queue R0281-CONTEXT: all-row bulk capture and shifted prompt priming are implemented; llama-compat, suite and workbench callers still use the control. Removed unused per-cycle host token/hidden-history append, not prompt priming. Concrete policy/caller/lifetime migration checks replace old timing/default claims. Worklog: worklog/entries/20261028T150418.803946Z-cleanup-refactor-r0281-gguf-context-history-7f67e0.md."
         },
         {
           "line": 6279,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --mtp-device-kv-cache` default-off device-resident MTP dense KV context. | Implemented for B1 llama.cpp-parity investigation: MTP attention writes post-RoPE K/V to persistent device buffers, draft steps attend over the cache, and accepted target rows use a KV-write-only commit path. Smoke is much faster than host replay/prefix diagnostics but still below the retained no-cache default, so it is opt-in only. | Promote to default only if a same-protocol full-suite row improves raw tok/s, accepted/output, and draft_acceptance; otherwise move to a dedicated debug harness or replace with a paged/KVLiveSpans implementation once bulk hidden-row capture lands. |",
-          "status": "pending"
+          "status": "deferred-gguf-context-policy-migration",
+          "evidence": "Moved with row6278 to R0281-CONTEXT. Cache supports deeper drafting, device-only or prompt-primed context and verifier-derived accepted-row repair; native complete-cycle owns repair/cursors. Preserve live compatibility/suite/workbench consumers pending explicit context-policy migration, not a benchmark-based admission gate. Worklog: worklog/entries/20261028T150418.803946Z-cleanup-refactor-r0281-gguf-context-history-7f67e0.md."
         },
         {
           "line": 6280,

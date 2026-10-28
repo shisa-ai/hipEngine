@@ -1267,8 +1267,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--mtp-context-replay",
         action="store_true",
         help=(
-            "Diagnostic only: replay llama.cpp-style prompt catch-up rows through the MTP block. "
-            "Slow and currently not the default because the bulk target path does not expose all hidden rows."
+            "Build llama.cpp-style shifted prompt catch-up from bulk target hidden rows. "
+            "With --mtp-device-kv-cache, prime draft KV before cycles; otherwise capture host rows only."
         ),
     )
     parser.add_argument(
@@ -1276,7 +1276,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_MTP_DEVICE_KV_CACHE,
         help=(
-            "Use the device-resident MTP dense KV cache for B1 drafting (default: false). "
+            "Use the device-resident MTP dense KV cache for drafting (default: false). "
             "This matches llama.cpp's draft-model context lifecycle without host K/V concat."
         ),
     )
@@ -3738,26 +3738,6 @@ def main(argv: list[str] | None = None):
                 add_cycle_stage("mtp_device_kv_commit", mtp_device_kv_commit_ms)
                 draft_ms += mtp_device_kv_commit_ms
 
-            if args.mtp_context_replay:
-                # Persist the MTP rows that are now committed in the target
-                # history: the cycle-start sampled token plus any accepted
-                # drafts.  The final corrective target token becomes
-                # ``prev_token`` and is appended as a seed row by the next
-                # draft() call.
-                t_context_append0 = time.perf_counter()
-                if target_hidden_seeds:
-                    context_append_tokens = [cycle_prev_token] + [int(token) for token in output_tokens[:-1]]
-                    context_append_hidden_rows = [cycle_pending_hidden_seed] + target_hidden_seeds[:accepted_draft_tokens]
-                    mtp_context_tokens.extend(context_append_tokens)
-                    context_append_positions = [seq_position + i for i in range(len(context_append_tokens))]
-                    mtp_context_positions.extend(context_append_positions)
-                    mtp_context_hidden_rows = np.concatenate(
-                        [mtp_context_hidden_rows, np.concatenate(context_append_hidden_rows, axis=0)],
-                        axis=0,
-                    )
-                elif not args.resident_mtp_device_seed:
-                    raise RuntimeError("context replay requires host verifier hidden rows")
-                add_cycle_stage("mtp_context_replay_append", (time.perf_counter() - t_context_append0) * 1000)
             prev_token = int(output_tokens[-1])
             previous_cycle_accepted_for_record = previous_cycle_accepted
             previous_cycle_accepted = accepted_draft_tokens

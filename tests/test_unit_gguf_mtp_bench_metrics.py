@@ -68,6 +68,32 @@ def test_retired_warmup_and_target_graph_selectors_are_rejected(option, capsys, 
     assert option not in build_arg_parser().format_help()
 
 
+def test_prompt_catchup_inputs_are_not_retained_in_cycle_history() -> None:
+    tree = ast.parse(inspect.getsource(bench.main))
+    cycles = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.For) and isinstance(node.target, ast.Name) and node.target.id == "cycle"
+    ]
+    assert len(cycles) == 1
+    prompt_inputs = {"mtp_context_tokens", "mtp_context_positions", "mtp_context_hidden_rows"}
+    assert not [
+        node.id for node in ast.walk(cycles[0]) if isinstance(node, ast.Name) and node.id in prompt_inputs
+    ], "prompt priming rows must not grow as an unused host cycle history"
+
+
+def test_context_replay_help_describes_all_row_prompt_capture() -> None:
+    help_text = " ".join(build_arg_parser().format_help().split())
+    assert "bulk target hidden rows" in help_text
+    assert "does not expose all hidden rows" not in help_text
+
+
+def test_device_kv_help_is_not_limited_to_b1() -> None:
+    help_text = " ".join(build_arg_parser().format_help().split())
+    assert "device-resident MTP dense KV cache for drafting" in help_text
+    assert "dense KV cache for B1 drafting" not in help_text
+
+
 def test_target_topk_score_flags_parse_default_off() -> None:
     args = build_arg_parser().parse_args([])
 
