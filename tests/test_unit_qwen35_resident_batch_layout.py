@@ -8107,7 +8107,6 @@ def test_paro_native_spec_target_commit_request_is_paro_registered_only(
     session.linear_state_dst_conv_table_buf = DeviceBuffer(0x1000, 16)
     session.linear_state_dst_recurrent_table_buf = DeviceBuffer(0x1100, 16)
     session._verify_gpu_accept_enabled = lambda: True
-    session._verify_accept_packed_payload_enabled = lambda: True
     session._fused_linear_state_commit_enabled = lambda: True
     session._native_spec_provider_target_factory = lambda: object()
     batch = SimpleNamespace(
@@ -8201,13 +8200,100 @@ def test_verify_accept_payload_can_skip_known_native_synchronization(
         stream_synchronize=lambda stream: synchronizations.append(int(stream))
     )
     session.verify_accept_payload_i32 = DeviceBuffer(0x1000, 7 * DType.INT32.itemsize)
-    session._verify_accept_packed_payload_enabled = lambda: True
     monkeypatch.setattr(runner_module, "copy_device_to_host", lambda *_args, **_kwargs: None)
 
     session._read_verify_accept_payload(1, stream=7, already_synchronized=True)
     session._read_verify_accept_payload(1, stream=7, already_synchronized=False)
 
     assert synchronizations == [7]
+
+
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("request_count", [1, 2, 5])
+@pytest.mark.parametrize("already_synchronized", [False, True])
+def test_verify_accept_payload_always_reads_one_packed_record(
+    monkeypatch: pytest.MonkeyPatch, retired, request_count, already_synchronized,
+) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD", retired)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    synchronizations = []
+    copies = []
+    session.runtime = SimpleNamespace(stream_synchronize=lambda stream: synchronizations.append(stream))
+    expected = np.asarray([
+        [r, r + 1, 20 + r, 8 + r, -1 if r == 0 else 99 + r, r % 2, r + 1]
+        for r in range(request_count)
+    ], dtype=np.int32)
+    session.verify_accept_payload_i32 = DeviceBuffer(0x1000, expected.nbytes)
+
+    def copy(host_ptr, buffer, *, runtime):
+        copies.append((buffer.ptr, buffer.nbytes, runtime))
+        ctypes.memmove(host_ptr, expected.ctypes.data, expected.nbytes)
+
+    monkeypatch.setattr(runner_module, "copy_device_to_host", copy)
+    actual = session._read_verify_accept_payload(
+        request_count, stream=7, already_synchronized=already_synchronized,
+    )
+    assert copies == [(0x1000, expected.nbytes, session.runtime)]
+    assert synchronizations == ([] if already_synchronized else [7])
+    for column, name in enumerate((
+        "accepted_counts", "commit_rows", "commit_tokens", "commit_positions",
+        "next_tokens", "full_accept", "committed_output_lengths",
+    )):
+        convert = bool if name == "full_accept" else int
+        assert actual[name] == tuple(convert(value) for value in expected[:, column])
+
+
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("update_position", [None, False, True])
+@pytest.mark.parametrize("base_slot", [None, 0, 2])
+def test_verify_accept_summary_always_launches_packed_with_commit_buffers(
+    monkeypatch: pytest.MonkeyPatch, retired, update_position, base_slot,
+) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD", retired)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    buffer_names = (
+        "verify_token_ids_i32", "verify_positions_i32", "verify_parent_rows_i32",
+        "verify_draft_depths_i32", "verify_active_mask_u8", "verify_top1_i32",
+        "verify_accepted_counts", "verify_commit_rows", "verify_commit_tokens",
+        "verify_commit_positions", "verify_next_tokens", "verify_full_accept",
+        "verify_committed_output_ids", "verify_committed_output_lengths",
+        "verify_accept_payload_i32", "position_buf", "context_buf",
+    )
+    for index, name in enumerate(buffer_names):
+        setattr(session, name, DeviceBuffer(0x1000 + index * 0x100, 4096))
+    session.libraries = {"dflash_accept": object()}
+    session.runtime = object()
+    session._verify_accept_updates_position_enabled = lambda batch: True
+    calls = []
+    for name in ("dflash_accept_chain_i32_packed", "dflash_accept_chain_i32_packed_update_state"):
+        def record(*args, _name=name, **kwargs):
+            calls.append((_name, args, kwargs))
+        monkeypatch.setattr(runner_module, name, record)
+    batch = SimpleNamespace(request_ids=(7,))
+    session._launch_verify_accept_summary(
+        batch, rows=3, base_slot=base_slot, stream=13, update_position=update_position,
+    )
+    assert len(calls) == 1
+    name, args, kwargs = calls[0]
+    updates = update_position is not False and base_slot is not None
+    assert name == ("dflash_accept_chain_i32_packed_update_state" if updates else "dflash_accept_chain_i32_packed")
+    compatibility = [getattr(session, key).ptr for key in buffer_names[:14]]
+    compatibility.insert(6, None)
+    assert args[:15] == tuple(compatibility)
+    assert args[15] == session.verify_accept_payload_i32.ptr
+    if updates:
+        assert args[16:18] == (
+            session.position_buf.ptr + base_slot * 8,
+            session.context_buf.ptr + base_slot * 8,
+        )
+    assert args[-3:] == (3, 1, 3)
+    assert kwargs == {"stream": 13, "library": session.libraries["dflash_accept"], "runtime": session.runtime}
 
 
 def test_paro_native_spec_target_control_binds_shared_verify_accept_buffers() -> None:

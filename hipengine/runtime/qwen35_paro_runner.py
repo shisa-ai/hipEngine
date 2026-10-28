@@ -46,7 +46,6 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
     build_dflash_commit,
-    dflash_accept_chain_i32,
     dflash_accept_chain_i32_packed,
     dflash_accept_chain_i32_packed_update_state,
     dflash_commit_chain_i32,
@@ -11290,12 +11289,6 @@ class Qwen35ParoResidentSession:
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
-    def _verify_accept_packed_payload_enabled(self) -> bool:
-        value = os.environ.get("HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD")
-        if value is None or value.strip() == "":
-            return True
-        return value.strip().lower() not in {"0", "false", "no", "off"}
-
     def _native_spec_provider_target_graph_enabled(self, batch: TargetVerifyBatch) -> bool:
         if batch.mode != "verify_chain" or len(batch.request_ids) != 1:
             return False
@@ -11355,7 +11348,7 @@ class Qwen35ParoResidentSession:
             or int(base_slot) != 0
         ):
             return False
-        if not self._verify_gpu_accept_enabled() or not self._verify_accept_packed_payload_enabled():
+        if not self._verify_gpu_accept_enabled():
             return False
         if not self._fused_linear_state_commit_enabled() or not self.linear_layer_ids:
             return False
@@ -11431,8 +11424,6 @@ class Qwen35ParoResidentSession:
         if len(batch.request_ids) != 1:
             return False
         if not self._verify_gpu_accept_enabled():
-            return False
-        if not self._verify_accept_packed_payload_enabled():
             return False
         return _env_flag("HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION", False)
 
@@ -12754,7 +12745,6 @@ class Qwen35ParoResidentSession:
                 str(self.kv_storage_dtype.value),
                 str(self.kv_storage_layout),
                 bool(self._verify_gpu_accept_enabled()),
-                bool(self._verify_accept_packed_payload_enabled()),
                 bool(self._verify_accept_updates_position_enabled(batch)),
                 # Layer weights are materialized once per session and freed only
                 # by ``close`` after every graph has retired, so their identity
@@ -14368,29 +14358,17 @@ class Qwen35ParoResidentSession:
             self.verify_committed_output_ids.ptr,
             self.verify_committed_output_lengths.ptr,
         )
-        if self._verify_accept_packed_payload_enabled():
-            should_update_position = (
-                self._verify_accept_updates_position_enabled(batch)
-                if update_position is None
-                else bool(update_position)
-            )
-            if should_update_position and base_slot is not None:
-                dflash_accept_chain_i32_packed_update_state(
-                    *accept_args,
-                    self.verify_accept_payload_i32.ptr,
-                    self.position_buf.ptr + int(base_slot) * DType.INT64.itemsize,
-                    self.context_buf.ptr + int(base_slot) * DType.INT64.itemsize,
-                    rows,
-                    request_count,
-                    rows,
-                    stream=stream,
-                    library=self.libraries["dflash_accept"],
-                    runtime=self.runtime,
-                )
-                return
-            dflash_accept_chain_i32_packed(
+        should_update_position = (
+            self._verify_accept_updates_position_enabled(batch)
+            if update_position is None
+            else bool(update_position)
+        )
+        if should_update_position and base_slot is not None:
+            dflash_accept_chain_i32_packed_update_state(
                 *accept_args,
                 self.verify_accept_payload_i32.ptr,
+                self.position_buf.ptr + int(base_slot) * DType.INT64.itemsize,
+                self.context_buf.ptr + int(base_slot) * DType.INT64.itemsize,
                 rows,
                 request_count,
                 rows,
@@ -14399,8 +14377,9 @@ class Qwen35ParoResidentSession:
                 runtime=self.runtime,
             )
             return
-        dflash_accept_chain_i32(
+        dflash_accept_chain_i32_packed(
             *accept_args,
+            self.verify_accept_payload_i32.ptr,
             rows,
             request_count,
             rows,
@@ -14418,33 +14397,6 @@ class Qwen35ParoResidentSession:
     ) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
         if not already_synchronized:
             self.runtime.stream_synchronize(stream)
-        if not self._verify_accept_packed_payload_enabled():
-            accepted = np.empty((request_count,), dtype=np.int32)
-            commit_rows = np.empty((request_count,), dtype=np.int32)
-            commit_tokens = np.empty((request_count,), dtype=np.int32)
-            commit_positions = np.empty((request_count,), dtype=np.int32)
-            next_tokens = np.empty((request_count,), dtype=np.int32)
-            full_accept = np.empty((request_count,), dtype=np.uint8)
-            out_lengths = np.empty((request_count,), dtype=np.int32)
-            for host, buffer in (
-                (accepted, self.verify_accepted_counts),
-                (commit_rows, self.verify_commit_rows),
-                (commit_tokens, self.verify_commit_tokens),
-                (commit_positions, self.verify_commit_positions),
-                (next_tokens, self.verify_next_tokens),
-                (full_accept, self.verify_full_accept),
-                (out_lengths, self.verify_committed_output_lengths),
-            ):
-                copy_device_to_host(host_array_ptr(host), DeviceBuffer(buffer.ptr, host.nbytes), runtime=self.runtime)
-            return {
-                "accepted_counts": tuple(int(x) for x in accepted.tolist()),
-                "commit_rows": tuple(int(x) for x in commit_rows.tolist()),
-                "commit_tokens": tuple(int(x) for x in commit_tokens.tolist()),
-                "commit_positions": tuple(int(x) for x in commit_positions.tolist()),
-                "next_tokens": tuple(int(x) for x in next_tokens.tolist()),
-                "full_accept": tuple(bool(x) for x in full_accept.tolist()),
-                "committed_output_lengths": tuple(int(x) for x in out_lengths.tolist()),
-            }
         payload = np.empty((request_count, ACCEPT_PACKED_PAYLOAD_FIELDS), dtype=np.int32)
         copy_device_to_host(
             host_array_ptr(payload),

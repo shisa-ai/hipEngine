@@ -657,10 +657,9 @@ unset except for bisection.
 | --- | --- | --- |
 | `HIPENGINE_VERIFY_GPU_ACCEPT` | true | GPU-resident accept path for the MTP verifier (default on: M12 verifier cycles need it). `0` restores the legacy CPU-oracle read; `validate` cross-checks the GPU payload against the direct path each cycle. |
 | `HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP` | true | Fused linear-attention t-loop inside the verify chain; `0` restores the unfused chain. |
-| `HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD` | true | Packed accept-payload readback for the verifier; `0` restores the unpacked readback. |
 | `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS` | `16` | Minimum tokens before the verifier MoE uses the grouped owner; clamps to at least 2. |
 | `HIPENGINE_VERIFY_GRAPH_REVALIDATE` | unset | Debug-only (`#107`): re-run the direct pass before each graph replay and compare per-row top1 plus accept payload to localize replay drift. |
-| `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` | false | Opt-in: the packed verify-accept path also advances request positions (needs the packed-payload path enabled). |
+| `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` | false | Opt-in: the packed verify-accept path also advances request positions for a single verify-chain request. |
 | `HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA` | true | Packs dynamic per-row metadata for the verify-chain batch; `0` restores the static path. |
 | `HIPENGINE_VERIFY_SCRATCH_CACHE` | true | Caches verifier scratch buffers across cycles; `0` restores per-cycle allocation. |
 | `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP` | true | Stamps scratch generations so workspace lookups can skip stale entries; `0` restores the unstamped lookup. |
@@ -1300,6 +1299,9 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD` is retired and ignored.
+  The PARO verifier reads one packed int32 accept summary per batch; the
+  packed kernels still populate separate device buffers used for commit.
 - `HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE` is retired and ignored.
   Scalar advances and bulk prompt priming write K/V directly into cache slots.
   Indexed writes remain independently selected; temporary K/V buffers and

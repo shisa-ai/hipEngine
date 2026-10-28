@@ -222,7 +222,8 @@ def _run_budgeted_accept_case(runtime, lm_head_lib, accept_lib, *, debug_top1: b
         remaining_decode=(2, 1),
         debug_top1=debug_top1,
     )
-    assert observed["next_tokens"].tolist() == [-1, -1]
+    assert observed["accepted_counts"].tolist() == [1, 0]
+    assert observed["next_tokens"].tolist() == [42, 51]
     print(
         "budgeted_real_layout "
         f"accepted={observed['accepted_counts'].tolist()} next={observed['next_tokens'].tolist()}"
