@@ -329,12 +329,6 @@ def _summarize_acceptance_diagnostics(
     }
 
 
-def _mtp_proposer_skip_unused_reads_enabled() -> bool:
-    """Skip MTP proposer host reads/results that the persistent chain discards."""
-
-    return _env_flag("HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS", True)
-
-
 def _mtp_skip_canonicalize_after_verify_enabled() -> bool:
     """Keep verifier-shaped scratch live after MTP verify cycles when requested."""
 
@@ -1108,7 +1102,6 @@ def _run_spec_persistent_device(
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
     active_budgets: list[int] = []
-    skip_unused_proposer_reads = _mtp_proposer_skip_unused_reads_enabled()
     canonicalize_after_verify = not _mtp_skip_canonicalize_after_verify_enabled()
     overlap_verify_commit_proposer = _mtp_overlap_verify_commit_proposer_enabled()
     proposer_target_contract = _mtp_proposer_target_contract_enabled()
@@ -1199,8 +1192,8 @@ def _run_spec_persistent_device(
                     prompt_tokens,
                     capture_base_ptr=capture_buf.ptr,
                     seed_token=root,
-                    read_expert_topk=not skip_unused_proposer_reads,
-                    read_lm_head_value=not skip_unused_proposer_reads,
+                    read_expert_topk=False,
+                    read_lm_head_value=False,
                 )
                 proposal_prefill_seconds += time.perf_counter() - prefill_started
                 cycles = 0
@@ -1319,8 +1312,8 @@ def _run_spec_persistent_device(
                                 proposer.advance_with_previous_hidden(
                                     input_token=bonus,
                                     position=proposer.position + 1,
-                                    read_expert_topk=not skip_unused_proposer_reads,
-                                    read_lm_head_value=not skip_unused_proposer_reads,
+                                    read_expert_topk=False,
+                                    read_lm_head_value=False,
                                 )
                                 rocprof_window.range_pop()
                                 update_delta = time.perf_counter() - update_started
@@ -1435,8 +1428,8 @@ def _run_spec_persistent_device(
                             proposer.advance_with_previous_hidden(
                                 input_token=bonus,
                                 position=proposer.position + 1,
-                                read_expert_topk=not skip_unused_proposer_reads,
-                                read_lm_head_value=not skip_unused_proposer_reads,
+                                read_expert_topk=False,
+                                read_lm_head_value=False,
                             )
                             rocprof_window.range_pop()
                             update_delta = time.perf_counter() - update_started
@@ -1472,8 +1465,8 @@ def _run_spec_persistent_device(
                             proposer.advance_with_previous_hidden(
                                 input_token=int(topk_per_depth[-1][0][0]),
                                 position=proposer.position + 1,
-                                read_expert_topk=not skip_unused_proposer_reads,
-                                read_lm_head_value=not skip_unused_proposer_reads,
+                                read_expert_topk=False,
+                                read_lm_head_value=False,
                             )
                             topk_per_depth.append(proposer.vocab_topk(k=8))
                         candidates = [int(ids[0]) for ids, _vals in topk_per_depth]
@@ -1487,10 +1480,10 @@ def _run_spec_persistent_device(
                             proposer.advance_with_previous_hidden(
                                 input_token=candidates[-1],
                                 position=proposer.position + 1,
-                                read_expert_topk=not skip_unused_proposer_reads,
-                                read_lm_head_value=not skip_unused_proposer_reads,
+                                read_expert_topk=False,
+                                read_lm_head_value=False,
                             )
-                            if (not skip_unused_proposer_reads) or draft_idx < active_budget - 1:
+                            if draft_idx < active_budget - 1:
                                 snapshots.append(proposer.save_state(draft_idx))
                                 proposal_snapshot_saves += 1
                             else:
@@ -1601,9 +1594,9 @@ def _run_spec_persistent_device(
                                 proposer.advance_with_previous_hidden(
                                     input_token=int(token),
                                     position=proposer.position + 1,
-                                    need_result=not skip_unused_proposer_reads,
-                                    read_expert_topk=not skip_unused_proposer_reads,
-                                    read_lm_head_value=not skip_unused_proposer_reads,
+                                    need_result=False,
+                                    read_expert_topk=False,
+                                    read_lm_head_value=False,
                                     stream=update_stream,
                                 )
                         elif accepted < active_budget - 1:
@@ -1617,9 +1610,9 @@ def _run_spec_persistent_device(
                             proposer.advance_with_previous_hidden(
                                 input_token=candidates[-1],
                                 position=proposer.position + 1,
-                                need_result=not skip_unused_proposer_reads,
-                                read_expert_topk=not skip_unused_proposer_reads,
-                                read_lm_head_value=not skip_unused_proposer_reads,
+                                need_result=False,
+                                read_expert_topk=False,
+                                read_lm_head_value=False,
                                 stream=update_stream,
                             )
                         if proposer_target_contract:
@@ -1628,16 +1621,16 @@ def _run_spec_persistent_device(
                                 verify=verify,
                                 input_token=bonus,
                                 need_result=True,
-                                read_expert_topk=not skip_unused_proposer_reads,
-                                read_lm_head_value=not skip_unused_proposer_reads,
+                                read_expert_topk=False,
+                                read_lm_head_value=False,
                                 stream=update_stream,
                             )
                         else:
                             proposer.advance_with_previous_hidden(
                                 input_token=bonus,
                                 position=proposer.position + 1,
-                                read_expert_topk=not skip_unused_proposer_reads,
-                                read_lm_head_value=not skip_unused_proposer_reads,
+                                read_expert_topk=False,
+                                read_lm_head_value=False,
                                 stream=update_stream,
                             )
                     rocprof_window.range_pop()
@@ -1703,7 +1696,7 @@ def _run_spec_persistent_device(
         "proposal_trace_sample": proposal_trace,
         "chain_attn_mode": chain_attn_mode,
         "proposal_impl": "persistent_device",
-        "proposer_skip_unused_reads": bool(skip_unused_proposer_reads),
+        "proposer_skip_unused_reads": True,
         "proposer_target_contract": bool(proposer_target_contract),
         "proposer_target_hidden_mode": (
             "selected_final_norm_bf16" if proposer_target_contract else "previous_mtp_hidden"
@@ -1714,7 +1707,7 @@ def _run_spec_persistent_device(
         "proposer_private_lm_head_loaded": not proposer_target_contract,
         "canonicalize_after_verify": bool(canonicalize_after_verify),
         "overlap_verify_commit_proposer": bool(overlap_verify_commit_proposer),
-        "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results/snapshots are skipped by default.",
+        "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results/snapshots are skipped.",
         "rocprof_window": rocprof_window_meta,
         "cycle_marker_ns": [
             {"cycle": cycle_idx, "start_perf_ns": start_ns, "end_perf_ns": end_ns}

@@ -549,7 +549,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` | true | Runs the resident MTP draft MoE on device (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER` | true | Q6 top-1 gather kernel in the resident MTP drafter (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` | false | Opt-in device-side draft chain execution. |
-| `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` | true | Skips MTP proposer host reads/results that the persistent chain discards. |
 | `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY` | true | Keeps verifier-shaped scratch live after MTP verify cycles instead of canonicalizing immediately. |
 | `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER` | false | Runs the proposer update on a side stream while the verifier commit drains; default-off experiment. |
 
@@ -1304,6 +1303,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` is retired and ignored. The
+  persistent-device harness skips unused proposer metadata, update-only
+  scoring and the final redundant snapshot; candidate token reads and
+  rollback-prefix snapshots remain.
 - `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is retired and ignored. Python and
   C-dispatched selected-MoE down execution use the SiLU/rotate then projection
   chain. The staged primitive remains independently registered for diagnostics.
