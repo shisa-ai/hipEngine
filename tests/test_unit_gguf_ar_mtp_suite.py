@@ -145,22 +145,18 @@ def test_suite_exposes_resident_strict_context_route() -> None:
     ]
 
 
-def test_suite_exposes_resident_strict_context_block_pmin_route() -> None:
-    assert suite.MTP_ROUTES["resident-strict-context-block-pmin08"] == [
-        "--resident-mtp-draft",
-        "--draft-p-min",
-        "0.8",
-        "--root-topk-accept",
-        "1",
-        "--sibling-topk-accept",
-        "1",
-        "--mtp-context-replay",
-        "--mtp-device-kv-cache",
-        "--target-block-verify",
-        "--adaptive-ar-fallback",
-        "--mtp-draft-vocab-cap",
-        "32768",
-    ]
+def test_suite_refuses_retired_pmin08_alias_before_outputs(monkeypatch, tmp_path, capsys) -> None:
+    assert "resident-strict-context-block-pmin08" not in suite.MTP_ROUTES
+    monkeypatch.setattr(sys, "argv", [
+        "gguf_ar_mtp_suite.py", "--scope", "full", "--mtp-route",
+        "resident-strict-context-block-pmin08",
+        "--raw-root", str(tmp_path / "raw"), "--dry-run",
+    ])
+    with pytest.raises(SystemExit) as excinfo:
+        suite.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    assert not (tmp_path / "raw").exists()
 
 
 def test_suite_exposes_cap32k_recovery_route() -> None:

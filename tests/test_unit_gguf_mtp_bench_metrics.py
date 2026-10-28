@@ -1014,10 +1014,41 @@ def test_arg_parser_exposes_native_spec_n2_device_accept_commit() -> None:
     assert args.resident_mtp_device_seed is True
 
 
-def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
-    args = build_arg_parser().parse_args(["--record-draft-confidence"])
+def test_retired_record_draft_confidence_is_rejected(capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        build_arg_parser().parse_args(["--record-draft-confidence"])
+    assert excinfo.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
 
-    assert args.record_draft_confidence is True
+
+def test_confidence_retirement_preserves_empty_artifacts_without_selector() -> None:
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(bench))
+    assert not hasattr(build_arg_parser().parse_args([]), "record_draft_confidence")
+    assert not any(
+        isinstance(node, ast.Attribute) and node.attr == "record_draft_confidence"
+        or isinstance(node, ast.Name) and node.id == "cycle_draft_top1_probs"
+        for node in ast.walk(tree)
+    )
+    artifacts = {
+        key.value: value
+        for node in ast.walk(tree) if isinstance(node, ast.Dict)
+        for key, value in zip(node.keys, node.values)
+        if isinstance(key, ast.Constant)
+        and key.value in {"record_draft_confidence", "draft_top1_probs"}
+    }
+    assert isinstance(artifacts["record_draft_confidence"], ast.Constant)
+    assert artifacts["record_draft_confidence"].value is False
+    assert isinstance(artifacts["draft_top1_probs"], ast.List)
+    assert artifacts["draft_top1_probs"].elts == []
+
+
+@pytest.mark.parametrize("threshold", [0.0, 0.2, 0.5, 0.8, 0.99])
+def test_draft_probability_threshold_remains_explicitly_selectable(threshold) -> None:
+    args = build_arg_parser().parse_args(["--draft-p-min", str(threshold)])
+    assert args.draft_p_min == threshold
 
 
 def test_arg_parser_exposes_record_draft_topk_scores_diagnostic() -> None:

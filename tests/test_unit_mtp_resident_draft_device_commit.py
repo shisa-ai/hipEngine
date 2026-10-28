@@ -94,7 +94,21 @@ def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -
     np.testing.assert_array_equal(writes[1][2], np.asarray([[20, 21, 22, 23]], dtype=np.float32))
 
 
-def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "threshold,record,expected_tokens,expected_probs",
+    [
+        (0.0, True, [2, 3], [0.75, 0.25]),
+        (0.2, False, [2, 3], []),
+        (0.25, False, [2, 3], []),
+        (0.5, False, [2], []),
+        (0.5, True, [2], [0.75, 0.25]),
+        (0.75, False, [2], []),
+        (0.9, False, [], []),
+    ],
+)
+def test_record_top1_probs_resets_and_records_resident_draft_confidence(
+    monkeypatch, threshold, record, expected_tokens, expected_probs,
+) -> None:
     monkeypatch.setattr(resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None)
 
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
@@ -133,15 +147,15 @@ def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypa
         dense_key_cache=None,
         dense_value_cache=None,
         dense_cache_len=7,
-        draft_p_min=0.0,
-        record_top1_probs=True,
+        draft_p_min=threshold,
+        record_top1_probs=record,
     )
 
-    assert tokens == [2, 3]
-    assert topk_rows == [[2, 1], [3, 2]]
+    assert tokens == expected_tokens
+    assert topk_rows == [[token, token - 1] for token in expected_tokens]
     assert cache_len == 7
-    assert len(run_calls) == 2
-    assert runner.last_top1_probs == [0.75, 0.25]
+    assert len(run_calls) == (1 if threshold > 0.75 else 2)
+    assert runner.last_top1_probs == expected_probs
 
 
 def test_record_hidden_stats_uses_host_chain_and_records_seed_summaries(monkeypatch) -> None:

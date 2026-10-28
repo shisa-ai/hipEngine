@@ -1366,14 +1366,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--record-draft-confidence",
-        action="store_true",
-        help=(
-            "Diagnostic only: record per-depth resident draft top-1 softmax probabilities "
-            "in raw cycle artifacts without changing the acceptance policy."
-        ),
-    )
-    parser.add_argument(
         "--record-draft-topk-scores",
         action="store_true",
         help=(
@@ -1760,8 +1752,6 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-device-chain requires resident draft top-k <= 8")
     if args.resident_mtp_device_chain and args.draft_p_min > 0.0:
         parser.error("--resident-mtp-device-chain requires --draft-p-min 0")
-    if args.resident_mtp_device_chain and args.record_draft_confidence:
-        parser.error("--resident-mtp-device-chain is not compatible with --record-draft-confidence")
     if args.record_draft_cache_rows and not args.record_draft_stage_stats:
         parser.error("--record-draft-cache-rows requires --record-draft-stage-stats")
     if args.record_draft_attention_debug and not args.record_draft_stage_stats:
@@ -2362,7 +2352,6 @@ def main(argv: list[str] | None = None):
             draft_topk_scores: list[list[float]] = []
             draft_topk_margins: list[list[float]] = []
             draft_diagnostic_logits: list[tuple[int, int, np.ndarray]] = []
-            cycle_draft_top1_probs: list[float] = []
             replay_tokens = [cycle_prev_token]
             # Sequential single-seed draft path.  Context replay and the normal
             # path both use this shape; llama.cpp parity comes from the optional
@@ -2416,7 +2405,6 @@ def main(argv: list[str] | None = None):
                             dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
                             dense_cache_len=mtp_device_kv_len,
                             draft_p_min=float(args.draft_p_min),
-                            record_top1_probs=bool(args.record_draft_confidence),
                             record_topk_scores=bool(args.record_draft_topk_scores),
                             record_hidden_stats=bool(args.record_draft_hidden_stats),
                             record_stage_stats=bool(args.record_draft_stage_stats),
@@ -2438,7 +2426,6 @@ def main(argv: list[str] | None = None):
                         dense_value_cache=mtp_device_value_cache if args.mtp_device_kv_cache else None,
                         dense_cache_len=mtp_device_kv_len,
                         draft_p_min=float(args.draft_p_min),
-                        record_top1_probs=bool(args.record_draft_confidence),
                         record_topk_scores=bool(args.record_draft_topk_scores),
                         record_hidden_stats=bool(args.record_draft_hidden_stats),
                         record_stage_stats=bool(args.record_draft_stage_stats),
@@ -2446,8 +2433,6 @@ def main(argv: list[str] | None = None):
                         record_attention_debug=bool(args.record_draft_attention_debug),
                         record_stage_timings=bool(args.record_cycle_stage_timings),
                     )
-                if args.record_draft_confidence:
-                    cycle_draft_top1_probs = [float(value) for value in cycle_resident_draft.last_top1_probs]
                 if args.record_draft_topk_scores:
                     draft_topk_scores = [
                         [float(value) for value in row]
@@ -3458,7 +3443,7 @@ def main(argv: list[str] | None = None):
                 "initial_draft_tokens": draft_tokens,
                 "redraft_tokens": redraft_tokens,
                 "redraft_start_depth": redraft_start_depth,
-                "draft_top1_probs": cycle_draft_top1_probs,
+                "draft_top1_probs": [],
                 "target_in_draft_top10": target_in_draft_top10,
                 "target_rank_in_draft_top10": target_rank_in_draft_top10,
                 "accepted": accepted,
@@ -3734,7 +3719,7 @@ def main(argv: list[str] | None = None):
             "resident_mtp_draft_gpu_event_stage_timings": bool(
                 args.resident_mtp_draft_gpu_event_stage_timings
             ),
-            "record_draft_confidence": bool(args.record_draft_confidence),
+            "record_draft_confidence": False,
             "record_draft_topk_scores": bool(args.record_draft_topk_scores),
             "record_target_topk_scores": bool(args.record_target_topk_scores),
             "target_topk_score_count": int(args.target_topk_score_count),

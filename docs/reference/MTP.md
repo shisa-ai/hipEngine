@@ -48,6 +48,14 @@ with the `resident-b1-branch-safe-block-cap32k-device-seed` and
 and workload artifact fields remain `false`. Ordinary root-top-k verification,
 strict block verification and selected-row direct commit are unchanged.
 
+The bench's `--record-draft-confidence` switch and suite alias
+`resident-strict-context-block-pmin08` are removed. The workload's
+`record_draft_confidence` field is always `false`, and each cycle's
+`draft_top1_probs` array is empty. `--draft-p-min` remains available and is
+used by the suite's default route at `0.5`: resident proposals stop before
+appending a token whose top-1 probability is below the threshold. Direct
+proposer `record_top1_probs` diagnostics and top-k score recording are unchanged.
+
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked
 pointer-table kernel when their layout contracts hold. Per-layer copy
