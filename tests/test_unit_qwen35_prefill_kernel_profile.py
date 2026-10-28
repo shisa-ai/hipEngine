@@ -28,11 +28,6 @@ Q4_SHARED_X_SELECTORS = {
     "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "shared_x",
 }
 
-Q4_BASELINE_SELECTORS = {
-    "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "baseline",
-}
-
-
 def test_conservative_prefill_kernel_profile_sets_complete_selector_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -50,6 +45,7 @@ def test_conservative_prefill_kernel_profile_sets_complete_selector_contract(
     [
         ("gdn_exact", GDN_EXACT_SELECTORS),
         ("q4_shared_x", Q4_SHARED_X_SELECTORS),
+        ("q4_pair32", {**CONSERVATIVE_SELECTORS, "HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": "pair32"}),
     ],
 )
 def test_split_prefill_kernel_profiles_reenable_exactly_one_family(
@@ -66,17 +62,24 @@ def test_split_prefill_kernel_profiles_reenable_exactly_one_family(
     assert {name: os.environ[name] for name in selectors} == expected
 
 
-def test_q4_baseline_prefill_kernel_profile_changes_only_implicated_route(
+@pytest.mark.parametrize("profile,mode", [
+    ("q4_baseline", "baseline"),
+    ("q4_pair32_production", "pair32"),
+])
+def test_q4_prefill_kernel_profile_changes_only_requested_route(
+    profile: str,
+    mode: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for name in CONSERVATIVE_SELECTORS:
         monkeypatch.delenv(name, raising=False)
 
-    selectors = sweep._apply_prefill_kernel_profile("q4_baseline")
+    expected = {"HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE": mode}
+    selectors = sweep._apply_prefill_kernel_profile(profile)
 
-    assert selectors == Q4_BASELINE_SELECTORS
-    assert os.environ["HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE"] == "baseline"
-    for name in CONSERVATIVE_SELECTORS.keys() - Q4_BASELINE_SELECTORS.keys():
+    assert selectors == expected
+    assert os.environ["HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE"] == mode
+    for name in CONSERVATIVE_SELECTORS.keys() - expected.keys():
         assert name not in os.environ
 
 
