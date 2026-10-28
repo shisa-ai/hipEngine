@@ -130,6 +130,14 @@ def test_resident_decode_keeps_unfused_layer_inputs_when_disabled(
         assert kwargs["next_norm_out_ptr"] is None
 
 
+def test_whole_step_graph_refuses_nested_moe_capture_before_state_access(monkeypatch) -> None:
+    session = object.__new__(qgr.Qwen35GGUFResidentSession)
+    monkeypatch.setenv("HIPENGINE_GGUF_MOE_GRAPH", "1")
+
+    with pytest.raises(RuntimeError, match="cannot nest the per-layer MoE graph"):
+        session.capture_decode_graph(position=0)
+
+
 @pytest.mark.parametrize("chain_next_rms", [False, True])
 def test_moe_graph_diagnostic_requires_unchained_layer_norms(
     monkeypatch: pytest.MonkeyPatch, chain_next_rms: bool,
