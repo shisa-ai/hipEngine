@@ -635,10 +635,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if self._q6_top1_stage1_shape == "pack16" and self.vocab % 16 != 0:
             raise ValueError("pack16 Q6 top-1 diagnostic requires vocab divisible by 16")
         self._router_row_parallel_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", False)
-        if self.device_chain_enabled is None:
-            self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
-        else:
-            self._device_chain_enabled = bool(self.device_chain_enabled)
+        self._device_chain_enabled = bool(self.device_chain_enabled)
         # Max draft depth the precomputed-rope / topk-accumulator buffers cover.
         self._draft_chain_cap = 16
         self._embed_table_f32: DeviceBuffer | None = None
