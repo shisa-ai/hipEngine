@@ -9,6 +9,13 @@ and retired environment selectors, use [ENVS.md](../ENVS.md). The dated reports
 below record the configuration and defaults at the time of each experiment,
 not today's serving policy or selector availability.
 
+`scripts/gguf_mtp_bench.py` runs an untimed stateless draft warmup before
+measured cycles and requests capped target graph verification outside its
+`--llama-compat` block-verifier route. Capture failure and token-divergence
+handling still use eager verification. The `--mtp-draft-warmup` and
+`--target-graph-verify` CLI switches, including their `--no-` forms, are
+removed; dated commands below may record the former controls.
+
 The selected-MoE staged-down runtime selector and Python/C dispatcher branches
 are removed. Selected down execution uses SiLU/rotate then projection;
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is ignored. The independent staged primitive

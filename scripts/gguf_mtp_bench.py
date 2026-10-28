@@ -37,8 +37,6 @@ DEFAULT_PROMPT = "What is the capital of France?"
 DEFAULT_ROOT_TOPK_ACCEPT = 40
 DEFAULT_SIBLING_TOPK_ACCEPT = 1
 DEFAULT_TOPK_BRANCH_REDRAFT = False
-DEFAULT_MTP_DRAFT_WARMUP = True
-DEFAULT_TARGET_GRAPH_VERIFY = True
 DEFAULT_MTP_DEVICE_KV_CACHE = False
 DEFAULT_RESIDENT_MTP_DRAFT = os.environ.get("HIPENGINE_GGUF_RESIDENT_MTP_DRAFT", "0").strip().lower() in {
     "1",
@@ -890,24 +888,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True, help="Request WMMA prefill for the resident GGUF session (default: true)")
     parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True, help="Request GEMV decode for the resident GGUF session (default: true)")
     parser.add_argument(
-        "--mtp-draft-warmup",
-        action=argparse.BooleanOptionalAction,
-        default=DEFAULT_MTP_DRAFT_WARMUP,
-        help=(
-            "Run one stateless untimed MTP draft after prefill to warm kernel/library/weight caches "
-            "before measured speculative cycles (default: true; use --no-mtp-draft-warmup for cold-start diagnostics)."
-        ),
-    )
-    parser.add_argument(
-        "--target-graph-verify",
-        action=argparse.BooleanOptionalAction,
-        default=DEFAULT_TARGET_GRAPH_VERIFY,
-        help=(
-            "Use resident GGUF decode graph replay for target verification with a replay-window context cap "
-            "and fp32 hidden-seed capture (default: true; use --no-target-graph-verify for eager-step diagnostics)."
-        ),
-    )
-    parser.add_argument(
         "--target-graph-batched-verify",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1636,7 +1616,6 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.mtp_context_replay = True
     args.mtp_device_kv_cache = True
 
-    args.target_graph_verify = False
     args.target_graph_batched_verify = False
     args.target_block_verify = True
     args.target_block_verify_mode = "bulk"
@@ -2183,30 +2162,29 @@ def main(argv: list[str] | None = None):
         else:
             mtp_context_positions: list[int] = []
 
-        mtp_draft_warmup_ms = 0.0
-        if args.mtp_draft_warmup:
-            warmup_pos = np.asarray([seq_position], dtype=np.int64)
-            warmup_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
-            warmup_token_embed = token_embd_f32[prev_token:prev_token + 1].copy()
-            t_warmup0 = time.perf_counter()
-            _ = run_draft(
-                warmup_hidden_seed,
-                warmup_token_embed,
-                return_hidden_seed=args.draft_n_max > 1,
-                positions=warmup_pos,
-                rope_cos=_rope_cos[warmup_pos],
-                rope_sin=_rope_sin[warmup_pos],
-                rotary_dim=rope_dim,
-            )
-            mtp_draft_warmup_ms = (time.perf_counter() - t_warmup0) * 1000
+        warmup_pos = np.asarray([seq_position], dtype=np.int64)
+        warmup_hidden_seed = np.ascontiguousarray(pending_hidden_seed, dtype=np.float32).copy()
+        warmup_token_embed = token_embd_f32[prev_token:prev_token + 1].copy()
+        t_warmup0 = time.perf_counter()
+        _ = run_draft(
+            warmup_hidden_seed,
+            warmup_token_embed,
+            return_hidden_seed=args.draft_n_max > 1,
+            positions=warmup_pos,
+            rope_cos=_rope_cos[warmup_pos],
+            rope_sin=_rope_sin[warmup_pos],
+            rotary_dim=rope_dim,
+        )
+        mtp_draft_warmup_ms = (time.perf_counter() - t_warmup0) * 1000
 
+        target_graph_verify_requested = not args.llama_compat
         target_graph_steps_per_replay = int(args.draft_n_max) + 1 if args.target_graph_batched_verify else 1
         target_graph_max_replay_steps = int(args.cycles) * (int(args.draft_n_max) + 1)
         target_graph_context_cap = int(seq_position) + target_graph_max_replay_steps
         target_graph_verify_enabled = False
         target_graph_verify_fallback_reason: str | None = None
         current_device_token = int(prev_token)
-        if args.target_graph_verify and (
+        if target_graph_verify_requested and (
             not args.target_block_verify
             or args.adaptive_ar_fallback
             or args.adaptive_block_after_full_accept
@@ -3975,9 +3953,9 @@ def main(argv: list[str] | None = None):
     print(f"Decode repack: {args.decode_repack}")
     print(f"Effective GEMV decode: {session.use_gemv_decode}")
     print(f"Effective WMMA prefill: {session.use_wmma_prefill}")
-    print(f"MTP draft warmup: {args.mtp_draft_warmup} ({mtp_draft_warmup_ms:.2f}ms)")
+    print(f"MTP draft warmup: True ({mtp_draft_warmup_ms:.2f}ms)")
     print(
-        f"Target graph verify: requested={args.target_graph_verify} "
+        f"Target graph verify: requested={target_graph_verify_requested} "
         f"effective={target_graph_verify_enabled} steps_per_replay={target_graph_steps_per_replay} "
         f"max_replay_steps={target_graph_max_replay_steps} context_cap={target_graph_context_cap} "
         f"batched={args.target_graph_batched_verify} block_verify={args.target_block_verify}"
@@ -4100,7 +4078,7 @@ def main(argv: list[str] | None = None):
             "use_gemv_decode": bool(args.use_gemv_decode),
             "effective_use_wmma_prefill": bool(session.use_wmma_prefill),
             "effective_use_gemv_decode": bool(session.use_gemv_decode),
-            "mtp_draft_warmup": bool(args.mtp_draft_warmup),
+            "mtp_draft_warmup": True,
             "mtp_draft_warmup_ms": round(float(mtp_draft_warmup_ms), 2),
             "resident_mtp_draft": bool(args.resident_mtp_draft),
             "resident_mtp_device_seed": bool(args.resident_mtp_device_seed),
@@ -4173,7 +4151,7 @@ def main(argv: list[str] | None = None):
                 resident_mtp_draft_full_vocab_recovery_effective
             ),
             "resident_mtp_draft_fallback_reason": resident_mtp_draft_fallback_reason,
-            "target_graph_verify": bool(args.target_graph_verify),
+            "target_graph_verify": bool(target_graph_verify_requested),
             "target_graph_verify_effective": bool(target_graph_verify_enabled),
             "target_graph_steps_per_replay": int(target_graph_steps_per_replay),
             "target_graph_batched_verify": bool(args.target_graph_batched_verify),

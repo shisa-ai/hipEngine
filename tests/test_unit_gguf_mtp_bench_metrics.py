@@ -43,10 +43,29 @@ def test_default_mtp_policy_is_b1_root_top40_speed_first() -> None:
     assert args.root_topk_accept == 40
     assert args.sibling_topk_accept == 1
     assert args.topk_branch_redraft is False
-    assert args.mtp_draft_warmup is True
-    assert args.target_graph_verify is True
+    assert not hasattr(args, "mtp_draft_warmup")
+    assert not hasattr(args, "target_graph_verify")
     assert args.adaptive_block_after_full_accept is False
     assert args.adaptive_probe_draft_n_max == 3
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        "--mtp-draft-warmup",
+        "--no-mtp-draft-warmup",
+        "--target-graph-verify",
+        "--no-target-graph-verify",
+    ],
+)
+def test_retired_warmup_and_target_graph_selectors_are_rejected(option, capsys, monkeypatch) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: pytest.fail("retired CLI reached HIP"))
+    with pytest.raises(SystemExit) as exc:
+        bench.main([option])
+
+    assert exc.value.code == 2
+    assert f"unrecognized arguments: {option}" in capsys.readouterr().err
+    assert option not in build_arg_parser().format_help()
 
 
 def test_target_topk_score_flags_parse_default_off() -> None:
@@ -1137,7 +1156,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.resident_mtp_device_chain is False
     assert args.mtp_context_replay is True
     assert args.mtp_device_kv_cache is True
-    assert args.target_graph_verify is False
+    assert not hasattr(args, "target_graph_verify")
     assert args.target_graph_batched_verify is False
     assert args.target_block_verify is True
     assert args.target_block_verify_mode == "bulk"
