@@ -8176,7 +8176,8 @@
         {
           "line": 6288,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --target-block-verify-mode serial-exact` and `Qwen35GGUFResidentSession.verify_target_block_serial_exact()`. | Default-off diagnostic. It consumes verifier block rows with the token-serial decode scheduler, stages FP32 hidden rows, and optionally records per-row Conv/GDN state. The focused wrong-branch gate proves direct row-0 commit is bit-exact after `[prev, wrong_child]`, unlike the current row-bulk capture path, but this deliberately does not amortize target weight loads. | Keep only as the rollback-slot correctness oracle while developing the row-bulk/amortized verifier. Remove or move to a dedicated debug harness after an exact transactional verifier beats true AR on the full suite, or if a better per-row oracle supersedes it. |",
-          "status": "pending"
+          "status": "deferred-gguf-target-policy-migration",
+          "evidence": "Merge serial-exact comparison interface into R0281-TARGET-POLICY while preserving independent scalar oracle and live compatibility accepted-prefix fallback. Scored per-token step versus state-only input-ID echo, FP32 hidden/state-row capture, absolute position/default-stream/input capacity guards are distinct contracts. Add9 host cases for scored/echo ordering, capture and pre-work invalid-input refusal;269focused pass. No runtime/default/kernel/arithmetic/GPU/perf change. Worklog: worklog/entries/20261028T162047.080278Z-cleanup-refactor-r0281-serial-verify-5f33b2.md."
         },
         {
           "line": 6289,
