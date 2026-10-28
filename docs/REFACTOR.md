@@ -3438,7 +3438,6 @@ should be boring.
 
 | Path | Cleanup target | Keep | Remove / collapse trigger |
 | --- | --- | --- | --- |
-| 27B dense DFlash | Separate deployable online routing from profile-history diagnostics. The current positive production row is the online whole-cycle confidence gate; older prompt-history route/terminal-tail rows are retained evidence, not the default API shape. | Online gate config, oracle/calibration tooling, exact AR comparisons. | After the DFlash hardening rerun and decode API update, trim profile-history routing from the main hot path or move it behind an explicit research harness. |
 | DFlash drafter flags | Audit `HIPENGINE_DFLASH_DRAFTER_DENSE` and `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`; the rejected target fused LM-head selector is removed and its primitive coverage remains. | Default-on exact dense WMMA if the fresh 27B gate confirms it; tests for rejected fused kernels. | Fresh 27B DFlash rerun decides: promote exact positive flags to defaults, remove negative runtime branches, or demote them to test-only overrides. |
 | Benchmark commands | Stop requiring long flag piles once defaults represent the optimal path. | Flags that select workload shape, model, quant, and explicit experiments. | After MTP/DFlash defaults-only rows are retained, update benchmark docs to show default commands first and move historical A/B flags into dated notes. |
 

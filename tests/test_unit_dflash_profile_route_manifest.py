@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from scripts.dflash_build_profile_route_manifest import build_manifest
-from scripts.dflash_chain_e2e_bench import _draft_budgets_for_prompt, _load_profile_route_manifest
+from scripts.dflash_chain_e2e_bench import (
+    _draft_budgets_for_prompt,
+    _load_profile_route_manifest,
+    _profile_route_for_prompt,
+    _terminal_ar_tokens_for_prompt,
+)
 
 
 def _row(prompt_id: str, speedup: float, *, passed: bool = True, exact: bool = True, proposal: str = "chain") -> dict:
@@ -81,3 +86,37 @@ def test_profile_route_manifest_can_override_draft_budget_by_prompt(tmp_path: Pa
     assert _draft_budgets_for_prompt({"id": "code:fast", "benchmark_group": "code"}, default=[4], manifest=manifest) == [8, 15]
     assert _draft_budgets_for_prompt({"id": "code:other", "benchmark_group": "code"}, default=[4], manifest=manifest) == [2, 4]
     assert _draft_budgets_for_prompt({"id": "math:slow", "benchmark_group": "math"}, default=[4], manifest=manifest) == [4]
+
+
+def test_no_history_manifest_keeps_speculation_and_explicit_shape_defaults() -> None:
+    default, routes, manifest = _load_profile_route_manifest(None)
+    assert (default, routes, manifest) == ("spec", {}, None)
+    for prompt in ({"id": "previous-winner"}, {"benchmark_group": "code"}, {}):
+        assert _profile_route_for_prompt(prompt, default=default, routes=routes) == "spec"
+        assert _draft_budgets_for_prompt(prompt, default=[2, 4], manifest=manifest) == [2, 4]
+        assert _terminal_ar_tokens_for_prompt(prompt, default=0, manifest=manifest) == 0
+
+
+def test_history_route_budget_and_tail_share_explicit_key_precedence(tmp_path) -> None:
+    import json
+
+    path = tmp_path / "history.json"
+    keys = ("prompt", "ids-hash", "text-hash", "code")
+    body = {
+        "default": "spec",
+        "routes": dict(zip(keys, ("ar", "chain", "tree", "ar"))),
+        "draft_budgets": {"default": 8, **dict(zip(keys, (1, 2, 3, 4)))},
+        "terminal_ar_tokens": {"default": 0, **dict(zip(keys, (11, 12, 13, 14)))},
+    }
+    path.write_text(json.dumps(body))
+    default, routes, manifest = _load_profile_route_manifest(path)
+    prompt = dict(zip(("id", "prompt_ids_sha256", "prompt_text_sha256", "benchmark_group"), keys))
+    for field, route, budget, tail in zip(tuple(prompt), ("ar", "chain", "tree", "ar"),
+                                          (1, 2, 3, 4), (11, 12, 13, 14)):
+        assert _profile_route_for_prompt(prompt, default=default, routes=routes) == route
+        assert _draft_budgets_for_prompt(prompt, default=[8], manifest=manifest) == [budget]
+        assert _terminal_ar_tokens_for_prompt(prompt, default=0, manifest=manifest) == tail
+        del prompt[field]
+    assert _profile_route_for_prompt(prompt, default=default, routes=routes) == "spec"
+    assert _draft_budgets_for_prompt(prompt, default=[8], manifest=manifest) == [8]
+    assert _terminal_ar_tokens_for_prompt(prompt, default=0, manifest=manifest) == 0

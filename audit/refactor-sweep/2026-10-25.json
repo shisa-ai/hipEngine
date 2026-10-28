@@ -8385,7 +8385,8 @@
         "Row6341 completed control gap;remaining diagnostic/session-plan decision moved bottom R0282-PREFILL-POLICY. Runtime unchanged,4pool characterization cases and93focused tests pass;see worklog/entries/20261028T201442.428322Z-cleanup-refactor-r0282-prefill-policy-1d5966.md. Other rows remain individually pending.",
         "Row6342 resolved by synthetic CLI contracts and focused tool fixes;43focused tests pass,history preserved. Worklog: worklog/entries/20261028T202550.319966Z-cleanup-refactor-r0282-packet-cli-587ded.md.",
         "Row6343 B1 premise superseded by public depth policy;shared default-on verifier controls characterized and remaining ownership consolidated in existing bottom PARO-PROVIDER referral.216focused pass,no runtime change. Worklog: worklog/entries/20261028T203948.106702Z-cleanup-refactor-r0282-paro-chain-641349.md.",
-        "Row6344 explicit PARO tree harness and private-scorer retirement decision consolidated bottom PARO-PROVIDER;shared tree primitives remain.362focused tests pass,runtime unchanged. Worklog: worklog/entries/20261028T204504.196456Z-cleanup-refactor-r0282-paro-tree-c02e80.md."
+        "Row6344 explicit PARO tree harness and private-scorer retirement decision consolidated bottom PARO-PROVIDER;shared tree primitives remain.362focused tests pass,runtime unchanged. Worklog: worklog/entries/20261028T204504.196456Z-cleanup-refactor-r0282-paro-tree-c02e80.md.",
+        "Row6345 resolved:history routes/tails already explicit harness-only,not public runtime. Default/precedence characterization28focused pass;obsolete row removed. Worklog: worklog/entries/20261028T205128.038753Z-cleanup-refactor-r0282-dflash-history-a99d6a.md."
       ],
       "subitems": [
         {
@@ -8425,7 +8426,8 @@
         {
           "line": 6345,
           "text": "| 27B dense DFlash | Separate deployable online routing from profile-history diagnostics. The current positive production row is the online whole-cycle confidence gate; older prompt-history route/terminal-tail rows are retained evidence, not the default API shape. | Online gate config, oracle/calibration tooling, exact AR comparisons. | After the DFlash hardening rerun and decode API update, trim profile-history routing from the main hot path or move it behind an explicit research harness. |",
-          "status": "pending"
+          "status": "resolved-history-already-explicit-harness",
+          "evidence": "Verified manifest builder,history route/tail/budget matching and online whole-cycle comparison all in scripts/dflash_chain_e2e_bench.py;hipengine runtime has only benchmark artifact profile_route metadata,not a history consumer. No manifest defaults spec/no prompt lookup override. Added default and id/hash/group precedence characterization;28focused pass. Removed obsolete public API/hot-path cleanup row;preserve diagnostics and artifacts. No runtime/default/perf claim. Worklog: worklog/entries/20261028T205128.038753Z-cleanup-refactor-r0282-dflash-history-a99d6a.md."
         },
         {
           "line": 6346,
