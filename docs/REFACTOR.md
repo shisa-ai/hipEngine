@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MTP server packed verifier | `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` chunks c>N server target verification instead of sending all active slots to one packed target forward. | Default serving policy after the first packed verifier landing and the stream-draft/stream-verify follow-ups. c=2/c=4 packed target verify wins, but one 8-slot packed batch is a measured rejected regime (`11.58 tok/s`, `target_verify_batch_ms=63733.783`). The current c=8 stream path still chunks verify at 4 slots and reaches **52.18 tok/s**, with verifier still dominant (`slots_verify_phase_ms=12345.442`). | Remove or raise the cap only after rows>=16 packed verifier and resident-draft row-count/cold-slot behavior are tuned and a c=8 natural24 rerun beats the chunked stream path without correctness or latency regressions. |
 | GGUF packed verifier GPU-event instrumentation | `HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` records HIP events through `Qwen35GGUFResidentSession.verify_target_blocks_batch()` and compact-MoE leaves. | Default-off diagnostic. It exposed c=8 server verifier GPU leaves on 2026-07-05 but adds event overhead (`47.17 tok/s` in the compact-WMMA event run), so it is not a retained speed path. | Keep only while c>N MTP verifier tuning is active; remove or move behind a dedicated profiling helper once the packed verifier bottleneck is closed. |
 | GGUF compact-WMMA tight no-read scope | `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0` restores the scalar `wmma_total` D2H read around the gfx1100/gfx1151 defaults capped at 4,096 selected rows. | The old rejected c=8 probe overlaunched `selected_rows * 16`. LCP-2B instead proves the exact worst-case tile count `A + floor((S-A)/16)` and clears unused tile ids to `-1`. SH9-D1 independently transfers it to gfx1151 pp512: exact full state, neutral prefill **1366.040 -> 1366.013 tok/s**, and cached ROCTX **44 -> 4 `hipMemcpy` / 1,409 -> 1,369 dispatches / -1.736 ms span** with unchanged 80 selected-WMMA launches. This is multi-row prefill only; c1 decode bypasses the helper. | Keep the scalar fallback permanently for selected rows above 4,096, insufficient capacity, and exact-count diagnostics. Remove the env opt-out after one defaults-only prefill refresh on both gfx11 packages; do not remove the fallback. |
 | GGUF selected-WMMA launch-bounds tuning | `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS` remains an R&D build flag for selected-WMMA kernels. | Default unchanged after the 2026-07-05 c>N server probe. `=2` was flat at c=8 (**52.55/52.23 tok/s**); `=4` helped c=8 (**53.22/53.44**) but regressed c=4 (**49.20/49.04** vs retained **49.65**), so no default promotion. | Keep as kernel R&D only; do not promote without a c=2/c=4/c=8 same-protocol rerun that is non-regressive at every concurrency. |
@@ -10788,3 +10787,35 @@ also needs guarded cooperative/persistent primitive parity and public MoE c1
 generation with selected variant/counter ownership, repeated graph/eager calls,
 fallback engagement and cleanup recorded. Keep both cooperative variants and
 unfused primitives until their callers and ownership contracts have migrated.
+
+### R0281-MTP-CAP — Packed MTP batch policy and caller separation
+
+`_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` in
+`hipengine/generation/qwen35_gguf.py` still serves three purposes: target-verifier
+chunk width, packed MTP prompt-prefill eligibility and startup warmup grouping.
+Verifier partitioning avoids a singleton tail (five slots become three plus two);
+multiple chunks can use independent owner streams, with serial chunk execution
+when stream capabilities are absent. A first-chunk refusal may fall back to
+per-slot verification; a refusal after an earlier chunk advanced state raises
+instead of silently replaying that state.
+
+The MoE `generate_speculative_mtp_detailed()` adapter still reaches this policy;
+the dense transactional route is separate. The limit is a batch-selection policy,
+not a kernel capability declaration or a maximum number of requests the server
+may admit. The rejected single-eight-slot experiment and chunk-stream results
+are historical evidence in
+`worklog/entries/20260705T071433.000000Z-legacy-2026-07-05-gguf-server-mtp-c8-stream-verify-chun-17986a.md`.
+They do not establish the best width for every current artifact or backend.
+
+**Remaining decision:** retain bounded chunks, or tune a wider verifier and give
+prefill/warmup their own policies. Do not delete the shared constant as dead code
+or change prompt-prefill admission as a side effect of verifier tuning.
+**Clearing action:** run
+`tests/test_unit_gguf_mtp_serving_chunk_policy.py` and the batch-verifier,
+packed-prefill and MTP warmup nodes in
+`tests/test_live_generation_qwen35_gguf_sampling.py`. A runtime policy change also
+needs public explicit-MTP requests at neighboring, unrelated and larger widths,
+selected chunk/owner/stream traces, exact commit/rollback and refusal-after-progress
+checks, repeated requests and cleanup. Compare complete-wall and latency on the
+intended backend against the bounded policy before choosing a tuning result.
+Keep per-slot unsupported-shape fallback and request-local state isolation.
