@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF AR server stream decode | `HIPENGINE_GGUF_AR_STREAM_DECODE` is a default-on fallback/opt-out around per-slot HIP stream decode when packed AR is disabled or unavailable, and also gates the historical parallel c4+c4 chunk path above four rows. | Direct physical-c8 beats c4+c4 on both targets. F1 measures the same-loop packed-off serial C13 bridge at **31.708/42.764 tok/s** versus grouped packed C13 **111.380/72.522 tok/s (3.513x/1.696x)** on gfx1100/gfx1151; every static/live packed route records zero serial/resident fallback, including real c8→c13 admission. | Both gfx11 triggers are met. Keep the bridge as an explicit unsupported-shape/test oracle and rollback for one release window, then remove the public env opt-out during F2 while retaining backend capability fallback. |
 | GGUF MTP server stream draft | `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` is a default-on opt-out around per-slot HIP stream draft proposal for c>N GGUF MTP serving. | Default-on after the 2026-07-05 natural24 server run. It moves packed-verifier c=2/c=4/c=8 MTP **45.57/47.48/47.18 -> 46.75/49.65/48.72 tok/s** and beat the then-current stream-AR rows by **1.058x/1.063x/1.021x**; the later packed-AR route supersedes that same-server AR comparison, so current MTP is below AR. It currently creates a `ThreadPoolExecutor` per draft phase and the c=8 wall remains verifier-heavy. | Remove the env opt-out and/or replace the per-cycle executor with a persistent scheduler after c>N server reruns and profiler evidence show the stream path is non-regressive. Keep the opt-out while tuning verifier wall and thread-pool overhead. |
 | GGUF MTP server stream verify | `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY` is a default-on opt-out around running independent chunk-4 packed target verifier chunks on separate owner-session streams at c>N. | Default-on after the 2026-07-05 natural24 c=8 rerun. It keeps the four-slot verifier cap but overlaps the two c=8 chunks, moving warm c=8 MTP **48.72 -> 52.18 tok/s** and `slots_verify_phase_ms` **15354.902 -> 12345.442**. c=4 remains on the single-chunk path. | Remove the env opt-out after c=2/c=4/c=8 reruns and profiler evidence show the stream verify path is non-regressive; replace it if a tuned rows>=16 verifier or true batched scheduler supersedes chunk-stream overlap. |
 | GGUF row-shaped target executor | `Qwen35GGUFResidentSession.step_rows()` still loops physical slots through the retained c=1 layer path; `verify_rows()` likewise advances each linear-chain row serially. They are explicit correctness/speculative bridges rather than the default independent-decode route. | UD-Q3_K_M C=2/4/8 uses native indexed Conv/GDN, batched `KVLiveSpans` attention, selected-row MoE, row lm-head/argmax, and shape-specific HIP graphs; synchronous greedy prompt lists select the scheduler-owned native path. The serial executor remains the independent layer/full-logit oracle. Task #31's transactional MTP verifier deliberately reuses the exact c=1 row arithmetic and journals each row rather than weakening correctness. | Keep `step_rows()` as an explicit unsupported-shape/bisection oracle. Replace the eager serial MTP chain only when a native dependency-aware root+candidate forward preserves the B=1/2/3 scalar-logit and state/KV commit gates and is same-suite non-regressive; do not remove unfused numerical fallbacks. |
@@ -11046,3 +11045,40 @@ repeat output, fault rollback and teardown. Keep the public post-submission
 failure nodes in `tests/test_live_paro_mtp_graph.py`; they launch real HIP graphs
 with injected result failure and do not claim native-C++ registration on an
 unregistered peer. Apply numerical gates only if arithmetic changes.
+
+### R0281-AR-STREAM — Stream decode control and serial diagnostic migration
+
+`HIPENGINE_GGUF_AR_STREAM_DECODE` defaults on in the direct compatibility AR
+adapter. It enables per-slot asynchronous decode when packed decode is off,
+and independent packed-chunk streams when logical width exceeds the native
+eight-slot cap. The old c4+c4 description is stale: the chunk planner uses up
+to eight rows and avoids a trailing singleton when splitting a wider group.
+The resident model runner uses its own packed/scalar grouping; it does not
+select per-slot streams from this reader.
+
+The explicit serial environments in `scripts/gguf_concurrency_baseline.py`,
+`scripts/gguf_live_server_bench.py`, `scripts/gguf_production_load_gate.py` and
+`scripts/gguf_sampled_api_gate.py` still set the stream flag off. Removing it
+alone silently converts those compatibility comparisons to asynchronous decode.
+Migrate this control with R0281-AR-DECODE/AR-PREFILL, not as a defaults-only
+rerun after a release window. R0281-AR-LOOP separately covers compatibility-loop
+extraction; it does not replace the serial comparison.
+
+**Remaining work:** provide an explicit resolved serial/stream/packed
+comparison control or designated serial oracle, then migrate writers, route
+metadata, cleanup tests and the env reader together. Preserve singleton and
+missing-hook fallback, packed-owner flush before per-slot work, launch-before-
+read ordering and stream destruction. Once any chunk is launched, do not
+retry the group as a serial fallback on a launch/result exception.
+
+**Clearing action:** run `tests/test_unit_gguf_ar_decode_control.py`,
+`tests/test_unit_gguf_concurrency_baseline.py`,
+`tests/test_unit_gguf_live_server_bench.py`,
+`tests/test_unit_server_f1_concurrency_bench.py`,
+`tests/test_integration_gguf_production_load_gate.py` and
+`tests/test_unit_gguf_sampled_api_gate.py`, plus stream/packed/scalar and
+above-eight chunk nodes in `tests/test_live_generation_qwen35_gguf_sampling.py`.
+Reader migration needs real default, explicit serial and stream requests at
+widths below/above eight and an unrelated width, ragged/shrinking groups,
+selected route, repeat output and teardown. Historical F1 throughput stays in
+its original artifacts; no new timing claim is made by this triage.
