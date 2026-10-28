@@ -577,7 +577,6 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
-_GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
 _GGUF_MTP_HOT_VOCAB_ENV = "HIPENGINE_GGUF_MTP_HOT_VOCAB"
 _GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
@@ -901,10 +900,6 @@ def _gguf_mtp_hot_vocab_setting(execution_profile: str) -> str | None:
     if value.lower() in {"", "0", "false", "off", "none"}:
         return None
     return value
-
-
-def _gguf_mtp_server_packed_prefill_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_startup_warmup_enabled() -> bool:
@@ -1975,11 +1970,11 @@ class Qwen35GGUFBringupGenerator:
             result["packed_mtp_prefill_reason"] = "startup_warmup_disabled"
             result["packed_mtp_verify_skipped"] = True
             result["packed_mtp_verify_reason"] = "startup_warmup_disabled"
-        elif max_batch <= 1 or not _gguf_mtp_server_packed_prefill_enabled():
+        elif max_batch <= 1:
             result["packed_mtp_prefill_skipped"] = True
-            result["packed_mtp_prefill_reason"] = "batch_width_le_1_or_disabled"
+            result["packed_mtp_prefill_reason"] = "batch_width_le_1"
             result["packed_mtp_verify_skipped"] = True
-            result["packed_mtp_verify_reason"] = "batch_width_le_1_or_disabled"
+            result["packed_mtp_verify_reason"] = "batch_width_le_1"
         elif not self.supports_speculative_mtp:
             result["packed_mtp_prefill_skipped"] = True
             result["packed_mtp_prefill_reason"] = "mtp_tensors_unavailable"
@@ -5140,7 +5135,7 @@ class Qwen35GGUFBringupGenerator:
         *,
         pool_sessions: bool,
     ) -> list[_GGUFMTPServingSlot] | None:
-        if len(request.prompts) <= 1 or not _gguf_mtp_server_packed_prefill_enabled():
+        if len(request.prompts) <= 1:
             return None
         if len(request.prompts) > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS:
             return None

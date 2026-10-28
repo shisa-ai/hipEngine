@@ -327,7 +327,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_AR_PACKED_DECODE` | true | Retained default with rollback opt-out | Enables GGUF server greedy-AR packed resident decode for c>N coalesced requests. Set `0`/`false`/`off` to force stream/scalar fallback for bisection. |
 | `HIPENGINE_GGUF_AR_STREAM_DECODE` | true | Retained fallback with rollback opt-out | Enables per-slot stream decode fallback and c>4 packed-decode chunk streams. Set false only for bisection. |
 | `HIPENGINE_GGUF_FP16_RECURRENT_STATE` | backend/model scoped (true for gfx1151 `mostly_q4_k_s`; false otherwise) | Retained default with strict-storage rollback opt-out | Stores the Qwen3.8 `Q4_K_S` Gated DeltaNet recurrent state as FP16 while accumulating in FP32. On by default for that model on gfx1151 after engine and serving comparisons came out faster with no measured quality or isolation loss. Set `0`/`false`/`off` for FP32 state; set `1` to force it outside that scope for a comparison only. Speculative decoding and the chain journal keep FP32 state. |
-| `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL` | true | Retained default with rollback opt-out | Enables the GGUF MTP server packed prompt-prefill opener for eligible c=2/c=4 serving batches, returning FP32 prompt hidden rows for MTP catch-up. Set false for bisection. The c=8 first wave still uses the serial opener because the packed prefill path keeps the four-slot safety cap; the trailing c=2 wave uses packed prefill. |
 | `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` | true | Retained default with rollback opt-out | Streams draft tokens from the GGUF MTP server route; `0` restores buffered draft emission for bisection. |
 | `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY` | true | Retained default with rollback opt-out | Streams verify results from the GGUF MTP server route; `0` restores buffered verify emission for bisection. |
 | `HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER` | true | Retained default with rollback opt-out | Defers the verify scatter stage inside a streamed MTP server cycle; `0` restores the eager scatter order for bisection. |
@@ -1106,6 +1105,12 @@ harnesses read them but do not own them.
 | `AMDGPU_CARD_NAME`, `AMDGPU_CARD_NAME_W7900`, `HIP_VISIBLE_DEVICES_W7900` | TheRock/lab wrapper scripts | Card-name and device-pin locals used by the W7900 wrapper scripts. |
 
 ## Names that are not environment variables
+
+- `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL` is retired and ignored. Eligible
+  direct-adapter MTP batches use packed prefill with FP32 hidden rows; startup
+  warmup uses bounded packed groups when requested. Singleton, over-policy-width
+  and unavailable packed-hook cases keep their per-request fallback. The
+  resident scheduler uses its own packed-prefill path.
 
 - `HIPENGINE_GGUF_Q8_T16_THREADS` is retired and appears only in regression
   tests. It is ignored; backend policy and explicit launch arguments select

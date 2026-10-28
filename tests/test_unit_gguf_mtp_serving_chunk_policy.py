@@ -94,7 +94,7 @@ def test_verifier_declines_only_before_any_chunk_advances(monkeypatch, failure_i
 @pytest.mark.parametrize("count", [5, 7, 8, 13])
 def test_prefill_above_cap_declines_before_acquiring_slots(monkeypatch, count):
     generator = _generator()
-    monkeypatch.setattr(qwen35_gguf, "_gguf_mtp_server_packed_prefill_enabled", lambda: True)
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "0")
 
     def unexpected(*args, **kwargs):
         pytest.fail("the over-cap packed route must decline before acquiring sessions")
@@ -105,5 +105,72 @@ def test_prefill_above_cap_declines_before_acquiring_slots(monkeypatch, count):
         None,
         {},
         SimpleNamespace(prompts=tuple(range(count))),
+        pool_sessions=True,
+    ) is None
+
+
+@pytest.mark.parametrize("count", [2, 3, 4])
+def test_prefill_capability_refusal_closes_every_acquired_owner(monkeypatch, count):
+    generator = _generator()
+    sessions = []
+    drafts = []
+    closed = []
+    released = []
+    calls = []
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "0")
+
+    class Session:
+        runtime = object()
+
+        def close(self):
+            closed.append(self)
+
+        def prefill_batch_native(self, prompts, **kwargs):
+            calls.append((prompts, kwargs))
+            raise NotImplementedError("unsupported slab")
+
+    def acquire_session(*args, **kwargs):
+        session = Session()
+        sessions.append(session)
+        return session, None, False
+
+    def acquire_draft(*args, **kwargs):
+        draft = object()
+        drafts.append(draft)
+        return draft, None, False
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", Session)
+    monkeypatch.setattr(generator, "_acquire_shared_session", acquire_session)
+    monkeypatch.setattr(generator, "_acquire_mtp_draft_runner", acquire_draft)
+    monkeypatch.setattr(
+        generator, "_release_mtp_draft_runner",
+        lambda key, draft: released.append(draft),
+    )
+    prompts = {index: list(range(index + 2)) for index in range(count)}
+    assert generator._try_open_mtp_serving_slots_batch_prefill(
+        None, None, prompts,
+        SimpleNamespace(prompts=tuple(prompts), deadline_at=None),
+        pool_sessions=True,
+    ) is None
+    assert len(sessions) == count
+    assert closed == sessions[::-1]
+    assert released == drafts[::-1]
+    assert len(calls) == 1
+    assert calls[0][0] == [tuple(prompts[index]) for index in range(count)]
+    assert calls[0][1]["return_hidden_seeds"] is True
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 3, 4])
+def test_prefill_singleton_or_missing_hook_declines_before_acquisition(monkeypatch, count):
+    generator = _generator()
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "false")
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", SimpleNamespace())
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("an unavailable packed route must not acquire sessions")
+
+    monkeypatch.setattr(generator, "_acquire_shared_session", unexpected)
+    assert generator._try_open_mtp_serving_slots_batch_prefill(
+        None, None, {}, SimpleNamespace(prompts=tuple(range(count))),
         pool_sessions=True,
     ) is None

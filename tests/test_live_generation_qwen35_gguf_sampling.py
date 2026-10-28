@@ -1177,7 +1177,10 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
     assert timing["mtp_linear_state_extra_rows"] == 1.0
 
 
-def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(monkeypatch) -> None:
+@pytest.mark.parametrize("retired_override", [None, "0", "false"])
+def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(
+    monkeypatch, retired_override: str | None,
+) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -1314,7 +1317,10 @@ def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(monkeypatch) -> 
     )
     monkeypatch.setattr(qwen35_gguf, "_free_mtp_buffers", lambda buffers, *, runtime: calls.append(("free_kv", len(buffers))))
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
-    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", raising=False)
+    if retired_override is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", retired_override)
 
     generator = _generator()
     generator.weight_index = _mtp_capable_weight_index()
@@ -5742,7 +5748,10 @@ def test_specdec2_streaming_prompt_missing_adapter_preserves_candidate_budget(
     assert row.mtp2_prompt_fallback_reason is None
 
 
-def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled(monkeypatch) -> None:
+@pytest.mark.parametrize("retired_override", ["0", "false", "1"])
+def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled(
+    monkeypatch, retired_override: str,
+) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -5848,7 +5857,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     )
     monkeypatch.setattr(qwen35_gguf, "_new_mtp_draft_runner", lambda assets, *, runtime: FakeDraft())
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", retired_override)
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "1")
     monkeypatch.setattr(
         qwen35_gguf.Qwen35GGUFBringupGenerator, "_load_mtp_serving_assets",
