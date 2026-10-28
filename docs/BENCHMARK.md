@@ -182,10 +182,11 @@ acceptance rows are INVALID.
 > before it is retained or made default; microbenches and partials routinely do
 > not translate to e2e (dp4a, split-K, rowtile, non-temporal were all isolated
 > wins that went flat at e2e).** See `docs/campaigns/MTP-LLAMACPP-PARITY.md` →
-> "Validation protocol — run the suite for EVERY change". The manual two-step
-> below is the underlying mechanism; note its `--true-ar-baseline-json` *attach*
-> is currently broken (it still demands the #8-retired `graph_replay` AR contract,
-> see `docs/REFACTOR.md`), which is why the suite computes the ratio itself.
+> "Validation protocol — run the suite for EVERY change". The suite and the
+> manual two-step attachment below share the production timing validator.
+> Both accept backend-admitted graph replay or eager decode when the artifact
+> records why replay was not selected; an explicit graph opt-out is not a
+> production denominator.
 >
 > **Scope: GGUF path only.** `gguf_ar_mtp_suite.py` covers the GGUF Q4_K_M path
 > (`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `Qwen35GGUFResidentSession`). The
@@ -199,6 +200,22 @@ acceptance rows are INVALID.
 > for the verifier trace). A change to kernels shared by both paths must be
 > validated on whichever path(s) it touches (ideally both). A unified PARO
 > equivalent of `gguf_ar_mtp_suite.py` is a TODO.
+
+Start with the suite's default route rather than copying its child flags:
+
+```bash
+python3 scripts/gguf_ar_mtp_suite.py \
+  --model <target.gguf> --scope full --output <result.json>
+```
+
+Replace the angle-bracket placeholders with local paths. `--scope full` selects
+the complete category fixture and budget set; omitting `--mtp-route` selects the
+suite's exact diagnostic route, not the public server's automatic policy.
+Add `--dry-run` to inspect the two child commands and resolved `shared_config`
+without loading a model. Choose `--mtp-route` only for a named comparison;
+[`MTP-LLAMACPP-PARITY.md`](campaigns/MTP-LLAMACPP-PARITY.md#canonical-reruns)
+keeps the explicit compatibility, fixed-horizon and stage-timing recipes.
+Architecture and compiler setup still come from the target host's ROCm wrapper.
 
 Use this protocol before resuming native GGUF-MTP acceptance/speed optimization.
 It is the guarded replacement for the old fixed-prompt `gguf_mtp_bench.py`
@@ -226,11 +243,17 @@ acceptance loops.
    `commands`; include `repo` code-state provenance; include protocol metadata (`model`, matching `quant`,
    `prompt_file`, `prompt_count`, positive `decode_tokens`, and non-negative
    `warmup_decode_tokens`); include production `timing_protocol` metadata with
-   `decode_path=graph_replay`, `graph_replay_decode=true`,
-   `graph_steps_per_replay=1`, `decode_repack=true`,
-   `effective_decode_repack=true`, `use_gemv_decode=true`,
+   `decode_repack=true`, `effective_decode_repack=true`, `use_gemv_decode=true`,
    `effective_use_gemv_decode=true`, `use_wmma_prefill=true`, and
-   `effective_use_wmma_prefill=true`; include top-level `prompt_hashes`; and
+   `effective_use_wmma_prefill=true`. Graph replay records
+   `decode_path=graph_replay`, `graph_replay_decode=true`,
+   `graph_steps_per_replay=1`, and `graph_capture_in_decode_ms=true`.
+   Backend-admitted eager decode instead records `decode_path=eager_step`,
+   `graph_replay_decode=false`, `graph_steps_per_replay=0`, and
+   `graph_capture_in_decode_ms=false`, with `graph_replay_requested=true` and
+   `effective_decode_graph_min_replay_steps` set to null or a positive minimum
+   above `decode_tokens`. Both routes must agree with recorded backend admission.
+   Include top-level `prompt_hashes` and
    contain one `prompt_metrics[]` row per selected prompt with `prompt_sha256`,
    `finite_final_logits=true`, `output_tokens` matching artifact
    `decode_tokens`, `warmup_decode_tokens` matching artifact
@@ -1149,6 +1172,24 @@ frozen C1/C4/C8 conditions, no C1 regression, and the medium-C4 guard.
 The complete active board is [`AGENTIC-OPT.md`](campaigns/AGENTIC-OPT.md).
 
 ### Speculative decode / DFlash rows
+
+For the BF16-target DFlash chain benchmark, start with the harness defaults and
+explicit model paths, backend and output workload:
+
+```bash
+python3 scripts/dflash_chain_e2e_bench.py \
+  --target-model <target-directory> --drafter-model <drafter-directory> \
+  --backend hip_gfx1100 --max-prompts 0 --decode-tokens 128 \
+  --json <result.json>
+```
+
+Use the backend of the target host (`hip_gfx1100` or `hip_gfx1151`) and replace
+the path placeholders. `--max-prompts 0` selects all rows in the default
+`code_promotion,robustness` groups. This command uses chain verification,
+canonical replay, graphs off and no history-routing manifest. It measures the
+benchmark route, not a public serving default or the separate DFlash2 GGUF
+runner. Add graph, fusion, tree, confidence or history-route controls only for
+an explicit comparison, and record them in that comparison's artifact.
 
 DFlash and later MTP rows use `scripts/dflash_speculative_bench.py` as the
 schema-normalizing artifact driver. Future native runners should emit one raw row

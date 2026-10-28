@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shlex
 import sys
 
 import pytest
@@ -103,6 +105,49 @@ def test_suite_and_attachment_share_graph_admission(minimum, horizon, graph_requ
 def test_suite_default_mtp_route_is_current_speed_row() -> None:
     assert suite.DEFAULT_MTP_ROUTE == "resident-b1-probe-block-direct-cap32k-minrows2-pmin05"
     assert suite.DEFAULT_MTP_ROUTE in suite.MTP_ROUTES
+
+
+@pytest.mark.parametrize("scope", ["smoke", "partial", "full"])
+def test_default_route_cli_packages_children_without_a_selector(
+    monkeypatch, tmp_path, capsys, scope,
+) -> None:
+    model = tmp_path / "target.gguf"
+    prompts = tmp_path / "prompts.jsonl"
+    raw_root = tmp_path / "raw"
+    monkeypatch.setattr(sys, "argv", [
+        "gguf_ar_mtp_suite.py", "--model", str(model), "--prompts", str(prompts),
+        "--scope", scope, "--raw-root", str(raw_root), "--dry-run",
+    ])
+    monkeypatch.setattr(suite, "_run", lambda *args: pytest.fail("dry-run launched a child"))
+
+    assert suite.main() == 0
+
+    ar_line, mtp_line, config_text = capsys.readouterr().out.split("\n", 2)
+    ar = shlex.split(ar_line.removeprefix("AR : "))
+    mtp = shlex.split(mtp_line.removeprefix("MTP: "))
+    config = json.loads(config_text.removeprefix("shared_config: "))
+    expected_scope = suite.SCOPES[scope]
+    assert config["mtp_route"] == suite.DEFAULT_MTP_ROUTE
+    assert config["budgets"] == expected_scope["budgets"]
+    assert config["prompt_limit"] == expected_scope["limit"]
+    assert config["mtp_route_extra_args"] == suite.MTP_ROUTES[suite.DEFAULT_MTP_ROUTE]
+    for command in (ar, mtp):
+        assert command[command.index("--model") + 1] == str(model)
+        assert command[command.index("--prompts") + 1] == str(prompts)
+        if expected_scope["limit"] is None:
+            assert "--limit" not in command
+        else:
+            assert command[command.index("--limit") + 1] == str(expected_scope["limit"])
+    assert ar[ar.index("--decode-tokens") + 1] == str(
+        expected_scope["cycles"] * (max(expected_scope["budgets"]) + 1)
+    )
+    assert mtp[mtp.index("--true-ar-baseline-json") + 1] == str(raw_root / "true-ar-baseline.json")
+    assert mtp[mtp.index("--budgets") + 1] == ",".join(map(str, expected_scope["budgets"]))
+    extras = [arg.removeprefix("--extra-arg=") for arg in mtp if arg.startswith("--extra-arg=")]
+    assert extras == ["--prompt-reasoning", "off", *suite.MTP_ROUTES[suite.DEFAULT_MTP_ROUTE]]
+    assert "--llama-compat" not in extras
+    assert "--verify-dp4a" not in extras
+    assert not list(raw_root.iterdir())
 
 
 def test_suite_default_route_enables_b2_block_verify() -> None:

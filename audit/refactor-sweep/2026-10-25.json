@@ -8380,14 +8380,15 @@
       "start_line": 6333,
       "end_line": 6348,
       "sha256": "9acf0f88c81ec07591d2679f971688aa0ffb4fb4cd2031fc25615256240ea241",
-      "status": "in-progress-row-triage",
+      "status": "triaged-all-rows-resolved-or-bottom-referred",
       "evidence": [
         "Row6341 completed control gap;remaining diagnostic/session-plan decision moved bottom R0282-PREFILL-POLICY. Runtime unchanged,4pool characterization cases and93focused tests pass;see worklog/entries/20261028T201442.428322Z-cleanup-refactor-r0282-prefill-policy-1d5966.md. Other rows remain individually pending.",
         "Row6342 resolved by synthetic CLI contracts and focused tool fixes;43focused tests pass,history preserved. Worklog: worklog/entries/20261028T202550.319966Z-cleanup-refactor-r0282-packet-cli-587ded.md.",
         "Row6343 B1 premise superseded by public depth policy;shared default-on verifier controls characterized and remaining ownership consolidated in existing bottom PARO-PROVIDER referral.216focused pass,no runtime change. Worklog: worklog/entries/20261028T203948.106702Z-cleanup-refactor-r0282-paro-chain-641349.md.",
         "Row6344 explicit PARO tree harness and private-scorer retirement decision consolidated bottom PARO-PROVIDER;shared tree primitives remain.362focused tests pass,runtime unchanged. Worklog: worklog/entries/20261028T204504.196456Z-cleanup-refactor-r0282-paro-tree-c02e80.md.",
         "Row6345 resolved:history routes/tails already explicit harness-only,not public runtime. Default/precedence characterization28focused pass;obsolete row removed. Worklog: worklog/entries/20261028T205128.038753Z-cleanup-refactor-r0282-dflash-history-a99d6a.md.",
-        "Row6346 remaining drafter choices audited;dense already on,naive reference live,fused selector old benchmark-only.67focused pass and bottom R0282-DFLASH-DRAFTER owns caller-plan decision. Worklog: worklog/entries/20261028T210115.994531Z-cleanup-refactor-r0282-dflash-drafter-979f2a.md."
+        "Row6346 remaining drafter choices audited;dense already on,naive reference live,fused selector old benchmark-only.67focused pass and bottom R0282-DFLASH-DRAFTER owns caller-plan decision. Worklog: worklog/entries/20261028T210115.994531Z-cleanup-refactor-r0282-dflash-drafter-979f2a.md.",
+        "Row6347 resolved default-first GGUF/DFlash commands and no-model CLI characterization;91focused plus325 AR/attachment tests pass. Removed empty historical table;all original subitems now individually resolved or bottom referred. No runtime/default/performance change. Worklog: worklog/entries/20261028T211627.627548Z-cleanup-refactor-r0282-benchmark-commands-5bf3dc.md."
       ],
       "subitems": [
         {
@@ -8439,7 +8440,8 @@
         {
           "line": 6347,
           "text": "| Benchmark commands | Stop requiring long flag piles once defaults represent the optimal path. | Flags that select workload shape, model, quant, and explicit experiments. | After MTP/DFlash defaults-only rows are retained, update benchmark docs to show default commands first and move historical A/B flags into dated notes. |",
-          "status": "pending"
+          "status": "resolved-default-first-command-docs",
+          "evidence": "docs/BENCHMARK.md now starts exact GGUF suite and BF16-target DFlash sections with minimal default-route commands and named model/workload/output;explicit compatibility/horizon/stage recipes remain separately linked,history untouched. Correct stale broken-AR-attach premise and record shared backend graph/eager admission. Added3scope no-selector child-contract cases and3DFlash parser/group cases;91focused+325AR/attachment pass,real GGUF dry-run and DFlash help pass,no model load/runtime/default/math/perf claim. Worklog: worklog/entries/20261028T211627.627548Z-cleanup-refactor-r0282-benchmark-commands-5bf3dc.md."
         }
       ]
     },

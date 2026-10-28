@@ -3430,16 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Post-Optimal-Path Cleanup Targets
-
-These are not optimization tasks for the current sprint. They are the cleanup
-pass to run once a path is fast and correct enough that the benchmark defaults
-should be boring.
-
-| Path | Cleanup target | Keep | Remove / collapse trigger |
-| --- | --- | --- | --- |
-| Benchmark commands | Stop requiring long flag piles once defaults represent the optimal path. | Flags that select workload shape, model, quant, and explicit experiments. | After MTP/DFlash defaults-only rows are retained, update benchmark docs to show default commands first and move historical A/B flags into dated notes. |
-
 ## `--verify-dp4a` / `*-pmin05-dp4a` route (default OFF, opt-in accuracy-traded)
 - Added 2026-06-30. Bench flag `--verify-dp4a` (gguf_mtp_bench.py) + suite route
   `resident-b1-probe-block-direct-cap32k-minrows2-pmin05-dp4a` enable llama.cpp-style
