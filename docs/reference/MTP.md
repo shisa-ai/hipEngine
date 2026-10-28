@@ -74,6 +74,13 @@ returns to the cap; a failed recovery may enter AR fallback. Cycle artifacts
 record the current runner width and next recovery state. Its interface decision
 is tracked with proposal policies in `REFACTOR.md` under `R0281-TOPK`.
 
+`--resident-mtp-device-seed` attaches `Qwen35GGUFMTPContext` to the target
+session and passes its pending FP32 hidden pointer to proposal. Non-native
+cycles replace that seed with the accepted verifier row or recapture the
+target seed; native complete-cycle execution owns the corresponding update.
+The host-seed path remains a separate benchmark comparison. Device seeding
+does not mean all prompt, diagnostic or accepted-row KV repair is host-free.
+
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked
 pointer-table kernel when their layout contracts hold. Per-layer copy

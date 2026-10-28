@@ -147,6 +147,44 @@ def test_gguf_mtp_context_captures_target_seed_and_builds_b1_row() -> None:
         Qwen35GGUFMTPDraftBatch.validate_payload(bad_batch, field_name="draft batch")
 
 
+def test_context_recaptures_live_target_pointer_without_copying_weights() -> None:
+    target = _TargetSession(_Seed(token_id=0, position=0, hidden_ptr=0x1000))
+    block = object()
+    context = Qwen35GGUFMTPContext.from_target_seed(
+        target, token_id=7, position=4, mtp_block=block,
+    )
+    first = context.pending_seed
+    target.seed = _Seed(token_id=0, position=0, hidden_ptr=0x9000)
+    current = context.capture_pending_seed_from_target(token_id=13, position=9)
+
+    assert context.target_session is target
+    assert context.mtp_block is block
+    assert first.hidden_ptr == 0x1000
+    assert current is context.pending_seed
+    assert (current.token_id, current.position, current.hidden_ptr) == (13, 9, 0x9000)
+    assert target.calls == [(7, 4), (13, 9)]
+    assert context.verify_seeds == ()
+
+
+@pytest.mark.parametrize(
+    "seed,error",
+    [
+        (_Seed(1, 2, 0x3000, _Contract(ready_for_mtp=False)), "ready fp32"),
+        (_Seed(1, 2, 0x3000, _Contract(rows=2)), "one hidden seed row"),
+        (_Seed(1, 2, 0), "non-zero device pointer"),
+    ],
+)
+def test_failed_target_seed_capture_preserves_pending_seed(seed, error) -> None:
+    target = _TargetSession(_Seed(token_id=0, position=0, hidden_ptr=0x1000))
+    context = Qwen35GGUFMTPContext.from_target_seed(target, token_id=7, position=4)
+    previous = context.pending_seed
+    target.seed = seed
+
+    with pytest.raises(ValueError, match=error):
+        context.capture_pending_seed_from_target(token_id=13, position=9)
+    assert context.pending_seed is previous
+
+
 def test_gguf_mtp_context_builds_b1_proposal_from_registered_topk_logits() -> None:
     register_cpu_reference_kernels(replace=True)
     context = Qwen35GGUFMTPContext(target_session=object())

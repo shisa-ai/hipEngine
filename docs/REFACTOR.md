@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --resident-mtp-device-seed` and suite route `resident-cap32k-device-seed`. | Default-off structural diagnostic. It seeds the resident draft from the target session's device-resident fp32 hidden seed pointer, mirroring llama.cpp's resident `pending_h` lifecycle direction and avoiding the pending-seed host round trip. 2026-06-29 full suite: AR **54.59 tok/s**, best MTP B1 **52.08 tok/s = 0.9540x AR**, accepted/output unchanged vs cap32k recovery at **78/178 = 0.438**, `mtp_beats_ar=false`. | Promote into the final resident lifecycle only if a future full-suite + heldout row beats true AR, or if the real `GGUFMTPDraftContext` absorbs the device-seed path. Otherwise remove or move it to an experiment harness after the verifier-amortization path lands. |
 | GGUF MTP diagnostics | Suite route `resident-cap32k-device-seed-kv` plus `scripts/gguf_mtp_bench.py` path combining `--resident-mtp-device-seed` and `--mtp-device-kv-cache`. | Default-off rejected diagnostic. The route uses new device verifier-row staging and device-base accepted-row KV commit plumbing, but without llama.cpp prompt/context catch-up it collapses draft acceptance: B3 smoke **38.94 tok/s = 0.7124x AR**, draft_acceptance **0.032**; B1 smoke **39.73 tok/s = 0.7235x AR**, draft_acceptance **0.017**. | Keep `Qwen35GGUFResidentSession.stage_current_hidden_seed_as_verify_row()` and `Qwen35GGUFResidentMTPDraftRunner.write_kv_rows_from_device_seed_base()` as lifecycle primitives. Remove or move the no-context-replay suite route unless a future prompt-catch-up resident lifecycle uses it and beats true AR on full suite. |
 | GGUF MTP diagnostics | Suite route `resident-context-cap32k-device-seed` plus `scripts/gguf_mtp_bench.py` compatibility path combining `--resident-mtp-device-seed`, `--mtp-context-replay`, and `--mtp-device-kv-cache`. | Default-off rejected structural diagnostic. It wires llama.cpp shifted prompt catch-up, resident device `pending_h`, staged verifier rows, and device MTP KV, but the target verifier remains serial: B1 smoke **50.84 tok/s = 0.9257x AR**, accepted/output **0.400**; B3 smoke **46.97 tok/s = 0.856x AR**, accepted/output **0.571**. | Keep only as a compatibility scaffold while building real target-pass amortization. Remove or move to an experiment harness once a block/graph verifier path owns the llama.cpp lifecycle and beats true AR on the full suite. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --adaptive-strict-block-probe` and suite route `resident-hybrid-strict-block-cap32k`. | Default-off rejected diagnostic. It starts with strict top-1 block-promotion probing and falls back generically to root-topK B1 + cap32k recovery when the strict probe under-accepts. 2026-06-29 full suite: AR **54.58 tok/s**, best MTP B3 **50.91 tok/s = 0.9328x AR**, accepted/output **94/194 = 0.485**, `mtp_beats_ar=false`; worse than cap32k recovery B1 **51.71 tok/s = 0.9478x AR**. | Remove or move to a dedicated experiment harness unless a future full-suite + heldout row proves a strict-block hybrid beats true AR. Do not promote based on smoke/partial closeness. |
@@ -11537,9 +11536,19 @@ owns its own repair/cursor result instead. These flags are forced by
 llama-compat and remain explicit in suite/workbench context comparisons;
 complete-cycle diagnostics require device KV. They are not limited to B1.
 
-**Decision needed:** preserve these independent prompt/cache comparisons or
-replace the switches with an explicit benchmark context policy across their
-callers. Prompt priming, cache placement and public NextN prompt streaming are
+The device-seed route is already attached to `Qwen35GGUFMTPContext`: initial
+`from_target_seed()` captures the target's FP32 pending-seed pointer, and
+proposal reads `context.pending_seed.hidden_ptr`. Non-native cycles update it
+from accepted verifier rows or recapture the target seed; native complete-cycle
+execution owns its update. Keep ready-single-row validation, pointer/token/
+position identity and failed-capture preservation. This avoids a required
+per-cycle host seed readback, but does not imply that all prompt, diagnostic or
+KV-repair work is host-free. The live `--resident-mtp-device-seed` comparison
+and its suite aliases remain part of this context-policy migration.
+
+**Decision needed:** preserve these independent prompt/cache and host/device-seed
+comparisons or replace the switches with an explicit benchmark context policy
+across their callers. Prompt priming, cache placement and public NextN prompt streaming are
 different owners; do not replace one with another or change the standalone
 single-seed default merely to remove a switch. Historical timing results do
 not decide whether an implemented cache configuration may execute.

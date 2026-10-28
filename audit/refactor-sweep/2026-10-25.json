@@ -8206,7 +8206,8 @@
         {
           "line": 6293,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --resident-mtp-device-seed` and suite route `resident-cap32k-device-seed`. | Default-off structural diagnostic. It seeds the resident draft from the target session's device-resident fp32 hidden seed pointer, mirroring llama.cpp's resident `pending_h` lifecycle direction and avoiding the pending-seed host round trip. 2026-06-29 full suite: AR **54.59 tok/s**, best MTP B1 **52.08 tok/s = 0.9540x AR**, accepted/output unchanged vs cap32k recovery at **78/178 = 0.438**, `mtp_beats_ar=false`. | Promote into the final resident lifecycle only if a future full-suite + heldout row beats true AR, or if the real `GGUFMTPDraftContext` absorbs the device-seed path. Otherwise remove or move it to an experiment harness after the verifier-amortization path lands. |",
-          "status": "pending"
+          "status": "fixed-context-owned-device-seed-lifecycle-recorded",
+          "evidence": "Original context-absorption condition implemented: Qwen35GGUFMTPContext.from_target_seed/pending_seed pointer feeds proposal, accepted verifier rows or target recapture refresh it; native completecycle owns update. Keep live host/device comparison selector/aliases within bottom R0281-CONTEXT; no runtime removal/default edit. Add4 pointer-refresh/failure-preservation tests including unready/multirow/nullseed. 308focused context/exports/proposer/bench/suite pass; docs/audit/tiers/compile/diff/worklog pass. No new GPU/speedclaim, historical B1 control not promoted. Worklog: worklog/entries/20261028T165445.468274Z-cleanup-refactor-r0281-device-seed-312588.md."
         },
         {
           "line": 6294,
