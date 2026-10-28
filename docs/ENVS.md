@@ -350,7 +350,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_SELECTED_X8_REPACK` | unset | Harness-set materialization | Repacks selected-down expert tensors into the X8 replacement layout; value is the repack mode string chosen by the harness. |
 | `HIPENGINE_GGUF_RAW_SELECTED_DP4A` | unset | Diagnostic route | Enables the llama-style raw q8_1/dp4a selected-expert GEMV route (read live by the runner and the selected-expert caller contract). Default off; the accuracy-degrading variant fails the ja correctness gate, so only harness/gate runs set it. |
 | `HIPENGINE_GGUF_DENSE_Q8_DP4A` | unset | Diagnostic route | Enables the dense Q8_0 dp4a pair helper; requires `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR=1` to be set before materialization. |
-| `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL` | unset | Diagnostic route | Extends the dense Q8 dp4a route across the full dense set; also enables the pair helper. |
+| `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL` | unset | Diagnostic route | Enables BF16 singleton/QKV-triple helpers as well as the pair helper for rows>1. At load time, broadens raw sidecars to every dense Q8 T16 layer tensor only when `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR=1` is also set. |
 | `HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED` | unset | Diagnostic route | Uses the dp4a body for the shared gate/up/down projections (kept independently gated because the shared tensors are much smaller). |
 | `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` | unset | Diagnostic route | Uses the dp4a helper with F32 activations for direct-state `ssm_out`, which the BF16 denseq8all helper cannot cover. |
 | `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A` | unset | Diagnostic route | Verifier direct top-1 path reading the X8 Q6_K `lm_head` sidecar; production gates force it off. |

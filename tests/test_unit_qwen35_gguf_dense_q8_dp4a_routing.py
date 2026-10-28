@@ -54,6 +54,44 @@ def test_dense_q8_dp4a_route_is_default_off(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
 
+@pytest.mark.parametrize("rows", [1, 2, 4, 7])
+@pytest.mark.parametrize("all_enabled", [False, True])
+def test_dense_q8_pair_and_all_routes_keep_independent_row_domains(
+    monkeypatch: pytest.MonkeyPatch, rows: int, all_enabled: bool,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL", str(int(all_enabled)))
+    calls = []
+    monkeypatch.setattr(qgr, "gguf_q4_k_quantize_bf16_q8_1", lambda *args, **kwargs: calls.append("quantize"))
+    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out",
+                        lambda *args, **kwargs: calls.append("pair"))
+    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out",
+                        lambda *args, **kwargs: calls.append("single"))
+    monkeypatch.setattr(qgr, "gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out",
+                        lambda *args, **kwargs: calls.append("triple"))
+    kwargs = dict(rows=rows, in_features=256, stream=7, runtime=SimpleNamespace())
+    scratch = SimpleNamespace(moe_q8_1=_buf(400, nbytes=rows * (256 // 32) * 36))
+    pair = qgr._try_launch_dense_q8_pair_dp4a(
+        _weight(), _weight(), 100, 200, 300, scratch,
+        out_features_a=256, out_features_b=256, **kwargs,
+    )
+    single = qgr._try_launch_dense_q8_single_dp4a(
+        _weight(), 100, 200, scratch, out_features=256, **kwargs,
+    )
+    triple = qgr._try_launch_dense_q8_triple_dp4a(
+        _weight(), _weight(), _weight(), 100, 200, 300, 350, scratch,
+        out_features_a=256, out_features_b=256, out_features_c=256, **kwargs,
+    )
+
+    assert pair is (rows > 1)
+    assert single is (rows > 1 and all_enabled)
+    assert triple is (rows > 1 and all_enabled)
+    expected = [] if rows == 1 else ["quantize", "pair"]
+    if rows > 1 and all_enabled:
+        expected += ["quantize", "single", "quantize", "triple"]
+    assert calls == expected
+
+
 def test_dense_q8_dp4a_shared_route_is_separately_gated(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED", raising=False)
     assert qgr._gguf_dense_q8_dp4a_shared_enabled() is False
