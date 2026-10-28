@@ -72,23 +72,24 @@ def test_qwen35moe_compact_wmma_opt_in_routes_grouped_scheduler(monkeypatch: pyt
     assert ("shared_batch", (3, 256, 1)) in calls
 
 
-def test_qwen35moe_iq_grouped_prefill_policy_defaults_on_with_optout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    assert qgr._iq_grouped_prefill_enabled() is True
+def test_qwen35moe_iq_grouped_prefill_registry_uses_auto_variants() -> None:
     assert qgr._COMPACT_MOE_IQ_GROUPED_DUAL_KEYS[("gguf_iq2_xs", "gguf_iq2_xs")].variant == (
         "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out"
     )
     assert qgr._COMPACT_MOE_IQ_GROUPED_DUAL_KEYS[("gguf_iq3_xxs", "gguf_iq3_xxs")].variant == (
         "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out"
     )
-    monkeypatch.setenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", "0")
-    assert qgr._iq_grouped_prefill_enabled() is False
 
 
+@pytest.mark.parametrize("retired", [None, "0", "false"])
 def test_qwen35moe_iq_grouped_scalar_routes_without_tile_map_or_d2h(
     monkeypatch: pytest.MonkeyPatch,
+    retired: str | None,
 ) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", retired)
     runner, scratch = _fake_runner_and_scratch()
     _set_iq_weights(runner, gate_quant="gguf_iq3_xxs", down_quant="gguf_iq4_xs")
     calls: list[tuple[str, object]] = []
@@ -149,7 +150,6 @@ def test_qwen35moe_iq_grouped_scalar_uses_direct_compact_down_fallback(
         "_launch_selected_raw_gguf_moe_linear",
         lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
     )
-    monkeypatch.setenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", "1")
 
     runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
 
@@ -180,13 +180,73 @@ def test_qwen35moe_iq_grouped_small_assignment_count_stays_direct(
         lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
     )
     monkeypatch.setattr(qgr, "_launch_weighted_selected_raw_gguf_moe_linear", lambda *args, **kwargs: False)
-    monkeypatch.setenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", "1")
     set_wmma_prefill_enabled(True)
 
     runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
 
     assert ("raw_pair", None) in calls
     assert "group_count" not in [name for name, _ in calls]
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4, 7])
+def test_qwen35moe_iq_grouping_keeps_assignment_crossover_and_direct_fallback(
+    monkeypatch: pytest.MonkeyPatch, rows: int,
+) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    _set_iq_weights(runner, gate_quant="gguf_iq3_xxs", down_quant="gguf_iq4_xs")
+    runner.weights.config.expert_count = 6
+    for name in ("ffn_gate_exps", "ffn_up_exps", "ffn_down_exps"):
+        source = runner.weights.layer(0).weight(name).spec.source
+        source.shape = (6, *source.shape[1:])
+        source.byte_shape = (6, *source.byte_shape[1:])
+    scratch.moe_selected_rows_capacity = rows * 2
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    _patch_compact_scheduler(monkeypatch, calls)
+    _patch_iq_compact_registry(monkeypatch, calls, down_quant="gguf_iq4_xs")
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair_silu", lambda *args, **kwargs: False)
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", lambda *args, **kwargs: False)
+    monkeypatch.setattr(qgr, "_launch_weighted_selected_raw_gguf_moe_linear", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        qgr, "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=rows, stream=7)
+
+    if rows * 2 < runner.weights.config.expert_count:
+        assert [payload for name, payload in calls if name == "raw_linear"] == [
+            "ffn_gate_exps", "ffn_up_exps", "ffn_down_exps",
+        ]
+        assert "group_count" not in [name for name, _ in calls]
+    else:
+        assert ("iq_grouped_gate_up", (rows * 2, 256, 256, 6)) in calls
+        assert ("iq_grouped_down", (rows * 2, 256, 256, 6)) in calls
+        assert "raw_linear" not in [name for name, _ in calls]
+
+
+def test_qwen35moe_iq_grouped_unavailable_keeps_direct_selected_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    _set_iq_weights(runner, gate_quant="gguf_iq3_xxs", down_quant="gguf_iq4_xs")
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "_resolve_compact_moe_grouped_kernels", lambda *args: None)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair_silu", lambda *args, **kwargs: False)
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", lambda *args, **kwargs: False)
+    monkeypatch.setattr(qgr, "_launch_weighted_selected_raw_gguf_moe_linear", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        qgr, "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+
+    assert [payload for name, payload in calls if name == "raw_linear"] == [
+        "ffn_gate_exps", "ffn_up_exps", "ffn_down_exps",
+    ]
 
 
 def test_qwen35moe_compact_wmma_missing_selected_kernel_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:

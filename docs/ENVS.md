@@ -396,7 +396,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected-down pair-reuse route selector. |
 | `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected Q6-down pair-reuse route selector. |
 | `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN` | unset | Rollback seam | IQ dense row-slab rule: unset picks the smallest slab at or above the row count (measured default); `1` restores the largest slab at or below it. |
-| `HIPENGINE_GGUF_IQ_GROUPED_PREFILL` | backend-scoped | Rollback seam | Grouped compact prefill session for IQ-quant MoE pairs; `0` disables. |
+| `HIPENGINE_GGUF_IQ_GROUPED_PREFILL` | retired | No runtime reader | Grouped raw-IQ prefill is selected by assignment count and registered kernel capability. Stale values have no effect; direct selected fallback remains. |
 | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS` | true | Retained default with rollback opt-out | Fuses the MoE tail with the next layer's input RMSNorm; `0` restores the separate chain (set to `0` in the MoE-graph parity test). |
 | `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` | unset | B1 transfer | Explicit override for the target-side WMMA prefill transfer: `1`/on forces the transfer, `0`/off restores the GEMV owners everywhere. |
 | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE` / `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT` | retired | No longer read | Backend package policy selects parallel reduction from 32768 context tokens on gfx1100/gfx1151. Serial reduction remains below that threshold and for unsupported routes. |

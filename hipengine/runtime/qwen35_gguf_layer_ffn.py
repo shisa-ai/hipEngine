@@ -1250,7 +1250,6 @@ def run_post_attention_moe_c1_unfused_selected_ffn(
             num_experts=cfg.expert_count,
             in_features=cfg.expert_feed_forward_length,
             out_features=geometry.hidden_size,
-            backend=geometry.backend,
             stream=stream,
             runtime=runtime,
         )

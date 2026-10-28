@@ -336,11 +336,14 @@ def test_main_iq_layer_uses_fused_gate_up_and_weighted_down(
     )
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("split gate/up"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("selected single"))
-    monkeypatch.setattr(
-        qgr,
-        "_launch_weighted_selected_raw_gguf_moe_linear",
-        lambda *args, **kwargs: calls.append(("iq4_weighted", (kwargs["tokens"], kwargs["top_k"]))) or True,
-    )
+    def weighted_down(
+        weight, x_ptr, selected_ptr, routing_weights_ptr, out_ptr, *,
+        tokens, top_k, num_experts, in_features, out_features, stream, runtime,
+    ):
+        calls.append(("iq4_weighted", (tokens, top_k)))
+        return True
+
+    monkeypatch.setattr(qgr, "_launch_weighted_selected_raw_gguf_moe_linear", weighted_down)
     monkeypatch.setattr(
         qgr,
         "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
