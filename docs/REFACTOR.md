@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF packed verifier GPU-event instrumentation | `HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` records HIP events through `Qwen35GGUFResidentSession.verify_target_blocks_batch()` and compact-MoE leaves. | Default-off diagnostic. It exposed c=8 server verifier GPU leaves on 2026-07-05 but adds event overhead (`47.17 tok/s` in the compact-WMMA event run), so it is not a retained speed path. | Keep only while c>N MTP verifier tuning is active; remove or move behind a dedicated profiling helper once the packed verifier bottleneck is closed. |
 | GGUF compact-WMMA tight no-read scope | `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0` restores the scalar `wmma_total` D2H read around the gfx1100/gfx1151 defaults capped at 4,096 selected rows. | The old rejected c=8 probe overlaunched `selected_rows * 16`. LCP-2B instead proves the exact worst-case tile count `A + floor((S-A)/16)` and clears unused tile ids to `-1`. SH9-D1 independently transfers it to gfx1151 pp512: exact full state, neutral prefill **1366.040 -> 1366.013 tok/s**, and cached ROCTX **44 -> 4 `hipMemcpy` / 1,409 -> 1,369 dispatches / -1.736 ms span** with unchanged 80 selected-WMMA launches. This is multi-row prefill only; c1 decode bypasses the helper. | Keep the scalar fallback permanently for selected rows above 4,096, insufficient capacity, and exact-count diagnostics. Remove the env opt-out after one defaults-only prefill refresh on both gfx11 packages; do not remove the fallback. |
 | GGUF selected-WMMA launch-bounds tuning | `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS` remains an R&D build flag for selected-WMMA kernels. | Default unchanged after the 2026-07-05 c>N server probe. `=2` was flat at c=8 (**52.55/52.23 tok/s**); `=4` helped c=8 (**53.22/53.44**) but regressed c=4 (**49.20/49.04** vs retained **49.65**), so no default promotion. | Keep as kernel R&D only; do not promote without a c=2/c=4/c=8 same-protocol rerun that is non-regressive at every concurrency. |
 | GGUF AR server packed decode | `HIPENGINE_GGUF_AR_PACKED_DECODE` is a default-on rollback opt-out around decode-shaped packed resident target passes for c>N GGUF greedy AR serving. | E1/E2 retain eager/graph c8 p512/d128, ragged, sparse, cancellation, and **748 packed-native / 0 row-local / 0 copies** on both targets. E3/F1 adds exact C13 c8+sparse-c8, middle-hole/new admission, and real SSE logical c1/c8/c9/c13/serial-c13 at **25.583/136.122/88.592/111.380/31.708 tok/s** on gfx1100 and **15.701/86.338/57.127/72.522/42.764** on gfx1151, with zero packed-route fallback and **189/189** exact requests per packet. | Both gfx11 E3/F1 triggers are met. Keep the opt-out for one release window, then remove the env switch during F2 while retaining registry-resolved scalar fallback for unsupported shapes. |
@@ -10819,3 +10818,32 @@ selected chunk/owner/stream traces, exact commit/rollback and refusal-after-prog
 checks, repeated requests and cleanup. Compare complete-wall and latency on the
 intended backend against the bounded policy before choosing a tuning result.
 Keep per-slot unsupported-shape fallback and request-local state isolation.
+
+### R0281-VERIFY-TIMING — Packed verifier profiling interface and teardown
+
+`HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` is a default-off diagnostic
+read by `Qwen35GGUFResidentSession.verify_target_blocks_batch()`. It creates
+same-stream HIP events only for host results; `device_result=True` bypasses the
+recorder. Markers propagate through shared layer owners, and the legacy MTP
+adapter copies the resulting buckets into target timing metadata. No checked-in
+script sets the variable; external diagnostic commands can still request it.
+The event implementation already lives in `qwen35_gguf_timing.py`, so another
+recorder extraction would duplicate completed ownership work.
+
+**Concrete cleanup gap:** the packed caller starts the recorder before embedding
+and resolves it only on success. An exception before resolution bypasses event
+cleanup; the recorder's own resolve-time `finally` cannot cover that interval.
+Other prefill/decode timing callers already have explicit finalizers.
+**Remaining work:** close the packed recorder across every post-creation exit,
+then decide whether its opt-in belongs in an explicit profiling argument/helper
+instead of process environment. Preserve default-off behavior, device-result
+bypass, stream association, bucket aliases and negative-time accounting.
+Do not enable diagnostic events on the default path to retire the flag.
+
+**Clearing action:** add fault injection at event start/embedding/layer/head/
+scatter and prove all created handles are released, including retryable destroy
+failures. Run `tests/test_unit_qwen35_gguf_timing.py` and
+`tests/test_unit_gguf_packed_verify_layout.py`; a runtime wiring change also needs
+a guarded HIP event smoke and repeated public MTP requests with identical output,
+selected instrumentation mode and cleanup recorded. Instrumented diagnostic
+results are not uninstrumented performance evidence.

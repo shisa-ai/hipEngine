@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     wall_clock_rate_khz as real_wall_clock_rate_khz,
 )
 from hipengine.runtime import qwen35_gguf_timing as gguf_timing
+from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_timing import (
     _HipEventStageRecorder,
     _HipWallClockStageRecorder,
@@ -148,6 +149,16 @@ def test_mark_sync_stage_synchronizes_and_charges_elapsed_milliseconds(
 
 
 # --- HIP-event stage recorder ---------------------------------------------
+
+
+@pytest.mark.parametrize("value,enabled", [(None, False), ("0", False), ("1", True)])
+def test_packed_verifier_event_timing_is_explicit_opt_in(monkeypatch, value, enabled):
+    name = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
+    if value is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, value)
+    assert gguf_runner._gguf_packed_verify_gpu_stage_timings_enabled() is enabled
 
 
 def test_event_recorder_accumulates_aliases_in_mark_order_and_closes() -> None:
