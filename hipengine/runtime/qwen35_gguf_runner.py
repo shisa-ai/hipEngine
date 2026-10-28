@@ -311,7 +311,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import 
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     build_gguf_q4_k_q8_1_selected_prefill,
-    gguf_q8_1_mmq_ds4_pack_bf16,
     q6_dense_integer_mmq_session,
     register_gguf_q4_k_q8_1_selected_prefill_kernels,
 )
@@ -9477,7 +9476,6 @@ _GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_
 _gguf_t16_selected_pairreuse_min_rows_session: int | None = None
 _gguf_t16_selected_down_pairreuse_min_rows_session: int | None = None
 _gguf_t16_selected_q6_down_pairreuse_min_rows_session: int | None = None
-_GGUF_T16_DS4_PREFILL_ENV = "HIPENGINE_GGUF_T16_DS4_PREFILL"
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
@@ -11192,10 +11190,6 @@ def _gguf_t16_selected_q6_down_pairreuse_enabled() -> bool:
         return _env_flag(_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV, False)
     min_rows = _gguf_t16_selected_q6_down_pairreuse_min_rows_session
     return min_rows is not None and min_rows > 0
-
-
-def _gguf_t16_ds4_prefill_enabled() -> bool:
-    return _env_flag(_GGUF_T16_DS4_PREFILL_ENV, False)
 
 
 def _gguf_raw_selected_dp4a_enabled() -> bool:
@@ -31844,14 +31838,6 @@ _COMPACT_MOE_Q4_DUAL_MODE_KEYS = {
         ),
     },
 }
-_COMPACT_MOE_Q4_DUAL_DS4_KEYS = {
-    ("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1"): KernelKey(
-        "hip_gfx1100",
-        "moe_linear",
-        "gguf_q4_k_t16_v1",
-        "selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out",
-    ),
-}
 _COMPACT_MOE_DOWN_KEYS = {
     # Q4_K_S stores selected down experts as Q4_K.  In decode-repack mode those
     # tensors use the same single-output compact WMMA ABI as Q5/Q6 T16.
@@ -32346,7 +32332,6 @@ class _CompactMoeWmmaPlan:
     gate_allocation: str
     up_allocation: str
     down_allocation: str
-    gate_up_requires_ds4_input: bool = False
 
 
 @dataclass(frozen=True)
@@ -33531,23 +33516,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         gpu_stage_recorder.mark(f"{stage_prefix}_scheduler", stage_prefix)
 
     if use_wmma:
-        gate_up_input_ptr = scratch.moe_down_out.ptr
-        if getattr(plan, "gate_up_requires_ds4_input", False):
-            if not hasattr(scratch, "moe_q8_1_ds4"):
-                return False
-            gguf_q8_1_mmq_ds4_pack_bf16(
-                scratch.moe_down_out.ptr,
-                scratch.moe_q8_1_ds4.ptr,
-                selected_rows,
-                hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-            gate_up_input_ptr = scratch.moe_q8_1_ds4.ptr
-            if gpu_stage_recorder is not None:
-                gpu_stage_recorder.mark(f"{stage_prefix}_gate_up_ds4_pack", stage_prefix)
         gate_up_fn(
-            gate_up_input_ptr,
+            scratch.moe_down_out.ptr,
             scratch.moe_expert_start_compact.ptr,
             scratch.moe_expert_start_wmma.ptr,
             scratch.moe_tile_expert.ptr,
@@ -34404,8 +34374,6 @@ def _resolve_compact_moe_wmma_kernels(
     ):
         raise ValueError("GGUF compact MoE weights must share one backend")
     gate_up_pair = (gate_weight.spec.quant_key, up_weight.spec.quant_key)
-    ds4_gate_up_key = _COMPACT_MOE_Q4_DUAL_DS4_KEYS.get(gate_up_pair)
-    use_ds4_gate_up = _gguf_t16_ds4_prefill_enabled() and ds4_gate_up_key is not None
     mode_keys = _COMPACT_MOE_Q4_DUAL_MODE_KEYS.get(gate_up_pair)
     selected_requested_mode = None
     selected_mode = None
@@ -34418,14 +34386,9 @@ def _resolve_compact_moe_wmma_kernels(
                 "the selected Q4 T16 prefill mode has no registered key: "
                 f"{selected_mode!r}"
             )
-        if use_ds4_gate_up and selected_mode != "baseline":
-            raise RuntimeError(
-                "Q4 T16 shared-X and DS4 selected-prefill diagnostics are "
-                "mutually exclusive"
-            )
     else:
         selected_gate_up_key = _COMPACT_MOE_Q4_DUAL_KEYS.get(gate_up_pair)
-    gate_up_key = ds4_gate_up_key if use_ds4_gate_up else selected_gate_up_key
+    gate_up_key = selected_gate_up_key
     down_key = _COMPACT_MOE_DOWN_KEYS.get(down_weight.spec.quant_key)
     down_baseline_key = down_key
     if selected_mode == "pair32":
@@ -34467,7 +34430,6 @@ def _resolve_compact_moe_wmma_kernels(
         gate_allocation=_selected_wmma_allocation_name(gate_weight),
         up_allocation=_selected_wmma_allocation_name(up_weight),
         down_allocation=_selected_wmma_allocation_name(down_weight),
-        gate_up_requires_ds4_input=use_ds4_gate_up,
     )
 
 

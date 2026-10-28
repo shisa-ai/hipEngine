@@ -77,6 +77,37 @@ def test_t16_q4_q5_q6_resolves_returns_plan_with_tiles_allocations(
     assert callable(plan.down_fn)
 
 
+@pytest.mark.parametrize("stale_ds4", [None, "0", "1", "true"])
+@pytest.mark.parametrize("selected_mode", ["baseline", "shared_x", "pair32"])
+def test_retired_ds4_override_preserves_selected_prefill_mode(
+    monkeypatch: pytest.MonkeyPatch, stale_ds4: str | None, selected_mode: str,
+) -> None:
+    if stale_ds4 is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_T16_DS4_PREFILL", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_T16_DS4_PREFILL", stale_ds4)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", selected_mode)
+    resolved: list[tuple[str, str]] = []
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        resolved.append((quant, variant))
+        return lambda: None
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+    plan = qgr._resolve_compact_moe_wmma_kernels(
+        _fake_weight("gguf_q4_k_t16_v1"),
+        _fake_weight("gguf_q4_k_t16_v1"),
+        _fake_weight("gguf_q6_k_t16_v1"),
+    )
+
+    assert plan is not None
+    expected_gate = qgr._COMPACT_MOE_Q4_DUAL_MODE_KEYS[
+        ("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1")
+    ][selected_mode]
+    assert (expected_gate.quant, expected_gate.variant) in resolved
+    assert not any("ds4" in variant for _, variant in resolved)
+
+
 def test_t16_q4_dispatch_key_points_to_registered_t16_alias() -> None:
     """P10.B1: the T16 entry resolves to the Q4T16 prefill alias spelling.
 

@@ -277,8 +277,13 @@ def test_qwen35moe_compact_wmma_missing_selected_kernel_falls_back(monkeypatch: 
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
-def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "1", "true"])
+@pytest.mark.parametrize("rows", [2, 3, 7])
+def test_qwen35moe_compact_wmma_t16_ignores_retired_ds4_selector(
+    monkeypatch: pytest.MonkeyPatch, retired: str | None, rows: int,
+) -> None:
     runner, scratch = _fake_runner_and_scratch()
+    scratch.moe_selected_rows_capacity = rows * runner.weights.config.expert_used_count
     layer = runner.weights.layer(0)
     layer._weights["ffn_gate_exps"] = _FakeWeight(
         "ffn_gate_exps", "gguf_q4_k_t16_v1", 1200, experts=4, out_features=256, in_features=256
@@ -292,27 +297,26 @@ def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypat
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
     _patch_compact_scheduler(monkeypatch, calls)
-    _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k_t16_v1", use_ds4=True)
+    _patch_compact_registry(
+        monkeypatch, calls, down_quant="gguf_q6_k_t16_v1", gate_quant="gguf_q4_k_t16_v1",
+    )
     monkeypatch.setattr(qgr, "_read_i64_device_scalar", lambda *args, **kwargs: 16)
     monkeypatch.setattr(qgr, "_gguf_compact_wmma_no_read_max_selected_rows", lambda backend: 0)
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
-    monkeypatch.setattr(
-        qgr,
-        "gguf_q8_1_mmq_ds4_pack_bf16",
-        lambda x_ptr, out_ptr, rows, hidden, **kwargs: calls.append(("ds4_pack", (x_ptr, out_ptr, rows, hidden))),
-    )
-    monkeypatch.setenv("HIPENGINE_GGUF_T16_DS4_PREFILL", "1")
+    if retired is not None:
+        monkeypatch.setenv("HIPENGINE_GGUF_T16_DS4_PREFILL", retired)
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", "baseline")
     set_wmma_prefill_enabled(True)
 
-    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=rows, stream=7)
 
     names = [name for name, _ in calls]
-    assert names.index("group_scatter_gather") < names.index("ds4_pack") < names.index("compact_gate_up_ds4")
-    assert ("ds4_pack", (scratch.moe_down_out.ptr, scratch.moe_q8_1_ds4.ptr, 6, 256)) in calls
-    assert ("compact_gate_up_ds4", (scratch.moe_q8_1_ds4.ptr, 6, 256, 256, 256, 4, 16)) in calls
-    assert ("compact_down", (6, 256, 256, 4, 16)) in calls
+    selected_rows = rows * runner.weights.config.expert_used_count
+    assert names.index("group_scatter_gather") < names.index("compact_gate_up")
+    assert ("compact_gate_up", (selected_rows, 256, 256, 256, 4, 16)) in calls
+    assert ("compact_gate_input", scratch.moe_down_out.ptr) in calls
+    assert ("compact_down", (selected_rows, 256, 256, 4, 16)) in calls
 
 
 @pytest.mark.parametrize(
@@ -547,7 +551,6 @@ def _fake_runner_and_scratch():
         ffn_down=_buf(170),
         moe_q8_1=_buf(360, nbytes=3 * (256 // 32) * 36),
         moe_down_out=_buf(180),
-        moe_q8_1_ds4=_buf(185, nbytes=4096),
         moe_group_counts=_buf(190),
         moe_padded_counts=_buf(200),
         moe_scatter_offsets=_buf(210),
@@ -744,18 +747,14 @@ def _patch_compact_registry(
     calls: list[tuple[str, object]],
     *,
     down_quant: str,
-    use_ds4: bool = False,
+    gate_quant: str = "gguf_q4_k",
 ) -> None:
-    gate_key = (
-        qgr._COMPACT_MOE_Q4_DUAL_DS4_KEYS[("gguf_q4_k_t16_v1", "gguf_q4_k_t16_v1")]
-        if use_ds4
-        else qgr._COMPACT_MOE_Q4_DUAL_KEYS[("gguf_q4_k", "gguf_q4_k")]
-    )
+    gate_key = qgr._COMPACT_MOE_Q4_DUAL_KEYS[(gate_quant, gate_quant)]
     down_key = qgr._COMPACT_MOE_DOWN_KEYS[down_quant]
 
     def fake_gate_up(*args, **kwargs):
-        name = "compact_gate_up_ds4" if use_ds4 else "compact_gate_up"
-        calls.append((name, (args[0], *args[7:13]) if use_ds4 else args[7:13]))
+        calls.append(("compact_gate_up", args[7:13]))
+        calls.append(("compact_gate_input", args[0]))
 
     def fake_down(*args, **kwargs):
         calls.append(("compact_down", args[6:11]))
