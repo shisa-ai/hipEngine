@@ -10,8 +10,13 @@ from scripts import mtp_chain_e2e_smoke as bench
 
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("canonicalize", [None, "0", "false", "1"])
 @pytest.mark.parametrize("budget,target_contract", [(1, True), (3, False)])
-def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, budget, target_contract):
+def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canonicalize, budget, target_contract):
+    if canonicalize is None:
+        monkeypatch.delenv("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", canonicalize)
     if retired is None:
         monkeypatch.delenv("HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS", raising=False)
     else:
@@ -81,6 +86,7 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, budget
             return SimpleNamespace(token_id=10)
 
         def verify_chain_bulk_and_commit(self, batch, **kwargs):
+            assert kwargs["canonicalize_after"] is False
             count = (0, min(1, budget), budget)[len(accepted) % 3]
             accepted.append(count)
             return SimpleNamespace(
@@ -108,6 +114,7 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, budget
         backend="hip_gfx1100", chain_attn_mode="c1_loop",
     )
     assert len(generated) == 14
+    assert result["canonicalize_after_verify"] is False
     assert result["proposer_skip_unused_reads"] is True
     assert priming[0]["read_expert_topk"] is False
     assert priming[0]["read_lm_head_value"] is False

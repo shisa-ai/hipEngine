@@ -403,7 +403,7 @@ Current priority order after folding in the external review:
 | 7 | Multi-stream overlap after DAG reduction | -1.0 to -3.0 ms possible | High; direct branch-overlap attempt regressed all-cycle wall | Do not retry on the current launch-heavy graph. Revisit only after ranks 1-6 shrink synchronization and graph-capture overhead. |
 | Hold | New selected-GEMV/shared rotate design | Only if it avoids prior redundant rotate/barrier costs | Template exists, but the measured M13.B family is no-hold | The colleague ranking is directionally right about launch-count compression, but M13.B.1/B.2/B.3 already closed the current rotate-fusion designs as exact-but-negative. A 2026-06-12 full-attn C-dispatch shared rotate-once/no-reset diagnostic also no-holded (row below). **2026-06-13 B=1 selected-staged recheck:** `HIPENGINE_SELECTED_MOE_STAGED_ROTATE=1` stayed exact on quicksort with the current B=1 accepted trace and removed about 40 rotate launches/pass (`832.8 -> 793.0` calls/pass; `moe_paro_rotate_in` `160 -> 120` calls/pass), but verifier kernel regressed `9.380 -> 9.623 ms/pass` and host marker `12.886 -> 12.955 ms/pass` because `moe_gate_up_dual_gemv` grew `1.213 -> 1.647 ms/pass`. Reopen only for a materially different selected/parallel design that avoids barrier spin and redundant per-output work. Artifact: `benchmarks/results/2026-06-13-hipengine-mtp-b1-selected-moe-staged-rotate-nohold.json`. |
 | Done | Scratch-cache generation stamp | Retained default-on | Exact D32 same-suite positive | `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP=1` stores verifier scratch cache entries with a generation bumped by `_clear_verify_scratch_caches()` and uses the generation match to skip workspace-pointer revalidation on hits. Exact `9/9`, identical accepted lengths/active budgets, wall `25.7085 -> 25.5955 ms/cycle`, verify `20.5460 -> 20.4342 ms/cycle`, ratio `0.7145x -> 0.7252x`; graph-auto profile kept `932` calls/pass and moved host `18.322 -> 18.298 ms/pass`; graph-off host `32.659 -> 31.971 ms/pass`. |
-| Done | MTP graph-off canonicalize-after-verify skip | Retained default-on for the MTP harness | Exact D32 same-suite positive | `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1` keeps verifier-shaped scratch live between MTP graph-off verify cycles. Exact `9/9`, identical accepted lengths/active budgets, graph-off batched wall `37.207 -> 24.076 ms/cycle`, verify `32.069 -> 18.933 ms/cycle`, ratio `0.4969x -> 0.7730x`; rocprof calls and kernel stayed flat (`932/pass`, ~`14.33 ms/pass`) while host moved `32.505 -> 18.272 ms/pass`. |
+| Done | MTP graph-off canonicalize-after-verify skip | Retained default-on for the MTP harness | Exact D32 same-suite positive | MTP scripts always pass `canonicalize_after=False` to keep verifier-shaped scratch live between cycles; the environment rollback has been removed. Exact `9/9`, identical accepted lengths/active budgets, graph-off batched wall `37.207 -> 24.076 ms/cycle`, verify `32.069 -> 18.933 ms/cycle`, ratio `0.4969x -> 0.7730x`; rocprof calls and kernel stayed flat (`932/pass`, ~`14.33 ms/pass`) while host moved `32.505 -> 18.272 ms/pass`. |
 | Done | Current-stack `decode_batched` with graph-off skip | Current best retained MTP verifier mode | Exact D32 same-suite positive | After canonicalize skip made graph-off competitive, `chain_attn_mode=decode_batched` is exact `9/9` and improves over graph-off batched skip with identical accepted lengths/active budgets: ratio `0.7730x -> 0.8252x`, wall `24.076 -> 21.661 ms/cycle`, verify `18.933 -> 16.511 ms/cycle`; profile calls `932 -> 942`, kernel `14.330 -> 12.922 ms/pass`, host `18.272 -> 16.849 ms/pass`. |
 | No-hold | Global chain B=5 acceptance-density bump | 0 retained | Exact but suite economics-negative | B=4 smoke is invalid today because the chain compiler only permits budgets `(1,2,3,5)`. The supported higher budget, B=5, passed quicksort exact with accepted lengths `[5,4,0,2,0,0,1,4,2,0,2]` and passed the exact 9-prompt D32 suite `9/9`, but it is not a global speed row. Same-session B=3/B=5 moved visible tokens/cycle `2.012 -> 2.220` while wall jumped `19.425 -> 25.689 ms/cycle`, verify `16.133 -> 20.449 ms/cycle`, cycle cost `2.144 -> 2.838` AR tokens, and actual ratio `0.926x -> 0.773x`. Keep B=3 globally; revisit B>3 only as adaptive/per-prompt policy or after proposer-quality improvements. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-b5-acceptance-density-nohold.json`. |
 | No-hold | `decode_batched` verifier HIP graph for `num_splits=1` | 0 ms retained | Exact but profile-negative | Opt-in prototype allowed graph capture for the current one-split `decode_batched` verifier bucket and keyed the graph by split count. Quicksort `graph_mode=validate` and `graph_mode=auto` both stayed exact with the locked accepted trace, and auto replayed after the first capture miss. Focused verifier profile no-held it: calls/pass stayed `832`, while kernel regressed `12.606 -> 12.674 ms/pass` and host marker `16.153 -> 16.182 ms/pass`. Prototype code removed; keep `decode_batched` graph-off. Artifact: `benchmarks/results/2026-06-12-hipengine-mtp-decode-batched-verify-graph-nohold.json`. |
@@ -682,18 +682,18 @@ Live-tree corrections to the external review ranking:
   default-on: `_slot_linear_state`, `_slot_full_cache`, and
   `_full_cache_all_slots` reuse non-owning views with explicit invalidation on
   session reset and any resident state/cache rebuild.
-- The same review's `_workspace_tensor_matches` bypass is promoted default-on
-  as a generation-stamp optimization, not as deleted validation. The scratch
-  cache generation bumps whenever verifier scratch caches are cleared, and
-  generation-matched hits can skip workspace-pointer revalidation.
+- The same review's generation-stamp optimization is always used for scratch
+  cache hits. The generation bumps whenever verifier scratch caches are
+  cleared, and generation-matched hits skip workspace-pointer revalidation;
+  the alternate helper and opt-out have been removed.
 - The follow-up scratch review found one concrete policy mismatch and it is now
   promoted default-on: verifier MLP scratch reservation in the runner follows
   the same c1/grouped threshold as the actual chain/tree t-loop MoE path
   (`_verify_moe_grouped_min_tokens()`, default `16`) and keys cached scratch by
   expected policy. Exact D32 improved wall `26.309 -> 25.690 ms/cycle` with
   identical acceptance.
-- The MTP-only graph-off `_canonicalize_decode_scratch()` skip is promoted
-  default-on in the MTP harness via `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY`.
+- The MTP-only graph-off `_canonicalize_decode_scratch()` skip is always used
+  by MTP diagnostic scripts; its environment opt-out has been removed.
   It is narrow: AR/c1 handoff paths still can request canonical scratch, while
   steady MTP verify cycles keep verifier-shaped scratch live.
 - Shared-down + shared-gate/residual combine remains a reduced-DAG candidate
@@ -918,9 +918,9 @@ Artifacts:
 
 Implementation:
 
-- Added `canonicalize_after` to chain/tree verify commit entry points and wired
-  the MTP harness to pass `False` by default through
-  `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY=1`.
+- Chain/tree verify commit entry points keep the `canonicalize_after` API;
+  the MTP harness and drift-audit scripts always pass `False`. The environment
+  rollback has been removed.
 - The default is intentionally MTP-scoped. Real AR/c1 handoff can still request
   canonical scratch by leaving `canonicalize_after=True`.
 

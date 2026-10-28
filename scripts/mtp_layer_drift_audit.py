@@ -36,7 +36,6 @@ from scripts.mtp_state_drift_audit import (
     _compare_resident_state,
     _copy_kv_cell,
     _copy_tensor_slice_host,
-    _env_truthy,
     _parse_csv_ints,
     _prefill_serial,
     _resolve_prompt_tokens,
@@ -444,7 +443,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         capture_row_start=0,
                         chain_attn_mode=str(args.chain_attn_mode),
                         graph_mode=str(args.graph_mode),
-                        canonicalize_after=not _env_truthy("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", default=True),
+                        canonicalize_after=False,
                     )
                     mtp_top1, mtp_top1_values = mtp_session._read_verify_top1(int(verify.rows))
                     accepted = int(verify.accepted_count)
@@ -468,7 +467,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             capture_row_start=0,
                             chain_attn_mode=str(args.chain_attn_mode),
                             graph_mode=str(args.graph_mode),
-                            canonicalize_after=not _env_truthy("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", default=True),
+                            canonicalize_after=False,
                         )
                         clean_top1, clean_top1_values = control_session._read_verify_top1(int(clean_verify.rows))
                         hidden_compare = _compare_hidden_captures(

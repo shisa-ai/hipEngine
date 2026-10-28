@@ -545,7 +545,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` | true | Runs the resident MTP draft MoE on device (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER` | true | Q6 top-1 gather kernel in the resident MTP drafter (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` | false | Opt-in device-side draft chain execution. |
-| `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY` | true | Keeps verifier-shaped scratch live after MTP verify cycles instead of canonicalizing immediately. |
 | `HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER` | false | Runs the proposer update on a side stream while the verifier commit drains; default-off experiment. |
 
 ## PARO variables
@@ -1292,6 +1291,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY` is retired and ignored.
+  MTP diagnostic scripts always keep verifier-shaped scratch between cycles.
+  The resident `canonicalize_after` API is unchanged; ordinary decode still
+  restores one-row scratch and invalidates graphs before replacing workspace.
 - `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP` is retired and ignored.
   PARO verifier scratch hits always check the owner's generation, scratch
   type and row layout. Prefill restore and graph invalidation clear both

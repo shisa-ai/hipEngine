@@ -329,12 +329,6 @@ def _summarize_acceptance_diagnostics(
     }
 
 
-def _mtp_skip_canonicalize_after_verify_enabled() -> bool:
-    """Keep verifier-shaped scratch live after MTP verify cycles when requested."""
-
-    return _env_flag("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", True)
-
-
 def _mtp_overlap_verify_commit_proposer_enabled() -> bool:
     """Run proposer update on a side stream while verifier commit drains."""
 
@@ -564,7 +558,7 @@ def _run_spec_smoke(
     capture_rows = max_sequence + int(candidate_budget) + 2
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
-    canonicalize_after_verify = not _mtp_skip_canonicalize_after_verify_enabled()
+    canonicalize_after_verify = False
     with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_batch_size=max_batch_size) as session:
         hidden = int(session.config.hidden_size)
         capture_layer_id = int(session.layer_limit) - 1
@@ -1102,7 +1096,7 @@ def _run_spec_persistent_device(
     capture_buf: DeviceBuffer | None = None
     started = time.perf_counter()
     active_budgets: list[int] = []
-    canonicalize_after_verify = not _mtp_skip_canonicalize_after_verify_enabled()
+    canonicalize_after_verify = False
     overlap_verify_commit_proposer = _mtp_overlap_verify_commit_proposer_enabled()
     proposer_target_contract = _mtp_proposer_target_contract_enabled()
     _validate_proposer_target_contract_scope(

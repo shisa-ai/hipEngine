@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -621,7 +620,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         capture_row_start=0,
                         chain_attn_mode=str(args.chain_attn_mode),
                         graph_mode=str(args.graph_mode),
-                        canonicalize_after=not _env_truthy("HIPENGINE_MTP_SKIP_CANONICALIZE_AFTER_VERIFY", default=True),
+                        canonicalize_after=False,
                     )
                     accepted = int(verify.accepted_count)
                     accepted_tokens = candidates[:accepted]
@@ -734,13 +733,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "cycles": cycle_records,
         "note": "Correctness diagnostic only: compares resident MTP target state with a serial AR control after committed tokens.",
     }
-
-
-def _env_truthy(name: str, *, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return bool(default)
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def main() -> int:
