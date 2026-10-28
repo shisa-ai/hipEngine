@@ -47,7 +47,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.gguf_continuous_owner_rocprof import (  # noqa: E402
+from hipengine.benchmark.rocprof_cache import (  # noqa: E402
+    _cache_only_environment,
     _default_roctx_sdk,
     _prepare_roctx_override,
     _run_monitored,
@@ -437,10 +438,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     build_environment = dict(base_environment)
     build_environment.pop("HIPENGINE_REQUIRE_CACHED_BUILD", None)
-    cached_environment = dict(base_environment)
-    cached_environment["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    cached_environment["PATH"] = os.pathsep.join(
-        [str(guard["directory"]), base_environment.get("PATH", "")])
+    cached_environment = _cache_only_environment(base_environment, guard=guard)
 
     before_build = snapshot_cache_tree(cache_root)
     build = _stage(

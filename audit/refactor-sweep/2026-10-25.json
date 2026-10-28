@@ -7419,8 +7419,9 @@
       "start_line": 6159,
       "end_line": 6332,
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
-      "status": "in-progress-row-triage",
+      "status": "triaged-all-rows-resolved-or-bottom-referred",
       "evidence": [
+        "All original R0281 subitems now have an individual disposition; no pending subitem remains. Completed cache-helper extraction preserves supported build controls and moves unchanged helpers to shared host module, with 61 focused tests and CPU19851 pass plus focused added workflow scenarios. Live policy/product decisions remain named bottom referrals, not completed implementation claims. Final unit: worklog/entries/20261028T195357.298495Z-cleanup-refactor-r0281-rocprof-cache-a018e8.md.",
         "Forced-cycle row6267 resolved: remove superseded fixed-cycle API/CLI/forwarding/result and branch, preserve zero-accept policy plus actual-MTP counters; state/layer comparators replace coarse bracketing. Fixture until-end result-free assertion corrected before actual RED1fail320pass,GREEN347focused. Eight real duplicate normal eagerB1/replayB3/resumable/until-end controls pass;normal IDs/acceptance match preceding commit,actual replay,resumable3fallbacks/until-end7 with correct reasons/counters. Two public detailed controls match preceding IDs plus generate/AR reuse,zero allocations. CPU deterministic/docs/tiers/audit/threehelp/worklog pass,no D64 repair or performance claim. worklog/entries/20261028T114541.500955Z-cleanup-refactor-r0281-forced-cycle-4412c4.md.",
         "Overlap row6266 resolved: remove rejected persistent harness selector/optional side-stream owner and obsolete scope argument; synchronize commit before stream0 repair, keep artifact false and generic runtime stream APIs. RED48fail144pass GREEN324focused covers stale settings, borrowed/private chain and tree reject/partial/full snapshots. Nine real eagerB1/replayB3/treeB3 controls plus6fresh public controls match IDs unset0/1, harness acceptance and actual replay;42chain18tree commits,45restores,126target/102previous advances all default stream,zero allocations. CPU deterministic/docs/tiers/audit/help/worklog pass,no kernel/math/default/performance claim. worklog/entries/20261028T113519.317605Z-cleanup-refactor-r0281-overlap-f8a391.md.",
         "Fused LM-head row6265 resolved: remove rejected target-verifier selector/import/branch, script settings/provenance field and obsolete env test; preserve scalar/multi-row projection then argmax and native borrowed proposer/direct parity primitive. RED19fail12pass GREEN648focused,6GPU primitive checks pass. Six eagerB1/replayB3 controls plus6fresh public controls match IDs unset/off/on, harness acceptance and actual replay;48target norm/cast/project/argmax sequences,63preserved fused proposer calls,zero allocations. CPU deterministic/docs/tiers/audit/worklog/help pass,no arithmetic/default/performance claim. Overlapping R0282 row6346 updated with drafter items still pending. worklog/entries/20261028T112620.878028Z-cleanup-refactor-r0281-fused-lm-head-def123.md.",
@@ -8356,17 +8357,20 @@
         {
           "line": 6319,
           "text": "### Active mechanical rocprof cache workflow cleanup",
-          "status": "pending"
+          "status": "resolved-shared-rocprof-cache-helper",
+          "evidence": "Owner/prefill import unchanged snapshot,guard,monitor,ROCTX and cache-only env from hipengine/benchmark/rocprof_cache.py;workload orchestration/trace options/pinning unchanged. RED missing-module/GREEN61focused,CPU19851pass271skip plus3added focused scenarios;real host subprocess success/mutation/compiler gates. AST all old bodies unchanged,help/docs/audit/tier/worklog/diff pass. Worklog: worklog/entries/20261028T195357.298495Z-cleanup-refactor-r0281-rocprof-cache-a018e8.md."
         },
         {
           "line": 6321,
           "text": "- `HIPENGINE_BUILD_CACHE_ROOT` and `HIPENGINE_REQUIRE_CACHED_BUILD` provide a",
-          "status": "pending"
+          "status": "kept-supported-build-controls",
+          "evidence": "Supported JIT cache scope/cache-only controls retained unchanged;shared workflow preserves guard and compiler-version pinning. See row6319 worklog."
         },
         {
           "line": 6327,
           "text": "- Keep the two build-layer variables as supported profiler/tooling controls while",
-          "status": "pending"
+          "status": "resolved-shared-rocprof-cache-helper",
+          "evidence": "Second profiler already reused owner helpers;move those unchanged bodies to shared module and fold duplicate cache-only env. Keep distinct workload parents/trace protocols and track remaining SDK discovery under existing later entry. See row6319 worklog."
         }
       ]
     },

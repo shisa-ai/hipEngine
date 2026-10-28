@@ -3430,20 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-### Active mechanical rocprof cache workflow cleanup
-
-- `HIPENGINE_BUILD_CACHE_ROOT` and `HIPENGINE_REQUIRE_CACHED_BUILD` provide a
-  process-wide cache contract for lazy JIT builders that do not expose per-call
-  plumbing. `scripts/gguf_continuous_owner_rocprof.py` uses them with a new,
-  isolated cache, unprofiled build/warm children, a compiler guard, descendant
-  monitor, and immutable pre/post cache hashes before wrapping only the final
-  owner child in rocprof.
-- Keep the two build-layer variables as supported profiler/tooling controls while
-  Python/ctypes JIT remains. After profiling entry points share one maintained
-  SDK helper, fold the owner-specific orchestrator and duplicate guard/snapshot
-  code into that helper; do not retain multiple near-identical rocprof parents.
-  Remove neither fail-closed cache-only behavior nor compiler-version pinning.
-
 ## Post-Optimal-Path Cleanup Targets
 
 These are not optimization tasks for the current sprint. They are the cleanup
@@ -5784,6 +5770,14 @@ default was broken like the others; "the one with the fix" was true of the helpe
 Extraction into a shared module is still open, and the remaining four (`gguf_mtp_draft_rocprof.py`,
 `gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py`, `mtp_verifier_rocprof.py`) discover the SDK by
 other means and were not touched.
+
+The owner and gfx1151 prefill profilers now import their existing discovery and
+override implementation from `hipengine/benchmark/rocprof_cache.py`. That module
+also owns their shared cache snapshots, compiler guard, process monitoring and
+cache-only environment. Their workload orchestration and trace options stay
+separate. Finish discovery consolidation for the other wrappers when they are
+touched, preserving their dependency-path and override contracts; do not replace
+those contracts merely because the owner helper has the same function name.
 
 ### GGUF MTP accept pinned staging (kept, measured neutral)
 
