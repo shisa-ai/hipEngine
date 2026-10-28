@@ -954,7 +954,7 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL` | retired | No runtime or profiler reader. Shared gate/up uses the dual raw-Q8 F32/F32 call unless the separate dense-Q8 dp4a stage route handles it. Stale values have no effect. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL` | unset | Row-parallel draft router variant. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` | unset | Fused selected SiLU+down draft variant. |
-| `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` | `64` | Shared Q4/Q5 selected dp4a workgroup width: `32`, `64`, or `128`; other values fall back to `64`. Used by runtime launches and recorded by microbench artifacts. |
+| `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` | `64` | Shared Q4/Q5 selected dp4a and Q4 q8_1x2 selected/dense SiLU workgroup width: `32`, `64`, or `128`; other values fall back to `64`. Read at launch; microbench artifacts record the raw environment value. |
 | `HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS` | retired | No reader. Q5 uses the shared `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` scheduler; stale values have no effect. |
 
 ### DFlash chain bench (`dflash_chain_e2e_bench.py`)

@@ -29,30 +29,37 @@ def schedulers(tmp_path_factory):
     # Compile the actual host functions and the selectors used by the launchers;
     # no HIP SDK or device is needed to check getenv/default precedence.
     helpers = source.split("int parse_selected_t16_dp4a_threads(", 1)[1].split("__device__", 1)[0]
-    q4 = _block_selector(source, "launch_q4_dual_q8_1_dp4a_direct")
-    q5 = _block_selector(source, "launch_qk_q8_1_dp4a_direct")
+    launchers = (
+        "launch_q4_dual_q8_1_dp4a_direct",
+        "launch_qk_q8_1_dp4a_direct",
+        "launch_q4_dual_q8_1x2_dp4a_silu_direct",
+        "launch_q4_dense_dual_q8_1x2_dp4a_silu",
+    )
+    selectors = [_block_selector(source, launcher) for launcher in launchers]
     root = tmp_path_factory.mktemp("selected-t16-scheduler")
     cpp = root / "scheduler.cpp"
     cpp.write_text(
         "#include <cstdlib>\nint parse_selected_t16_dp4a_threads(" + helpers
-        + f'\nextern "C" int q4_threads() {{ return {q4}(); }}\n'
-        + f'extern "C" int q5_threads() {{ return {q5}(); }}\n'
+        + "".join(
+            f'\nextern "C" int threads_{index}() {{ return {selector}(); }}\n'
+            for index, selector in enumerate(selectors)
+        )
     )
     library = root / "scheduler.so"
     subprocess.run([compiler, "-shared", "-fPIC", str(cpp), "-o", str(library)], check=True, capture_output=True)
-    return ctypes.CDLL(str(library))
+    loaded = ctypes.CDLL(str(library))
+    return [getattr(loaded, f"threads_{index}") for index in range(len(selectors))]
 
 
 @pytest.mark.parametrize("value,expected", [(None, 64), ("", 64), ("32", 32), ("64", 64), ("128", 128), ("16", 64), ("invalid", 64)])
 @pytest.mark.parametrize("stale_q5", [None, "32", "128", "invalid"])
-def test_q4_and_q5_share_default_valid_widths_and_ignore_retired_override(monkeypatch, schedulers, value, expected, stale_q5):
+def test_all_shared_launchers_resolve_valid_widths_and_ignore_retired_override(monkeypatch, schedulers, value, expected, stale_q5):
     for name, setting in ((_COMMON, value), (_RETIRED, stale_q5)):
         if setting is None:
             monkeypatch.delenv(name, raising=False)
         else:
             monkeypatch.setenv(name, setting)
-    assert schedulers.q4_threads() == expected
-    assert schedulers.q5_threads() == expected
+    assert [scheduler() for scheduler in schedulers] == [expected] * len(schedulers)
 
 
 def test_q5_uses_common_selector_without_duplicate_lookup():

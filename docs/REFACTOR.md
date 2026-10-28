@@ -3430,19 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` (diagnostic rollback)
-- Added 2026-07-01. Host-side launch switch for the selected T16 q8_1/dp4a
-  verifier kernels used by `--verify-dp4a` / `llama-compat-device-chain-dp4a`.
-  Default is now `64`; setting the env var to `128` restores the old launch
-  shape.
-- Purpose: keep a rollback/A-B hook for the first selected-MoE scheduler change
-  that survived async/full-suite validation. Full-suite `llama-compat` B2 moved
-  **55.45 -> 58.83 tok/s** and `target_block_verify_total`
-  **14.025 -> 13.134 ms/output** on gfx1151.
-- Remove when: either the selected-MoE scheduler is replaced by a llama-style
-  `mul_mat_vec_q_moe` port or two later full-suite compat runs confirm 64 is
-  stable enough that the 128-thread rollback path is no longer useful.
-
 ## `gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out` (diagnostic rejected)
 - Added 2026-07-01. Callable T16 Q8_0 dual-split pair kernel that consumes
   GGML q8_1 activation blocks and uses `sudot4`, intended to test whether the
@@ -11781,7 +11768,7 @@ Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8 GPU parity
 files and public generation with route attribution, reset/reuse and cleanup.
 Original historical results remain in the sweep inventory and artifacts.
 
-### R0281-SELECTED-DP4A / R0283 — Explicit activation-adapter ownership
+### R0281-SELECTED-DP4A / R0283 / R0288 — Explicit activation-adapter ownership
 
 `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`,
 `HIPENGINE_GGUF_T16_SELECTED_DP4A` and
@@ -11826,10 +11813,15 @@ default.
 The redundant Q5-only `HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS` override
 is retired. Q4 and Q5 DP4A launches share
 `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS`, keeping the 64-thread default and
-explicit 32/64/128-thread diagnostics. Include that shared scheduler in the
-caller-owned adapter-plan migration; keep its microbench provenance and
-strict floating-point leaf oracles. Historical Q5-only comparisons remain
-in the sweep inventory and their result artifacts.
+explicit 32/64/128-thread diagnostics. The same selector serves selected Q4
+q8_1x2 SiLU and its dense singleton counterpart; it is not exclusive to the
+verifier's Q4/Q5 pair/down calls. Host-only tests compile the actual selectors
+for all four launchers and check shared fallback/retired-Q5 precedence without
+loading HIP. Include that shared scheduler in the caller-owned adapter-plan
+migration; keep both microbench scripts' raw environment provenance and strict
+floating-point leaf oracles. Historical scheduler comparisons remain in the
+sweep inventory and their result artifacts; two old benchmark repeats are not
+a substitute for migrating current callers.
 
 ### R0281-DRAFT-CHAIN — Explicit chain policy and host fallback
 

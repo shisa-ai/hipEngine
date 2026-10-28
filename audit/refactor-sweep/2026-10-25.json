@@ -8591,23 +8591,25 @@
       "start_line": 6546,
       "end_line": 6558,
       "sha256": "33edd4bf37919707ffbdd13250a80d3d940e25306229bb9d07d40ca6da2ecc12",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-selected-adapter-scheduler-ownership",
+      "evidence": [
+        "Shared launch-time scheduler remains live in Q4 pair/fused, Q5 down and selected/dense Q4 q8_1x2 SiLU launchers. Expanded host C++ extraction tests to all four selectors; scheduler and selected-MoE stage bundle passes 105 tests. Consolidated R0288 into bottom R0281-SELECTED-DP4A/R0283/R0288, preserving default64, explicit32/64/128, microbench provenance and strict leaves. No kernel/runtime/default/arithmetic edit or timing claim. Worklog: worklog/entries/20261028T223039.505537Z-cleanup-refactor-r0288-dp4a-threads-9c1e14.md."
+      ],
       "subitems": [
         {
           "line": 6547,
           "text": "- Added 2026-07-01. Host-side launch switch for the selected T16 q8_1/dp4a",
-          "status": "pending"
+          "status": "audited-four-live-launcher-selectors"
         },
         {
           "line": 6551,
           "text": "- Purpose: keep a rollback/A-B hook for the first selected-MoE scheduler change",
-          "status": "pending"
+          "status": "historical-scheduler-evidence-preserved"
         },
         {
           "line": 6555,
           "text": "- Remove when: either the selected-MoE scheduler is replaced by a llama-style",
-          "status": "pending"
+          "status": "deferred-existing-caller-owned-adapter-plan"
         }
       ]
     },
