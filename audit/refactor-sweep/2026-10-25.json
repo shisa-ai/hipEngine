@@ -8645,23 +8645,23 @@
       "start_line": 6573,
       "end_line": 6589,
       "sha256": "697c33a2cface9faaa24f712aef86458bbbb2142b89514329f47dd42f5aed844",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed isolated rejected T16 q8_1/DP4A kernel, exclusive helpers, wrapper/registration/export, benchmark modes and obsolete fixture. Exact per-row/rowtile siblings and independent raw-Q8 DP4A owner stay unchanged. Six RED/GREEN retirement tests; 36 focused, 47 GPU and full CPU deterministic checks pass. Saved-parent library gives 32 bit-identical pair comparisons; fresh gfx1151 public runs match tokens and all 347 exact launches per arm, closing at zero tracked allocations. Historical result/command remains in the original sweep source, archive and unchanged July artifact. Worklog: worklog/entries/20261028T225646.729053Z-cleanup-refactor-r0290-q8t16-dp4a-abc191.md."],
       "subitems": [
         {
           "line": 6574,
           "text": "- Added 2026-07-01. Callable T16 Q8_0 dual-split pair kernel that consumes",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 6578,
           "text": "- Purpose: isolate the kernel-body question after the 64-thread launch-width",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 6586,
           "text": "- Remove when: the parity sprint moves Q8 verifier work to a true llama-style",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

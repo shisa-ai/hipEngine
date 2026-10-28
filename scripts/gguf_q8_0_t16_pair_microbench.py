@@ -2,9 +2,9 @@
 """Microbench Q8_0 T16 dual-split GEMV variants.
 
 This targets the llama-compat verifier hot leaf:
-``attn_qkv + attn_gate`` with T16 Q8_0 weights. It compares the exact BF16
-activation path against the llama.cpp-like q8_1+dp4a diagnostic path while
-cycling weight copies to avoid measuring only cache-resident matrix reads.
+``attn_qkv + attn_gate`` with T16 Q8_0 weights. It compares exact BF16
+per-row and row-tiled activation paths while cycling weight copies to avoid
+measuring only cache-resident matrix reads.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ import numpy as np
 
 Q8_0_BLOCK = 32
 Q8_0_T16_BLOCK_BYTES = 16 * 2 + 32 * 16
-Q8_1_BLOCK_BYTES = 36
 
 
 def _f32_to_bf16(arr: np.ndarray) -> np.ndarray:
@@ -52,8 +51,8 @@ def main() -> None:
     ap.add_argument("--threads", default="64,128")
     ap.add_argument(
         "--modes",
-        default="exact,q8_1_dp4a,prequant_q8_1_dp4a",
-        help="Comma-separated: exact, rowtile2, rowtile4, rowtile4_col8, q8_1_dp4a, prequant_q8_1_dp4a",
+        default="exact,rowtile2,rowtile4,rowtile4_col8",
+        help="Comma-separated: exact, rowtile2, rowtile4, rowtile4_col8",
     )
     ap.add_argument(
         "--shape",
@@ -78,7 +77,7 @@ def main() -> None:
     rows_list = _parse_csv_ints(args.rows)
     threads_list = _parse_csv_ints(args.threads)
     modes = [part.strip() for part in args.modes.split(",") if part.strip()]
-    allowed_modes = {"exact", "rowtile2", "rowtile4", "rowtile4_col8", "q8_1_dp4a", "prequant_q8_1_dp4a"}
+    allowed_modes = {"exact", "rowtile2", "rowtile4", "rowtile4_col8"}
     unknown_modes = sorted(set(modes) - allowed_modes)
     if unknown_modes:
         raise ValueError(f"unknown modes: {', '.join(unknown_modes)}")
@@ -86,14 +85,9 @@ def main() -> None:
 
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, malloc
-    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
-        build_gguf_q4_k_gemv,
-        gguf_q4_k_quantize_bf16_q8_1,
-    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
         build_gguf_q8_0_t16_gemv,
         gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
-        gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out,
         gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out,
         gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
         gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out,
@@ -103,7 +97,6 @@ def main() -> None:
 
     rt = get_hip_runtime()
     lib = build_gguf_q8_0_t16_gemv(load=True, require_cached=args.require_cached_build)
-    q4_lib = build_gguf_q4_k_gemv(load=True, require_cached=args.require_cached_build)
     rng = np.random.default_rng(701)
 
     def matrix_bytes(out_features: int) -> int:
@@ -123,7 +116,6 @@ def main() -> None:
         x = _f32_to_bf16(rng.standard_normal((rows, in_f)) * 0.1)
         xb = malloc(x.nbytes, runtime=rt)
         copy_host_to_device(xb, host_array_ptr(x), runtime=rt)
-        xq_buf = malloc(rows * (in_f // Q8_0_BLOCK) * Q8_1_BLOCK_BYTES, runtime=rt)
         a_pool = []
         b_pool = []
         for _ in range(pool):
@@ -136,35 +128,16 @@ def main() -> None:
         out_a_buf = malloc(rows * out_a * 2, runtime=rt)
         out_b_buf = malloc(rows * out_b * 2, runtime=rt)
         try:
+            exact_fn = {
+                "exact": gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
+                "rowtile2": gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out,
+                "rowtile4": gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+                "rowtile4_col8": gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out,
+            }[mode]
+
             def go(i: int) -> None:
-                if mode in {"exact", "rowtile2", "rowtile4", "rowtile4_col8"}:
-                    if mode == "rowtile2":
-                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out
-                    elif mode == "rowtile4":
-                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
-                    elif mode == "rowtile4_col8":
-                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out
-                    else:
-                        exact_fn = gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
-                    exact_fn(
-                        xb.ptr,
-                        a_pool[i % pool].ptr,
-                        b_pool[i % pool].ptr,
-                        out_a_buf.ptr,
-                        out_b_buf.ptr,
-                        rows,
-                        in_f,
-                        out_a,
-                        out_b,
-                        threads=threads,
-                        library=lib,
-                        runtime=rt,
-                    )
-                    return
-                if mode == "q8_1_dp4a":
-                    gguf_q4_k_quantize_bf16_q8_1(xb.ptr, xq_buf.ptr, rows, in_f, library=q4_lib, runtime=rt)
-                gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out(
-                    xq_buf.ptr,
+                exact_fn(
+                    xb.ptr,
                     a_pool[i % pool].ptr,
                     b_pool[i % pool].ptr,
                     out_a_buf.ptr,
@@ -178,9 +151,6 @@ def main() -> None:
                     runtime=rt,
                 )
 
-            if mode == "prequant_q8_1_dp4a":
-                gguf_q4_k_quantize_bf16_q8_1(xb.ptr, xq_buf.ptr, rows, in_f, library=q4_lib, runtime=rt)
-
             for i in range(args.warmup):
                 go(i)
             rt.device_synchronize()
@@ -190,7 +160,7 @@ def main() -> None:
             rt.device_synchronize()
             ms = (time.perf_counter() - t0) / args.iters * 1000.0
         finally:
-            for buf in (xb, xq_buf, out_a_buf, out_b_buf, *a_pool, *b_pool):
+            for buf in (xb, out_a_buf, out_b_buf, *a_pool, *b_pool):
                 free(buf, runtime=rt)
 
         if mode == "rowtile2":
