@@ -1,16 +1,35 @@
 from __future__ import annotations
 
+import ctypes
+
+import pytest
+
 import hipengine.runtime.moe_c1_dispatch as moe_c1_dispatch
 
 
-def test_moe_c1_dispatch_split_output_tiled_prefill_default_and_optout(monkeypatch) -> None:
-    monkeypatch.delenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", raising=False)
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+def test_moe_c1_dispatch_always_binds_promoted_dual_split(monkeypatch, retired) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", retired)
+    from hipengine.kernels.hip_gfx1100.fused import paro_combine, paro_silu
+    from hipengine.kernels.hip_gfx1100.moe import router
+    from hipengine.kernels.hip_gfx1100.quant import paro_awq_gemv
+    from hipengine.kernels.hip_gfx1100.rotary import paro_rotate
 
-    assert moe_c1_dispatch._w4_dual_output_tiled_split_prefill_enabled()
-
-    monkeypatch.setenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", "0")
-
-    assert not moe_c1_dispatch._w4_dual_output_tiled_split_prefill_enabled()
+    callback = ctypes.CFUNCTYPE(ctypes.c_int)(lambda: 0)
+    class Library:
+        def __getattr__(self, name):
+            return callback
+    for module, name in (
+        (router, "build_qwen35_router"), (paro_rotate, "build_paro_rotate"),
+        (paro_awq_gemv, "build_paro_awq_gemv"), (paro_silu, "build_paro_silu"),
+        (paro_combine, "build_paro_combine"),
+    ):
+        monkeypatch.setattr(module, name, lambda **kwargs: Library())
+    table = moe_c1_dispatch._build_fns_table()
+    assert table.gemv_awq_dual_pack8_output_tiled_split_transposed_fp16 == ctypes.cast(callback, ctypes.c_void_p).value
 
 
 def test_moe_c1_dispatch_shared_down_combine_fused_default_and_optout(monkeypatch) -> None:

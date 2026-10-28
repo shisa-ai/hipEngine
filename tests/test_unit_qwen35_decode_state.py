@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from hipengine.core.device import Device
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -3501,16 +3502,52 @@ def test_qwen35_decode_state_can_opt_out_of_linear_attention_cast_rotate_fusion(
     assert order == ["cast", "rotate1", "pack8"]
 
 
-def test_qwen35_w4_dual_output_tiled_split_prefill_default_and_optout(monkeypatch) -> None:
-    monkeypatch.delenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", raising=False)
-    monkeypatch.delenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES", raising=False)
-
-    assert qwen_runtime._w4_dual_output_tiled_split_site_eligible("shared_gate_up", 2, 4096, 128)
-    assert not qwen_runtime._w4_dual_output_tiled_split_site_eligible("dense_gate_up", 2, 4096, 128)
-
-    monkeypatch.setenv("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", "0")
-
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("sites", [None, "none", "dense_gate_up", "all"])
+def test_qwen35_dual_output_tiled_split_ignores_retired_controls(monkeypatch, retired, sites) -> None:
+    for name, value in (
+        ("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", retired),
+        ("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES", sites),
+    ):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    monkeypatch.delenv("HIPENGINE_W4_OUTPUT_TILED_PREFILL", raising=False)
+    for rows in (1, 2, 3, 4, 7, 8, 16):
+        assert qwen_runtime._w4_dual_output_tiled_split_site_eligible("shared_gate_up", rows, 4096, 128) is (rows in (2, 4, 8))
+        assert not qwen_runtime._w4_dual_output_tiled_split_site_eligible("dense_gate_up", rows, 4096, 128)
+    assert not qwen_runtime._w4_dual_output_tiled_split_site_eligible("shared_gate_up", 2, 4095, 128)
+    monkeypatch.setenv("HIPENGINE_W4_OUTPUT_TILED_PREFILL", "0")
     assert not qwen_runtime._w4_dual_output_tiled_split_site_eligible("shared_gate_up", 2, 4096, 128)
+
+
+@pytest.mark.parametrize("rows,expected", [(2, "split"), (3, "prefill"), (4, "split"), (7, "prefill"), (8, "split"), (16, "prefill")])
+@pytest.mark.parametrize("retired", [None, "0", "false"])
+def test_shared_expert_uses_promoted_split_and_shape_fallback(monkeypatch, rows, expected, retired) -> None:
+    for name in ("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", "HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES"):
+        if retired is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, retired)
+    monkeypatch.delenv("HIPENGINE_W4_OUTPUT_TILED_PREFILL", raising=False)
+    monkeypatch.setenv("HIPENGINE_W4_MULTI_ROW_PACK8_SITES", "none")
+    state = _state(FakeRuntime(), _prepared_moe_weights())
+    state.layer_weights = replace(state.layer_weights, config=replace(state.config, layer_types=("linear_attention",)))
+    scratch = state.reserve_moe_c1_scratch(tokens=rows, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (rows, 4096), "fp16")
+    calls = []
+    for name in (
+        "paro_rotate1_fp16", "paro_rotate2_fp16", "silu_mul_separate_out_fp16",
+        "silu_mul_pair_rotate_out_fp16", "awq_fusedw4_prefill_fp16",
+        "gemv_awq_pack8_transposed_fp16",
+    ):
+        monkeypatch.setattr(qwen_runtime, name, lambda *a, **kw: None)
+    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_output_tiled_split_transposed_fp16", lambda *a, **kw: calls.append(("split", a)))
+    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_dual_fp16", lambda *a, **kw: calls.append(("prefill", a)))
+    assert state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=rows) is scratch.shared_out
+    assert len(calls) == 1 and calls[0][0] == expected
+    assert calls[0][1][8:11] == (scratch.shared_gate_out.ptr, scratch.shared_up_out.ptr, rows)
 
 
 def test_qwen35_decode_state_selected_output_uses_prefill_lowp_after_segment_state(monkeypatch) -> None:

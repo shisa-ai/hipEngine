@@ -509,8 +509,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED` | true | Fuses the full-attention shared down/combine epilogue; `0` restores the parallel epilogue. |
 | `HIPENGINE_DISABLE_PACK8_OUTPUT_TILED` | unset | Set to any non-empty value to drop rows 2/4/8 from the pack8 output-tiled GEMV route (rollback for the byte-exact AWQ output-tiled path). |
 | `HIPENGINE_W4_OUTPUT_TILED_PREFILL` | true | Output-tiled W4 prefill epilogue; `0` restores the plain epilogue. |
-| `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL` | true | Stacked dual output-tiled split W4 prefill route (default on after the 2026-06-11 W7900 D32 9-prompt gate). |
-| `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES` | unset | Comma-separated site names restricting the dual output-tiled split route; unset uses the retained default sites. |
 | `HIPENGINE_W4_MULTI_ROW_PACK8_SITES` | unset | Comma-separated site names enabling specific multi-row W4 pack8 sites, `all` for the full M12.6 set, or `none` to disable every multi-row W4 site while leaving the umbrella gate on. Unset uses the default safe sites. |
 | `HIPENGINE_W4_DOWN_PROJ_SMALL_BATCH` | unset | Selects the small-batch shared down-proj mode (`prefill`, `multi_row_decode`, or the named mode aliases); unset resolves `2` when the output-tiled prefill is on and `1` otherwise. |
 | `HIPENGINE_W4_PREFILL_SMALLBATCH_TILE_M` | `16` | Output tile M for small-batch W4 prefill; one of `16`, `32`, `64`. The retained 16-row tile improves the small-B MTP prompt suite while preserving exact prefill numerics. |
@@ -1308,6 +1306,12 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL` and
+  `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES` are retired and ignored.
+  Shared gate/up uses the promoted split-output route for supported row
+  counts; other shapes keep their existing prefill fallback. Regression
+  tests retain the names.
+
 - `HIPENGINE_YUE2_NAR_ATTENTION` is retired and appears only in regression
   tests. Attention selection uses kernel geometry; setting it has no effect.
 

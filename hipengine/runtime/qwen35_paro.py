@@ -11243,37 +11243,10 @@ def _w4_output_tiled_prefill_enabled() -> bool:
     return _env_enabled("HIPENGINE_W4_OUTPUT_TILED_PREFILL", default=True)
 
 
-_W4_DUAL_OUTPUT_TILED_SPLIT_DEFAULT_SITES = frozenset({"shared_gate_up"})
-
-
-def _w4_dual_output_tiled_split_prefill_enabled(site: str) -> bool:
-    """M16.4 follow-up: split-output dual output-tiled W4 prefill path.
-
-    Default-on for the prompt-suite-safe ``shared_gate_up`` site after the
-    2026-06-11 W7900 D32 9-prompt gate: stacked with linear out cast+rotate,
-    exact ``9/9`` and same acceptance as the off baseline, with mean verify
-    wall ``22.98 -> 22.37 ms/cycle``. Opt out with
-    ``HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL=0``.
-    """
-
-    if not _env_enabled("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL", default=True):
-        return False
-    raw = os.environ.get("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES")
-    if raw is None or raw.strip() == "":
-        sites = _W4_DUAL_OUTPUT_TILED_SPLIT_DEFAULT_SITES
-    else:
-        sites = {part.strip().lower() for part in raw.split(",") if part.strip()}
-        if "none" in sites:
-            return False
-        if "all" in sites:
-            return True
-    return site.lower() in sites
-
-
 def _w4_dual_output_tiled_split_site_eligible(site: str, tokens: int, in_features: int, group_size: int) -> bool:
     return (
         _w4_output_tiled_prefill_enabled()
-        and _w4_dual_output_tiled_split_prefill_enabled(site)
+        and site.lower() == "shared_gate_up"
         and int(tokens) in _PACK8_OUTPUT_TILED_ROWS
         and int(in_features) % int(group_size) == 0
     )

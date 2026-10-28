@@ -72,19 +72,6 @@ def moe_c1_c_dispatch_enabled() -> bool:
     return value.strip().lower() not in {"0", "off", "no", "false", "disable", "disabled"}
 
 
-def _w4_dual_output_tiled_split_prefill_enabled() -> bool:
-    """M16.4 split-output shared gate/up prefill route.
-
-    Default-on after the 2026-06-11 W7900 D32 9-prompt gate proved the stacked
-    P1 route exact and non-regressive. Keep the opt-out for bisection.
-    """
-
-    value = os.environ.get("HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL")
-    if value is None or value.strip() == "":
-        return True
-    return value.strip().lower() in {"1", "on", "yes", "true", "enable", "enabled"}
-
-
 def _w4_output_tiled_prefill_enabled() -> bool:
     value = os.environ.get("HIPENGINE_W4_OUTPUT_TILED_PREFILL")
     if value is None or value.strip() == "":
@@ -385,10 +372,9 @@ def _build_fns_table() -> MoeC1Fns:
     fns.awq_fusedw4_prefill_dual_fp16 = addr(
         awq_lib, "hipengine_awq_fusedw4_prefill_dual_fp16",
     )
-    if _w4_dual_output_tiled_split_prefill_enabled():
-        fns.gemv_awq_dual_pack8_output_tiled_split_transposed_fp16 = addr(
-            awq_lib, "hipengine_gemv_awq_dual_pack8_output_tiled_split_transposed_fp16",
-        )
+    fns.gemv_awq_dual_pack8_output_tiled_split_transposed_fp16 = addr(
+        awq_lib, "hipengine_gemv_awq_dual_pack8_output_tiled_split_transposed_fp16",
+    )
     fns.awq_fusedw4_prefill_fp16 = addr(
         awq_lib, "hipengine_awq_fusedw4_prefill_fp16",
     )
