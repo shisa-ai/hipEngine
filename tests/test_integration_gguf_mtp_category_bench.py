@@ -29,6 +29,7 @@ from scripts.gguf_mtp_category_bench import (
     prompt_sha256,
     repo_provenance,
     validate_speed_claim_contract,
+    validate_attached_true_ar_timing_protocol,
     write_markdown,
 )
 from scripts.gguf_true_ar_category_bench import build_true_ar_artifact
@@ -68,6 +69,7 @@ TEST_TRUE_AR_TIMING_PROTOCOL = {
     "decode_path": "graph_replay",
     "graph_replay_decode": True,
     "graph_steps_per_replay": 1,
+    "graph_capture_in_decode_ms": True,
     "decode_repack": True,
     "effective_decode_repack": True,
     "use_gemv_decode": True,
@@ -1149,15 +1151,76 @@ def test_speed_claim_contract_rejects_missing_true_ar_protocol() -> None:
         validate_speed_claim_contract(summary)
 
 
-def test_speed_claim_contract_rejects_eager_or_raw_true_ar_timing_protocol() -> None:
+def test_speed_claim_contract_rejects_eager_without_admission_metadata() -> None:
     timing = dict(TEST_TRUE_AR_TIMING_PROTOCOL)
     timing["decode_path"] = "eager_step"
     timing["graph_replay_decode"] = False
     timing["graph_steps_per_replay"] = 0
     summary = _speed_claim_summary(true_ar_overrides={"timing_protocol": timing})
 
-    with pytest.raises(BenchError, match="speed-claim true_ar_baseline requires timing_protocol.decode_path='graph_replay'"):
+    with pytest.raises(BenchError, match="graph_replay_requested"):
         validate_speed_claim_contract(summary)
+
+
+@pytest.mark.parametrize("minimum,horizon", [(None, 173), (24, 17), (128, 37), (128, 127)])
+def test_speed_claim_accepts_backend_admitted_eager_timing(minimum, horizon) -> None:
+    timing = {
+        **TEST_TRUE_AR_TIMING_PROTOCOL,
+        "decode_path": "eager_step", "graph_replay_decode": False,
+        "graph_steps_per_replay": 0, "graph_capture_in_decode_ms": False,
+        "graph_replay_requested": True,
+        "effective_decode_graph_min_replay_steps": minimum,
+    }
+    protocol = {**TEST_TRUE_AR_PROTOCOL, "decode_tokens": horizon}
+    summary = _speed_claim_summary(true_ar_overrides={"timing_protocol": timing, "protocol": protocol})
+    assert validate_attached_true_ar_timing_protocol(
+        summary["true_ar_baseline"], label="test baseline",
+    ) == timing
+
+
+@pytest.mark.parametrize("patch", [
+    {"graph_replay_requested": False},
+    {"effective_decode_graph_min_replay_steps": 5},
+    {"effective_decode_graph_min_replay_steps": True},
+    {"effective_decode_graph_min_replay_steps": 0},
+    {"graph_replay_decode": True},
+    {"graph_steps_per_replay": 1},
+    {"graph_capture_in_decode_ms": True},
+    {"effective_decode_repack": False},
+])
+def test_speed_claim_rejects_diagnostic_or_inconsistent_eager_timing(patch) -> None:
+    timing = {
+        **TEST_TRUE_AR_TIMING_PROTOCOL,
+        "decode_path": "eager_step", "graph_replay_decode": False,
+        "graph_steps_per_replay": 0, "graph_capture_in_decode_ms": False,
+        "graph_replay_requested": True,
+        "effective_decode_graph_min_replay_steps": 128,
+        **patch,
+    }
+    summary = _speed_claim_summary(true_ar_overrides={"timing_protocol": timing})
+    with pytest.raises(BenchError):
+        validate_attached_true_ar_timing_protocol(summary["true_ar_baseline"], label="test baseline")
+
+
+def test_speed_claim_accepts_eager_production_baseline_end_to_end(tmp_path) -> None:
+    summary = _default_objective_summary(tmp_path, "eager", accepted=[1] * 10, draft_ms=10.0)
+    summary["speed_claim_eligible"] = True
+    summary["performance_claim"] = True
+    summary["true_ar_baseline"]["timing_protocol"].update({
+        "decode_path": "eager_step", "graph_replay_decode": False,
+        "graph_steps_per_replay": 0, "graph_capture_in_decode_ms": False,
+        "graph_replay_requested": True,
+        "effective_decode_graph_min_replay_steps": 24,
+    })
+    assert validate_speed_claim_contract(summary) is summary
+    assert objective_metrics_for_budget(summary, "b1")["true_ar_timing_protocol"]["decode_path"] == "eager_step"
+
+
+def test_speed_claim_rejects_graph_timing_that_excludes_capture() -> None:
+    timing = {**TEST_TRUE_AR_TIMING_PROTOCOL, "graph_capture_in_decode_ms": False}
+    summary = _speed_claim_summary(true_ar_overrides={"timing_protocol": timing})
+    with pytest.raises(BenchError, match="graph_capture_in_decode_ms"):
+        validate_attached_true_ar_timing_protocol(summary["true_ar_baseline"], label="test baseline")
 
 
 def test_speed_claim_contract_rejects_true_ar_without_effective_gemv_decode() -> None:
@@ -1323,6 +1386,62 @@ def test_category_summary_attaches_valid_true_ar_baseline(tmp_path: Path) -> Non
     assert summary["totals"]["b1"]["true_ar_decode_tok_s_weighted"] == 100.0
     assert summary["totals"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((30.0 / 330.0 * 1000.0) / 100.0)
     assert summary["categories"]["code"]["b1"]["mtp_vs_true_ar_decode_ratio"] == pytest.approx((10.0 / 110.0 * 1000.0) / 100.0)
+
+
+@pytest.mark.parametrize("minimum,horizon", [(None, 173), (24, 23), (24, 24), (24, 37), (128, 127), (128, 128)])
+def test_artifact_builder_routes_attach_to_category_summary(tmp_path, minimum, horizon) -> None:
+    prompts = [{"id": "p", "category": "code", "prompt": "write code"}]
+    graph = minimum is not None and horizon >= minimum
+    args = SimpleNamespace(
+        model=TEST_MODEL, prompts=TEST_PROMPTS, cycles=1, raw_root="/tmp/raw",
+        decode_tokens=horizon, warmup_decode_tokens=1,
+        decode_repack=True, use_gemv_decode=True, use_wmma_prefill=True,
+        graph_replay_decode=True,
+    )
+    metrics = [{
+        "id": "p", "category": "code", "output_tokens": horizon,
+        "decode_ms": 100.0, "warmup_decode_tokens": 1, "finite_final_logits": True,
+        "graph_replay_decode": graph, "graph_steps_per_replay": 1 if graph else 0,
+        "graph_replay_min_steps": minimum,
+    }]
+    artifact = build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=metrics, commands=["cmd"])
+    # These effective kernel fields come from the resident session in main().
+    artifact["timing_protocol"].update({
+        "effective_decode_repack": True, "effective_use_gemv_decode": True,
+        "effective_use_wmma_prefill": True,
+    })
+    baseline = tmp_path / "true-ar.json"
+    baseline.write_text(json.dumps(artifact), encoding="utf-8")
+    args.true_ar_baseline_json = baseline
+    raw = {1: [_row("p", "code", output=horizon, accepted=1, drafts=1, ar_ms=100.0, draft_ms=10.0)]}
+    summary = build_summary(args=args, prompts=prompts, raw=raw, commands=list(TEST_SUMMARY_COMMANDS))
+    assert summary["true_ar_comparison_available"] is True
+    assert summary["true_ar_baseline"]["timing_protocol"] == {
+        **TEST_TRUE_AR_TIMING_PROTOCOL,
+        "decode_path": "graph_replay" if graph else "eager_step",
+        "graph_replay_decode": graph, "graph_steps_per_replay": 1 if graph else 0,
+        "graph_capture_in_decode_ms": graph, "graph_replay_requested": True,
+        "effective_decode_graph_min_replay_steps": minimum,
+    }
+
+
+def test_artifact_builder_does_not_invent_missing_graph_capability() -> None:
+    args = SimpleNamespace(model=TEST_MODEL, prompts=TEST_PROMPTS, decode_tokens=17, warmup_decode_tokens=1)
+    prompts = [{"id": "p", "category": "code", "prompt": "x"}]
+    metrics = [{"id": "p", "category": "code", "output_tokens": 17, "decode_ms": 100.0}]
+    artifact = build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=metrics, commands=["cmd"])
+    assert "effective_decode_graph_min_replay_steps" not in artifact["timing_protocol"]
+
+
+def test_artifact_builder_rejects_conflicting_graph_capability() -> None:
+    args = SimpleNamespace(model=TEST_MODEL, prompts=TEST_PROMPTS, decode_tokens=17, warmup_decode_tokens=1)
+    prompts = [{"id": str(i), "category": "code", "prompt": "x"} for i in range(2)]
+    metrics = [
+        {"id": str(i), "category": "code", "output_tokens": 17, "decode_ms": 100.0, "graph_replay_min_steps": floor}
+        for i, floor in enumerate((24, 128))
+    ]
+    with pytest.raises(BenchError, match="share one backend graph replay minimum"):
+        build_true_ar_artifact(args=args, prompts=prompts, prompt_metrics=metrics, commands=["cmd"])
 
 
 def _default_objective_summary(

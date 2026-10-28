@@ -5,6 +5,11 @@ import sys
 import pytest
 
 from scripts import gguf_ar_mtp_suite as suite
+from scripts.gguf_mtp_category_bench import (
+    TRUE_AR_PRODUCTION_TIMING_REQUIRED,
+    validate_true_ar_timing_protocol_metadata,
+    BenchError,
+)
 
 
 def test_retired_gate_up_x8_suite_aliases_are_absent() -> None:
@@ -29,9 +34,7 @@ def test_suite_hardware_label_follows_explicit_gfx1100_arch(monkeypatch) -> None
 def test_suite_accepts_backend_admitted_graph_ar_protocol() -> None:
     ar = {
         "timing_protocol": {
-            "decode_repack": True,
-            "use_gemv_decode": True,
-            "use_wmma_prefill": True,
+            **TRUE_AR_PRODUCTION_TIMING_REQUIRED,
             "decode_path": "graph_replay",
             "graph_replay_decode": True,
             "graph_steps_per_replay": 1,
@@ -47,6 +50,7 @@ def test_suite_accepts_backend_admitted_graph_ar_protocol() -> None:
 def test_suite_rejects_incomplete_graph_ar_protocol() -> None:
     ar = {
         "timing_protocol": {
+            **TRUE_AR_PRODUCTION_TIMING_REQUIRED,
             "decode_repack": True,
             "use_gemv_decode": True,
             "use_wmma_prefill": True,
@@ -58,8 +62,31 @@ def test_suite_rejects_incomplete_graph_ar_protocol() -> None:
     }
 
     assert suite._enforce_apple_to_apple(ar, {}) == [
-        "AR graph timing excludes capture/instantiate/close from decode_ms"
+        "AR baseline requires timing_protocol.graph_capture_in_decode_ms=True; got False"
     ]
+
+
+@pytest.mark.parametrize("minimum,horizon", [(None, 173), (24, 23), (24, 24), (24, 37), (128, 127), (128, 128)])
+@pytest.mark.parametrize("graph_requested", [False, True])
+def test_suite_and_attachment_share_graph_admission(minimum, horizon, graph_requested) -> None:
+    graph = graph_requested and minimum is not None and horizon >= minimum
+    timing = {
+        **TRUE_AR_PRODUCTION_TIMING_REQUIRED,
+        "decode_path": "graph_replay" if graph else "eager_step",
+        "graph_replay_decode": graph,
+        "graph_steps_per_replay": 1 if graph else 0,
+        "graph_capture_in_decode_ms": graph,
+        "graph_replay_requested": graph_requested,
+        "effective_decode_graph_min_replay_steps": minimum,
+    }
+    ar = {"decode_tokens": horizon, "timing_protocol": timing}
+    if graph_requested:
+        assert validate_true_ar_timing_protocol_metadata(timing, label="AR baseline", decode_tokens=horizon) == timing
+        assert suite._enforce_apple_to_apple(ar, {}) == []
+    else:
+        with pytest.raises(BenchError) as exc:
+            validate_true_ar_timing_protocol_metadata(timing, label="AR baseline", decode_tokens=horizon)
+        assert suite._enforce_apple_to_apple(ar, {}) == [str(exc.value)]
 
 
 def test_suite_default_mtp_route_is_current_speed_row() -> None:
@@ -723,6 +750,7 @@ def test_suite_require_cached_build_reaches_true_ar_and_mtp_children(
     ar_line, mtp_line, *_ = out.splitlines()
     assert ar_line.endswith("--require-cached-build")
     assert "--extra-arg=--require-cached-build" in mtp_line
+    assert f"--true-ar-baseline-json {tmp_path / 'raw' / 'true-ar-baseline.json'}" in mtp_line
 
 
 def test_suite_llama_compat_device_chain_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys) -> None:

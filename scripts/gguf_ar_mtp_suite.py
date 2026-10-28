@@ -21,7 +21,7 @@ Canonical decode config (production path, recorded in every artifact)
 ---------------------------------------------------------------------
 - ``HIPENGINE_GGUF_DECODE_REPACK=1`` (T16 decode-repack; required path)
 - ``--decode-repack --use-gemv-decode --use-wmma-prefill`` (all on)
-- eager decode (the HIP decode graph was retired; see WORKLOG #8)
+- backend/horizon-admitted eager or state-bound graph decode, with graph capture included in timing
 - greedy / temp 0
 - ``--prompt-reasoning off`` forced on BOTH sides (the one real apple-to-apple
   prompt-construction knob the underlying benches did not force symmetrically)
@@ -56,6 +56,14 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.gguf_mtp_category_bench import (
+    BenchError,
+    validate_true_ar_timing_protocol_metadata,
+)
+
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "prompts" / "mtpbench-code-general-ja.jsonl"
 
@@ -1047,24 +1055,13 @@ def _load(path: Path) -> dict[str, Any]:
 def _enforce_apple_to_apple(ar: dict[str, Any], mtp: dict[str, Any]) -> list[str]:
     """Assert the AR and MTP runs share the decode protocol + prompt set."""
     problems: list[str] = []
-    tp = ar.get("timing_protocol", {})
-    for key in ("decode_repack", "use_gemv_decode", "use_wmma_prefill"):
-        if not tp.get(key, False):
-            problems.append(f"AR timing_protocol.{key} is not True ({tp.get(key)!r})")
-    decode_path = tp.get("decode_path")
-    if decode_path not in (None, "eager_step", "graph_replay"):
-        problems.append(
-            f"AR decode_path is {decode_path!r}, expected backend-admitted eager_step or graph_replay"
+    try:
+        validate_true_ar_timing_protocol_metadata(
+            ar.get("timing_protocol"), label="AR baseline",
+            decode_tokens=ar.get("decode_tokens"),
         )
-    elif decode_path == "graph_replay":
-        if tp.get("graph_replay_decode") is not True:
-            problems.append("AR graph timing does not report graph_replay_decode=true")
-        if tp.get("graph_steps_per_replay") != 1:
-            problems.append(
-                f"AR graph_steps_per_replay is {tp.get('graph_steps_per_replay')!r}, expected 1"
-            )
-        if tp.get("graph_capture_in_decode_ms") is not True:
-            problems.append("AR graph timing excludes capture/instantiate/close from decode_ms")
+    except BenchError as exc:
+        problems.append(str(exc))
     # Prompt-set hash parity: the MTP summary records prompt sha256 per prompt;
     # the AR baseline records prompt_metrics[].prompt_sha256. Compare the sets.
     ar_hashes = {r.get("prompt_sha256") for r in ar.get("prompt_metrics", []) if r.get("prompt_sha256")}
@@ -1271,18 +1268,14 @@ def main() -> int:
         "--budgets", ",".join(str(b) for b in budgets),
         "--raw-root", str(raw_root / "mtp"),
         "--output", str(mtp_json),
+        "--true-ar-baseline-json", str(ar_json),
         "--python", args.python,
         # enforce the one prompt-construction knob symmetrically + the route flags
         "--extra-arg=--prompt-reasoning", "--extra-arg=off",
     ]
     if int(args.max_output_tokens) > 0:
         mtp_cmd += ["--max-output-tokens", str(int(args.max_output_tokens))]
-    # NOTE: we deliberately do NOT pass --true-ar-baseline-json. That attach path
-    # in gguf_mtp_category_bench still validates against the RETIRED graph_replay
-    # AR contract (TRUE_AR_PRODUCTION_TIMING_REQUIRED, stale since #8) and rejects
-    # the current eager AR baseline. This orchestrator owns the apple-to-apple
-    # comparison instead: it runs both benches under one enforced config and
-    # computes the ratio itself (see _enforce_apple_to_apple + the verdict below).
+    # Attach through the same production-route validator used by this suite.
     for a in route_args:
         mtp_cmd.append(f"--extra-arg={a}")
     if args.record_cycle_stage_timings:

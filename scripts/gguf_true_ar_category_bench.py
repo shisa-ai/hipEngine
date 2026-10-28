@@ -82,6 +82,12 @@ def build_true_ar_artifact(
     if any(graph_rows) and not graph_effective:
         decode_path = "mixed"
     effective_graph_steps = graph_steps.pop() if len(graph_steps) == 1 else 0
+    graph_admission: dict[str, Any] = {}
+    if prompt_metrics and all("graph_replay_min_steps" in row for row in prompt_metrics):
+        minimum = prompt_metrics[0]["graph_replay_min_steps"]
+        if any(row["graph_replay_min_steps"] != minimum for row in prompt_metrics):
+            raise BenchError("prompt_metrics must share one backend graph replay minimum")
+        graph_admission["effective_decode_graph_min_replay_steps"] = minimum
     return {
         "schema": 1,
         "kind": "hipengine_gguf_true_ar_category_baseline",
@@ -119,6 +125,8 @@ def build_true_ar_artifact(
             "graph_replay_decode": graph_effective,
             "graph_steps_per_replay": effective_graph_steps if graph_effective else 0,
             "graph_capture_in_decode_ms": graph_effective,
+            "graph_replay_requested": bool(getattr(args, "graph_replay_decode", True)),
+            **graph_admission,
             "decode_repack": bool(getattr(args, "decode_repack", False)),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
             "use_gemv_decode": bool(getattr(args, "use_gemv_decode", False)),

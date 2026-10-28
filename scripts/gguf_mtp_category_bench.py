@@ -64,9 +64,6 @@ TRUE_AR_SCHEMA = 1
 TRUE_AR_KIND = "hipengine_gguf_true_ar_category_baseline"
 TRUE_AR_PROTOCOL_FIELDS = ("model", "quant", "prompt_file", "prompt_count", "decode_tokens", "warmup_decode_tokens")
 TRUE_AR_PRODUCTION_TIMING_REQUIRED = {
-    "decode_path": "graph_replay",
-    "graph_replay_decode": True,
-    "graph_steps_per_replay": 1,
     "decode_repack": True,
     "effective_decode_repack": True,
     "use_gemv_decode": True,
@@ -823,15 +820,49 @@ def normalize_quant_label(value: Any) -> str:
     return label
 
 
-def validate_true_ar_timing_protocol_metadata(timing: Any, *, label: str) -> dict[str, Any]:
+def validate_true_ar_timing_protocol_metadata(
+    timing: Any, *, label: str, decode_tokens: Any = None,
+) -> dict[str, Any]:
     if not isinstance(timing, dict):
         raise BenchError(f"{label} requires production timing_protocol metadata")
-    normalized: dict[str, Any] = {}
     for field, expected in TRUE_AR_PRODUCTION_TIMING_REQUIRED.items():
         value = timing.get(field)
-        if value != expected:
+        if value is not expected:
             raise BenchError(f"{label} requires timing_protocol.{field}={expected!r}; got {value!r}")
-        normalized[field] = value
+    path = timing.get("decode_path")
+    if path not in ("graph_replay", "eager_step"):
+        raise BenchError(f"{label} requires timing_protocol.decode_path='graph_replay' or 'eager_step'; got {path!r}")
+    graph = path == "graph_replay"
+    # Old graph artifacts can still be checked from their effective route, but
+    # eager timing needs an explicit production-admission reason, not an opt-out.
+    admission_fields = ("graph_replay_requested", "effective_decode_graph_min_replay_steps")
+    has_admission = any(field in timing for field in admission_fields)
+    if not graph or has_admission:
+        if timing.get("graph_replay_requested") is not True:
+            raise BenchError(f"{label} requires timing_protocol.graph_replay_requested=True")
+        if admission_fields[1] not in timing:
+            raise BenchError(f"{label} requires timing_protocol.{admission_fields[1]}")
+        minimum = timing[admission_fields[1]]
+        if minimum is not None and (type(minimum) is not int or minimum <= 0):
+            raise BenchError(f"{label} requires a positive integer or null graph replay minimum")
+        if type(decode_tokens) is not int or decode_tokens <= 0:
+            raise BenchError(f"{label} requires positive decode_tokens for graph admission")
+        expected_graph = minimum is not None and decode_tokens >= minimum
+        if graph != expected_graph:
+            raise BenchError(f"{label} decode_path contradicts backend graph admission for decode_tokens={decode_tokens}")
+    route_fields = {
+        "graph_replay_decode": graph,
+        "graph_steps_per_replay": 1 if graph else 0,
+        "graph_capture_in_decode_ms": graph,
+    }
+    for field, expected in route_fields.items():
+        value = timing.get(field)
+        if type(value) is not type(expected) or value != expected:
+            raise BenchError(f"{label} requires timing_protocol.{field}={expected!r}; got {value!r}")
+    fields = ("decode_path", *route_fields, *TRUE_AR_PRODUCTION_TIMING_REQUIRED)
+    normalized = {field: timing[field] for field in fields}
+    if has_admission:
+        normalized.update({field: timing[field] for field in admission_fields})
     return normalized
 
 
@@ -875,6 +906,7 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
     timing_protocol = validate_true_ar_timing_protocol_metadata(
         artifact.get("timing_protocol"),
         label="true AR baseline artifact",
+        decode_tokens=decode_tokens,
     )
     return {
         "model": model,
@@ -891,7 +923,10 @@ def validate_true_ar_protocol_metadata(*, artifact: dict[str, Any], args: argpar
 
 
 def validate_attached_true_ar_timing_protocol(true_ar: dict[str, Any], *, label: str) -> dict[str, Any]:
-    return validate_true_ar_timing_protocol_metadata(true_ar.get("timing_protocol"), label=label)
+    return validate_true_ar_timing_protocol_metadata(
+        true_ar.get("timing_protocol"), label=label,
+        decode_tokens=(true_ar.get("protocol") or {}).get("decode_tokens"),
+    )
 
 
 def validate_attached_true_ar_baseline_flags(true_ar: dict[str, Any]) -> None:
