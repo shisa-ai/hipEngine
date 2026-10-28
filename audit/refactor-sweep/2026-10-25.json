@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "Packed metadata row6251 resolved: remove unused scalar two/three-copy rollback; one16byte token/position/cache-slot upload on caller stream, shared views and indexed-KV policy unchanged. RED12fail/12pass,GREEN154focused. Real public gfx1151 speculative normal/indexed unset/0/false observes56packed advances total with equal8IDs and zero allocations afterclose. CPU/docs/audit/worklog pass; no kernel/default/math/performance change. worklog/entries/20261028T090541.619186Z-cleanup-refactor-r0281-proposer-metadata-c4f595.md.",
         "Proposer-read row6250 resolved: remove unused persistent-device harness opt-out; always skip discarded metadata, update-only scoring and redundant final snapshot. Required candidate token read, rollback-prefix snapshots and public owner untouched. RED4fail/4pass, GREEN43focused incl host-only B1/B3 reject/partial/full cycle cases. Real gfx1151 borrowed B1/private B3 unset/0/false have same IDs/accepted lengths, B3 snapshot skip active, zero allocations after each close; public generate/detailed succeeds. CPU/docs/audit/worklog checks pass. No kernel/default/math/performance claim; worklog/entries/20261028T085613.967308Z-cleanup-refactor-r0281-proposer-reads-a14806.md.",
         "Provider row6249 moves to bottom R0281-PARO-PROVIDER. Public Generation-2 always borrows full target vocabulary independently of manual selector/cap; legacy registered profiles bind on, explicit chain mode preserves ambient selection. Private scorer still serves drift/lifecycle and branching top-k while borrowed scorer is top1-only. Preserve implementations and separate coordinated harness/scorer migration from public routing. 47 focused tests pass, including public adapter binding under unset/0/false/1 and manual selector/profile precedence. No runtime/default/math change; worklog/entries/20261028T084925.644159Z-cleanup-refactor-r0281-paro-provider-75629a.md.",
         "Staged-down row6248: remove unused rejected selector, Python method and C branch/ABI fields together; preserve independent registered primitive and unfused down chain. RED truthy selectors2fail and host ABI6fail, GREEN150focused. Public gfx1151 speculative generation runs Python/C routes with unset/1/false, same8IDs and zero final tracked allocations. CPU deterministic, docs, tiers and audit pass. No GPU kernel body/default/arithmetic/performance change. worklog/entries/20261028T082659.587123Z-cleanup-refactor-r0281-staged-down-0ec9db.md.",
@@ -7954,7 +7955,7 @@
         {
           "line": 6251,
           "text": "| MTP P2 proposer | `HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION` opt-out around the packed token+position metadata H2D copy. | Default-on after 2026-06-11 same-tree D32 9-prompt exact A/B: exact `9/9`, identical acceptance, wall `26.922 -> 26.869 ms/cycle`, proposal/update `1.9766 -> 1.9758 ms/cycle`; ratio is noisy/down because the AR control changed. | After the next retained MTP defaults-only gate passes, remove the opt-out and keep the packed one-copy metadata path. |",
-          "status": "pending"
+          "status": "fixed-packed-proposer-metadata-control-retired"
         },
         {
           "line": 6252,

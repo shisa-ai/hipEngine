@@ -654,6 +654,36 @@ def test_snapshot_round_trip_carries_hidden_validity(harness: _Harness) -> None:
         proposer.advance_with_previous_hidden(input_token=16, position=13, need_result=False)
 
 
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("indexed", [False, True])
+@pytest.mark.parametrize("position,cache_slot,stream", [(1, 0, 0), (9, 3, 7), (47, 5, 13)])
+def test_advance_always_uploads_one_packed_metadata_record(
+    harness: _Harness, monkeypatch, retired, indexed, position, cache_slot, stream,
+) -> None:
+    import ctypes
+    import struct
+
+    if retired is not None:
+        monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION", retired)
+    monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE", str(int(indexed)))
+    proposer = harness.make()
+    proposer.cache_len = cache_slot
+    harness.runtime.copies.clear()
+    proposer.advance_with_target_hidden(
+        input_token=101, target_hidden_ptr=_TARGET_HIDDEN_PTR,
+        position=position, need_result=False, kv_write_only=True, stream=stream,
+    )
+    uploads = [copy for copy in harness.runtime.copies if copy[3] is HipMemcpyKind.HOST_TO_DEVICE]
+    assert len(uploads) == 1
+    dst, src, nbytes, _, actual_stream = uploads[0]
+    assert (dst, nbytes, actual_stream) == (proposer.token_position_buf.ptr, 16, stream)
+    assert ctypes.string_at(src, nbytes) == struct.pack("=qii", 101, position, cache_slot)
+    assert proposer.token_buf.ptr == dst
+    assert proposer.position_buf.ptr == dst + 8
+    assert proposer.cache_slot_buf.ptr == dst + 12
+    assert proposer.cache_len == cache_slot + 1
+
+
 def test_advance_with_target_hidden_keeps_its_default_forwarding() -> None:
     """The default (non cache-only) call forwards exactly the previous keywords."""
 

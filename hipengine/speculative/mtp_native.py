@@ -114,10 +114,6 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "off", "no"}
 
 
-def _pack_token_position_enabled() -> bool:
-    return _env_flag("HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION", True)
-
-
 def _route0_accum_init_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT", True)
 
@@ -1105,37 +1101,13 @@ class NativeMtpChainProposer:
         self.position_host[0] = int(position)
         self.cache_slot_host[0] = int(self.cache_len)
         indexed_kv_write = _indexed_kv_write_enabled()
-        if _pack_token_position_enabled():
-            self.runtime.memcpy_async(
-                self.token_position_buf.ptr,
-                host_array_ptr(self.token_position_host),
-                self.token_position_host.nbytes,
-                HipMemcpyKind.HOST_TO_DEVICE,
-                int(stream),
-            )
-        else:
-            self.runtime.memcpy_async(
-                self.token_buf.ptr,
-                host_array_ptr(self.token_host),
-                self.token_host.nbytes,
-                HipMemcpyKind.HOST_TO_DEVICE,
-                int(stream),
-            )
-            self.runtime.memcpy_async(
-                self.position_buf.ptr,
-                host_array_ptr(self.position_host),
-                self.position_host.nbytes,
-                HipMemcpyKind.HOST_TO_DEVICE,
-                int(stream),
-            )
-            if indexed_kv_write:
-                self.runtime.memcpy_async(
-                    self.cache_slot_buf.ptr,
-                    host_array_ptr(self.cache_slot_host),
-                    self.cache_slot_host.nbytes,
-                    HipMemcpyKind.HOST_TO_DEVICE,
-                    int(stream),
-                )
+        self.runtime.memcpy_async(
+            self.token_position_buf.ptr,
+            host_array_ptr(self.token_position_host),
+            self.token_position_host.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            int(stream),
+        )
         key_cache_dst = self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize
         value_cache_dst = self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize
         direct_kv_write = _direct_kv_write_enabled() or indexed_kv_write
