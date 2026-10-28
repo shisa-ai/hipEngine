@@ -184,11 +184,24 @@ def test_explicit_strict_profile_selects_c1_loop() -> None:
     assert args.chain_attn_mode == "c1_loop"
 
 
-def test_manual_chain_mode_preserves_legacy_diagnostic_route() -> None:
+@pytest.mark.parametrize("selector,expected", [(None, False), ("0", False), ("1", True)])
+def test_manual_chain_mode_preserves_legacy_diagnostic_route(monkeypatch, selector, expected) -> None:
+    if selector is not None:
+        monkeypatch.setenv(paro_mtp_profiles.PARO_MTP_CONTRACT_ENV, selector)
     args = SimpleNamespace(execution_profile=None, chain_attn_mode="batched")
     mtp_chain_e2e_smoke._apply_paro_execution_profile(args)
     assert args.execution_profile is None
     assert args.chain_attn_mode == "batched"
+    assert mtp_chain_e2e_smoke._mtp_proposer_target_contract_enabled() is expected
+
+
+def test_borrowed_scorer_topk_limitation_keeps_private_diagnostic_separate() -> None:
+    proposer = mtp_native.NativeMtpChainProposer.__new__(mtp_native.NativeMtpChainProposer)
+    proposer.closed = False
+    proposer.result_valid = True
+    proposer.scoring_head = object()
+    with pytest.raises(NotImplementedError, match="top-1 only"):
+        proposer.vocab_topk(k=2)
 
 
 def test_cycle_reseed_helper_uses_selected_target_hidden() -> None:

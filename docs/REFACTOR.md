@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| PARO MTP provider target contract | `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT` remains a manual-route compatibility selector around the qualified final-normalized/selected-reseed/borrowed-W8A16 provider. Registered production now binds it automatically; strict uses the same corrected provider with c1-loop verification. | Production/default after complete parity, 10-prompt/three-repeat numerical/task/state/lifecycle gates and fast D24 economics (`1.0446x` true AR, +10.33% vs strict MTP). | Remove direct env selection and the private F16/cap scorer after one release window with production/strict profile smokes. Keep corrected provider unconditional for registered B1 routes; preserve strict verifier fallback, not the old provider. |
 | MTP P2 proposer | `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` opt-out around skipped discarded expert-topk host reads, update-only lm-head/argmax results, and final draft snapshot saves. | Default-on after 2026-06-11 D32 9-prompt exact gates: same acceptance/visible tokens, read/result skip moved actual speed `0.664x -> 0.670x`, cycle wall `27.94 -> 27.68 ms`, proposal/update `2.145 -> 2.052 ms`; final-snapshot skip then stayed exact `9/9`, skipped `142` D2D snapshot saves, and trimmed proposal/update `2.052 -> 2.045 ms` with flat actual ratio within noise. | After the next retained MTP gate with defaults-on passes, remove the opt-out or demote it to a test-only override. Keep the functional code path; it is the desired proposer behavior. |
 | MTP P2 proposer | `HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION` opt-out around the packed token+position metadata H2D copy. | Default-on after 2026-06-11 same-tree D32 9-prompt exact A/B: exact `9/9`, identical acceptance, wall `26.922 -> 26.869 ms/cycle`, proposal/update `1.9766 -> 1.9758 ms/cycle`; ratio is noisy/down because the AR control changed. | After the next retained MTP defaults-only gate passes, remove the opt-out and keep the packed one-copy metadata path. |
 | MTP P2 proposer | `HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT` opt-out around route-0 FP32 MoE accumulator initialization. | Default-on after 2026-06-11 D32 9-prompt exact A/B: exact `9/9`, identical acceptance, standalone `moe_accum` memset removed by route 0 overwrite, cycle wall `27.081246 -> 27.079143 ms/cycle`, proposal/update `1.96299 -> 1.95303 ms/cycle`; ratio is noisy/down because AR changed. | After the next retained MTP defaults-only gate passes, remove the opt-out and keep route-0 accumulator initialization as the only proposer MoE accumulation path. |
@@ -11487,3 +11486,34 @@ selected-dual consumers and historical trace replay remain. Bench artifacts
 record the ambient value through the loader parser and retain raw environment
 provenance. Migrate that selection and replay metadata together with X8;
 removing comparison aliases does not authorize disabling explicit raw loads.
+
+### R0281-PARO-PROVIDER — Manual provider and private-scorer migration
+
+Public Generation-2 PARO MTP always captures final-normalized target hidden,
+reseeds from the selected target row and borrows the target's full-vocabulary
+W8A16 head. `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT` and the private prefix cap
+do not select that route. The profile module binds the variable for the older
+`mtp_chain_e2e_smoke.py` persistent-device harness; both strict and production
+use the corrected proposer, with distinct verifier choices.
+
+An explicit chain mode without a profile still preserves the ambient selector.
+The private F16 scorer also serves standalone proposer construction in the
+layer/state drift audits and the lifecycle gate's private-versus-borrowed memory
+comparison. Its `vocab_topk` diagnostic supports branching; the borrowed scorer
+currently exposes top-1 only. Removing the private scorer is therefore not the
+same operation as retiring the manual selector, and must not silently change
+those comparisons or eliminate branching capability.
+
+**Decision needed:** preserve these named historical diagnostics or migrate
+manual provider choice to an explicit harness-owned policy while separating
+private scoring from the public provider. Do not widen the registered B1
+profile scope or treat its scope check as the public Generation-2 depth limit.
+
+**Clearing action:** migrate profile binding, explicit-chain harness selection,
+proposal/scoring metadata, drift/lifecycle callers and private-head allocation
+ownership together. Retain selected-row reseeding, full-vocabulary borrowed
+scoring, strict verifier fallback and stale-owner rejection. Run profile/manual
+selector and public adapter tests, borrowed/private scoring and lifecycle tests,
+plus actual strict/production public generation with selector unset/0/1 and
+reset/close coverage. Any removal of private branching needs an explicit
+replacement or retirement decision, not just a release-window expiry.

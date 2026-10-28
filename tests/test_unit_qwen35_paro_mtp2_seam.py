@@ -223,7 +223,14 @@ def test_paro_capability_is_c1_k1_and_profile_specific(backend, variant) -> None
     assert adapter.capability(semantics) is None
 
 
-def test_provider_open_timing_covers_proposer_construction(monkeypatch) -> None:
+@pytest.mark.parametrize("selector", [None, "0", "false", "1"])
+def test_provider_open_timing_covers_proposer_construction(monkeypatch, selector) -> None:
+    if selector is None:
+        monkeypatch.delenv("HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT", selector)
+    monkeypatch.setenv("HIPENGINE_MTP_DRAFT_VOCAB_CAP", "16")
+
     class FakeProposer:
         closed = False
 
@@ -268,6 +275,11 @@ def test_provider_open_timing_covers_proposer_construction(monkeypatch) -> None:
     assert row.mtp2_provider_open_ms == 250.0
     assert adapter._proposer_builds == 1
     assert adapter._states[7].proposer.max_mtp_tokens == 256
+    head = adapter._states[7].proposer.scoring_head
+    assert head.owner is session
+    assert head.vocab_size == session.vocab_size
+    assert head.weight_int8_ptr == session.lm_head_weight.tensor.ptr
+    assert head.scale_f32_ptr == session.lm_head_scale.tensor.ptr
     assert 7 in adapter._states
 
 

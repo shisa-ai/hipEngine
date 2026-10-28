@@ -537,7 +537,7 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_DFLASH_DRAFTER_DENSE` | `wmma` | Dense-project DFlash drafter body: `wmma` (default after R3.4 validated exact-AR plus a per-prompt perf gain) or `naive` to revert. |
 | `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM` | `off` | Fused add+RMSNorm drafter variant; `fused`/`on` selects it, with the unfused `dflash_add_bf16` + `dflash_rmsnorm_bf16` chain as the registered fallback. |
 | `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD` | `off` | Fused LM-head kernel inside the DFlash verifier window; bit-exact vs the unfused path because the cooperative per-vocab-row dot product order is preserved. |
-| `HIPENGINE_MTP_DRAFT_VOCAB_CAP` | internal default | Caps the MTP native drafter's hot vocabulary to at most this many entries (clamped to the model vocab); the packaged default drafter cap applies when unset. |
+| `HIPENGINE_MTP_DRAFT_VOCAB_CAP` | internal default | Prefix cap for the private F16 scorer used by manual native-proposer diagnostics; zero/empty selects full vocabulary and other values clamp to model vocabulary. A borrowed target W8A16 scorer, including public Generation-2 PARO MTP, always uses full vocabulary and ignores this cap. |
 | `HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION` | true | Packs token/position updates into one proposer upload (rollback opt-out). |
 | `HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT` | true | Initializes route-0 accumulators inside the fused proposer kernel (rollback opt-out). |
 | `HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE` | true | Proposer writes draft KV directly (rollback opt-out). |
@@ -545,7 +545,7 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED` | true | Fused router top-k inside the proposer kernel (rollback opt-out). |
 | `HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT` | true | Batched expert route in the proposer (rollback opt-out). |
 | `HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL` | true | Fused shared gate/up dual in the proposer (rollback opt-out). |
-| `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT` | false | Opt-in selected final target hidden plus target-owned W8 scorer contract. |
+| `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT` | false before profile binding | Manual persistent-device harness selector for final target hidden, selected-row reseed and borrowed full-vocabulary W8A16 scoring. Registered strict/production harness profiles force it on; an explicit chain mode without a profile preserves the ambient selector. Public Generation-2 PARO MTP always uses the target contract independently of this variable. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` | true | Runs the resident MTP draft MoE on device (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER` | true | Q6 top-1 gather kernel in the resident MTP drafter (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` | false | Opt-in device-side draft chain execution. |
