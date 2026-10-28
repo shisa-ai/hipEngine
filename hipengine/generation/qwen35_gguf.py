@@ -580,7 +580,6 @@ _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_HOT_VOCAB_ENV = "HIPENGINE_GGUF_MTP_HOT_VOCAB"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
-_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 # Provider prefix checkpoints: one entry per captured prefix, each holding a
 # copy of that prefix's provider KV and recurrent state. Bounded capture keeps
@@ -907,15 +906,6 @@ def _gguf_mtp_server_stream_draft_enabled() -> bool:
 
 def _gguf_mtp_server_stream_verify_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_STREAM_VERIFY_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _gguf_mtp_server_defer_verify_scatter_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV, "1").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
 
 
 def _gguf_mtp_server_target_verify_mode() -> str:
@@ -2035,7 +2025,7 @@ class Qwen35GGUFBringupGenerator:
                                                     "use_wmma_prefill": _mtp_serving_target_wmma_for(self),
                                                     "capture_linear_state_rows": True,
                                                     "defer_linear_state_commit": True,
-                                                    "defer_state_scatter": _gguf_mtp_server_defer_verify_scatter_enabled(),
+                                                    "defer_state_scatter": True,
                                                 }
                                                 for slot_index, session in zip(
                                                     range(chunk_start_index, chunk_start_index + take),
@@ -5900,7 +5890,6 @@ class Qwen35GGUFBringupGenerator:
         verify_batch = getattr(first_session, "verify_target_blocks_batch", None)
         if not callable(verify_batch):
             return None
-        defer_state_scatter = _gguf_mtp_server_defer_verify_scatter_enabled()
         jobs = [
             {
                 "session": drafted.slot.session,
@@ -5909,7 +5898,7 @@ class Qwen35GGUFBringupGenerator:
                 "use_wmma_prefill": _mtp_serving_target_wmma_for(self),
                 "capture_linear_state_rows": True,
                 "defer_linear_state_commit": True,
-                "defer_state_scatter": defer_state_scatter,
+                "defer_state_scatter": True,
             }
             for drafted in chunk
         ]

@@ -642,12 +642,21 @@ def test_gguf_mtp_hot_vocab_defaults_only_in_production_with_rollback(
     assert qwen35_gguf._gguf_mtp_hot_vocab_setting("strict") == "/tmp/custom.json"
 
 
-def test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out(monkeypatch) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
-    assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is True
-
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", "0")
-    assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is False
+@pytest.mark.parametrize("retired_override", [None, "0", "false"])
+def test_gguf_mtp_server_defer_verify_scatter_ignores_retired_override(
+    monkeypatch, retired_override: str | None,
+) -> None:
+    if retired_override is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", retired_override)
+    jobs_seen = []
+    session = SimpleNamespace(verify_target_blocks_batch=lambda jobs: jobs_seen.extend(jobs) or [object()])
+    drafted = SimpleNamespace(
+        slot=SimpleNamespace(session=session, timing={}), block_inputs=(1, 2),
+    )
+    assert _generator()._verify_mtp_serving_cycle_chunk([drafted]) is not None
+    assert jobs_seen[0]["defer_state_scatter"] is True
 
 
 def test_gguf_mtp_server_target_verify_mode_defaults_to_native(monkeypatch) -> None:
@@ -1499,7 +1508,10 @@ def test_gguf_speculative_mtp_has_no_rejected_final_state_fastpath() -> None:
     assert "final_state_fastpath" not in source
 
 
-def test_gguf_speculative_mtp_deferred_verify_scatter_commits_from_owner(monkeypatch) -> None:
+@pytest.mark.parametrize("retired_override", [None, "0", "false"])
+def test_gguf_speculative_mtp_deferred_verify_scatter_commits_from_owner(
+    monkeypatch, retired_override: str | None,
+) -> None:
     calls: list[tuple] = []
 
     class FakeSession:
@@ -1612,7 +1624,10 @@ def test_gguf_speculative_mtp_deferred_verify_scatter_commits_from_owner(monkeyp
         for slot_id in range(2)
     ]
 
-    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
+    if retired_override is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", retired_override)
 
     generator = _generator()
     generator._run_mtp_serving_slots(
@@ -5859,6 +5874,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     monkeypatch.setattr(qwen35_gguf, "_new_mtp_draft_runner", lambda assets, *, runtime: FakeDraft())
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", retired_override)
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", "false")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "0")
     monkeypatch.setattr(
         qwen35_gguf.Qwen35GGUFBringupGenerator, "_load_mtp_serving_assets",

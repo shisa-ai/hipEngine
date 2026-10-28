@@ -329,7 +329,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_FP16_RECURRENT_STATE` | backend/model scoped (true for gfx1151 `mostly_q4_k_s`; false otherwise) | Retained default with strict-storage rollback opt-out | Stores the Qwen3.8 `Q4_K_S` Gated DeltaNet recurrent state as FP16 while accumulating in FP32. On by default for that model on gfx1151 after engine and serving comparisons came out faster with no measured quality or isolation loss. Set `0`/`false`/`off` for FP32 state; set `1` to force it outside that scope for a comparison only. Speculative decoding and the chain journal keep FP32 state. |
 | `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` | true | Retained default with rollback opt-out | Streams draft tokens from the GGUF MTP server route; `0` restores buffered draft emission for bisection. |
 | `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY` | true | Retained default with rollback opt-out | Streams verify results from the GGUF MTP server route; `0` restores buffered verify emission for bisection. |
-| `HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER` | true | Retained default with rollback opt-out | Defers the verify scatter stage inside a streamed MTP server cycle; `0` restores the eager scatter order for bisection. |
 | `HIPENGINE_GGUF_MTP_HOT_VOCAB` | `auto` under `production`; otherwise unset | Performance selector | Hot-vocab LM-head cache scope for the GGUF MTP server. Unset resolves `auto` under the production profile and no hot-vocab cache otherwise, and the server drops the cache (about 0.5 GiB on Qwen3.8-27B, about 2% slower MTP decode) when the context would otherwise fall short of the model maximum or the pinned context. An explicit value is always kept: `auto` keeps the packaged cache, a positive integer selects the head count, and `0`/`off` disables the cache. |
 | `HIPENGINE_GGUF_PACKED_KV_LEASE` | `0` | Diagnostic | Forces the packed-KV lease helper on for single-request (max_batch_size==1) sessions where it would otherwise stay off. |
 | `HIPENGINE_GGUF_MTP_VERIFY_MODE` | `native` | GGUF dense MTP server | `native` or `serial_exact`. `native`, the default, checks drafted tokens with the fast llama.cpp-style row-attention and GPU-side acceptance path; on the dense Qwen suites that measures about 1.5-1.7x normal decoding, with occasional differences in the token chosen. `serial_exact` replays normal single-request decoding for each candidate, so it agrees with normal decoding token for token, but it cannot be faster. |
@@ -1104,6 +1103,11 @@ harnesses read them but do not own them.
 | `AMDGPU_CARD_NAME`, `AMDGPU_CARD_NAME_W7900`, `HIP_VISIBLE_DEVICES_W7900` | TheRock/lab wrapper scripts | Card-name and device-pin locals used by the W7900 wrapper scripts. |
 
 ## Names that are not environment variables
+
+- `HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER` is retired and ignored.
+  MTP startup warmup and serving request deferred packed verifier scatter;
+  serving commits only accepted rows. Direct verifier diagnostics can still pass
+  `defer_state_scatter=False` in `verify_target_blocks_batch()` jobs.
 
 - `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP` is retired and ignored. Server
   startup and allocation diagnostics request MTP scratch warmup through
