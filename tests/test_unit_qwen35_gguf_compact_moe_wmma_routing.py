@@ -56,7 +56,7 @@ def test_qwen35moe_compact_wmma_opt_in_routes_grouped_scheduler(monkeypatch: pyt
     _patch_compact_scheduler(monkeypatch, calls)
     _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k")
     monkeypatch.setattr(qgr, "_read_i64_device_scalar", lambda *args, **kwargs: 16)
-    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "0")
+    monkeypatch.setattr(qgr, "_gguf_compact_wmma_no_read_max_selected_rows", lambda backend: 0)
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
     set_wmma_prefill_enabled(True)
@@ -234,7 +234,7 @@ def test_qwen35moe_compact_wmma_t16_ds4_flag_packs_then_routes_gate_up(monkeypat
     _patch_compact_scheduler(monkeypatch, calls)
     _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k_t16_v1", use_ds4=True)
     monkeypatch.setattr(qgr, "_read_i64_device_scalar", lambda *args, **kwargs: 16)
-    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "0")
+    monkeypatch.setattr(qgr, "_gguf_compact_wmma_no_read_max_selected_rows", lambda backend: 0)
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
     monkeypatch.setattr(
@@ -276,13 +276,11 @@ def test_compact_wmma_static_upper_bound_is_tight(
     )
 
 
-def test_compact_wmma_no_read_scope_is_backend_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1100") == 4096
-    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1151") == 4096
-
-    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "7")
-    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1100") == 7
-    assert qgr._gguf_compact_wmma_no_read_max_selected_rows("hip_gfx1151") == 7
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("stale_value", ["0", "7", "99999"])
+def test_compact_wmma_no_read_scope_ignores_retired_override(monkeypatch, backend, stale_value):
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", stale_value)
+    assert qgr._gguf_compact_wmma_no_read_max_selected_rows(backend) == 4096
 
 
 def test_compact_wmma_small_rows_skips_host_wmma_total_read(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -322,7 +320,7 @@ def test_compact_wmma_out_of_scope_keeps_host_wmma_total_read(
     )
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
-    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "5")
+    monkeypatch.setattr(qgr, "_gguf_compact_wmma_no_read_max_selected_rows", lambda backend: 5)
     set_wmma_prefill_enabled(True)
 
     runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
@@ -331,6 +329,38 @@ def test_compact_wmma_out_of_scope_keeps_host_wmma_total_read(
     assert ("read_wmma_total", None) in calls
     assert ("compact_gate_up", (6, 256, 256, 256, 4, 16)) in calls
     assert ("compact_down", (6, 256, 256, 4, 16)) in calls
+
+
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("rows", [17, 2047, 2048, 2049, 2371])
+@pytest.mark.parametrize("sufficient_capacity", [False, True])
+def test_compact_wmma_no_read_boundary_preserves_scalar_fallback(
+    monkeypatch, backend, rows, sufficient_capacity
+):
+    runner, scratch = _fake_runner_and_scratch()
+    runner.backend = backend
+    selected_rows = rows * 2
+    upper_rows, upper_tiles = qgr._compact_wmma_static_upper_bound(selected_rows, 4)
+    scratch.moe_selected_rows_capacity = selected_rows
+    scratch.moe_wmma_rows_capacity = upper_rows if sufficient_capacity else upper_rows - 1
+    calls = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    _patch_compact_scheduler(monkeypatch, calls)
+    _patch_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k")
+    monkeypatch.setattr(
+        qgr, "_read_i64_device_scalar",
+        lambda *args, **kwargs: calls.append(("read_wmma_total", None)) or 16,
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS", "0")
+    set_wmma_prefill_enabled(True)
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=rows, stream=7)
+
+    no_read = selected_rows <= 4096 and sufficient_capacity
+    assert ("tile_map", upper_tiles if no_read else 0) in calls
+    assert (("read_wmma_total", None) in calls) is not no_read
+    expected_rows = upper_rows if no_read else 16
+    assert ("compact_gate_up", (selected_rows, 256, 256, 256, 4, expected_rows)) in calls
 
 
 def test_q4k_selected_dual_dp4a_off_by_default_keeps_raw_pair(monkeypatch: pytest.MonkeyPatch) -> None:
