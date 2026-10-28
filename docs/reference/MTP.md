@@ -22,6 +22,13 @@ per replay without generated-ID/hidden-history recording; the
 recording APIs, rollback-safe block verification and native target-cycle
 routes are unchanged.
 
+The bench's `--target-block-replay-state-commit` switch and negative form are
+removed. It no longer offers replay after every scored block, and its
+`target_block_replay_state_commit` artifact field is always false. Serial
+accepted-prefix fallback for partial/direct commits and the dedicated
+`gguf_mtp_forced_target_probe.py --state-lifecycle-compare` replay/direct
+comparison remain available.
+
 `--mtp-context-replay` captures bulk target prompt hidden rows and shifts them
 for llama.cpp-style draft prompt priming. With `--mtp-device-kv-cache`, the
 resident or legacy KV writer primes the device cache before cycles; without

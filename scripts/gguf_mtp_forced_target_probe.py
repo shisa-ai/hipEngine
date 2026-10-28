@@ -1418,7 +1418,6 @@ def _run_lifecycle_cycle(
                     raise ProbeError(f"{policy} lifecycle cycle {cycle_number} missing serial replay snapshot")
                 session._restore_linear_state_snapshot(snapshot, position=start_position)
                 if target_block_state_replay_uses_serial_exact(
-                    replay_state_commit=False,
                     direct_state_commit=True,
                     verify_mode=mode,
                     direct_partial_replay_mode=direct_partial_replay_mode,

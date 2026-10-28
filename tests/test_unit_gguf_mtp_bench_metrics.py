@@ -58,6 +58,8 @@ def test_default_mtp_policy_is_b1_root_top40_speed_first() -> None:
         "--no-target-graph-verify",
         "--target-graph-batched-verify",
         "--no-target-graph-batched-verify",
+        "--target-block-replay-state-commit",
+        "--no-target-block-replay-state-commit",
     ],
 )
 def test_retired_warmup_and_target_graph_selectors_are_rejected(option, capsys, monkeypatch) -> None:
@@ -811,11 +813,15 @@ def test_arg_parser_exposes_target_block_verify_diagnostic() -> None:
     assert args.target_block_wmma_prefill is True
 
 
-def test_arg_parser_exposes_target_block_replay_state_commit_diagnostic() -> None:
-    args = build_arg_parser().parse_args(["--target-block-verify", "--target-block-replay-state-commit"])
-
-    assert args.target_block_verify is True
-    assert args.target_block_replay_state_commit is True
+def test_benchmark_has_no_replay_state_selector_or_branch() -> None:
+    args = build_arg_parser().parse_args(["--target-block-verify"])
+    assert not hasattr(args, "target_block_replay_state_commit")
+    tree = ast.parse(inspect.getsource(bench.main))
+    assert not [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and node.id == "replay_state_commit"
+        or isinstance(node, ast.Attribute) and node.attr == "target_block_replay_state_commit"
+    ]
 
 
 def test_arg_parser_exposes_target_block_direct_partial_replay_mode() -> None:
@@ -876,63 +882,25 @@ def test_target_block_snapshot_policy_skips_exact_direct_commit() -> None:
     ) is True
 
 
-def test_target_block_replay_state_policy_uses_serial_exact_state() -> None:
+@pytest.mark.parametrize(
+    "direct,mode,partial_mode,expected",
+    [
+        (True, "bulk", "serial-exact", True),
+        (True, "bulk", "serial-state-only", True),
+        (True, "bulk", "bulk-state-only", False),
+        (True, "bulk", "native-state-only", False),
+        (True, "bulk", "direct-commit", False),
+        (True, "serial-exact", "bulk-state-only", True),
+        (False, "serial-exact", "serial-exact", True),
+        (False, "bulk", "serial-exact", False),
+    ],
+)
+def test_target_block_partial_replay_policy(direct, mode, partial_mode, expected) -> None:
     assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=True,
-        direct_state_commit=False,
-        verify_mode="bulk",
-    ) is True
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=True,
-        verify_mode="bulk",
-    ) is True
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=True,
-        verify_mode="bulk",
-        direct_partial_replay_mode="serial-state-only",
-    ) is True
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=True,
-        verify_mode="bulk",
-        direct_partial_replay_mode="bulk-state-only",
-    ) is False
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=True,
-        verify_mode="bulk",
-        direct_partial_replay_mode="native-state-only",
-    ) is False
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=True,
-        verify_mode="bulk",
-        direct_partial_replay_mode="direct-commit",
-    ) is False
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=True,
-        direct_state_commit=True,
-        verify_mode="bulk",
-        direct_partial_replay_mode="bulk-state-only",
-    ) is True
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=True,
-        verify_mode="serial-exact",
-        direct_partial_replay_mode="bulk-state-only",
-    ) is True
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=False,
-        verify_mode="serial-exact",
-    ) is True
-    assert target_block_state_replay_uses_serial_exact(
-        replay_state_commit=False,
-        direct_state_commit=False,
-        verify_mode="bulk",
-    ) is False
+        direct_state_commit=direct,
+        verify_mode=mode,
+        direct_partial_replay_mode=partial_mode,
+    ) is expected
 
 
 def test_arg_parser_defaults_target_block_wmma_prefill_off() -> None:

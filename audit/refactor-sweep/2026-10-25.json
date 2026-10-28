@@ -8152,7 +8152,8 @@
         {
           "line": 6284,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --target-block-replay-state-commit`. | Default-off diagnostic. It scores strict target blocks with the selected block verifier without direct linear-state capture, then restores and replays the accepted prefix through `verify_target_block_serial_exact()` for resident state. The corrected 2026-07-02 13-cycle F32 selected-intermediate run proves the transaction wiring (`target_verify_replay_rows=38`, `target_verify_direct_commit_rows=0`) but rejects it as a replication path: it diverges early at cycle 2 (`[40798, 1590]`) and falls to **31.14 tok/s** because every accepted prefix pays serial replay. | Remove after the direct-state capture path is made semantically identical to the intended block scoring path, or move this to a dedicated debug harness if it remains useful as a state-lifecycle comparator. Do not promote; it is intentionally slower and negative semantically. |",
-          "status": "pending"
+          "status": "fixed-gguf-bench-replay-state-control-retired",
+          "evidence": "No live script sets the bench CLI. Remove positive/negative selector, replay-on-every-block branches and helper parameter; preserve false artifact field. Dedicated forced-target lifecycle probe retains replay/direct comparison and partial-state policies, with explicit fake-session lifecycle checks; serial-exact runtime fallback and direct/reject/partial routes remain. Worklog: worklog/entries/20261028T153216.633786Z-cleanup-refactor-r0281-gguf-replay-state-e7c624.md."
         },
         {
           "line": 6285,

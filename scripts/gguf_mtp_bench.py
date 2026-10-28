@@ -181,20 +181,13 @@ def invalidate_target_graph_after_block_verify(target_graph):
 
 def target_block_state_replay_uses_serial_exact(
     *,
-    replay_state_commit: bool,
     direct_state_commit: bool,
     verify_mode: str,
     direct_partial_replay_mode: str = "serial-exact",
 ) -> bool:
-    """Return whether accepted-prefix replay must use token-serial target state.
+    """Return whether accepted-prefix replay uses token-serial target state."""
 
-    ``--target-block-replay-state-commit`` deliberately scores with the selected
-    block verifier first, then restores and advances only the accepted prefix
-    through the serial-exact path so scoring semantics do not depend on the
-    linear-state capture kernels.
-    """
-
-    if bool(replay_state_commit) or verify_mode == "serial-exact":
+    if verify_mode == "serial-exact":
         return True
     if bool(direct_state_commit):
         return direct_partial_replay_mode not in {"bulk-state-only", "native-state-only", "direct-commit"}
@@ -960,17 +953,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "Diagnostic: with strict --target-block-verify, capture verifier row states and commit the "
             "accepted row directly instead of restoring and replaying the accepted prefix."
-        ),
-    )
-    parser.add_argument(
-        "--target-block-replay-state-commit",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Diagnostic: with strict --target-block-verify, keep the first verifier pass on the "
-            "non-capturing block path, then restore and replay the accepted prefix through "
-            "serial-exact state after every block. This preserves non-capturing block token "
-            "semantics when linear-state capture would select a different verifier kernel path."
         ),
     )
     parser.add_argument(
@@ -2720,10 +2702,7 @@ def main(argv: list[str] | None = None):
             )
             if can_b1_branch_safe_block_verify:
                 t0 = time.perf_counter()
-                replay_state_commit = bool(args.target_block_replay_state_commit)
-                direct_state_commit = bool(args.target_block_direct_state_commit) and not bool(
-                    replay_state_commit
-                )
+                direct_state_commit = bool(args.target_block_direct_state_commit)
                 target_block_direct_state_commit_effective = bool(direct_state_commit)
                 block_inputs = [int(verify_input_token), int(draft_tokens[0])]
                 direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
@@ -2843,22 +2822,6 @@ def main(argv: list[str] | None = None):
                                         np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
                                         for row in range(2)
                                     )
-                        elif replay_state_commit:
-                            if snapshot is None:
-                                raise RuntimeError("B1 branch-safe state replay requested without a linear-state snapshot")
-                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                            replay_result = session.verify_target_block_serial_exact(block_inputs)
-                            record_target_verify(
-                                len(block_inputs),
-                                serial_rows=len(block_inputs),
-                                replay_rows=len(block_inputs),
-                            )
-                            target_tokens.extend(block_target_tokens)
-                            if serial_hidden_host_required:
-                                target_hidden_seeds.extend(
-                                    np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                    for row in range(2)
-                                )
                         else:
                             target_tokens.extend(block_target_tokens)
                             if serial_hidden_host_required:
@@ -2886,7 +2849,7 @@ def main(argv: list[str] | None = None):
                                 capture_hidden_seed_fp32=True,
                             )
                             record_target_verify(1, serial_rows=1, replay_rows=1)
-                            if (not replay_state_commit) and int(replay0.token_id) != target0:
+                            if int(replay0.token_id) != target0:
                                 raise RuntimeError("B1 branch-safe row-0 replay diverged from block row 0")
                         target_tokens.append(target0)
                         current_device_token = target0
@@ -2944,10 +2907,7 @@ def main(argv: list[str] | None = None):
             )
             if can_block_verify:
                 t0 = time.perf_counter()
-                replay_state_commit = bool(args.target_block_replay_state_commit)
-                direct_state_commit = bool(args.target_block_direct_state_commit) and not bool(
-                    replay_state_commit
-                )
+                direct_state_commit = bool(args.target_block_direct_state_commit)
                 target_block_direct_state_commit_effective = bool(direct_state_commit)
                 block_inputs = [int(verify_input_token)] + [int(token) for token in draft_tokens]
                 direct_state_commit_exact_mode = target_block_direct_commit_is_exact(
@@ -3117,7 +3077,6 @@ def main(argv: list[str] | None = None):
                                 raise RuntimeError("target block replay requested without a linear-state snapshot")
                             session._restore_linear_state_snapshot(snapshot, position=seq_position)
                             if target_block_state_replay_uses_serial_exact(
-                                replay_state_commit=replay_state_commit,
                                 direct_state_commit=direct_state_commit,
                                 verify_mode=args.target_block_verify_mode,
                                 direct_partial_replay_mode=args.target_block_direct_partial_replay_mode,
@@ -3192,26 +3151,6 @@ def main(argv: list[str] | None = None):
                                     np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
                                     for row in range(len(block_target_tokens))
                                 )
-                        elif replay_state_commit:
-                            if snapshot is None:
-                                raise RuntimeError("target block state replay requested without a linear-state snapshot")
-                            session._restore_linear_state_snapshot(snapshot, position=seq_position)
-                            replay_result = session.verify_target_block_serial_exact(block_inputs)
-                            record_target_verify(
-                                len(block_inputs),
-                                serial_rows=len(block_inputs),
-                                replay_rows=len(block_inputs),
-                            )
-                            replay_tokens = [int(token) for token in block_target_tokens]
-                            if args.target_block_verify_mode == "serial-exact" and [
-                                int(token) for token in replay_result.token_ids
-                            ] != replay_tokens:
-                                raise RuntimeError("serial-exact state replay diverged from block rows")
-                            target_tokens.extend(replay_tokens)
-                            target_hidden_seeds.extend(
-                                np.ascontiguousarray(replay_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                for row in range(len(replay_tokens))
-                            )
                         elif direct_state_commit:
                             if snapshot is None:
                                 raise RuntimeError("target block serial replay requested without a linear-state snapshot")
@@ -3811,7 +3750,7 @@ def main(argv: list[str] | None = None):
                 "target_block_direct_state_commit": bool(
                     target_block_direct_state_commit_effective and block_verify_used
                 ),
-                "target_block_replay_state_commit": bool(args.target_block_replay_state_commit and block_verify_used),
+                "target_block_replay_state_commit": False,
                 "target_block_direct_partial_replay_mode": (
                     str(args.target_block_direct_partial_replay_mode) if block_verify_used else None
                 ),
@@ -4084,7 +4023,7 @@ def main(argv: list[str] | None = None):
             "target_block_verify_mode": str(args.target_block_verify_mode),
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
             "target_block_direct_state_commit": bool(args.target_block_direct_state_commit),
-            "target_block_replay_state_commit": bool(args.target_block_replay_state_commit),
+            "target_block_replay_state_commit": False,
             "target_block_direct_partial_replay_mode": str(args.target_block_direct_partial_replay_mode),
             "target_b1_branch_safe_block_verify": bool(args.target_b1_branch_safe_block_verify),
             "target_graph_max_replay_steps": int(target_graph_max_replay_steps),
