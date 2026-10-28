@@ -536,7 +536,7 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT` | true | Batched expert route in the proposer (rollback opt-out). |
 | `HIPENGINE_MTP_PROPOSER_SHARED_GATE_UP_DUAL` | true | Fused shared gate/up dual in the proposer (rollback opt-out). |
 | `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT` | false before profile binding | Manual persistent-device harness selector for final target hidden, selected-row reseed and borrowed full-vocabulary W8A16 scoring. Registered strict/production harness profiles force it on; an explicit chain mode without a profile preserves the ambient selector. Public Generation-2 PARO MTP always uses the target contract independently of this variable. |
-| `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` | true | Runs the resident MTP draft MoE on device (rollback opt-out). |
+| `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE` | retired | Device-resident selected-MoE down/combine is unconditional. The host-readback rollback and its exclusive buffers are removed; stale values have no effect. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER` | true | Q6 top-1 gather kernel in the resident MTP drafter (rollback opt-out). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` | false | Opt-in device-side draft chain execution. |
 

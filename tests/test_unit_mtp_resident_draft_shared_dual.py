@@ -24,7 +24,7 @@ def _run_to_shared_silu(monkeypatch, *, dp4a: bool, dual_error: Exception | None
     runner.eps = 1e-6
     runner._router_row_parallel_enabled = False
     for index, name in enumerate((
-        "selected_out", "attn_normed", "wq", "wk", "wv", "q_full", "key_cur",
+        "attn_normed", "wq", "wk", "wv", "q_full", "key_cur",
         "value_cur", "query", "gate", "q_norm", "k_norm", "attn", "gated", "wo",
         "wo_out", "projected", "attended", "post_norm_weight", "post_norm",
         "router_weight_f32", "router_logits", "selected", "routing", "post_norm_bf16",

@@ -53,7 +53,6 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
     gguf_q8_0_dual_gemv_f32_f32_out,
-    gguf_q5_k_gemv_f32_f32_out,
     gguf_q5_k_selected_gemv_bf16_bf16_out,
     gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_f32_f32_out,
@@ -104,9 +103,7 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     mtp_linear_f32,
     mtp_rmsnorm_f32,
     mtp_rope_f32,
-    mtp_scale_f32,
     mtp_sigmoid_gate_mul_f32,
-    mtp_sigmoid_row_scale_from_logits_f32,
     mtp_silu_mul_f32,
     mtp_split_q_gate_f32,
 )
@@ -628,7 +625,6 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._silu_lib = build_paro_silu(**build_kwargs)
         self._combine_lib = build_paro_combine(**build_kwargs)
         self._gather_lib = build_gather(**build_kwargs)
-        self._device_moe_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", True)
         self._q6_top1_gather_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER", True)
         self._q6_top1_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", False)
         self._q6_top1_stage1_shape = _env_choice(
@@ -766,21 +762,13 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.router_logits = self._malloc(256 * 4)
         self.selected = self._malloc(top_k * 8)
         self.routing = self._malloc(top_k * 4)
-        self.selected_out = self._malloc(h * 4)
         self.gate_bf16 = self._malloc(top_k * inter * 2)
         self.up_bf16 = self._malloc(top_k * inter * 2)
-        self.gate_f32 = self._malloc(top_k * inter * 4)
-        self.up_f32 = self._malloc(top_k * inter * 4)
-        self.inter_f32 = self._malloc(top_k * inter * 4)
-        self.down_out = self._malloc(h * 4)
-        self.scaled = self._malloc(h * 4)
         self.shared_gate_out = self._malloc(inter * 4)
         self.shared_up_out = self._malloc(inter * 4)
         self.shared_inter = self._malloc(inter * 4)
         self.shared_out = self._malloc(h * 4)
         self.shared_gate_logit = self._malloc(4)
-        self.gated_shared = self._malloc(h * 4)
-        self.tmp = self._malloc(h * 4)
         self.ffn_out = self._malloc(h * 4)
         # Device-resident MoE-down + combine scratch (bf16, matches the verifier).
         self.inter_bf16 = self._malloc(top_k * inter * 2)
@@ -2373,11 +2361,6 @@ class Qwen35GGUFResidentMTPDraftRunner:
             t_stage = mark_stage(name, t_stage)
 
         t_stage = time.perf_counter() if sync_stages else 0.0
-        if stream:
-            runtime.memset_async(self.selected_out.ptr, 0, self.selected_out.nbytes, stream)
-        else:
-            runtime.memset(self.selected_out.ptr, 0, self.selected_out.nbytes)
-
         t_project0 = time.perf_counter() if sync_stages else 0.0
         self._project_current_to_attn_normed(
             hidden_seed,
@@ -2700,102 +2683,36 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
         t_moe_down0 = time.perf_counter() if sync_stages else 0.0
         t_stage = t_moe_down0 if sync_stages else t_stage
-        if self._device_moe_enabled:
-            # Device-resident selected-MoE down + combine: no host readback of
-            # selected/routing, no per-expert Python loop (matches the verifier).
-            apply_moe_down_combine(
-                gate_bf16_ptr=self.gate_bf16.ptr,
-                up_bf16_ptr=self.up_bf16.ptr,
-                selected_ptr=self.selected.ptr,
-                routing_ptr=self.routing.ptr,
-                shared_out_ptr=self.shared_out.ptr,
-                shared_gate_logit_ptr=self.shared_gate_logit.ptr,
-                residual_ptr=self.attended.ptr,
-                down_exps_ptr=self.down_exps.ptr,
-                inter_bf16_ptr=self.inter_bf16.ptr,
-                down_out_bf16_ptr=self.down_out_bf16.ptr,
-                attended_bf16_ptr=self.attended_bf16.ptr,
-                shared_bf16_ptr=self.shared_bf16.ptr,
-                ffn_out_bf16_ptr=self.ffn_out_bf16.ptr,
-                ffn_out_f32_ptr=self.ffn_out.ptr,
-                top_k=top_k,
-                inter=inter,
-                hidden=h,
-                num_experts=256,
-                silu_lib=self._silu_lib,
-                k_lib=self._k_lib,
-                combine_lib=self._combine_lib,
-                cast_lib=self._cast_lib,
-                runtime=runtime,
-                stream=stream,
-                stage_marker=mark_substage if sync_stages else None,
-                selected_silu_down_fused=bool(getattr(self, "_selected_silu_down_fused", False)),
-            )
-        else:
-            # Legacy host-readback per-expert down loop + shared-gate combine.
-            bf16_to_f32(self.gate_bf16.ptr, self.gate_f32.ptr, top_k * inter, stream=stream, library=self._cast_lib, runtime=runtime)
-            bf16_to_f32(self.up_bf16.ptr, self.up_f32.ptr, top_k * inter, stream=stream, library=self._cast_lib, runtime=runtime)
-            down_per_expert = int(self._get("blk.40.ffn_down_exps.weight").nbytes // 256)
-            selected_host = np.empty((top_k,), dtype=np.int64)
-            routing_host = np.empty((top_k,), dtype=np.float32)
-            if stream:
-                runtime.stream_synchronize(stream)
-            copy_device_to_host(host_array_ptr(selected_host), self.selected, selected_host.nbytes, runtime=runtime)
-            copy_device_to_host(host_array_ptr(routing_host), self.routing, routing_host.nbytes, runtime=runtime)
-            for k in range(top_k):
-                inter_ptr = self.inter_f32.ptr + k * inter * 4
-                mtp_silu_mul_f32(
-                    self.gate_f32.ptr + k * inter * 4,
-                    self.up_f32.ptr + k * inter * 4,
-                    inter_ptr,
-                    inter,
-                    stream=stream,
-                    library=self._mtp_lib,
-                    runtime=runtime,
-                )
-                expert = int(selected_host[k])
-                gguf_q5_k_gemv_f32_f32_out(
-                    inter_ptr,
-                    self.down_exps.ptr + expert * down_per_expert,
-                    self.down_out.ptr,
-                    1,
-                    inter,
-                    h,
-                    stream=stream,
-                    library=self._k_lib,
-                    runtime=runtime,
-                )
-                mtp_scale_f32(
-                    self.down_out.ptr,
-                    self.scaled.ptr,
-                    float(routing_host[k]),
-                    h,
-                    stream=stream,
-                    library=self._mtp_lib,
-                    runtime=runtime,
-                )
-                mtp_add_f32(
-                    self.selected_out.ptr,
-                    self.scaled.ptr,
-                    self.selected_out.ptr,
-                    h,
-                    stream=stream,
-                    library=self._mtp_lib,
-                    runtime=runtime,
-                )
-            mtp_sigmoid_row_scale_from_logits_f32(
-                self.shared_gate_logit.ptr,
-                self.shared_out.ptr,
-                self.gated_shared.ptr,
-                1,
-                h,
-                1,
-                stream=stream,
-                library=self._mtp_lib,
-                runtime=runtime,
-            )
-            mtp_add_f32(self.attended.ptr, self.selected_out.ptr, self.tmp.ptr, h, stream=stream, library=self._mtp_lib, runtime=runtime)
-            mtp_add_f32(self.tmp.ptr, self.gated_shared.ptr, self.ffn_out.ptr, h, stream=stream, library=self._mtp_lib, runtime=runtime)
+        # Device-resident selected-MoE down + combine: no host readback of
+        # selected/routing, no per-expert Python loop (matches the verifier).
+        apply_moe_down_combine(
+            gate_bf16_ptr=self.gate_bf16.ptr,
+            up_bf16_ptr=self.up_bf16.ptr,
+            selected_ptr=self.selected.ptr,
+            routing_ptr=self.routing.ptr,
+            shared_out_ptr=self.shared_out.ptr,
+            shared_gate_logit_ptr=self.shared_gate_logit.ptr,
+            residual_ptr=self.attended.ptr,
+            down_exps_ptr=self.down_exps.ptr,
+            inter_bf16_ptr=self.inter_bf16.ptr,
+            down_out_bf16_ptr=self.down_out_bf16.ptr,
+            attended_bf16_ptr=self.attended_bf16.ptr,
+            shared_bf16_ptr=self.shared_bf16.ptr,
+            ffn_out_bf16_ptr=self.ffn_out_bf16.ptr,
+            ffn_out_f32_ptr=self.ffn_out.ptr,
+            top_k=top_k,
+            inter=inter,
+            hidden=h,
+            num_experts=256,
+            silu_lib=self._silu_lib,
+            k_lib=self._k_lib,
+            combine_lib=self._combine_lib,
+            cast_lib=self._cast_lib,
+            runtime=runtime,
+            stream=stream,
+            stage_marker=mark_substage if sync_stages else None,
+            selected_silu_down_fused=bool(getattr(self, "_selected_silu_down_fused", False)),
+        )
 
         add_aggregate_stage("draft_run_moe_down_combine", t_moe_down0)
         if gpu_events is not None:
