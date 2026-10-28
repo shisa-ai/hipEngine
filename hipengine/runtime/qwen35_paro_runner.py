@@ -4531,8 +4531,6 @@ class Qwen35ParoResidentSession:
     def _verify_mlp_scratch_policy(self, rows: int) -> str:
         if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
             return "dense"
-        if not _env_flag("HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED", True):
-            return "c1" if int(rows) == 1 else "grouped"
         return "grouped" if int(rows) >= _verify_moe_grouped_min_tokens() else "c1"
 
     def _reserve_verify_mlp_scratch(self, state: Qwen35ParoDecodeState, *, rows: int):

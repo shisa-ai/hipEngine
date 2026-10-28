@@ -6581,15 +6581,15 @@ def test_qwen35_resident_verify_mlp_scratch_follows_verifier_grouped_threshold(m
     assert (0, 16, "grouped") in session._verify_mlp_scratch_cache
 
     monkeypatch.setenv("HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED", "0")
-    legacy_state = _FakePrefillState(device)
-    legacy_session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
-    legacy_session.config = SimpleNamespace(num_experts=128)
-    legacy_session._verify_mlp_scratch_cache = {}
+    retired_state = _FakePrefillState(device)
+    retired_session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    retired_session.config = SimpleNamespace(num_experts=128)
+    retired_session._verify_mlp_scratch_cache = {}
 
-    legacy_scratch = legacy_session._verify_mlp_scratch(0, legacy_state, rows=4)
+    retired_scratch = retired_session._verify_mlp_scratch(0, retired_state, rows=4)
 
-    assert legacy_scratch is legacy_state.grouped_reservations[0]
-    assert (0, 4, "grouped") in legacy_session._verify_mlp_scratch_cache
+    assert retired_scratch is retired_state.moe_reservations[0]
+    assert (0, 4, "c1") in retired_session._verify_mlp_scratch_cache
 
     monkeypatch.setenv("HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED", "1")
     monkeypatch.setenv("HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS", "4")
