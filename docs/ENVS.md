@@ -385,7 +385,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS` | unset | Attention R&D | Token cap for the head-major KV route. |
 | `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM` | unset | Attention R&D | Runs AOTriton prefill on an isolated stream for large query rows (>= 512). |
 | `HIPENGINE_GGUF_GAPPED_GATHER` | unset (enabled) | Prefill R&D | Gather gapped BF16 prefix pages into demand-sized head-major buffers so suffix attention uses the contiguous route. Requires the registered copy kernel and obeys token/byte caps, including allocation rounding. `0` selects the native paged fallback. |
-| `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE` | `baseline` | Rollback seam | Linear-attention conv prefill mode: `baseline` or `tile32x128`. |
+| `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE` | `auto` (gfx1100: `baseline`; gfx1151: `tile32x128`) | Schedule diagnostic | Accepts `auto`, `baseline` or `tile32x128`; used by kernel-isolation profiles. The full-stack runner caches the callable after first resolution; select before construction/use. |
 | `HIPENGINE_GGUF_Q4K_ROWTILE` | true | Retained default with rollback opt-out | Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8 Q4_K verifier continuation blocks; `0` disables for bisection. |
 | `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 single-wave rowtile variant. |
 | `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` | unset | Diagnostic | Col8 pair-helper variant for Q8T16 decode (batch-route gate provenance key). |

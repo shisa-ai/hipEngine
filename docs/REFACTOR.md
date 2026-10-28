@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF LCP-1 convolution prefill | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline|tile32x128` selects between the production global-read convolution and the registered exact shared-token route. | gfx1151 selects `tile32x128` automatically. The clean 512/4K 82-part and wall gates pass, the 4K body falls `954.134 -> 49.790 ms`, and all six right-sized prefill rows improve `+1.10%..+24.04%` with unchanged memory. gfx1100 remains on `baseline` pending hardware transfer. The production implementation is the required unfused fallback and explicit rollback. | Remove the explicit mode selector after one release window if the gfx1100 transfer remains stable. Never remove the exact production fallback. |
 | GGUF packed-AR singleton-indexed GDN | Backend capability `GGUF_GDN_INDEXED_SINGLETON_DECODE` selects a one-token-per-row indexed sibling while retaining the arbitrary-length segmented recurrence. | gfx1151 defaults to the singleton sibling after independent-c1 byte equality and exact p512/d64 trajectories; gfx1100 remains on segmented GDN pending hardware transfer. The runtime manifest records `indexed_singleton` versus `segments` explicitly. | Remove the gfx1100 capability split only after an independent W7900 c2/c4/c8 correctness/performance gate. Keep the segmented implementation permanently as the arbitrary-length fallback. |
 | GGUF selected-MoE duplicate-expert reuse | `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0`, `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0`, and `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` roll physical-C8 Q4T16 gate/up plus Q5/Q6T16 down back to per-selected-lane kernels; backend capabilities keep gfx1100 unchanged. | gfx1151 pairs consecutive dynamic expert-ID occurrences inside 128-thread blocks while preserving each row's reduction order. Q4 gate/up and Q5/Q6 down share weights across independent per-row accumulators. Lower widths and unpaired IDs retain exact fallback behavior. | Remove the three env opt-outs after one release window plus defaults-only gfx1151 direct/server refreshes and an independent gfx1100 transfer. Keep per-lane kernels for unsupported widths and as required fallbacks. |
 | GGUF F32-weight cooperative c1 router | `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` retains the separate expert-logits/shared-logit/top-k chain as an explicit rollback around the incumbent cooperative route. `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` restores the selected-ID counter alias plus per-layer host reset instead of the dedicated self-resetting four-byte counter. | gfx1100 clean commit `4c743994` first improved 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**; its persistent follow-up removed 40 reset nodes/token and improved the graph gate another **+1.65%**. Independent ZBook/gfx1151 requalification now keeps the same package route: **450/450** full-logit rows, three repeats, 18/18 live-state fingerprints, and 18/18 natural d128 trajectories are byte-exact; natural eager AR improves **30.438 -> 33.219 tok/s (+9.136%)** versus the strict chain, and fixed p512/d128 improves **+8.748%**. The unfused chain remains the required numerical fallback. | Keep both opt-outs until real Qwen3.6 strict/production profile plans bind the selected/fallback variants and exact control capture passes. Then remove the env experiment surface after defaults-only refreshes on both gfx11 targets, while keeping the registered unfused fallback permanently. |
@@ -10691,3 +10690,34 @@ and above eight, shrinking/EOS, unsupported packed prefill/decode, dirty-owner
 flush and error cleanup. Exercise public `LLM.generate_detailed()` plus
 submit/poll cancellation and streaming after extraction. This disposition pins
 existing ownership without changing runtime behavior.
+
+### R0281-CONV — Convolution schedule selector and isolation profiles
+
+`HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE` accepts `auto`, `baseline` and
+`tile32x128`. Auto selects tiled convolution on gfx1151 and baseline on gfx1100.
+The gfx1100 split is deliberate: the architecture-local tiled diagnostic
+preserved primitive output/state but its full-model screen did not support
+promotion. See
+`benchmarks/results/2026-07-14-gfx1100-gguf-prefill-post-transfer-profile.json`;
+this is a completed evaluation, not a pending transfer. Both registered
+implementations remain executable explicitly.
+
+`scripts/qwen35_readme_sweep.py` still pins baseline convolution in its
+conservative and derived kernel-isolation profiles. The runtime caches its
+resolved callable on the full-stack runner, so changing the environment after
+first use does not reconfigure that runner. Segmented, state-capture and
+low-precision convolution paths are separate and do not all use this selector.
+
+**Decision needed:** retain the selector as a supported diagnostic or replace
+its live isolation-profile callers with an explicit construction-time schedule
+before removing the environment reader. Preserve backend auto choices, exact
+baseline/segmented/state-capture fallbacks and the tiled implementation used by
+gfx1151. **Clearing action:** run
+`tests/test_unit_qwen35_gguf_conv_prefill_policy.py`,
+`tests/test_unit_qwen35_linear_attn_conv_plan.py` and
+`tests/test_unit_qwen35_prefill_kernel_profile.py`; migrate the sweep profiles
+without changing their other selectors. Then run the guarded primitive test
+`tests/test_gpu_qwen35_linear_attn_conv_tiled_prefill.py` and public generation
+with route engagement and cleanup recorded on each intended backend. Do not
+turn this cleanup into automatic gfx1100 promotion or delete kernels based on
+old schedule names.
