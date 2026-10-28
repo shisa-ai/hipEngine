@@ -8110,7 +8110,8 @@
         {
           "line": 6277,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --root-topk-accept >1`, `--sibling-topk-accept >1`, and `--topk-branch-redraft` exact-verified coverage tree. | Default-off after the 2026-06-23 speed-first reset to B1 linear greedy: K4096 B5 raised accepted/output but regressed draft efficiency (`0.000227`) and tok/s versus B1 linear. Keep it only for coverage diagnostics and llama.cpp parity investigations. | Remove or move to a dedicated experiment harness if the real GGUF MTP verifier path/adaptive policy supersedes top-k tree diagnostics, or if repeated full-suite speed-first gates show the tree remains speed-negative. |",
-          "status": "pending"
+          "status": "deferred-gguf-topk-policy-migration",
+          "evidence": "Moved to bottom decision queue R0281-TOPK. Standalone defaults root40/sibling1/redraft off; suite default pins top1, hybrid fallback and parity workbench still consume top-k policies. Keep acceptance/candidate/hidden consumption semantics pending coordinated policy/caller migration; historical speed row is not an admission gate. Worklog: worklog/entries/20261028T145759.800903Z-cleanup-refactor-r0281-gguf-topk-policy-499439.md."
         },
         {
           "line": 6278,

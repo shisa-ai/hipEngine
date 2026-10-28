@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --root-topk-accept >1`, `--sibling-topk-accept >1`, and `--topk-branch-redraft` exact-verified coverage tree. | Default-off after the 2026-06-23 speed-first reset to B1 linear greedy: K4096 B5 raised accepted/output but regressed draft efficiency (`0.000227`) and tok/s versus B1 linear. Keep it only for coverage diagnostics and llama.cpp parity investigations. | Remove or move to a dedicated experiment harness if the real GGUF MTP verifier path/adaptive policy supersedes top-k tree diagnostics, or if repeated full-suite speed-first gates show the tree remains speed-negative. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --mtp-context-replay` slow default-off prompt-catchup replay path. | Useful to bracket llama.cpp-style MTP prompt catch-up while the resident bulk target path exposes only the final hidden row. Current smoke is acceptance-negative and should not be the default benchmark path. | Remove or move to a dedicated debug harness after bulk prefill exposes all-row fp32 hidden seeds and the real MTP KV/RoPE path is implemented, or if that path supersedes replay diagnostics. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --mtp-device-kv-cache` default-off device-resident MTP dense KV context. | Implemented for B1 llama.cpp-parity investigation: MTP attention writes post-RoPE K/V to persistent device buffers, draft steps attend over the cache, and accepted target rows use a KV-write-only commit path. Smoke is much faster than host replay/prefix diagnostics but still below the retained no-cache default, so it is opt-in only. | Promote to default only if a same-protocol full-suite row improves raw tok/s, accepted/output, and draft_acceptance; otherwise move to a dedicated debug harness or replace with a paged/KVLiveSpans implementation once bulk hidden-row capture lands. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --target-graph-batched-verify` full-accept-required verifier graph replay experiment. | Default-off; records generated target IDs and FP32 hidden seeds for a whole strict verifier block. The 2026-06-25 merge-sort B3 smoke stayed exact but was speed-neutral/slower because target kernels still execute sequentially inside the graph and hidden-row recording adds overhead. | Remove unless a true rollback-safe block verifier starts using the recorded hidden rows, or promote only after full-suite evidence shows a speed win over one-step graph replay without requiring prompt-specific full acceptance. |
@@ -11490,3 +11489,34 @@ selector and public adapter tests, borrowed/private scoring and lifecycle tests,
 plus actual strict/production public generation with selector unset/0/1 and
 reset/close coverage. Any removal of private branching needs an explicit
 replacement or retirement decision, not just a release-window expiry.
+
+### R0281-TOPK — GGUF benchmark proposal-policy ownership
+
+`scripts/gguf_mtp_bench.py` defaults to B1 with root top-40, sibling top-1
+and branch redraft disabled. This is not a default-off tree. The AR/MTP
+suite's default route explicitly chooses root/sibling top-1; other named
+routes inherit the standalone root choice, and hybrid strict-block routes
+can fall back to root top-40. The parity workbench also forwards a root
+choice. These are live acceptance-policy callers, not unused CLI aliases.
+
+Top-k acceptance uses target-selected IDs. At a non-argmax match it either
+emits the next corrective target token or, with branch redraft enabled,
+rebuilds the remaining proposal from the accepted target branch. Removing
+it changes proposal accounting, verifier/hidden-row consumption and adaptive
+policy, even when visible IDs happen to match. Keep the public NextN
+provider and its separate acceptance owner outside this benchmark migration.
+
+**Decision needed:** keep explicit linear/tree comparison policies or move
+those policies into a dedicated experiment harness with coordinated suite
+and parity-workbench callers. Do not change the standalone root default as
+a side effect of deleting controls or use a historical speed-negative tree
+row as a reason to disable an implemented request.
+
+**Clearing action:** migrate root/sibling limits, branch redraft and tail
+gates, hybrid fallback, route aliases, category forwarding and artifact
+candidate/acceptance fields together. Retain linear/mismatch/out-of-set and
+corrective-token boundary tests, branch reseed/commit and candidate counting,
+plus parser/suite/workbench contracts. A runtime migration needs real
+linear/root/sibling/redraft cycle, hidden/KV/cursor, reset and close checks;
+confirm public generation is unchanged. Any new performance claim needs its
+own matched protocol, not the retired ledger row's numbers.
