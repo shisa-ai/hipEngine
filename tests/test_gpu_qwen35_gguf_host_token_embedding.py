@@ -266,6 +266,50 @@ def test_host_embedding_policy_auto_routes_mapped_and_cpu_types_only_for_private
     ) == ("device", "backend_device_fallback")
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("externally_owned", [False, True])
+@pytest.mark.parametrize("override", [None, "0"])
+def test_shared_embedding_auto_preserves_device_override_and_external_ownership(
+    monkeypatch: pytest.MonkeyPatch, backend: str,
+    externally_owned: bool, override: str | None,
+) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+
+    if override is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", override)
+    reads = []
+
+    def reader(path):
+        reads.append(path)
+        return SimpleNamespace(info=SimpleNamespace(tensors=(SimpleNamespace(
+            name="token_embd.weight", ggml_type_name="Q4_K",
+        ),)))
+
+    def capability(selected_backend, name, default=None):
+        assert selected_backend == backend
+        if name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1":
+            return True
+        if name == "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES":
+            return ("Q4_K",)
+        return default
+
+    monkeypatch.setattr(gguf_runner, "GGUFReader", reader)
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
+
+    actual = gguf_runner._gguf_shared_token_embedding_placement(
+        backend=backend, model_path="/tmp/fake.gguf", externally_owned=externally_owned,
+    )
+
+    if externally_owned or override == "0":
+        assert actual == "device"
+        assert reads == []
+    else:
+        assert actual == "host"
+        assert reads == ["/tmp/fake.gguf"]
+
+
 def test_mapped_host_embedding_storage_copies_backend_qualified_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
