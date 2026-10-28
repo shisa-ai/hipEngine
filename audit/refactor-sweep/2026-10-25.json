@@ -8278,7 +8278,8 @@
         {
           "line": 6305,
           "text": "| gfx1151 HIP hardware-queue default | `configure_hip_process_environment()` sets `GPU_MAX_HW_QUEUES=2` before loading `libamdhip64` when all recognized visible HIP arches map to gfx1151. Existing user values win; gfx1100 and mixed recognized arches are unchanged. | Retained after the complete 2026-08-24 Qwen3.8 FP16-state campaign: explicit `1,2,4,8` and ROCm runtime-default all pass fixed-width, arrival/soak, supported context, pressure/changed-page graph, and prefix lifecycle mechanics. Queue2 has the best normalized 13-width throughput; alternatives are within -0.75% to -0.42%, load/context is neutral, no alternative improves the product SLO, and 64K c2 remains blocked for all policy claims. Queue2 and unset direct cache-only rocprof children each use Queue_Id 1 on their measured single stream. | Keep queue2 as backend metadata and preserve direct `GPU_MAX_HW_QUEUES` user override. The temporary runtime-default suppression, process report, and matrix driver are removed. Revisit only with a new ROCm/firmware stack and a complete same-host protocol; do not infer safety or a default from an intermittent 128K pass. |",
-          "status": "pending"
+          "status": "removed-completed-hardware-queue-policy-receipt",
+          "evidence": "Original row6305 has no remaining temporary code. August24 cleanup/decision worklogs and policy artifact record completed suppression/report/matrix retirement; current backend metadata, pre-CDLL setup, explicit numeric override, mixed-arch behavior and stale-policy ineffectiveness remain. 146 backend/device-capability/F1/lifecycle/owner-rocprof tests pass; matrix driver/test absent. Removed stale row only; no runtime/default/performance claim change. Worklog: worklog/entries/20261028T180711.934551Z-cleanup-refactor-r0281-hwqueue-683000.md."
         },
         {
           "line": 6306,
