@@ -50,7 +50,6 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     dflash_accept_chain_i32_packed_update_state,
     dflash_commit_chain_i32,
     linear_state_pair_commit_chunked_i32,
-    linear_state_pair_commit_i32,
 )
 from hipengine.kernels.hip_gfx1100.attention.aotriton_wrap import build_aotriton_wrap
 from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16, fp16_to_bf16_strided_rows
@@ -11394,12 +11393,7 @@ class Qwen35ParoResidentSession:
     ) -> None:
         n_layers = len(self.linear_layer_ids)
         table_half_nbytes = n_layers * np.dtype(np.uint64).itemsize
-        linear_commit = (
-            linear_state_pair_commit_chunked_i32
-            if self._chunked_linear_state_commit_enabled()
-            else linear_state_pair_commit_i32
-        )
-        linear_commit(
+        linear_state_pair_commit_chunked_i32(
             int(source_table_ptr),
             int(destination_table_ptr),
             self.linear_state_conv_row_nbytes,
@@ -14652,12 +14646,7 @@ class Qwen35ParoResidentSession:
                     runtime=self.runtime,
                 )
                 np.copyto(rec_cached, rec_host)
-            linear_commit = (
-                linear_state_pair_commit_chunked_i32
-                if self._chunked_linear_state_commit_enabled()
-                else linear_state_pair_commit_i32
-            )
-            linear_commit(
+            linear_state_pair_commit_chunked_i32(
                 self.linear_state_src_conv_table_buf.ptr,
                 self.linear_state_dst_conv_table_buf.ptr,
                 self.linear_state_conv_row_nbytes,
@@ -14931,7 +14920,7 @@ class Qwen35ParoResidentSession:
         """Build device-resident destination pointer tables for the M12.4
         single-launch linear-state commit path.
 
-        ``linear_state_pair_commit_i32`` consumes two ``uint64[n_layers]``
+        ``linear_state_pair_commit_chunked_i32`` consumes two ``uint64[n_layers]``
         device tables: one of conv destination row pointers, one of recurrent
         destination row pointers, both for ``base_slot=0`` (per-row offset
         within each layer's canonical buffer).  We populate these once after
@@ -14995,12 +14984,6 @@ class Qwen35ParoResidentSession:
 
     def _fused_linear_state_commit_enabled(self) -> bool:
         value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
-        if value is None or value.strip() == "":
-            return True
-        return value.strip().lower() not in {"0", "false", "no", "off"}
-
-    def _chunked_linear_state_commit_enabled(self) -> bool:
-        value = os.environ.get("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED")
         if value is None or value.strip() == "":
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}

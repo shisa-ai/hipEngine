@@ -74,7 +74,8 @@ def _fake_gguf_commit_session() -> Qwen35GGUFResidentSession:
     return session
 
 
-def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch, retired) -> None:
     allocated: list[DeviceBuffer] = []
     h2d_calls: list[tuple[int, int]] = []
     commit_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
@@ -95,11 +96,13 @@ def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch) 
         commit_calls.append((args, kwargs))
 
     monkeypatch.delenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", raising=False)
-    monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", retired)
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
     monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", fake_copy_host_array_to_device)
     monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_chunked_i32", fake_chunked)
-    monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_i32", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         gguf_runner,
         "set_decode_position_i64",

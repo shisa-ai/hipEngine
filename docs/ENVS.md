@@ -503,7 +503,6 @@ value; leave them unset in production and use the override only for bisection.
 | --- | --- | --- |
 | `HIPENGINE_MOE_C1_C_DISPATCH` | true | Master gate for the C-side MoE c=1 dispatch helper (default on after M14.dispatch.1 prewarm validation). `0` restores the Python router wrappers; diagnostics that need to intercept router calls set it themselves. |
 | `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` | true | Fused linear-attention state commit kernel; `0` restores the unfused commit chain in both PARO and GGUF runners. |
-| `HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED` | true | Chunked (pointer-table) linear state commit; `0` restores the unchunked variant. |
 | `HIPENGINE_LINEAR_SHARED_DOWN_COMBINE_FUSED` | true | Fuses the linear-attention shared down/combine epilogue; `0` restores the parallel epilogue. |
 | `HIPENGINE_LINEAR_SHARED_SILU_ROTATE_FUSED` | true | Fuses the linear-attention shared SiLU-rotate slice; `0` restores the unfused chain. |
 | `HIPENGINE_FULL_SHARED_DOWN_COMBINE_FUSED` | true | Fuses the full-attention shared down/combine epilogue; `0` restores the parallel epilogue. |
@@ -1298,6 +1297,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED` is retired and ignored.
+  PARO and GGUF pointer-table linear-state commits always use the chunked
+  copy primitive, including native selected-state graph commits. The
+  unchunked registry primitive and required per-layer copy fallbacks remain.
 - `HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA` is retired and ignored.
   Verify-chain batches always pack the dynamic token, position and context
   updates into one upload followed by device-side unpacking. Tree metadata

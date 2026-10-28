@@ -1683,14 +1683,11 @@ def capture_qwen35_gguf_native_b2_target_graph(
             variant="i32",
             missing="none",
         )
-        linear_commit_variant = (
-            "chunked_i32" if session._chunked_linear_state_commit_enabled() else "i32"
-        )
         linear_commit_kernel = resolve(
             backend=str(session.backend),
             layer="linear_state_pair_commit",
             quant="w4_paro",
-            variant=linear_commit_variant,
+            variant="chunked_i32",
             missing="none",
         )
         if accept_kernel is None or hidden_commit_kernel is None or linear_commit_kernel is None:

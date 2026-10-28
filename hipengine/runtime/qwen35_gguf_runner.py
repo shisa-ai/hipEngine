@@ -253,7 +253,6 @@ from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_commit,
     dflash_commit_chain_i32,
     linear_state_pair_commit_chunked_i32,
-    linear_state_pair_commit_i32,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_chain_conv_decode_bf16_tloop,
@@ -26762,18 +26761,13 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         assert self._verify_linear_state_commit_row_i32_buf is not None
-        linear_commit = (
-            linear_state_pair_commit_chunked_i32
-            if self._chunked_linear_state_commit_enabled()
-            else linear_state_pair_commit_i32
-        )
         if self._dflash_commit_library is None:
             self._dflash_commit_library = build_dflash_commit(
                 load=True,
                 compiler_version=self.compiler_version,
                 require_cached=self.require_cached_build,
             )
-        linear_commit(
+        linear_state_pair_commit_chunked_i32(
             self._verify_linear_state_src_conv_table_buf.ptr,
             self._verify_linear_state_dst_conv_table_buf.ptr,
             conv_row_nbytes,
@@ -27042,18 +27036,13 @@ class Qwen35GGUFResidentSession:
                     commit_row.nbytes,
                     runtime=runtime,
                 )
-                linear_commit = (
-                    linear_state_pair_commit_chunked_i32
-                    if self._chunked_linear_state_commit_enabled()
-                    else linear_state_pair_commit_i32
-                )
                 if self._dflash_commit_library is None:
                     self._dflash_commit_library = build_dflash_commit(
                         load=True,
                         compiler_version=self.compiler_version,
                         require_cached=self.require_cached_build,
                     )
-                linear_commit(
+                linear_state_pair_commit_chunked_i32(
                     self._verify_linear_state_src_conv_table_buf.ptr,
                     self._verify_linear_state_dst_conv_table_buf.ptr,
                     int(conv_row_nbytes),
@@ -27788,18 +27777,13 @@ class Qwen35GGUFResidentSession:
             assert self._verify_linear_state_src_recurrent_table_buf is not None
             assert self._verify_linear_state_dst_conv_table_buf is not None
             assert self._verify_linear_state_dst_recurrent_table_buf is not None
-            linear_commit = (
-                linear_state_pair_commit_chunked_i32
-                if self._chunked_linear_state_commit_enabled()
-                else linear_state_pair_commit_i32
-            )
             if self._dflash_commit_library is None:
                 self._dflash_commit_library = build_dflash_commit(
                     load=True,
                     compiler_version=self.compiler_version,
                     require_cached=self.require_cached_build,
                 )
-            linear_commit(
+            linear_state_pair_commit_chunked_i32(
                 self._verify_linear_state_src_conv_table_buf.ptr,
                 self._verify_linear_state_dst_conv_table_buf.ptr,
                 conv_nbytes,
@@ -28401,12 +28385,6 @@ class Qwen35GGUFResidentSession:
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
-    def _chunked_linear_state_commit_enabled(self) -> bool:
-        value = os.environ.get("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED")
-        if value is None:
-            return True
-        return value.strip().lower() not in {"0", "false", "no", "off"}
-
     def _ensure_verify_linear_state_commit_tables(self, *, runtime: HipRuntime) -> bool:
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -28541,18 +28519,13 @@ class Qwen35GGUFResidentSession:
                 commit_row.nbytes,
                 runtime=runtime,
             )
-            linear_commit = (
-                linear_state_pair_commit_chunked_i32
-                if self._chunked_linear_state_commit_enabled()
-                else linear_state_pair_commit_i32
-            )
             if self._dflash_commit_library is None:
                 self._dflash_commit_library = build_dflash_commit(
                     load=True,
                     compiler_version=self.compiler_version,
                     require_cached=self.require_cached_build,
                 )
-            linear_commit(
+            linear_state_pair_commit_chunked_i32(
                 self._verify_linear_state_src_conv_table_buf.ptr,
                 self._verify_linear_state_dst_conv_table_buf.ptr,
                 int(self._verify_linear_state_conv_row_nbytes),

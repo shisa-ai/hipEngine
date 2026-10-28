@@ -434,7 +434,12 @@ def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
     assert imported is True
 
 
-def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch, retired) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", retired)
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner.use_iq_dense_mmq = False
     owner._buffers = ()
@@ -461,7 +466,6 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
     owner._verify_linear_state_conv_row_nbytes = 0
     owner._verify_linear_state_recurrent_row_nbytes = 0
     owner._fused_linear_state_transfer_enabled = MethodType(lambda self: True, owner)
-    owner._chunked_linear_state_commit_enabled = MethodType(lambda self: False, owner)
 
     allocations: list[DeviceBuffer] = []
     uploads: list[tuple[int, int]] = []
@@ -484,7 +488,7 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
     monkeypatch.setattr(gguf_runner, "build_dflash_commit", lambda **kwargs: object())
     monkeypatch.setattr(
         gguf_runner,
-        "linear_state_pair_commit_i32",
+        "linear_state_pair_commit_chunked_i32",
         lambda *args, **kwargs: launches.append((int(args[2]), int(args[5]), int(args[7]))),
     )
     copies = [
