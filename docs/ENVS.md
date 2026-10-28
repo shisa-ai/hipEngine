@@ -525,7 +525,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_MOE_FUSED_ROTATE` | false | Opt-in fused in-LDS rotate for the selected MoE chain; only worthwhile at very small `out_pack x top_k` totals. |
 | `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` | false | Opt-in fused rotate for the shared expert; off until a fresh W7900 exact/rocprof row proves the net launch reduction. |
 | `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` | false | Opt-in staged-keyed selected-MoE rotate; staged-kernel duration and verifier economics regressed. |
-| `HIPENGINE_SELECTED_MOE_DOWN_STAGED` | false | Opt-in staged selected-MoE down projection; kept for bisection. |
 | `HIPENGINE_PARO_FFN_MEGAKERNEL` | false | Opt-in single-kernel selected FFN for the verify path (tokens > 1); AR decode keeps the unfused path so the AR baseline is untouched. |
 | `HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED` | false | Opt-in fused full-QKV split-key launch; two exact A/B pairs regressed aggregate wall/verify, so it stays a diagnostic. |
 | `HIPENGINE_LAGUNA_F16_PREFILL` | retired | No longer read. Diagnostics use `f16_prefill_strategy(mode)` in `hipengine.runtime.f16_weight_linear`; target-AR exposes `--f16-prefill-strategy`. Automatic backend policy and shape fallbacks are unchanged. |
@@ -1305,6 +1304,9 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is retired and ignored. Python and
+  C-dispatched selected-MoE down execution use the SiLU/rotate then projection
+  chain. The staged primitive remains independently registered for diagnostics.
 - `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` is retired and ignored.
   Multi-row linear-attention output projection fuses the FP32-to-FP16 cast
   with rotation; single-row and explicit exact-row paths keep their

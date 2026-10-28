@@ -2670,44 +2670,15 @@ def test_qwen35_decode_state_selected_moe_fp16_uses_staged_keyed_rotate(monkeypa
     assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
 
 
-def test_qwen35_decode_state_selected_moe_down_fp16_uses_staged_keyed_kernel(monkeypatch) -> None:
-    qwen_runtime._reset_shared_rotate_fuse_barrier_state()
-    monkeypatch.delenv("HIPENGINE_SELECTED_MOE_DOWN_STAGED", raising=False)
-    runtime = FakeRuntime()
-    state = _state(runtime, _prepared_moe_weights())
-    scratch = state.reserve_moe_c1_scratch(tokens=2, activation_dtype="fp16")
-    calls = []
-
-    def record(label):
-        def fake(*args, **kwargs):
-            calls.append((label, args, kwargs))
-        return fake
-
-    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_rotate_out_fp16", record("unexpected_silu_rotate"))
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_selected_pack8_transposed_fp16", record("unexpected_down"))
-    monkeypatch.setattr(
-        qwen_runtime,
-        "gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16",
-        record("staged_down"),
+def test_selected_moe_staged_down_remains_a_registered_primitive() -> None:
+    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
+        gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16,
     )
-
-    out1 = state.selected_moe_activate_down_pack8_fp16(scratch, tokens=2)
-    out2 = state.selected_moe_activate_down_pack8_fp16(scratch, tokens=2)
-
-    assert out1 is scratch.down_out
-    assert out2 is scratch.down_out
-    labels = [label for label, _args, _kwargs in calls]
-    assert labels == ["staged_down", "staged_down"]
-    first_args = calls[0][1]
-    second_args = calls[1][1]
-    assert first_args[0:3] == (scratch.gate_up.ptr, scratch.down_input.ptr, scratch.selected_experts.ptr)
-    assert first_args[9:12] == (scratch.down_out.ptr, scratch.shared_rotate_fuse_barrier.ptr, 16)
-    # 2 tokens * top_k 8 = 16 selected rows; 768 intermediate / group 128
-    # -> 6 groups, so the staged activation/rotation phase has 96 blocks.
-    assert first_args[17:19] == (96, 1)
-    assert second_args[17:19] == (192, 2)
-    barrier_memsets = [m for m in runtime.memsets if m[0] == scratch.shared_rotate_fuse_barrier.ptr]
-    assert barrier_memsets == [(scratch.shared_rotate_fuse_barrier.ptr, 0, 8)]
+    assert resolve(
+        backend="hip_gfx1100", layer="silu_rotate+selected_pack8_gemv",
+        quant="w4_paro", variant="transposed_staged_keyed_fp16",
+    ) is gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16
 
 
 def test_qwen35_decode_state_runs_shared_expert_paro_w4_bf16(monkeypatch) -> None:
@@ -3720,7 +3691,8 @@ def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_uses_c_dispa
     assert calls == [("c_dispatch", True, 6)]
 
 
-def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_falls_back(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])
+def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_falls_back(monkeypatch, retired) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
     scratch = state.reserve_moe_c1_scratch(tokens=6, activation_dtype="fp16")
@@ -3735,7 +3707,10 @@ def test_qwen35_decode_state_moe_c1_force_small_batch_shared_expert_falls_back(m
     monkeypatch.setattr(state, "_try_moe_c1_c_dispatch", fake_c_dispatch)
     monkeypatch.setattr(state, "route_moe_topk_shared_fp16", lambda *args, **kwargs: calls.append("router"))
     monkeypatch.setattr(state, "selected_moe_gate_up_pack8_fp16", lambda *args, **kwargs: calls.append("gate_up"))
-    monkeypatch.setattr(qwen_runtime, "_selected_moe_down_staged_enabled", lambda: False)
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_SELECTED_MOE_DOWN_STAGED", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_SELECTED_MOE_DOWN_STAGED", retired)
     monkeypatch.setattr(state, "activate_rotate_moe_down_fp16", lambda *args, **kwargs: calls.append("activate_down"))
     monkeypatch.setattr(state, "selected_moe_down_pack8_fp16", lambda *args, **kwargs: calls.append("down"))
 

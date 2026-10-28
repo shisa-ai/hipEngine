@@ -259,8 +259,6 @@ class MoeC1DispatchCache:
         selected_rotate_fuse_barrier: Tensor | None = None,
         selected_rotate_barrier_target: int = 0,
         selected_rotate_barrier_epoch: int = 0,
-        selected_down_barrier_target: int = 0,
-        selected_down_barrier_epoch: int = 0,
         force_small_batch_shared_expert: bool = False,
     ) -> Tensor:
         """Update per-call args and invoke the C dispatcher.  Returns ``out``."""
@@ -274,8 +272,6 @@ class MoeC1DispatchCache:
         args.stream = stream
         args.selected_rotate_barrier_target = int(selected_rotate_barrier_target)
         args.selected_rotate_barrier_epoch = int(selected_rotate_barrier_epoch)
-        args.selected_down_barrier_target = int(selected_down_barrier_target)
-        args.selected_down_barrier_epoch = int(selected_down_barrier_epoch)
         args.force_small_batch_shared_expert = 1 if force_small_batch_shared_expert else 0
         # ---- Scratch pointers (may change if scratch instance differs across
         # calls; the verifier reuses a persistent scratch so this is usually
@@ -355,9 +351,6 @@ def _build_fns_table() -> MoeC1Fns:
     )
     fns.gemv_awq_selected_pack8_transposed_fp16 = addr(
         awq_lib, "hipengine_gemv_awq_selected_pack8_transposed_fp16",
-    )
-    fns.gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16 = addr(
-        awq_lib, "hipengine_gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16",
     )
     fns.silu_mul_dual_rotate_out_fp16 = addr(
         silu_lib, "hipengine_silu_mul_dual_rotate_out_fp16",
