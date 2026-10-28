@@ -506,6 +506,14 @@ Last retained verifier profile triage before the cap65536 acceptance-density row
 
 ### Acceptance-Density Endgame
 
+The fixed-cycle drift switch `--ar-fallback-after-mtp-cycles` has been removed
+from `scripts/mtp_chain_e2e_smoke.py`. Use
+`scripts/mtp_state_drift_audit.py --compare-after-cycles` for selected scratch,
+resident state and live KV comparisons, or
+`scripts/mtp_layer_drift_audit.py --compare-cycle` for layer/hidden comparisons
+against a clean serial control. The smoke harness still supports the separate
+zero-accept-streak fallback policy and its optional until-end behavior.
+
 This is now the margin lane after fixed B=1 crossed break-even. B=1 wins the
 current suite because its verifier cycle is cheap, not because it has the best
 draft density. B=3 still wins high-density prompts, B=2 wins a couple of medium

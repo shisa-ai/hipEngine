@@ -54,7 +54,6 @@ def test_verifier_economics_forwards_registered_profile_to_smoke(
         acceptance_diagnostics=False,
         confidence_threshold=0.0,
         ar_fallback_zero_streak=0,
-        ar_fallback_after_mtp_cycles=0,
         ar_fallback_tokens=1,
         ar_fallback_until_end=False,
         small_batch_decode_threshold=7,

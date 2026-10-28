@@ -1025,7 +1025,6 @@ def _run_spec_persistent_device(
     rocprof_verify_cycles: int = 0,
     acceptance_diagnostics: bool = False,
     ar_fallback_zero_streak: int = 0,
-    ar_fallback_after_mtp_cycles: int = 0,
     ar_fallback_tokens: int = 1,
     ar_fallback_until_end: bool = False,
     require_cached_build: bool = False,
@@ -1033,7 +1032,6 @@ def _run_spec_persistent_device(
     confidence_threshold = float(confidence_threshold)
     active_budget_cap = int(active_budget_cap)
     ar_fallback_zero_streak = int(ar_fallback_zero_streak)
-    ar_fallback_after_mtp_cycles = int(ar_fallback_after_mtp_cycles)
     ar_fallback_tokens = int(ar_fallback_tokens)
     if confidence_threshold < 0.0 or confidence_threshold > 1.0:
         raise ValueError("confidence_threshold must be in [0, 1]")
@@ -1043,8 +1041,6 @@ def _run_spec_persistent_device(
         raise ValueError("active_budget_cap cannot exceed candidate_budget")
     if ar_fallback_zero_streak < 0:
         raise ValueError("ar_fallback_zero_streak must be >= 0")
-    if ar_fallback_after_mtp_cycles < 0:
-        raise ValueError("ar_fallback_after_mtp_cycles must be >= 0")
     if ar_fallback_tokens < 1:
         raise ValueError("ar_fallback_tokens must be >= 1")
     runner = Qwen35ParoNextTokenRunner(model, backend=backend)
@@ -1187,20 +1183,12 @@ def _run_spec_persistent_device(
                         root = int(step_result.token_id)
                         context += 1
                         break
-                    force_after_cycle = (
-                        ar_fallback_after_mtp_cycles > 0
-                        and mtp_verify_cycles_completed >= ar_fallback_after_mtp_cycles
-                    )
                     force_after_zero_streak = (
                         ar_fallback_zero_streak > 0
                         and zero_accept_streak >= ar_fallback_zero_streak
                     )
-                    if force_after_cycle or force_after_zero_streak:
-                        fallback_reason = (
-                            "ar_fallback_after_mtp_cycles"
-                            if force_after_cycle
-                            else "ar_fallback_zero_accept_streak"
-                        )
+                    if force_after_zero_streak:
+                        fallback_reason = "ar_fallback_zero_accept_streak"
                         fallback_window = (
                             int(decode_tokens) - len(generated)
                             if ar_fallback_until_end
@@ -1646,7 +1634,6 @@ def _run_spec_persistent_device(
         "active_budget_cap": int(active_budget_cap),
         "verify_budget": int(candidate_budget),
         "ar_fallback_zero_streak": int(ar_fallback_zero_streak),
-        "ar_fallback_after_mtp_cycles": int(ar_fallback_after_mtp_cycles),
         "ar_fallback_tokens_per_window": int(ar_fallback_tokens),
         "ar_fallback_until_end": bool(ar_fallback_until_end),
         "ar_fallback_cycles": int(ar_fallback_cycles),
@@ -1749,7 +1736,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             rocprof_verify_cycles=int(getattr(args, "rocprof_verify_cycles", 0)),
             acceptance_diagnostics=bool(getattr(args, "acceptance_diagnostics", False)),
             ar_fallback_zero_streak=int(getattr(args, "ar_fallback_zero_streak", 0)),
-            ar_fallback_after_mtp_cycles=int(getattr(args, "ar_fallback_after_mtp_cycles", 0)),
             ar_fallback_tokens=int(getattr(args, "ar_fallback_tokens", 1)),
             ar_fallback_until_end=bool(getattr(args, "ar_fallback_until_end", False)),
             require_cached_build=require_cached_build,
@@ -1864,16 +1850,6 @@ def main() -> int:
             "persistent_device only: number of target AR tokens to emit per "
             "--ar-fallback-zero-streak trigger. Exactness policy diagnostic; "
             "default 1."
-        ),
-    )
-    parser.add_argument(
-        "--ar-fallback-after-mtp-cycles",
-        type=int,
-        default=0,
-        help=(
-            "persistent_device only: diagnostic override to route through target "
-            "AR after exactly this many MTP verifier cycles. 0 disables. Use with "
-            "--ar-fallback-until-end to bracket verifier-commit state drift."
         ),
     )
     parser.add_argument(
