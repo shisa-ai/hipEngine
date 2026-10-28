@@ -354,7 +354,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED` | retired | No runtime reader | The rejected per-projection shared-expert verifier route and its CLI/suite/profiler switches are removed. Normal shared-expert projections and independent resident-draft shared-dual execution remain. |
 | `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` | unset | Diagnostic route | Enables rows>1 F32-input singleton/triple dp4a helpers with raw Q8 sidecars and workspace, including `ssm_out`. F32 pair helpers use the base pair/all control instead; F32 pair outputs also require `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS`. |
 | `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A` | unset | Diagnostic route | Verifier direct top-1 path reading the X8 Q6_K `lm_head` sidecar; production gates force it off. |
-| `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` | unset | Gate instrumentation | Makes the GDN prefill chain emit per-row captured state for offline full-logit/semantic gates; set by the execution-profile and MTP gate harnesses and by the production profile binder. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` | unset (bound on by public/profile callers) | Verifier state capture | Selects prefill Conv and decode-order no-copy GDN row-state writers. Packed verification requires this path; public generation and profile binders enable it, and llama-compat forces it on. This is execution/state policy, not only offline instrumentation. |
 | `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE` | unset | Gate instrumentation | Reserves the GDN semantic-gate capture scratch and enables the semantic-gate comparison route; must be set before session construction so the scratch allocation precedes capture. |
 | `HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR` | unset | Diagnostic capture | Writes diagnostic BF16 output-norm rows for offline full-logit gates into this directory. |
 | `HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` | profile-scoped | Rollback seam | Uses the integer MMQ prefill owner for Q6_K rows; enabled by the production profile binder, disabled under strict. |
@@ -430,21 +430,22 @@ verifier's T16/raw sidecar placement.
 
 ### GGUF target-verifier capture and F32-diagnostic family
 
-These gate/probe flags drive the GGUF packed target verifier's offline
-correctness gates and the F32 per-stage diagnostics. The capture flags make a
-named intermediate observable for an offline gate; the F32 flags replay a
-single verifier stage in F32 to localize divergence. All are gate/harness
-inputs, not production knobs, and the production profile binder sets
+The prefill-GDN control selects the production verifier's per-row Conv/GDN
+state capture. Public generation and profile binders set
 `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` and
-`HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` itself.
+`HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` themselves. The five alternative
+capture controls below change Conv/GDN execution or the scored output, not
+just which intermediates are observable. They are diagnostic inputs recorded
+by the forced-target and native-state probes, not user tuning controls. The
+F32 flags select per-stage diagnostic arithmetic to localize divergence.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
-| `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV` | unset | Captures prefill GDN chain conv state for offline gates. |
-| `HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN` | unset | Captures regular-chain GDN state. |
-| `HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT` | unset | Captures BF16 GDN output rows. |
-| `HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL` | unset | Captures prefill attention scores. |
-| `HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV` | unset | Captures F32 chain conv state. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV` | off | With prefill-GDN capture on, substitutes F32 chain Conv for prefill Conv; keeps the prefill no-copy GDN row-state writer. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN` | off | Without prefill-GDN capture, substitutes regular chain GDN for the c1-exact chain writer. Rejects FP16 recurrent state because no typed variant exists. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT` | off | Without prefill-GDN capture, rounds chain GDN output to BF16 before `ssm_out`; captured state still comes from the selected chain writer. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL` | off | Without prefill-GDN capture, replays Conv/GDN into temporary state and scores its BF16 output while keeping chain-captured commit rows. Rejects FP16 recurrent state; this does not capture attention scores. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV` | off | Without prefill-GDN capture, converts projected QKV from BF16 to F32 and uses F32 chain Conv. Prefill-GDN capture already selects F32 Conv input. |
 | `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` | unset | Replays the residual stage in F32 (supports a subset of shapes). |
 | `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` | unset | Comma/range layer limit for the F32 residual replay; must be within `[0, layer_count]`. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` | unset | Replays the post-attention norm in F32. |

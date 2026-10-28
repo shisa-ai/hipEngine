@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from scripts.gguf_mtp_forced_target_probe import (
+    DIAGNOSTIC_ENV_KEYS,
     _apply_trace_route_env,
     _bf16_roundtrip_f32,
     _boundary_array_summaries,
@@ -295,6 +296,33 @@ def test_diagnostic_env_payload_records_f32_flags(monkeypatch) -> None:
         "HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE": "1",
         "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     }
+
+
+@pytest.mark.parametrize(
+    "name,getter",
+    [
+        ("HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV", "_gguf_verify_capture_f32_chain_conv_enabled"),
+        ("HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN", "_gguf_verify_capture_regular_chain_gdn_enabled"),
+        ("HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT", "_gguf_verify_capture_bf16_gdn_out_enabled"),
+        ("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "_gguf_verify_capture_prefill_gdn_enabled"),
+        ("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV", "_gguf_verify_capture_prefill_gdn_chain_conv_enabled"),
+        ("HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL", "_gguf_verify_capture_score_prefill_enabled"),
+    ],
+)
+@pytest.mark.parametrize("raw,enabled", [(None, False), ("0", False), ("false", False), ("1", True)])
+def test_capture_route_controls_preserve_runtime_selection_and_probe_provenance(
+    monkeypatch, name, getter, raw, enabled,
+) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    for key in DIAGNOSTIC_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    if raw is not None:
+        monkeypatch.setenv(name, raw)
+    monkeypatch.setenv("UNRELATED_FLAG", "1")
+
+    assert getattr(runner, getter)() is enabled
+    assert diagnostic_env_payload() == ({} if raw is None else {name: raw})
 
 
 def test_capture_moe_component_arrays_emits_weighted_and_shared_gated_terms() -> None:
