@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF F32-weight cooperative c1 router | `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` retains the separate expert-logits/shared-logit/top-k chain as an explicit rollback around the incumbent cooperative route. `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` restores the selected-ID counter alias plus per-layer host reset instead of the dedicated self-resetting four-byte counter. | gfx1100 clean commit `4c743994` first improved 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**; its persistent follow-up removed 40 reset nodes/token and improved the graph gate another **+1.65%**. Independent ZBook/gfx1151 requalification now keeps the same package route: **450/450** full-logit rows, three repeats, 18/18 live-state fingerprints, and 18/18 natural d128 trajectories are byte-exact; natural eager AR improves **30.438 -> 33.219 tok/s (+9.136%)** versus the strict chain, and fixed p512/d128 improves **+8.748%**. The unfused chain remains the required numerical fallback. | Keep both opt-outs until real Qwen3.6 strict/production profile plans bind the selected/fallback variants and exact control capture passes. Then remove the env experiment surface after defaults-only refreshes on both gfx11 targets, while keeping the registered unfused fallback permanently. |
 | GGUF long-context split-K reduction | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` and the minimum-context override retain the serial split reduction for rollback/A/B around the prepare-plus-coalesced-output route. | Promoted gfx1100 default from 32K after LCP-D2 (**+1.23%/+3.95%/+7.80%** at 32K/64K/128K, max KL **1.904e-6**). SH7-A1 independently promotes gfx1151 from 32K: one-queue 32K/64K decode improves **+1.560%/+2.394% (-0.333/-0.593 ms/token)**, all **1,296/1,296** semantic logits are byte-exact, and tracked/GTT/lifecycle are unchanged. | Keep the serial implementation permanently for <32K, unsupported routes, and numerical fallback. Remove the env/min-context experiment overrides after one release window plus defaults-only long-context refreshes on both gfx11 backends. |
 | GGUF MTP server packed verifier | `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` chunks c>N server target verification instead of sending all active slots to one packed target forward. | Default serving policy after the first packed verifier landing and the stream-draft/stream-verify follow-ups. c=2/c=4 packed target verify wins, but one 8-slot packed batch is a measured rejected regime (`11.58 tok/s`, `target_verify_batch_ms=63733.783`). The current c=8 stream path still chunks verify at 4 slots and reaches **52.18 tok/s**, with verifier still dominant (`slots_verify_phase_ms=12345.442`). | Remove or raise the cap only after rows>=16 packed verifier and resident-draft row-count/cold-slot behavior are tuned and a c=8 natural24 rerun beats the chunked stream path without correctness or latency regressions. |
 | GGUF packed verifier GPU-event instrumentation | `HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS` records HIP events through `Qwen35GGUFResidentSession.verify_target_blocks_batch()` and compact-MoE leaves. | Default-off diagnostic. It exposed c=8 server verifier GPU leaves on 2026-07-05 but adds event overhead (`47.17 tok/s` in the compact-WMMA event run), so it is not a retained speed path. | Keep only while c>N MTP verifier tuning is active; remove or move behind a dedicated profiling helper once the packed verifier bottleneck is closed. |
@@ -10753,3 +10752,40 @@ and `docs/ENVS.md` with any reader removal. A runtime migration also needs the
 primitive pair-reuse parity tests and public C8 MoE generation on both intended
 backends, with selected callables, neighboring/non-C8 widths and cleanup
 recorded. A release-window deadline alone cannot replace these contracts.
+
+### R0281-ROUTER — Cooperative router profile and diagnostic controls
+
+`HIPENGINE_GGUF_ROUTER_F32W_COOP` and
+`HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER` both default on in the runtime.
+The first selects cooperative BF16-hidden/F32-weight c1 routing when a matching
+registry implementation exists; otherwise the separate logits/select chain
+runs. F32-hidden post-norm routing uses its separate chain. The second selects
+the persistent cooperative variant with the scratch-owned self-resetting counter;
+its opt-out uses the cooperative variant that clears an alias of the selected-ID
+buffer before launch. These are different call interfaces, not dead synonyms.
+
+`hipengine/generation/qwen35_moe_gfx1151_profiles.py` already binds strict off
+and production on through these variables. Its router manifest records the base
+`router_logits` family for both and relies on the binder to select the fused
+`router_topk_split_shared` route. The gfx1100 MoE profile uses a different
+binder; it must not acquire gfx1151 policy as an incidental cleanup.
+The c1 and batch route gates, control smoke and arbitrary-c lifecycle harness
+also retain these controls. Historical validation stays in
+`benchmarks/results/2026-08-16-zbook-qwen36-c1-router-retained.json` and the
+linked profile evidence, not as a new benchmark claim here.
+
+**Remaining work:** publish the actual selected router variant and counter
+ownership in a construction-time plan consumed by the runner, while preserving
+strict/production semantics, direct defaults, diagnostic on/off requests and
+the exact unfused fallback. Migrate profile binders and capture metadata before
+removing readers. This is part of the existing RF-1 resolved-plan direction;
+a profile registration alone does not remove its environment dependency.
+**Clearing action:** run
+`tests/test_unit_qwen35_moe_gfx1151_profiles.py`,
+`tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py`,
+`tests/test_unit_execution_profile_gguf_c1_route_gate.py` and
+`tests/test_unit_execution_profile_gguf_batch_route_gate.py`. A runtime migration
+also needs guarded cooperative/persistent primitive parity and public MoE c1
+generation with selected variant/counter ownership, repeated graph/eager calls,
+fallback engagement and cleanup recorded. Keep both cooperative variants and
+unfused primitives until their callers and ownership contracts have migrated.

@@ -80,10 +80,21 @@ def test_compact_gemv_off_by_default_uses_legacy_selected_decode(monkeypatch: py
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
-def test_c1_decode_coop_optout_uses_f32_router_logits_and_select(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("coop_enabled", ("0", "1"))
+def test_c1_decode_coop_optout_uses_f32_router_logits_and_select(
+    monkeypatch: pytest.MonkeyPatch,
+    coop_enabled: str,
+) -> None:
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", coop_enabled)
+    attempts: list[bool] = []
+    monkeypatch.setattr(
+        qgr,
+        "_try_launch_qwen35_router_topk_split_shared_bf16_f32w",
+        lambda *args, **kwargs: attempts.append(True) or False,
+    )
     monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
     monkeypatch.setattr(
         qgr,
@@ -103,14 +114,22 @@ def test_c1_decode_coop_optout_uses_f32_router_logits_and_select(monkeypatch: py
     assert ("router", ("ffn_gate_inp", 1, 4)) in calls
     assert ("router", ("ffn_gate_inp_shexp", 1, 1)) in calls
     assert "router_split_coop" not in names
+    assert attempts == ([True] if coop_enabled == "1" else [])
 
 
-def test_c1_decode_can_route_exact_f32w_cooperative_router(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("persistent", (None, "0", "1"))
+def test_c1_decode_can_route_exact_f32w_cooperative_router(
+    monkeypatch: pytest.MonkeyPatch,
+    persistent: str | None,
+) -> None:
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
     monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", raising=False)
-    monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", raising=False)
+    if persistent is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", persistent)
     monkeypatch.setattr(
         qgr,
         "_try_launch_qwen35_router_topk_split_shared_bf16_f32w",
@@ -157,7 +176,7 @@ def test_c1_decode_can_route_exact_f32w_cooperative_router(monkeypatch: pytest.M
 
     assert (
         "router_f32w_coop",
-        (100, "ffn_gate_inp", "ffn_gate_inp_shexp", 110, 130, 140, 125, 2, True, 7),
+        (100, "ffn_gate_inp", "ffn_gate_inp_shexp", 110, 130, 140, 125, 2, persistent != "0", 7),
     ) in calls
 
 
