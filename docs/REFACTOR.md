@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF selected-prefill diagnostics | Microbench-only raw-Q4_K/Q8_1 selected-prefill variants in `gguf_q4_k_q8_1_selected_prefill` (`q8-1-dot`, `q8-1-ds4-dot`, `q8-1-ds4-wmma`, `q8-1-ds4-wmma32`, `q8-1-ds4-wmma64`, `q8-1-ds4-preview-wmma32`, `q8-1-ds4-wmma32-ldspack`, and rejected `q8-1-ds4-wmma32-lds`). | Diagnostic-only, not model runtime defaults. The 2026-06-16 DS4 WMMA path is useful as a fragment/math reference. Expanded-Q4 LDS staging regressed `8.210 -> 18.257 ms/call`; packed-Q4 LDS staging recovered to `11.438 ms/call` but still lost to raw WMMA32; the pre-unpacked preview path measured `12.020 ms/call` with higher fixture memory; four-wave WMMA64 was only flat/sub-1% better than WMMA32. These same-shape staging/pre-unpack/independent-wave probes should not become dispatch paths without a later shared-tile reuse win. | After a real GGUF MMQ/T16 prefill path is promoted or the llama.cpp parity detour closes, demote negative variants to tests or remove them from the microbench to avoid a permanent zoo of rejected kernels. |
 | Qwen3.5/PARO INT8 KV prefill | `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION`, `HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS`, `HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB`, and `HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB` gate direct streaming INT8 prefill after the 2026-06-15 GPU1 sweep found a severe 128K prefill regression. | Default `auto`: use the fast temporary BF16-oracle/AOTriton bridge unless prompts are at least `224Ki` rows **and** device/meminfo pressure says the oracle is unsafe (`total <= 26 GiB` or free memory cannot cover oracle bytes plus a 1 GiB reserve). This keeps W7900/Strix-style larger-memory runs on the fast path while preserving the 24GB 262K scratch win. Direct streaming is not throughput-promoted (`1020.723 -> 23.425 tok/s` at 128K/128). | Remove the gate after a memory-safe fast INT8 prefill path matches the BF16-oracle/AOTriton speed envelope at `512/128`, `4K/128`, and `128K/128` while retaining the 262K no-oracle memory gate; otherwise demote direct streaming to a dedicated diagnostic/scratch-probe path. |
 | Qwen3.5 GGUF/PARO tail-four mixed KV | Explicit `tail4_hadamard_group32` policy plus the BF16-attention/packed-retention prefill bridge; PARO keeps `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION=streaming` as the direct-INT8 diagnostic. | Explicit-only and **not supported/default**. Clean therock-7.15 35B GGUF gates pass all 11 prompts at 512/8 and 4K/16 plus bounded `mixed_v1` at 128K/16, save exactly 18.75% persistent K/V, and retain zero persistent BF16 shadow, but reject on prefill/decode and allocator high water. Exact-file Qwen3.8-27B now also passes complete 512/8 and 4K/16 plus bounded 32K/16. Its graph decode improves `2.58%` and live ownership falls `0.236 GiB`, but prefill falls `0.342%` and four 32K oracle pairs raise tracked peak `0.268 GiB`; binding the retained cache directly to the no-oracle Hadamard prefill path produces non-finite logits. Native PARO separately fails its quality/capacity gates. | Keep as a reproducible diagnostic. The geometry/policy planner now selects a bounded shared-oracle owner for memory-positive GGUF tail-four layouts, but this qualification reran only pure INT8; rerun complete tail-four quality, server high-water, performance, graph, and natural MTP before changing its status. PARO still requires a quality-safe layout and physical capacity pass. Remove rejected direct/oracle plumbing only after a promoted design supersedes it. |
 | Qwen3.5 GGUF/PARO native sampler | `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` is the PARO rollback opt-out; `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` enables the separate GGUF correctness candidate. | PARO remains default-on for supported c1 and scheduler-owned c>N serial-per-slot rows. GGUF is explicit-only: supported c1 and dense compatible c>N rows use native row/rows selection with zero full-vocabulary D2H; forced/dynamic/unsupported combinations remain host-backed. The W7900 c4 correctness artifact passes fixed-seed/state/KV/finish/ownership gates, but A3 stops before timing: native-eligible auto tools fail the frozen turn-1 strict-envelope oracle, while 4/4 exact forced-tool turns report `host_logits_sample` / `native_gpu_unsupported_request`. No active-SSE/tool-ready claim exists. | The A3 non-promotion trigger has fired. In a dedicated cleanup unit, remove the GGUF env branch and resident workspace wiring while retaining the standalone sampler/kernel correctness gates, unless a model-general native forced/dynamic-queue or constrained auto-tool design is approved and separately correctness-gated first. Separately remove the PARO opt-out after its release window. |
@@ -11241,3 +11240,34 @@ requests, explicit diagnostic overrides and genuine capability refusals on both
 HIP backends, tracing storage/scales, graph/MTP engagement, cancellation,
 refill and cleanup. Kernel-arithmetic changes require their independent quality
 and state gates; control migration alone must not change arithmetic or defaults.
+
+### R0281-Q8-EXPERIMENTS — Standalone raw-Q4/Q8_1 comparison retention
+
+The scalar Q8_1/DS4 dot, one-/two-/four-wave WMMA, preview, packed-LDS and
+expanded-LDS variants remain standalone modes of
+`scripts/gguf_q4_k_t16_selected_prefill_microbench.py`. They are not public
+model-runtime defaults. Their registry/build-plan, wrapper-contract,
+preview-reconstruction and device CPU-reference comparisons still exist in
+`tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py`. The removed T16 DS4 runtime
+selector is separate from these direct kernel comparisons.
+
+The containing library is not dead: Laguna's library owner builds it for
+selected MMQ execution, and Qwen's resident runner uses its Q6 dense integer-MMQ
+session. Do not delete the common library, packers, MMQ wrappers or unrelated
+registrations as a shortcut to retiring the older experimental variants.
+Historical negative performance rows remain in the sweep inventory and artifacts;
+they do not establish the current status of every sibling implementation.
+
+**Decision needed:** keep the old modes as explicit numerical/design controls,
+or archive their performance interfaces while retaining the independent parity
+references that still serve later work. An old release-window or promotion
+condition does not decide which controls are useful now.
+
+**Clearing action:** enumerate each mode's wrapper, symbol, registry key, tests
+and non-test consumers before removing it. Migrate archived command replay if
+needed; keep CPU-reference oracles and shared helpers with live consumers. Run
+the microbench `--help`, its registry/build-plan, common-wrapper and preview
+reconstruction nodes, then the affected device parity nodes if kernels change.
+A wrapper/library change also needs public Laguna/Qwen MMQ route engagement and
+cleanup. This disposition changes no kernel, CLI, runtime route or default and
+makes no new performance claim.
