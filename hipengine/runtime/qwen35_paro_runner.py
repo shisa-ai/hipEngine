@@ -11427,11 +11427,6 @@ class Qwen35ParoResidentSession:
             return False
         return _env_flag("HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION", False)
 
-    def _verify_packed_dynamic_metadata_enabled(self, batch: TargetVerifyBatch) -> bool:
-        if batch.mode != "verify_chain":
-            return False
-        return _env_flag("HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA", True)
-
     def _verify_scratch_cache_enabled(self) -> bool:
         return _env_flag("HIPENGINE_VERIFY_SCRATCH_CACHE", True)
 
@@ -13899,7 +13894,7 @@ class Qwen35ParoResidentSession:
         if getattr(self, "_verify_metadata_bucket_cache", None) is None:
             self._verify_metadata_bucket_cache = None  # type: ignore[attr-defined]
         packed_dynamic_metadata: np.ndarray | None = None
-        if self._verify_packed_dynamic_metadata_enabled(batch):
+        if batch.mode == "verify_chain":
             packed_dynamic_metadata = np.empty((rows, _VERIFY_DYNAMIC_METADATA_FIELDS), dtype=np.int64)
             packed_dynamic_metadata[:, 0] = token_i64
             packed_dynamic_metadata[:, 1] = token_i64

@@ -660,7 +660,6 @@ unset except for bisection.
 | `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS` | `16` | Minimum tokens before the verifier MoE uses the grouped owner; clamps to at least 2. |
 | `HIPENGINE_VERIFY_GRAPH_REVALIDATE` | unset | Debug-only (`#107`): re-run the direct pass before each graph replay and compare per-row top1 plus accept payload to localize replay drift. |
 | `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` | false | Opt-in: the packed verify-accept path also advances request positions for a single verify-chain request. |
-| `HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA` | true | Packs dynamic per-row metadata for the verify-chain batch; `0` restores the static path. |
 | `HIPENGINE_VERIFY_SCRATCH_CACHE` | true | Caches verifier scratch buffers across cycles; `0` restores per-cycle allocation. |
 | `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP` | true | Stamps scratch generations so workspace lookups can skip stale entries; `0` restores the unstamped lookup. |
 | `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED` | true | Aligns the verifier MLP scratch policy with the verifier grouped-MoE threshold; `0` restores the raw rows rule. |
@@ -1299,6 +1298,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA` is retired and ignored.
+  Verify-chain batches always pack the dynamic token, position and context
+  updates into one upload followed by device-side unpacking. Tree metadata
+  keeps its separate uploads and ancestor/cache-slot records.
 - `HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD` is retired and ignored.
   The PARO verifier reads one packed int32 accept summary per batch; the
   packed kernels still populate separate device buffers used for commit.
