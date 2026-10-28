@@ -35,14 +35,14 @@ class Qwen35GGUFDMSModelRunner(Qwen35GGUFResidentModelRunner):
         result = super().observability_snapshot()
         session = self._session
         backend = None if session is None else getattr(session, "_dms_backend", None)
-        result["retention"] = {"policy": "dms", "storage": "bf16",
+        result["retention"] = {"policy": "dms", "storage": self.generator._prepared_kv_signature[0],
                                "prefill_mode": self.generator.dms_config.prefill_mode,
                                "compact": None if backend is None else backend.observability_snapshot()}
         return result
 
     def _execution_metadata(self, row):
         result = super()._execution_metadata(row)
-        result["retention"] = {"policy": "dms", "storage": "bf16",
+        result["retention"] = {"policy": "dms", "storage": self.generator._prepared_kv_signature[0],
                                "prefill_mode": self.generator.dms_config.prefill_mode,
                                "decision_mode": self.generator.dms_config.decision_mode}
         return result

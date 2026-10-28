@@ -479,10 +479,11 @@ class ServerConfig:
                 raise ValueError("DMS compact KV has no radix prefix-cache adapter; set prefix_cache='off'")
             if self.speculative_mtp_serving != "off" or self.speculative_provider is not None:
                 raise ValueError("DMS compact KV has no speculative serving adapter; set speculative_mtp_serving='off'")
-            if self.kv_storage not in ("auto", "bf16"):
-                raise ValueError("DMS public serving implements BF16 compact storage only")
+            if self.kv_storage not in ("auto", "bf16", "int8_per_token_head"):
+                raise ValueError("DMS compact storage must be bf16 or int8_per_token_head")
             object.__setattr__(self, "max_active_requests", 1)
-            object.__setattr__(self, "kv_storage", "bf16")
+            if self.kv_storage == "auto":
+                object.__setattr__(self, "kv_storage", "bf16")
         profile = resolve_requested_execution_profile(self.execution_profile)
         object.__setattr__(
             self,

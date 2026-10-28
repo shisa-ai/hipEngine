@@ -403,13 +403,14 @@ class LLM:
                 raise TypeError("dms must be a DMSConfig")
             if max_active_requests not in (None, 1):
                 raise ValueError("DMS compact serving requires max_active_requests=1")
-            if kv_storage not in (None, "auto", "bf16"):
-                raise ValueError("DMS public serving currently implements BF16 compact storage only")
+            if kv_storage not in (None, "auto", "bf16", "int8_per_token_head"):
+                raise ValueError("DMS compact storage must be bf16 or int8_per_token_head")
             if prefix_cache not in (None, "off"):
                 raise ValueError("DMS compact KV has no radix prefix-cache adapter")
             if speculative_mtp_serving not in (None, "off") or speculative_provider is not None:
                 raise ValueError("DMS compact KV has no speculative serving adapter")
-            max_active_requests, kv_storage = 1, "bf16"
+            max_active_requests = 1
+            kv_storage = "bf16" if kv_storage in (None, "auto") else kv_storage
             prefix_cache, speculative_mtp_serving = "off", "off"
         self.dms = dms
         if max_active_requests is not None and int(max_active_requests) <= 0:
