@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF prompt-list scheduling | The promoted scheduler is synchronous and greedy-only: it does not persist across `generate()` calls, serve HTTP arrivals, cancel/disconnect rows, share prefixes, grow/shrink an elastic KV pool, or batch non-greedy sampling. Prefill into a reclaimed slot is still per-request rather than a packed multi-prompt slab. | Stable request ids, 2–8 physical slots, EOS/length reclaim, downward recurrent-state/live-KV compaction, mixed readmission/prefill between decode steps, C/context/mask graph buckets, row argmax, and admission/completion timestamps are retained and exact. Fixed C=2/4/8 scaling is accepted; one in-call 4-request/capacity-2 schedule exercises three admission waves, three compactions, and two readmissions with `serial_decode_fallback=false`. | Move this ownership into the persistent server engine loop, add cancellation/disconnect and elastic/prefix-shared KV, then native per-row non-greedy sampling and packed mixed-prompt prefill. Keep the synchronous path until the persistent route passes the same exactness/provenance gates. |
 | UD-Q3_K_M grouped raw-IQ prefill | `HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0` is the temporary rollback around the default-on expert-major scalar IQ3/IQ4 route; direct selected kernels remain the required fallback. | Promoted after mixed-prompt native-row-bulk parity (`KL=0`, top-1 `1.0`), exact 512/4K trajectories, zero scratch/copies, raw-IQ time `994.668 -> 613.995 ms` (-38.27%), and total kernel sum `4396.145 -> 4078.667 ms` (-7.22%). The formal 512/128 headline is correctly labeled flat within spread (`16.648 -> 16.685 tok/s`, +0.22%); promotion retains the verified sub-window win, not a noisy topline claim. WMMA and scalar RT2 remain rejected/test-only. | Keep the opt-out for one rollback/bisection window through task #20/#15 D0. Remove the env branch after the next defaults-only 512/4K milestone rerun confirms the grouped symbols and direct fallback tests remain healthy. |
 | GGUF MoE-tail plus next-input RMSNorm | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS=0` is the temporary rollback around the default-on decode chain. The retained route fuses only the already-rounded selected-aggregate ABI; slot-weighted layers preserve the feature-parallel combine followed by the exact unfused RMSNorm because the one-block weighted composite regressed cold production-layer time. | Q3 GPU1 counterbalanced graph decode improves `100.195 -> 101.216 tok/s` (+1.02%) at 512/128 and `107.366 -> 108.383 tok/s` (+0.95%) at 4K/128, with all five paired deltas positive, exact layer-limit 1/4/40 buffers, exact eager/graph trajectory, unchanged final IDs/logits/memory, and no bulk-prefill route change. Q4/PARO slot-weighted paths keep their existing two-kernel math. | Keep the opt-out for one Q3/Q4 defaults-only milestone and task-#16 overlap bisection window. Then remove the env branch while retaining the registered unfused combine→RMSNorm fallback and kernel-level BF16/FP16 tests. |
 | GGUF c1 host token embedding | `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING` offloads the Q8_0 token embedding from device residency and performs exact host Q8_0→BF16 embedding copies. | Retained exact c1 opt-in, global default off. The old gfx1100 `128K/128` capacity proof fit at `23.400/23.913 GiB` tracked/sampled but ran only `11.141 tok/s`. Current gfx1151 SH2-M1 instead passes complete byte-state and stays within 1% of graph/eager at 512/4K while removing exactly `0.503235 GiB` live ownership and `0.443409/0.503933 GiB` whole-GTT. The short load still materializes then frees the device table, so tracked high water saves only `0.418797 GiB`; shared c>N, packed AR, and MTP require device-token-pointer embedding. | Replace allocate-then-free with loader-time ownership only after an explicit shared-runner-safe c1 policy automatically preserves the device table for c>N/packed/MTP/unsupported sessions. Then rerun exact c1/c>N/MTP lifecycle and performance gates before considering a gfx1151 default. Keep the env route until that policy lands or another exact memory owner supersedes it. |
@@ -10651,6 +10650,25 @@ fallbacks. The old entry is still called by direct
 requests; direct-generator tests exercise packed, streamed and scalar arms.
 It is a live compatibility path, not an independent public model owner.
 
+A second direct prompt-list route, `_generate_greedy_batch()`, remains reachable
+when `native_batch_decode` is enabled and the prepared packed/stream route is
+not selected. It creates a call-local scheduler, compacts physical slots and
+prefills admitted rows individually. Direct tests cover this eager/graph path
+and readmission. The resident factory uses the same construction field to
+select session execution routes, so deleting that field with the old loop would
+also change resident preparation.
+
+The old prompt-list ledger's persistent-serving task is complete:
+`SubmitPollTextGenerator` retains its runner and loop across calls, server
+submission/cancellation uses that owner, and the GGUF runner implements prefix
+reuse and ragged packed full-prompt prefill. `GlobalDeviceKVPool` and its device
+pools implement growth, shared-prefix ownership and idle shrink. Sampled rows
+also use the resident model tick, with native or host selection as supported;
+this is not a claim that every sampler mode uses a native batched sampler.
+Native sampler coverage belongs to the separate sampler item. Chunked and
+prefix-suffix prefill keep their capability fallbacks; do not infer universal
+packed prefill from the full-prompt path.
+
 The adjacent `_flush_ar_packed_decode_owners_if_chunk_changed()` and
 `_flush_ar_packed_decode_owners()` helpers are also used by the resident runner
 for physical-group transitions, scalar fallback and reclaim. `_GGUFARServingSlot`
@@ -10659,15 +10677,19 @@ record as an oracle extraction. The resident runner's `_step_native_serial()`
 keeps its own unsupported-shape and sampled contracts; the legacy loop is not
 its fallback.
 
-**Decision needed:** retire the direct-generator batched compatibility surface,
-or move it to an explicit diagnostic adapter with its callers. Then extract
+**Decision needed:** retire both direct-generator batched compatibility loops,
+or move them to an explicit diagnostic adapter with their callers. Then extract
 only the loop-specific methods; first give the shared flush operations an owner
 that both routes can consume. No release-window note proves these dependencies
 have migrated. **Clearing action:** preserve the resident bypass sentinel in
 `tests/test_live_generation_qwen35_gguf_sampling.py::test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions`,
-then migrate the direct tests and check uniform/ragged prompts, widths below
+which rejects both direct loops with `native_batch_decode=True`, then migrate
+the direct tests and check uniform/ragged prompts, widths below
 and above eight, shrinking/EOS, unsupported packed prefill/decode, dirty-owner
-flush and error cleanup. Exercise public `LLM.generate_detailed()` plus
+flush and error cleanup. Preserve the older path's physical compaction,
+readmission and eager/graph checks or migrate them to equivalent diagnostics.
+Keep resident session-route selection independent of compatibility-loop removal.
+Exercise public `LLM.generate_detailed()` plus
 submit/poll cancellation and streaming after extraction. This disposition pins
 existing ownership without changing runtime behavior.
 
