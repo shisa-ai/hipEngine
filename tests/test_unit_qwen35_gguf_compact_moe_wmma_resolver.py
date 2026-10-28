@@ -264,6 +264,45 @@ def test_t16_q4_missing_explicit_shared_x_kernel_fails_closed(
         )
 
 
+@pytest.mark.parametrize("missing_leg", ["gate_up", "down"])
+@pytest.mark.parametrize("requested_mode", ["auto", "pair32"])
+def test_pair32_missing_leg_preserves_explicit_failure_or_whole_plan_rollback(
+    monkeypatch: pytest.MonkeyPatch, missing_leg: str, requested_mode: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE", requested_mode)
+    monkeypatch.setattr(qgr, "_ensure_compact_moe_wmma_registered", lambda: None)
+    monkeypatch.setattr(qgr, "load_backend_kernel_package", lambda backend: None)
+    gate_variant = "selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out"
+    down_variant = "selected_wmma_prefill_pair32_nwave_bf16_bf16_out"
+    missing_variant = gate_variant if missing_leg == "gate_up" else down_variant
+    functions: dict[str, object] = {}
+
+    def fake_resolve(*, backend, layer, quant, variant, missing="error"):
+        if variant == missing_variant:
+            return None
+        return functions.setdefault(variant, lambda: None)
+
+    monkeypatch.setattr(qgr, "resolve", fake_resolve)
+    weights = (
+        _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151"),
+        _fake_weight("gguf_q4_k_t16_v1", backend="hip_gfx1151"),
+        _fake_weight("gguf_q5_k_t16_v1", backend="hip_gfx1151"),
+    )
+    if requested_mode == "pair32":
+        with pytest.raises(RuntimeError, match="explicit Q4 T16 selected prefill mode"):
+            qgr._resolve_compact_moe_wmma_kernels(*weights)
+        return
+
+    plan = qgr._resolve_compact_moe_wmma_kernels(*weights)
+
+    assert plan is not None
+    assert plan.gate_up_fn is functions["selected_dual_wmma_prefill_compact_bf16_bf16_out"]
+    assert plan.down_fn is functions["selected_wmma_prefill_compact_bf16_bf16_out"]
+    assert (plan.gate_allocation, plan.up_allocation, plan.down_allocation) == (
+        "tiles", "tiles", "tiles",
+    )
+
+
 def test_raw_q4_resolver_ignores_t16_only_selector(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
