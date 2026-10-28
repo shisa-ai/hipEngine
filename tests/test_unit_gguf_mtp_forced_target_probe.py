@@ -164,6 +164,95 @@ def test_lifecycle_probe_keeps_replay_and_direct_partial_policies(
             assert replay_call[2]["advance_state_only"] is True
 
 
+@pytest.mark.parametrize(
+    "part,component",
+    [
+        ("position", "position"),
+        ("current_prev", "current_prev"),
+        ("hidden", "hidden_seed"),
+        ("conv", "linear_state_conv"),
+        ("recurrent", "linear_state_recurrent"),
+        ("missing_layer", "linear_state_layer_presence"),
+    ],
+)
+def test_lifecycle_fingerprint_comparison_names_the_changed_component(part, component) -> None:
+    from copy import deepcopy
+    from scripts.gguf_mtp_forced_target_probe import _compare_lifecycle_fingerprints
+
+    baseline = {
+        "label": "replay", "position": 12, "current_prev": 9,
+        "hidden_seed": {"blake2b_128": "hidden"},
+        "linear_state_layers": [{
+            "layer": 3,
+            "conv": {"blake2b_128": "conv", "nbytes": 32},
+            "recurrent": {"blake2b_128": "recurrent", "nbytes": 64},
+        }],
+        "kv_state": {"checked": False},
+    }
+    candidate = deepcopy(baseline)
+    candidate["label"] = "direct"
+    assert _compare_lifecycle_fingerprints(baseline, candidate) == []
+    if part in ("position", "current_prev"):
+        candidate[part] += 1
+    elif part == "hidden":
+        candidate["hidden_seed"]["blake2b_128"] = "different"
+    elif part == "missing_layer":
+        candidate["linear_state_layers"] = []
+    else:
+        candidate["linear_state_layers"][0][part]["blake2b_128"] = "different"
+
+    mismatches = _compare_lifecycle_fingerprints(baseline, candidate)
+    assert [row["component"] for row in mismatches] == [component]
+    if component.startswith("linear_state_"):
+        assert mismatches[0]["layer"] == 3
+
+
+@pytest.mark.parametrize("phase", ["prefill", "cycle", "fingerprint"])
+def test_lifecycle_comparison_closes_the_session_on_diagnostic_failure(monkeypatch, phase) -> None:
+    from scripts import gguf_mtp_forced_target_probe as probe
+
+    calls = []
+    session = SimpleNamespace(close=lambda: calls.append("close"))
+    monkeypatch.setattr(probe, "_new_probe_session", lambda **kwargs: session)
+
+    def prefill(*args, **kwargs):
+        calls.append("prefill")
+        if phase == "prefill":
+            raise RuntimeError("diagnostic failure")
+        return 1
+
+    def cycle(*args, **kwargs):
+        calls.append("cycle")
+        if phase == "cycle":
+            raise RuntimeError("diagnostic failure")
+        return 2, {"matches_trace_visible": True}
+
+    def fingerprint(*args, **kwargs):
+        calls.append("fingerprint")
+        raise RuntimeError("diagnostic failure")
+
+    monkeypatch.setattr(probe, "_prefill_probe_session", prefill)
+    monkeypatch.setattr(probe, "_run_lifecycle_cycle", cycle)
+    monkeypatch.setattr(probe, "_session_lifecycle_fingerprint", fingerprint)
+    with pytest.raises(RuntimeError, match="diagnostic failure"):
+        probe._run_state_lifecycle_compare(
+            args=SimpleNamespace(
+                target_block_verify_mode="bulk", prefill_attention_mode="bulk",
+                target_block_wmma_prefill=False,
+                target_block_direct_partial_replay_mode="serial-exact",
+            ),
+            compiler_version=None, prompt_tokens=[7], cycles=[{"cycle": 0}],
+            cycle_index=0, initial_prev_token=1, initial_prev_position=1,
+            max_sequence_length=64, route_env={},
+        )
+    expected = ["prefill"]
+    if phase != "prefill":
+        expected.append("cycle")
+    if phase == "fingerprint":
+        expected.append("fingerprint")
+    assert calls == expected + ["close"]
+
+
 def test_parser_exposes_scored_layer_boundary_rows() -> None:
     args = build_arg_parser().parse_args(
         [

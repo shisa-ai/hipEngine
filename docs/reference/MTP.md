@@ -27,7 +27,11 @@ removed. It no longer offers replay after every scored block, and its
 `target_block_replay_state_commit` artifact field is always false. Serial
 accepted-prefix fallback for partial/direct commits and the dedicated
 `gguf_mtp_forced_target_probe.py --state-lifecycle-compare` replay/direct
-comparison remain available.
+comparison remain available. That comparison checks position, current token,
+FP32 hidden seed and per-layer Conv/GDN bytes, not full-attention KV. Each
+policy stops if its visible tokens diverge from the source trace; inspect the
+reported cycles run as well as `first_mismatch` before interpreting a clean
+compared prefix.
 
 `--mtp-context-replay` captures bulk target prompt hidden rows and shifts them
 for llama.cpp-style draft prompt priming. With `--mtp-device-kv-cache`, the
