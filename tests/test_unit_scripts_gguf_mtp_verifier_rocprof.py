@@ -22,6 +22,13 @@ from scripts.gguf_mtp_verifier_rocprof import (
 )
 
 
+def test_profiler_refuses_retired_shared_q8_option(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["gguf_mtp_verifier_rocprof.py", "--verify-dense-q8-dp4a-shared"])
+    with pytest.raises(SystemExit) as excinfo:
+        profiler.main()
+    assert excinfo.value.code == 2
+
+
 def test_module_puts_its_own_worktree_first_on_sys_path() -> None:
     """Child mode re-runs this file, so sys.path[0] is scripts/ and hipengine
     would otherwise resolve to the editable install's other worktree."""

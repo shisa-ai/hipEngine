@@ -246,12 +246,6 @@ class FfnOps:
     shared_gate_up_from_f32_post_norm: Fn
     #: ``_try_launch_gguf_linear_bf16_f32_output``
     gguf_linear_bf16_f32_output: Fn
-    #: ``_try_launch_dense_q8_pair_dp4a``
-    dense_q8_pair_dp4a: Fn
-    #: ``_try_launch_dense_q8_pair_dp4a_f32``
-    dense_q8_pair_dp4a_f32: Fn
-    #: ``_try_launch_dense_q8_single_dp4a``
-    dense_q8_single_dp4a: Fn
     # --- selected-expert launches ------------------------------------------
     #: ``_launch_selected_raw_gguf_moe_pair_silu``
     selected_raw_moe_pair_silu: Fn
@@ -302,8 +296,6 @@ class FfnFlags:
     t16_selected_dp4a_enabled: Fn
     #: ``_gguf_raw_selected_dp4a_enabled()``
     raw_selected_dp4a_enabled: Fn
-    #: ``_gguf_dense_q8_dp4a_shared_enabled()``
-    dense_q8_dp4a_shared_enabled: Fn
 
 
 def run_post_attention_ffn_rows(
@@ -1639,48 +1631,7 @@ def run_post_attention_moe_rows(
     if gpu_stage_recorder is not None:
         gpu_stage_recorder.mark(f"{stage_prefix}_expert_down")
 
-    shared_q8_dp4a_enabled = flags.dense_q8_dp4a_shared_enabled()
-    if shared_q8_dp4a_enabled and shared_f32_ptr is not None:
-        shared_gate_up_dp4a = ops.dense_q8_pair_dp4a_f32(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            int(shared_f32_ptr),
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            scratch,
-            rows=rows,
-            in_features=geometry.hidden_size,
-            out_features_a=cfg.expert_shared_feed_forward_length,
-            out_features_b=cfg.expert_shared_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
-    else:
-        shared_gate_up_dp4a = shared_q8_dp4a_enabled and ops.dense_q8_pair_dp4a(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            scratch.post_norm.ptr,
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            scratch,
-            rows=rows,
-            in_features=geometry.hidden_size,
-            out_features_a=cfg.expert_shared_feed_forward_length,
-            out_features_b=cfg.expert_shared_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
-    if shared_gate_up_dp4a:
-        kernels.silu_mul_separate_out_bf16(
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            scratch.moe_shared_intermediate.ptr,
-            rows=rows,
-            features=cfg.expert_shared_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        )
-    elif ops.shared_gate_up_from_f32_post_norm(
+    if ops.shared_gate_up_from_f32_post_norm(
         layer.weight("ffn_gate_shexp"),
         layer.weight("ffn_up_shexp"),
         shared_f32_ptr,
@@ -1794,19 +1745,7 @@ def run_post_attention_moe_rows(
             runtime=runtime,
         )
         shared_down_is_f32 = True
-    elif not (
-        shared_q8_dp4a_enabled and ops.dense_q8_single_dp4a(
-            layer.weight("ffn_down_shexp"),
-            scratch.moe_shared_intermediate.ptr,
-            scratch.moe_shared_out.ptr,
-            scratch,
-            rows=rows,
-            in_features=cfg.expert_shared_feed_forward_length,
-            out_features=geometry.hidden_size,
-            stream=stream,
-            runtime=runtime,
-        )
-    ):
+    else:
         kernels.launch_gguf_linear(
             layer.weight("ffn_down_shexp"),
             scratch.moe_shared_intermediate.ptr,

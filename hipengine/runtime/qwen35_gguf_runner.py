@@ -724,9 +724,6 @@ def _layer_ffn_ops(runner) -> _layer_ffn.FfnOps:
             "_try_launch_shared_gate_up_from_f32_post_norm"
         ),
         "gguf_linear_bf16_f32_output": "_try_launch_gguf_linear_bf16_f32_output",
-        "dense_q8_pair_dp4a": "_try_launch_dense_q8_pair_dp4a",
-        "dense_q8_pair_dp4a_f32": "_try_launch_dense_q8_pair_dp4a_f32",
-        "dense_q8_single_dp4a": "_try_launch_dense_q8_single_dp4a",
         "selected_raw_moe_pair_silu": "_launch_selected_raw_gguf_moe_pair_silu",
         "selected_raw_moe_dual": "_launch_selected_raw_gguf_moe_dual",
         "selected_raw_moe_linear": "_launch_selected_raw_gguf_moe_linear",
@@ -9478,7 +9475,6 @@ _gguf_t16_selected_q6_down_pairreuse_min_rows_session: int | None = None
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
-_GGUF_DENSE_Q8_DP4A_SHARED_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"
 _GGUF_DENSE_Q8_DP4A_F32_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
@@ -11200,10 +11196,6 @@ def _gguf_dense_q8_dp4a_enabled() -> bool:
 
 def _gguf_dense_q8_dp4a_all_enabled() -> bool:
     return _env_flag(_GGUF_DENSE_Q8_DP4A_ALL_ENV, False)
-
-
-def _gguf_dense_q8_dp4a_shared_enabled() -> bool:
-    return _env_flag(_GGUF_DENSE_Q8_DP4A_SHARED_ENV, False)
 
 
 def _gguf_dense_q8_dp4a_f32_enabled() -> bool:

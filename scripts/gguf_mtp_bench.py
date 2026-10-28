@@ -1073,16 +1073,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--verify-dense-q8-dp4a-shared",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "OPT-IN diagnostic: when raw Q8 sidecars are materialized, also route rows>1 "
-            "shared-expert Q8_0 gate/up/down verifier projections through q8_1/dp4a rowtile "
-            "wrappers. Intended for llama-compat parity A/B only; default off."
-        ),
-    )
-    parser.add_argument(
         "--verify-dense-q8-dp4a-f32",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1751,13 +1741,6 @@ def main(argv: list[str] | None = None):
         # also enables the pair helper through qwen35_gguf_runner.
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
-    if getattr(args, "verify_dense_q8_dp4a_shared", False):
-        # Shared gate/up/down uses the same raw sidecars and q8_1 workspace as
-        # denseq8all. Keep it independently gated because the shared tensors are
-        # much smaller and may prefer the old T16 body.
-        os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
-        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
-        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"] = "1"
     if getattr(args, "verify_dense_q8_dp4a_f32", False):
         # Direct-state ssm_out uses F32 activations, so the BF16 denseq8all
         # helper cannot cover it. Keep this route separate until full-suite
@@ -4169,8 +4152,6 @@ def main(argv: list[str] | None = None):
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
             "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
-            "verify_dense_q8_dp4a_shared": bool(args.verify_dense_q8_dp4a_shared),
-            "verify_dense_q8_dp4a_shared_env": os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"),
             "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
             "verify_dense_q8_dp4a_f32_env": os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"),
             "verify_capture_prefill_gdn_env": os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),

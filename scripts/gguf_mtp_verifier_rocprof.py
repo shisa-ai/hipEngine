@@ -77,10 +77,6 @@ def _apply_route_env(args: argparse.Namespace) -> None:
     if getattr(args, "verify_dense_q8_dp4a_all", False):
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
-    if getattr(args, "verify_dense_q8_dp4a_shared", False):
-        os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
-        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
-        os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"] = "1"
     if getattr(args, "verify_dense_q8_dp4a_f32", False):
         os.environ["HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"] = "1"
         os.environ["HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"] = "1"
@@ -306,7 +302,6 @@ def _run_child(args: argparse.Namespace) -> int:
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
-        "verify_dense_q8_dp4a_shared": bool(args.verify_dense_q8_dp4a_shared),
         "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "selected_gate_up_x8": bool(args.selected_gate_up_x8),
@@ -423,8 +418,6 @@ def _run_parent(args: argparse.Namespace) -> int:
         child_base.append("--verify-dense-q8-dp4a")
     if args.verify_dense_q8_dp4a_all:
         child_base.append("--verify-dense-q8-dp4a-all")
-    if args.verify_dense_q8_dp4a_shared:
-        child_base.append("--verify-dense-q8-dp4a-shared")
     if args.verify_dense_q8_dp4a_f32:
         child_base.append("--verify-dense-q8-dp4a-f32")
     if str(args.selected_down_x8_repack) != "off":
@@ -491,7 +484,6 @@ def _run_parent(args: argparse.Namespace) -> int:
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
-        "verify_dense_q8_dp4a_shared": bool(args.verify_dense_q8_dp4a_shared),
         "verify_dense_q8_dp4a_f32": bool(args.verify_dense_q8_dp4a_f32),
         "selected_down_x8_repack": str(args.selected_down_x8_repack),
         "selected_gate_up_x8": bool(args.selected_gate_up_x8),
@@ -850,11 +842,6 @@ def main() -> int:
         "--verify-dense-q8-dp4a-all",
         action="store_true",
         help="Enable the raw-sidecar dense Q8 dp4a-all route for diagnostic profiling.",
-    )
-    parser.add_argument(
-        "--verify-dense-q8-dp4a-shared",
-        action="store_true",
-        help="Also route shared-expert Q8 gate/up/down verifier projections through raw-Q8 dp4a.",
     )
     parser.add_argument(
         "--verify-dense-q8-dp4a-f32",

@@ -3,8 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from scripts.gguf_mtp_forced_target_probe import (
+    _apply_trace_route_env,
     _bf16_roundtrip_f32,
     _boundary_array_summaries,
     _capture_moe_component_arrays,
@@ -15,6 +17,14 @@ from scripts.gguf_mtp_forced_target_probe import (
     build_arg_parser,
     diagnostic_env_payload,
 )
+
+
+def test_historical_shared_q8_trace_refuses_before_mutating_environment(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "unchanged")
+    with pytest.raises(ValueError, match="retired shared-Q8 verifier route"):
+        _apply_trace_route_env({"verify_dense_q8_dp4a_shared": True}, decode_repack=True)
+    import os
+    assert os.environ["HIPENGINE_GGUF_DECODE_REPACK"] == "unchanged"
 
 
 def test_parser_exposes_direct_partial_replay_mode() -> None:

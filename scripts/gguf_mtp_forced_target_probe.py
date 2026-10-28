@@ -155,6 +155,8 @@ def _unique_ints(values: Iterable[int]) -> list[int]:
 
 
 def _apply_trace_route_env(workload: dict[str, Any], *, decode_repack: bool | None) -> dict[str, str | None]:
+    if workload.get("verify_dense_q8_dp4a_shared", False):
+        raise ValueError("trace requests retired shared-Q8 verifier route; replay requires the historical implementation")
     if decode_repack is None:
         decode_repack = bool(workload.get("decode_repack", workload.get("decode_repack_env") == "1"))
     _set_env_bool("HIPENGINE_GGUF_DECODE_REPACK", bool(decode_repack))
@@ -168,12 +170,10 @@ def _apply_trace_route_env(workload: dict[str, Any], *, decode_repack: bool | No
 
     dense_pair = bool(workload.get("verify_dense_q8_dp4a", False))
     dense_all = bool(workload.get("verify_dense_q8_dp4a_all", False))
-    dense_shared = bool(workload.get("verify_dense_q8_dp4a_shared", False))
     dense_f32 = bool(workload.get("verify_dense_q8_dp4a_f32", False))
-    _set_env_bool("HIPENGINE_GGUF_Q8_0_RAW_SIDECAR", dense_pair or dense_all or dense_shared or dense_f32)
+    _set_env_bool("HIPENGINE_GGUF_Q8_0_RAW_SIDECAR", dense_pair or dense_all or dense_f32)
     _set_env_bool("HIPENGINE_GGUF_DENSE_Q8_DP4A", dense_pair)
-    _set_env_bool("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL", dense_all or dense_shared or dense_f32)
-    _set_env_bool("HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED", dense_shared)
+    _set_env_bool("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL", dense_all or dense_f32)
     _set_env_bool("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32", dense_f32)
 
     selected_down = str(workload.get("selected_down_x8_repack", workload.get("selected_down_x8_repack_env") or "off"))

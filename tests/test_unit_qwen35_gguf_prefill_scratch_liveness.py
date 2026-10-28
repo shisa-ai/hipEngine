@@ -156,7 +156,6 @@ def _clear_diagnostic_environment(monkeypatch) -> None:
             "HIPENGINE_GGUF_RAW_SELECTED_DP4A",
             "HIPENGINE_GGUF_DENSE_Q8_DP4A",
             "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL",
-            "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED",
             "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32",
         }:
             monkeypatch.delenv(name, raising=False)

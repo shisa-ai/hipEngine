@@ -217,12 +217,11 @@ def test_fused_b1_block_probe_flag_parses() -> None:
     assert args.fused_b1_block_probe is True
 
 
-def test_dense_q8_shared_dp4a_flag_parses_default_off() -> None:
-    args = build_arg_parser().parse_args([])
-    assert args.verify_dense_q8_dp4a_shared is False
-
-    args = build_arg_parser().parse_args(["--verify-dense-q8-dp4a-shared"])
-    assert args.verify_dense_q8_dp4a_shared is True
+@pytest.mark.parametrize("option", ["--verify-dense-q8-dp4a-shared", "--no-verify-dense-q8-dp4a-shared"])
+def test_retired_shared_q8_option_is_rejected(option: str) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        build_arg_parser().parse_args([option])
+    assert excinfo.value.code == 2
 
 
 def test_dense_q8_f32_dp4a_flag_parses_default_off() -> None:
