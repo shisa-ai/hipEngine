@@ -3430,123 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
-- Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
-  FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
-  existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
-  The follow-up diagnostic also feeds layer-entry attention RMSNorm from FP32
-  residual rows when available, but intentionally does not claim full llama.cpp
-	  graph parity. `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM=1` materializes
-	  layer-entry attention RMSNorm into FP32 scratch, casts a BF16 mirror for
-	  unsupported consumers, and routes dense-Q8 dp4a QKV / QKV+gate consumers from
-	  the FP32 tensor when the F32 dense-Q8 diagnostic is already active.
-	  `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS=1` additionally routes
-	  compatible row-bulk linear-attention Q8 `attn_qkv`/`attn_gate` projections
-	  into FP32 scratch through the raw-Q8 dp4a F32-output dual wrapper, casts BF16
-	  mirrors for existing downstream kernels, and emits explicit BF16 mirror
-	  capture keys. It also routes dense-F32 `ssm_alpha`/`ssm_beta` through the
-	  registry-dispatched F32-input/F32-output dense GEMV route when available,
-	  while preserving BF16 mirrors for existing downstream consumers.
-	  `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA=1` additionally routes row-bulk
-	  linear-attention `ssm_alpha`/`ssm_beta` from that FP32 attention-norm tensor to
-  mirror llama.cpp's `build_layer_attn_linear` source shape.
-  `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT=1` keeps the row-bulk linear-attention
-  `ssm_out` projection output in FP32 through the post-attention residual/RMSNorm
-  add while preserving the BF16 mirror for existing captures and downstream
-  kernels. It also keeps row-bulk full-attention `attn_output` in FP32 through
-  the same residual/RMSNorm helper when a raw Q8 sidecar BF16-input/F32-output
-  path is available.
-  `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE=1` keeps the selected-expert weighted
-  sum in FP32 inside the F32-residual MoE combine instead of BF16-rounding that
-  selected sum before adding residual and sigmoid-gated shared output.
-  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN=1` requires the F32 MoE combine
-  diagnostic and routes compatible X8 Q5/Q6 selected-down GEMV outputs into an
-  FP32 scratch buffer before combining selected rows with BF16 shared output.
-  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE=1` requires the F32 MoE
-  combine + selected-down stack, computes selected `silu(gate) * up` into FP32
-  scratch, preserves the BF16 mirror, and feeds the FP32 activation into
-  selected-down.
-  `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN=1` requires the F32 MoE combine and
-  selected-down stack, routes shared-expert down output into FP32 scratch,
-  preserves the BF16 mirror, and combines FP32 selected rows with FP32 shared
-  rows.
-  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` extends the probe by materializing
-  post-attention RMSNorm into FP32 scratch and independently gating router /
-  selected-q8 / shared-q8 consumers with
-  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_{ROUTER,SELECTED_Q8,SHARED_Q8}`.
-  `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT=N` bounds F32 residual
-  propagation to layers `[0, N)` and rejoins the ordinary BF16 verifier at the
-  next layer. It defaults to the complete layer count and is active only when
-  F32 residual is enabled. Added 2026-08-27 to screen a model-wide fixed
-  production mechanism after layer-local strict-teacher evidence localized the
-  dominant K2 amplification at a full-attention boundary; remove the flag after
-  this qualification campaign chooses a fixed manifest variant or rejects all
-  prefix lengths.
-- Purpose: test the current semantic hypothesis that accumulated BF16 verifier
-  layer-boundary drift is enough to flip near-tie target decisions versus
-  llama.cpp's F32 target `l_out` graph tensors. The diagnostic artifact
-  `benchmarks/results/2026-07-02-mtp-target-f32-residual-diagnostic.json`
-  confirms the lever is active: the old cycle-12 trace cannot replay unchanged
-  because cycle 2 flips from exact `[40798, 25, 1103]` / accepted 2 to
-  FP32-residual `[40798, 1590, 1103]` / accepted 1. The follow-up artifact
-  `benchmarks/results/2026-07-02-mtp-target-f32-residual-attnnorm-diagnostic.json`
-  reaches the old cycle-12 branch but still accepts `539`, with the wrong
-  `539 - 26126` margin increasing from **+0.11822** to **+0.14309** versus
-  llama.cpp **-0.00896**. The attention-norm-output dense-Q8 split
-  (`benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-output-denseq8-diagnostic.json`,
-  control
-  `benchmarks/results/2026-07-02-mtp-target-f32-residual-bulk-control-diagnostic.json`)
-  moves the bulk pair-12 `539 - 26126` margin from **+0.31369** to
-  **+0.18198**, still opposite llama.cpp. The linear-attention output-to-residual
-  split
-  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-denseq8-diagnostic.json`
-  moves that margin only **+0.18198 -> +0.17663**, so the `ssm_out` BF16 round is
-  not the main missing semantic lever. The alpha/beta F32 input split
-  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-denseq8-diagnostic.json`
-  is byte-identical to the attention-output slice and leaves the row-1 margin at
-  **+0.17663**, ruling out `ssm_alpha`/`ssm_beta` projection input precision for
-  the active branch. The full-attention output-to-residual split
-  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-fullattnout-denseq8-diagnostic.json`
-  still samples `[15495, 539, 1151]`, accepts 2, and worsens row-1
-  `539 - 26126` to **+0.27480**, so full-attention `attn_output` BF16 output
-  rounding is ruled out as well. The MoE selected-sum accumulator split
-  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-denseq8-diagnostic.json`
-  still samples `[15495, 539, 1151]` and accepts 2, but narrows row-1
-  `539 - 26126` from **+0.27480** to **+0.03385**. That makes the combine
-  selected-sum BF16 boundary semantically active, but still not sufficient to
-  match llama.cpp's **-0.00896** margin. The selected-down output split
-  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-denseq8-diagnostic.json`
-  keeps compatible X8 selected-down rows in FP32 and narrows the same margin to
-  **+0.00536** (`26.06115 - 26.05580`), still on the wrong side of llama.cpp by
-  about **0.0143 logits**. The selected-intermediate split
-  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-selectedintermediate-denseq8-diagnostic.json`
-  is the first pair-12 side-matching slice: sampled tokens become
-  `[15495, 26126, 1151]`, accepted drafts fall to 1, and row-1 `539 - 26126`
-  moves to **-0.00303** (`26.04795 - 26.05098`), close to llama.cpp's
-  **-0.00896**. This confirms the selected SwigLU/intermediate BF16 boundary
-  is a parity contract to fold into a cohesive llama-compat verifier mode if
-  longer-trace/full-suite acceptance validates it. The shared-down output split
-  `benchmarks/results/2026-07-02-mtp-target-f32-attnnorm-attnout-alphabeta-moecombine-selecteddown-shareddown-denseq8-diagnostic.json`
-  still samples `[15495, 539, 1151]` and accepts 2, and widens the same margin
-  to **+0.03043** (`26.12703 - 26.09660`), ruling out isolated shared-down
-  output precision as the missing parity fix. Combining MoE combine with
-  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM=1` failed prior-cycle replay at cycle 2
-  (`[40798, 1590, 1103]` vs trace `[40798, 25, 1103]`), so the combination is
-  not a pair-12 parity result. The post-norm split artifact
-  `benchmarks/results/2026-07-02-mtp-target-f32-postnorm-split-diagnostic.json`
-  shows the combined router+selected-q8 consumer path breaks the old trace at
-  cycle 7; selected-q8 alone flips row 1 (`413 - 4071` **+0.13053 -> -0.14458**),
-  while router-only reaches pair 12 but worsens `539 - 26126` to **+0.33520**.
-  This makes these flags instrumentation only, not a broad candidate promotion.
-  The 2026-08-27 35B Generation-2 qualification reuses only the bounded
-  `F32_RESIDUAL + F32_POST_NORM` K2 composition as an explicit production
-  candidate while forcing K1 back to the incumbent BF16 verifier. That
-  shape-specific use remains pending its final full quality/performance/serving
-  packet and does not certify any other flag combination or route.
-- Remove when: fold a passing K2 composition into a typed registered variant
-  (and delete its env plumbing), or remove the candidate if final qualification
-  fails. The historical broad diagnostic modes remain non-production.
-
 ## `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` (diagnostic rollback)
 - Added 2026-07-01. Host-side launch switch for the selected T16 q8_1/dp4a
   verifier kernels used by `--verify-dp4a` / `llama-compat-device-chain-dp4a`.
@@ -12090,3 +11973,64 @@ unit tests plus real proposal/verify/commit/reset/close comparisons. Runtime
 wiring changes need public and compatibility requests with output and selected
 instrumentation recorded; any timing claim compares complete windows under a
 matched protocol.
+
+### R0287 — Verifier FP32 arithmetic policy and probe provenance
+
+The `HIPENGINE_GGUF_VERIFY_F32_*` stack has live numerical-probe and
+execution-profile consumers:
+
+- `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` and
+  `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` select residual and attention input
+  norm boundaries.
+- `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS`,
+  `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` and
+  `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` select projection and attention-output
+  boundaries.
+- `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` enables post-attention norm FP32;
+  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER`,
+  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8` and
+  `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8` default to true within that
+  independently enabled path.
+- `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE`,
+  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN`,
+  `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` and
+  `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` select weighted-sum accumulation,
+  selected output, intermediate and shared output boundaries.
+
+The FP32 combine switch controls weighted-sum accumulation independently.
+Selected-down FP32 additionally requires FP32 residuals, its output switch, an
+X8 Q5/Q6 adapter and scratch; intermediate/shared-down add their own controls.
+These paths preserve BF16 mirrors where consumers require them.
+
+`HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` is an integer prefix length,
+not a layer-list parser. Blank/unset covers every layer; zero rejoins BF16 at
+the first layer. The forced-target probe records its raw value and the
+`HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` selector with the other
+arithmetic controls. Historical layer-local observations remain in the
+original sweep source and `benchmarks/results/2026-07-02-mtp-target-f32-*.json`
+artifacts; they do not establish model-wide promotion or rejection.
+
+The gfx1100 MoE production profile's binder enables residual and post-norm
+FP32; the strict binder disables both. The dense production binder uses its
+own strict-based composition. Physical MoE C2 has a request-scoped numerical
+context that suppresses residual FP32 without rewriting the ambient value.
+These are separate owners, not obsolete standalone probe flags. Preserve the
+registered strict/production bindings and explicit probe comparisons during
+cleanup. R0281-DENSE-Q8 owns raw sidecar placement and projection adapter
+selection; this row owns numerical composition, not duplicate residency.
+
+**Decision needed:** preserve the explicit per-boundary comparisons, or move
+them into a runner-owned arithmetic plan with registered-profile bindings and
+probe serialization. Do not delete the broad stack merely because one
+historical composition failed, or enable every FP32 boundary to remove flags.
+Candidate promotion and diagnostic retention are separate decisions.
+
+**Clearing action:** migrate buffer materialization, BF16 mirrors, prefix
+rejoin, layer/FFN consumers, profile binders, physical-C2 context and probe
+metadata together. Run `tests/test_unit_qwen35_gguf_verify_f32_*.py`, dense-Q8
+routing, profile/environment isolation, invocation-contract and forced-target
+probe tests. Runtime changes require real strict/production requests, teacher
+logits at matched contexts, prefix/intermediate/state checks and
+verify/commit/reset/cancel/close comparisons. Changed-arithmetic defaults need
+the execution-profile numerical/task gates; an old token-margin slice is not
+that gate. Token-embedding precision remains separately inventoried.

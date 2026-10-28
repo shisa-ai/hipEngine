@@ -8563,23 +8563,25 @@
       "start_line": 6429,
       "end_line": 6545,
       "sha256": "b4320ccd8516492920dc4175fb9467ebd9ef2fb449d78131dde9966efc3a29d5",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-provenance-fixed-arithmetic-policy-deferred",
+      "evidence": [
+        "Forced-target probe omitted active F32 residual prefix and linear-projection controls. Added both raw metadata keys; RED reproduced ten missing-provenance failures, focused FP32/routing/profile/probe/invocation bundle passes 282 tests. Corrected ENVS integer prefix syntax and characterized selector defaults plus prefix bounds/list rejection. Current gfx1100 MoE production binder and physical-C2 suppression remain live; migrate arithmetic policy separately rather than delete or promote diagnostics. Bottom R0287 owns the decision and clearing actions. Worklog: worklog/entries/20261028T221649.369889Z-cleanup-refactor-r0287-f32-provenance-6eb796.md."
+      ],
       "subitems": [
         {
           "line": 6430,
           "text": "- Added 2026-07-02. Env flag keeps target-block verifier residual outputs in",
-          "status": "pending"
+          "status": "audited-live-probe-profile-and-scope-consumers"
         },
         {
           "line": 6481,
           "text": "- Purpose: test the current semantic hypothesis that accumulated BF16 verifier",
-          "status": "pending"
+          "status": "historical-local-evidence-preserved-not-promoted"
         },
         {
           "line": 6542,
           "text": "- Remove when: fold a passing K2 composition into a typed registered variant",
-          "status": "pending"
+          "status": "deferred-explicit-arithmetic-plan-and-profile-ownership"
         }
       ]
     },

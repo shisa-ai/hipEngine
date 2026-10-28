@@ -446,7 +446,7 @@ F32 flags select per-stage diagnostic arithmetic to localize divergence.
 | `HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL` | off | Without prefill-GDN capture, replays Conv/GDN into temporary state and scores its BF16 output while keeping chain-captured commit rows. Rejects FP16 recurrent state; this does not capture attention scores. |
 | `HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV` | off | Without prefill-GDN capture, converts projected QKV from BF16 to F32 and uses F32 chain Conv. Prefill-GDN capture already selects F32 Conv input. |
 | `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` | unset | Replays the residual stage in F32 (supports a subset of shapes). |
-| `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` | unset | Comma/range layer limit for the F32 residual replay; must be within `[0, layer_count]`. |
+| `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` | all layers | Integer prefix length `N` in `[0, layer_count]`; F32 residual propagation covers `[0, N)` before rejoining BF16. Unset or blank means all layers; comma/range syntax is not supported. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` | unset | Replays the post-attention norm in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER` | unset | Replays the post-norm router read in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8` | unset | Replays the selected-Q8 post-norm read in F32. |

@@ -374,6 +374,53 @@ def test_raw_numeric_payload_records_base64_bytes_and_summary() -> None:
     assert isinstance(payload["data_b64"], str)
 
 
+@pytest.mark.parametrize(
+    "name,getter,default",
+    [
+        ("HIPENGINE_GGUF_VERIFY_F32_RESIDUAL", "_gguf_verify_f32_residual_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM", "_gguf_verify_f32_attention_norm_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS", "_gguf_verify_f32_linear_projections_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA", "_gguf_verify_f32_alpha_beta_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT", "_gguf_verify_f32_attn_out_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE", "_gguf_verify_f32_moe_combine_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN", "_gguf_verify_f32_selected_down_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE", "_gguf_verify_f32_selected_intermediate_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN", "_gguf_verify_f32_shared_down_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_POST_NORM", "_gguf_verify_f32_post_norm_enabled", False),
+        ("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER", "_gguf_verify_f32_post_norm_router_enabled", True),
+        ("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8", "_gguf_verify_f32_post_norm_selected_q8_enabled", True),
+        ("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8", "_gguf_verify_f32_post_norm_shared_q8_enabled", True),
+    ],
+)
+@pytest.mark.parametrize("raw", [None, "0", "false", "1", " true "])
+def test_f32_probe_provenance_preserves_raw_controls_and_runtime_defaults(
+    monkeypatch, name, getter, default, raw,
+) -> None:
+    from hipengine.core.specdec2_scope import moe_physical_c2_numerics_session
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    for key in DIAGNOSTIC_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    if raw is not None:
+        monkeypatch.setenv(name, raw)
+    with moe_physical_c2_numerics_session(False):
+        assert getattr(runner, getter)() is (default if raw is None else raw.strip() in {"1", "true"})
+    assert diagnostic_env_payload() == ({} if raw is None else {name: raw})
+
+
+@pytest.mark.parametrize("raw,expected", [(None, 40), ("", 40), ("0", 0), ("1", 1), ("7", 7), ("39", 39), ("40", 40)])
+def test_f32_probe_provenance_records_residual_prefix_without_expanding_it(monkeypatch, raw, expected):
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    for key in DIAGNOSTIC_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    name = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT"
+    if raw is not None:
+        monkeypatch.setenv(name, raw)
+    assert runner._gguf_verify_f32_residual_layer_limit(40) == expected
+    assert diagnostic_env_payload() == ({} if raw is None else {name: raw})
+
+
 def test_diagnostic_env_payload_records_f32_flags(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
