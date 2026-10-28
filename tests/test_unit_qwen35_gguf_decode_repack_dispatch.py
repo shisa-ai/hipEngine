@@ -365,15 +365,57 @@ def test_long_context_parallel_reduce_is_gfx1151_default_at_32k_only(monkeypatch
     assert "split_k_gqa_gate" not in admitted_names
 
 
-def test_long_context_parallel_reduce_keeps_explicit_opt_out(monkeypatch) -> None:
+@pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
+@pytest.mark.parametrize(
+    "active_context,parallel",
+    [(12345, False), (32767, False), (32768, True), (32769, True), (47123, True)],
+)
+def test_long_context_parallel_reduce_uses_package_policy_not_retired_overrides(
+    monkeypatch, backend: str, active_context: int, parallel: bool
+) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
-    monkeypatch.setenv("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE", "0")
-    runner = _runner(is_moe=True)
-    scratch = _scratch(position=32767, max_positions=32768)
+    monkeypatch.setenv("HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE", "0" if parallel else "1")
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+        "1048576" if parallel else "0",
+    )
+    runner = _runner(is_moe=True, backend=backend)
+    position = active_context - 1
+    scratch = _scratch(position=position, max_positions=active_context)
     calls = _patch_full_attention_primitives(monkeypatch)
 
-    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=32767, stream=5)
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=position, stream=5)
+
+    selected = "split_k_gqa_parallel_reduce" if parallel else "split_k_gqa_gate"
+    rejected = "split_k_gqa_gate" if parallel else "split_k_gqa_parallel_reduce"
+    names = [name for name, _, _ in calls]
+    assert selected in names
+    assert rejected not in names
+
+
+@pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
+@pytest.mark.parametrize("enabled,min_context", ((False, 32768), (True, 65536)))
+def test_long_context_parallel_reduce_keeps_package_fallback(
+    monkeypatch, backend: str, enabled: bool, min_context: int
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT", "1024")
+    original_capability = qwen_runtime.backend_package_capability
+
+    def capability(selected_backend, key, default=None):
+        if key == "GGUF_PAGED_ATTN_PARALLEL_REDUCE":
+            return enabled
+        if key == "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT":
+            return min_context
+        return original_capability(selected_backend, key, default)
+
+    monkeypatch.setattr(qwen_runtime, "backend_package_capability", capability)
+    runner = _runner(is_moe=True, backend=backend)
+    scratch = _scratch(position=47122, max_positions=47123)
+    calls = _patch_full_attention_primitives(monkeypatch)
+
+    runner._run_full_attention_attn_only(0, 0x3000, 0x4000, scratch, position=47122, stream=5)
 
     names = [name for name, _, _ in calls]
     assert "split_k_gqa_gate" in names

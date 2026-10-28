@@ -32882,34 +32882,24 @@ def _gguf_paged_attn_parallel_reduce_enabled(
     backend: str,
     active_context: int,
 ) -> bool:
-    default_enabled = bool(
+    enabled = bool(
         backend_package_capability(
             backend,
             "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
             False,
         )
     )
-    default_min_context = int(
-        backend_package_capability(
-            backend,
-            "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
-            32768,
-        )
-    )
     min_context = max(
         0,
-        _env_int(
-            "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
-            default_min_context,
+        int(
+            backend_package_capability(
+                backend,
+                "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+                32768,
+            )
         ),
     )
-    return (
-        _env_flag(
-            "HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE",
-            default_enabled,
-        )
-        and int(active_context) >= min_context
-    )
+    return enabled and int(active_context) >= min_context
 
 
 def _gguf_qwen35_gqa_decode_shape(config, *, block_size: int) -> bool:
