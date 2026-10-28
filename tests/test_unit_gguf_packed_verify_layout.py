@@ -877,8 +877,10 @@ def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
     assert owner.last_packed_prefill_plan["all_active_slots_represented"] is True
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("mask_enabled", [False, True])
 def test_gguf_packed_ar_prefill_samples_only_each_slots_final_round(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, backend: str, mask_enabled: bool,
 ) -> None:
     calls: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
     sessions = tuple(SimpleNamespace(position=0) for _ in range(2))
@@ -912,7 +914,15 @@ def test_gguf_packed_ar_prefill_samples_only_each_slots_final_round(
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner.use_iq_dense_mmq = False
-    owner.backend = "hip_gfx1151"
+    owner.backend = backend
+    original_capability = gguf_runner.backend_package_capability
+    monkeypatch.setattr(
+        gguf_runner, "backend_package_capability",
+        lambda selected_backend, key, default=None: (
+            mask_enabled if key == "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK"
+            else original_capability(selected_backend, key, default)
+        ),
+    )
     owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
 
     results = owner.prefill_batch_native(
@@ -920,11 +930,12 @@ def test_gguf_packed_ar_prefill_samples_only_each_slots_final_round(
         sessions=sessions,
     )
 
-    assert calls == [
-        ((0, 1), ()),
-        ((0, 1), (0,)),
-        ((1,), (0,)),
-    ]
+    assert calls == (
+        [((0, 1), ()), ((0, 1), (0,)), ((1,), (0,))]
+        if mask_enabled else
+        [((0, 1), (0, 1)), ((0, 1), (0, 1)), ((1,), (0,))]
+    )
+    assert owner.last_packed_prefill_plan["final_output_mask_enabled"] is mask_enabled
     assert [result.token_id for result in results] == [12, 24]
     assert owner.last_packed_prefill_plan["chunk_final_output_slot_indices"] == [
         [],
