@@ -27,7 +27,10 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.loading.qwen35_gguf_materialize import gguf_selected_gate_up_x8_enabled
+from hipengine.loading.qwen35_gguf_materialize import (
+    gguf_selected_gate_up_raw_enabled,
+    gguf_selected_gate_up_x8_enabled,
+)
 
 GGUF_PATH = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 DEFAULT_PROMPT = "What is the capital of France?"
@@ -1105,16 +1108,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--selected-gate-up-raw",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "OPT-IN llama-compat diagnostic: keep selected gate/up Q4_K experts in raw "
-            "GGUF layout so --verify-dp4a routes them through the raw selected-dual "
-            "q8_1/dp4a body, closer to llama.cpp mul_mat_vec_q_moe. Default off."
-        ),
-    )
-    parser.add_argument(
         "--llama-compat",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1750,11 +1743,6 @@ def main(argv: list[str] | None = None):
         # Must be set before materialization so selected-down expert tensors are
         # repacked into the X8 replacement layout.
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = str(args.selected_down_x8_repack)
-    if getattr(args, "selected_gate_up_raw", False):
-        # Must be set before materialization so selected gate/up expert tensors
-        # stay in raw GGUF layout. With --verify-dp4a, the runtime uses the raw
-        # q8_1/dp4a selected-dual body instead of the T16 replacement body.
-        os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"] = "1"
     if getattr(args, "resident_mtp_draft_q6_top1_dp4a", False):
         # Must be set before constructing the resident MTP draft runner.
         os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] = "1"
@@ -4177,7 +4165,7 @@ def main(argv: list[str] | None = None):
             "selected_down_x8_repack_env": os.environ.get("HIPENGINE_GGUF_SELECTED_X8_REPACK"),
             "selected_gate_up_x8": gguf_selected_gate_up_x8_enabled(),
             "selected_gate_up_x8_env": os.environ.get("HIPENGINE_GGUF_SELECTED_GATE_UP_X8"),
-            "selected_gate_up_raw": bool(args.selected_gate_up_raw),
+            "selected_gate_up_raw": gguf_selected_gate_up_raw_enabled(),
             "selected_gate_up_raw_env": os.environ.get("HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"),
             "resident_mtp_draft_effective": bool(resident_mtp_draft_effective),
             "resident_mtp_device_chain_effective": bool(resident_mtp_device_chain_effective),

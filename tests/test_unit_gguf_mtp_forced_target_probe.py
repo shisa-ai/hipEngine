@@ -39,6 +39,18 @@ def test_historical_gate_up_x8_trace_still_selects_its_layout(monkeypatch, enabl
     assert gguf_selected_gate_up_x8_enabled() is enabled
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_historical_raw_gate_up_trace_still_selects_its_layout(monkeypatch, enabled) -> None:
+    import os
+    from hipengine.loading.qwen35_gguf_materialize import gguf_selected_gate_up_raw_enabled
+
+    monkeypatch.setattr(os, "environ", dict(os.environ))
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_GATE_UP_RAW", "0" if enabled else "1")
+    env = _apply_trace_route_env({"selected_gate_up_raw": enabled}, decode_repack=True)
+    assert env["HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"] == ("1" if enabled else "0")
+    assert gguf_selected_gate_up_raw_enabled() is enabled
+
+
 def test_parser_exposes_direct_partial_replay_mode() -> None:
     args = build_arg_parser().parse_args(
         [

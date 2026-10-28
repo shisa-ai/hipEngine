@@ -1040,10 +1040,24 @@ def test_bench_keeps_ambient_x8_layout_for_parity_callers(monkeypatch, value, ex
     assert bench.os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_X8"] == value
 
 
-def test_arg_parser_exposes_selected_gate_up_raw_mode() -> None:
-    args = build_arg_parser().parse_args(["--selected-gate-up-raw"])
+@pytest.mark.parametrize("option", ["--selected-gate-up-raw", "--no-selected-gate-up-raw"])
+def test_retired_selected_gate_up_raw_option_is_rejected(option: str) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        build_arg_parser().parse_args([option])
+    assert excinfo.value.code == 2
 
-    assert args.selected_gate_up_raw is True
+
+@pytest.mark.parametrize("value,expected", [("1", True), ("true", True), ("false", False), ("0", False)])
+def test_bench_keeps_ambient_raw_layout_for_explicit_callers(monkeypatch, value, expected) -> None:
+    monkeypatch.setattr(bench.os, "environ", dict(bench.os.environ))
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_GATE_UP_RAW", value)
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+    assert not hasattr(build_arg_parser().parse_args([]), "selected_gate_up_raw")
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--root-topk-accept", "0"])
+    assert excinfo.value.code == 2
+    assert bench.gguf_selected_gate_up_raw_enabled() is expected
+    assert bench.os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_RAW"] == value
 
 
 def test_arg_parser_exposes_q6_top1_stage1_thread_diagnostic() -> None:
