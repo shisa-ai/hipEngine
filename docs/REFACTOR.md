@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF selected-MoE duplicate-expert reuse | `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0`, `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0`, and `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` roll physical-C8 Q4T16 gate/up plus Q5/Q6T16 down back to per-selected-lane kernels; backend capabilities keep gfx1100 unchanged. | gfx1151 pairs consecutive dynamic expert-ID occurrences inside 128-thread blocks while preserving each row's reduction order. Q4 gate/up and Q5/Q6 down share weights across independent per-row accumulators. Lower widths and unpaired IDs retain exact fallback behavior. | Remove the three env opt-outs after one release window plus defaults-only gfx1151 direct/server refreshes and an independent gfx1100 transfer. Keep per-lane kernels for unsupported widths and as required fallbacks. |
 | GGUF F32-weight cooperative c1 router | `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` retains the separate expert-logits/shared-logit/top-k chain as an explicit rollback around the incumbent cooperative route. `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` restores the selected-ID counter alias plus per-layer host reset instead of the dedicated self-resetting four-byte counter. | gfx1100 clean commit `4c743994` first improved 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**; its persistent follow-up removed 40 reset nodes/token and improved the graph gate another **+1.65%**. Independent ZBook/gfx1151 requalification now keeps the same package route: **450/450** full-logit rows, three repeats, 18/18 live-state fingerprints, and 18/18 natural d128 trajectories are byte-exact; natural eager AR improves **30.438 -> 33.219 tok/s (+9.136%)** versus the strict chain, and fixed p512/d128 improves **+8.748%**. The unfused chain remains the required numerical fallback. | Keep both opt-outs until real Qwen3.6 strict/production profile plans bind the selected/fallback variants and exact control capture passes. Then remove the env experiment surface after defaults-only refreshes on both gfx11 targets, while keeping the registered unfused fallback permanently. |
 | GGUF long-context split-K reduction | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` and the minimum-context override retain the serial split reduction for rollback/A/B around the prepare-plus-coalesced-output route. | Promoted gfx1100 default from 32K after LCP-D2 (**+1.23%/+3.95%/+7.80%** at 32K/64K/128K, max KL **1.904e-6**). SH7-A1 independently promotes gfx1151 from 32K: one-queue 32K/64K decode improves **+1.560%/+2.394% (-0.333/-0.593 ms/token)**, all **1,296/1,296** semantic logits are byte-exact, and tracked/GTT/lifecycle are unchanged. | Keep the serial implementation permanently for <32K, unsupported routes, and numerical fallback. Remove the env/min-context experiment overrides after one release window plus defaults-only long-context refreshes on both gfx11 backends. |
 | GGUF MTP server packed verifier | `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` chunks c>N server target verification instead of sending all active slots to one packed target forward. | Default serving policy after the first packed verifier landing and the stream-draft/stream-verify follow-ups. c=2/c=4 packed target verify wins, but one 8-slot packed batch is a measured rejected regime (`11.58 tok/s`, `target_verify_batch_ms=63733.783`). The current c=8 stream path still chunks verify at 4 slots and reaches **52.18 tok/s**, with verifier still dominant (`slots_verify_phase_ms=12345.442`). | Remove or raise the cap only after rows>=16 packed verifier and resident-draft row-count/cold-slot behavior are tuned and a c=8 natural24 rerun beats the chunked stream path without correctness or latency regressions. |
@@ -10720,3 +10719,37 @@ without changing their other selectors. Then run the guarded primitive test
 with route engagement and cleanup recorded on each intended backend. Do not
 turn this cleanup into automatic gfx1100 promotion or delete kernels based on
 old schedule names.
+
+### R0281-SELECTED-PAIR — Selected-MoE pair-reuse control retirement
+
+The three controls remain live: `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE`,
+`HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE` and
+`HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE`. Unset follows the packed
+owner's backend scopes; explicit `0` restores the per-lane owner and `1`
+requests pair reuse within the supported geometry. Q4 uses eight input rows
+and 64 selected lanes; Q5/Q6 down use 64 input rows and 64 selected lanes.
+The SPECDEC2 request-local Q4 small-row scope is separate and stays under
+its existing ledger entry.
+
+The old pending-transfer condition is stale. Both backends enable Q4 C8
+pair reuse. gfx1151 also enables Q5/Q6 down, while gfx1100 keeps their package
+floors at zero after completed performance evaluations, not missing evidence.
+The transfer decisions are in
+`benchmarks/results/2026-09-05-gfx1100-gguf-q4-selected-pairreuse-c8-retained.json`,
+`benchmarks/results/2026-09-05-gfx1100-gguf-q5-selected-down-pairreuse-rejected.json`
+and
+`benchmarks/results/2026-09-05-gfx1100-gguf-q6-selected-down-pairreuse-rejected.json`.
+The explicit paths remain runnable; do not force a default transfer as cleanup.
+
+**Decision needed:** retain the controls as diagnostics or replace both on/off
+requests with an explicit scoped policy before removing their readers. The
+batch-route gate clears and restores these variables to exercise package policy;
+its capture metadata must migrate too. Preserve per-lane fallback kernels,
+backend defaults and the separate request-local small-row scope.
+**Clearing action:** run
+`tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py` and
+`tests/test_unit_execution_profile_gguf_batch_route_gate.py`; migrate the gate
+and `docs/ENVS.md` with any reader removal. A runtime migration also needs the
+primitive pair-reuse parity tests and public C8 MoE generation on both intended
+backends, with selected callables, neighboring/non-C8 widths and cleanup
+recorded. A release-window deadline alone cannot replace these contracts.

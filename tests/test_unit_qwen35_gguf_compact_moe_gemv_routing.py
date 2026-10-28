@@ -581,8 +581,15 @@ def test_row_bulk_t16_direct_selected_prefill_routes_without_compact_scheduler(m
     assert ("weighted_shared_batch", None) in calls
 
 
+@pytest.mark.parametrize(
+    "x_rows,rows,expected",
+    [(8, 64, "pairreuse"), (7, 56, "baseline"), (9, 72, "baseline"), (4, 32, "baseline")],
+)
 def test_physical_c8_t16_pairreuse_uses_backend_scope_and_env_rollback(
     monkeypatch: pytest.MonkeyPatch,
+    x_rows: int,
+    rows: int,
+    expected: str,
 ) -> None:
     gate = _FakeWeight(
         "ffn_gate_exps", "gguf_q4_k_t16_v1", 12, experts=256, out_features=512, in_features=2048
@@ -604,8 +611,8 @@ def test_physical_c8_t16_pairreuse_uses_backend_scope_and_env_rollback(
     )
 
     kwargs = dict(
-        x_rows=8,
-        rows=64,
+        x_rows=x_rows,
+        rows=rows,
         num_experts=256,
         in_features=2048,
         out_features=512,
@@ -634,7 +641,13 @@ def test_physical_c8_t16_pairreuse_uses_backend_scope_and_env_rollback(
             **kwargs,
         )
 
-    assert calls == ["pairreuse", "baseline"]
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE", "1")
+    with qgr._gguf_t16_selected_pairreuse_min_rows_scope(0):
+        assert qgr._launch_selected_raw_gguf_moe_pair(
+            gate, up, 100, 130, 150, 160, **kwargs
+        )
+
+    assert calls == [expected, "baseline", expected]
 
 
 @pytest.mark.parametrize(
@@ -812,8 +825,15 @@ def test_qwen_q5_t16_tile8_gfx1100_keeps_16col_fallback_off_gate(
     assert calls == ["baseline", "baseline"]
 
 
+@pytest.mark.parametrize(
+    "x_rows,rows,expected",
+    [(64, 64, "pairreuse"), (56, 56, "baseline"), (72, 72, "baseline"), (16, 16, "baseline")],
+)
 def test_physical_c8_t16_selected_down_pairreuse_env_routes_and_rolls_back(
     monkeypatch: pytest.MonkeyPatch,
+    x_rows: int,
+    rows: int,
+    expected: str,
 ) -> None:
     down = _FakeWeight(
         "ffn_down_exps", "gguf_q5_k_t16_v1", 14, experts=256, out_features=2048, in_features=512
@@ -830,8 +850,8 @@ def test_physical_c8_t16_selected_down_pairreuse_env_routes_and_rolls_back(
         lambda *args, **kwargs: calls.append("baseline"),
     )
     kwargs = dict(
-        x_rows=64,
-        rows=64,
+        x_rows=x_rows,
+        rows=rows,
         num_experts=256,
         in_features=512,
         out_features=2048,
@@ -846,11 +866,22 @@ def test_physical_c8_t16_selected_down_pairreuse_env_routes_and_rolls_back(
     with qgr._gguf_t16_selected_down_pairreuse_min_rows_scope(8):
         qgr._launch_selected_raw_gguf_moe_linear(down, 100, 130, 150, **kwargs)
 
-    assert calls == ["pairreuse", "baseline"]
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE", "1")
+    with qgr._gguf_t16_selected_down_pairreuse_min_rows_scope(0):
+        qgr._launch_selected_raw_gguf_moe_linear(down, 100, 130, 150, **kwargs)
+
+    assert calls == [expected, "baseline", expected]
 
 
+@pytest.mark.parametrize(
+    "x_rows,rows,expected",
+    [(64, 64, "pairreuse"), (56, 56, "baseline"), (72, 72, "baseline"), (16, 16, "baseline")],
+)
 def test_physical_c8_q6_selected_down_pairreuse_scope_and_rollback(
     monkeypatch: pytest.MonkeyPatch,
+    x_rows: int,
+    rows: int,
+    expected: str,
 ) -> None:
     down = _FakeWeight(
         "ffn_down_exps", "gguf_q6_k_t16_v1", 14, experts=256, out_features=2048, in_features=512
@@ -867,8 +898,8 @@ def test_physical_c8_q6_selected_down_pairreuse_scope_and_rollback(
         lambda *args, **kwargs: calls.append("baseline"),
     )
     kwargs = dict(
-        x_rows=64,
-        rows=64,
+        x_rows=x_rows,
+        rows=rows,
         num_experts=256,
         in_features=512,
         out_features=2048,
@@ -883,7 +914,11 @@ def test_physical_c8_q6_selected_down_pairreuse_scope_and_rollback(
     with qgr._gguf_t16_selected_q6_down_pairreuse_min_rows_scope(8):
         qgr._launch_selected_raw_gguf_moe_linear(down, 100, 130, 150, **kwargs)
 
-    assert calls == ["pairreuse", "baseline"]
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE", "1")
+    with qgr._gguf_t16_selected_q6_down_pairreuse_min_rows_scope(0):
+        qgr._launch_selected_raw_gguf_moe_linear(down, 100, 130, 150, **kwargs)
+
+    assert calls == [expected, "baseline", expected]
 
 
 def test_row_bulk_f32_post_norm_shared_q8_routes_shared_singletons(monkeypatch: pytest.MonkeyPatch) -> None:

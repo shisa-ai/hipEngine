@@ -78,6 +78,37 @@ def test_current_package_policy_clears_candidate_overrides_and_restores(
     assert os.environ[gate.ROUTER_PERSISTENT_ENV] == "caller-persistent"
 
 
+@pytest.mark.parametrize("fail", (False, True))
+def test_selected_pair_package_policy_clears_overrides_and_restores(
+    monkeypatch: pytest.MonkeyPatch,
+    fail: bool,
+) -> None:
+    keys = (
+        gate.POLICY_ENV,
+        gate.PAIR_POLICY_ENV,
+        gate.PAIR_COL8_ENV,
+        gate.SELECTED_PAIR_ENV,
+        gate.SELECTED_DOWN_PAIR_ENV,
+        gate.SELECTED_Q6_DOWN_PAIR_ENV,
+    )
+    previous = {key: str(index % 2) for index, key in enumerate(keys)}
+    for key, value in previous.items():
+        monkeypatch.setenv(key, value)
+
+    def exercise() -> None:
+        with gate._candidate_route_policy(gate.ROUTE_PROFILE_Q4_SELECTED_PAIR):
+            assert all(key not in os.environ for key in keys)
+            if fail:
+                raise RuntimeError("capture failed")
+
+    if fail:
+        with pytest.raises(RuntimeError, match="capture failed"):
+            exercise()
+    else:
+        exercise()
+    assert {key: os.environ.get(key) for key in keys} == previous
+
+
 def test_build_batch_route_quality_preserves_shape_and_transition_attribution() -> None:
     strict = (
         _step(1, [0.0, 4.0, 1.0]),
