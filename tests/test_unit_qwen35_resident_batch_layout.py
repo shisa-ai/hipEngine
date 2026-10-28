@@ -8290,11 +8290,16 @@ def test_verify_accept_payload_always_reads_one_packed_record(
 
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("position_retired", [None, "0", "false", "1"])
 @pytest.mark.parametrize("update_position", [None, False, True])
 @pytest.mark.parametrize("base_slot", [None, 0, 2])
 def test_verify_accept_summary_always_launches_packed_with_commit_buffers(
-    monkeypatch: pytest.MonkeyPatch, retired, update_position, base_slot,
+    monkeypatch: pytest.MonkeyPatch, retired, position_retired, update_position, base_slot,
 ) -> None:
+    if position_retired is None:
+        monkeypatch.delenv("HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION", position_retired)
     if retired is None:
         monkeypatch.delenv("HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD", raising=False)
     else:
@@ -8312,19 +8317,18 @@ def test_verify_accept_summary_always_launches_packed_with_commit_buffers(
         setattr(session, name, DeviceBuffer(0x1000 + index * 0x100, 4096))
     session.libraries = {"dflash_accept": object()}
     session.runtime = object()
-    session._verify_accept_updates_position_enabled = lambda batch: True
     calls = []
     for name in ("dflash_accept_chain_i32_packed", "dflash_accept_chain_i32_packed_update_state"):
         def record(*args, _name=name, **kwargs):
             calls.append((_name, args, kwargs))
         monkeypatch.setattr(runner_module, name, record)
-    batch = SimpleNamespace(request_ids=(7,))
+    batch = SimpleNamespace(request_ids=(7,), mode="verify_chain")
     session._launch_verify_accept_summary(
         batch, rows=3, base_slot=base_slot, stream=13, update_position=update_position,
     )
     assert len(calls) == 1
     name, args, kwargs = calls[0]
-    updates = update_position is not False and base_slot is not None
+    updates = update_position is True and base_slot is not None
     assert name == ("dflash_accept_chain_i32_packed_update_state" if updates else "dflash_accept_chain_i32_packed")
     compatibility = [getattr(session, key).ptr for key in buffer_names[:14]]
     compatibility.insert(6, None)

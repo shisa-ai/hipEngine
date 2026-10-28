@@ -11356,20 +11356,6 @@ class Qwen35ParoResidentSession:
             runtime=self.runtime,
         )
 
-    def _verify_accept_updates_position_enabled(self, batch: TargetVerifyBatch) -> bool:
-        if self._native_spec_provider_target_graph_enabled(batch):
-            # The shared N4 graph declares VERIFY|ACCEPT only. The PARO-only
-            # commit capture passes an explicit update_position=True when it
-            # also declares COMMIT|UPDATE_CURSORS; all other calls stay here.
-            return False
-        if batch.mode != "verify_chain":
-            return False
-        if len(batch.request_ids) != 1:
-            return False
-        if not self._verify_gpu_accept_enabled():
-            return False
-        return _env_flag("HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION", False)
-
     def _should_use_chain_tloop_linear_verify(self, batch: TargetVerifyBatch, *, rows: int, graph_mode: str) -> bool:
         if not self._verify_chain_linear_tloop_enabled():
             return False
@@ -11638,10 +11624,7 @@ class Qwen35ParoResidentSession:
                     stream=stream,
                     commit_row_ptr=int(self.verify_commit_rows.ptr),
                 )
-                if self._verify_accept_updates_position_enabled(batch) and gpu_accept_match:
-                    self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
-                else:
-                    self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+                self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
                 _mark_bucket("commit_scatter", t_bucket)
             # Re-pointing the scratch maps to rows=1 decode views re-reserves
             # workspace names with a different shape, which frees the rows=B+1
@@ -11873,10 +11856,7 @@ class Qwen35ParoResidentSession:
             stream=stream,
             commit_row_ptr=int(self.verify_commit_rows.ptr),
         )
-        if self._verify_accept_updates_position_enabled(batch) and gpu_accept_match:
-            self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
-        else:
-            self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+        self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
         _mark_bucket("commit_scatter", t_bucket)
         # Same #107 keepalive as chain: canonicalizing decode scratch frees the
         # rows=B+1 buffers any cached verifier graph holds raw pointers to.
@@ -12680,7 +12660,6 @@ class Qwen35ParoResidentSession:
                 str(self.kv_storage_dtype.value),
                 str(self.kv_storage_layout),
                 bool(self._verify_gpu_accept_enabled()),
-                bool(self._verify_accept_updates_position_enabled(batch)),
                 # Layer weights are materialized once per session and freed only
                 # by ``close`` after every graph has retired, so their identity
                 # is a sound guard against a wholesale replacement. Their device
@@ -14273,7 +14252,7 @@ class Qwen35ParoResidentSession:
         rows: int,
         base_slot: int | None = None,
         stream: int = 0,
-        update_position: bool | None = None,
+        update_position: bool = False,
     ) -> None:
         request_count = len(batch.request_ids)
         accept_args = (
@@ -14293,12 +14272,8 @@ class Qwen35ParoResidentSession:
             self.verify_committed_output_ids.ptr,
             self.verify_committed_output_lengths.ptr,
         )
-        should_update_position = (
-            self._verify_accept_updates_position_enabled(batch)
-            if update_position is None
-            else bool(update_position)
-        )
-        if should_update_position and base_slot is not None:
+        # Only native graph-owned commit explicitly requests cursor updates.
+        if update_position and base_slot is not None:
             dflash_accept_chain_i32_packed_update_state(
                 *accept_args,
                 self.verify_accept_payload_i32.ptr,
