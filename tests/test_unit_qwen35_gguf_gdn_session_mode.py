@@ -76,6 +76,29 @@ def test_resolver_explicit_and_exact(monkeypatch):
     )
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize(
+    "mode", sorted(qgr._GGUF_GDN_PREFILL_MODES - {"auto", "exact"})
+)
+def test_every_explicit_mode_resolves_before_scratch_freeze(monkeypatch, backend, mode):
+    _with_env(monkeypatch, mode=mode)
+    plan = qgr._resolve_gguf_gdn_prefill_plan(backend)
+
+    assert qgr._gguf_gdn_prefill_plan_has_mode(plan, mode)
+    assert qgr._gguf_gdn_prefill_session_mode(backend, plan=plan) == mode
+
+
+@pytest.mark.parametrize(
+    "mode", sorted(qgr._GGUF_GDN_PREFILL_MODES - {"auto", "exact"})
+)
+def test_every_explicit_mode_refuses_missing_route_before_scratch_freeze(monkeypatch, mode):
+    _with_env(monkeypatch, mode=mode)
+    unavailable = qgr._GGUFGDNPrefillPlan(None, None, None, None, None)
+
+    with pytest.raises(RuntimeError, match=f"explicit GGUF GDN prefill mode {mode!r} is unavailable"):
+        qgr._gguf_gdn_prefill_session_mode("hip_gfx1151", plan=unavailable)
+
+
 def test_resolver_availability_fallback(monkeypatch):
     _with_env(monkeypatch)
     real = qgr._resolve_gguf_gdn_prefill_plan

@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF GDN prefill | `HIPENGINE_GGUF_GDN_PREFILL_MODE=auto|exact|fused|chain|chain_k2|chain_peer_wave32|chain_compact_peer_wave32|chain_peer_cluster8|chain_tile64|chain_tile32|chain_wave32|chain_wave32_tree|chain_lds64|chain_lds32|chain_lds32_direct|chain_lds32_direct_nonvolatile` is the fail-closed rollback/bisection selector. Explicit `chain` is the GGUF-only exact split; `chain_k2` exposes the registered PARO normalized-Q/K two-wave recurrence; `chain_peer_wave32` exposes GPF-9C's llama.cpp-HIP-shaped normalized-Q/K XOR reduction; `chain_peer_cluster8` exposes GPF-9D's llama.cpp-Vulkan-shaped eight-lane clustered reduction; tile64/tile32 and the older wave32 routes are historical controls. The semantic harness sets `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE=1` internally before session allocation so materialized candidates receive dedicated Q/K/V scratch rather than production direct-route null views. gfx1100 `auto` now selects the bit-equivalent `chain_compact_peer_wave32`; its normalized Q/K scratch is sized at K-head capacity, while explicit `chain_peer_wave32` sessions retain V-head capacity and widening the mode requires session reconstruction. the prior `chain_peer_wave32` remains its rollback. gfx1151 selects byte-exact compiler-cacheable `chain_lds32_direct_nonvolatile` except for the Qwen3.5-0.8B Q4 `(16K,16V,128,128)` plugin key, which selects `chain_peer_cluster8`; Q8 and all other shapes stay exact. | On gfx1151, LCP-2A preserves six-case state plus 250/250 natural transitions exactly and improves balanced 512/1K/4K prefill +34.76%/+36.63%/+36.58%. Under the prospective 18-prompt 0.05/0.90 contract, clean W7900 rejects K2 at KL `0.059031` and register-tree at `0.068757`; both pass top-1 and decode. GPF-9C passes at KL `0.041737`, top-1 `445/450`, and non-regressive decode, but originally missed the 512 floor. LCP-5A removes HIP 7.2 spills from the exact selected-Q5/Q6 T16 prefill leaves, moving clean-target pp512 peer kernels/span to **184.513/194.886 ms**, faster than llama.cpp HIP's **203.301/212.236 ms**. The clean selector-unset 512/4K screen reaches **2588.231/2757.752 tok/s**, clears both floors, keeps IDs stable, and preserves the liveness arena at **21.670 GiB** tracked peak. The final W7900 strict-exact convergence screen selects nonvolatile direct-LDS32: it halves VGPR **64 -> 32**, cuts the 512 trace-family median **74.39%**, and improves volatile-direct full-model 512/4K prefill **+73.01%/+82.46%** with byte-exact primitive state, flat decode, and unchanged compact-scratch memory. The new architecture-scoped `exact` alias exposes that rollback without changing gfx1100 peer-wave production. GPF-9D remains rejected outside its new 0.8B Q4 scope. Inside that key, cluster8 improves paired pp512 +4.33%, passes 448/450 top-1 at max KL 0.003455, and is graph-decode non-regressive; the Q8 candidate remains rejected after missing strict decode by 0.0108%. | Retain explicit volatile `chain_lds32_direct` for one release beneath the promoted `exact` nonvolatile route, then remove it if no exact-route regression appears. Remove `chain_k2` and `chain_wave32_tree` after the final gfx1151 peer transfer decision; retain cluster8 while the 0.8B Q4/Q8_0 plugin keys are shipped (X2-K2 added Q8_0 after a fresh gate), plus fused, `chain`, `exact`, and peer-wave as production/correctness/bisection routes. After one release of compact-peer coverage, remove the per-V-head `chain_peer_wave32` producer/consumer and collapse `HIPENGINE_GGUF_GDN_PREFILL_MODE` to `auto|exact|fused|chain|chain_compact_peer_wave32`. |
 | GGUF Q4T16 selected-prefill GPF-3A | `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=auto|baseline|shared_x`, explicit baseline/shared-X registry variants, and replay switch `scripts/qwen35_gguf_moe_replay.py --q4-t16-shared-x` retain duplicate Q4T16 compact32 bodies. gfx1100 `auto` selects `shared_x`; gfx1151 `auto` is rolled back to `baseline`. | BF16/FP16 fixture bytes are exact; tiny trace is `44.725 -> 33.343 us` (-25.45%), real Q4 gate/up replay is `114.633 -> 97.082 ms` (-15.31%), and clean gfx1151 full-model 512/1K/4K prefill improves +3.11%/+2.42%/+1.94%. However, the gfx1151 repeated-128K split changes only this route and reproduces the no-progress state on prefill 4; baseline-only passes **12/12** at **575.180-580.626 tok/s**. The W7900 transfer remains independently admitted. | Keep both bodies and the explicit selector while repairing/bisecting shared-X on gfx1151. Do not restore gfx1151 automatic shared-X until primitive correctness, kernel tracing, and three independent 128K warmup+3 processes pass. gfx1100 remains unchanged. |
 | R12 selected-expert prefill pair32 mode | `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE=baseline|pair32` selects the selected-expert prefill bodies, and `_COMPACT_MOE_DOWN_MODE_KEYS` adds the matching mode map for the selected-down leg. The paired body (`gguf_k_t16_selected_wmma_prefill_pair32_nwave_kernel`, `NUM_WAVES=4`, two 16-row tiles per wave, 1 KiB LDS-staged activation tile) is a registered sibling of `selected_wmma_prefill_compact_bf16_bf16_out` for Q4/Q5/Q5-qmicro/Q6 T16; the gate/up leg reuses the existing `selected_dual_wmma_prefill_pair32_nwave_bf16_bf16_out` entry (`NUM_WAVES=2`). | **Promoted to the gfx1151 automatic route** (`GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "pair32"`; gfx1100 unchanged). Bit-exact with the compact baseline on all four quants x BF16/FP16 fixture shapes (raw device bits, `test_r12_pair32_nwave_is_bit_exact_with_compact_baseline`). The gate that blocked `shared_x` was cleared: three independent conservative-set 128K warmup+3 processes passed 12/12 (319.25/319.21/319.30 tok/s, stdev <= 0.11, finite logits, IDs [9707,9707,9707]) and three independent production-shaped processes passed 12/12 at 620.61/619.99/619.57 tok/s, above the 575.180-580.626 baseline-only figure on the same workload. Selector A/B 1450.8 -> 1603.7 (+10.54%) and 1454.0 -> 1639.3 (+12.75%); default-path A/B against the explicit rollback 1450.78 -> 1633.33 (+12.58%). Isolated gate+up 1.309x, down Q4_K 1.305x. | Keep the compact `baseline` body and the `_COMPACT_MOE_DOWN_MODE_KEYS` map as the release-safety rollback; `shared_x` stays blocked. Remove the paired bodies, the mode entry, and the mode map together only if a future gfx1151 long-context regression implicates them, and re-admit `shared_x` only if it independently passes the same three-process gate. |
 | GGUF small-B linear dispatch | `HIPENGINE_GGUF_Q4K_ROWTILE` / `q4k_rowtile_session(False)` opt out of raw K-quant rowtiles (rows 2..8, WMMA off) and native resident-pack8 Q4 rowtiles (rows 2..4). | Raw rowtiles remain default-on and exact; their historical MoE full-path result was flat because selected experts dominated. Dense Qwen3.6 now routes native pack8 singles and gate/up pairs through exact local32 row reuse. Rows 2/3/4 improve the real pair 1.715/2.353/3.114x on GPU1; rowtile-4 is VGPR96/scratch0. The routed W7900 transaction oracle observes `{2,3,4}`, and clean natural25 improves B1/B2/B3 **+10.04%/+16.00%/+19.38%** with every full/train/heldout/category row positive, exact IDs/state/acceptance, unchanged memory, and B2 at **1.0678x** own AR. | Keep the opt-out and dual/single rollback for one release after the `4181b85fb` promotion, then make qualified rowtiles unconditional. Preserve per-row kernels for rows==1, rows above each admitted ceiling, registry/backend misses, and explicit WMMA. |
@@ -11831,3 +11830,52 @@ current-default long-context protocol for any claimed containment removal,
 without treating a recorded host stack or one completed pass as root-cause
 proof. This disposition changes no runtime default, kernel or arithmetic;
 original outcomes remain in the sweep inventory and benchmark artifacts.
+
+### R0281-GDN — Prefill selectors and session-owned scratch
+
+`HIPENGINE_GGUF_GDN_PREFILL_MODE` combines automatic/explicit exact selection,
+production recurrence routes and live comparison controls. The proposed
+release-age collapse would remove modes still used by the prefill comparison,
+semantic and trajectory harnesses; their prepare/recurrent/segmented variants
+also differ in arithmetic and scratch requirements.
+
+Current selection is resolved through backend metadata, not model identity:
+
+- gfx1100 defaults to `chain_compact_peer_wave32`.
+- gfx1151 defaults to `chain_lds32_direct_nonvolatile`; quant/geometry metadata
+  selects `chain_peer_cluster8` for Q4_K_M and Q8_0 with `(16,16,128,128)`
+  K-head/V-head/K-dimension/V-dimension geometry, and compact-peer for Q4_K_M
+  and Q4_K_S with `(16,48,128,128)` geometry. Compact-peer recurrence uses
+  the backend's chunk-row capability.
+- `exact` resolves the backend's declared exact route. Explicit selectors run
+  their registered route or raise a named missing-route error; only automatic
+  selection may fall back to a complete fused or split chain.
+
+`_gguf_gdn_prefill_session_mode()` resolves the mode before scratch allocation.
+Production scratch freezes it for Q/K capacity, liveness and dispatch; changing
+an environment value afterward must not redirect a live session. Compact Q/K
+uses K-head capacity while the noncompact peer route uses V-head capacity.
+Verify-gate diagnostics opt into superset scratch and mode alternation.
+FP16 recurrent-state writers have a separate typed-route contract; removing a
+selector must not silently reinterpret resident state or replace an exact
+control with reassociated arithmetic.
+
+**Decision needed:** choose which explicit comparison interfaces to maintain
+or move to a scoped diagnostic plan, separately from production defaults and
+arithmetic promotion. `chain_k2`, register-tree, tiled/LDS and noncompact peer
+routes have comparison callers; they are not unused merely because another
+route is automatic. Preserve the strict unfused fallback and named capability
+errors. The Q8 cluster8 rollback note and FP16-state entry elsewhere in this
+ledger overlap this decision but have not been disposed by moving this row.
+
+**Clearing action:** migrate selector parsing, backend metadata, registered
+prepare/recurrent/segmented siblings, session scratch planning, typed writers
+and all comparison CLI choices/provenance together. Run the session-mode,
+prefill-routing, GDN geometry and four comparison-harness test files and help
+routes. Before changing execution, run primitive exact/parent-parity and typed
+state checks plus real `LLM.generate()` at short, segmented and longer prompts,
+with selected-route attribution, reset/reuse and allocation cleanup. Any changed
+arithmetic requires its declared execution-profile gate; a historical negative
+result alone does not revoke an explicit implemented comparison. This decision
+changes no runtime, kernel, arithmetic or default; original results remain in
+the sweep inventory and immutable worklogs/artifacts.
