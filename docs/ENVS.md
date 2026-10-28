@@ -665,7 +665,6 @@ unset except for bisection.
 | `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH` | false | Opt-in graph capture for the native-spec target-verify chain (single-request verify_chain only). |
 | `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT` | true | Commits target state from the captured native-spec graph; requires the graph flag. |
 | `HIPENGINE_RESIDENT_TENSOR_VIEW_CACHE` | true | Caches resident tensor views across steps; `0` restores per-step view construction. |
-| `HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE` | true | Caches weight-tensor lookups in the PARO runner; `0` restores direct lookup. |
 | `HIPENGINE_QWEN35_DECODE_BATCHED_DIRECT_GATE` | true | Uses the direct-gate batched split-K decode kernel when `num_splits == 1`; `0` restores the indirect gate owner. |
 | `HIPENGINE_DFLASH_VERIFY_SYNC_PHASES` | false | Profiling-only: adds device-synchronized verifier sub-buckets for layer-family and LM-head/top1 attribution at the cost of extra stream synchronizations. |
 
@@ -1296,6 +1295,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE` is retired and ignored.
+  Each PARO decode state always memoizes immutable weight tensor views by
+  the caller's exact name. Missing names still raise the normalized key error;
+  this cache does not own device allocations.
 - `HIPENGINE_VERIFY_SCRATCH_CACHE` is retired and ignored.
   PARO verifier scratch objects are always cached by layer, row count and
   MLP policy. Hits still use generation stamps or explicit workspace checks;

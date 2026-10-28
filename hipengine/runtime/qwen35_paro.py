@@ -608,7 +608,6 @@ class Qwen35ParoDecodeState:
         # dispatcher.  Key: layer_kind ('linear_attention' | 'full_attention').
         # Populated on first matching call from run_moe_c1_fp16.
         self._moe_c1_dispatch_cache: object | None = None  # MoeC1DispatchCache
-        self._tensor_lookup_cache_enabled = _weight_tensor_lookup_cache_enabled()
         self._tensor_lookup_cache: dict[str, Tensor] = {}
         shared_prefix = f"layers.{self.layer_weights.layer_id}.mlp.shared_expert"
         tensors = self.layer_weights.weights.tensors
@@ -624,14 +623,12 @@ class Qwen35ParoDecodeState:
         return self.layer_weights.config
 
     def tensor(self, name: str) -> Tensor:
-        if self._tensor_lookup_cache_enabled:
-            cached = self._tensor_lookup_cache.get(name)
-            if cached is not None:
-                return cached
+        cached = self._tensor_lookup_cache.get(name)
+        if cached is not None:
+            return cached
         normalized = normalize_qwen35_weight_name(name)
         tensor = self.layer_weights.weights.tensors[normalized].tensor
-        if self._tensor_lookup_cache_enabled:
-            self._tensor_lookup_cache[name] = tensor
+        self._tensor_lookup_cache[name] = tensor
         return tensor
 
     def has_tensor(self, name: str) -> bool:
@@ -10904,10 +10901,6 @@ def _force_small_batch_shared_expert(force: bool = False) -> bool:
 def _env_int(name: str, default: int, *aliases: str) -> int:
     value = _env_value(name, *aliases)
     return default if value is None else int(value)
-
-
-def _weight_tensor_lookup_cache_enabled() -> bool:
-    return _env_flag("HIPENGINE_WEIGHT_TENSOR_LOOKUP_CACHE", True)
 
 
 def _full_attention_split_decode_min_context() -> int:
