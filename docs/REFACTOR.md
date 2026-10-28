@@ -3430,17 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--verify-dp4a` / `*-pmin05-dp4a` route (default OFF, opt-in accuracy-traded)
-- Added 2026-06-30. Bench flag `--verify-dp4a` (gguf_mtp_bench.py) + suite route
-  `resident-b1-probe-block-direct-cap32k-minrows2-pmin05-dp4a` enable llama.cpp-style
-  dp4a (q8_1) selected-expert verify GEMVs. **Default off; accuracy-degrading.**
-- Purpose: let users who accept llama's precision loss get max accuracy-traded MTP
-  perf (~61.6 tok/s / 1.13x B5). FAILS the ja correctness gate (greedy top-1 0.700 <
-  0.90). Does NOT match llama HIP MTP (67.3) — dp4a is necessary but not sufficient.
-- Remove when: either a Vulkan backend supersedes the perf goal, or the project
-  decides to drop dp4a experimentation entirely. Until then it is the documented
-  opt-in for the dp4a/accuracy tradeoff. See docs/campaigns/MTP-LLAMACPP-PARITY.md "COFFIN NAIL".
-
 ## `--llama-compat` / `llama-compat*` routes (default OFF, semantic diagnostic)
 - Added 2026-06-30. Bench flag `--llama-compat` forces the closest hipEngine
   replica of llama.cpp MTP semantics: B2, `draft_p_min=0`, full draft vocab,
@@ -11957,7 +11946,7 @@ Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8 GPU parity
 files and public generation with route attribution, reset/reuse and cleanup.
 Original historical results remain in the sweep inventory and artifacts.
 
-### R0281-SELECTED-DP4A — Explicit activation-adapter ownership
+### R0281-SELECTED-DP4A / R0283 — Explicit activation-adapter ownership
 
 `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`,
 `HIPENGINE_GGUF_T16_SELECTED_DP4A` and
@@ -11970,6 +11959,15 @@ BF16 path. Split dual calls and supported fallback Q5/raw down calls use
 caller-owned q8_1 workspace; registered exact singleton variants take
 precedence over the optional Q5 adapter. Mandatory X8 adapters have separate
 layout contracts.
+
+R0283's `--verify-dp4a` benchmark flag enables these same three selectors before
+loading. The suite's default route plus `-dp4a` adds only that flag; it neither
+selects compatibility semantics nor changes the suite's budget set. Omission
+and `--no-verify-dp4a` do not clear inherited adapter values. This is an explicit
+arithmetic comparison, not an unused rollback or an automatic product default.
+Historical Japanese-quality failures and timing comparisons are preserved in
+`docs/archive/MTP-LLAMACPP-PARITY-HISTORY.md` and the sweep inventory; they are
+not current measurements of every composition using the shared primitives.
 
 **Decision needed:** preserve these diagnostics or replace ambient selectors
 with an explicit caller-owned adapter plan across compatibility generation,

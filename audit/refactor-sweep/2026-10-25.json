@@ -8451,23 +8451,25 @@
       "start_line": 6349,
       "end_line": 6359,
       "sha256": "67d42547a9820f6daaa564c78ea5443d26864336753eb1cf2ee47c89c9caafca",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-selected-adapter-ownership",
+      "evidence": [
+        "Consolidated duplicate into bottom R0281-SELECTED-DP4A/R0283. Live bench flag enables3optional raw/T16 controls;omitted/no leaves inherited values unchanged. Named pmin05-dp4a suite only adds switch,no compat semantics/budget change. Added9ambient/CLI boundary cases+help and suite contract;RED1fail9pass,GREEN321focused. CLI now describes arithmetic/ambient behavior and links immutable history instead of stale rates;ENVS corrects harness-only claim. No execution/default/math/device/performance change. Worklog: worklog/entries/20261028T213055.247647Z-cleanup-refactor-r0283-selected-dp4a-7304aa.md."
+      ],
       "subitems": [
         {
           "line": 6350,
           "text": "- Added 2026-06-30. Bench flag `--verify-dp4a` (gguf_mtp_bench.py) + suite route",
-          "status": "pending"
+          "status": "deferred-existing-selected-adapter-ownership"
         },
         {
           "line": 6353,
           "text": "- Purpose: let users who accept llama's precision loss get max accuracy-traded MTP",
-          "status": "pending"
+          "status": "historical-measurements-preserved-not-current-claim"
         },
         {
           "line": 6356,
           "text": "- Remove when: either a Vulkan backend supersedes the perf goal, or the project",
-          "status": "pending"
+          "status": "superseded-by-caller-owned-adapter-clearing-action"
         }
       ]
     },

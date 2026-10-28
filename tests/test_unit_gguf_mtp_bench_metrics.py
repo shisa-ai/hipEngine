@@ -292,6 +292,47 @@ def test_retired_shared_q8_option_is_rejected(option: str) -> None:
     assert excinfo.value.code == 2
 
 
+@pytest.mark.parametrize("option", [None, "--no-verify-dp4a", "--verify-dp4a"])
+@pytest.mark.parametrize("inherited", [None, "0", "1"])
+def test_verify_dp4a_only_enables_selected_adapters_and_preserves_ambient_values(
+    monkeypatch, option, inherited,
+) -> None:
+    names = (
+        "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A",
+        "HIPENGINE_GGUF_T16_SELECTED_DP4A",
+        "HIPENGINE_GGUF_RAW_SELECTED_DP4A",
+    )
+    monkeypatch.setattr(bench.os, "environ", dict(bench.os.environ))
+    for name in names:
+        if inherited is None:
+            bench.os.environ.pop(name, None)
+        else:
+            bench.os.environ[name] = inherited
+
+    class ReachedHIPBoundary(Exception):
+        pass
+
+    def stop_before_runtime():
+        raise ReachedHIPBoundary
+
+    monkeypatch.setattr(bench, "_hip_available", stop_before_runtime)
+    argv = [] if option is None else [option]
+    assert build_arg_parser().parse_args(argv).verify_dp4a is (option == "--verify-dp4a")
+    with pytest.raises(ReachedHIPBoundary):
+        bench.main(argv)
+    expected = "1" if option == "--verify-dp4a" else inherited
+    assert [bench.os.environ.get(name) for name in names] == [expected] * len(names)
+
+
+def test_verify_dp4a_help_names_the_arithmetic_change_without_historical_rates() -> None:
+    parser = build_arg_parser()
+    help_text = next(action.help for action in parser._actions if action.dest == "verify_dp4a")
+    assert "q8_1" in help_text
+    assert "accuracy-traded" in help_text
+    assert "61.6" not in help_text
+    assert "67.3" not in help_text
+
+
 def test_dense_q8_f32_dp4a_flag_parses_default_off() -> None:
     args = build_arg_parser().parse_args([])
     assert args.verify_dense_q8_dp4a_f32 is False

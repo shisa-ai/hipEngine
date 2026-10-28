@@ -993,11 +993,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=False,
         help=(
-            "OPT-IN, DEFAULT OFF, ACCURACY-DEGRADING: enable llama.cpp-style dp4a (q8_1) "
-            "selected-expert verify GEMVs (sets the HIPENGINE_GGUF_*_SELECTED_DP4A flags). "
-            "Trades correctness for speed: FAILS the ja correctness gate (greedy top-1 0.700 "
-            "< 0.90 vs cpu_reference; code 1.000). For users who want max accuracy-traded MTP "
-            "perf. Best measured: ~61.6 tok/s / 1.132x AR (B5) - still below llama HIP 67.3."
+            "Explicit accuracy-traded diagnostic: enable q8_1 activation quantization plus dp4a "
+            "selected-expert verify GEMVs by setting the raw/T16 selected-adapter environment "
+            "controls. This changes arithmetic and is not the exact reference route. Default "
+            "off; omission or --no-verify-dp4a leaves inherited adapter settings unchanged. "
+            "Historical quality and timing comparisons: docs/archive/MTP-LLAMACPP-PARITY-HISTORY.md."
         ),
     )
     parser.add_argument(

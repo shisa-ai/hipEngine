@@ -150,6 +150,14 @@ def test_default_route_cli_packages_children_without_a_selector(
     assert not list(raw_root.iterdir())
 
 
+def test_named_selected_dp4a_comparison_only_adds_the_adapter_switch() -> None:
+    base = suite.MTP_ROUTES[suite.DEFAULT_MTP_ROUTE]
+    route = suite.DEFAULT_MTP_ROUTE + "-dp4a"
+    assert suite.MTP_ROUTES[route] == [*base, "--verify-dp4a"]
+    assert route not in suite.MTP_ROUTE_DEFAULT_BUDGETS
+    assert "--verify-dp4a" not in base
+
+
 def test_suite_default_route_enables_b2_block_verify() -> None:
     # the default must carry --target-block-min-rows 2 so B2 (3-row) block verify
     # amortizes instead of falling to serial; that is part of the retained win.
