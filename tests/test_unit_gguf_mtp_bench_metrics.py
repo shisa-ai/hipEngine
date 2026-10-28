@@ -56,6 +56,8 @@ def test_default_mtp_policy_is_b1_root_top40_speed_first() -> None:
         "--no-mtp-draft-warmup",
         "--target-graph-verify",
         "--no-target-graph-verify",
+        "--target-graph-batched-verify",
+        "--no-target-graph-batched-verify",
     ],
 )
 def test_retired_warmup_and_target_graph_selectors_are_rejected(option, capsys, monkeypatch) -> None:
@@ -762,10 +764,25 @@ def test_arg_parser_allows_b3_device_kv_context_replay() -> None:
     assert args.mtp_context_replay is True
 
 
-def test_arg_parser_exposes_batched_target_graph_verify_diagnostic() -> None:
-    args = build_arg_parser().parse_args(["--target-graph-batched-verify"])
-
-    assert args.target_graph_batched_verify is True
+def test_benchmark_uses_one_step_graph_without_generated_history() -> None:
+    tree = ast.parse(inspect.getsource(bench.main))
+    captures = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "capture_decode_graph"
+    ]
+    assert len(captures) == 1
+    keywords = {arg.arg: arg.value for arg in captures[0].keywords}
+    assert isinstance(keywords["steps_per_replay"], ast.Constant)
+    assert keywords["steps_per_replay"].value == 1
+    assert isinstance(keywords["record_steps"], ast.Constant)
+    assert keywords["record_steps"].value == 0
+    assert isinstance(keywords["record_hidden_seeds"], ast.Constant)
+    assert keywords["record_hidden_seeds"].value is False
+    assert not [
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+        and node.attr in {"read_generated_token_ids", "read_generated_hidden_seeds"}
+    ]
 
 
 def test_target_block_commit_invalidates_preexisting_target_graph() -> None:
@@ -1148,7 +1165,6 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
             "32768",
             "--no-resident-mtp-draft",
             "--no-mtp-device-kv-cache",
-            "--target-graph-batched-verify",
             "--no-target-block-verify",
             "--target-block-verify-mode",
             "native",
@@ -1183,7 +1199,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.mtp_context_replay is True
     assert args.mtp_device_kv_cache is True
     assert not hasattr(args, "target_graph_verify")
-    assert args.target_graph_batched_verify is False
+    assert not hasattr(args, "target_graph_batched_verify")
     assert args.target_block_verify is True
     assert args.target_block_verify_mode == "bulk"
     assert args.target_block_min_rows == 2

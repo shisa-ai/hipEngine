@@ -8128,7 +8128,8 @@
         {
           "line": 6280,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --target-graph-batched-verify` full-accept-required verifier graph replay experiment. | Default-off; records generated target IDs and FP32 hidden seeds for a whole strict verifier block. The 2026-06-25 merge-sort B3 smoke stayed exact but was speed-neutral/slower because target kernels still execute sequentially inside the graph and hidden-row recording adds overhead. | Remove unless a true rollback-safe block verifier starts using the recorded hidden rows, or promote only after full-suite evidence shows a speed win over one-step graph replay without requiring prompt-specific full acceptance. |",
-          "status": "pending"
+          "status": "fixed-gguf-full-accept-graph-experiment-retired",
+          "evidence": "Retire unused positive/negative CLI control and full-accept-only branch. Keep one-step target graph replay, eager divergence/capture fallback, rollback-safe block/native owners and generic graph recording APIs. Artifact field remains false. Four RED cases and focused graph/native/benchmark contracts cover retirement. Worklog: worklog/entries/20261028T151513.846103Z-cleanup-refactor-r0281-gguf-batched-graph-8847d2.md."
         },
         {
           "line": 6281,

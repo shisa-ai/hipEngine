@@ -14,7 +14,13 @@ measured cycles and requests capped target graph verification outside its
 `--llama-compat` block-verifier route. Capture failure and token-divergence
 handling still use eager verification. The `--mtp-draft-warmup` and
 `--target-graph-verify` CLI switches, including their `--no-` forms, are
-removed; dated commands below may record the former controls.
+removed; dated commands below may record the former controls. The benchmark's
+full-accept-only `--target-graph-batched-verify` experiment is also removed,
+including its negative form. Target decode-graph verification uses one step
+per replay without generated-ID/hidden-history recording; the
+`target_graph_batched_verify` artifact field is always false. Generic graph
+recording APIs, rollback-safe block verification and native target-cycle
+routes are unchanged.
 
 `--mtp-context-replay` captures bulk target prompt hidden rows and shifts them
 for llama.cpp-style draft prompt priming. With `--mtp-device-kv-cache`, the

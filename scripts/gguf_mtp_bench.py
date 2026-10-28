@@ -888,15 +888,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--use-wmma-prefill", action=argparse.BooleanOptionalAction, default=True, help="Request WMMA prefill for the resident GGUF session (default: true)")
     parser.add_argument("--use-gemv-decode", action=argparse.BooleanOptionalAction, default=True, help="Request GEMV decode for the resident GGUF session (default: true)")
     parser.add_argument(
-        "--target-graph-batched-verify",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Diagnostic only: replay one full strict verifier block per cycle and record generated IDs plus "
-            "FP32 hidden seeds. Requires top-1 strict acceptance; aborts if the whole draft prefix is not accepted."
-        ),
-    )
-    parser.add_argument(
         "--target-block-verify",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1616,7 +1607,6 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.mtp_context_replay = True
     args.mtp_device_kv_cache = True
 
-    args.target_graph_batched_verify = False
     args.target_block_verify = True
     args.target_block_verify_mode = "bulk"
     args.target_block_min_rows = 2
@@ -2178,7 +2168,7 @@ def main(argv: list[str] | None = None):
         mtp_draft_warmup_ms = (time.perf_counter() - t_warmup0) * 1000
 
         target_graph_verify_requested = not args.llama_compat
-        target_graph_steps_per_replay = int(args.draft_n_max) + 1 if args.target_graph_batched_verify else 1
+        target_graph_steps_per_replay = 1
         target_graph_max_replay_steps = int(args.cycles) * (int(args.draft_n_max) + 1)
         target_graph_context_cap = int(seq_position) + target_graph_max_replay_steps
         target_graph_verify_enabled = False
@@ -2192,12 +2182,12 @@ def main(argv: list[str] | None = None):
             try:
                 target_graph = session.capture_decode_graph(
                     position=seq_position,
-                    steps_per_replay=target_graph_steps_per_replay,
+                    steps_per_replay=1,
                     max_replay_steps=target_graph_max_replay_steps,
-                    record_steps=target_graph_max_replay_steps if args.target_graph_batched_verify else 0,
+                    record_steps=0,
                     attention_max_context_len=target_graph_context_cap,
                     capture_hidden_seed_fp32=True,
-                    record_hidden_seeds=bool(args.target_graph_batched_verify),
+                    record_hidden_seeds=False,
                 )
                 target_graph_verify_enabled = True
             except Exception as exc:  # pragma: no cover - graph capture failures depend on runtime state
@@ -2622,7 +2612,6 @@ def main(argv: list[str] | None = None):
             redraft_top10_by_depth: list[list[int]] = list(draft_top10_tokens)
             redraft_start_depth: int | None = None
             redraft_ms = 0.0
-            batched_verify_used = False
             block_verify_used = False
             native_spec_target_cycle_used = False
             native_spec_device_accept_commit_used = False
@@ -3278,51 +3267,7 @@ def main(argv: list[str] | None = None):
                         target_graph_verify_enabled,
                         target_graph_verify_fallback_reason,
                     ) = invalidate_target_graph_after_block_verify(target_graph)
-            can_batched_verify = (
-                bool(args.target_graph_batched_verify)
-                and target_graph_verify_enabled
-                and target_graph is not None
-                and int(verify_input_token) == current_device_token
-                and cycle_root_topk_accept == 1
-                and cycle_sibling_topk_accept == 1
-                and not args.topk_branch_redraft
-                and len(draft_tokens) == int(cycle_draft_n_max)
-                and int(target_graph.steps_per_replay) == len(draft_tokens) + 1
-            )
-            if (not block_verify_used) and can_batched_verify:
-                t0 = time.perf_counter()
-                record_start = int(target_graph.replayed_steps)
-                replay_steps = len(draft_tokens) + 1
-                target_graph.replay(replay_steps)
-                record_target_verify(
-                    replay_steps,
-                    layer_passes=replay_steps,
-                    graph_rows=replay_steps,
-                )
-                recorded_tokens = target_graph.read_generated_token_ids(record_start + replay_steps)[record_start:record_start + replay_steps]
-                recorded_hidden = target_graph.read_generated_hidden_seeds(start=record_start, count=replay_steps)
-                t1 = time.perf_counter()
-                elapsed_ms = (t1 - t0) * 1000
-                add_cycle_stage("target_batched_graph_verify", elapsed_ms)
-                ar_decode_ms += elapsed_ms
-                target_tokens.extend(int(token) for token in recorded_tokens)
-                target_hidden_seeds.extend(
-                    np.ascontiguousarray(recorded_hidden[row:row + 1], dtype=np.float32)
-                    for row in range(replay_steps)
-                )
-                current_device_token = int(target_tokens[-1])
-                batched_verify_used = True
-                if target_tokens[:len(draft_tokens)] != draft_tokens:
-                    raise RuntimeError(
-                        "batched target graph verify requires full strict draft acceptance; "
-                        "rerun without --target-graph-batched-verify for mismatch diagnostics"
-                    )
-            elif not block_verify_used:
-                if target_graph is not None and int(target_graph.steps_per_replay) != 1:
-                    target_graph.close()
-                    target_graph = None
-                    target_graph_verify_enabled = False
-                    target_graph_verify_fallback_reason = "batched verify conditions not met; fell back to eager step"
+            if not block_verify_used:
                 while True:
                     t0 = time.perf_counter()
                     used_graph_step = False
@@ -3878,7 +3823,7 @@ def main(argv: list[str] | None = None):
                 "target_hidden_seed_rows": target_hidden_seed_rows,
                 "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings and block_verify_used),
                 "target_b1_branch_safe_block_verify": bool(b1_branch_safe_block_verify_used),
-                "target_graph_batched_verify": bool(batched_verify_used),
+                "target_graph_batched_verify": False,
                 "target_verify_layer_passes": int(target_verify_layer_passes),
                 "target_verify_rows_evaluated": int(target_verify_rows_evaluated),
                 "target_verify_serial_rows": int(target_verify_serial_rows),
@@ -3938,7 +3883,7 @@ def main(argv: list[str] | None = None):
         f"Target graph verify: requested={target_graph_verify_requested} "
         f"effective={target_graph_verify_enabled} steps_per_replay={target_graph_steps_per_replay} "
         f"max_replay_steps={target_graph_max_replay_steps} context_cap={target_graph_context_cap} "
-        f"batched={args.target_graph_batched_verify} block_verify={args.target_block_verify}"
+        f"batched=False block_verify={args.target_block_verify}"
     )
     if target_graph_verify_fallback_reason:
         print(f"Target graph verify fallback: {target_graph_verify_fallback_reason}")
@@ -4134,7 +4079,7 @@ def main(argv: list[str] | None = None):
             "target_graph_verify": bool(target_graph_verify_requested),
             "target_graph_verify_effective": bool(target_graph_verify_enabled),
             "target_graph_steps_per_replay": int(target_graph_steps_per_replay),
-            "target_graph_batched_verify": bool(args.target_graph_batched_verify),
+            "target_graph_batched_verify": False,
             "target_block_verify": bool(args.target_block_verify),
             "target_block_verify_mode": str(args.target_block_verify_mode),
             "target_block_wmma_prefill": bool(args.target_block_wmma_prefill),
