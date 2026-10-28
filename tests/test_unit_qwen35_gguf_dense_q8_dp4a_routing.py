@@ -108,6 +108,50 @@ def test_dense_q8_dp4a_f32_route_is_separately_gated(monkeypatch: pytest.MonkeyP
     assert qgr._gguf_dense_q8_dp4a_f32_enabled() is True
 
 
+@pytest.mark.parametrize("f32_enabled", [False, True])
+@pytest.mark.parametrize("pair_enabled", [False, True])
+@pytest.mark.parametrize("f32_outputs", [False, True])
+def test_f32_dense_q8_selector_is_independent_of_pair_and_output_controls(
+    monkeypatch: pytest.MonkeyPatch, f32_enabled: bool, pair_enabled: bool, f32_outputs: bool,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_F32", str(int(f32_enabled)))
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", str(int(pair_enabled)))
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS", str(int(f32_outputs)))
+    calls = []
+    monkeypatch.setattr(qgr, "gguf_q4_k_quantize_f32_q8_1", lambda *args, **kwargs: calls.append("quantize"))
+    for symbol in (
+        "gguf_q8_0_dp4a_rowtile4_gemv_bf16_bf16_out",
+        "gguf_q8_0_dp4a_rowtile4_gemv_f32_f32_out",
+        "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_bf16_bf16_out",
+        "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out",
+        "gguf_q8_0_dp4a_triple_split_rowtile4_gemv_bf16_bf16_out",
+    ):
+        monkeypatch.setattr(qgr, symbol, lambda *args, symbol=symbol, **kwargs: calls.append(symbol))
+    scratch = SimpleNamespace(moe_q8_1=_buf(400, nbytes=2 * (256 // 32) * 36))
+    kwargs = dict(rows=2, in_features=256, stream=7, runtime=SimpleNamespace())
+    results = [
+        qgr._try_launch_dense_q8_single_dp4a_f32(_weight(), 100, 200, scratch, out_features=256, **kwargs),
+        qgr._try_launch_dense_q8_single_dp4a_f32_out(_weight(), 100, 200, scratch, out_features=256, **kwargs),
+        qgr._try_launch_dense_q8_triple_dp4a_f32(
+            _weight(), _weight(), _weight(), 100, 200, 300, 350, scratch,
+            out_features_a=256, out_features_b=256, out_features_c=256, **kwargs,
+        ),
+        qgr._try_launch_dense_q8_pair_dp4a_f32(
+            _weight(), _weight(), 100, 200, 300, scratch,
+            out_features_a=256, out_features_b=256, **kwargs,
+        ),
+        qgr._try_launch_dense_q8_pair_dp4a_f32_out(
+            _weight(), _weight(), 100, 200, 300, scratch,
+            out_features_a=256, out_features_b=256, **kwargs,
+        ),
+    ]
+
+    assert results == [f32_enabled, f32_enabled, f32_enabled, pair_enabled, pair_enabled and f32_outputs]
+    assert calls.count("quantize") == sum(results)
+    assert len(calls) == 2 * sum(results)
+
+
 def test_dense_q8_dp4a_route_quantizes_once_and_launches_pair_rowtile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DENSE_Q8_DP4A", "1")
     calls: list[tuple[str, tuple, dict]] = []
