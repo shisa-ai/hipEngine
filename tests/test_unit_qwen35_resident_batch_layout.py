@@ -403,6 +403,12 @@ def test_qwen35_resident_batch_layout_is_batch_shaped_with_slot0_aliases() -> No
     assert layout.slot0_full_kv_scale_shape == (4, 256, 2)
 
 
+def _init_resident_view_caches(session):
+    session._slot_linear_state_cache = {}
+    session._slot_full_cache_cache = {}
+    session._full_cache_all_slots_cache = {}
+
+
 def _resident_allocation_session(*, storage_dtype: str = "bf16", scale_dtype: DType = DType.FP16):
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
@@ -427,10 +433,7 @@ def _resident_allocation_session(*, storage_dtype: str = "bf16", scale_dtype: DT
     session.full_caches = {}
     session.full_cache_scales = {}
     session.full_cache_scale_metadata = {}
-    session._resident_tensor_view_cache_enabled_value = True
-    session._slot_linear_state_cache = {}
-    session._slot_full_cache_cache = {}
-    session._full_cache_all_slots_cache = {}
+    _init_resident_view_caches(session)
     session.buffers = []
     session.allocations = []
     captured: list[tuple[DeviceBuffer, tuple[int, ...], np.dtype]] = []
@@ -1576,6 +1579,7 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_per_segment_linea
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
+    _init_resident_view_caches(session)
     session.config = SimpleNamespace(hidden_size=4, layer_types=("linear_attention",))
     session.prefill_hidden = Tensor.from_handle(0x1000, (3, 4), DType.FP16, device)
     session.hidden_nbytes = 4 * DType.FP16.itemsize
@@ -6832,6 +6836,7 @@ def test_qwen35_resident_bulk_linear_commit_preserves_per_layer_fallback(monkeyp
 def test_qwen35_resident_session_slot_views_offset_batch_state() -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    _init_resident_view_caches(session)
     session.device = device
     session.max_batch_size = 3
     session.max_sequence_length = 16
@@ -6903,6 +6908,7 @@ def test_qwen35_resident_session_slot_views_offset_batch_state() -> None:
 def test_qwen35_resident_linear_batch_decode_uses_state_indices_for_c2_slots() -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    _init_resident_view_caches(session)
     session.device = device
     session.max_batch_size = 3
     session.hidden_nbytes = 8 * DType.FP16.itemsize
@@ -7333,6 +7339,7 @@ def test_qwen35_resident_linear_batch_decode_selected_c1_projection_state_is_non
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE", "1")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    _init_resident_view_caches(session)
     session.device = device
     session.max_batch_size = 3
     session.hidden_nbytes = 8 * DType.FP16.itemsize
@@ -7738,6 +7745,7 @@ def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR", "1")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    _init_resident_view_caches(session)
     session.device = device
     session.max_batch_size = 3
     session.hidden_nbytes = 8 * DType.FP16.itemsize
@@ -7886,6 +7894,7 @@ def test_qwen35_resident_full_attention_c1_scratch_recanonicalizes_after_batch()
 def test_qwen35_resident_linear_batch_decode_uses_single_row_c1_path() -> None:
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    _init_resident_view_caches(session)
     session.device = device
     session.max_batch_size = 1
     session.hidden_nbytes = 8 * DType.FP16.itemsize
@@ -7967,6 +7976,7 @@ def test_qwen35_resident_linear_batch_decode_can_force_rows1_per_row_probe(monke
     monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR", "1")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    _init_resident_view_caches(session)
     session.device = device
     session.max_batch_size = 1
     session.hidden_nbytes = 8 * DType.FP16.itemsize
