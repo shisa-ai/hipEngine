@@ -137,6 +137,7 @@ _WEIGHT_NAMES = (
 
 _ENV_NAMES = (
     "HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION",
+    "HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT",
     "HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE",
     "HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE",
     "HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED",
@@ -652,6 +653,43 @@ def test_snapshot_round_trip_carries_hidden_validity(harness: _Harness) -> None:
         proposer.device_candidate_token_ids()
     with pytest.raises(RuntimeError, match="final hidden"):
         proposer.advance_with_previous_hidden(input_token=16, position=13, need_result=False)
+
+
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("batched", [False, True])
+@pytest.mark.parametrize("routes", [1, 2, 4])
+def test_expert_accumulation_always_initializes_each_advance(
+    harness: _Harness, monkeypatch, retired, batched, routes,
+) -> None:
+    if retired is not None:
+        monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT", retired)
+    monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_ROUTE_BATCHED_EXPERT", str(int(batched)))
+    config = _fake_config()
+    config.num_experts_per_tok = routes
+    monkeypatch.setattr(mtp_native, "qwen35_paro_config_from_hf", lambda config_hf: config)
+    proposer = harness.make()
+    for position, stream in ((9, 7), (10, 0)):
+        harness.rec.clear()
+        harness.runtime.memsets.clear()
+        proposer.advance_with_target_hidden(
+            input_token=101, target_hidden_ptr=_TARGET_HIDDEN_PTR,
+            position=position, need_result=False, stream=stream,
+        )
+        assert not [call for call in harness.runtime.memsets if call[0] == proposer.moe_accum_buf.ptr]
+        name = "mtp_accumulate_routes_bf16_to_f32" if batched else "mtp_accumulate_route_bf16_to_f32"
+        calls = [(args, kwargs) for kernel, args, kwargs in harness.rec.kernels if kernel == name]
+        if batched:
+            assert len(calls) == 1
+            assert calls[0][0][3:5] == (routes, proposer.hidden)
+            assert "mtp_accumulate_route_bf16_to_f32" not in harness.rec.names()
+        else:
+            assert [args[4] for args, _ in calls] == list(range(routes))
+            assert [kwargs["reset_output"] for _, kwargs in calls] == [True] + [False] * (routes - 1)
+            assert "mtp_accumulate_routes_bf16_to_f32" not in harness.rec.names()
+        assert all(args[2] == proposer.moe_accum_buf.ptr and kwargs["stream"] == stream for args, kwargs in calls)
+        names = harness.rec.names()
+        assert max(index for index, kernel in enumerate(names) if kernel == name) < names.index("mtp_accumulate_sigmoid_gate_bf16_to_f32")
+        assert names.index("mtp_accumulate_sigmoid_gate_bf16_to_f32") < names.index("mtp_finalize_f32_to_bf16")
 
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])

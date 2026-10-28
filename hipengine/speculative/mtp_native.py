@@ -114,10 +114,6 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "off", "no"}
 
 
-def _route0_accum_init_enabled() -> bool:
-    return _env_flag("HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT", True)
-
-
 def _direct_kv_write_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", True)
 
@@ -1318,9 +1314,6 @@ class NativeMtpChainProposer:
                 library=self.mtp_lib,
             )
         else:
-            route0_init = _route0_accum_init_enabled()
-            if not route0_init:
-                self.runtime.memset_async(self.moe_accum_buf.ptr, 0, self.moe_accum_buf.nbytes, int(stream))
             for route in range(self.top_k):
                 dflash_dense_bf16_to_bf16_expert(
                     self.moe_in_buf.ptr,
@@ -1357,7 +1350,7 @@ class NativeMtpChainProposer:
                     self.moe_accum_buf.ptr,
                     self.hidden,
                     route,
-                    reset_output=route0_init and route == 0,
+                    reset_output=route == 0,
                     threads=256,
                     stream=stream,
                     library=self.mtp_lib,
