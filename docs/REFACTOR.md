@@ -3430,19 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--target-block-sync-stage-timings` (default OFF, attribution-only)
-- Added 2026-07-01. Bench flag inserts `hipDeviceSynchronize()` boundaries inside
-  the target block verifier when `--record-cycle-stage-timings` is enabled. Suite
-  route `llama-compat-device-chain-dp4a-allsync` combines it with resident draft
-  sync timings for one-pass draft+verifier attribution.
-- Purpose: split `target_block_linear_attn_layers` and
-  `target_block_full_attn_layers` into operation buckets (`norm_qkv_gate`,
-  `chain_gdn`, selected-MoE expert gate/up/down, shared expert, combine, and
-  full-attn KV/attention/output sections). The flag changes timing by adding
-  synchronization and is not a performance path.
-- Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
-  same operation split, or after the llama.cpp replication lane is closed.
-
 ## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
@@ -12056,7 +12043,7 @@ real provider requests with variant attribution, reset/reuse and teardown;
 arithmetic changes need their execution-profile checks. Historical comparisons
 remain in the sweep inventory and original artifacts.
 
-### R0285 — Resident draft synchronized profiling ownership
+### R0285 / R0286 — Draft and target synchronized profiling ownership
 
 `--resident-mtp-draft-sync-stage-timings` is an explicit diagnostic passed to
 `Qwen35GGUFResidentMTPDraftRunner.sync_stage_timings`, not a product rollback.
@@ -12071,22 +12058,35 @@ instrumentation off. Synchronized Q6 top-1 uses separate stage1 and
 stage2/gather launches for attribution; normal execution keeps its composite
 wrapper. These instrumented buckets are not uninstrumented throughput.
 
+`--target-block-sync-stage-timings` passes the target verifier's separate
+`sync_stage_timings` control. It requires block verification and cycle timing
+collection in `gguf_mtp_bench.py`; `gguf_mtp_verifier_rocprof.py` forwards
+`--sync-stage-timings` and `--record-stage-timings` independently. Target
+boundaries drain the **whole device**, even when launches use a nonzero stream.
+Selected-MoE timing additionally requires a nonempty stage prefix and splits
+activation quantization from GEMV. The native target graph rejects synchronized
+host timing rather than inserting these drains into capture/replay.
+
 HIP-event stage timing is a separate diagnostic. It preserves queued work and
 resolves events after the final drain; rocprof adds kernel/host evidence with
 another scope. Their existence does not establish an equivalent replacement
 for synchronized per-operation buckets or justify deleting strict primitives.
 
-**Decision needed:** retain the explicit synchronized comparison, or replace
-it with one profiling policy across runner, benchmark cache key/provenance,
-profiler parent/child and named `draftsync`/`allsync` suite routes. Coordinate
-with target attribution rather than changing either execution mode silently.
+**Decision needed:** retain the explicit synchronized comparisons, or replace
+them with one profiling policy across draft/target runners, benchmark cache
+key/provenance, profiler parent/child and named `draftsync`/`allsync` suite
+routes. Preserve the distinction between device-wide target boundaries and
+stream-aware draft boundaries rather than changing either mode silently.
 Keep instrumentation off by default; do not infer retirement from a campaign's
 closed status or promote diagnostic synchronization to remove a switch.
 
 **Clearing action:** demonstrate matching bucket/phase coverage and output
 under the proposed replacement, including stream zero/nonzero, absent/present
 sink, multiple depths, Q6 raw/X8 top-1 staging and event failure/close paths.
-Run resident-draft, metrics/suite and draft-profiler unit tests plus real
-proposal/commit/reset/close comparisons. Runtime wiring changes need public
-and compatibility requests with output and selected instrumentation recorded;
-any timing claim compares complete windows under a matched protocol.
+Cover target linear/full-attention and exact/DP4A selected-MoE buckets, empty
+prefixes, direct state commit and the native graph's host-timing rejection.
+Run resident-draft, target timing/selected-MoE, metrics/suite and both profiler
+unit tests plus real proposal/verify/commit/reset/close comparisons. Runtime
+wiring changes need public and compatibility requests with output and selected
+instrumentation recorded; any timing claim compares complete windows under a
+matched protocol.

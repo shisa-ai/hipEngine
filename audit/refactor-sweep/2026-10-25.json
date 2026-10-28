@@ -8535,23 +8535,25 @@
       "start_line": 6416,
       "end_line": 6428,
       "sha256": "27d678efa947b76f105e6b10d4bfc9a80444ddddf2fa67111cedd3b748a12402",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-draft-target-profiling-ownership",
+      "evidence": [
+        "Target synchronized timing remains a live explicit device-wide diagnostic, not a product rollback. Added 72 selected-MoE flag/sink/prefix/stream cases, eight real child-wiring cases with mocked session and direct commit, and native-graph rejection before loading. Focused timing/profiler/metrics/suite bundle: 446 passed. Consolidated replacement decision with bottom R0285/R0286; runtime/default/arithmetic unchanged. Worklog: worklog/entries/20261028T220545.064019Z-cleanup-refactor-r0286-target-timing-c74590.md."
+      ],
       "subitems": [
         {
           "line": 6417,
           "text": "- Added 2026-07-01. Bench flag inserts `hipDeviceSynchronize()` boundaries inside",
-          "status": "pending"
+          "status": "audited-flag-sink-and-prefix-device-wide-diagnostic"
         },
         {
           "line": 6421,
           "text": "- Purpose: split `target_block_linear_attn_layers` and",
-          "status": "pending"
+          "status": "live-operation-attribution-preserved"
         },
         {
           "line": 6426,
           "text": "- Remove when: a lower-overhead verifier profiler/rocprof harness can produce the",
-          "status": "pending"
+          "status": "deferred-existing-equivalent-profiling-policy-decision"
         }
       ]
     },

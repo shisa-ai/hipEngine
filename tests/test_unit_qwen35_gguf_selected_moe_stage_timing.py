@@ -26,6 +26,60 @@ def _weight(quant_key: str):
     return Weight()
 
 
+@pytest.mark.parametrize("kind", ["pair_exact", "pair_dp4a", "linear_dp4a"])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("record", [False, True])
+@pytest.mark.parametrize("prefix", [None, "", "target_moe"])
+@pytest.mark.parametrize("stream", [0, 7])
+def test_selected_sync_timing_requires_flag_sink_and_prefix(
+    monkeypatch, kind, enabled, record, prefix, stream,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", "1" if kind != "pair_exact" else "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "0")
+    calls = []
+
+    def capture(name):
+        def launch(*args, **kwargs):
+            calls.append((name, kwargs["stream"]))
+        return launch
+
+    for name in (
+        "gguf_q4_k_quantize_bf16_q8_1",
+        "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
+        "gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+        "gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out",
+    ):
+        monkeypatch.setattr(qgr, name, capture("quantize" if "quantize" in name else "gemv"))
+    timings = {} if record else None
+    runtime = _Runtime()
+    options = dict(
+        x_rows=2, rows=4, num_experts=256, in_features=2048,
+        out_features=512, q8_1_workspace_ptr=500, stream=stream, runtime=runtime,
+        stage_timings=timings, sync_stage_timings=enabled, stage_prefix=prefix,
+    )
+    if kind == "linear_dp4a":
+        qgr._launch_selected_raw_gguf_moe_linear(
+            _weight("gguf_q5_k_t16_v1"), 100, 200, 300, **options,
+        )
+    else:
+        assert qgr._launch_selected_raw_gguf_moe_pair(
+            _weight("gguf_q4_k_t16_v1"), _weight("gguf_q4_k_t16_v1"),
+            100, 200, 300, 400, **options,
+        )
+    stages = ["gemv"] if kind == "pair_exact" else ["quantize", "gemv"]
+    assert calls == [(stage, stream) for stage in stages]
+    active = enabled and record and bool(prefix)
+    # Target timing intentionally drains the device even for nonzero streams.
+    assert runtime.syncs == (len(stages) if active else 0)
+    if record:
+        expected = {f"{prefix}_gemv"}
+        if kind != "pair_exact":
+            expected.add(f"{prefix}_q8_quantize")
+        assert timings.keys() == (expected if active else set())
+        assert all(value >= 0 for value in timings.values())
+
+
 def test_selected_pair_dp4a_sync_timing_splits_quantize_and_gemv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", "1")
     calls: list[str] = []

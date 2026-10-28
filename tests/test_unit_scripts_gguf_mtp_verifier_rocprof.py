@@ -8,8 +8,10 @@ under `sys.base_prefix` - the conda env the venv is built on.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +22,85 @@ from scripts.gguf_mtp_verifier_rocprof import (
     _prepare_roctx_override,
     _roctx_candidates,
 )
+
+
+@pytest.mark.parametrize("record", [False, True])
+@pytest.mark.parametrize("sync", [False, True])
+@pytest.mark.parametrize("direct_commit", [False, True])
+def test_verifier_child_forwards_timing_controls_and_preserves_commit(
+    monkeypatch, tmp_path, record, sync, direct_commit,
+) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as target
+
+    calls, commits, markers = [], [], []
+
+    class Session:
+        position = 5
+        runtime = SimpleNamespace(device_synchronize=lambda: None)
+        last_verify_stage_timings_ms = {"target_moe_gemv": 1.25}
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def prefill(self, *args, **kwargs):
+            return SimpleNamespace(token_id=11)
+
+        def verify_target_block(self, inputs, **kwargs):
+            calls.append((inputs, kwargs))
+            self.position += len(inputs)
+            return SimpleNamespace(token_ids=[21] * len(inputs), linear_state_rows_captured=direct_commit)
+
+        def _commit_verify_linear_state_row(self, row, *, position):
+            commits.append((row, position))
+
+    monkeypatch.setattr(target, "Qwen35GGUFResidentSession", Session)
+    monkeypatch.setattr(profiler, "_apply_route_env", lambda args: None)
+    monkeypatch.setattr(profiler, "_Roctx", lambda: SimpleNamespace(
+        push=lambda name: markers.append(("push", name)), pop=lambda: markers.append(("pop", None)),
+    ))
+    output = tmp_path / "child.json"
+    argv = [
+        "gguf_mtp_verifier_rocprof.py", "--child", "--mode", "block-verify",
+        "--steps", "1", "--warmup", "0", "--block-rows", "3",
+        "--child-json", str(output),
+    ]
+    if record:
+        argv.append("--record-stage-timings")
+    if sync:
+        argv.append("--sync-stage-timings")
+    if not direct_commit:
+        argv.append("--no-direct-state-commit")
+    monkeypatch.setattr(sys, "argv", argv)
+    assert profiler.main() == 0
+    (inputs, options), = calls
+    assert inputs == [11, 11, 11]
+    assert options["record_stage_timings"] is record
+    assert options["sync_stage_timings"] is sync
+    assert options["capture_linear_state_rows"] is direct_commit
+    assert options["defer_linear_state_commit"] is direct_commit
+    assert commits == ([(2, 8)] if direct_commit else [])
+    assert markers == [("push", f"{profiler.BLOCK_MARKER_PREFIX}0"), ("pop", None)]
+    payload = json.loads(output.read_text())
+    assert payload["token_ids"] == [21]
+    assert payload["stage_timings_ms"] == ([Session.last_verify_stage_timings_ms] if record else None)
+    assert payload["stage_timing_totals_ms"] == (Session.last_verify_stage_timings_ms if record else None)
+
+
+def test_native_profiler_rejects_synchronized_timings_before_loading(monkeypatch) -> None:
+    monkeypatch.setattr(profiler, "_run_child", lambda args: pytest.fail("must reject before model loading"))
+    monkeypatch.setattr(sys, "argv", [
+        "gguf_mtp_verifier_rocprof.py", "--child", "--mode", "block-verify",
+        "--native-spec-target-cycle", "--record-stage-timings", "--sync-stage-timings",
+    ])
+    with pytest.raises(SystemExit) as excinfo:
+        profiler.main()
+    assert excinfo.value.code == 2
 
 
 def test_profiler_refuses_retired_shared_q8_option(monkeypatch) -> None:
