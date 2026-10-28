@@ -3430,34 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 c4/c8 rollback; c2 diagnostic)
-- Added 2026-07-01 as a default-off runtime hook for broad Q8T16 verifier
-  row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
-  `rows>1, in=2048` singleton, pair, and triple Q8T16 projections through
-  rowtile4 wrappers where available. It also enables pair rowtiling unless
-  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is explicit.
-- The original verifier and F3 broad-promotion decisions remain useful history,
-  but both bound free-running generated-ID equality as if it were request/state
-  correctness. The calibrated production contract instead binds strict-teacher
-  logits and keeps cross-route free-running IDs diagnostic.
-- Fresh clean ZBook-local evidence applies that distinction without weakening
-  determinism; its rates are independent of the other gfx1151 host:
-  18 prompt+heldout cases produce **1,050/1,050 bit-identical strict-teacher
-  full-logit rows** across static c4/c8, c8->c4->c2->c1 retirement, sparse
-  physical c8, every category/shape/transition scope, and three exact repeats.
-  Same-route p512/d128 trajectories are repeat-deterministic; strict/candidate
-  trajectories differ, as allowed for production.
-- Seven current-package counterbalanced pairs retain only physical c4/c8:
-  c4 **78.624 -> 78.974 tok/s (+0.445%, 7/7)** and c8 **96.482 -> 97.125
-  (+0.666%, 6/7)**. C2 loses **59.412 -> 58.345 (-1.795%, 0/7)**.
-  Therefore gfx1151 sets `GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS=4` while
-  `GGUF_Q8_T16_DECODE_ROWTILE_ALL` stays false; gfx1100 keeps floor `0`.
-- Unset uses the backend width floor. Explicit `=0` restores direct singleton/
-  triple and the pre-existing pair policy at every width; explicit `=1` still
-  forces the broad c2 diagnostic. Remove the broad override after one release
-  window and defaults-only dynamic/server refresh, while retaining direct
-  kernels as unsupported-width and rollback fallbacks.
-
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
 - Added 2026-07-01. Bench flag
   `--resident-mtp-draft-q6-top1-stage1-shape row` and suite routes
@@ -11992,7 +11964,7 @@ verify/commit/reset/cancel/close comparisons. Changed-arithmetic defaults need
 the execution-profile numerical/task gates; an old token-margin slice is not
 that gate. Token-embedding precision remains separately inventoried.
 
-### R0291 — Q8T16 pair selection and comparison ownership
+### R0291 / R0293 — Q8T16 rowtile selection and comparison ownership
 
 `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` and
 `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` have live rollback and diagnostic consumers.
@@ -12013,18 +11985,39 @@ and the broad override to exercise package policy. The floor and broad-policy
 context managers restore prior values, but their backing state is
 module-global, not isolated between concurrent execution owners.
 
+R0293's `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` controls BF16 `in=2048`
+singleton and triple rowtiling and the pair fallback below its own floor.
+It does not disable the independent `(5120,1024)` singleton shape policy.
+Packed decode sets the broad session value from each backend's width floor:
+four on gfx1151, disabled on gfx1100. The gfx1151 MoE strict profile writes
+`0`; production removes the environment override. That binder owns only the
+broad selector, not the pair or column selectors. Keep that distinction when
+interpreting a profile or changing its policy.
+
+The verifier profiler and named `q8rowtileall` suite comparison can force the
+broad selector on. The batch-route gate separately supports an explicit broad
+candidate and the package-default bundled candidate, restoring caller values
+on exit. These are live numerical/comparison consumers, not evidence that the
+production path is default-off. Historical strict-teacher, repeat and timing
+results remain in
+`benchmarks/results/2026-08-16-gfx1151-q8t16-batch-route-retained.json` and
+the sweep source; no fresh speed or task-quality claim is made here.
+
 **Decision needed:** preserve these explicit comparisons or migrate the
 ambient selectors and session globals into a caller-owned kernel plan across
-packed decode, verifier profiling and the batch-route gate. Deleting the
-16-column or per-row bodies would remove live fallbacks, not just switches.
-Keep the already-enabled package routes while deciding configuration ownership.
+packed decode, execution-profile binders, verifier profiling, named suite
+routes and the batch-route gate. Keep the independent singleton shape policy
+separate. Deleting the 16-column or per-row bodies would remove live fallbacks,
+not just switches. Keep the already-enabled package routes while deciding
+configuration ownership.
 
 **Clearing action:** migrate the floor, broad-policy interaction, column
-selection, explicit thread/shape fallback and profiler parent/child provenance
-together. Run the pair launch, nested/exception restoration, package-policy and
-profiler CLI tests, including widths below, at and above eight and unrelated
-widths. A runtime migration also needs both backend GPU bit-parity files and
-public packed generation/serving with route attribution, width transitions,
+selection, explicit thread/shape fallback, profile binding and profiler
+parent/child provenance together. Run single/pair/triple launch,
+nested/exception restoration, strict/production binder, suite, package-policy
+and profiler CLI tests, including widths below, at and above both floors and
+unrelated widths. A runtime migration also needs both backend GPU bit-parity
+files and public packed generation/serving with route attribution, width transitions,
 reset/reuse and teardown. Historical implementation/server comparisons remain
 in the original sweep source and
 `benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-pair-col8-c8-retained.json`;

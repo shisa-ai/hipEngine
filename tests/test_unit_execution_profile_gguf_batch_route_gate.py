@@ -137,6 +137,26 @@ def test_pair_package_policy_reaches_backend_floor_and_restores(monkeypatch, fai
     assert {key: os.environ.get(key) for key in keys} == previous
 
 
+@pytest.mark.parametrize("bundled", [False, True])
+@pytest.mark.parametrize("fail", [False, True])
+def test_broad_route_gate_restores_ambient_policy_on_every_exit(monkeypatch, bundled, fail) -> None:
+    monkeypatch.setenv(gate.POLICY_ENV, "caller-override")
+
+    def exercise():
+        with gate._candidate_bundle_policy(True, include_router_candidate=bundled):
+            assert os.environ.get(gate.POLICY_ENV) == (None if bundled else "1")
+            if fail:
+                raise RuntimeError("broad capture failed")
+
+    if fail:
+        with pytest.raises(RuntimeError, match="broad capture failed"):
+            exercise()
+    else:
+        exercise()
+    assert os.environ[gate.POLICY_ENV] == "caller-override"
+    assert gate._router_candidate_enabled is False
+
+
 def test_build_batch_route_quality_preserves_shape_and_transition_attribution() -> None:
     strict = (
         _step(1, [0.0, 4.0, 1.0]),

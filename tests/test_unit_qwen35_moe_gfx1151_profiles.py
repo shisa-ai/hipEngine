@@ -257,6 +257,29 @@ def test_strict_binder_applies_exact_policy() -> None:
     assert generator.execution_profile == "strict"
 
 
+@pytest.mark.parametrize("profile", [ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION])
+@pytest.mark.parametrize("inherited", [None, "0", "1"])
+def test_binder_owns_broad_rowtile_policy_without_rewriting_pair_controls(monkeypatch, profile, inherited) -> None:
+    pair = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
+    col8 = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
+    if inherited is None:
+        monkeypatch.delenv(ROWTILE_ALL_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ROWTILE_ALL_ENV, inherited)
+    monkeypatch.setenv(pair, "caller-pair")
+    monkeypatch.setenv(col8, "caller-column")
+    _register()
+    resolved = _resolution(profile)
+    generator = resolved.construct_generator(
+        lambda **kwargs: SimpleNamespace(kwargs=kwargs),
+        model_path="/tmp/fake.gguf", weight_index=None, model_plugin=None,
+    )
+    assert os.environ.get(ROWTILE_ALL_ENV) == ("0" if profile == ExecutionProfile.STRICT else None)
+    assert os.environ[pair] == "caller-pair"
+    assert os.environ[col8] == "caller-column"
+    assert generator.execution_profile == profile.value
+
+
 def test_manifest_hash_matches_canonical_build() -> None:
     """The resolved production manifest hash equals the canonical builder hash."""
 

@@ -8728,33 +8728,33 @@
       "start_line": 6621,
       "end_line": 6648,
       "sha256": "6b54c9106174e8020b5ec29a05c22da3b9c0f4f74005db0c72496b76c02fa873",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-rowtile-policy-ownership",
+      "evidence": ["Broad control has live gfx1151 MoE strict/production binders, suite/profiler and numerical-gate consumers. Corrected ENVS description; documented independent singleton shape policy and pair floor. Singleton/triple actual-launch matrix covers package and explicit overrides at widths 1/2/3/4/5/7/8/9 on both backends; binder inheritance, nested/exception restoration and gate candidate modes pass. Consolidated remaining caller-owned configuration decision into bottom R0291/R0293; historical strict-teacher and timing evidence remains in unchanged August artifact and original sweep source. No runtime/default/arithmetic change. Worklog: worklog/entries/20261028T234619.070301Z-cleanup-refactor-r0293-rowtile-policy-162c07.md."],
       "subitems": [
         {
           "line": 6622,
           "text": "- Added 2026-07-01 as a default-off runtime hook for broad Q8T16 verifier",
-          "status": "pending"
+          "status": "deferred-live-profile-and-diagnostic-control"
         },
         {
           "line": 6627,
           "text": "- The original verifier and F3 broad-promotion decisions remain useful history,",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 6631,
           "text": "- Fresh clean ZBook-local evidence applies that distinction without weakening",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 6638,
           "text": "- Seven current-package counterbalanced pairs retain only physical c4/c8:",
-          "status": "pending"
+          "status": "resolved-package-policy-and-history-preserved"
         },
         {
           "line": 6643,
           "text": "- Unset uses the backend width floor. Explicit `=0` restores direct singleton/",
-          "status": "pending"
+          "status": "deferred-existing-caller-owned-rowtile-plan"
         }
       ]
     },

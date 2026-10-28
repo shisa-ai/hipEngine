@@ -4458,6 +4458,78 @@ def test_t16_rowtile_all_uses_packed_session_with_explicit_opt_out(monkeypatch) 
     assert calls == ["rowtile4", "exact", "exact"]
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("rows", [1, 2, 3, 4, 5, 7, 8, 9])
+@pytest.mark.parametrize("kind", ["single", "triple"])
+def test_t16_broad_package_policy_selects_single_and_triple_launch(monkeypatch, backend, rows, kind) -> None:
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_q8_t16_decode_rowtile_all_for_rows
+
+    gl = gguf_linear_module
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    calls = []
+    monkeypatch.setitem(gl._LAUNCH_ABI, "t16", lambda *a, **kw: calls.append("exact"))
+    monkeypatch.setattr(gl, "gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out",
+                        lambda *a, **kw: calls.append("rowtile4"))
+    monkeypatch.setattr(gl, "gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out",
+                        lambda *a, **kw: calls.append("exact"))
+    monkeypatch.setattr(gl, "gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
+                        lambda *a, **kw: calls.append("rowtile4"))
+
+    def launch():
+        if kind == "single":
+            gl.launch_gguf_linear(weight, 101, 201, rows, 2048, 4096,
+                                  backend=backend, use_wmma_prefill=False)
+        else:
+            assert gl.launch_gguf_linear_triple(
+                weight, weight, weight, 101, 201, 301, 401, rows, 2048, 4096,
+                out_features_b=1024, out_features_c=1024, backend=backend,
+            )
+
+    gl.clear_gguf_linear_dispatch_cache()
+    try:
+        with (
+            gl.wmma_prefill_session(False),
+            gl.q8_t16_rowtile_all_session(_gguf_q8_t16_decode_rowtile_all_for_rows(backend, rows=rows)),
+        ):
+            launch()
+            monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "0")
+            launch()
+            monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "1")
+            launch()
+    finally:
+        gl.clear_gguf_linear_dispatch_cache()
+    package = "rowtile4" if backend == "hip_gfx1151" and rows >= 4 else "exact"
+    assert calls == [package, "exact", "rowtile4" if rows > 1 else "exact"]
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_t16_broad_policy_restores_scopes_without_gating_shape_policy(monkeypatch, fail) -> None:
+    gl = gguf_linear_module
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES", raising=False)
+    monkeypatch.setattr(gl, "_q8_t16_rowtile_all_session_enabled", None)
+    with gl.q8_t16_rowtile_all_session(True):
+        try:
+            with gl.q8_t16_rowtile_all_session(False):
+                assert not gl._resolve_use_q8_t16_all_rowtile()
+                if fail:
+                    raise RuntimeError("rowtile capture failed")
+        except RuntimeError as error:
+            assert str(error) == "rowtile capture failed"
+        assert gl._resolve_use_q8_t16_all_rowtile()
+    assert gl._q8_t16_rowtile_all_session_enabled is None
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "0")
+    assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=2048, out_features=4096)
+    assert gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=1024)
+    assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=2048)
+    assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120)
+    assert not gl._use_q8_t16_all_rowtile(rows=1, in_features=5120, out_features=1024)
+    assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=1024, threads=64)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES", "0")
+    assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=1024)
+
+
 def test_t16_triple_fuses_q8_separate_outputs() -> None:
     """Resident Q8T16 full-attention Q/K/V can share one split-output launch."""
 
