@@ -659,7 +659,6 @@ unset except for bisection.
 | `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS` | `16` | Minimum tokens before the verifier MoE uses the grouped owner; clamps to at least 2. |
 | `HIPENGINE_VERIFY_GRAPH_REVALIDATE` | unset | Debug-only (`#107`): re-run the direct pass before each graph replay and compare per-row top1 plus accept payload to localize replay drift. |
 | `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` | false | Opt-in: the packed verify-accept path also advances request positions for a single verify-chain request. |
-| `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP` | true | Stamps scratch generations so workspace lookups can skip stale entries; `0` restores the unstamped lookup. |
 | `HIPENGINE_VERIFY_DENSE_GEMV_WMMA` | false | Opt-in WMMA owner for dense verifier GEMV shapes (`1 < tokens <= 16`, features % 16 == 0). |
 | `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH` | false | Opt-in graph capture for the native-spec target-verify chain (single-request verify_chain only). |
 | `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT` | true | Commits target state from the captured native-spec graph; requires the graph flag. |
@@ -1293,6 +1292,10 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP` is retired and ignored.
+  PARO verifier scratch hits always check the owner's generation, scratch
+  type and row layout. Prefill restore and graph invalidation clear both
+  caches and advance the generation before workspace reuse.
 - `HIPENGINE_VERIFY_MLP_SCRATCH_POLICY_ALIGNED` is retired and ignored.
   PARO verifier MLP scratch always follows the live grouped-MoE threshold;
   dense models reserve dense scratch, and cache keys still include policy.
