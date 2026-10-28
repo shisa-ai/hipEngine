@@ -520,7 +520,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_W4_MULTI_ROW_PACK8_DUAL` | follows the umbrella | Dual-output multi-row pack8 override. |
 | `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH` | true | Weight-amortized multi-row W4 GEMV for small batches (win scales with row count); `0` disables. |
 | `HIPENGINE_LINEAR_AB_DUAL_SEPARATE` | true | Uses the separate-output dual A/B GEMV for small-batch decode rows; `0` restores the single GEMV fallback. |
-| `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` | true | Fuses `f32_to_fp16` + `paro_rotate1_fp16` for verifier shapes (raw-FP16 bit-exact; removes 30 launches/pass at B=3). |
 | `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED` | true | Fuses shared-prefill SiLU-mul + rotate into one launch (default on after the 2026-08-16 gfx1151 byte-equality gate); `0` opts out. |
 | `HIPENGINE_FUSED_RMSNORM_ROTATE` | false | Opt-in fused RMSNorm+rotate for linear layers (exact-AR preserved; pending verifier economics). |
 | `HIPENGINE_MOE_FUSED_ROTATE` | false | Opt-in fused in-LDS rotate for the selected MoE chain; only worthwhile at very small `out_pack x top_k` totals. |
@@ -1306,6 +1305,11 @@ These names appear in the tree but must not be confused with env knobs:
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.
+- `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` is retired and ignored.
+  Multi-row linear-attention output projection fuses the FP32-to-FP16 cast
+  with rotation; single-row and explicit exact-row paths keep their
+  cast-then-rotate chain. Regression tests retain the old name.
+
 - `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL` and
   `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_SITES` are retired and ignored.
   Shared gate/up uses the promoted split-output route for supported row

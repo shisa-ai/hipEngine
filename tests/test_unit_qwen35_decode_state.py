@@ -3446,13 +3446,19 @@ def test_qwen35_decode_state_chain_tloop_honors_small_batch_shared_expert(
     assert observed == [expected]
 
 
-def test_qwen35_decode_state_can_fuse_linear_attention_cast_rotate(monkeypatch) -> None:
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("tokens", [2, 3, 8, 17])
+def test_qwen35_decode_state_cast_rotate_ignores_retired_optout(monkeypatch, retired, tokens) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _linear_weights())
-    scratch = state.reserve_linear_attention_scratch(tokens=2, activation_dtype="fp16")
+    scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype="fp16")
     order = []
 
-    monkeypatch.delenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", raising=False)
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", retired)
+    monkeypatch.delenv("HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS", raising=False)
     monkeypatch.setattr(qwen_runtime, "f32_to_fp16", lambda *a, **k: order.append("unexpected_cast"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("unexpected_rotate1"))
     monkeypatch.setattr(qwen_runtime, "paro_rotate1_f32_to_fp16", lambda *a, **k: order.append("cast_rotate"))
@@ -3468,16 +3474,16 @@ def test_qwen35_decode_state_can_fuse_linear_attention_cast_rotate(monkeypatch) 
     ):
         monkeypatch.setattr(qwen_runtime, name, lambda *a, **k: order.append("pack8"))
 
-    out = state.project_linear_attention_out_fp16(scratch, tokens=2)
+    out = state.project_linear_attention_out_fp16(scratch, tokens=tokens)
 
     assert out is scratch.out_proj
     assert order == ["cast_rotate", "pack8"]
 
 
-def test_qwen35_decode_state_can_opt_out_of_linear_attention_cast_rotate_fusion(monkeypatch) -> None:
+def test_qwen35_decode_state_single_row_keeps_cast_then_rotate(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _linear_weights())
-    scratch = state.reserve_linear_attention_scratch(tokens=2, activation_dtype="fp16")
+    scratch = state.reserve_linear_attention_scratch(tokens=1, activation_dtype="fp16")
     order = []
 
     monkeypatch.setenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", "0")
@@ -3496,10 +3502,24 @@ def test_qwen35_decode_state_can_opt_out_of_linear_attention_cast_rotate_fusion(
     ):
         monkeypatch.setattr(qwen_runtime, name, lambda *a, **k: order.append("pack8"))
 
-    out = state.project_linear_attention_out_fp16(scratch, tokens=2)
+    out = state.project_linear_attention_out_fp16(scratch, tokens=1)
 
     assert out is scratch.out_proj
     assert order == ["cast", "rotate1", "pack8"]
+
+
+def test_qwen35_decode_state_explicit_exact_rows_keep_unfused_chain(monkeypatch) -> None:
+    state = _state(FakeRuntime(), _linear_weights())
+    scratch = state.reserve_linear_attention_scratch(tokens=3, activation_dtype="fp16")
+    monkeypatch.setenv("HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS", "1")
+    monkeypatch.setenv("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", "1")
+    order = []
+    monkeypatch.setattr(qwen_runtime, "f32_to_fp16", lambda *a, **k: order.append("cast"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", lambda *a, **k: order.append("rotate"))
+    monkeypatch.setattr(qwen_runtime, "paro_rotate1_f32_to_fp16", lambda *a, **k: pytest.fail("unexpected fused route"))
+    monkeypatch.setattr(state, "project_pack8_fp16", lambda *a, **k: order.append("project"))
+    assert state.project_linear_attention_out_fp16(scratch, tokens=3) is scratch.out_proj
+    assert order == ["cast", "rotate", "project"] * 3
 
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])

@@ -7029,7 +7029,7 @@ class Qwen35ParoDecodeState:
         prefix = f"layers.{self.layer_weights.layer_id}.linear_attn.out_proj"
         width = scratch.recurrent_out.shape[-1]
         pairs = self.tensor(f"{prefix}.pairs")
-        if _linear_out_cast_rotate_fused_enabled(tokens):
+        if int(tokens) > 1:
             paro_rotate1_f32_to_fp16(
                 scratch.recurrent_out.ptr,
                 scratch.out_rot.ptr,
@@ -11406,18 +11406,6 @@ def _fused_rmsnorm_rotate_enabled() -> bool:
     """
 
     return _env_enabled("HIPENGINE_FUSED_RMSNORM_ROTATE", default=False)
-
-
-def _linear_out_cast_rotate_fused_enabled(tokens: int) -> bool:
-    """Fuse verifier linear-attention out-proj FP32->FP16 cast into PARO rotate1.
-
-    Default-on for verifier shapes after the 2026-06-11 W7900 D32 prompt-suite
-    gate. The fused kernel is raw-FP16 bit-exact vs ``f32_to_fp16`` followed by
-    ``paro_rotate1_fp16`` and removes 30 launches/pass in the B=3 verifier.
-    Opt out with ``HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED=0``.
-    """
-
-    return int(tokens) > 1 and _env_flag("HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED", True)
 
 
 def _linear_out_c1_exact_rows_enabled(tokens: int) -> bool:
