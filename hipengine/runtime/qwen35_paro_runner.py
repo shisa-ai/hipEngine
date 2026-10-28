@@ -12081,13 +12081,12 @@ class Qwen35ParoResidentSession:
             and replay_signature is not None
             and replay_signature == entry.native_spec_replay_signature
         ):
-            try:
-                native_result = entry.native_spec_launcher.launch_bound(
-                    cycle_id=cycle_id,
-                    transaction_id=cycle_id + int(entry.native_spec_transaction_offset),
-                )
-            except (RuntimeError, TypeError, ValueError) as exc:
-                return False, str(exc)
+            # A launcher may submit before failing result readback/validation.
+            # Never turn an exception here into a second, direct graph replay.
+            native_result = entry.native_spec_launcher.launch_bound(
+                cycle_id=cycle_id,
+                transaction_id=cycle_id + int(entry.native_spec_transaction_offset),
+            )
         else:
             try:
                 control = self._native_spec_provider_target_control(
@@ -12128,10 +12127,9 @@ class Qwen35ParoResidentSession:
                     )
                 except Exception as exc:
                     return False, str(exc)
-            try:
-                native_result = entry.native_spec_launcher.launch(control)
-            except (RuntimeError, TypeError, ValueError) as exc:
-                return False, str(exc)
+            # Construction/control rejection above is a pre-submission fallback;
+            # launch exceptions have unknown mutation state and must propagate.
+            native_result = entry.native_spec_launcher.launch(control)
         if native_result.status is not NativeSpecCycleStatus.COMPLETE:
             raise RuntimeError(
                 "native provider target graph failed after submission: "

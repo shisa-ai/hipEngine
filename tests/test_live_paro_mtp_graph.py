@@ -103,6 +103,92 @@ def test_graph_plan_matches_default_live_state_outputs_and_repeated_request(llm,
     assert runs[0] == runs[1] == runs[2]
 
 
+@pytest.mark.parametrize("bound", [False, True], ids=["first-launch", "cached-bound"])
+def test_native_submission_error_restores_public_request_without_direct_replay(
+    llm, monkeypatch, bound,
+):
+    """Inject result failure after a real HIP graph launch on either entry path."""
+    params = SamplingParams(max_tokens=16, temperature=0, ignore_eos=True,
+                            speculative_mtp=True, kv_storage="bf16")
+    baseline = llm.generate_detailed([[9707] * 37], params)[0]
+    checkpoint = Qwen35ParoMTP2Adapter._checkpoint_target
+    propose = Qwen35ParoMTP2Adapter.propose_batch
+    restore = Qwen35ParoMTP2Adapter._restore_target_and_provider
+    submit = Qwen35ParoResidentSession._try_submit_native_spec_provider_target_graph
+    pending = {}
+    injected = []
+    restored = []
+
+    def proposal(adapter, plan, *args, **kwargs):
+        state = adapter._states[plan.request_ids[0]]
+        snapshot = _snapshot(adapter.owner._session, state.proposer)
+        pending["provider"] = {name: snapshot[name] for name in (
+            "draft_cursor", "draft_position", "final_hidden_buf", "key_cache_buf", "value_cache_buf",
+        )}
+        return propose(adapter, plan, *args, **kwargs)
+
+    def capture(adapter, state, session):
+        checkpoint(adapter, state, session)
+        pending["snapshot"] = {**_snapshot(session, state.proposer), **pending["provider"]}
+        pending["session"] = session
+
+    def rollback(adapter, state, session):
+        active = state.journal is not None
+        restore(adapter, state, session)
+        if active and injected and not restored:
+            after = _snapshot(session, state.proposer)
+            before = pending["snapshot"]
+            restored.append({key: (value, after.get(key)) for key, value in before.items()
+                             if after.get(key) != value})
+
+    def failed_submission(session, entry, batch, **kwargs):
+        if injected:
+            return False, None
+
+        class Launcher:
+            def launch(self, _control):
+                session.runtime.graph_launch(entry.graph_exec, int(kwargs["stream"]))
+                session.runtime.stream_synchronize(int(kwargs["stream"]))
+                injected.append(True)
+                raise RuntimeError("injected native result failure after real HIP submission")
+
+            def launch_bound(self, **_kwargs):
+                return self.launch(None)
+
+        # The device graph is real. The launcher substitutes only the result
+        # failure, so this does not claim native-C++ registration on this host.
+        with monkeypatch.context() as patch:
+            patch.setattr(session, "_native_spec_provider_target_graph_enabled", lambda _batch: True)
+            patch.setattr(session, "_native_spec_provider_target_replay_signature", lambda *_a, **_k: ("stable",))
+            patch.setattr(session, "_native_spec_provider_target_control", lambda *_a, **_k: object())
+            entry.native_spec_launcher = Launcher()
+            entry.native_spec_replay_signature = ("stable",) if bound else None
+            entry.native_spec_transaction_offset = 0
+            try:
+                return submit(session, entry, batch, **kwargs)
+            finally:
+                # Do not leave an injected launcher in the real graph cache.
+                entry.native_spec_launcher = None
+                entry.native_spec_replay_signature = None
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Qwen35ParoResidentModelRunner, "speculative_graph_available", lambda self, work: True)
+        patch.setattr(Qwen35ParoMTP2Adapter, "propose_batch", proposal)
+        patch.setattr(Qwen35ParoMTP2Adapter, "_checkpoint_target", capture)
+        patch.setattr(Qwen35ParoMTP2Adapter, "_restore_target_and_provider", rollback)
+        patch.setattr(Qwen35ParoResidentSession, "_try_submit_native_spec_provider_target_graph", failed_submission)
+        output = llm.generate_detailed([[9707] * 37], params)[0]
+        assert injected == [True]
+        assert restored == [{}]
+        assert len(output.generated_token_ids) == 16
+        recovered = llm.generate_detailed([[9707] * 37], params)[0]
+        assert recovered.generated_token_ids == baseline.generated_token_ids
+        assert _routes(llm.live_loop_snapshot())["recent_completed"][-1]["specdec2_mtp2_used"]
+        cleanup = pending["session"].verify_graph_cleanup()
+        assert not cleanup["pending_close"]
+        assert not cleanup["pending_partial_handles"]
+
+
 @pytest.mark.parametrize("length", [37, 1025])
 @pytest.mark.parametrize("action", ["failure", "cancel"])
 def test_replayed_cycle_restores_state_and_next_request(llm, monkeypatch, length, action):

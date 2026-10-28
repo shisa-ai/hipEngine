@@ -303,6 +303,91 @@ def test_paro_verify_graph_reuses_a_matching_capture() -> None:
     assert session.verify_graph_cleanup()["reusable"] == 1
 
 
+@pytest.mark.parametrize("bound", [False, True], ids=["first-launch", "cached-bound"])
+@pytest.mark.parametrize("error", [RuntimeError, TypeError, ValueError, KeyboardInterrupt])
+def test_paro_native_replay_failure_never_resubmits_the_mutated_graph(bound, error) -> None:
+    runtime = _Runtime()
+    session = _session(runtime=runtime)
+    launches = _stub_launches(session)
+    assert _run(session)["status"] == "captured"
+    entry = next(iter(session._verify_graphs._slots.values())).value
+    mutations: list[int] = []
+
+    class MutatingLauncher:
+        def launch(self, _control):
+            # Submission can succeed before result conversion/validation fails.
+            runtime.graph_launch(entry.graph_exec, 0)
+            mutations.append(1)
+            raise error("native result failed after mutation")
+
+        def launch_bound(self, **_kwargs):
+            return self.launch(None)
+
+    session._try_submit_native_spec_provider_target_graph = (
+        Qwen35ParoResidentSession._try_submit_native_spec_provider_target_graph.__get__(session)
+    )
+    session._native_spec_provider_target_graph_enabled = lambda _batch: True
+    session._native_spec_provider_target_replay_signature = lambda *_a, **_k: ("stable",)
+    session._native_spec_provider_target_control = lambda *_a, **_k: SimpleNamespace(
+        cycle_id=1, transaction_id=11,
+    )
+    session._native_spec_provider_target_factory = lambda: lambda **_kwargs: MutatingLauncher()
+    session.compiler_version = "test"
+    session.target_arch = "gfx1100"
+    session.require_cached_build = False
+    if bound:
+        entry.native_spec_launcher = MutatingLauncher()
+        entry.native_spec_replay_signature = ("stable",)
+        entry.native_spec_transaction_offset = 10
+
+    with pytest.raises(error, match="native result failed after mutation"):
+        _run(session)
+
+    assert mutations == [1]
+    assert runtime.attempts("graph_launch") == [entry.graph_exec]
+    assert entry.replay_count == 0
+    assert len(_direct_launches(launches)) == 1
+    session._invalidate_verify_graph_cache()
+    assert entry.graph_exec == 0
+    assert entry.graph == 0
+    assert session.verify_graph_cleanup()["pending_close_count"] == 0
+
+
+@pytest.mark.parametrize("rejection", ["control", "factory"])
+def test_paro_native_pre_submission_rejection_keeps_direct_graph_fallback(rejection) -> None:
+    runtime = _Runtime()
+    session = _session(runtime=runtime)
+    _stub_launches(session)
+    assert _run(session)["status"] == "captured"
+    entry = next(iter(session._verify_graphs._slots.values())).value
+    session._try_submit_native_spec_provider_target_graph = (
+        Qwen35ParoResidentSession._try_submit_native_spec_provider_target_graph.__get__(session)
+    )
+    session._native_spec_provider_target_graph_enabled = lambda _batch: True
+    session._native_spec_provider_target_replay_signature = lambda *_a, **_k: None
+    session._native_spec_provider_target_control = lambda *_a, **_k: object()
+    session.compiler_version = "test"
+    session.target_arch = "gfx1100"
+    session.require_cached_build = False
+
+    def reject(*_args, **_kwargs):
+        raise ValueError(f"unsupported native {rejection}")
+
+    if rejection == "control":
+        session._native_spec_provider_target_control = reject
+    else:
+        session._native_spec_provider_target_factory = lambda: reject
+
+    replay = _run(session)
+
+    assert replay["native_spec_cycle_graph"] is False
+    assert replay["native_spec_cycle_fallback_reason"] == f"unsupported native {rejection}"
+    assert runtime.attempts("graph_launch") == [entry.graph_exec]
+    assert entry.replay_count == 1
+    session._invalidate_verify_graph_cache()
+    assert session.verify_graph_cleanup()["pending_close_count"] == 0
+
+
 def test_paro_verify_capture_does_not_claim_replay_or_validation() -> None:
     session = _session()
     _stub_launches(session)

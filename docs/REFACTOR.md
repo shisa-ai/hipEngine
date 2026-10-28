@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| PARO MTP / DFlash native target graph | `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1` explicitly routes eligible shared single-request B1/B2/B3/B4/B5/B8 target graph replays through the registered gfx1100 `w4_paro/native_v1_target_graph` NativeSpecCycle boundary. `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0` temporarily rolls capture-width-zero FP16 PARO MTP back from selected linear-state commit/device cursor ownership to the neutral N4+ provider commit. | N4 remains globally default-off. Inside explicit N4, PARO selected commit is default-on after three exact 240-ID arms, every split/category, accepted-row/B2 state gates, and consistent capture-adjusted wins. It uses graph-owned combined state-pointer tables and declares `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS`; BF16 DFlash hidden/KV repair, proposal, and scheduler result construction remain unchanged. Cached profiles mechanically change **80.6875 -> 75.6875 APIs**, **2 -> 1 sync**, **36.1875 -> 34.1875 host launches**, and **1248.5 -> 1247.5 kernels**; mean wall is neutral. Pointer/shape/stream/inactive drift retains validation/direct fallback, and gfx1151 remains unregistered. No AR speed row/global default is retained. | Remove `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT` after one release window and a defaults-only explicit-N4 refresh remains exact and mechanically non-regressive. Keep the global N4 switch until complete PARO proposal ownership and independent full category+heldout PARO/DFlash gates have a measured complete-wall advantage over direct graph control; gate gfx1151 separately. Remove the bound-control experimental split once that provider boundary is the only admitted implementation. Do not remove or downgrade the current model artifact. |
 | GGUF AR server stream decode | `HIPENGINE_GGUF_AR_STREAM_DECODE` is a default-on fallback/opt-out around per-slot HIP stream decode when packed AR is disabled or unavailable, and also gates the historical parallel c4+c4 chunk path above four rows. | Direct physical-c8 beats c4+c4 on both targets. F1 measures the same-loop packed-off serial C13 bridge at **31.708/42.764 tok/s** versus grouped packed C13 **111.380/72.522 tok/s (3.513x/1.696x)** on gfx1100/gfx1151; every static/live packed route records zero serial/resident fallback, including real c8→c13 admission. | Both gfx11 triggers are met. Keep the bridge as an explicit unsupported-shape/test oracle and rollback for one release window, then remove the public env opt-out during F2 while retaining backend capability fallback. |
 | GGUF MTP server stream draft | `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT` is a default-on opt-out around per-slot HIP stream draft proposal for c>N GGUF MTP serving. | Default-on after the 2026-07-05 natural24 server run. It moves packed-verifier c=2/c=4/c=8 MTP **45.57/47.48/47.18 -> 46.75/49.65/48.72 tok/s** and beat the then-current stream-AR rows by **1.058x/1.063x/1.021x**; the later packed-AR route supersedes that same-server AR comparison, so current MTP is below AR. It currently creates a `ThreadPoolExecutor` per draft phase and the c=8 wall remains verifier-heavy. | Remove the env opt-out and/or replace the per-cycle executor with a persistent scheduler after c>N server reruns and profiler evidence show the stream path is non-regressive. Keep the opt-out while tuning verifier wall and thread-pool overhead. |
 | GGUF MTP server stream verify | `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY` is a default-on opt-out around running independent chunk-4 packed target verifier chunks on separate owner-session streams at c>N. | Default-on after the 2026-07-05 natural24 c=8 rerun. It keeps the four-slot verifier cap but overlaps the two c=8 chunks, moving warm c=8 MTP **48.72 -> 52.18 tok/s** and `slots_verify_phase_ms` **15354.902 -> 12345.442**. c=4 remains on the single-chunk path. | Remove the env opt-out after c=2/c=4/c=8 reruns and profiler evidence show the stream verify path is non-regressive; replace it if a tuned rows>=16 verifier or true batched scheduler supersedes chunk-stream overlap. |
@@ -11004,3 +11003,46 @@ accepted-row/cursor ownership, B1/B2 and unsupported-shape behavior, repeat
 output and teardown. A combined-graph or arithmetic experiment additionally
 needs its applicable numerical and complete-wall gates, separately from this
 interface cleanup.
+
+### R0281-PARO-NATIVE — Provider graph and selected-commit control migration
+
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH` selects the native submission wrapper
+for cached single-request chain verification. The lazy registry currently adds
+only `hip_gfx1100/w4_paro/native_v1_target_graph`; the direct HIP graph remains
+the fallback when the control/factory cannot be constructed. The wrapper owns
+`VERIFY|ACCEPT`. For all-active B1/B2/B3/B4/B5/B8 PARO buckets with zero-width
+hidden capture, it can also own selected linear-state `COMMIT|UPDATE_CURSORS`.
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0` selects the provider-side commit
+comparison. Nonzero BF16 DFlash hidden capture keeps hidden/KV repair outside
+the selected-commit boundary. Graph entries own their fixed source/destination
+tables, and commit ownership is part of the capture key and binding.
+
+**Fixed:** native launcher exceptions no longer fall through to a second direct
+graph launch. Submission may have mutated state before result conversion or
+validation raises; those exceptions must reach the request transaction. Only
+pre-submission control/factory rejection may return a direct fallback. Terminal
+native result statuses already raise. Preserve that distinction during any
+control migration.
+
+**Remaining decision/work:** replace the two process-wide selectors with
+profile-owned submission/commit variants and an explicit diagnostic comparison,
+or retain supported controls with concrete ownership. Preserve provider-specific
+repair, result metadata and capture bindings. The old release-window trigger
+and cross-provider speed prerequisite do not specify this migration. A missing
+backend registration is an implementation gap, not evidence that its hardware
+cannot execute the wrapper; evaluate/register supported peers independently,
+without identity allowlists or missing-benchmark admission gates. Complete
+proposal ownership is separate work and does not block existing target graphs.
+Historical selected-commit comparisons remain in
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json`.
+
+**Clearing action:** exercise both submission/commit variants in
+`tests/test_unit_qwen35_resident_batch_layout.py`,
+`tests/test_unit_qwen35_paro_verify_graph_cache.py` and provider-launcher nodes in
+`tests/test_gpu_native_spec_cycle_graph.py`. A migration needs real PARO and
+DFlash requests confirming selected stages, active/inactive and unsupported
+shapes, hidden-capture/accepted-row/cursor ownership, independent graph buckets,
+repeat output, fault rollback and teardown. Keep the public post-submission
+failure nodes in `tests/test_live_paro_mtp_graph.py`; they launch real HIP graphs
+with injected result failure and do not claim native-C++ registration on an
+unregistered peer. Apply numerical gates only if arithmetic changes.
