@@ -8384,7 +8384,8 @@
       "evidence": [
         "Row6341 completed control gap;remaining diagnostic/session-plan decision moved bottom R0282-PREFILL-POLICY. Runtime unchanged,4pool characterization cases and93focused tests pass;see worklog/entries/20261028T201442.428322Z-cleanup-refactor-r0282-prefill-policy-1d5966.md. Other rows remain individually pending.",
         "Row6342 resolved by synthetic CLI contracts and focused tool fixes;43focused tests pass,history preserved. Worklog: worklog/entries/20261028T202550.319966Z-cleanup-refactor-r0282-packet-cli-587ded.md.",
-        "Row6343 B1 premise superseded by public depth policy;shared default-on verifier controls characterized and remaining ownership consolidated in existing bottom PARO-PROVIDER referral.216focused pass,no runtime change. Worklog: worklog/entries/20261028T203948.106702Z-cleanup-refactor-r0282-paro-chain-641349.md."
+        "Row6343 B1 premise superseded by public depth policy;shared default-on verifier controls characterized and remaining ownership consolidated in existing bottom PARO-PROVIDER referral.216focused pass,no runtime change. Worklog: worklog/entries/20261028T203948.106702Z-cleanup-refactor-r0282-paro-chain-641349.md.",
+        "Row6344 explicit PARO tree harness and private-scorer retirement decision consolidated bottom PARO-PROVIDER;shared tree primitives remain.362focused tests pass,runtime unchanged. Worklog: worklog/entries/20261028T204504.196456Z-cleanup-refactor-r0282-paro-tree-c02e80.md."
       ],
       "subitems": [
         {
@@ -8418,7 +8419,8 @@
         {
           "line": 6344,
           "text": "| 35B MTP tree/top-k | Keep tree code default-off until it beats chain on the same wall and prompt suite; do not let tree-specific dispatch obscure the chain hot path. | Tree correctness tests and graph replay scaffolding. | If tree remains negative after the verifier wall cut, demote branch/top-k runtime flags to explicit experiment scripts. |",
-          "status": "pending"
+          "status": "explicit-harness-control-deferred-private-scorer-retirement",
+          "evidence": "Tree comparison already explicit --tree-mode branching_topk in old PARO harness;public Generation2 chain separate,GGUF R0281-TOPK separate. Private top-k scorer,shared compiler/tree target and DFlash callers live. Add route-mode attribution to persistent cycle matrix;362focused pass. Remove blanket default-off/speed-only retirement row and fold named lifecycle migration/decision into existing bottom R0281-PARO-PROVIDER. No runtime/default change. Worklog: worklog/entries/20261028T204504.196456Z-cleanup-refactor-r0282-paro-tree-c02e80.md."
         },
         {
           "line": 6345,

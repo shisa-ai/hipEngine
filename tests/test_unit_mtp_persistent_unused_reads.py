@@ -32,6 +32,7 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
         monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS", retired)
     monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT", str(int(target_contract)))
     advances, saves, restores, priming, accepted = [], [], [], [], []
+    verify_modes = []
     buffers, freed, ar_steps = [], [], []
 
     class Proposer:
@@ -102,6 +103,7 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
             return SimpleNamespace(token_id=50 + len(ar_steps))
 
         def verify_chain_bulk_and_commit(self, batch, **kwargs):
+            verify_modes.append(batch.mode)
             assert kwargs["canonicalize_after"] is False
             assert kwargs.get("synchronize_after_commit", True) is True
             count = (0, min(1, budget), budget)[len(accepted) % 3]
@@ -152,6 +154,7 @@ def test_persistent_cycles_skip_only_unused_results(monkeypatch, retired, canoni
     if budget > 1 and fallback != 2:
         assert restores  # rejected/partially accepted cycles restore a saved prefix
     assert set(accepted) == ({0} if fallback == 2 else {0, min(1, budget), budget})
+    assert set(verify_modes) == ({"verify_tree"} if tree_mode == "branching_topk" else {"verify_chain"})
     assert result["proposal_snapshot_saves"] == len(saves)
     if budget > 1 and tree_mode == "chain" and fallback != 2:
         assert result["proposal_snapshot_skips"] > 0

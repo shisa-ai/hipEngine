@@ -3438,7 +3438,6 @@ should be boring.
 
 | Path | Cleanup target | Keep | Remove / collapse trigger |
 | --- | --- | --- | --- |
-| 35B MTP tree/top-k | Keep tree code default-off until it beats chain on the same wall and prompt suite; do not let tree-specific dispatch obscure the chain hot path. | Tree correctness tests and graph replay scaffolding. | If tree remains negative after the verifier wall cut, demote branch/top-k runtime flags to explicit experiment scripts. |
 | 27B dense DFlash | Separate deployable online routing from profile-history diagnostics. The current positive production row is the online whole-cycle confidence gate; older prompt-history route/terminal-tail rows are retained evidence, not the default API shape. | Online gate config, oracle/calibration tooling, exact AR comparisons. | After the DFlash hardening rerun and decode API update, trim profile-history routing from the main hot path or move it behind an explicit research harness. |
 | DFlash drafter flags | Audit `HIPENGINE_DFLASH_DRAFTER_DENSE` and `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`; the rejected target fused LM-head selector is removed and its primitive coverage remains. | Default-on exact dense WMMA if the fresh 27B gate confirms it; tests for rejected fused kernels. | Fresh 27B DFlash rerun decides: promote exact positive flags to defaults, remove negative runtime branches, or demote them to test-only overrides. |
 | Benchmark commands | Stop requiring long flag piles once defaults represent the optimal path. | Flags that select workload shape, model, quant, and explicit experiments. | After MTP/DFlash defaults-only rows are retained, update benchmark docs to show default commands first and move historical A/B flags into dated notes. |
@@ -11469,6 +11468,26 @@ commit semantics as a side effect of retiring manual profile selectors.
 Cover topology/depth, on/off/validate, graph-key isolation and accept payload
 parity alongside the profile/public-depth tests above, then exercise real
 public strict/production requests plus any affected DFlash/native callers.
+
+R0282's tree/top-k row also joins this referral. PARO branching comparison is
+already explicit in `scripts/mtp_chain_e2e_smoke.py` through
+`--tree-mode branching_topk`, top-k width and confidence controls; its default
+is chain. The persistent branch route uses private-head top-k and requires a
+positive confidence threshold and at least two active candidate rows. It
+compiles sibling topology, verifies through `verify_tree_bulk_and_commit` and
+repairs the selected provider branch. Reload comparison has its own top-k
+inputs and policy. These are not a default-off public tree implementation:
+public Generation-2 declares chain, while shared tree verification and metadata
+also serve DFlash comparisons.
+
+Choose whether to preserve these explicit harness comparisons or retire them
+with their private-scorer consumers. An old negative speed result does not by
+itself justify deleting working tree primitives or changing public admission.
+A migration must cover reload/persistent mode selection, confidence and active
+budget boundaries, sibling acceptance/selected hidden and KV repair, graph
+bindings and tail padding. Keep the shared compiler/mask/acceptance oracles and
+confirm public chain routing stays unchanged. The corresponding GGUF
+root/sibling acceptance policy is separately owned by R0281-TOPK below.
 
 ### R0281-TOPK — GGUF benchmark proposal-policy ownership
 
