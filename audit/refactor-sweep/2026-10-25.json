@@ -8242,7 +8242,8 @@
         {
           "line": 6299,
           "text": "| GGUF F32 router LCP-4A | Callable `qwen35_router_logits_bf16_f32w_auto_256` duplicates only the Python launch default for the existing exact token-tiled kernel; both gfx1100 and gfx1151 registry bindings now select it. | Default-on on both gfx11 backends. gfx1151 clean 512/4K prefill improves **+2.76%/+3.28%** with 83/83 exact state; W7900 improves **2689.171 -> 2795.242 (+3.94%)** and **2955.867 -> 3070.905 tok/s (+3.89%)**, with a bit-exact 4K primitive, flat graph decode, and unchanged memory. | Keep the 512-thread base callable for one rollback release, then collapse the named wrapper into the normal F32-router binding if no release regression appears. Both architecture-local gates are complete. |",
-          "status": "pending"
+          "status": "fixed-canonical-f32-router-wrapper",
+          "evidence": "Remove duplicate auto_256; canonical defaults256 and both backend bindings/callers migrate. Gemma untiled and comparison tools explicitly preserve512; artifact labels and HIP symbol/body unchanged. RED5/GREEN84focused; AST declared-only. CPUbg654 full bundle pass, GPUbg65333tests pass, repaired publicbg655 byte/CPU primitives and Qwen7/37-Gemma7/17 paired IDs/widths exact with zero tracked allocations. Initial Gemma37 probe expectation wrong (correct tile16), repair only probe. docs/audit/tiers/import/help/worklog/diff pass. gfx1100 hardware not rerun; no perf/arithmetic claim. Worklog: worklog/entries/20261028T174338.375931Z-cleanup-refactor-r0281-f32-router-d43e17.md."
         },
         {
           "line": 6300,

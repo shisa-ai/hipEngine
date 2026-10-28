@@ -21,7 +21,7 @@ from hipengine.kernels.hip_gfx1100.moe.laguna_router import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     build_qwen35_router,
-    qwen35_router_logits_bf16_f32w_auto_256,
+    qwen35_router_logits_bf16_f32w,
 )
 from hipengine.kernels.registry import resolve
 
@@ -156,7 +156,7 @@ def test_persistent_wave_top10_is_bit_exact_to_registered_split(
         for array, buffer in zip(arrays, buffers, strict=True):
             copy_host_to_device(buffer, host_array_ptr(array), array.nbytes, runtime=runtime)
 
-        qwen35_router_logits_bf16_f32w_auto_256(
+        qwen35_router_logits_bf16_f32w(
             hidden_buf.ptr,
             weight_buf.ptr,
             control_bufs[0].ptr,

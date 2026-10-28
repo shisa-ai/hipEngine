@@ -23,7 +23,7 @@ from hipengine.kernels.hip_gfx1100.moe.laguna_router import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     build_qwen35_router,
-    qwen35_router_logits_bf16_f32w_auto_256,
+    qwen35_router_logits_bf16_f32w,
 )
 from hipengine.kernels.registry import resolve
 
@@ -115,7 +115,7 @@ def test_laguna_bf16_f32_router_logits_match_cpu_at_production_shape(logits_libr
     try:
         for array, buffer in zip(arrays, buffers, strict=True):
             copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
-        qwen35_router_logits_bf16_f32w_auto_256(
+        qwen35_router_logits_bf16_f32w(
             buffers[0].ptr,
             buffers[1].ptr,
             buffers[2].ptr,

@@ -266,7 +266,7 @@ def qwen35_router_logits_bf16_f32w(
     hidden_size: int,
     num_rows: int,
     *,
-    threads: int = 512,
+    threads: int = 256,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -282,35 +282,6 @@ def qwen35_router_logits_bf16_f32w(
     fn = signed_kernel_fn(library, _SYMBOL_LOGITS_F32W, _ARGTYPES_ROUTER_LOGITS, ctypes.c_int)
     err = fn(hidden_ptr, weight_ptr, logits_ptr, tokens, hidden_size, num_rows, threads, stream)
     _check_launch(runtime, err)
-
-
-def qwen35_router_logits_bf16_f32w_auto_256(
-    hidden_ptr: int,
-    weight_ptr: int,
-    logits_ptr: int,
-    tokens: int,
-    hidden_size: int,
-    num_rows: int,
-    *,
-    threads: int = 256,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Launch the exact F32-weight router with the gfx11-optimal workgroup."""
-
-    qwen35_router_logits_bf16_f32w(
-        hidden_ptr,
-        weight_ptr,
-        logits_ptr,
-        tokens,
-        hidden_size,
-        num_rows,
-        threads=threads,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
 
 
 def _qwen35_router_logits_bf16_f32w_token_tile(
@@ -1202,7 +1173,7 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
     )
     register(
         KernelKey("hip_gfx1100", "router_logits", "f32", "bf16_hidden"),
-        qwen35_router_logits_bf16_f32w_auto_256,
+        qwen35_router_logits_bf16_f32w,
         replace=replace,
     )
     register(

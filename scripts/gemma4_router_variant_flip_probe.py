@@ -131,7 +131,7 @@ def main() -> int:
             scratch["nbytes"] = bytes_
         alt_ptr = scratch["buf"].ptr
         base_fn(hidden_ptr, weight_ptr, alt_ptr, rows, int(hidden_size), width,
-                library=library, runtime=runtime)
+                threads=512, library=library, runtime=runtime)
 
         # 3. Read both back.
         tiled_h = np.empty(elems, dtype=np.float32)

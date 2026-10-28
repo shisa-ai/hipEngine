@@ -12,7 +12,6 @@ from hipengine.kernels.hip_gfx1100.moe import (
     plan_qwen35_router_build,
     qwen35_router_logits_bf16,
     qwen35_router_logits_bf16_f32w,
-    qwen35_router_logits_bf16_f32w_auto_256,
     qwen35_router_logits_bf16_f32w_token_tile_8,
     qwen35_router_logits_bf16_f32w_token_tile_16,
     qwen35_router_logits_f32_f32w,
@@ -69,7 +68,7 @@ def test_qwen35_router_registers_bf16_and_w4_paro() -> None:
     assert resolve(backend="hip_gfx1100", layer="router_logits", quant="fp16") is qwen35_router_logits_fp16
     assert (
         resolve(backend="hip_gfx1100", layer="router_logits", quant="f32", variant="bf16_hidden")
-        is qwen35_router_logits_bf16_f32w_auto_256
+        is qwen35_router_logits_bf16_f32w
     )
     assert (
         resolve(
@@ -210,20 +209,6 @@ def test_qwen35_router_build_plan_is_dry_run_safe(tmp_path) -> None:
     assert not artifact.cache_dir.exists()
 
 
-def test_lcp4_auto_router_wrapper_uses_256_threads_by_default(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    monkeypatch.setattr(
-        router_module,
-        "qwen35_router_logits_bf16_f32w",
-        lambda *args, **kwargs: calls.append((args, kwargs)),
-    )
-
-    qwen35_router_logits_bf16_f32w_auto_256(1, 2, 3, 512, 2048, 256)
-    assert calls == [((1, 2, 3, 512, 2048, 256), {"threads": 256, "stream": 0, "library": None, "runtime": None})]
-
-
 def test_qwen35_router_wrappers_validate_shape_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="tokens must be positive"):
         qwen35_router_logits_bf16(0, 0, 0, 0, 16, 8)
@@ -294,7 +279,7 @@ def test_router_f32_weight_wider_token_tiles_are_exact(router_library) -> None:
             copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
         for launch, output_buffer in zip(
             (
-                qwen35_router_logits_bf16_f32w_auto_256,
+                qwen35_router_logits_bf16_f32w,
                 qwen35_router_logits_bf16_f32w_token_tile_8,
                 qwen35_router_logits_bf16_f32w_token_tile_16,
             ),

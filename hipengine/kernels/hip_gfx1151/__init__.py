@@ -29,7 +29,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
-    qwen35_router_logits_bf16_f32w_auto_256,
+    qwen35_router_logits_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
@@ -3483,7 +3483,7 @@ _GFX1151_OVERRIDES = {
         "router_logits",
         "f32",
         "bf16_hidden",
-    ): qwen35_router_logits_bf16_f32w_auto_256,
+    ): qwen35_router_logits_bf16_f32w,
     (
         "linear",
         "gguf_q5_k_t16_v1",

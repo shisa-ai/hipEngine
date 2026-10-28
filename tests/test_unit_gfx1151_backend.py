@@ -33,7 +33,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
-    qwen35_router_logits_bf16_f32w_auto_256,
+    qwen35_router_logits_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.norm import (
     paro_rmsnorm_out_fp16,
@@ -3022,7 +3022,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             quant="f32",
             variant="bf16_hidden",
         )
-        is qwen35_router_logits_bf16_f32w_auto_256
+        is qwen35_router_logits_bf16_f32w
     )
     assert (
         resolve(
@@ -3031,7 +3031,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             quant="f32",
             variant="bf16_hidden",
         )
-        is qwen35_router_logits_bf16_f32w_auto_256
+        is qwen35_router_logits_bf16_f32w
     )
     assert (
         backend_package_capability(

@@ -1,7 +1,8 @@
 """Compare the router-logits variants at the Gemma 4 production shape.
 
-`gemma4_router_topk_bf16` calls `qwen35_router_logits_bf16_f32w` with the
-default ``threads=512``, which dispatches to ``token_tile`` with
+The "token_tile_4" comparison in `gemma4_router_topk_bf16` calls
+`qwen35_router_logits_bf16_f32w` with explicit ``threads=512``, which dispatches
+to ``token_tile`` with
 TOKENS_PER_BLOCK=4. At the real shape (hidden 2816, 128 experts) that leaves
 threads 352..511 with no K range at all -- 31% of every block idle behind a
 nine-round barrier tree, 64 FLOPs per useful thread.
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import statistics
 import time
+from functools import partial
 
 import numpy as np
 
@@ -33,9 +35,6 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w as base_f32w,
-)
-from hipengine.kernels.hip_gfx1100.moe.router import (
-    qwen35_router_logits_bf16_f32w_auto_256 as auto256,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_token_tile_8 as tt8,
@@ -129,10 +128,10 @@ def main() -> None:
         )
 
         candidates = [
-            ("base f32w (threads=512, TPB=4)", base_f32w),
+            ("base f32w (threads=512, TPB=4)", partial(base_f32w, threads=512)),
             ("token_tile_8 (threads=256)", tt8),
             ("token_tile_16 (threads=256)", tt16),
-            ("auto_256", auto256),
+            ("auto_256", partial(base_f32w, threads=256)),
         ]
 
         flops = 2.0 * TOKENS * HIDDEN * EXPERTS

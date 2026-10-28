@@ -20,13 +20,13 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     build_qwen35_router,
-    qwen35_router_logits_bf16_f32w_auto_256,
+    qwen35_router_logits_bf16_f32w,
     qwen35_router_logits_bf16_f32w_token_tile_8,
     qwen35_router_logits_bf16_f32w_token_tile_16,
 )
 
 _LAUNCHES = {
-    "token_tile_4": qwen35_router_logits_bf16_f32w_auto_256,
+    "token_tile_4": qwen35_router_logits_bf16_f32w,
     "token_tile_8": qwen35_router_logits_bf16_f32w_token_tile_8,
     "token_tile_16": qwen35_router_logits_bf16_f32w_token_tile_16,
 }

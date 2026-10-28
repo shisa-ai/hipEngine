@@ -505,6 +505,7 @@ def gemma4_router_topk_bf16(
             tokens,
             hidden_size,
             num_experts,
+            threads=512,
             stream=stream,
         )
     # logits_stride is num_experts: Gemma 4 has no shared-expert gate column.

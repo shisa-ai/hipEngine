@@ -156,7 +156,7 @@ def test_router_projection_wave0_tree_wrapper_validates_before_build(
 def test_router_projection_wave0_tree_package_registry_scope_and_fallback() -> None:
     from hipengine.kernels.hip_gfx1100 import moe
     from hipengine.kernels.hip_gfx1100.moe.router import (
-        qwen35_router_logits_bf16_f32w_auto_256,
+        qwen35_router_logits_bf16_f32w,
         register_qwen35_router_kernels,
     )
     from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -177,7 +177,7 @@ def test_router_projection_wave0_tree_package_registry_scope_and_fallback() -> N
         layer=_LAYER,
         quant=_QUANT,
         variant=_RETAINED_VARIANT,
-    ) is qwen35_router_logits_bf16_f32w_auto_256
+    ) is qwen35_router_logits_bf16_f32w
 
     import hipengine.kernels.hip_gfx1151 as gfx1151
 
@@ -206,7 +206,7 @@ def test_router_projection_wave0_tree_matches_retained_and_cpu_edges() -> None:
     )
     from hipengine.kernels.hip_gfx1100.moe.router import (
         build_qwen35_router,
-        qwen35_router_logits_bf16_f32w_auto_256,
+        qwen35_router_logits_bf16_f32w,
     )
 
     candidate = _candidate()
@@ -233,7 +233,7 @@ def test_router_projection_wave0_tree_matches_retained_and_cpu_edges() -> None:
         try:
             for array, buffer in zip(arrays, buffers, strict=True):
                 copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
-            qwen35_router_logits_bf16_f32w_auto_256(
+            qwen35_router_logits_bf16_f32w(
                 buffers[0].ptr,
                 buffers[1].ptr,
                 buffers[2].ptr,

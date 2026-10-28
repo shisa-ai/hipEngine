@@ -29,6 +29,7 @@ decision rather than a bug.
 from __future__ import annotations
 
 import ctypes
+from functools import partial
 
 import numpy as np
 import pytest
@@ -107,7 +108,7 @@ def _run_pair():
 
         picks = {}
         for name, fn in (
-            ("base", qwen35_router_logits_bf16_f32w),
+            ("base", partial(qwen35_router_logits_bf16_f32w, threads=512)),
             ("tiled", qwen35_router_logits_bf16_f32w_token_tile_16),
         ):
             fn(
