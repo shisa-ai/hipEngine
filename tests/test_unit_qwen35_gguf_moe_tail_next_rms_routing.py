@@ -128,3 +128,40 @@ def test_resident_decode_keeps_unfused_layer_inputs_when_disabled(
         assert kwargs["input_norm_ptr"] is None
         assert kwargs["next_norm_weight_ptr"] is None
         assert kwargs["next_norm_out_ptr"] is None
+
+
+@pytest.mark.parametrize("chain_next_rms", [False, True])
+def test_moe_graph_diagnostic_requires_unchained_layer_norms(
+    monkeypatch: pytest.MonkeyPatch, chain_next_rms: bool,
+) -> None:
+    session, calls = _session_and_calls()
+    graph = object()
+    graph_acquisitions = []
+
+    def acquire_graph():
+        graph_acquisitions.append(graph)
+        return graph
+
+    def run_graph(layer_id, layer_type, src_ptr, dst_ptr, selected_graph, **kwargs):
+        assert selected_graph is graph
+        calls.append(("graph", layer_id, layer_type))
+
+    monkeypatch.setattr(qgr, "_gguf_moe_tail_next_rms_enabled", lambda: chain_next_rms)
+    monkeypatch.setattr(session, "_moe_graph_for_decode", acquire_graph)
+    monkeypatch.setattr(session, "_run_decode_layer_graphed", run_graph)
+    monkeypatch.setattr(qgr, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None)
+
+    session._run_current_hidden_to_final_hidden(position=3, stream=4)
+
+    if chain_next_rms:
+        assert graph_acquisitions == []
+        assert [(call[0], call[1]) for call in calls] == [
+            ("linear", 0), ("full", 1), ("linear", 2),
+        ]
+    else:
+        assert graph_acquisitions == [graph]
+        assert calls == [
+            ("graph", 0, qgr.LINEAR_ATTENTION),
+            ("graph", 1, qgr.FULL_ATTENTION),
+            ("graph", 2, qgr.LINEAR_ATTENTION),
+        ]

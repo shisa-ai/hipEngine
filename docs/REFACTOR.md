@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MoE-tail plus next-input RMSNorm | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS=0` is the temporary rollback around the default-on decode chain. The retained route fuses only the already-rounded selected-aggregate ABI; slot-weighted layers preserve the feature-parallel combine followed by the exact unfused RMSNorm because the one-block weighted composite regressed cold production-layer time. | Q3 GPU1 counterbalanced graph decode improves `100.195 -> 101.216 tok/s` (+1.02%) at 512/128 and `107.366 -> 108.383 tok/s` (+0.95%) at 4K/128, with all five paired deltas positive, exact layer-limit 1/4/40 buffers, exact eager/graph trajectory, unchanged final IDs/logits/memory, and no bulk-prefill route change. Q4/PARO slot-weighted paths keep their existing two-kernel math. | Keep the opt-out for one Q3/Q4 defaults-only milestone and task-#16 overlap bisection window. Then remove the env branch while retaining the registered unfused combine→RMSNorm fallback and kernel-level BF16/FP16 tests. |
 | GGUF c1 host token embedding | `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING` offloads the Q8_0 token embedding from device residency and performs exact host Q8_0→BF16 embedding copies. | Retained exact c1 opt-in, global default off. The old gfx1100 `128K/128` capacity proof fit at `23.400/23.913 GiB` tracked/sampled but ran only `11.141 tok/s`. Current gfx1151 SH2-M1 instead passes complete byte-state and stays within 1% of graph/eager at 512/4K while removing exactly `0.503235 GiB` live ownership and `0.443409/0.503933 GiB` whole-GTT. The short load still materializes then frees the device table, so tracked high water saves only `0.418797 GiB`; shared c>N, packed AR, and MTP require device-token-pointer embedding. | Replace allocate-then-free with loader-time ownership only after an explicit shared-runner-safe c1 policy automatically preserves the device table for c>N/packed/MTP/unsupported sessions. Then rerun exact c1/c>N/MTP lifecycle and performance gates before considering a gfx1151 default. Keep the env route until that policy lands or another exact memory owner supersedes it. |
 | GGUF INT8 KV diagnostics | GGUF accepts explicit `--kv-storage int8_per_token_head` for resident full-attention KV, reusing the PARO per-token/head INT8 write/decode kernels. A geometry/policy byte planner now selects full-prompt layer-outer execution with one reusable BF16 prefill-oracle pair when that is smaller than chunk-outer per-layer oracles; a fail-closed guard forbids shared ownership under chunk-outer execution. Short contexts (`<=8192` rounded max positions) retain an additional BF16 mirror. Long contexts default to the 35B-safe `HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS=8`; lower prefixes, pure INT8, key-only, block16, and custom masks still require `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`. | Default remains BF16 unless explicit INT8 is requested. Qwen3.6 pure FP32-scale INT8 still fails complete 512/8 at `77.78%` minimum-prompt top-1. On gfx1151, Qwen3.6-35B-A3B `UD-Q4_K_M` with zero BF16 mirror passes 512/8 and 1024/8 (fp16 scales) and fails 4096/16 on the `mixed_v1` control alone at mean KL `0.1597`, while all ten natural category prompts pass at 100% top-1 and mean KL <= `1.09e-3`; its runtime gain is `+1.44%/+1.50%/+1.59%` against the BF16 graph route at depths 0/4096/16384, so an INT8 KV copy is not the depth-sensitive lever and the gfx1151 artifact stays BF16. Exact-file Qwen3.8 pure FP32-scale INT8 passes complete 512/8 and 4K/16 plus bounded `mixed_v1` 64K/16. Its bounded owner lowers 32K-capacity tracked peak `18.943 -> 17.330 GiB` versus the old INT8 route and `17.920 -> 17.330 GiB` versus BF16; matched prefill is `-0.050%` with overlapping sample ranges and eager AR decode is `+6.499%` versus BF16 graph. Real 24-GiB single-request server rows pass at 64K/96K/112K with `3.420/1.570/0.662 GiB` headroom; 120K fails the 1-GiB startup guard and 128K OOMs. Pure-INT8 graph capture remains fail-closed, and exact natural B3 is only `0.6423x` true AR. | Keep BF16 supported/default and retain pure Qwen3.8 INT8 as an explicit AR capacity route. Remove the unverified-long gate only after a model-plugin capability distinguishes Qwen3.8 from quality-rejected Qwen3.6 without filename/backend branches and representative quality passes at the intended ceiling. Graph-admit pure INT8 only after exact eager/graph state and throughput gates; do not enable INT8 MTP until full natural categories are non-regressive. Remove the short mirror, custom-mask/key-only/block16 branches when superseded by one supported calibrated layout. Do not add two-arena temporal storage. |
 | GGUF selected-prefill diagnostics | `HIPENGINE_GGUF_T16_DS4_PREFILL` guarded runtime route for resident `gguf_q4_k_t16_v1` DS4/Q8_1 selected-prefill. | Default-off diagnostic. Full-model Q4_K_S GPU1 gate showed useful prefill speed (`1833.185 -> 1989.578 tok/s` at `512/128`, `2159.561 -> 2372.228 tok/s` at `4K/128`) but changed final token IDs versus default (`220/570 -> 3241/1510`) and added `+0.070 GiB` opt-in activation scratch. The scratch is allocated only when the flag is enabled, so default memory/IDs remain unchanged. | Remove or demote to a microbench/test-only path unless a later exact-enough Q8_1/DS4 calibration path preserves default final IDs/logits on `512/128`, `4K/128`, and the `128K/128` promotion gate while keeping memory bounded. |
@@ -11167,3 +11166,34 @@ bundle. An oracle migration needs real scalar/native boundary and full-logit
 comparisons plus unsupported topology refusal with no mutation. Production
 request parity/cleanup validates wiring separately; it does not substitute for
 the independent arithmetic oracle.
+
+### R0281-TAIL-RMS — Chained norms and MoE graph diagnostic migration
+
+`HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS` defaults on in full-stack and resident scalar
+decode. The runner forwards the next layer's norm destination through the MoE
+tail; selected-aggregate layers can fuse it, while slot-weighted layers keep the
+feature-parallel combine followed by separate RMSNorm. Strict unfused primitives
+remain required regardless of this control's eventual retirement.
+
+The only non-unit writer is
+`tests/test_live_qwen35_gguf_moe_graph_parity.py::_decode`, which disables chaining
+for both eager and per-layer-MoE-graph arms. Chained norm execution does not enter
+`_moe_graph_for_decode()`: its cross-layer destination is outside that graph's
+stateless FFN capture boundary. Removing the tail control without migrating the
+test would make its graph-engagement check fail, not qualify the graph route.
+The separate `GGUF MoE decode graph` item still owns that runtime graph decision.
+
+**Decision needed:** keep the tail control as a supported diagnostic, give the
+graph comparison an explicit unchained construction policy, or retire that
+per-layer graph route and its caller coherently. A defaults-only milestone does
+not migrate this dependency. Do not disable production chaining or change the
+slot-weighted arithmetic to make a diagnostic graph engage.
+
+**Clearing action:** run `tests/test_unit_qwen35_gguf_moe_tail_next_rms_routing.py`
+and `tests/test_unit_qwen35_gguf_iq_dispatch.py`, plus BF16/FP16 primitive fused/
+unfused parity gates. The routing test pins that graph acquisition occurs only
+for unchained layers. If keeping the graph comparison, run its live parity test
+with real capture/replay counters after migrating its control. A reader change
+also needs public decode with short/long/ragged requests, selected path,
+repeat output and cleanup; independent state/logit comparison still owns any
+arithmetic claim. No production default or numerical contract changes here.
