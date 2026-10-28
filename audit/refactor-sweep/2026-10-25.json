@@ -8308,7 +8308,8 @@
         {
           "line": 6310,
           "text": "| GGUF small-B linear dispatch | `HIPENGINE_GGUF_Q4K_ROWTILE` / `q4k_rowtile_session(False)` opt out of raw K-quant rowtiles (rows 2..8, WMMA off) and native resident-pack8 Q4 rowtiles (rows 2..4). | Raw rowtiles remain default-on and exact; their historical MoE full-path result was flat because selected experts dominated. Dense Qwen3.6 now routes native pack8 singles and gate/up pairs through exact local32 row reuse. Rows 2/3/4 improve the real pair 1.715/2.353/3.114x on GPU1; rowtile-4 is VGPR96/scratch0. The routed W7900 transaction oracle observes `{2,3,4}`, and clean natural25 improves B1/B2/B3 **+10.04%/+16.00%/+19.38%** with every full/train/heldout/category row positive, exact IDs/state/acceptance, unchanged memory, and B2 at **1.0678x** own AR. | Keep the opt-out and dual/single rollback for one release after the `4181b85fb` promotion, then make qualified rowtiles unconditional. Preserve per-row kernels for rows==1, rows above each admitted ceiling, registry/backend misses, and explicit WMMA. |",
-          "status": "pending"
+          "status": "retired-ambient-rowtile-env-deferred-scoped-control",
+          "evidence": "Original row6310: remove HIPENGINE_GGUF_Q4K_ROWTILE runtime lookup; default-on rowtile arithmetic/launch bodies unchanged. Preserve scoped/explicit comparison and strict fallback. Bottom R0281-ROWTILE-CONTROL records module-global ownership migration decision. RED5fail8pass against parent resolver; stale values and rawQ4 launch widths1/2/5/8/9 covered. CPU deterministic and public/GPU validation recorded in worklog. Worklog: worklog/entries/20261028T182642.199075Z-cleanup-refactor-r0281-rowtile-env-6123e1.md."
         },
         {
           "line": 6311,

@@ -1,9 +1,7 @@
-"""The Q4_K rowtile decode route is env-selectable, CPU-only.
+"""The Q4_K rowtile decode route is default-on with a scoped comparison control.
 
-Why this exists: `HIPENGINE_GGUF_Q4K_ROWTILE` gates the rows 2..8 rowtile chunking whose absence
-makes Q4/Q5 projections "silently fall back to WMMA prefill" (hipengine/runtime/gguf_linear.py:162).
-Before spending a server-packet A/B on the route choice, prove the switch actually changes the
-resolved kernel - otherwise the experiment is a null result with a GPU bill.
+Ambient legacy values must not disable the route. Dispatch coverage also keeps
+explicit and scoped comparison precedence separate from the coarse resolver.
 """
 from __future__ import annotations
 
@@ -22,28 +20,43 @@ def _rowtile_resolver():
     return module
 
 
-@pytest.mark.parametrize("value", ["", "1", "0"])
-def test_resolve_reads_the_env_directly(monkeypatch, value):
+@pytest.mark.parametrize("value", [None, "", "1", "0", "false", "off", "invalid"])
+def test_retired_env_does_not_disable_rowtile(monkeypatch, value):
     module = _rowtile_resolver()
-    if value == "":
+    if value is None:
         monkeypatch.delenv("HIPENGINE_GGUF_Q4K_ROWTILE", raising=False)
     else:
         monkeypatch.setenv("HIPENGINE_GGUF_Q4K_ROWTILE", value)
-    expected = True if value in ("", "1") else False
-    assert module._resolve_use_q4k_rowtile(None) is expected
+    with module.q4k_rowtile_session(None):
+        assert module._resolve_use_q4k_rowtile(None) is True
 
 
-def test_dense_rows_above_one_resolver_ignores_the_knob(monkeypatch):
-    """The resolver cannot be used to test the knob.
+@pytest.mark.parametrize("rows", [1, 2, 5, 8, 9])
+def test_retired_env_preserves_actual_raw_rowtile_launch(monkeypatch, rows):
+    from hipengine.kernels.registry import KernelKey
+    from tests.test_unit_gguf_gemv_decode_dispatch import _capture_launch
 
-    For LAYOUT_GGUF_Q4_K_T16 any rows>1 resolves `t16_wmma_prefill_bf16_bf16_out`
-    unconditionally (resolve_gguf_linear_dispatch, gguf_linear.py:2185). The rowtile
-    decision is made later, at the launch sites - `launch_gguf_linear` (:2447),
-    `launch_gguf_linear_pair` (:4182), and `launch_gguf_linear_pair_silu` (:4658) each call
-    `_resolve_use_q4k_rowtile(None)`. This asserts the negative so nobody writes a
-    resolver-level test and concludes the knob is dead: the widest rowtile kernel in the C2
-    trace is a `dense_dual_rowtile_*` (pair-route) launch, which this function never names.
-    """
+    module = _rowtile_resolver()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4K_ROWTILE", "0")
+    rowtile = KernelKey(
+        "hip_gfx1100", "linear", "gguf_q4_k", "rowtile_bf16_bf16_out",
+    )
+    parents = tuple(
+        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", variant)
+        for variant in ("gemv_bf16_bf16_out", "prefill_bf16_bf16_out")
+    )
+    with module.q4k_rowtile_session(None), module.wmma_prefill_session(False):
+        key, _args, _kwargs = _capture_launch(
+            rows=rows, quant_key="gguf_q4_k", use_gemv_decode=False,
+            extra_keys=(rowtile, *parents),
+        )
+
+    assert key is not None
+    assert (key == rowtile) is (2 <= rows <= 8)
+
+
+def test_dense_rows_above_one_resolver_is_independent_of_retired_env(monkeypatch):
+    """Coarse T16 resolution does not establish the rowtile launch choice."""
     module = _rowtile_resolver()
     weight = _sibling_weight(0x2000)
 
@@ -55,8 +68,8 @@ def test_dense_rows_above_one_resolver_ignores_the_knob(monkeypatch):
     assert on.key.variant == "t16_wmma_prefill_bf16_bf16_out"
 
 
-def test_knob_is_consumed_by_the_launch_sites_not_the_resolver():
-    """Pin the call sites, since that is where an A/B on the env actually reaches."""
+def test_scoped_control_is_consumed_by_the_launch_sites_not_the_resolver():
+    """Pin the three launch sites that consume the scoped comparison control."""
     module = _rowtile_resolver()
     source = pathlib.Path(module.__file__).read_text()
     sites = [
@@ -69,7 +82,7 @@ def test_knob_is_consumed_by_the_launch_sites_not_the_resolver():
     assert sum("f_rowtile" in s for s in sites) == 1
 
 
-def test_rows_1_route_is_outside_the_knob(monkeypatch):
+def test_rows_1_route_is_outside_the_rowtile_domain(monkeypatch):
     # rows==1 has its own single-row decode family; the rowtile chunker cannot serve it at all.
     module = _rowtile_resolver()
     weight = _sibling_weight(0x2001)
@@ -82,7 +95,7 @@ def test_rows_1_route_is_outside_the_knob(monkeypatch):
     assert "rowtile" not in on.key.variant
 
 
-def test_knob_stops_mattering_above_the_rowtile_cap(monkeypatch):
+def test_coarse_resolver_above_the_rowtile_cap(monkeypatch):
     module = _rowtile_resolver()
     weight = _sibling_weight(0x2002)
 
@@ -92,22 +105,19 @@ def test_knob_stops_mattering_above_the_rowtile_cap(monkeypatch):
     assert module._ROWTILE_MIN_ROWS == 2 and module._ROWTILE_MAX_ROWS == 8
 
 
-def test_session_pinning_beats_the_env(monkeypatch):
-    """Why an env A/B on the server route measured nothing (measured on GPU, 2026-08-30).
-
-    A width-2 AR packet with HIPENGINE_GGUF_Q4K_ROWTILE=0 traced 164,798 rowtile launches against
-    164,460 with the default - the same route. The resident serving route opens the session, and the
-    session wins over the environment, so the env only moves plain bench/diagnostic calls.
-    """
+def test_scoped_comparison_restores_default_after_exception(monkeypatch):
     module = _rowtile_resolver()
     monkeypatch.setenv("HIPENGINE_GGUF_Q4K_ROWTILE", "0")
-    assert module._resolve_use_q4k_rowtile(None) is False
-    with module.q4k_rowtile_session(True):
+    with module.q4k_rowtile_session(None):
         assert module._resolve_use_q4k_rowtile(None) is True
-        with module.q4k_rowtile_session(False):
-            assert module._resolve_use_q4k_rowtile(None) is False
+        with pytest.raises(RuntimeError, match="comparison failure"):
+            with module.q4k_rowtile_session(False):
+                assert module._resolve_use_q4k_rowtile(None) is False
+                with module.q4k_rowtile_session(True):
+                    assert module._resolve_use_q4k_rowtile(None) is True
+                assert module._resolve_use_q4k_rowtile(None) is False
+                raise RuntimeError("comparison failure")
         assert module._resolve_use_q4k_rowtile(None) is True
-    assert module._resolve_use_q4k_rowtile(None) is False
 
 
 def test_explicit_kwarg_beats_the_session(monkeypatch):

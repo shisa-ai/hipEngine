@@ -1316,10 +1316,9 @@ def mtp_serving_target_use_wmma_prefill(
     )
 
 # Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
-# Q4_K verifier continuation blocks. Default ON: every specialization preserves
-# the corresponding per-row arithmetic. The opt-out exists only for bisection;
-# set HIPENGINE_GGUF_Q4K_ROWTILE=0 to disable.
-_Q4K_ROWTILE_ENV = "HIPENGINE_GGUF_Q4K_ROWTILE"
+# Q4_K verifier continuation blocks. Every specialization preserves the
+# corresponding per-row arithmetic. Scoped overrides retain comparison access;
+# ambient environment values cannot disable the production default.
 _q4k_rowtile_session_enabled: bool | None = None
 _ROWTILE_MIN_ROWS = 2
 _ROWTILE_MAX_ROWS = 8
@@ -2897,11 +2896,10 @@ def _resolve_use_wmma_prefill(kwarg: bool | None) -> bool:
 
 
 def set_q4k_rowtile_enabled(enabled: bool | None) -> None:
-    """Set the session-scoped opt-out for exact small-B row-tile GEMVs.
+    """Set the scoped comparison control for exact small-B row-tile GEMVs.
 
-    Pass ``False`` to force the legacy per-row prefill alias (bisection only);
-    ``None`` clears the override and falls back to the env var, which itself
-    defaults to ON.
+    Pass ``False`` to force the legacy per-row prefill alias for comparison;
+    ``None`` clears the override and restores the production default, ON.
     """
 
     global _q4k_rowtile_session_enabled
@@ -2925,10 +2923,7 @@ def _resolve_use_q4k_rowtile(kwarg: bool | None) -> bool:
         return bool(kwarg)
     if _q4k_rowtile_session_enabled is not None:
         return _q4k_rowtile_session_enabled
-    raw = os.environ.get(_Q4K_ROWTILE_ENV, "")
-    if not raw:
-        return True  # default ON
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return True
 
 
 def raw_k_prefill_rowbatch() -> int:
