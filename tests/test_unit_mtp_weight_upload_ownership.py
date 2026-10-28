@@ -585,6 +585,62 @@ def test_post_init_ignores_retired_shared_dual_selector(
     assert sorted(memory_spy.freed_ptrs()) == sorted(memory_spy.allocated_ptrs())
 
 
+@pytest.mark.parametrize("shape", ["pack8", "x8", "x8_dscale"])
+@pytest.mark.parametrize("dp4a", [False, True])
+@pytest.mark.parametrize("vocab", [8, 16])
+def test_post_init_draft_x8_layout_has_its_own_vocab_scoped_owner(
+    memory_spy: _MemorySpy, monkeypatch, shape: str, dp4a: bool, vocab: int,
+) -> None:
+    from hipengine.quant.gguf import GGMLQuantizationType
+    from hipengine.quant.gguf_x8 import unpack_gguf_q6_k_x8
+    from hipengine.speculative import mtp_resident_draft as resident
+
+    _fake_post_init_boundaries(monkeypatch)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE", shape)
+    monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", str(int(dp4a)))
+    monkeypatch.setenv("HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR", "0")
+    weights = _resident_mtp_weights()
+    raw_head = np.zeros((16, 210), dtype=np.uint8)
+    raw_head[:, :128] = np.arange(128, dtype=np.uint8)
+    raw_head[:, 208:210] = np.asarray([0.125], dtype=np.float16).view(np.uint8)
+    weights["output.weight"] = (raw_head, GGMLQuantizationType.Q6_K, (16, 256))
+    packed_inputs = []
+    repack = resident.repack_gguf_q6_k_x8
+
+    def record_repack(raw):
+        packed = repack(raw)
+        np.testing.assert_array_equal(unpack_gguf_q6_k_x8(packed), raw)
+        packed_inputs.append(raw.copy())
+        return packed
+
+    monkeypatch.setattr(resident, "repack_gguf_q6_k_x8", record_repack)
+    runner = resident.Qwen35GGUFResidentMTPDraftRunner(
+        weights, np.zeros((16, 4), dtype=np.float32), runtime=_FakeRuntime(), vocab_cap=vocab,
+    )
+    try:
+        assert runner._q6_top1_dp4a_enabled is dp4a
+        assert runner.shared_head is not None
+        assert (runner.shared_head_x8 is not None) is (shape != "pack8")
+        assert (runner.shared_head_x8_dscale is not None) is (shape == "x8_dscale")
+        names = {name for _runtime_id, name in runner.upload_cache._entries}
+        prefix = "resident_mtp:output.weight:"
+        assert {name for name in names if name.startswith(prefix)} == (
+            set() if shape == "pack8" else
+            {f"{prefix}q6_x8_top1:vocab{vocab}"} | (
+                {f"{prefix}q6_x8_dscale_top1:vocab{vocab}"} if shape == "x8_dscale" else set()
+            )
+        )
+        if shape != "pack8":
+            assert len(packed_inputs) == 1
+            np.testing.assert_array_equal(packed_inputs[0], raw_head[None, :vocab])
+            assert runner.shared_head_x8.nbytes == vocab * 210
+        else:
+            assert packed_inputs == []
+    finally:
+        runner.close()
+    assert sorted(memory_spy.freed_ptrs()) == sorted(memory_spy.allocated_ptrs())
+
+
 def test_post_init_borrowed_cache_is_used_and_left_open(
     memory_spy: _MemorySpy, monkeypatch
 ) -> None:
