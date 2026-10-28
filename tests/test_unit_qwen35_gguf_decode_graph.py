@@ -275,6 +275,44 @@ def test_decode_graph_key_covers_transition_window_state_and_buffers() -> None:
     assert recorded.capture_hidden_seed_fp32 is True
 
 
+@pytest.mark.parametrize("budget", [1, 3, 7])
+@pytest.mark.parametrize("cap_offset", [None, -1, 0, 1])
+def test_decode_graph_key_infers_or_validates_the_context_cap(budget, cap_offset) -> None:
+    end = 512 + budget
+    cap = None if cap_offset is None else end + cap_offset
+    kwargs = dict(
+        position=512,
+        steps_per_replay=1,
+        max_replay_steps=budget,
+        attention_max_context_len=cap,
+    )
+    if cap_offset == -1:
+        with pytest.raises(ValueError, match="cover the replay transition window"):
+            build_qwen35_gguf_decode_graph_key(_session(), **kwargs)
+        return
+
+    key = build_qwen35_gguf_decode_graph_key(_session(), **kwargs)
+
+    assert key.replay_context_limit == (end if cap is None else cap)
+    assert key.context_bucket == 768
+    assert key.max_replay_steps == budget
+
+
+@pytest.mark.parametrize("cap", [768, 769])
+def test_decode_graph_key_keeps_the_resident_capacity_boundary(cap) -> None:
+    kwargs = dict(
+        position=512,
+        steps_per_replay=1,
+        max_replay_steps=7,
+        attention_max_context_len=cap,
+    )
+    if cap > 768:
+        with pytest.raises(ValueError, match="exceeds resident cache capacity"):
+            build_qwen35_gguf_decode_graph_key(_session(), **kwargs)
+    else:
+        assert build_qwen35_gguf_decode_graph_key(_session(), **kwargs).context_bucket == cap
+
+
 def test_decode_graph_key_serializes_complete_shape_state_axes() -> None:
     payload = build_qwen35_gguf_decode_graph_key(
         _session(),
@@ -444,6 +482,95 @@ def test_decode_graph_delegates_replay_provenance_and_close_to_submission_owner(
     ]
     assert graph.graph_exec == 0
     assert unpinned == [graph]
+
+
+@pytest.mark.parametrize("budget", [1, 3, 7])
+@pytest.mark.parametrize("steps_per_replay", [1, 2])
+def test_decode_graph_replay_enforces_cumulative_budget_and_cursor(budget, steps_per_replay) -> None:
+    calls = []
+    # Use the resident session's real position property: replay updates _position.
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session._position = 37
+    session.scratch = SimpleNamespace(
+        position_host=np.array([37], dtype=np.int64),
+        context_host=np.array([38], dtype=np.int64),
+    )
+    session.runtime = SimpleNamespace(
+        graph_launch=lambda graph_exec, stream: calls.append(("launch", graph_exec, stream)),
+        stream_synchronize=lambda stream: calls.append(("sync", stream)),
+    )
+    graph = Qwen35GGUFDecodeGraph(
+        session=session,
+        graph=11,
+        graph_exec=12,
+        stream=13,
+        position=37,
+        steps_per_replay=steps_per_replay,
+        max_replay_steps=budget * steps_per_replay,
+        generated=None,
+        generated_hidden_seeds=None,
+        generated_index=None,
+        record_steps=0,
+        bucket_key=SimpleNamespace(),
+        attention_max_context_len=37 + budget * steps_per_replay,
+        capture_hidden_seed_fp32=True,
+    )
+
+    graph.replay(0)
+    assert calls == []
+    session._position += 1
+    with pytest.raises(RuntimeError, match="state generation mismatch"):
+        graph.replay(steps_per_replay)
+    session._position = 37
+    assert calls == []
+    assert graph.replayed_steps == 0
+
+    for _ in range(budget):
+        graph.replay(steps_per_replay)
+    expected_calls = [("launch", 12, 13), ("sync", 13)] * budget
+    assert calls == expected_calls
+    assert graph.replayed_steps == budget * steps_per_replay
+    assert session.position == graph.position + graph.replayed_steps
+    assert session.scratch.position_host.tolist() == [session.position]
+    assert session.scratch.context_host.tolist() == [session.position + 1]
+    assert session._hidden_seed_fp32_populated is True
+
+    graph.replay(0)
+    with pytest.raises(ValueError, match="cumulative graph replay exceeds.*transition window"):
+        graph.replay(steps_per_replay)
+    assert calls == expected_calls
+    assert graph.replayed_steps == budget * steps_per_replay
+
+
+def test_decode_graph_replay_keeps_record_capacity_separate_from_transition_budget() -> None:
+    session = SimpleNamespace(position=37)
+    graph = Qwen35GGUFDecodeGraph(
+        session=session,
+        graph=11,
+        graph_exec=12,
+        stream=13,
+        position=37,
+        steps_per_replay=2,
+        max_replay_steps=8,
+        generated=None,
+        generated_hidden_seeds=None,
+        generated_index=None,
+        record_steps=2,
+        bucket_key=SimpleNamespace(),
+        attention_max_context_len=45,
+        capture_hidden_seed_fp32=False,
+    )
+    with pytest.raises(ValueError, match="record capacity"):
+        graph.replay(4)
+    with pytest.raises(ValueError, match="divisible"):
+        graph.replay(1)
+    with pytest.raises(ValueError, match="non-negative"):
+        graph.replay(-2)
+    assert graph.replayed_steps == 0
+    assert session.position == 37
+    graph.closed = True
+    with pytest.raises(RuntimeError, match="closed"):
+        graph.replay(0)
 
 
 def test_decode_graph_rearm_replay_window_requires_restored_capture_cursor() -> None:

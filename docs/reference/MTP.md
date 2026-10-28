@@ -4,17 +4,23 @@ owns: Multi-token prediction implementation history, decode economics, and provi
 ---
 # hipEngine MTP Native Implementation Plan
 
+For serving policy and request controls, use [API.md](../API.md); for active
+and retired environment selectors, use [ENVS.md](../ENVS.md). The dated reports
+below record the configuration and defaults at the time of each experiment,
+not today's serving policy or selector availability.
+
 The selected-MoE staged-down runtime selector and Python/C dispatcher branches
 are removed. Selected down execution uses SiLU/rotate then projection;
 `HIPENGINE_SELECTED_MOE_DOWN_STAGED` is ignored. The independent staged primitive
 remains registered for diagnostics. Historical comparisons below describe the
 former runtime selection.
 
-> **Production-readiness campaign (2026-08-21):** short-context MTP evidence is
-> not sufficient for default serving. The active context/lifecycle/API/load
-> campaign is [`MTP-FIX.md`](../campaigns/MTP-FIX.md); production MTP remains disabled until
-> its staged safety and qualification gates pass. This document remains the
-> implementation/economics history and provider design reference.
+## Dated implementation reports
+
+> **Production-readiness campaign (2026-08-21):** at that date, short-context
+> MTP evidence was not sufficient for default serving. The context/lifecycle/
+> API/load campaign was [`MTP-FIX.md`](../campaigns/MTP-FIX.md), and production
+> MTP was disabled pending its staged safety and qualification gates.
 >
 > **Current packed-PARO review (2026-08-24):** the July N4 `16/214 = 7.48%`
 > acceptance result predates the August 16 grouped PARO GDN-head repair and is

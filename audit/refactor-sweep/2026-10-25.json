@@ -8086,12 +8086,14 @@
         {
           "line": 6273,
           "text": "| MTP verifier docs | Older \"default-off diagnostic\" notes for P1 gates can become stale as promoted defaults land. | `docs/reference/MTP.md`, `benchmarks/README.md`, and `WORKLOG.md` carry historical rows plus current status. | During each MTP sprint commit, update current-status language and leave old measurements only as dated history. |",
-          "status": "pending"
+          "status": "fixed-mtp-history-policy-boundary",
+          "evidence": "Added serving/API and selector-reference ownership at the MTP document entry, separated dated reports, and made the August default-off statement explicitly historical. Benchmark rollup already carries dated results; immutable worklogs stay unchanged. General documentation maintenance is not a removal task. Worklog: worklog/entries/20261028T142309.801533Z-cleanup-refactor-r0281-mtp-graph-contract-83a810.md."
         },
         {
           "line": 6274,
           "text": "| GGUF decode graph replay | Session-bound graphs retain a full key and cumulative transition budget; callers can still explicitly capture diagnostic windows outside the production selector. | SOL-G5 resolves the old uncapped debt: the context cap is inferred from `position + max_replay_steps` or validated when explicit; the key covers backend/model/weights/buffers/KV/layers/route/sampler/recording/state generation; replay rejects cursor drift or budget overflow. Current gfx1151 HIP passes 128/128 byte-exact checkpoints. | Keep the strict cap/key checks permanently. Remove only redundant legacy graph arguments after the MTP diagnostic modes are retired and all callers use the state-bound API. |",
-          "status": "pending"
+          "status": "not-debt-state-bound-graph-contract",
+          "evidence": "Traced capture, key construction, replay, resident wrapper and PM4/MTP callers: cap/window/recording arguments are consumed, not redundant legacy aliases. Preserve all safety checks and document their contract in docs/reference/GGUF.md. Added cap/capacity/cumulative-budget/cursor/recording boundary coverage; no runtime change. Worklog: worklog/entries/20261028T142309.801533Z-cleanup-refactor-r0281-mtp-graph-contract-83a810.md."
         },
         {
           "line": 6275,

@@ -1083,6 +1083,29 @@ launches (prefill sample + 3 graph samples), and 36 full-attention KV
 append/decode launches, matching 6 resident token steps across 6 full-attention
 layers rather than full-context recompute per generated token.
 
+### State-bound decode graph contract
+
+`Qwen35GGUFResidentSession.capture_decode_graph(...)` binds a graph to one
+session's buffers and starting cursor. The key records backend, architecture,
+model/weight and buffer identity, layer and KV geometry, decode route and
+LM-head launch settings, recording options, and the transition window.
+
+`max_replay_steps` bounds cumulative decoded transitions, not launches;
+`steps_per_replay` controls how many transitions each launch executes. The
+attention cap defaults to `position + max_replay_steps`. An explicit
+`attention_max_context_len` must cover that window, and its block-rounded
+bucket must fit resident cache capacity. These arguments are live capture
+inputs, not compatibility aliases.
+
+Replay rejects cursor drift, window overflow, recording-capacity overflow,
+and steps not divisible by `steps_per_replay` before launching. Reset or
+rollback does not automatically make an old graph reusable. A non-recording
+graph can be rearmed only at its captured cursor, after the caller restores
+its exact recurrent, KV, hidden and token state; `rearm_replay_window()` resets
+host accounting and does not reconstruct device state. Close graphs before
+releasing their session resources. Explicit diagnostic capture uses the same
+contract even when automatic selection would choose eager decode.
+
 ### P6: broaden local GGUF quant coverage
 
 Status: implemented as correctness coverage in
