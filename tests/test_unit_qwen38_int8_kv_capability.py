@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.core.dtype import DType
 from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 from hipengine.models.kv_capabilities import (
@@ -578,6 +580,48 @@ def _public_kv_generator(tmp_path: Path, *, backend: str) -> Qwen35GGUFBringupGe
     generator._kv_artifact_identity = None
     generator._kv_capability_resolution = None
     return generator
+
+
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("long_override", [None, "0", "1"])
+@pytest.mark.parametrize("max_positions", [512, 8191, 8192, 8193, 12345])
+def test_public_unmeasured_uniform_int8_plan_is_mirror_free_across_legacy_threshold(
+    tmp_path: Path, monkeypatch, backend: str, long_override: str | None,
+    max_positions: int,
+) -> None:
+    """A declared contract needs neither an evidence row nor the legacy opt-in."""
+
+    from hipengine.runtime.qwen35_gguf_planning import _qwen35_gguf_kv_chunk_layout
+
+    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED", raising=False)
+    if long_override is None:
+        monkeypatch.delenv(gguf_runner._GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, raising=False)
+    else:
+        monkeypatch.setenv(gguf_runner._GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, long_override)
+    generator = _public_kv_generator(tmp_path, backend=backend)
+    generator.request_kv_policy_hint = ("int8_per_token_head", "fp32", "per_token_head")
+    generator._prepare_kv_policy(None)
+
+    capability = generator.kv_capability_provenance
+    assert capability["runtime_action"] == "admit"
+    assert capability["status"] == "unmeasured"
+    assert capability["evidence"] is None
+    assert capability["promotion_eligible"] is False
+    mirror_free = gguf_runner._admitted_no_mirror_int8_capability(capability)
+    assert mirror_free is True
+    layout = _qwen35_gguf_kv_chunk_layout(
+        SimpleNamespace(layer_types=(
+            gguf_runner.LINEAR_ATTENTION,
+            gguf_runner.FULL_ATTENTION,
+            gguf_runner.FULL_ATTENTION,
+        )),
+        max_positions=max_positions,
+        kv_storage_dtype=generator._prepared_kv_policy.storage_dtype,
+        kv_scale_dtype=generator._prepared_kv_scale_dtype,
+        int8_kv_no_mirror_qualified=mirror_free,
+    )
+    assert layout.bf16_mirror_layer_indices == ()
+    assert layout.layer_storage_dtypes == (None, DType.INT8_PER_TOKEN_HEAD, DType.INT8_PER_TOKEN_HEAD)
 
 
 def test_public_tail4_request_resolves_instead_of_refusing_the_layout(

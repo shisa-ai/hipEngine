@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF INT8 KV diagnostics | GGUF accepts explicit `--kv-storage int8_per_token_head` for resident full-attention KV, reusing the PARO per-token/head INT8 write/decode kernels. A geometry/policy byte planner now selects full-prompt layer-outer execution with one reusable BF16 prefill-oracle pair when that is smaller than chunk-outer per-layer oracles; a fail-closed guard forbids shared ownership under chunk-outer execution. Short contexts (`<=8192` rounded max positions) retain an additional BF16 mirror. Long contexts default to the 35B-safe `HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS=8`; lower prefixes, pure INT8, key-only, block16, and custom masks still require `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1`. | Default remains BF16 unless explicit INT8 is requested. Qwen3.6 pure FP32-scale INT8 still fails complete 512/8 at `77.78%` minimum-prompt top-1. On gfx1151, Qwen3.6-35B-A3B `UD-Q4_K_M` with zero BF16 mirror passes 512/8 and 1024/8 (fp16 scales) and fails 4096/16 on the `mixed_v1` control alone at mean KL `0.1597`, while all ten natural category prompts pass at 100% top-1 and mean KL <= `1.09e-3`; its runtime gain is `+1.44%/+1.50%/+1.59%` against the BF16 graph route at depths 0/4096/16384, so an INT8 KV copy is not the depth-sensitive lever and the gfx1151 artifact stays BF16. Exact-file Qwen3.8 pure FP32-scale INT8 passes complete 512/8 and 4K/16 plus bounded `mixed_v1` 64K/16. Its bounded owner lowers 32K-capacity tracked peak `18.943 -> 17.330 GiB` versus the old INT8 route and `17.920 -> 17.330 GiB` versus BF16; matched prefill is `-0.050%` with overlapping sample ranges and eager AR decode is `+6.499%` versus BF16 graph. Real 24-GiB single-request server rows pass at 64K/96K/112K with `3.420/1.570/0.662 GiB` headroom; 120K fails the 1-GiB startup guard and 128K OOMs. Pure-INT8 graph capture remains fail-closed, and exact natural B3 is only `0.6423x` true AR. | Keep BF16 supported/default and retain pure Qwen3.8 INT8 as an explicit AR capacity route. Remove the unverified-long gate only after a model-plugin capability distinguishes Qwen3.8 from quality-rejected Qwen3.6 without filename/backend branches and representative quality passes at the intended ceiling. Graph-admit pure INT8 only after exact eager/graph state and throughput gates; do not enable INT8 MTP until full natural categories are non-regressive. Remove the short mirror, custom-mask/key-only/block16 branches when superseded by one supported calibrated layout. Do not add two-arena temporal storage. |
 | GGUF selected-prefill diagnostics | `HIPENGINE_GGUF_T16_DS4_PREFILL` guarded runtime route for resident `gguf_q4_k_t16_v1` DS4/Q8_1 selected-prefill. | Default-off diagnostic. Full-model Q4_K_S GPU1 gate showed useful prefill speed (`1833.185 -> 1989.578 tok/s` at `512/128`, `2159.561 -> 2372.228 tok/s` at `4K/128`) but changed final token IDs versus default (`220/570 -> 3241/1510`) and added `+0.070 GiB` opt-in activation scratch. The scratch is allocated only when the flag is enabled, so default memory/IDs remain unchanged. | Remove or demote to a microbench/test-only path unless a later exact-enough Q8_1/DS4 calibration path preserves default final IDs/logits on `512/128`, `4K/128`, and the `128K/128` promotion gate while keeping memory bounded. |
 | GGUF selected-prefill diagnostics | Microbench-only raw-Q4_K/Q8_1 selected-prefill variants in `gguf_q4_k_q8_1_selected_prefill` (`q8-1-dot`, `q8-1-ds4-dot`, `q8-1-ds4-wmma`, `q8-1-ds4-wmma32`, `q8-1-ds4-wmma64`, `q8-1-ds4-preview-wmma32`, `q8-1-ds4-wmma32-ldspack`, and rejected `q8-1-ds4-wmma32-lds`). | Diagnostic-only, not model runtime defaults. The 2026-06-16 DS4 WMMA path is useful as a fragment/math reference. Expanded-Q4 LDS staging regressed `8.210 -> 18.257 ms/call`; packed-Q4 LDS staging recovered to `11.438 ms/call` but still lost to raw WMMA32; the pre-unpacked preview path measured `12.020 ms/call` with higher fixture memory; four-wave WMMA64 was only flat/sub-1% better than WMMA32. These same-shape staging/pre-unpack/independent-wave probes should not become dispatch paths without a later shared-tile reuse win. | After a real GGUF MMQ/T16 prefill path is promoted or the llama.cpp parity detour closes, demote negative variants to tests or remove them from the microbench to avoid a permanent zoo of rejected kernels. |
 | Qwen3.5/PARO INT8 KV prefill | `HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION`, `HIPENGINE_QWEN35_INT8_PREFILL_STREAMING_MIN_TOKENS`, `HIPENGINE_QWEN35_INT8_PREFILL_LOW_MEMORY_TOTAL_GIB`, and `HIPENGINE_QWEN35_INT8_PREFILL_ORACLE_RESERVE_MIB` gate direct streaming INT8 prefill after the 2026-06-15 GPU1 sweep found a severe 128K prefill regression. | Default `auto`: use the fast temporary BF16-oracle/AOTriton bridge unless prompts are at least `224Ki` rows **and** device/meminfo pressure says the oracle is unsafe (`total <= 26 GiB` or free memory cannot cover oracle bytes plus a 1 GiB reserve). This keeps W7900/Strix-style larger-memory runs on the fast path while preserving the 24GB 262K scratch win. Direct streaming is not throughput-promoted (`1020.723 -> 23.425 tok/s` at 128K/128). | Remove the gate after a memory-safe fast INT8 prefill path matches the BF16-oracle/AOTriton speed envelope at `512/128`, `4K/128`, and `128K/128` while retaining the 262K no-oracle memory gate; otherwise demote direct streaming to a dedicated diagnostic/scratch-probe path. |
@@ -11205,3 +11204,41 @@ with real capture/replay counters after migrating its control. A reader change
 also needs public decode with short/long/ragged requests, selected path,
 repeat output and cleanup; independent state/logit comparison still owns any
 arithmetic claim. No production default or numerical contract changes here.
+
+### R0281-INT8-POLICY — Legacy context and layout diagnostic controls
+
+The old INT8 diagnostics row predates capability-declared mirror-free storage,
+uniform-INT8 graph capture and INT8 MTP. A declared uniform contract admits an
+unmeasured artifact without the long-context opt-in, and its allocation skips
+short-context mirrors. The public generator binds the declared scale dtype;
+a recorded quality rejection or a named kernel-contract miss raises rather than
+silently substituting BF16. Missing evidence is not a refusal. R0213 owns the
+remaining mirrored-consumer migration; R0277 owns graph policy and interfaces.
+Do not reimplement those paths or reinstate blanket INT8 graph/MTP restrictions.
+
+`HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG` still has two roles: explicit
+capability diagnostic override and legacy long-context prefix/validation policy.
+The BF16-prefix/full-layer, key-only and block16 controls still select distinct
+storage layouts. Capability-admitted mirror-free sessions bypass the legacy
+prefix/guard; other low-level or diagnostic sessions still consume it. Live
+callers include the allocation probe, context soak, mixed-KV suite and INT8
+correctness/MTP/pool-ownership tests. Removing a reader without migrating these
+callers changes the storage/quality comparison they request.
+
+**Decision needed:** retain explicit diagnostic controls, or migrate them to a
+scoped policy that distinguishes a recorded-failure override from storage layout
+selection. Keep actual rejection records and capability/resource errors. Do not
+replace the current kernel declaration with model-name, file-hash or measured-
+artifact admission lists. Historical quality/capacity numbers remain in the
+sweep inventory and original artifacts; they are not current capacity limits.
+
+**Clearing action:** enumerate both generator and resident-runner readers, migrate
+`scripts/gguf_server_allocation_probe.py`, `scripts/qwen38_int8_server_context_soak.py`
+and the mixed-KV/correctness callers, then remove the obsolete readers and update
+ENVS. Run the KV-capability, INT8-policy, packed-verifier-layout, INT8-MTP and
+per-layer-oracle unit files, including unseen artifacts and contexts below,
+above and unrelated to the mirror threshold. Exercise public direct/mirrored
+requests, explicit diagnostic overrides and genuine capability refusals on both
+HIP backends, tracing storage/scales, graph/MTP engagement, cancellation,
+refill and cleanup. Kernel-arithmetic changes require their independent quality
+and state gates; control migration alone must not change arithmetic or defaults.
