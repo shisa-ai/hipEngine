@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF fair prefill burst rollback | `HIPENGINE_FAIR_PREFILL_BURST_CHUNKS` and `--fair-prefill-burst-chunks` retain strict one-chunk alternation as an explicit rollback around bounded fair-prefill bursting. | gfx1151 Q4_K_M defaults to at most two consecutive 256-token chunks only while at least two prompts still need prefill; lone staggered arrivals keep one-chunk alternation. The static p512/C8 host contract removes six duplicate partial-width ticks, accepted real-Uvicorn C8 improves over the retained exact SSE/live rows, and `continuous_fixed` moves ITL p99 **0.5068 -> 0.2949 s** while all 12 rows and SLO checks pass. Other backend/quant packages remain at one chunk. | Remove the env/CLI rollback after one release window and a defaults-only full F4 production matrix plus C1/C2/C4/C8 packet remain exact, SLO-clean, and non-regressive. Keep workload-derived pressure/fairness logic rather than backend branches in the scheduler. |
 | GGUF MTP server packed prefill | `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL` is a default-on opt-out around packed prompt prefill for eligible c=2/c=4 GGUF MTP serving batches. | Default-on after the 2026-07-06 steady-state natural24 rerun. The path reuses packed prompt rows and returns FP32 prompt hidden rows for MTP catch-up, moving server MTP **46.75/49.65/52.18 -> 59.94/66.60/54.88 tok/s** at c=2/c=4/c=8. It keeps the four-slot safety cap: c=8's first wave still uses serial prompt open and only the trailing c=2 wave uses packed prefill. Startup now warms hidden-seed packed prefill at widths 2/4 when MTP serving is enabled, moving fresh c=2 to **56.59 tok/s** and warm c=2/c=4 to **59.71/65.57 tok/s**. | Keep the opt-out until one more c=2/c=4/c=8 rerun confirms the default. Do not remove the four-slot cap until c=8 full packed prefill is non-regressive; pool-filling eight startup slots was rejected (**35.25 tok/s** c=8 rerun, **76.5 GiB** used). |
 | GGUF MTP server startup warmup | `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP` is an internal server-scoped env marker set only during startup scratch probing when `--speculative-mtp-serving` is not `off`. | Added after the 2026-07-06 cold-start audit. It lets the GGUF backend warm MTP hidden-seed packed prefill plus one tiny packed verifier at supported widths 2/4 without changing the generic `prepare_request_scratch(...)` hook signature. It removes the worst c=2 first-request MTP cliff but deliberately does not attempt unsupported width-8 packed prefill. | Replace this env handoff with an explicit backend scratch-preparer option if the startup hook grows typed capabilities. Keep it while MTP serving is opt-in/auto and c=2/c=4 cold-start evidence remains positive; remove or narrow it if startup memory/time becomes a production blocker. |
 | GGUF MTP server deferred verifier scatter | `HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER` is a default-on opt-out around delaying packed target verifier state scatter until after the accept decision. | Default-on after the 2026-07-06 resetfix rerun. It keeps owner-side packed verifier state live and commits only accepted hidden/full-attention KV/linear-state rows, moving retained no-env natural24 MTP **70.06/77.29/76.46 -> 70.53/78.76/79.61 tok/s** at c=2/c=4/c=8 with unchanged economy (`draft=165`, `accepted=141`, accept rate **0.8545**, **250** target rows). Reset now invalidates packed verifier/decode session metadata so startup verifier warmup cannot leave stale packed KV write-position bookkeeping for the first real request. | Remove the env opt-out after one more no-env c=2/c=4/c=8 server rerun plus API tests show no regression. Keep the eager-scatter branch only while it is useful for bisecting packed verifier state lifecycle bugs. |
@@ -10929,3 +10928,35 @@ needs public packed and explicit-serial requests with short/long/ragged prompts,
 selected route, final-output/hidden-seed accounting, repeated output and cleanup
 recorded. Do not re-run historical arithmetic promotion as a prerequisite for
 running the existing default; apply the numerical gates only to changed math.
+
+### R0281-FAIR-BURST — Scheduler control retirement decision
+
+`fair_prefill_burst_chunks` is a positive integer in `EngineLoopConfig`, with
+`HIPENGINE_FAIR_PREFILL_BURST_CHUNKS` and `--fair-prefill-burst-chunks` inputs.
+It is not just an old rollback: the production-load gate declares and
+reconfigures it per candidate, loop snapshots report it, and server metrics
+export it. Registry-selected Q4_K_M defaults are one chunk on gfx1100 and two
+on gfx1151; explicit env values override those defaults.
+
+The fair scheduler uses the bound to finish short cold cohorts before decode
+and to limit consecutive chunks when multiple prompts remain. A lone
+staggered prompt keeps one-chunk alternation. Other scheduling policies do
+not select their decode order from this burst bound.
+
+**Decision needed:** retain this as an operator scheduling control, or replace
+it with a named workload-derived policy. A release window and a defaults-only
+rerun do not migrate the live CLI/env callers, tuning protocol, reconfiguration
+or telemetry. Keep those interfaces and defaults unchanged until that decision;
+do not add backend branches to the scheduler.
+
+**Clearing action:** if retained, document the supported control and remove
+this retirement item. If replaced, migrate `hipengine/llm.py`, engine-loop
+configuration, `scripts/gguf_production_load_gate.py`, protocol fixtures and
+metrics together. Run `tests/test_integration_generation_engine_loop_burst.py`,
+engine-loop CLI/env nodes in
+`tests/test_integration_generation_batch_scheduler.py`, generator-default nodes
+in `tests/test_unit_llm_generate.py`, load-gate tuning nodes and resident-loop
+metrics nodes in `tests/test_integration_server_api.py`. A behavior change also
+needs mixed-arrival public serving validation of bounded decode interruption,
+completion, cancellation and cleanup; cold-prefill throughput alone does not
+validate fairness.

@@ -3,6 +3,8 @@ from __future__ import annotations
 import threading
 import time
 
+import pytest
+
 import hipengine.generation.engine_loop as engine_loop_module
 from hipengine.generation.batch_scheduler import GeneratedToken
 from hipengine.generation.engine_loop import EngineLoopConfig, ResidentEngineLoop
@@ -72,6 +74,35 @@ def test_fair_two_chunk_bound_does_not_drain_cold_rows_above_bound() -> None:
     assert kinds[: kinds.index("decode")] == ["prefill"] * 3
 
 
+@pytest.mark.parametrize(
+    ("burst_chunks", "prompt_length", "drain_before_decode"),
+    (
+        (2, 511, True),
+        (2, 513, False),
+        (3, 767, True),
+        (3, 768, True),
+        (3, 769, False),
+        (3, 901, False),
+    ),
+)
+def test_fair_cold_cohort_respects_configured_chunk_bound(
+    burst_chunks: int, prompt_length: int, drain_before_decode: bool,
+) -> None:
+    runner = _prefill_ramp(
+        burst_chunks=burst_chunks, prompt_length=prompt_length,
+    )
+
+    first_decode = next(
+        index for index, (kind, _) in enumerate(runner.work_sequence)
+        if kind == "decode"
+    )
+    chunks_per_request = (prompt_length + 255) // 256
+    assert first_decode == (
+        8 * chunks_per_request if drain_before_decode else chunks_per_request
+    )
+    assert runner.decode_widths[0] == (8 if drain_before_decode else 1)
+
+
 def test_fair_default_keeps_one_chunk_alternation() -> None:
     runner = _prefill_ramp(burst_chunks=1)
 
@@ -136,13 +167,16 @@ def test_submission_priority_hands_the_loop_to_waiting_admission_before_poll() -
     assert order == ["submit", "poll"]
 
 
-def test_fair_two_chunk_bound_keeps_lone_staggered_prefill_alternating() -> None:
+@pytest.mark.parametrize("burst_chunks", [2, 3, 5])
+def test_fair_two_chunk_bound_keeps_lone_staggered_prefill_alternating(
+    burst_chunks: int,
+) -> None:
     runner = _RampRunner()
     loop = ResidentEngineLoop(
         runner,
         config=EngineLoopConfig(
             prefill_decode_policy="fair",
-            fair_prefill_burst_chunks=2,
+            fair_prefill_burst_chunks=burst_chunks,
             max_active_requests=2,
             max_prefill_chunk_tokens=256,
         ),
