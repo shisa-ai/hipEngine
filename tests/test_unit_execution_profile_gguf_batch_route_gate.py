@@ -109,6 +109,34 @@ def test_selected_pair_package_policy_clears_overrides_and_restores(
     assert {key: os.environ.get(key) for key in keys} == previous
 
 
+@pytest.mark.parametrize("fail", [False, True])
+def test_pair_package_policy_reaches_backend_floor_and_restores(monkeypatch, fail) -> None:
+    from hipengine.runtime import gguf_linear as linear
+
+    keys = (gate.POLICY_ENV, gate.PAIR_POLICY_ENV, gate.PAIR_COL8_ENV)
+    previous = dict(zip(keys, ("1", "0", "0")))
+    for key, value in previous.items():
+        monkeypatch.setenv(key, value)
+
+    def exercise() -> None:
+        with gate._candidate_route_policy(gate.ROUTE_PROFILE_Q8T16_PAIR):
+            assert all(key not in os.environ for key in keys)
+            with linear.q8_t16_pair_rowtile_min_rows_session(8):
+                assert linear._resolve_use_q8_t16_pair_rowtile(rows=8)
+                assert linear._resolve_use_q8_t16_pair_col8(rows=8)
+            with gate._pair_package_policy():
+                assert all(key not in os.environ for key in keys)
+            if fail:
+                raise RuntimeError("pair capture failed")
+
+    if fail:
+        with pytest.raises(RuntimeError, match="pair capture failed"):
+            exercise()
+    else:
+        exercise()
+    assert {key: os.environ.get(key) for key in keys} == previous
+
+
 def test_build_batch_route_quality_preserves_shape_and_transition_attribution() -> None:
     strict = (
         _step(1, [0.0, 4.0, 1.0]),

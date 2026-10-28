@@ -8671,28 +8671,28 @@
       "start_line": 6590,
       "end_line": 6607,
       "sha256": "c989aceeca1539669a9cd9bda191aa0e5fd36e4859df1f350b303a7734089335",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-caller-owned-pair-selection",
+      "evidence": ["Both backend packages now set pair floor 8; gfx1151 broad rowtile policy also selects lower-width pairs. Actual-launch tests cover widths 1/2/3/4/5/7/8/9, pair/column/broad precedence, explicit threads and shape misses. Nested/exception floor restoration, profiler CLI inheritance and gate clearing/restoration pass. Corrected ENVS defaults and moved the explicit comparison/configuration-ownership decision to bottom R0291 with a concrete migration/validation action. Registered kernels, runtime defaults, numerical arithmetic and historical artifacts unchanged. Worklog: worklog/entries/20261028T232639.714580Z-cleanup-refactor-r0291-pair-control-feca3d.md."],
       "subitems": [
         {
           "line": 6591,
           "text": "- The 2026-07-01 rowtile diagnostic was repaired to 128 threads so it preserves",
-          "status": "pending"
+          "status": "resolved-stale-backend-description"
         },
         {
           "line": 6594,
           "text": "- F3I keeps rowtile4's two row groups but computes eight output columns per",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 6599,
           "text": "- `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` rolls the physical-C8 owner back to",
-          "status": "pending"
+          "status": "deferred-live-comparison-ownership"
         },
         {
           "line": 6604,
           "text": "- Remove the two rollbacks after one release window plus defaults-only gfx1151",
-          "status": "pending"
+          "status": "deferred-caller-owned-pair-plan"
         }
       ]
     },

@@ -138,6 +138,40 @@ def test_profiler_preserves_ambient_x8_layout_without_the_retired_switch(monkeyp
     assert profiler.os.environ["HIPENGINE_GGUF_SELECTED_GATE_UP_X8"] == value
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("inherited", [None, "0", "1"])
+def test_pair_rowtile_cli_forces_only_the_requested_selector(monkeypatch, enabled, inherited) -> None:
+    import os
+
+    pair = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
+    col8 = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
+    broad = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+    monkeypatch.setattr(profiler.os, "environ", dict(os.environ))
+    if inherited is None:
+        monkeypatch.delenv(pair, raising=False)
+    else:
+        monkeypatch.setenv(pair, inherited)
+    monkeypatch.setenv(col8, "0")
+    monkeypatch.setenv(broad, "0")
+    observed = {}
+
+    def run_child(args):
+        observed["enabled"] = args.q8_t16_pair_rowtile
+        profiler._apply_route_env(args)
+        return 0
+
+    monkeypatch.setattr(profiler, "_run_child", run_child)
+    argv = ["gguf_mtp_verifier_rocprof.py", "--child"]
+    if enabled:
+        argv.append("--q8-t16-pair-rowtile")
+    monkeypatch.setattr(sys, "argv", argv)
+    assert profiler.main() == 0
+    assert observed["enabled"] is enabled
+    assert profiler.os.environ.get(pair) == ("1" if enabled else inherited)
+    assert profiler.os.environ[col8] == "0"
+    assert profiler.os.environ[broad] == "0"
+
+
 def test_module_puts_its_own_worktree_first_on_sys_path() -> None:
     """Child mode re-runs this file, so sys.path[0] is scripts/ and hipengine
     would otherwise resolve to the editable install's other worktree."""

@@ -4193,6 +4193,121 @@ def test_t16_pair_rowtile_session_scopes_exact_c8_width(monkeypatch) -> None:
     ]
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("rows", [1, 2, 3, 4, 5, 7, 8, 9])
+def test_t16_pair_package_policy_selects_actual_launch(monkeypatch, backend, rows) -> None:
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_q8_t16_decode_rowtile_all_for_rows
+
+    gl = gguf_linear_module
+    for key in (
+        "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE",
+        "HIPENGINE_GGUF_Q8_T16_PAIR_COL8",
+        "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    calls = []
+    for name in ("exact", "rowtile4", "rowtile4_col8"):
+        suffix = "" if name == "exact" else f"_{name}"
+        monkeypatch.setattr(
+            gl, f"gguf_q8_0_t16_dual_gemv_decode{suffix}_bf16_bf16_out",
+            lambda *args, _name=name, **kwargs: calls.append((_name, args, kwargs)),
+        )
+    floor = backend_package_capability(backend, "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS", 0)
+    assert floor == 8
+    gl.clear_gguf_linear_dispatch_cache()
+    try:
+        with (
+            gl.q8_t16_pair_rowtile_min_rows_session(floor),
+            gl.q8_t16_rowtile_all_session(_gguf_q8_t16_decode_rowtile_all_for_rows(backend, rows=rows)),
+        ):
+            assert gl.launch_gguf_linear_pair(
+                weight, weight, 101, 201, 301, rows, 2048, 8192,
+                out_features_b=4096, backend=backend, stream=7,
+                runtime="runtime-sentinel", use_wmma_prefill=False,
+            )
+    finally:
+        gl.clear_gguf_linear_dispatch_cache()
+    expected = "rowtile4_col8" if rows >= 8 else (
+        "rowtile4" if backend == "hip_gfx1151" and rows >= 4 else "exact"
+    )
+    assert calls == [(expected, (101, 14, 14, 201, 301, rows, 2048, 8192, 4096), {
+        "threads": 0 if expected == "exact" else 128,
+        "stream": 7, "runtime": "runtime-sentinel",
+    })]
+
+
+@pytest.mark.parametrize(
+    "rows,pair,col8,broad,threads,in_features,out_a,out_b,expected",
+    [
+        (8, "0", None, "1", 0, 2048, 8192, 4096, "exact"),
+        (8, None, "0", None, 0, 2048, 8192, 4096, "rowtile4"),
+        (8, None, None, "0", 0, 2048, 8192, 4096, "rowtile4_col8"),
+        (3, "1", None, "0", 0, 2048, 8192, 4096, "rowtile4"),
+        (3, "1", "1", "0", 0, 2048, 8192, 4096, "rowtile4_col8"),
+        (3, "0", "1", "1", 0, 2048, 8192, 4096, "exact"),
+        (3, None, "1", "0", 0, 2048, 8192, 4096, "exact"),
+        (3, None, None, "1", 0, 2048, 8192, 4096, "rowtile4"),
+        (1, "1", "1", "1", 0, 2048, 8192, 4096, "exact"),
+        (8, "1", "1", "1", 64, 2048, 8192, 4096, "exact"),
+        (8, "1", "1", "1", 0, 1024, 8192, 4096, "exact"),
+        (8, "1", "1", "1", 0, 2048, 4096, 8192, "exact"),
+    ],
+)
+def test_t16_pair_controls_preserve_precedence_and_shape_contract(
+    monkeypatch, rows, pair, col8, broad, threads, in_features, out_a, out_b, expected,
+) -> None:
+    gl = gguf_linear_module
+    for key, value in (
+        ("HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE", pair),
+        ("HIPENGINE_GGUF_Q8_T16_PAIR_COL8", col8),
+        ("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", broad),
+    ):
+        if value is None:
+            monkeypatch.delenv(key, raising=False)
+        else:
+            monkeypatch.setenv(key, value)
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    calls = []
+    for name in ("exact", "rowtile4", "rowtile4_col8"):
+        suffix = "" if name == "exact" else f"_{name}"
+        monkeypatch.setattr(
+            gl, f"gguf_q8_0_t16_dual_gemv_decode{suffix}_bf16_bf16_out",
+            lambda *args, _name=name, **kwargs: calls.append((_name, kwargs["threads"])),
+        )
+    gl.clear_gguf_linear_dispatch_cache()
+    try:
+        with gl.q8_t16_pair_rowtile_min_rows_session(8), gl.q8_t16_rowtile_all_session(False):
+            assert gl.launch_gguf_linear_pair(
+                weight, weight, 101, 201, 301, rows, in_features, out_a,
+                out_features_b=out_b, threads=threads, use_wmma_prefill=False,
+            )
+    finally:
+        gl.clear_gguf_linear_dispatch_cache()
+    assert calls == [(expected, threads if expected == "exact" else 128)]
+
+
+@pytest.mark.parametrize("fail", [False, True])
+@pytest.mark.parametrize("previous", [None, 3])
+def test_t16_pair_rowtile_floor_restores_nested_and_exception_scopes(monkeypatch, fail, previous) -> None:
+    gl = gguf_linear_module
+    monkeypatch.setattr(gl, "_q8_t16_pair_rowtile_min_rows_session", previous)
+    with gl.q8_t16_pair_rowtile_min_rows_session(8):
+        assert gl._q8_t16_pair_rowtile_min_rows_session == 8
+        try:
+            with gl.q8_t16_pair_rowtile_min_rows_session(0):
+                assert gl._q8_t16_pair_rowtile_min_rows_session == 0
+                if fail:
+                    raise RuntimeError("pair capture failed")
+        except RuntimeError as error:
+            assert str(error) == "pair capture failed"
+        assert gl._q8_t16_pair_rowtile_min_rows_session == 8
+        with pytest.raises(ValueError, match="non-negative"):
+            gl.set_q8_t16_pair_rowtile_min_rows(-1)
+        assert gl._q8_t16_pair_rowtile_min_rows_session == 8
+    assert gl._q8_t16_pair_rowtile_min_rows_session == previous
+
+
 def test_t16_pair_rowtile_opt_out_keeps_exact_wrapper(monkeypatch) -> None:
     weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
     weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")

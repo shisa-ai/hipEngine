@@ -3430,24 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` / `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` (gfx1151 C8 rollback)
-- The 2026-07-01 rowtile diagnostic was repaired to 128 threads so it preserves
-  the production reduction partition, then scoped by backend metadata to
-  gfx1151 physical C8. C2/C4 and gfx1100 retain per-row Q8T16.
-- F3I keeps rowtile4's two row groups but computes eight output columns per
-  block. This halves live accumulators and moves static resources from 136 to
-  72 VGPR and 1,024 to 512 B LDS, with zero scratch. Exact direct C8 improves
-  **151.015 -> 152.164 tok/s (+0.76%)** in implementation evidence; matched
-  blocking/SSE/delayed server rows all improve **+0.38%/+0.54%/+0.46%**.
-- `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` rolls the physical-C8 owner back to
-  the per-row kernel. `HIPENGINE_GGUF_Q8_T16_PAIR_COL8=0` keeps row
-  amortization but restores the prior 16-column body. Explicit `PAIR_ROWTILE=1`
-  outside the backend-certified session remains a diagnostic and does not
-  automatically select col8.
-- Remove the two rollbacks after one release window plus defaults-only gfx1151
-  direct/server refreshes and an independent gfx1100 transfer. Keep the old
-  per-row and 16-column rowtile bodies as unsupported-width fallbacks.
-
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 c4/c8 rollback; c2 diagnostic)
 - Added 2026-07-01 as a default-off runtime hook for broad Q8T16 verifier
   row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
@@ -12009,3 +11991,42 @@ logits at matched contexts, prefix/intermediate/state checks and
 verify/commit/reset/cancel/close comparisons. Changed-arithmetic defaults need
 the execution-profile numerical/task gates; an old token-margin slice is not
 that gate. Token-embedding precision remains separately inventoried.
+
+### R0291 — Q8T16 pair selection and comparison ownership
+
+`HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` and
+`HIPENGINE_GGUF_Q8_T16_PAIR_COL8` have live rollback and diagnostic consumers.
+Both gfx1100 and gfx1151 packed decode set
+`GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS=8`; the original gfx1100 transfer
+blocker is no longer current. Below that floor, gfx1151's separate
+all-projection policy can select the 16-column rowtile body. The pair helper
+is limited to BF16 Q8T16 `in=2048, out=8192+4096`, rows greater than one and
+no explicit thread override. Other pairs retain the exact per-row owner.
+
+Explicit pair `0` disables rowtiling even when the broad policy is enabled.
+Explicit col8 `0` keeps rowtiling but selects the 16-column body; col8 alone
+cannot enable a pair. Unset column selection follows the pair floor, not the
+broad all-projection policy. The verifier profiler's
+`--q8-t16-pair-rowtile` sets only the pair selector; omission preserves
+inherited values. The batch-route gate clears and restores both selectors
+and the broad override to exercise package policy. The floor and broad-policy
+context managers restore prior values, but their backing state is
+module-global, not isolated between concurrent execution owners.
+
+**Decision needed:** preserve these explicit comparisons or migrate the
+ambient selectors and session globals into a caller-owned kernel plan across
+packed decode, verifier profiling and the batch-route gate. Deleting the
+16-column or per-row bodies would remove live fallbacks, not just switches.
+Keep the already-enabled package routes while deciding configuration ownership.
+
+**Clearing action:** migrate the floor, broad-policy interaction, column
+selection, explicit thread/shape fallback and profiler parent/child provenance
+together. Run the pair launch, nested/exception restoration, package-policy and
+profiler CLI tests, including widths below, at and above eight and unrelated
+widths. A runtime migration also needs both backend GPU bit-parity files and
+public packed generation/serving with route attribution, width transitions,
+reset/reuse and teardown. Historical implementation/server comparisons remain
+in the original sweep source and
+`benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-pair-col8-c8-retained.json`;
+they are not fresh measurements of this disposition. No execution, arithmetic
+or default changes here.
