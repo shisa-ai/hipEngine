@@ -8248,7 +8248,8 @@
         {
           "line": 6300,
           "text": "| Laguna gfx1151 router token tile | `LAGUNA_ROUTER_LOGITS_MODE` and session setter retain exact token-tile-4/16 diagnostics around the promoted token-tile-8 route. | Clean seven-pair pp512 improves **497.625 -> 503.349 tok/s (+1.150%)**, wins every pair, keeps every tile-8 sample above 500, and closes the production 500 gate. Production-shape F32 logits, selected IDs, routing weights, complete MoE BF16 output, and token 2930 are exact; cached tracing cuts router **30.658 -> 23.315 ms**. | After one later defaults-only clean refresh remains non-regressive, remove the session setter and token-tile-16 route. Keep token-tile-4 as the low-row/unmeasured-backend fallback. |",
-          "status": "pending"
+          "status": "deferred-shared-router-comparison-migration",
+          "evidence": "Moved to bottom R0281-ROUTER-TILES. Backend metadata (not env), live explicit session setter/child A-B/direct microbench plus shared Gemma resolver; preserve exact mode errors, distinct256/512 tile4 callers and independent primitive controls. 19 focused mode/registry/Gemma/canonical tests and both scripts help pass; docs/audit/worklog/diff/source gates. No execution/default/arith/performance claim. Worklog: worklog/entries/20261028T175644.480060Z-cleanup-refactor-r0281-router-tiles-361823.md."
         },
         {
           "line": 6301,

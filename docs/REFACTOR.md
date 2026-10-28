@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Laguna gfx1151 router token tile | `LAGUNA_ROUTER_LOGITS_MODE` and session setter retain exact token-tile-4/16 diagnostics around the promoted token-tile-8 route. | Clean seven-pair pp512 improves **497.625 -> 503.349 tok/s (+1.150%)**, wins every pair, keeps every tile-8 sample above 500, and closes the production 500 gate. Production-shape F32 logits, selected IDs, routing weights, complete MoE BF16 output, and token 2930 are exact; cached tracing cuts router **30.658 -> 23.315 ms**. | After one later defaults-only clean refresh remains non-regressive, remove the session setter and token-tile-16 route. Keep token-tile-4 as the low-row/unmeasured-backend fallback. |
 | GGUF prefill router select LCP-4B | `HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS=64|128|256|512` overrides both backends' promoted 128-thread package capability for bulk prefill only; decode retains its independent launch. | Default-on at 128 on both gfx11 backends. gfx1151 clean 512/4K prefill improves **+0.34%/+0.36%** and the named family falls **12.539 -> 3.741 ms (-70.17%)**. W7900 aggregate prefill improves **+0.32%/+0.81%** (paired medians **+0.30%/+0.12%**) with bit-exact selected IDs/routing weights, flat graph decode, and unchanged memory. The faster 64-thread gfx1151 primitive remains ineligible due to state divergence. | Keep explicit 512 rollback for one release, then remove the env resolver and retain unconditional 128-thread package capabilities if no release regression appears. Never expose/promote 64 without a genuinely different exact implementation. |
 | gfx1151 persistent prefill flight recorder | `Qwen35GGUFResidentSession.prefill_flight_recorder_path`, the `qwen35_readme_sweep.py --prefill-flight-recorder{,-granularity}` CLI, file-backed mapped-host ring, and `prefill_flight_recorder_mark_i64_kernel`. | Default-off diagnostic for the unresolved repeated-128K silent no-progress state. `chunk` records every host layer submission but emits one retirement marker per reset/outer chunk; `layer` is explicit high-perturbation refinement. A 512/1 gfx1151 smoke is exact and rocprof confirms the marker, but recorder runs cannot support performance claims or lifecycle incidence estimates. | Keep through the fixed-kernel/firmware three-policy investigation and upstream triage. After the 128K gate is lifecycle-safe, either generalize it into a maintained runtime tracing facility with a schema contract or remove the session/CLI wiring and marker kernel; do not leave an undocumented diagnostic hot-path branch indefinitely. |
 | gfx1151 conservative prefill kernel profiles | `qwen35_readme_sweep.py --prefill-kernel-profile conservative|gdn_exact|q4_shared_x|q4_baseline` applies and records fail-closed selector sets. Conservative uses unfused exact GDN `chain`, baseline Q4 selected prefill, baseline linear-attention convolution, 512-thread router selection, and host metadata; `gdn_exact` and `q4_shared_x` each restore one family, while `q4_baseline` changes only the implicated Q4 route beneath otherwise-current package defaults. | Default-off diagnostics for the repeated-128K stall without host drains. Conservative, exact-GDN, and production-shaped Q4 baseline each pass three independent warmup+3 processes (**12/12** prefills). Q4 shared-X reproduces the stall on measured prefill 3 of its first process, isolating `gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_shared_x_kernel<uint16_t>`. These routes are diagnostic, not independent performance paths. | Remove the conservative/GDN split profiles after one release with the gfx1151 Q4 baseline fallback. Retain the baseline-only and shared-X selectors until a repaired shared-X body passes the repeated-128K gate; then remove the isolation profiles and keep only the normal rollback needed for release safety. |
@@ -11753,3 +11752,39 @@ request reset/reuse and cleanup. Cover lengths below, above and away from each
 changed ceiling. Arithmetic changes need their execution-profile gate; any
 performance claim needs a same-host matched protocol. This disposition changes
 no execution, arithmetic, default or selector.
+
+### R0281-ROUTER-TILES — Laguna/Gemma router comparison ownership
+
+`LAGUNA_ROUTER_LOGITS_MODE` is backend-package metadata, not an environment
+variable. Laguna resolves `token_tile_4` on gfx1100 and `token_tile_8` on
+gfx1151; its session setter explicitly selects 4/8/16 and rejects unknown
+modes. `scripts/laguna_router_token_tile_ab.py` uses the setter for separate
+child-session comparisons, while the token-tile microbench exposes all three
+registered primitives. The modes share a library, not a single launch policy.
+
+Gemma 4 also calls the resolver for its multirow tiled dispatch, separately
+from its fused single-row and SGEMM routes. Its untiled comparison explicitly
+uses 512 threads; Laguna's canonical tile-4 binding uses 256. Do not infer
+cross-model or cross-width arithmetic equality from the older Laguna-only
+result. The wider-token parity tests and float64/top-k attribution probes
+supply independent schedule controls.
+
+**Decision needed:** keep these named comparison modes or migrate the setter
+and benchmark interfaces into a scoped diagnostic plan. A later default-only
+refresh cannot decide whether to erase direct tile-16 or Gemma comparison
+requests. Default changes, arithmetic changes and interface retirement are
+separate decisions; the completed F32 router wrapper cleanup did not remove
+any tile mode.
+
+**Clearing action:** migrate the session's resolved mode, setter, child-session
+A/B harness, microbench, plan function table, backend metadata and Gemma caller
+with result provenance. Preserve explicit invalid-mode errors, default c1/
+multirow selection and independent 256/512-thread numerical references. Run
+`tests/test_live_laguna_moe_gpu.py::test_laguna_router_logits_mode_is_exact_and_explicit`,
+backend alias and canonical-router tests, both script `--help` routes and the
+Gemma SGEMM comparison tests. Before changing execution, run the router tile
+and top-k GPU parity/attribution nodes and public Laguna/Gemma generation with
+short, partial-tile and longer prompts, reset/reuse and allocation cleanup.
+Declare profile gates for any changed arithmetic. This disposition changes no
+route, default, kernel or arithmetic; historical measurements remain in the
+sweep inventory and benchmark artifacts.
