@@ -320,18 +320,17 @@ def _value_dst(proposer: mtp_native.NativeMtpChainProposer, row: int) -> int:
     return proposer.value_cache_buf.ptr + row * proposer.kv_features * 2
 
 
-@pytest.mark.parametrize(
-    "direct,indexed",
-    [(True, False), (False, False), (True, True)],
-    ids=["direct-kv", "memcpy-kv", "indexed-kv"],
-)
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("indexed", [False, True])
 def test_kv_write_only_reproduces_full_step_prefix_and_appends_identical_kv(
-    harness: _Harness, monkeypatch: pytest.MonkeyPatch, direct: bool, indexed: bool
+    harness: _Harness, monkeypatch: pytest.MonkeyPatch, retired, indexed: bool
 ) -> None:
-    monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", "1" if direct else "0")
-    monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE", "1" if indexed else "0")
+    if retired is not None:
+        monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", retired)
+    monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE", str(int(indexed)))
     proposer = harness.make()
-    kv_features = proposer.kv_features
+    assert not hasattr(proposer, "key_rot_buf")
+    assert not hasattr(proposer, "v_proj_buf")
 
     # Reference: a full result-producing advance from a fresh state.
     harness.rec.clear()
@@ -391,33 +390,14 @@ def test_kv_write_only_reproduces_full_step_prefix_and_appends_identical_kv(
         assert proposer.cache_slot_buf.ptr in qkv_args[0]
         assert proposer.key_cache_buf.ptr in rotary_args[0]
         assert proposer.cache_slot_buf.ptr in rotary_args[0]
-    elif direct:
+    else:
         qkv_args = harness.rec.calls("dflash_qkv_proj_bf16_mixed")
         rotary_args = harness.rec.calls("dflash_head_rmsnorm_rotary_f32")
         assert len(qkv_args) == 1 and len(rotary_args) == 1
         assert qkv_args[0][6] == _value_dst(proposer, 0)
         assert rotary_args[0][9] == _key_dst(proposer, 0)
-    else:
-        d2d = [copy for copy in harness.runtime.copies if copy[3] is HipMemcpyKind.DEVICE_TO_DEVICE]
-        assert d2d == [
-            (
-                _key_dst(proposer, 0),
-                proposer.key_rot_buf.ptr,
-                kv_features * 4,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                0,
-            ),
-            (
-                _value_dst(proposer, 0),
-                proposer.v_proj_buf.ptr,
-                kv_features * 2,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                0,
-            ),
-        ]
-        # The full step issues exactly the same two K/V copies before attention.
-        full_d2d = [copy for copy in full_copies if copy[3] is HipMemcpyKind.DEVICE_TO_DEVICE]
-        assert full_d2d == d2d
+    assert harness.d2d_copies == []
+    assert not [copy for copy in full_copies if copy[3] is HipMemcpyKind.DEVICE_TO_DEVICE]
 
     # No host readback: a cache-only row never scores and never syncs to host.
     assert harness.rec.d2h == []
@@ -436,11 +416,13 @@ def test_kv_write_only_publishes_cursor_for_the_following_row(
 
     assert proposer.cache_len == 2
     assert proposer.position == 10
-    d2d = harness.d2d_copies
-    assert d2d[0][0] == _key_dst(proposer, 0)
-    assert d2d[1][0] == _value_dst(proposer, 0)
-    assert d2d[2][0] == _key_dst(proposer, 1)
-    assert d2d[3][0] == _value_dst(proposer, 1)
+    assert harness.d2d_copies == []
+    assert [args[9] for args in harness.rec.calls("dflash_head_rmsnorm_rotary_f32")] == [
+        _key_dst(proposer, 0), _key_dst(proposer, 1),
+    ]
+    assert [args[6] for args in harness.rec.calls("dflash_qkv_proj_bf16_mixed")] == [
+        _value_dst(proposer, 0), _value_dst(proposer, 1),
+    ]
 
     # The final full row must attend over every primed row.
     harness.rec.clear()

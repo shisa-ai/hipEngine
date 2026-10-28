@@ -114,10 +114,6 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "off", "no"}
 
 
-def _direct_kv_write_enabled() -> bool:
-    return _env_flag("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", True)
-
-
 def _indexed_kv_write_enabled() -> bool:
     return _env_flag("HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE", False)
 
@@ -171,11 +167,9 @@ class _BulkPromptWorkspace:
     attn_in_buf: DeviceBuffer
     q_proj_buf: DeviceBuffer
     k_proj_buf: DeviceBuffer
-    v_proj_buf: DeviceBuffer
     query_buf: DeviceBuffer
     gate_buf: DeviceBuffer
     query_rot_buf: DeviceBuffer
-    key_rot_buf: DeviceBuffer
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,11 +357,9 @@ class NativeMtpChainProposer:
         _, self.attn_in_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, self.q_proj_buf = _empty_device((1, self.q_proj_features), np.float32, self.buffers, runtime=self.runtime)
         _, self.k_proj_buf = _empty_device((1, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
-        _, self.v_proj_buf = _empty_device((1, self.kv_features), np.uint16, self.buffers, runtime=self.runtime)
         _, self.query_buf = _empty_device((1, self.q_features), np.float32, self.buffers, runtime=self.runtime)
         _, self.gate_buf = _empty_device((1, self.q_features), np.uint16, self.buffers, runtime=self.runtime)
         _, self.query_rot_buf = _empty_device((1, self.q_features), np.float32, self.buffers, runtime=self.runtime)
-        _, self.key_rot_buf = _empty_device((1, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
         _, self.key_cache_buf = _empty_device((self.max_mtp_tokens, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
         _, self.value_cache_buf = _empty_device((self.max_mtp_tokens, self.kv_features), np.uint16, self.buffers, runtime=self.runtime)
         _, self.attn_out_buf = _empty_device((1, self.q_features), np.uint16, self.buffers, runtime=self.runtime)
@@ -715,11 +707,9 @@ class NativeMtpChainProposer:
         _, attn_in_buf = _empty_device((rows, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, q_proj_buf = _empty_device((rows, self.q_proj_features), np.float32, self.buffers, runtime=self.runtime)
         _, k_proj_buf = _empty_device((rows, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
-        _, v_proj_buf = _empty_device((rows, self.kv_features), np.uint16, self.buffers, runtime=self.runtime)
         _, query_buf = _empty_device((rows, self.q_features), np.float32, self.buffers, runtime=self.runtime)
         _, gate_buf = _empty_device((rows, self.q_features), np.uint16, self.buffers, runtime=self.runtime)
         _, query_rot_buf = _empty_device((rows, self.q_features), np.float32, self.buffers, runtime=self.runtime)
-        _, key_rot_buf = _empty_device((rows, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
         self._bulk_workspace = _BulkPromptWorkspace(
             rows=int(rows),
             host=host,
@@ -742,11 +732,9 @@ class NativeMtpChainProposer:
             attn_in_buf=attn_in_buf,
             q_proj_buf=q_proj_buf,
             k_proj_buf=k_proj_buf,
-            v_proj_buf=v_proj_buf,
             query_buf=query_buf,
             gate_buf=gate_buf,
             query_rot_buf=query_rot_buf,
-            key_rot_buf=key_rot_buf,
         )
         return self._bulk_workspace
 
@@ -773,9 +761,6 @@ class NativeMtpChainProposer:
         indexed_kv_write = _indexed_kv_write_enabled()
         key_cache_dst = self.key_cache_buf.ptr + slot_base * self.kv_features * DType.FP32.itemsize
         value_cache_dst = self.value_cache_buf.ptr + slot_base * self.kv_features * DType.BF16.itemsize
-        direct_kv_write = _direct_kv_write_enabled() or indexed_kv_write
-        v_out_ptr = value_cache_dst if direct_kv_write else workspace.v_proj_buf.ptr
-        key_out_ptr = key_cache_dst if direct_kv_write else workspace.key_rot_buf.ptr
         mtp_fuse_inputs_f16_bf16(
             workspace.tokens_buf.ptr,
             self.weights["embed_tokens.weight"].ptr,
@@ -820,7 +805,7 @@ class NativeMtpChainProposer:
                 self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
                 workspace.q_proj_buf.ptr,
                 workspace.k_proj_buf.ptr,
-                v_out_ptr,
+                value_cache_dst,
                 count,
                 hidden,
                 self.q_proj_features,
@@ -868,7 +853,7 @@ class NativeMtpChainProposer:
                 workspace.positions_buf.ptr,
                 workspace.positions_buf.ptr,
                 workspace.query_rot_buf.ptr,
-                key_out_ptr,
+                key_cache_dst,
                 1,
                 count,
                 count,
@@ -881,23 +866,6 @@ class NativeMtpChainProposer:
                 threads=128,
                 stream=stream,
                 library=self.dflash_lib,
-            )
-        if not direct_kv_write:
-            # Both workspace rows and cache rows are contiguous, so one copy
-            # covers the whole chunk.
-            self.runtime.memcpy_async(
-                key_cache_dst,
-                workspace.key_rot_buf.ptr,
-                count * self.kv_features * DType.FP32.itemsize,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                int(stream),
-            )
-            self.runtime.memcpy_async(
-                value_cache_dst,
-                workspace.v_proj_buf.ptr,
-                count * self.kv_features * DType.BF16.itemsize,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                int(stream),
             )
 
     def advance_with_previous_hidden(
@@ -1106,9 +1074,6 @@ class NativeMtpChainProposer:
         )
         key_cache_dst = self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize
         value_cache_dst = self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize
-        direct_kv_write = _direct_kv_write_enabled() or indexed_kv_write
-        v_out_ptr = value_cache_dst if direct_kv_write else self.v_proj_buf.ptr
-        key_out_ptr = key_cache_dst if direct_kv_write else self.key_rot_buf.ptr
         mtp_fuse_inputs_f16_bf16(
             self.token_buf.ptr,
             self.weights["embed_tokens.weight"].ptr,
@@ -1153,7 +1118,7 @@ class NativeMtpChainProposer:
                 self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
                 self.q_proj_buf.ptr,
                 self.k_proj_buf.ptr,
-                v_out_ptr,
+                value_cache_dst,
                 1,
                 self.hidden,
                 self.q_proj_features,
@@ -1201,7 +1166,7 @@ class NativeMtpChainProposer:
                 self.position_buf.ptr,
                 self.position_buf.ptr,
                 self.query_rot_buf.ptr,
-                key_out_ptr,
+                key_cache_dst,
                 1,
                 1,
                 1,
@@ -1215,9 +1180,6 @@ class NativeMtpChainProposer:
                 stream=stream,
                 library=self.dflash_lib,
             )
-        if not direct_kv_write:
-            self.runtime.memcpy_async(key_cache_dst, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))
-            self.runtime.memcpy_async(value_cache_dst, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))
         context_len = self.cache_len + 1
         if kv_write_only:
             # The remaining attention/expert/head work reads this cache but

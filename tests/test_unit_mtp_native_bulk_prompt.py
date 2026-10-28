@@ -686,49 +686,39 @@ def test_bulk_appends_the_same_kv_producer_chain_and_no_downstream_work(
         proposer.read_final_hidden_bf16()
 
 
-def test_bulk_memcpy_route_copies_each_chunk_as_one_contiguous_block(
-    harness: _Harness, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
+@pytest.mark.parametrize("chunk_rows", [1, 2, 3])
+def test_bulk_always_writes_directly_to_each_chunk_cache_destination(
+    harness: _Harness, monkeypatch: pytest.MonkeyPatch, retired, chunk_rows,
 ) -> None:
-    monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", "0")
+    if retired is not None:
+        monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", retired)
     proposer = harness.make()
-    proposer.append_prompt_kv_bulk(_rows(4), chunk_rows=2)
+    proposer.cache_len = 1
+    proposer.append_prompt_kv_bulk(_rows(5), chunk_rows=chunk_rows, stream=13)
 
-    kv_features = proposer.kv_features
-    assert harness.d2d_copies == [
-        (
-            _key_dst(proposer, 0),
-            proposer._bulk_workspace.key_rot_buf.ptr,
-            2 * kv_features * 4,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-            0,
-        ),
-        (
-            _value_dst(proposer, 0),
-            proposer._bulk_workspace.v_proj_buf.ptr,
-            2 * kv_features * 2,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-            0,
-        ),
-        (
-            _key_dst(proposer, 2),
-            proposer._bulk_workspace.key_rot_buf.ptr,
-            2 * kv_features * 4,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-            0,
-        ),
-        (
-            _value_dst(proposer, 2),
-            proposer._bulk_workspace.v_proj_buf.ptr,
-            2 * kv_features * 2,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-            0,
-        ),
-    ]
+    workspace = proposer._bulk_workspace
+    assert not hasattr(workspace, "key_rot_buf")
+    assert not hasattr(workspace, "v_proj_buf")
+    assert harness.d2d_copies == []
+    starts = list(range(1, 6, chunk_rows))
+    widths = [min(chunk_rows, 6 - start) for start in starts]
+    qkv = [entry for entry in harness.rec.kernels if entry[0] == "dflash_qkv_proj_bf16_mixed"]
+    rotary = [entry for entry in harness.rec.kernels if entry[0] == "dflash_head_rmsnorm_rotary_f32"]
+    assert [args[6] for _, args, _ in qkv] == [_value_dst(proposer, start) for start in starts]
+    assert [args[9] for _, args, _ in rotary] == [_key_dst(proposer, start) for start in starts]
+    assert [args[7] for _, args, _ in qkv] == widths
+    assert [args[12] for _, args, _ in rotary] == widths
+    assert all(kwargs["stream"] == 13 for _, _, kwargs in qkv + rotary)
+    assert proposer.cache_len == 6
 
 
+@pytest.mark.parametrize("retired", [None, "0", "false", "1"])
 def test_bulk_indexed_route_writes_slots_from_the_chunk_base(
-    harness: _Harness, monkeypatch: pytest.MonkeyPatch
+    harness: _Harness, monkeypatch: pytest.MonkeyPatch, retired,
 ) -> None:
+    if retired is not None:
+        monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_DIRECT_KV_WRITE", retired)
     monkeypatch.setenv("HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE", "1")
     proposer = harness.make()
     proposer.append_prompt_kv_bulk(_rows(4), chunk_rows=2)
