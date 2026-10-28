@@ -56,6 +56,15 @@ used by the suite's default route at `0.5`: resident proposals stop before
 appending a token whose top-1 probability is below the threshold. Direct
 proposer `record_top1_probs` diagnostics and top-k score recording are unchanged.
 
+The standalone bench defaults `--mtp-draft-vocab-cap` to `0` (full vocabulary).
+A positive value limits draft LM-head/argmax candidates to the first N token
+IDs; the resident runner clamps it to the available output rows. Target
+verification still uses the full vocabulary. The suite's default route
+explicitly requests `32768`; that route setting does not change the standalone
+bench or public generation defaults. Artifacts record the configured workload
+cap and, for resident cycles, the actual draft-head width. The cap is an
+explicit proposal policy, not an artifact-admission or qualification gate.
+
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked
 pointer-table kernel when their layout contracts hold. Per-layer copy

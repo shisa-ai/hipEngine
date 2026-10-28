@@ -8194,7 +8194,8 @@
         {
           "line": 6291,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --mtp-draft-vocab-cap N` hot-token draft LM-head cap. | Default full-vocab (`0`). A 32k cap improved the corrected merge-sort B3 smoke from `42.29` to `44.51 tok/s` with unchanged `15/15` strict accepts, but acceptance/quality are prompt-sensitive and the cap is not yet suite-validated. | Either promote a cap after full-suite train/heldout/category validation shows non-regressive acceptance and better true-AR speed ratio, or keep it as an explicit experiment knob and document that retained default remains full vocab. |",
-          "status": "pending"
+          "status": "fixed-explicit-draft-vocab-policy-documented",
+          "evidence": "Keep working explicit candidate-only cap per row keep-knob condition. Standalone CLI0fullvocab unchanged; suite default explicitly32768; resident clamps availableoutputrows, targetfullvocab unaffected. Replace qualification/retained help wording with actual scope; MTP reference current contract; remove stale ledger row. REDhelpscope;254focusedpass incl arbitrary17/32767/32768/32769/65536/999999/default0/negativebeforeHIP/suitedefault. AST proves onlyhelpstring changed. Actual CLIhelp,CPUbg64819670pass271skip10subtests/fixtures/smokes,docs/audit/tiers/diff/worklogpass. No new GPU, performance, arithmetic or default claim/change. Worklog: worklog/entries/20261028T164244.738960Z-cleanup-refactor-r0281-vocab-cap-e2a917.md."
         },
         {
           "line": 6292,

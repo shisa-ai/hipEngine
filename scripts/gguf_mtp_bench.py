@@ -1145,8 +1145,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Diagnostic only: limit MTP draft lm-head/argmax to the first N token IDs "
-            "(0 = full vocabulary). Must be full-suite validated before becoming a retained default."
+            "Limit MTP draft lm-head/argmax to the first N token IDs "
+            "(0 = full vocabulary). This changes draft candidates only; "
+            "target verification uses the full vocabulary."
         ),
     )
     parser.add_argument(

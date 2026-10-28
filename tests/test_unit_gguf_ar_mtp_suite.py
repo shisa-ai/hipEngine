@@ -102,6 +102,12 @@ def test_suite_default_route_enables_b2_block_verify() -> None:
     assert flags[flags.index("--target-block-min-rows") + 1] == "2"
 
 
+def test_suite_default_route_explicitly_caps_draft_vocabulary() -> None:
+    flags = suite.MTP_ROUTES[suite.DEFAULT_MTP_ROUTE]
+    index = flags.index("--mtp-draft-vocab-cap")
+    assert flags[index + 1] == "32768"
+
+
 def test_suite_default_route_uses_draft_confidence_gate() -> None:
     # the default must carry --draft-p-min 0.5: gating low-confidence draft cycles
     # (hit conf ~0.69 vs miss ~0.36) trims wasted block-verify and unlocks deeper

@@ -928,10 +928,35 @@ def test_arg_parser_defaults_target_block_wmma_prefill_off() -> None:
     assert args.target_block_wmma_prefill is False
 
 
-def test_arg_parser_exposes_draft_vocab_cap_diagnostic() -> None:
-    args = build_arg_parser().parse_args(["--mtp-draft-vocab-cap", "65536"])
+@pytest.mark.parametrize("cap", [0, 17, 32767, 32768, 32769, 65536, 999999])
+def test_arg_parser_exposes_explicit_draft_vocab_cap(cap) -> None:
+    args = build_arg_parser().parse_args(["--mtp-draft-vocab-cap", str(cap)])
+    assert args.mtp_draft_vocab_cap == cap
 
-    assert args.mtp_draft_vocab_cap == 65536
+
+def test_arg_parser_defaults_to_full_draft_vocabulary() -> None:
+    assert build_arg_parser().parse_args([]).mtp_draft_vocab_cap == 0
+
+
+def test_draft_vocab_cap_help_states_scope_without_qualification_gate() -> None:
+    action = next(
+        action for action in build_arg_parser()._actions
+        if action.dest == "mtp_draft_vocab_cap"
+    )
+    assert "0 = full vocabulary" in action.help
+    assert "target verification uses the full vocabulary" in action.help
+    assert "validated" not in action.help
+    assert "retained" not in action.help
+
+
+def test_negative_draft_vocab_cap_fails_before_hip(monkeypatch, capsys) -> None:
+    for name in ("HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS", "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"):
+        monkeypatch.setenv(name, "test-original")
+    monkeypatch.setattr(bench, "_hip_available", lambda: pytest.fail("negative cap reached HIP"))
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(["--mtp-draft-vocab-cap", "-1"])
+    assert excinfo.value.code == 2
+    assert "--mtp-draft-vocab-cap must be non-negative" in capsys.readouterr().err
 
 
 def test_arg_parser_exposes_adaptive_full_vocab_recovery() -> None:
