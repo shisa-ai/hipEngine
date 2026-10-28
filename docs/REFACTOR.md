@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF contiguous prefill metadata | `HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=0|1` selects six synchronous per-chunk H2D copies or the stream-ordered `prepare_prefill_chunk_metadata` kernel; gfx1100 and gfx1151 package policies select the device path through 4,096 prompt tokens. | Scoped default-on on both gfx11 backends. gfx1151 clean 512/1K/4K prefill improves **+1.56%/+0.90%/+0.53%** with 83/83 exact state. W7900 control tracing confirms **167.213 us** of six-copy HIP API wall at 512; exact device metadata improves balanced 512/4K aggregate prefill **+0.41%/+2.43%** (paired **+0.26%/+2.26%**), with non-regressive decode and unchanged memory/IDs. gfx1151 explicit 128K still enters its low-power no-progress state, and gfx1100 long-context behavior is unmeasured, so both retain synchronous metadata above 4K. | Keep `=0` and the synchronous branch for one release and indefinitely for >4K until completed architecture-local long-context gates prove otherwise. After one release, remove the short-context host branch/selector only if both backends remain non-regressive; do not widen the ceiling from short-context evidence. |
 | GGUF Q8T16 prefill LCP-3 four-wave | `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE=0|1`, the `wmma_prefill_4wave_bf16_bf16_out` registry variant, and gfx1151 automatic wrapper retain a four-wave duplicate plus the GPF-5A two-wave rollback. | Default-on on gfx1151 through 64K. Clean 512/4K full-model state is 83/83 exact and five-pair prefill improves **1214.510 -> 1220.993 (+0.53%)** and **1269.030 -> 1288.986 tok/s (+1.57%)**; dominant 4K projection micros improve **7.50%-14.08%**. gfx1100 remains production. | After one rollback release and gfx1100 transfer evidence, replace the two-wave body/automatic wrapper and remove its selector if no regression appears. Keep the production long-context path while the predecessor's measured 128K regression remains. |
 | GGUF F32 router LCP-4A | Callable `qwen35_router_logits_bf16_f32w_auto_256` duplicates only the Python launch default for the existing exact token-tiled kernel; both gfx1100 and gfx1151 registry bindings now select it. | Default-on on both gfx11 backends. gfx1151 clean 512/4K prefill improves **+2.76%/+3.28%** with 83/83 exact state; W7900 improves **2689.171 -> 2795.242 (+3.94%)** and **2955.867 -> 3070.905 tok/s (+3.89%)**, with a bit-exact 4K primitive, flat graph decode, and unchanged memory. | Keep the 512-thread base callable for one rollback release, then collapse the named wrapper into the normal F32-router binding if no release regression appears. Both architecture-local gates are complete. |
 | Laguna gfx1151 router token tile | `LAGUNA_ROUTER_LOGITS_MODE` and session setter retain exact token-tile-4/16 diagnostics around the promoted token-tile-8 route. | Clean seven-pair pp512 improves **497.625 -> 503.349 tok/s (+1.150%)**, wins every pair, keeps every tile-8 sample above 500, and closes the production 500 gate. Production-shape F32 logits, selected IDs, routing weights, complete MoE BF16 output, and token 2930 are exact; cached tracing cuts router **30.658 -> 23.315 ms**. | After one later defaults-only clean refresh remains non-regressive, remove the session setter and token-tile-16 route. Keep token-tile-4 as the low-row/unmeasured-backend fallback. |
@@ -11668,3 +11667,51 @@ leave an equivalent replay route. Run real state-row and prefix-consistency
 checks and public generation before changing execution; arithmetic changes
 also need their execution-profile gate. No execution or arithmetic changes
 are made by this disposition.
+
+### R0281-METADATA — Contiguous prefill metadata policy and host oracle
+
+`HIPENGINE_GGUF_PREFILL_DEVICE_METADATA` selects the stream-ordered device
+writer or six synchronous host-prepared copies in
+`_GGUFFullAttentionPrefillScratch.for_chunk()`. Both gfx11 package defaults
+select device metadata through 4,096 prompt tokens and host metadata above
+that; explicit values override the default. Preserve all six fields:
+`cu_q`, `cu_k`, atomic counter, GDN `cu_seqlens`, positions and contexts.
+
+The host path is not an unused rollback: the conservative, `gdn_exact` and
+`q4_shared_x` isolation profiles pin it, while the verifier profiler explicitly
+selects device metadata. The host path also supplies an independent metadata
+oracle. Native target-graph context limits no longer depend on this bulk-prefill
+selector.
+
+The original 128K device-metadata attempt stalled, but later isolation
+reproduced the stall with device metadata off and implicated the Q4 shared-X
+route. See [the stall investigation](reference/DEBUG-GFX1151-STALL.md),
+including its selector maps and bounded reproduction protocol. That evidence
+does not establish a metadata defect or a need to retain host metadata
+indefinitely. This disposition changes neither backend default nor execution.
+
+**Decision needed:** retain named host/device comparisons or migrate them into
+an explicit prefill diagnostic policy; decide automatic long-context selection
+separately from interface retirement. A release window alone does not migrate
+the live isolation callers, and missing long-context measurements do not make
+the explicit device path incapable of running.
+
+**Clearing action:** migrate the selector, backend policy, isolation profiles,
+profiler and provenance together, preserving an independent host oracle. Run:
+
+```bash
+uv run pytest -o addopts='' -q \
+  tests/test_unit_gguf_packed_verify_layout.py \
+  tests/test_unit_qwen35_prefill_kernel_profile.py \
+  tests/test_unit_gguf_full_attn_split_demand.py \
+  tests/test_gpu_runtime_state_unpack_metadata.py
+```
+
+Then exercise both writers through `LLM.generate()` below, above and away from
+the old ceiling. Verify
+all six metadata arrays, stream ordering, partial/final chunks, state/KV,
+reset/reuse and teardown. For a long-context policy change, use an explicit
+`HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=1` final child of the bounded 128K
+protocol linked above, with current defaults otherwise intact; keep
+same-stack host and device controls and record the selected route. Do not
+attribute a stall to metadata from a blocked host stack alone.
