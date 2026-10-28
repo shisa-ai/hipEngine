@@ -964,7 +964,7 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A` | unset | Q6 top-1 dp4a route for the resident MTP draft runner; set before the runner is constructed. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A` | unset | Dense Q8 dp4a route for the resident MTP draft runner. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES` | unset | Stage-selection string for the dense Q8 dp4a draft route. |
-| `HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL` | `1` | Shared-dual Q8 draft route; `0`/`off` disables. |
+| `HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL` | retired | No runtime or profiler reader. Shared gate/up uses the dual raw-Q8 F32/F32 call unless the separate dense-Q8 dp4a stage route handles it. Stale values have no effect. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL` | unset | Row-parallel draft router variant. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` | unset | Fused selected SiLU+down draft variant. |
 | `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` | `64` | Workgroup threads for the selected dp4a microbenches; recorded into their artifacts. |

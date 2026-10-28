@@ -2079,7 +2079,6 @@ def main(argv: list[str] | None = None):
                     "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A",
                     "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE",
                     "HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS",
-                    "HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL",
                     "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL",
                     "HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN",
                 )

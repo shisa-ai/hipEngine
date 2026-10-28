@@ -556,6 +556,35 @@ def test_post_init_standalone_runner_owns_the_cache_it_creates(
     assert all(owner is runtime for _buffer, owner in memory_spy.frees)
 
 
+@pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])
+def test_post_init_ignores_retired_shared_dual_selector(
+    memory_spy: _MemorySpy, monkeypatch, retired: str | None,
+) -> None:
+    from hipengine.speculative import mtp_resident_draft as resident
+
+    _fake_post_init_boundaries(monkeypatch)
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL", retired)
+    read_flag = resident._env_flag
+
+    def checked_flag(name, default):
+        assert name != "HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL"
+        return read_flag(name, default)
+
+    monkeypatch.setattr(resident, "_env_flag", checked_flag)
+    runner = resident.Qwen35GGUFResidentMTPDraftRunner(
+        _resident_mtp_weights(), np.zeros((16, 4), dtype=np.float32),
+        runtime=_FakeRuntime(), vocab_cap=16,
+    )
+    try:
+        assert not hasattr(runner, "_q8_shared_dual_enabled")
+    finally:
+        runner.close()
+    assert sorted(memory_spy.freed_ptrs()) == sorted(memory_spy.allocated_ptrs())
+
+
 def test_post_init_borrowed_cache_is_used_and_left_open(
     memory_spy: _MemorySpy, monkeypatch
 ) -> None:

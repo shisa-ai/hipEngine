@@ -512,7 +512,12 @@ def test_q8_0_coltile8_rowbatch4_is_width_invariant_to_serial_c1(rows: int) -> N
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_q8_0_dual_f32_matches_two_single_gemvs() -> None:
+@pytest.mark.parametrize("rows,in_features,out_features", [
+    (1, 64, 7), (2, 64, 7), (3, 256, 19), (1, 2048, 512),
+])
+def test_q8_0_dual_f32_matches_two_single_gemvs(
+    rows: int, in_features: int, out_features: int,
+) -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (
         copy_device_to_host,
@@ -522,7 +527,6 @@ def test_q8_0_dual_f32_matches_two_single_gemvs() -> None:
         malloc,
     )
 
-    rows, in_features, out_features = 2, 64, 7
     rng = np.random.default_rng(20260701)
     x = np.ascontiguousarray(rng.standard_normal((rows, in_features)).astype(np.float32) * 0.125)
     qweight_a = np.ascontiguousarray(make_q8_0_weight(out_features, in_features))

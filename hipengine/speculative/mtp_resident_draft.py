@@ -638,7 +638,6 @@ class Qwen35GGUFResidentMTPDraftRunner:
         )
         if self._q6_top1_stage1_shape == "pack16" and self.vocab % 16 != 0:
             raise ValueError("pack16 Q6 top-1 diagnostic requires vocab divisible by 16")
-        self._q8_shared_dual_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL", True)
         self._router_row_parallel_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", False)
         if self.device_chain_enabled is None:
             self._device_chain_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN", False)
@@ -2638,7 +2637,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             out_features_b=inter,
             stream=stream,
         )
-        if not shared_gate_up_dp4a and bool(getattr(self, "_q8_shared_dual_enabled", False)):
+        if not shared_gate_up_dp4a:
             gguf_q8_0_dual_gemv_f32_f32_out(
                 self.post_norm.ptr,
                 self.shared_gate.ptr,
@@ -2652,9 +2651,6 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 library=self._k_lib,
                 runtime=runtime,
             )
-        elif not shared_gate_up_dp4a:
-            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_gate.ptr, self.shared_gate_out.ptr, 1, h, inter, stream=stream, library=self._k_lib, runtime=runtime)
-            gguf_q8_0_gemv_f32_f32_out(self.post_norm.ptr, self.shared_up.ptr, self.shared_up_out.ptr, 1, h, inter, stream=stream, library=self._k_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_gate_up", t_stage)
         mtp_silu_mul_f32(self.shared_gate_out.ptr, self.shared_up_out.ptr, self.shared_inter.ptr, inter, stream=stream, library=self._mtp_lib, runtime=runtime)
         t_stage = mark_stage("draft_run_ffn_shared_silu", t_stage)

@@ -77,11 +77,6 @@ def _apply_route_env(args: argparse.Namespace) -> None:
         os.environ["HIPENGINE_GGUF_SELECTED_X8_REPACK"] = selected_down_x8
 
 
-def _resident_q8_shared_dual_enabled() -> bool:
-    raw = os.environ.get("HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL", "1")
-    return raw.strip().lower() not in {"0", "false", "off", "no", ""}
-
-
 def _sum_stage_timings(rows: list[dict[str, float]]) -> dict[str, float]:
     totals: dict[str, float] = {}
     for row in rows:
@@ -284,7 +279,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "q6_top1_dp4a": bool(args.q6_top1_dp4a),
         "q6_top1_stage1_threads": int(args.q6_top1_stage1_threads),
         "q6_top1_stage1_shape": str(args.q6_top1_stage1_shape),
-        "q8_shared_dual": _resident_q8_shared_dual_enabled(),
+        "q8_shared_dual": True,
         "target_prefill_mode": "bulk_prefill_hidden_rows",
         "mtp_initial_kv_writer": "resident_write_kv_rows",
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
@@ -425,7 +420,7 @@ def _run_parent(args: argparse.Namespace) -> int:
         "q6_top1_dp4a": bool(args.q6_top1_dp4a),
         "q6_top1_stage1_threads": int(args.q6_top1_stage1_threads),
         "q6_top1_stage1_shape": str(args.q6_top1_stage1_shape),
-        "q8_shared_dual": _resident_q8_shared_dual_enabled(),
+        "q8_shared_dual": True,
         "target_prefill_mode": "bulk_prefill_hidden_rows",
         "mtp_initial_kv_writer": "resident_write_kv_rows",
         "dense_q8_dp4a": bool(args.dense_q8_dp4a),
