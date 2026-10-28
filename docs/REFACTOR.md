@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| Qwen3.5 GGUF/PARO native sampler | `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` is the PARO rollback opt-out; `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` enables the separate GGUF correctness candidate. | PARO remains default-on for supported c1 and scheduler-owned c>N serial-per-slot rows. GGUF is explicit-only: supported c1 and dense compatible c>N rows use native row/rows selection with zero full-vocabulary D2H; forced/dynamic/unsupported combinations remain host-backed. The W7900 c4 correctness artifact passes fixed-seed/state/KV/finish/ownership gates, but A3 stops before timing: native-eligible auto tools fail the frozen turn-1 strict-envelope oracle, while 4/4 exact forced-tool turns report `host_logits_sample` / `native_gpu_unsupported_request`. No active-SSE/tool-ready claim exists. | The A3 non-promotion trigger has fired. In a dedicated cleanup unit, remove the GGUF env branch and resident workspace wiring while retaining the standalone sampler/kernel correctness gates, unless a model-general native forced/dynamic-queue or constrained auto-tool design is approved and separately correctness-gated first. Separately remove the PARO opt-out after its release window. |
 | GGUF MoE decode graph | `HIPENGINE_GGUF_MOE_GRAPH` opt-in around per-layer rows==1 MoE FFN capture/replay (`hipengine/runtime/moe_graph.py` + `_run_decode_layer_graphed`). | Default-off. Proven bit-exact on 35B-A3B Q4_K_M (KL=0, 40 captures / 3800 replays / 0 rejects). Cuts the FFN ~64% in launch count (~440->40/token) but multi-trial (3x32 steps) shows a **consistent ~0.84% wall regression** (eager 18.12 vs graph 18.27 ms/step, non-overlapping p10-p90 bands) — NOT noise. The host was already ahead of the GPU (decode is bandwidth/compute bound), so removing launches reclaims no wall and the graph launch overlaps marginally worse with the surrounding eager attention. Fails the non-regressive gate, so NOT promoted. Kept as the validated A/B lever proving launch-count is not the decode bottleneck. Artifact `benchmarks/results/2026-06-28-moe-graph-rows1-ab.json`, WORKLOG 2026-06-28. | Remove the flag + `MoeGraphCache` wiring once the bandwidth-bound conclusion is accepted and no rows=4 verifier-graph follow-up is planned. Re-A/B (and only then reconsider default-on) if a future per-GEMV bandwidth cut shifts the bottleneck back to host-dispatch and makes the launch saving net-positive on wall. Keep `moe_graph.py` + its unit gate as a reusable tool even if the runner wiring is removed. |
 | GGUF row-compact MoE GEMV | `HIPENGINE_GGUF_ROW_COMPACT_GEMV` opt-in around `_try_run_post_attention_moe_rows_compact_gemv` for rows>1 selected-MoE verifier blocks. | Default-off. Rechecked on 2026-07-01 against the current llama-compat B2 dp4a all-sync smoke after direct-state cleanup. It regressed badly: B2 **36.05 tok/s**, cycle **27.765 ms/output**, `target_block_verify_total` **24.277 ms/output**; the new `target_block_linear_attn_ffn_moe_compact_gemv` bucket alone cost **8.977 ms/output**. Current split selected-MoE GEMVs are faster for this verifier shape. Artifact `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-b2-rowcompact-allsync-smoke.json`, WORKLOG 2026-07-01. | Remove the runtime env gate or demote the compact row-GEMV path to tests/microbench-only unless a new compact scheduler/kernel beats the split selected-MoE path on a full-suite `llama-compat-device-chain-dp4a` B2 run with unchanged acceptance. |
 | GGUF dense Q8 dp4a sidecar | `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR` materialization sidecar plus `HIPENGINE_GGUF_DENSE_Q8_DP4A` / `--verify-dense-q8-dp4a` and `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL` / `--verify-dense-q8-dp4a-all`, routed by `_try_launch_dense_q8_pair_dp4a`, `_try_launch_dense_q8_single_dp4a`, and `_try_launch_dense_q8_triple_dp4a` for rows>1 verifier blocks. | Default-off. Added for the llama.cpp replication lane. The original route paid a q8_1 quantize launch plus two singleton dense Q8 GEMV launches and lost on B2 smoke; the rowtile-pair retry improved smoke/all-sync verifier timing but full-suite regressed **60.36 -> 59.42 tok/s**, cycle **16.587 -> 16.852 ms/output**, acceptance **0.583 -> 0.559**, target rows/output **1.250 -> 1.322**, and verifier drain **13.023 -> 13.093 ms/output**. The broader all-sidecar route adds raw singleton and Q/K/V triple wrappers and cuts the block profile dense-Q8 bucket **11.420 -> 8.902 ms/block** / kernel **26.053 -> 23.427 ms/block**; full-suite improves speed **60.36 -> 60.89 tok/s** and verifier drain **13.023 -> 12.742 ms/output**, but acceptance regresses **0.583 -> 0.567** and draft acceptance **0.700 -> 0.655**. Later retained lanes add Q8 shared dual, X8 draft lm-head, and F32 `ssm_out` on top of this all-sidecar base. Artifacts `benchmarks/results/2026-07-01-gguf-mtp-verifier-rocprof-llama-compat-block-b2-denseq8all.json`, `benchmarks/results/2026-07-01-ar-mtp-llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-{smoke,full}.json`, and earlier denseq8 rowtile-pair artifacts, WORKLOG 2026-07-01. | Keep only as part of the named accuracy-traded llama-compat route while parity work is active. Remove loose env/bench/suite variants after the current llama-compat audit unless a true llama-style Q8 layout/scheduler beats the active compat lane on the full suite, or unless the compat acceptance contract is explicitly changed. |
@@ -8825,33 +8824,6 @@ predicate test is now named
 `test_greedy_speculative_route_predicate_allows_only_greedy_fast_requests` and
 says in its docstring that it pins one half of the policy.
 
-## Full-vocabulary native sampler fallback and GGUF placement (2026-09-21)
-
-`NativeSamplerWorkspace(full_vocab_algorithm="sorted")` selects the full-vocabulary
-sort/merge/scan implementation; `"strict"` retains the original native algorithms
-for debugging and numerical comparisons. The original registered temperature and
-top-p primitives remain strict fallbacks. Sorted FP64 accumulation of FP32 weights
-is not bit-identical to the old serial FP32 accumulation, and temperature-only
-sampling changes draw ordering while preserving the categorical law.
-
-Keep the constructor choice as an explicit debugging opt-out. GGUF generators
-and sessions accept `native_sampler_algorithm="strict"`; their default is
-`"sorted"`. The model and sampler arithmetic axes are independent: a strict model
-can use the production sampler without claiming strict sampler parity.
-`native_sampler_provenance` reports a stable selection manifest, named fallbacks,
-and the last successful workspace route; packed execution manifests include it.
-A live workspace refuses conflicting selection changes. Preserve the registered
-strict primitives as the debugging oracle.
-The new implementation has hardware evidence on gfx1151 only. gfx1100 transfer
-and the broader model/quant matrix are unverified.
-
-GGUF placement defaults on for supported, available native requests;
-`HIPENGINE_QWEN35_NATIVE_SAMPLER=0` retains rollback/bisection value. Keep that
-opt-out while independent hardware transfer is evaluated; do not use it as an
-admission gate for supported requests. Dynamic constraints and forced queues
-still require the host path. The full-vocabulary kernel improvement is
-not evidence that those request shapes became supported.
-
 ## Provider Prefix Checkpoint Rollback
 
 `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` defaults to four bounded provider
@@ -11309,3 +11281,38 @@ selection, short/long/ragged prompts, resource rejection, reset/cancellation
 and cleanup. Verify actual attention sources and transient oracle owners. Any
 new attention arithmetic needs independent quality/state gates and matched
 memory/performance measurements; this disposition changes none of them.
+
+### R0281-SAMPLER / R0508 — Native placement rollback and algorithm controls
+
+Native sampling defaults on for supported PARO singleton/serial-slot requests
+and GGUF singleton/compatible packed requests. The old GGUF opt-in deletion
+instruction predates that default and is removed. Forced queues, dynamic
+constraints, unsupported combinations and unavailable native sessions still
+select the host path; kernel speed does not implement missing request semantics.
+
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=0` is a live host-placement comparison in
+`scripts/gguf_sampling_overhead_profile.py` and generator/API tests.
+The native workspace's independent `sorted`/`strict` choice has a different
+purpose: the default sorted full-vocabulary algorithm uses FP64 accumulation
+of FP32 weights, not the original serial FP32 accumulation, so exact RNG/ID
+parity with the strict algorithm is not implied. Model arithmetic and sampler
+algorithm are independent axes. Keep registered strict primitives as numerical
+oracles, the selection/provenance manifest and refusal to change an active
+workspace's algorithm.
+
+**Decision needed:** keep host-placement and strict-algorithm controls as
+supported diagnostics, or migrate the environment comparison to scoped sampler
+policy. Do not delete working native workspace wiring because an older tool
+scenario failed, and do not broaden forced/dynamic request support implicitly.
+The original A3 and hardware-transfer records remain in the sweep inventory;
+this reconciliation makes no new task-quality or backend-performance claim.
+
+**Clearing action:** migrate actual profiler, generator and capabilities-endpoint
+consumers together if retiring the placement flag, preserving host/native
+comparison arms and explicit fallback reasons. Run the GGUF default/prefill-owner,
+PARO generator, sampler-contract and capabilities tests, plus real sampled
+`LLM.generate()`/server requests with fixed-seed repeats, packed/staggered rows,
+forced/dynamic fallback, cancellation/refill and cleanup. Algorithm changes also
+need independent distribution and numerical-oracle gates; host/native repeat
+stability does not mean their RNG streams must match. No runtime/default or
+sampler arithmetic changes accompany this disposition.

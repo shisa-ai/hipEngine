@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "Native sampler row6232 and R0508 consolidate bottom R0281-SAMPLER/R0508: GGUF native placement already default-on, old opt-in removal instruction obsolete. Preserve working workspace/packed routes and forced/dynamic/unsupported host fallback. Host-placement0 remains actual sampling-overhead profiler arm and API/generator comparison, distinct sorted/strict algorithm diagnostic and immutable workspace/provenance.79 default/prefill/PARO/API/packed sampler wiring tests pass. No code/default/arithmetic/device/perf claim. worklog/entries/20261028T050243.205032Z-cleanup-refactor-r0281-sampler-6365de.md.",
         "Tail4 row6231 removed stale duplicate: R0088 already declared implemented oracle-backed tail4 layout and repaired public capacity/graph admission with recorded actual device validation. Confirm current FP16 group32 tail/BF16 prefix, single-row contract, scoped failure and no blanket missing-evidence gate. Existing R0281-INT8-POLICY extended; PARO selector remains R0281-PARO-INT8-PREFILL, direct no-oracle Hadamard nonfinite/dtype issue stays dedicated original R0404. No hybrid packed/MTP claim.275 focused capability/policy/MTP/PARO tests pass; no runtime/kernel/default/new device/perf claim. worklog/entries/20261028T045910.939895Z-cleanup-refactor-r0281-tail4-2649d1.md.",
         "PARO INT8 prefill row6230 moved bottom R0281-PARO-INT8-PREFILL: four live path/resource controls plus ordinary/packed result metadata, not unused enable gate. Auto min length AND total<=limit OR free<=page-rounded oracle+reserve, meminfo failure oracle, explicit direct/oracle and tail4 mixed default retained. Correct ENVS low-memory-pressure wording and reserve-as-allocation error. Add below/at/above/unrelated length, total/free equality boundary, custom/zero limits and meminfo override tests;189 workspace/batch/mixed-suite pass. No runtime/default/arithmetic/perf change or device rerun. worklog/entries/20261028T045443.572320Z-cleanup-refactor-r0281-paro-int8-prefill-2e8f11.md.",
         "Raw-Q4/Q8_1 row6229 moved bottom R0281-Q8-EXPERIMENTS: old dot/WMMA/preview/LDS modes still direct microbench CLI and numerical-reference tests, not public model defaults. Common library live in Laguna selected-MMQ build owner and Qwen resident Q6 integer-MMQ. Preserve per-mode kernels/keys/helpers pending retain-controls versus archive-performance-interface decision; name consumer mapping and affected parity/public checks. Help and3 host registry/wrapper/preview nodes pass; no runtime/CLI/kernel/default/perf change. worklog/entries/20261028T045156.566782Z-cleanup-refactor-r0281-q8-experiments-febc49.md.",
@@ -7840,7 +7841,7 @@
         {
           "line": 6232,
           "text": "| Qwen3.5 GGUF/PARO native sampler | `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` is the PARO rollback opt-out; `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` enables the separate GGUF correctness candidate. | PARO remains default-on for supported c1 and scheduler-owned c>N serial-per-slot rows. GGUF is explicit-only: supported c1 and dense compatible c>N rows use native row/rows selection with zero full-vocabulary D2H; forced/dynamic/unsupported combinations remain host-backed. The W7900 c4 correctness artifact passes fixed-seed/state/KV/finish/ownership gates, but A3 stops before timing: native-eligible auto tools fail the frozen turn-1 strict-envelope oracle, while 4/4 exact forced-tool turns report `host_logits_sample` / `native_gpu_unsupported_request`. No active-SSE/tool-ready claim exists. | The A3 non-promotion trigger has fired. In a dedicated cleanup unit, remove the GGUF env branch and resident workspace wiring while retaining the standalone sampler/kernel correctness gates, unless a model-general native forced/dynamic-queue or constrained auto-tool design is approved and separately correctness-gated first. Separately remove the PARO opt-out after its release window. |",
-          "status": "pending"
+          "status": "deferred-sampler-controls-merged-R0508"
         },
         {
           "line": 6233,
@@ -13603,8 +13604,10 @@
       "start_line": 12085,
       "end_line": 12111,
       "sha256": "968afa2c549b44430c451030060e9012f8ab89a9d53de75c9cb4fbd4421304c0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-sampler-controls-merged-R0281-SAMPLER",
+      "evidence": [
+        "Merged with original Cleanup Ledger sampler row6232 at bottom R0281-SAMPLER/R0508. Preserve default native placement, sorted/strict numeric controls/oracles, actual host/native profiler comparison and unsupported-request fallback;79 focused wiring tests and documentation/audit gates. worklog/entries/20261028T050243.205032Z-cleanup-refactor-r0281-sampler-6365de.md."
+      ],
       "subitems": []
     },
     {
