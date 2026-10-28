@@ -1051,6 +1051,21 @@ def test_device_only_draft_cache_remains_selectable_without_prompt_replay() -> N
     assert args.mtp_context_replay is False
 
 
+@pytest.mark.parametrize("block_verify", [False, True])
+def test_context_device_seed_flags_remain_selectable_with_either_verifier(block_verify) -> None:
+    args = build_arg_parser().parse_args([
+        "--resident-mtp-draft", "--resident-mtp-device-seed", "--mtp-context-replay",
+        "--mtp-device-kv-cache", "--mtp-draft-vocab-cap", "32768",
+        "--adaptive-full-vocab-after-cap-miss",
+        "--target-block-verify" if block_verify else "--no-target-block-verify",
+    ])
+    assert args.resident_mtp_device_seed is True
+    assert args.mtp_context_replay is True
+    assert args.mtp_device_kv_cache is True
+    assert args.adaptive_full_vocab_after_cap_miss is True
+    assert args.target_block_verify is block_verify
+
+
 def test_arg_parser_exposes_resident_mtp_device_chain() -> None:
     args = build_arg_parser().parse_args(["--resident-mtp-draft", "--resident-mtp-device-chain"])
 

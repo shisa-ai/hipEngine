@@ -86,7 +86,11 @@ cache evaluation remains available by passing `--resident-mtp-draft
 --resident-mtp-device-seed --mtp-device-kv-cache` to the standalone bench
 without `--mtp-context-replay`. Verifier-row staging and device-base accepted-row
 KV writing remain available; prompt priming is not a prerequisite for the
-cache capability.
+cache capability. The context-primed suite alias
+`resident-context-cap32k-device-seed` is also removed. Its prompt/device-seed/
+cache combination remains explicitly selectable with `--mtp-context-replay`
+and either serial or block target verification; llama-compat and native-cycle
+context ownership are unchanged.
 
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked

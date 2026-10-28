@@ -8218,7 +8218,8 @@
         {
           "line": 6295,
           "text": "| GGUF MTP diagnostics | Suite route `resident-context-cap32k-device-seed` plus `scripts/gguf_mtp_bench.py` compatibility path combining `--resident-mtp-device-seed`, `--mtp-context-replay`, and `--mtp-device-kv-cache`. | Default-off rejected structural diagnostic. It wires llama.cpp shifted prompt catch-up, resident device `pending_h`, staged verifier rows, and device MTP KV, but the target verifier remains serial: B1 smoke **50.84 tok/s = 0.9257x AR**, accepted/output **0.400**; B3 smoke **46.97 tok/s = 0.856x AR**, accepted/output **0.571**. | Keep only as a compatibility scaffold while building real target-pass amortization. Remove or move to an experiment harness once a block/graph verifier path owns the llama.cpp lifecycle and beats true AR on the full suite. |",
-          "status": "pending"
+          "status": "fixed-context-device-seed-suite-alias-retired",
+          "evidence": "Remove isolated resident-context-cap32k-device-seed suitealias only; no script caller beyonddefinition/test. Preserve explicit shiftedprompt/deviceseed/deviceKV/caprecovery withserialorblockverify, current llama-compat/native ownership. REDaliasfail;324focused suite/bench/context/proposer/workbench/precheckpass,AST onlydictentrydeleted. ActualretiredCLIexit2nooutput and llama-compat-device-seed-chain dryrunpass. CPUbg65019689pass271skip10subtests/fixtures/smokes;docs/audit/tiers/diff/worklogpass. No runtime/GPU/performance change. Worklog: worklog/entries/20261028T170541.674218Z-cleanup-refactor-r0281-context-alias-e57528.md."
         },
         {
           "line": 6296,
