@@ -8200,7 +8200,8 @@
         {
           "line": 6292,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --adaptive-full-vocab-after-cap-miss` and the suite/workbench `resident-cap32k-recover` route. | Default-off diagnostic. It instantiates a second full-vocab resident draft runner and switches to it after a generic capped-vocab zero-accept miss, suppressing permanent AR fallback for that miss. 2026-06-29 partial suite recovered the known cap32k B1 collapse (`accepted/output 17/37 -> 19/39`) but still measured only **52.45 tok/s = 0.958x true AR**; full suite measured **51.71 tok/s = 0.9478x AR**, `mtp_beats_ar=false`; smaller caps were not goal-closing. | Remove or move to a dedicated experiment harness once the real resident MTP lifecycle/verifier-amortization path lands, unless a future full-suite + heldout row proves capped recovery beats true AR without prompt-sensitive cap tuning. |",
-          "status": "pending"
+          "status": "deferred-R0281-TOPK-vocabulary-recovery-policy",
+          "evidence": "Merge live recovery control into bottom R0281-TOPK proposal-policy migration. Named suite and parity-workbench recover route still use it; standalone and actual suite default off. Preserve full-runner lifetime, low-accept threshold/AR suppression/recovery reset and artifacts; no runtime/default/kernel edit. Add11 actual-AST transition cases incl empty/full/partial drafts, thresholdboundary, capped miss, no/fullwidthrunner, success/failure and ARoff; add actualsuitedefaultoff assertion. 237focused parser/suite/workbench/precheck pass; docs/audit/tiers/compile/diff/worklog pass. No new GPU/perf claim. Worklog: worklog/entries/20261028T164945.104389Z-cleanup-refactor-r0281-vocab-recovery-630212.md."
         },
         {
           "line": 6293,

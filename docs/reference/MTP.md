@@ -65,6 +65,15 @@ bench or public generation defaults. Artifacts record the configured workload
 cap and, for resident cycles, the actual draft-head width. The cap is an
 explicit proposal policy, not an artifact-admission or qualification gate.
 
+`--adaptive-full-vocab-after-cap-miss` is a separate benchmark comparison.
+It is off in both the standalone and suite-default routes; named suite routes
+and the parity workbench can enable it with a resident capped draft. A capped
+low-accept miss selects a second full-vocabulary runner for the next eligible
+cycle and suppresses AR fallback for that miss. Full acceptance while recovering
+returns to the cap; a failed recovery may enter AR fallback. Cycle artifacts
+record the current runner width and next recovery state. Its interface decision
+is tracked with proposal policies in `REFACTOR.md` under `R0281-TOPK`.
+
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked
 pointer-table kernel when their layout contracts hold. Per-layer copy

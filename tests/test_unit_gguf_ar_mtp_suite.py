@@ -108,6 +108,11 @@ def test_suite_default_route_explicitly_caps_draft_vocabulary() -> None:
     assert flags[index + 1] == "32768"
 
 
+def test_suite_default_route_does_not_enable_full_vocab_recovery() -> None:
+    flags = suite.MTP_ROUTES[suite.DEFAULT_MTP_ROUTE]
+    assert "--adaptive-full-vocab-after-cap-miss" not in flags
+
+
 def test_suite_default_route_uses_draft_confidence_gate() -> None:
     # the default must carry --draft-p-min 0.5: gating low-confidence draft cycles
     # (hit conf ~0.69 vs miss ~0.36) trims wasted block-verify and unlocks deeper

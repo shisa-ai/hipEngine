@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --adaptive-full-vocab-after-cap-miss` and the suite/workbench `resident-cap32k-recover` route. | Default-off diagnostic. It instantiates a second full-vocab resident draft runner and switches to it after a generic capped-vocab zero-accept miss, suppressing permanent AR fallback for that miss. 2026-06-29 partial suite recovered the known cap32k B1 collapse (`accepted/output 17/37 -> 19/39`) but still measured only **52.45 tok/s = 0.958x true AR**; full suite measured **51.71 tok/s = 0.9478x AR**, `mtp_beats_ar=false`; smaller caps were not goal-closing. | Remove or move to a dedicated experiment harness once the real resident MTP lifecycle/verifier-amortization path lands, unless a future full-suite + heldout row proves capped recovery beats true AR without prompt-sensitive cap tuning. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --resident-mtp-device-seed` and suite route `resident-cap32k-device-seed`. | Default-off structural diagnostic. It seeds the resident draft from the target session's device-resident fp32 hidden seed pointer, mirroring llama.cpp's resident `pending_h` lifecycle direction and avoiding the pending-seed host round trip. 2026-06-29 full suite: AR **54.59 tok/s**, best MTP B1 **52.08 tok/s = 0.9540x AR**, accepted/output unchanged vs cap32k recovery at **78/178 = 0.438**, `mtp_beats_ar=false`. | Promote into the final resident lifecycle only if a future full-suite + heldout row beats true AR, or if the real `GGUFMTPDraftContext` absorbs the device-seed path. Otherwise remove or move it to an experiment harness after the verifier-amortization path lands. |
 | GGUF MTP diagnostics | Suite route `resident-cap32k-device-seed-kv` plus `scripts/gguf_mtp_bench.py` path combining `--resident-mtp-device-seed` and `--mtp-device-kv-cache`. | Default-off rejected diagnostic. The route uses new device verifier-row staging and device-base accepted-row KV commit plumbing, but without llama.cpp prompt/context catch-up it collapses draft acceptance: B3 smoke **38.94 tok/s = 0.7124x AR**, draft_acceptance **0.032**; B1 smoke **39.73 tok/s = 0.7235x AR**, draft_acceptance **0.017**. | Keep `Qwen35GGUFResidentSession.stage_current_hidden_seed_as_verify_row()` and `Qwen35GGUFResidentMTPDraftRunner.write_kv_rows_from_device_seed_base()` as lifecycle primitives. Remove or move the no-context-replay suite route unless a future prompt-catch-up resident lifecycle uses it and beats true AR on full suite. |
 | GGUF MTP diagnostics | Suite route `resident-context-cap32k-device-seed` plus `scripts/gguf_mtp_bench.py` compatibility path combining `--resident-mtp-device-seed`, `--mtp-context-replay`, and `--mtp-device-kv-cache`. | Default-off rejected structural diagnostic. It wires llama.cpp shifted prompt catch-up, resident device `pending_h`, staged verifier rows, and device MTP KV, but the target verifier remains serial: B1 smoke **50.84 tok/s = 0.9257x AR**, accepted/output **0.400**; B3 smoke **46.97 tok/s = 0.856x AR**, accepted/output **0.571**. | Keep only as a compatibility scaffold while building real target-pass amortization. Remove or move to an experiment harness once a block/graph verifier path owns the llama.cpp lifecycle and beats true AR on the full suite. |
@@ -11492,20 +11491,35 @@ it changes proposal accounting, verifier/hidden-row consumption and adaptive
 policy, even when visible IDs happen to match. Keep the public NextN
 provider and its separate acceptance owner outside this benchmark migration.
 
-**Decision needed:** keep explicit linear/tree comparison policies or move
-those policies into a dedicated experiment harness with coordinated suite
-and parity-workbench callers. Do not change the standalone root default as
-a side effect of deleting controls or use a historical speed-negative tree
+`--adaptive-full-vocab-after-cap-miss` is also a live proposal-policy control.
+It is off in the standalone and suite-default routes, but named suite routes
+and the parity workbench's `resident-cap32k-recover` comparison enable it.
+When the configured cap is below the output width, it owns a second full-head
+runner. A capped nonempty low-accept miss selects that runner for the next
+eligible cycle and suppresses AR fallback for that miss; full acceptance on a
+recovery cycle returns to the capped runner. A failed recovery may still
+activate AR fallback. The configured accepted-count threshold, not just zero
+acceptance, defines a low-accept miss. Keep runner selection, cache/session
+reuse, full-runner teardown and current/next-cycle artifact fields together.
+No public NextN provider switch is implied by this benchmark control.
+
+**Decision needed:** keep explicit linear/tree and vocabulary-recovery
+comparison policies or move those policies into a dedicated experiment harness
+with coordinated suite and parity-workbench callers. Do not change the standalone
+root default as a side effect of deleting controls or use a historical speed-negative tree
 row as a reason to disable an implemented request.
 
 **Clearing action:** migrate root/sibling limits, branch redraft and tail
-gates, hybrid fallback, route aliases, category forwarding and artifact
-candidate/acceptance fields together. Retain linear/mismatch/out-of-set and
+gates, hybrid fallback, vocabulary-recovery runner lifetime and AR-fallback
+suppression, route aliases, category forwarding and artifact candidate/acceptance
+fields together. Retain linear/mismatch/out-of-set and
 corrective-token boundary tests, branch reseed/commit and candidate counting,
-plus parser/suite/workbench contracts. A runtime migration needs real
-linear/root/sibling/redraft cycle, hidden/KV/cursor, reset and close checks;
-confirm public generation is unchanged. Any new performance claim needs its
-own matched protocol, not the retired ledger row's numbers.
+plus parser/suite/workbench contracts. Cover empty/full/partial drafts, capped
+miss then recovery success/failure, accepted-count threshold boundaries and
+full-width/no-recovery-runner controls. A runtime migration needs real
+linear/root/sibling/redraft and vocabulary-recovery cycles, hidden/KV/cursor,
+reset and close checks; confirm public generation is unchanged. Any new performance
+claim needs its own matched protocol, not the retired ledger row's numbers.
 
 ### R0281-CONTEXT — GGUF benchmark prompt priming and draft KV policy
 

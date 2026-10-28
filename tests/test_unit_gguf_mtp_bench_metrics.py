@@ -972,6 +972,67 @@ def test_arg_parser_exposes_adaptive_full_vocab_recovery() -> None:
     assert args.adaptive_full_vocab_after_cap_miss is True
 
 
+@pytest.mark.parametrize(
+    "enabled,drafts,accepted,maximum,cap,has_recovery,recovering,ar_enabled,expected",
+    [
+        (False, [7], 0, 0, 32, True, False, True, (False, True, False)),
+        (True, [], 0, 0, 32, True, False, True, (False, False, False)),
+        (True, [7], 1, 0, 32, True, False, True, (False, False, False)),
+        (True, [7], 0, 0, 32, True, False, True, (True, False, True)),
+        (True, [7, 8], 1, 0, 32, True, False, True, (False, False, False)),
+        (True, [7, 8], 1, 1, 32, True, False, True, (True, False, True)),
+        (True, [7], 0, 0, 100, True, False, True, (False, True, False)),
+        (True, [7], 0, 0, 32, False, False, True, (False, True, False)),
+        (True, [7, 8], 1, 1, 100, True, True, True, (True, True, False)),
+        (True, [7, 8], 2, 0, 100, True, True, True, (False, False, False)),
+        (True, [7], 0, 0, 32, True, False, False, (True, False, True)),
+    ],
+)
+def test_full_vocab_recovery_and_ar_fallback_transitions(
+    enabled, drafts, accepted, maximum, cap, has_recovery, recovering, ar_enabled, expected,
+) -> None:
+    from types import SimpleNamespace
+
+    tree = ast.parse(inspect.getsource(bench.main))
+    cycle = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.For) and isinstance(node.target, ast.Name)
+        and node.target.id == "cycle"
+    )
+    start = next(
+        index for index, node in enumerate(cycle.body)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "low_accept_miss" for target in node.targets)
+    )
+    # Execute the actual adjacent recovery/fallback statements, not a second
+    # implementation of the policy in the test.
+    policy = ast.Module(body=cycle.body[start:start + 4], type_ignores=[])
+    namespace = {
+        "args": SimpleNamespace(
+            adaptive_full_vocab_after_cap_miss=enabled,
+            adaptive_ar_fallback_max_accepted=maximum,
+            adaptive_ar_fallback=ar_enabled,
+            adaptive_ar_fallback_cooldown=3,
+        ),
+        "draft_tokens": drafts,
+        "accepted_draft_tokens": accepted,
+        "cycle_full_vocab_recovery": recovering,
+        "resident_draft_full_vocab": object() if has_recovery else None,
+        "cycle_draft_vocab_cap": cap,
+        "sh_raw": SimpleNamespace(shape=(100,)),
+        "adaptive_full_vocab_recovery_active": recovering,
+        "adaptive_ar_fallback_active": False,
+        "adaptive_ar_fallback_cooldown_left": 0,
+    }
+    exec(compile(policy, "<bench-recovery-policy>", "exec"), namespace)
+    assert (
+        namespace["adaptive_full_vocab_recovery_active"],
+        namespace["adaptive_ar_fallback_active"],
+        namespace["suppress_ar_fallback_for_full_vocab_recovery"],
+    ) == expected
+    assert namespace["adaptive_ar_fallback_cooldown_left"] == (3 if expected[1] else 0)
+
+
 def test_arg_parser_exposes_resident_mtp_device_seed() -> None:
     args = build_arg_parser().parse_args(["--resident-mtp-draft", "--resident-mtp-device-seed"])
 
