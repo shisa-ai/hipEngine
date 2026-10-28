@@ -625,7 +625,6 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self._silu_lib = build_paro_silu(**build_kwargs)
         self._combine_lib = build_paro_combine(**build_kwargs)
         self._gather_lib = build_gather(**build_kwargs)
-        self._q6_top1_gather_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER", True)
         self._q6_top1_dp4a_enabled = _env_flag("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", False)
         self._q6_top1_stage1_shape = _env_choice(
             "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE",
@@ -1285,10 +1284,6 @@ class Qwen35GGUFResidentMTPDraftRunner:
         rotary_dim: int,
     ) -> _NativeMTPProposalGraph:
         capture_start = time.perf_counter()
-        if not bool(getattr(self, "_q6_top1_gather_enabled", False)):
-            raise NativeSpecProposalGraphUnsupportedError(
-                "native proposal graph requires device-written top-1 IDs"
-            )
         self._ensure_embed_table()
         if self._proposal_runtime_state_lib is None:
             self._proposal_runtime_state_lib = build_runtime_state(
@@ -1961,7 +1956,6 @@ class Qwen35GGUFResidentMTPDraftRunner:
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - t_prepare0) * 1000)
         current_cache_len = int(dense_cache_len)
-        q6_top1_gather_enabled = bool(getattr(self, "_q6_top1_gather_enabled", False))
         if gpu_events is not None:
             gpu_events.reserve(n * 9 + 1)
             gpu_events.start()
@@ -1981,10 +1975,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 stage_timings=stage_timings,
                 gpu_events=gpu_events,
                 gpu_event_depth=depth,
-                top1_out_ptr=(self.topk_all.ptr + depth * top_k * 4) if (top_k == 1 and q6_top1_gather_enabled) else None,
+                top1_out_ptr=(self.topk_all.ptr + depth * top_k * 4) if top_k == 1 else None,
                 top1_next_embed_ptr=(
                     self.token_embed.ptr
-                    if (top_k == 1 and q6_top1_gather_enabled and depth + 1 < n)
+                    if top_k == 1 and depth + 1 < n
                     else None
                 ),
                 stream=stream,
@@ -1995,11 +1989,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 current_cache_len += 1
             # Record this depth's top-k on device (no sync, no readback).
             t_topk0 = time.perf_counter() if stage_timings is not None else 0.0
-            if top_k == 1 and q6_top1_gather_enabled:
-                # The Q6_K lm-head fast path already wrote the top-1 id and,
-                # for non-final depths, gathered the next token embedding.
-                pass
-            else:
+            if top_k != 1:
                 self._topk_indices_into(self.topk_all.ptr + depth * top_k * 4, top_k, stream=stream)
                 # Device-gather the next depth's embedding from this depth's top-1.
                 if depth + 1 < n:

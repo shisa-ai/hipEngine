@@ -41,9 +41,10 @@ def _rope_tables(*, max_positions: int, rotary_dim: int, base: float):
     return np.ascontiguousarray(cos), np.ascontiguousarray(sin)
 
 
+@pytest.mark.parametrize("top_k", [1, 8])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
-def test_device_chain_matches_legacy_exactly(monkeypatch) -> None:
+def test_device_chain_matches_legacy_exactly(monkeypatch, top_k: int) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
     from hipengine.loading.gguf import GGUFReader
     from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
@@ -72,7 +73,7 @@ def test_device_chain_matches_legacy_exactly(monkeypatch) -> None:
     rng = np.random.default_rng(20260629)
     hidden_seed = (rng.standard_normal((1, runner.hidden_size)).astype(np.float32) * 0.1)
 
-    draft_n, top_k = 5, 8
+    draft_n = 5
 
     def run(device_chain: bool):
         runner._device_chain_enabled = device_chain
