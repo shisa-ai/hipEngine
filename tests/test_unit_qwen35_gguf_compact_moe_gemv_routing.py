@@ -40,7 +40,6 @@ def _reset_gemv_decode_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)
-    monkeypatch.delenv("HIPENGINE_GGUF_ROW_COMPACT_GEMV", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER", raising=False)
     monkeypatch.setenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", "0")
     monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", raising=False)

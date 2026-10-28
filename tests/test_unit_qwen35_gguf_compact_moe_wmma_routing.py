@@ -49,6 +49,41 @@ def test_qwen35moe_compact_wmma_off_by_default_routes_raw_selected_fallback(monk
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
+@pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])
+@pytest.mark.parametrize("rows", [2, 3, 7])
+def test_retired_row_compact_gemv_cannot_replace_selected_fallback(
+    monkeypatch: pytest.MonkeyPatch, retired: str | None, rows: int,
+) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_ROW_COMPACT_GEMV", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_ROW_COMPACT_GEMV", retired)
+    runner, scratch = _fake_runner_and_scratch()
+    scratch.moe_selected_rows_capacity = rows * 2
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "_try_run_post_attention_moe_rows_compact_wmma", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        qgr, "_try_run_post_attention_moe_rows_compact_gemv",
+        _fail_if_called("retired row-compact route"), raising=False,
+    )
+    monkeypatch.setattr(
+        qgr, "_launch_selected_raw_gguf_moe_pair",
+        lambda *args, **kwargs: calls.append(("raw_pair", None)) or False,
+    )
+    monkeypatch.setattr(
+        qgr, "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(("raw_linear", weight.spec.source.name)),
+    )
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=rows, stream=7)
+
+    assert ("raw_pair", None) in calls
+    assert [payload for name, payload in calls if name == "raw_linear"] == [
+        "ffn_gate_exps", "ffn_up_exps", "ffn_down_exps",
+    ]
+
+
 def test_qwen35moe_compact_wmma_opt_in_routes_grouped_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []

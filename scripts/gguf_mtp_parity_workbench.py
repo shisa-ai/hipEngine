@@ -173,11 +173,6 @@ CANDIDATES: dict[str, Candidate] = {
         extra_args=("--target-block-verify-mode", "native"),
         description="Target block verifier through the native row loop attention scheduler.",
     ),
-    "row-compact-gemv": Candidate(
-        name="row-compact-gemv",
-        env={"HIPENGINE_GGUF_ROW_COMPACT_GEMV": "1"},
-        description="Target block verifier with compact grouped selected-MoE GEMV routing.",
-    ),
     "row-lm-head": Candidate(
         name="row-lm-head",
         env={"HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD": "1"},
@@ -203,7 +198,6 @@ ALL_CANDIDATE_NAMES = (
     "selected-down-raw-dp4a",
     "block-wmma",
     "block-native",
-    "row-compact-gemv",
     "row-lm-head",
 )
 STAGE_NAMES = ("e2e", "pieces", "rocprof", "true-ar", "category")

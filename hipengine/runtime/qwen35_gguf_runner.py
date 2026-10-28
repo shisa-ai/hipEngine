@@ -687,7 +687,7 @@ def _layer_dense_down_residual_fused(runner, **kwargs):
 def _layer_ffn_ops(runner) -> _layer_ffn.FfnOps:
     """The FFN helpers that still live here.
 
-    Seven took this runner as their first argument and two are runner methods;
+    Six take this runner as their first argument and two are runner methods;
     the rest are module functions. The field name is the component's spelling,
     so the mapping to this module's symbol is written out.
     """
@@ -699,7 +699,6 @@ def _layer_ffn_ops(runner) -> _layer_ffn.FfnOps:
         "moe_c1_compact_gemv": _try_run_post_attention_moe_c1_compact_gemv,
         "moe_c1_fused_ffn": _try_run_post_attention_moe_c1_fused_ffn,
         "moe_rows_compact_wmma": _try_run_post_attention_moe_rows_compact_wmma,
-        "moe_rows_compact_gemv": _try_run_post_attention_moe_rows_compact_gemv,
     }
     method_bound = {
         "rounded_next_rmsnorm": "_rounded_add_rmsnorm_fn",
@@ -9481,7 +9480,6 @@ _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
 _GGUF_DENSE_Q8_DP4A_SHARED_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED"
 _GGUF_DENSE_Q8_DP4A_F32_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_F32"
-_GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
@@ -11210,10 +11208,6 @@ def _gguf_dense_q8_dp4a_shared_enabled() -> bool:
 
 def _gguf_dense_q8_dp4a_f32_enabled() -> bool:
     return _env_flag(_GGUF_DENSE_Q8_DP4A_F32_ENV, False)
-
-
-def _gguf_row_compact_gemv_enabled() -> bool:
-    return _env_flag(_GGUF_ROW_COMPACT_GEMV_ENV, False)
 
 
 def _gguf_verify_row_lm_head_enabled() -> bool:
@@ -33718,264 +33712,6 @@ def _try_run_post_attention_moe_rows_compact_wmma(
 
 def _scratch_has_compact_moe_fields(scratch) -> bool:
     return all(hasattr(scratch, name) for name in _COMPACT_MOE_REQUIRED_SCRATCH)
-
-
-def _try_run_post_attention_moe_rows_compact_gemv(
-    runner: Qwen35GGUFFullStackRunner,
-    layer,
-    gate_weight: Qwen35GGUFDeviceWeight,
-    up_weight: Qwen35GGUFDeviceWeight,
-    down_weight: Qwen35GGUFDeviceWeight,
-    out_ptr: int,
-    scratch,
-    *,
-    rows: int,
-    selected_rows: int,
-    top_k: int,
-    stream: int,
-    runtime: HipRuntime,
-) -> bool:
-    """Run the resident T16 compact GEMV path for row-bulk MoE prefill.
-
-    Decode-repack mode replaces selected expert raw bytes with T16 tiles.  The
-    existing row-bulk fallback cannot consume those replacements, so use the
-    same compact scheduler as the WMMA path and the T16 selected GEMV kernels
-    for all routed lanes.  Raw pack8 GEMV is intentionally not enabled here;
-    this branch is a correctness-preserving replacement-layout fallback for
-    bulk prefill, not a promotion of the old unsafe raw-GGUF decode kernels.
-    """
-
-    if not gguf_gemv_decode_enabled(None):
-        return False
-    if not _scratch_has_compact_moe_gemv_fields(scratch):
-        return False
-    cfg = runner.weights.config if runner.weights is not None else None
-    if cfg is None:
-        return False
-    plan = _resolve_compact_moe_gemv_kernels(gate_weight, up_weight, down_weight)
-    if plan is None:
-        return False
-    if (plan.gate_allocation, plan.up_allocation, plan.down_allocation) != ("tiles", "tiles", "tiles"):
-        return False
-    gate_up_fn = plan.gate_up_fn
-    down_fn = plan.down_fn
-    num_experts = int(cfg.expert_count)
-    hidden_size = int(runner.hidden_size)
-    expert_ffn = int(cfg.expert_feed_forward_length)
-    if rows <= 0 or selected_rows <= 0:
-        return False
-    if selected_rows > int(getattr(scratch, "moe_selected_rows_capacity", selected_rows)):
-        return False
-    if hidden_size % 256 != 0 or expert_ffn % 256 != 0 or expert_ffn % 16 != 0:
-        return False
-    _validate_raw_rank3_expert_weight(
-        gate_weight,
-        num_experts=num_experts,
-        in_features=hidden_size,
-        out_features=expert_ffn,
-    )
-    _validate_raw_rank3_expert_weight(
-        up_weight,
-        num_experts=num_experts,
-        in_features=hidden_size,
-        out_features=expert_ffn,
-    )
-    _validate_raw_rank3_expert_weight(
-        down_weight,
-        num_experts=num_experts,
-        in_features=expert_ffn,
-        out_features=hidden_size,
-    )
-
-    _zero(runtime, scratch.moe_group_counts, scratch.moe_group_counts_zero, stream=stream)
-    qwen35_moe_group_count(
-        scratch.moe_selected_experts.ptr,
-        scratch.moe_group_counts.ptr,
-        selected_rows,
-        num_experts,
-        stream=stream,
-        runtime=runtime,
-    )
-    qwen35_moe_group_prefix(
-        scratch.moe_group_counts.ptr,
-        scratch.moe_padded_counts.ptr,
-        scratch.moe_expert_start_compact.ptr,
-        scratch.moe_total_compact.ptr,
-        num_experts,
-        1,
-        stream=stream,
-        runtime=runtime,
-    )
-    _zero(runtime, scratch.moe_scatter_offsets, scratch.moe_scatter_offsets_zero, stream=stream)
-    qwen35_moe_group_scatter_gather_lowp(
-        scratch.post_norm.ptr,
-        scratch.moe_selected_experts.ptr,
-        scratch.moe_routing_weights.ptr,
-        scratch.moe_expert_start_compact.ptr,
-        scratch.moe_scatter_offsets.ptr,
-        scratch.moe_sorted_lanes.ptr,
-        scratch.moe_sorted_experts.ptr,
-        scratch.moe_sorted_weights.ptr,
-        scratch.moe_down_out.ptr,
-        selected_rows,
-        num_experts,
-        top_k,
-        hidden_size,
-        stream=stream,
-        runtime=runtime,
-    )
-    gate_up_fn(
-        scratch.moe_down_out.ptr,
-        scratch.moe_expert_start_compact.ptr,
-        gate_weight.allocation(plan.gate_allocation).tensor.ptr,
-        up_weight.allocation(plan.up_allocation).tensor.ptr,
-        scratch.ffn_gate_up.ptr,
-        selected_rows,
-        hidden_size,
-        expert_ffn,
-        expert_ffn,
-        num_experts,
-        stream=stream,
-        runtime=runtime,
-    )
-    silu_mul_dual_out_bf16(
-        scratch.ffn_gate_up.ptr,
-        scratch.ffn_intermediate.ptr,
-        rows=selected_rows,
-        features=expert_ffn,
-        stream=stream,
-        runtime=runtime,
-    )
-    down_input_ptr = scratch.ffn_intermediate.ptr
-    if _selected_gemv_requires_q8_1_input(down_weight):
-        q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
-            scratch,
-            selected_rows,
-            expert_ffn,
-            enabled=True,
-        )
-        if q8_1_workspace_ptr is None:
-            return False
-        gguf_q4_k_quantize_bf16_q8_1(
-            scratch.ffn_intermediate.ptr,
-            q8_1_workspace_ptr,
-            selected_rows,
-            expert_ffn,
-            stream=stream,
-            runtime=runtime,
-        )
-        down_input_ptr = q8_1_workspace_ptr
-    down_fn(
-        down_input_ptr,
-        scratch.moe_expert_start_compact.ptr,
-        down_weight.allocation(plan.down_allocation).tensor.ptr,
-        scratch.moe_down_out.ptr,
-        selected_rows,
-        expert_ffn,
-        hidden_size,
-        num_experts,
-        stream=stream,
-        runtime=runtime,
-    )
-    weighted_lanes_sum_out_bf16_f32w(
-        scratch.moe_down_out.ptr,
-        scratch.moe_sorted_weights.ptr,
-        scratch.moe_sorted_lanes.ptr,
-        scratch.moe_lane_to_row.ptr,
-        scratch.ffn_down.ptr,
-        rows,
-        top_k,
-        hidden_size,
-        stream=stream,
-        runtime=runtime,
-    )
-
-    shared_ffn = int(cfg.expert_shared_feed_forward_length)
-    if launch_gguf_linear_pair_concat(
-        layer.weight("ffn_gate_shexp"),
-        layer.weight("ffn_up_shexp"),
-        scratch.post_norm.ptr,
-        scratch.ffn_gate_up.ptr,
-        rows=rows,
-        in_features=hidden_size,
-        out_features=shared_ffn,
-        stream=stream,
-        runtime=runtime,
-    ):
-        silu_mul_dual_out_bf16(
-            scratch.ffn_gate_up.ptr,
-            scratch.moe_shared_intermediate.ptr,
-            rows=rows,
-            features=shared_ffn,
-            stream=stream,
-            runtime=runtime,
-        )
-    else:
-        if not launch_gguf_linear_pair(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            scratch.post_norm.ptr,
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            rows=rows,
-            in_features=hidden_size,
-            out_features=shared_ffn,
-            stream=stream,
-            runtime=runtime,
-        ):
-            launch_gguf_linear(
-                layer.weight("ffn_gate_shexp"),
-                scratch.post_norm.ptr,
-                scratch.moe_shared_gate.ptr,
-                rows=rows,
-                in_features=hidden_size,
-                out_features=shared_ffn,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("ffn_up_shexp"),
-                scratch.post_norm.ptr,
-                scratch.moe_shared_up.ptr,
-                rows=rows,
-                in_features=hidden_size,
-                out_features=shared_ffn,
-                stream=stream,
-                runtime=runtime,
-            )
-        silu_mul_separate_out_bf16(
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            scratch.moe_shared_intermediate.ptr,
-            rows=rows,
-            features=shared_ffn,
-            stream=stream,
-            runtime=runtime,
-        )
-    launch_gguf_linear(
-        layer.weight("ffn_down_shexp"),
-        scratch.moe_shared_intermediate.ptr,
-        scratch.moe_shared_out.ptr,
-        rows=rows,
-        in_features=shared_ffn,
-        out_features=hidden_size,
-        stream=stream,
-        runtime=runtime,
-    )
-    shared_gate_combine_residual_batch_out_bf16(
-        scratch.ffn_down.ptr,
-        scratch.moe_shared_out.ptr,
-        scratch.moe_shared_gate_logits.ptr,
-        scratch.residual.ptr,
-        out_ptr,
-        rows,
-        hidden_size,
-        1,
-        stream=stream,
-        runtime=runtime,
-    )
-    return True
-
 
 
 def _try_run_post_attention_moe_c1_fused_ffn(

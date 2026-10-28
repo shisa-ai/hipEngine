@@ -400,7 +400,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS` | true | Retained default with rollback opt-out | Fuses the MoE tail with the next layer's input RMSNorm; `0` restores the separate chain (set to `0` in the MoE-graph parity test). |
 | `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` | unset | B1 transfer | Explicit override for the target-side WMMA prefill transfer: `1`/on forces the transfer, `0`/off restores the GEMV owners everywhere. |
 | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE` / `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT` | retired | No longer read | Backend package policy selects parallel reduction from 32768 context tokens on gfx1100/gfx1151. Serial reduction remains below that threshold and for unsupported routes. |
-| `HIPENGINE_GGUF_ROW_COMPACT_GEMV` | unset | Diagnostic route | Parity-workbench candidate: compact grouped selected-MoE GEMV routing for the target block verifier. |
+| `HIPENGINE_GGUF_ROW_COMPACT_GEMV` | retired | No runtime reader | The rejected row-compact verifier route and workbench candidate are removed. Bulk selected-GEMV fallback, compact WMMA and the independent singleton compact route remain. |
 | `HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD` | unset | Diagnostic route | Parity-workbench candidate: row-batched lm-head/argmax sampling in the target block verifier. |
 | `HIPENGINE_GGUF_SELECTED_DOWN_RAW` | unset | Harness-set materialization | Keeps selected-down expert tensors in raw GGUF layout (workbench value `both`), pairing with the raw dp4a route. |
 | `HIPENGINE_C8_Q5_PLANAR_DP4A` | false | Diagnostic route | Gates the optional planar INT8 Q5 sidecar (uploaded at materialization) for the planar-dp4a route. |

@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 
 
+import pytest
+
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "gguf_mtp_parity_workbench.py"
 
@@ -43,7 +46,7 @@ def test_workbench_candidate_aliases_and_envs() -> None:
     assert "selected-down-raw-dp4a" in names
     assert "block-wmma" in names
     assert "block-native" in names
-    assert "row-compact-gemv" in names
+    assert "row-compact-gemv" not in names
     assert "row-lm-head" in names
     assert mod.CANDIDATES["x8-q6"].env == {"HIPENGINE_GGUF_SELECTED_X8_REPACK": "q6"}
     assert mod.CANDIDATES["resident-draft"].extra_args == ("--resident-mtp-draft",)
@@ -86,7 +89,8 @@ def test_workbench_candidate_aliases_and_envs() -> None:
     assert mod.CANDIDATES["raw-dp4a"].extra_args == ("--no-decode-repack",)
     assert mod.CANDIDATES["block-wmma"].extra_args == ("--target-block-wmma-prefill",)
     assert mod.CANDIDATES["block-native"].extra_args == ("--target-block-verify-mode", "native")
-    assert mod.CANDIDATES["row-compact-gemv"].env == {"HIPENGINE_GGUF_ROW_COMPACT_GEMV": "1"}
+    with pytest.raises(ValueError, match="unknown candidate entry 'row-compact-gemv'"):
+        mod.parse_csv_set("row-compact-gemv", valid=set(mod.CANDIDATES), label="candidate")
     assert mod.CANDIDATES["row-lm-head"].env == {"HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD": "1"}
 
 

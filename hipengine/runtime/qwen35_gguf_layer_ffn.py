@@ -197,15 +197,9 @@ class FfnKernels:
 class FfnOps:
     """Runner-owned helpers the FFN bodies call.
 
-    The seven resolver/launcher helpers that took ``runner`` as their first
-    parameter (``_gguf_norm_residual_decode_kernel``,
-    ``_gguf_dense_pair_silu_decode_variant``,
-    ``_gguf_dense_down_residual_decode_fused``,
-    ``_try_run_post_attention_moe_c1_compact_gemv``,
-    ``_try_run_post_attention_moe_c1_fused_ffn``,
-    ``_try_run_post_attention_moe_rows_compact_wmma``,
-    ``_try_run_post_attention_moe_rows_compact_gemv``) are supplied with that
-    argument already bound, so the calls below carry no runner.
+    The resolver/launcher helpers that take ``runner`` as their first
+    parameter are supplied with that argument already bound, so the calls
+    below carry no runner.
     """
 
     # --- selected primitive / policy resolution ---------------------------
@@ -278,8 +272,6 @@ class FfnOps:
     moe_c1_fused_ffn: Fn
     #: ``_try_run_post_attention_moe_rows_compact_wmma(layer, ...)``
     moe_rows_compact_wmma: Fn
-    #: ``_try_run_post_attention_moe_rows_compact_gemv(layer, ...)``
-    moe_rows_compact_gemv: Fn
 
 
 @dataclass(frozen=True)
@@ -312,8 +304,6 @@ class FfnFlags:
     raw_selected_dp4a_enabled: Fn
     #: ``_gguf_dense_q8_dp4a_shared_enabled()``
     dense_q8_dp4a_shared_enabled: Fn
-    #: ``_gguf_row_compact_gemv_enabled()``
-    row_compact_gemv_enabled: Fn
 
 
 def run_post_attention_ffn_rows(
@@ -1427,33 +1417,6 @@ def run_post_attention_moe_rows(
             f"{stage_prefix}_compact_wmma",
             t_stage,
         )
-        return
-    if (
-        (not f32_residual)
-        and flags.row_compact_gemv_enabled()
-        and ops.moe_rows_compact_gemv(
-            layer,
-            gate_weight,
-            up_weight,
-            down_weight,
-            out_ptr,
-            scratch,
-            rows=rows,
-            selected_rows=selected_rows,
-            top_k=top_k,
-            stream=stream,
-            runtime=runtime,
-        )
-    ):
-        ops.mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_compact_gemv",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_compact_gemv")
         return
     gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
     expert_silu_ready = False
