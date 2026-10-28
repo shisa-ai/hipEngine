@@ -199,6 +199,9 @@ def main(argv: list[str] | None = None) -> int:
                 print("  note: protocol hash and/or model differ, so only the declared config "
                       "delta may be cited")
             return 0
+        if max_spread is None:
+            print("no overlapping widths with --prior; cannot report drift", file=sys.stderr)
+            return 3
         frac, two_sided, _ = drift(agg, prior)
         if frac is not None:
             print(f"cross-session drift vs prior: {max_spread:.2f}% max per-width "

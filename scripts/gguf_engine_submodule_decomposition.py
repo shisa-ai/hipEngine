@@ -192,7 +192,7 @@ def _decompose(
         admission_s = s["wall"] - max(tokens_short - 1.0, 0.0) * step_s
         per_width[str(width)] = {
             "lanes": width,
-            "prompts_per_arm": int(short.get("cells") or 0),
+            "prompts_per_arm": int(s.get("cells") or 0),
             "prompt_tokens_per_lane": round(s["prompt"] / s["lanes"], 3),
             "short_tokens_per_lane": round(tokens_short, 3),
             "short_wall_ms": round(1000.0 * s["wall"], 4),
@@ -294,9 +294,7 @@ def main() -> int:
         for name, row in rows.items():
             own = row.get("admission_ms")
             wall = row.get("long_wall_ms")
-            generated = row.get("long_tokens_per_lane", 0.0) * int(width) * float(
-                row.get("prompts_per_arm") or 1.0
-            )
+            generated = row.get("long_tokens_per_lane", 0.0) * int(width)
             if not isinstance(own, (int, float)) or not isinstance(wall, (int, float)):
                 per_engine[name] = None
                 continue
@@ -313,7 +311,7 @@ def main() -> int:
     payload = {
         "schema": SCHEMA,
         "generated": datetime.now(timezone.utc).isoformat(),
-        "provenance": _provenance([sys.executable, *[str(item) for item in sys.argv[1:]]]),
+        "provenance": _provenance([sys.executable, *[str(item) for item in sys.argv]]),
         "arm": args.arm,
         "note": args.note,
         "method": {

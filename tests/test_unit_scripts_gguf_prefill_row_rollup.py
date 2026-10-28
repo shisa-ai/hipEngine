@@ -9,7 +9,9 @@ aggregate delta that hides a single moving width. Each of those is a test here.
 from __future__ import annotations
 
 import importlib.util
+import json
 import pathlib
+import subprocess
 import sys
 
 import pytest
@@ -138,6 +140,34 @@ def test_empty_packet_is_an_error_not_a_zero_rate(tmp_path, capsys):
                                                            "model": MODEL}, "status": "ok",
                                                "cells": []}))
     assert rollup.main([str(empty)]) == 2
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_cli_refuses_prior_with_no_common_width(tmp_path, strict):
+    here, prior = tmp_path / "here.json", tmp_path / "prior.json"
+    here.write_text(json.dumps(packet(widths_to_wall={1: 0.25})))
+    prior.write_text(json.dumps(packet(widths_to_wall={3: 0.5})))
+    result = subprocess.run([
+        sys.executable, str(SCRIPT), str(here), "--prior", str(prior),
+        *(["--strict-prior"] if strict else []),
+    ], cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 3
+    assert "no overlapping widths" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_published_cli_keeps_config_effect_separate_from_drift(tmp_path):
+    here, prior = tmp_path / "here.json", tmp_path / "prior.json"
+    here.write_text(json.dumps(packet(widths_to_wall={1: 0.25, 3: 0.10, 8: 0.50})))
+    prior.write_text(json.dumps(packet(widths_to_wall={1: 0.25, 3: 0.30, 8: 0.50})))
+    result = subprocess.run([
+        sys.executable, str(SCRIPT), str(here), "--prior", str(prior),
+        "--prior-config-changed",
+    ], cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert "effect size, not drift" in result.stdout
+    assert "C3:+200.0%" in result.stdout
+    assert "cross-session drift" not in result.stdout
 
 
 if __name__ == "__main__":
