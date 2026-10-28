@@ -3438,7 +3438,6 @@ should be boring.
 
 | Path | Cleanup target | Keep | Remove / collapse trigger |
 | --- | --- | --- | --- |
-| DFlash drafter flags | Audit `HIPENGINE_DFLASH_DRAFTER_DENSE` and `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`; the rejected target fused LM-head selector is removed and its primitive coverage remains. | Default-on exact dense WMMA if the fresh 27B gate confirms it; tests for rejected fused kernels. | Fresh 27B DFlash rerun decides: promote exact positive flags to defaults, remove negative runtime branches, or demote them to test-only overrides. |
 | Benchmark commands | Stop requiring long flag piles once defaults represent the optimal path. | Flags that select workload shape, model, quant, and explicit experiments. | After MTP/DFlash defaults-only rows are retained, update benchmark docs to show default commands first and move historical A/B flags into dated notes. |
 
 ## `--verify-dp4a` / `*-pmin05-dp4a` route (default OFF, opt-in accuracy-traded)
@@ -12069,3 +12068,37 @@ also needs public requests with route attribution, reset/reuse and teardown;
 changing arithmetic or automatic selection requires its applicable profile
 checks. The existing parser, pool and benchmark characterization tests bind
 this referral without changing runtime behavior.
+
+### R0282-DFLASH-DRAFTER — Dense and post-attention plan ownership
+
+`HIPENGINE_DFLASH_DRAFTER_DENSE` already defaults to WMMA for BF16 and
+F32-output dense projections. Non-tile-aligned input width falls back to the
+naive implementation; explicit `naive` also keeps a direct numerical reference.
+The wrappers serve the older benchmark drafter and DFlash2 native projections.
+DFlash2 kernel tests explicitly select the naive reference. Do not infer that
+this shared selector is unused from the older benchmark's product status.
+
+`HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM` is different: its resolver is consumed
+by the older `NativeDFlashChainDrafter` benchmark layer loop. That loop defaults
+to the unfused add/norm chain and permits an explicit fused comparison. The
+DFlash2 forward does not consume that resolver. The fused primitive and its
+two-output parity oracle remain available independently; its declared hidden
+width bound must not be lost by making a geometry-blind selection mandatory.
+The retired target fused-LM-head selector is separate from both drafter choices.
+
+**Decision needed:** preserve explicit comparisons or move dense and
+post-attention selection into caller-owned drafter plans. Separate a shared
+runtime dense policy from a benchmark-only fusion experiment; do not make a
+new model-specific timing row a prerequisite for either implemented route to
+run, or remove the naive primitive merely because WMMA is the default.
+
+**Clearing action:** migrate the two output-type wrappers, actual DFlash2 and
+benchmark consumers, compiler/profile provenance and direct GPU-oracle callers
+together. Cover aligned/unaligned input width, output tails, explicit naive,
+invalid values and fused hidden-width bounds; retain the strict unfused chain.
+Run `tests/test_unit_dflash_drafter_controls.py`, drafter/context tests and
+`tests/test_gpu_dflash_dense_wmma.py`, `tests/test_gpu_dflash_add_rmsnorm.py`
+plus affected DFlash2 kernel/forward tests. A runtime selection change needs
+real provider requests with variant attribution, reset/reuse and teardown;
+arithmetic changes need their execution-profile checks. Historical comparisons
+remain in the sweep inventory and original artifacts.

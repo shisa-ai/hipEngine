@@ -8386,7 +8386,8 @@
         "Row6342 resolved by synthetic CLI contracts and focused tool fixes;43focused tests pass,history preserved. Worklog: worklog/entries/20261028T202550.319966Z-cleanup-refactor-r0282-packet-cli-587ded.md.",
         "Row6343 B1 premise superseded by public depth policy;shared default-on verifier controls characterized and remaining ownership consolidated in existing bottom PARO-PROVIDER referral.216focused pass,no runtime change. Worklog: worklog/entries/20261028T203948.106702Z-cleanup-refactor-r0282-paro-chain-641349.md.",
         "Row6344 explicit PARO tree harness and private-scorer retirement decision consolidated bottom PARO-PROVIDER;shared tree primitives remain.362focused tests pass,runtime unchanged. Worklog: worklog/entries/20261028T204504.196456Z-cleanup-refactor-r0282-paro-tree-c02e80.md.",
-        "Row6345 resolved:history routes/tails already explicit harness-only,not public runtime. Default/precedence characterization28focused pass;obsolete row removed. Worklog: worklog/entries/20261028T205128.038753Z-cleanup-refactor-r0282-dflash-history-a99d6a.md."
+        "Row6345 resolved:history routes/tails already explicit harness-only,not public runtime. Default/precedence characterization28focused pass;obsolete row removed. Worklog: worklog/entries/20261028T205128.038753Z-cleanup-refactor-r0282-dflash-history-a99d6a.md.",
+        "Row6346 remaining drafter choices audited;dense already on,naive reference live,fused selector old benchmark-only.67focused pass and bottom R0282-DFLASH-DRAFTER owns caller-plan decision. Worklog: worklog/entries/20261028T210115.994531Z-cleanup-refactor-r0282-dflash-drafter-979f2a.md."
       ],
       "subitems": [
         {
@@ -8432,7 +8433,8 @@
         {
           "line": 6346,
           "text": "| DFlash drafter/verifier flags | Audit `HIPENGINE_DFLASH_DRAFTER_DENSE`, `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`, and `HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD`. | Default-on exact dense WMMA if the fresh 27B gate confirms it; tests for rejected fused kernels. | Fresh 27B DFlash rerun decides: promote exact positive flags to defaults, remove negative runtime branches, or demote them to test-only overrides. |",
-          "status": "partial-verifier-lm-head-retired-drafter-items-open"
+          "status": "audited-defaults-deferred-drafter-plan-ownership",
+          "evidence": "Dense selector already defaults WMMA with unaligned fallback;naive consumed by DFlash2 numerical tests. Add/RMSNorm selector only old benchmark layer loop;DFlash2 forward does not read it. No future 27B row needed to run capabilities. Added32CPU parser/raw dispatch cases atK15/16/17/32,BF16/F32;67focused pass. Removed old row and bottom R0282-DFLASH-DRAFTER owns explicit plan migration/retirement. Runtime unchanged. Worklog: worklog/entries/20261028T210115.994531Z-cleanup-refactor-r0282-dflash-drafter-979f2a.md."
         },
         {
           "line": 6347,
