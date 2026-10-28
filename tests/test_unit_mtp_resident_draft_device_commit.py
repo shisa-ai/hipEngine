@@ -638,6 +638,45 @@ def test_draft_dense_q8_dp4a_stage_selector(monkeypatch) -> None:
     assert calls == ["quantize", "dp4a"]
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("selection,expected", [
+    (None, None),
+    ("", None),
+    ("   ", None),
+    ("draft", {"project", "qkv", "attn_out", "shared_gate_up", "shared_down"}),
+    ("init", {"init_project", "init_kv"}),
+    ("all", {"project", "qkv", "attn_out", "shared_gate_up", "shared_down", "init_project", "init_kv"}),
+    (" SHARED-DOWN , init-kv , shared_down ", {"shared_down", "init_kv"}),
+    ("off", set()),
+    ("draft,none", set()),
+    (",,", set()),
+])
+def test_draft_dense_q8_stage_parser_precedence_and_domains(
+    monkeypatch, enabled: bool, selection: str | None, expected: set[str] | None,
+) -> None:
+    env = "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES"
+    if selection is None:
+        monkeypatch.delenv(env, raising=False)
+    else:
+        monkeypatch.setenv(env, selection)
+    if expected is None:
+        expected = {"project", "qkv", "attn_out", "shared_gate_up", "shared_down", "init_project", "init_kv"} if enabled else set()
+    stages = resident_draft_mod._parse_draft_dense_q8_dp4a_stages(enabled=enabled)
+    assert stages == frozenset(expected)
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner._draft_dense_q8_dp4a_enabled = bool(stages)
+    runner._draft_dense_q8_dp4a_stages = stages
+    for stage in ("project", "qkv", "attn_out", "shared_gate_up", "shared_down", "init_project", "init_kv"):
+        assert runner._draft_dense_q8_dp4a_stage_enabled(stage) is (stage in expected)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_draft_dense_q8_stage_parser_refuses_unknown_stage(monkeypatch, enabled: bool) -> None:
+    monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES", "draft,unknown")
+    with pytest.raises(ValueError, match="contains unknown stage 'unknown'"):
+        resident_draft_mod._parse_draft_dense_q8_dp4a_stages(enabled=enabled)
+
+
 def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:
     class Runtime:
         def __init__(self) -> None:

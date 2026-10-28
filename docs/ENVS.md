@@ -414,6 +414,19 @@ independent workload gates.
 | `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | gfx1151: `1024` | Rollback seam | Overrides the short-prompt c1 batch-attention workgroup; the calibrated 1024-thread variant passed the execution-profile c1 threads gate and the exact 256-thread leaf stays the strict fallback. |
 | `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` | unset | Diagnostic | Session-acquire-time diagnostic resolver that forces the WMMA-prefill route without touching the production session default. Unrecognised values raise rather than silently reading as route-unchanged. |
 
+### Resident MTP draft dense-Q8 diagnostic controls
+
+These controls are read by `Qwen35GGUFResidentMTPDraftRunner`, used by the
+compatibility generator and draft harnesses, not the Generation-2 NextN
+provider. Set them before constructing that runner. They quantize F32
+activations into q8_1 and use raw-Q8 dp4a projections; they do not select the
+verifier's T16/raw sidecar placement.
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A` | unset | With no nonempty stage selector, truthy enables every draft and initialization stage; false leaves the route off. |
+| `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES` | unset | A nonempty comma-separated list overrides the main toggle, even when it is unset or false. `draft` selects `project,qkv,attn_out,shared_gate_up,shared_down`; `init` selects `init_project,init_kv`; `all` selects both. Individual stage names, whitespace, hyphen aliases and duplicates are accepted. `0,false,off,no,none` disables the route; unknown stages raise. Empty/whitespace-only falls back to the main toggle. |
+
 ### GGUF target-verifier capture and F32-diagnostic family
 
 These gate/probe flags drive the GGUF packed target verifier's offline
@@ -962,8 +975,6 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | --- | --- | --- |
 | `HIPENGINE_GGUF_RESIDENT_MTP_DRAFT` | `0` | Enables the resident MTP draft runner in the bench (truthy parse). |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A` | unset | Q6 top-1 dp4a route for the resident MTP draft runner; set before the runner is constructed. |
-| `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A` | unset | Dense Q8 dp4a route for the resident MTP draft runner. |
-| `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES` | unset | Stage-selection string for the dense Q8 dp4a draft route. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL` | retired | No runtime or profiler reader. Shared gate/up uses the dual raw-Q8 F32/F32 call unless the separate dense-Q8 dp4a stage route handles it. Stale values have no effect. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL` | unset | Row-parallel draft router variant. |
 | `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` | unset | Fused selected SiLU+down draft variant. |
