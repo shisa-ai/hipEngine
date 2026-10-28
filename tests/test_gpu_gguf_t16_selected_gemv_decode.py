@@ -3741,8 +3741,9 @@ def test_qmicro_q4_dense_dual_q8_1x2_shared_rowbatch_matches_serial_c1_bits(
         ),
     ],
 )
+@pytest.mark.parametrize("threads", [32, 64, 128])
 def test_t16_qk_direct_selected_down_q8_1_dp4a_matches_float_path_quality_gate(
-    name, builder, repack, fn_float, fn_dp4a, t16_selected_library, monkeypatch
+    name, builder, repack, fn_float, fn_dp4a, t16_selected_library, monkeypatch, threads
 ) -> None:
     x_rows, top_k = 4, 8
     rows = x_rows * top_k
@@ -3756,7 +3757,8 @@ def test_t16_qk_direct_selected_down_q8_1_dp4a_matches_float_path_quality_gate(
     x_bf16 = _f32_to_bf16_u16(x)
 
     ref_bits = _run_direct_single(fn_float, x_bf16, selected, tiles, out_features, np.uint16, t16_selected_library)
-    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS", "32")
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS", str(threads))
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS", "32" if threads != 32 else "128")
     dp4a_bits = _run_direct_single_q8_dp4a(
         fn_dp4a,
         x_bf16,

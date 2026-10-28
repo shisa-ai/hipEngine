@@ -311,14 +311,6 @@ int selected_t16_dp4a_threads() {
       getenv("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS"), 64);
 }
 
-int selected_t16_q5_dp4a_threads() {
-  const char* q5_env = getenv("HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS");
-  if (q5_env != nullptr && q5_env[0] != '\0') {
-    return parse_selected_t16_dp4a_threads(q5_env, 64);
-  }
-  return selected_t16_dp4a_threads();
-}
-
 __device__ inline float t16_q4_weight(const uint8_t* __restrict__ tile, int k_in_block, int col) {
   const int sb = k_in_block >> 5;
   const int lane32 = k_in_block & 31;
@@ -8629,7 +8621,7 @@ int launch_qk_q8_1_dp4a_direct(const void* xq,
     return hipErrorInvalidValue;
   }
   const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
-  const dim3 block(selected_t16_q5_dp4a_threads());
+  const dim3 block(selected_t16_dp4a_threads());
   const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
   hipLaunchKernelGGL((qk_t16_selected_q8_1_dp4a_direct_gemv_kernel<scalar_t>),
                      grid, block, 0, stream,
