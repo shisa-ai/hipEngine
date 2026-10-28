@@ -243,31 +243,22 @@ def test_suite_refuses_retired_b1_branch_safe_route_before_outputs(monkeypatch, 
     assert not (tmp_path / "raw").exists()
 
 
-def test_suite_exposes_hybrid_strict_block_cap32k_route() -> None:
-    assert suite.MTP_ROUTES["resident-hybrid-strict-block-cap32k"] == [
-        "--resident-mtp-draft",
-        "--root-topk-accept",
-        "1",
-        "--sibling-topk-accept",
-        "1",
-        "--target-block-verify",
-        "--adaptive-block-after-full-accept",
-        "--adaptive-probe-draft-n-max",
-        "3",
-        "--adaptive-strict-block-probe",
-        "--adaptive-strict-probe-cycles",
-        "2",
-        "--adaptive-strict-probe-min-accepted",
-        "2",
-        "--adaptive-strict-fallback-draft-n-max",
-        "1",
-        "--adaptive-strict-fallback-root-topk",
-        "40",
-        "--adaptive-ar-fallback",
-        "--mtp-draft-vocab-cap",
-        "32768",
-        "--adaptive-full-vocab-after-cap-miss",
-    ]
+@pytest.mark.parametrize("route", [
+    "resident-hybrid-strict-block-cap32k",
+    "resident-hybrid-strict-block-direct-cap32k",
+    "resident-hybrid-strict-block-direct-native-cap32k",
+])
+def test_suite_refuses_retired_strict_probe_aliases(route, monkeypatch, tmp_path, capsys) -> None:
+    assert route not in suite.MTP_ROUTES
+    monkeypatch.setattr(sys, "argv", [
+        "gguf_ar_mtp_suite.py", "--scope", "full", "--mtp-route", route,
+        "--raw-root", str(tmp_path / "raw"), "--dry-run",
+    ])
+    with pytest.raises(SystemExit) as excinfo:
+        suite.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    assert not (tmp_path / "raw").exists()
 
 
 def test_suite_exposes_b1_probe_block_direct_cap32k_route() -> None:

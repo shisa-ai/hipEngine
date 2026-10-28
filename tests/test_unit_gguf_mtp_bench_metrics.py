@@ -1310,7 +1310,6 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
             "--fused-b1-block-probe",
             "--adaptive-probe-draft-n-max",
             "3",
-            "--adaptive-strict-block-probe",
         ]
     )
 
@@ -1343,7 +1342,7 @@ def test_apply_llama_compat_args_forces_b2_no_probe_context_route() -> None:
     assert args.adaptive_block_after_full_accept is False
     assert args.fused_b1_block_probe is False
     assert args.adaptive_probe_draft_n_max == 1
-    assert args.adaptive_strict_block_probe is False
+    assert not hasattr(args, "adaptive_strict_block_probe")
 
 
 def test_apply_llama_compat_args_preserves_explicit_device_lifecycle_route_flags() -> None:
@@ -1486,26 +1485,46 @@ def test_main_rejects_target_block_sync_stage_timings_without_block_verify(
     assert "--target-block-sync-stage-timings requires --target-block-verify" in capsys.readouterr().err
 
 
-def test_arg_parser_exposes_adaptive_strict_block_probe() -> None:
-    args = build_arg_parser().parse_args(
-        [
-            "--adaptive-strict-block-probe",
-            "--adaptive-strict-probe-cycles",
-            "2",
-            "--adaptive-strict-probe-min-accepted",
-            "2",
-            "--adaptive-strict-fallback-draft-n-max",
-            "1",
-            "--adaptive-strict-fallback-root-topk",
-            "40",
-        ]
-    )
+@pytest.mark.parametrize("option,value", [
+    ("--adaptive-strict-block-probe", None),
+    ("--no-adaptive-strict-block-probe", None),
+    ("--adaptive-strict-probe-cycles", "2"),
+    ("--adaptive-strict-probe-min-accepted", "2"),
+    ("--adaptive-strict-fallback-draft-n-max", "1"),
+    ("--adaptive-strict-fallback-root-topk", "40"),
+])
+def test_retired_strict_probe_options_fail_before_hip(option, value, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: pytest.fail("retired strict probe reached HIP"))
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main([option, *([value] if value is not None else [])])
+    assert excinfo.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
 
-    assert args.adaptive_strict_block_probe is True
-    assert args.adaptive_strict_probe_cycles == 2
-    assert args.adaptive_strict_probe_min_accepted == 2
-    assert args.adaptive_strict_fallback_draft_n_max == 1
-    assert args.adaptive_strict_fallback_root_topk == 40
+
+def test_retired_strict_probe_artifacts_keep_inactive_defaults_without_runtime_policy() -> None:
+    tree = ast.parse(inspect.getsource(bench))
+    assert not any(
+        isinstance(node, ast.Attribute) and node.attr.startswith("adaptive_strict_")
+        or isinstance(node, ast.Name) and node.id.startswith("adaptive_strict_")
+        for node in ast.walk(tree)
+    )
+    expected = {
+        "adaptive_strict_block_probe": False,
+        "adaptive_strict_probe_cycles": 2,
+        "adaptive_strict_probe_min_accepted": 2,
+        "adaptive_strict_fallback_draft_n_max": 1,
+        "adaptive_strict_fallback_root_topk": 40,
+        "adaptive_strict_probe_decision": None,
+        "adaptive_strict_probe_history": [],
+    }
+    seen = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values):
+                if isinstance(key, ast.Constant) and key.value in expected:
+                    assert ast.literal_eval(value) == expected[key.value]
+                    seen.add(key.value)
+    assert seen == expected.keys()
 
 
 def test_validate_draft_n_max_accepts_b1_through_b8() -> None:

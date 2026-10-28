@@ -92,6 +92,14 @@ cache combination remains explicitly selectable with `--mtp-context-replay`
 and either serial or block target verification; llama-compat and native-cycle
 context ownership are unchanged.
 
+The rejected adaptive strict-probe experiment is removed: the
+`--adaptive-strict-block-probe` switch and negative form, its four
+`--adaptive-strict-*` tuning options, and the `resident-hybrid-strict-block-`
+suite aliases (`cap32k`, `direct-cap32k`, `direct-native-cap32k`). Historical
+`adaptive_strict_*` artifact fields keep their inactive default values. Ordinary
+`--adaptive-block-after-full-accept`, AR fallback/cooldown, vocabulary recovery
+and strict top-1/root-top-k verification are unchanged.
+
 The shared `HIPENGINE_FUSED_LINEAR_STATE_COMMIT` opt-out is removed. GGUF
 selected-row/packed commits and PARO device-row commits select the chunked
 pointer-table kernel when their layout contracts hold. Per-layer copy

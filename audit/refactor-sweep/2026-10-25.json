@@ -8224,7 +8224,8 @@
         {
           "line": 6296,
           "text": "| GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --adaptive-strict-block-probe` and suite route `resident-hybrid-strict-block-cap32k`. | Default-off rejected diagnostic. It starts with strict top-1 block-promotion probing and falls back generically to root-topK B1 + cap32k recovery when the strict probe under-accepts. 2026-06-29 full suite: AR **54.58 tok/s**, best MTP B3 **50.91 tok/s = 0.9328x AR**, accepted/output **94/194 = 0.485**, `mtp_beats_ar=false`; worse than cap32k recovery B1 **51.71 tok/s = 0.9478x AR**. | Remove or move to a dedicated experiment harness unless a future full-suite + heldout row proves a strict-block hybrid beats true AR. Do not promote based on smoke/partial closeness. |",
-          "status": "pending"
+          "status": "fixed-adaptive-strict-probe-experiment-retired",
+          "evidence": "Remove isolated strictprobe positive/negative CLI+4tunings, validation/compat resets/history/policy fallback and3hybridsuitealiases. Keep inactive artifact defaults and ordinary adaptiveblock/ARcooldown/vocabrecovery/rootpolicies. RED10fail;308focusedpass;AST onlydeclared benchmark retirement/3aliases. CPUbg65219697pass271skip10subtests/fixtures/smokes. gfx1151bg651 root40/adaptiveB3 beforeafter6cycles each allnontiming workload/cycle fields exact;adaptive blockpromotion/backoff exercised. docs/audit/tiers/diff/worklogpass,actualCLIrefusal/defaultsuitedryrunpass. No production/kernel/arithmetic/default/performancechangeclaim. Worklog: worklog/entries/20261028T171433.667069Z-cleanup-refactor-r0281-strict-probe-ca7491.md."
         },
         {
           "line": 6297,

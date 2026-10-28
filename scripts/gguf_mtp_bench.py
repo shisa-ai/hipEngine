@@ -1160,43 +1160,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "plain AR fallback."
         ),
     )
-    parser.add_argument(
-        "--adaptive-strict-block-probe",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Diagnostic hybrid policy: begin with strict top-1 block-promotion probing; if the "
-            "first probe cycles do not meet the accepted-token threshold, switch to the generic "
-            "root-top-k B1 serial fallback for the rest of the prompt."
-        ),
-    )
-    parser.add_argument(
-        "--adaptive-strict-probe-cycles",
-        type=int,
-        default=2,
-        help="Number of initial cycles used by --adaptive-strict-block-probe (default: 2).",
-    )
-    parser.add_argument(
-        "--adaptive-strict-probe-min-accepted",
-        type=int,
-        default=2,
-        help=(
-            "Minimum accepted draft tokens required in every strict probe cycle to keep the "
-            "strict block policy (default: 2)."
-        ),
-    )
-    parser.add_argument(
-        "--adaptive-strict-fallback-draft-n-max",
-        type=int,
-        default=1,
-        help="Draft window after a failed strict probe (default: 1 = B1 fallback).",
-    )
-    parser.add_argument(
-        "--adaptive-strict-fallback-root-topk",
-        type=int,
-        default=40,
-        help="Root top-k acceptance after a failed strict probe (default: 40).",
-    )
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
     parser.add_argument(
         "--prompt-token-ids",
@@ -1587,8 +1550,6 @@ def apply_llama_compat_args(args: argparse.Namespace) -> None:
     args.adaptive_block_after_full_accept = False
     args.fused_b1_block_probe = False
     args.adaptive_probe_draft_n_max = 1
-    args.adaptive_strict_block_probe = False
-    args.adaptive_strict_fallback_draft_n_max = 1
 
 
 def _diagnostic_topk_candidate_count(args: argparse.Namespace, proposal_count: int) -> int:
@@ -1726,16 +1687,6 @@ def main(argv: list[str] | None = None):
     # set; otherwise its default (3) is unused and must not block B1/B2 runs.
     if args.adaptive_block_after_full_accept and args.adaptive_probe_draft_n_max > args.draft_n_max:
         parser.error("--adaptive-probe-draft-n-max must be <= --draft-n-max")
-    if args.adaptive_strict_probe_cycles < 1:
-        parser.error("--adaptive-strict-probe-cycles must be positive")
-    if args.adaptive_strict_probe_min_accepted < 0:
-        parser.error("--adaptive-strict-probe-min-accepted must be non-negative")
-    if args.adaptive_strict_fallback_draft_n_max < 0:
-        parser.error("--adaptive-strict-fallback-draft-n-max must be non-negative")
-    if args.adaptive_strict_fallback_draft_n_max > args.draft_n_max:
-        parser.error("--adaptive-strict-fallback-draft-n-max must be <= --draft-n-max")
-    if args.adaptive_strict_fallback_root_topk < 1 or args.adaptive_strict_fallback_root_topk > 4096:
-        parser.error("--adaptive-strict-fallback-root-topk must be in 1..4096")
     if not _hip_available():
         print("ERROR: ROCm/HIP not available", file=sys.stderr)
         sys.exit(1)
@@ -1743,7 +1694,6 @@ def main(argv: list[str] | None = None):
         1,
         args.root_topk_accept,
         args.sibling_topk_accept,
-        args.adaptive_strict_fallback_root_topk if args.adaptive_strict_block_probe else 1,
     )
     if args.resident_mtp_device_seed and proposal_topk_candidate_count > 64:
         parser.error("--resident-mtp-device-seed requires resident draft top-k <= 64")
@@ -2169,8 +2119,6 @@ def main(argv: list[str] | None = None):
         adaptive_ar_fallback_cooldown_left = 0
         adaptive_full_vocab_recovery_active = False
         adaptive_block_verify_active = not bool(args.adaptive_block_after_full_accept)
-        adaptive_strict_probe_history: list[int] = []
-        adaptive_strict_probe_decision: str | None = None
 
         mtp_device_key_cache = None
         mtp_device_value_cache = None
@@ -2270,29 +2218,11 @@ def main(argv: list[str] | None = None):
                     cycle_ar_fallback = False
             else:
                 cycle_ar_fallback = bool(adaptive_ar_fallback_active)
-            if args.adaptive_strict_block_probe:
-                if adaptive_strict_probe_decision == "fallback":
-                    cycle_policy = "strict_probe_fallback"
-                    cycle_root_topk_accept = int(args.adaptive_strict_fallback_root_topk)
-                    cycle_sibling_topk_accept = 1
-                    cycle_draft_window = int(args.adaptive_strict_fallback_draft_n_max)
-                    cycle_block_verify_allowed = False
-                else:
-                    cycle_policy = (
-                        "strict_probe_keep"
-                        if adaptive_strict_probe_decision == "strict"
-                        else "strict_probe"
-                    )
-                    cycle_root_topk_accept = 1
-                    cycle_sibling_topk_accept = 1
-                    cycle_draft_window = int(adaptive_draft_n_max)
-                    cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
-            else:
-                cycle_policy = "default"
-                cycle_root_topk_accept = int(args.root_topk_accept)
-                cycle_sibling_topk_accept = int(args.sibling_topk_accept)
-                cycle_draft_window = int(adaptive_draft_n_max)
-                cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
+            cycle_policy = "default"
+            cycle_root_topk_accept = int(args.root_topk_accept)
+            cycle_sibling_topk_accept = int(args.sibling_topk_accept)
+            cycle_draft_window = int(adaptive_draft_n_max)
+            cycle_block_verify_allowed = bool(adaptive_block_verify_active) and not cycle_ar_fallback
             cycle_fused_b1_block_probe = should_use_fused_b1_block_probe(
                 fused_b1_block_probe=bool(args.fused_b1_block_probe),
                 adaptive_block_after_full_accept=bool(args.adaptive_block_after_full_accept),
@@ -3197,11 +3127,7 @@ def main(argv: list[str] | None = None):
                         "pending_hidden_row_index": 0,
                     }
             accepted_draft_tokens = int(acceptance["accepted_draft_tokens"])
-            if (
-                args.adaptive_block_after_full_accept
-                and draft_tokens
-                and cycle_policy != "strict_probe_fallback"
-            ):
+            if args.adaptive_block_after_full_accept and draft_tokens:
                 if accepted_draft_tokens == len(draft_tokens):
                     adaptive_block_verify_active = True
                     adaptive_draft_n_max = int(args.draft_n_max)
@@ -3236,23 +3162,6 @@ def main(argv: list[str] | None = None):
             ):
                 adaptive_ar_fallback_active = True
                 adaptive_ar_fallback_cooldown_left = int(args.adaptive_ar_fallback_cooldown)
-            if (
-                args.adaptive_strict_block_probe
-                and adaptive_strict_probe_decision is None
-                and cycle_policy == "strict_probe"
-            ):
-                adaptive_strict_probe_history.append(accepted_draft_tokens)
-                if len(adaptive_strict_probe_history) >= int(args.adaptive_strict_probe_cycles):
-                    keep_strict = all(
-                        accepted >= int(args.adaptive_strict_probe_min_accepted)
-                        for accepted in adaptive_strict_probe_history
-                    )
-                    adaptive_strict_probe_decision = "strict" if keep_strict else "fallback"
-                    if not keep_strict:
-                        adaptive_ar_fallback_active = False
-                        adaptive_full_vocab_recovery_active = False
-                        adaptive_block_verify_active = False
-                        adaptive_draft_n_max = int(args.adaptive_strict_fallback_draft_n_max)
             if args.adaptive_draft_window and accepted_draft_tokens < len(draft_tokens):
                 adaptive_floor = 1
                 adaptive_draft_n_max = min(
@@ -3471,9 +3380,9 @@ def main(argv: list[str] | None = None):
                 "diagnostic_topk_candidate_count": cycle_diagnostic_topk_candidate_count,
                 "configured_root_topk_accept": args.root_topk_accept,
                 "configured_sibling_topk_accept": args.sibling_topk_accept,
-                "adaptive_strict_block_probe": bool(args.adaptive_strict_block_probe),
-                "adaptive_strict_probe_history": list(adaptive_strict_probe_history),
-                "adaptive_strict_probe_decision": adaptive_strict_probe_decision,
+                "adaptive_strict_block_probe": False,
+                "adaptive_strict_probe_history": [],
+                "adaptive_strict_probe_decision": None,
                 "sibling_tail_min_prev_accepted": args.sibling_tail_min_prev_accepted,
                 "sibling_topk_max_depth": args.sibling_topk_max_depth,
                 "root_tail_max_prev_accepted": args.root_tail_max_prev_accepted,
@@ -3610,13 +3519,6 @@ def main(argv: list[str] | None = None):
         f"fused_b1_probe={args.fused_b1_block_probe}"
     )
     print(
-        "Adaptive strict block probe: "
-        f"{args.adaptive_strict_block_probe} "
-        f"cycles={args.adaptive_strict_probe_cycles} "
-        f"min_accepted={args.adaptive_strict_probe_min_accepted} "
-        f"decision={adaptive_strict_probe_decision}"
-    )
-    print(
         f"MTP device KV cache: {args.mtp_device_kv_cache} "
         f"rows={int(mtp_device_kv_len) if args.mtp_device_kv_cache else 0} "
         f"capacity={int(mtp_device_kv_capacity) if args.mtp_device_kv_cache else 0}"
@@ -3697,13 +3599,13 @@ def main(argv: list[str] | None = None):
             "adaptive_block_after_full_accept": bool(args.adaptive_block_after_full_accept),
             "fused_b1_block_probe": bool(args.fused_b1_block_probe),
             "adaptive_probe_draft_n_max": int(args.adaptive_probe_draft_n_max),
-            "adaptive_strict_block_probe": bool(args.adaptive_strict_block_probe),
-            "adaptive_strict_probe_cycles": int(args.adaptive_strict_probe_cycles),
-            "adaptive_strict_probe_min_accepted": int(args.adaptive_strict_probe_min_accepted),
-            "adaptive_strict_fallback_draft_n_max": int(args.adaptive_strict_fallback_draft_n_max),
-            "adaptive_strict_fallback_root_topk": int(args.adaptive_strict_fallback_root_topk),
-            "adaptive_strict_probe_decision": adaptive_strict_probe_decision,
-            "adaptive_strict_probe_history": list(adaptive_strict_probe_history),
+            "adaptive_strict_block_probe": False,
+            "adaptive_strict_probe_cycles": 2,
+            "adaptive_strict_probe_min_accepted": 2,
+            "adaptive_strict_fallback_draft_n_max": 1,
+            "adaptive_strict_fallback_root_topk": 40,
+            "adaptive_strict_probe_decision": None,
+            "adaptive_strict_probe_history": [],
             "mtp_draft_vocab_cap": int(args.mtp_draft_vocab_cap),
             "decode_repack": bool(args.decode_repack),
             "decode_repack_env": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
