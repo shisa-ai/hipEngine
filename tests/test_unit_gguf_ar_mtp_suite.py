@@ -343,6 +343,70 @@ def test_suite_exposes_b1_probe_block_direct_cap32k_route() -> None:
     ]
 
 
+@pytest.mark.parametrize("route,flags", [
+    (name, flags) for name, flags in suite.MTP_ROUTES.items() if "--llama-compat" in flags
+], ids=lambda value: value if isinstance(value, str) else None)
+def test_compatibility_route_policy_is_fixed_b2_and_preserves_explicit_dimensions(route, flags):
+    from scripts.gguf_mtp_bench import apply_llama_compat_args, build_arg_parser
+
+    parser = build_arg_parser()
+    args = parser.parse_args(flags)
+    before = vars(args).copy()
+    apply_llama_compat_args(args)
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[route] == [2]
+    assert args.draft_n_max == 2
+    assert args.root_topk_accept == args.sibling_topk_accept == 1
+    assert args.draft_p_min == 0
+    assert args.mtp_draft_vocab_cap == 0
+    assert args.resident_mtp_draft is True
+    assert args.mtp_context_replay is args.mtp_device_kv_cache is True
+    assert args.target_block_verify is args.target_block_direct_state_commit is True
+    assert args.target_block_verify_mode == "bulk"
+    assert args.target_block_min_rows == 2
+    assert args.adaptive_draft_window is args.adaptive_ar_fallback is False
+    assert args.adaptive_block_after_full_accept is args.fused_b1_block_probe is False
+    # Compatibility policy must not erase explicit arithmetic or observation choices.
+    for field in (
+        "verify_dp4a", "verify_dense_q8_dp4a", "verify_dense_q8_dp4a_all",
+        "verify_dense_q8_dp4a_f32", "verify_lm_head_q6_top1_dp4a",
+        "resident_mtp_device_seed", "resident_mtp_device_chain",
+        "resident_mtp_draft_q6_top1_dp4a", "resident_mtp_draft_q6_top1_stage1_shape",
+        "resident_mtp_draft_dense_q8_dp4a", "resident_mtp_draft_dense_q8_dp4a_stages",
+        "resident_mtp_draft_sync_stage_timings", "target_block_sync_stage_timings",
+        "native_spec_target_cycle", "native_spec_device_accept_commit",
+        "native_spec_complete_cycle", "native_spec_proposal_graph",
+    ):
+        assert getattr(args, field) == before[field], field
+    first = vars(args).copy()
+    apply_llama_compat_args(args)
+    assert vars(args) == first
+
+
+@pytest.mark.parametrize("scope", ["smoke", "partial", "full"])
+@pytest.mark.parametrize("suffix", ["siludown", "draftdenseq8", "siludown-allsync"])
+def test_compatibility_aliases_record_only_effective_b2_and_refuse_mislabels(
+    monkeypatch, tmp_path, capsys, scope, suffix,
+):
+    route = "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-" + suffix
+    raw_root = tmp_path / "raw"
+    argv = ["gguf_ar_mtp_suite.py", "--scope", scope, "--mtp-route", route,
+            "--raw-root", str(raw_root), "--dry-run"]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(suite, "_run", lambda *args: pytest.fail("dry-run launched a child"))
+    assert suite.main() == 0
+    output = capsys.readouterr().out
+    config = json.loads(output.split("shared_config: ", 1)[1])
+    assert config["budgets"] == [2]
+    assert config["ar_decode_tokens"] == suite.SCOPES[scope]["cycles"] * 3
+    assert "--budgets 2" in output
+    for budgets in ("1", "3", "2,3"):
+        refused = tmp_path / ("refused-" + budgets)
+        monkeypatch.setattr(sys, "argv", [*argv, "--budgets", budgets, "--raw-root", str(refused)])
+        with pytest.raises(suite.SuiteError, match="fixed to budgets"):
+            suite.main()
+        assert not refused.exists()
+
+
 def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTES["llama-compat"] == ["--llama-compat"]
     assert suite.MTP_ROUTES["llama-compat-dp4a"] == ["--llama-compat", "--verify-dp4a"]

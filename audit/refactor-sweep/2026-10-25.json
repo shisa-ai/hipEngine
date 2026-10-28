@@ -8479,23 +8479,25 @@
       "start_line": 6360,
       "end_line": 6401,
       "sha256": "ee105a7de8eb47b9128063b361bfb2e5e67a5e6dac15acb83ba11535f9fdfff0",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-budget-label-drift-deferred-policy-consolidation",
+      "evidence": [
+        "50actual --llama-compat compositions characterize fixedB2/idempotent policy+preserved arithmetic/observations. RED3missing fixed-budget aliases: draftdenseq8,siludown,siludown-allsync. Replace duplicate47-entry map with composition-derived fixed budgets;9scope/alias dryrun+invalidoverride cases pass before output/model access.361focused pass;CPU19992pass271skip plus fixtures/smokes. Bottom TARGET-POLICY/R0284 consolidates context/chain/adapter alias migration;remove historical promotion narrative,preserve archive/inventory. No kernel/model arithmetic/publicdefault/performance change. Worklog: worklog/entries/20261028T213858.890855Z-cleanup-refactor-r0284-compat-policy-681bd1.md."
+      ],
       "subitems": [
         {
           "line": 6361,
           "text": "- Added 2026-06-30. Bench flag `--llama-compat` forces the closest hipEngine",
-          "status": "pending"
+          "status": "fixed-composition-derived-b2-labels"
         },
         {
           "line": 6371,
           "text": "- Purpose: isolate whether the remaining llama HIP MTP gap is semantic-policy",
-          "status": "pending"
+          "status": "historical-measurements-preserved-not-current-claim"
         },
         {
           "line": 6396,
           "text": "- Remove / promote when: after full-suite stage-bucket evidence decides the",
-          "status": "pending"
+          "status": "deferred-existing-target-context-adapter-policy-ownership"
         }
       ]
     },

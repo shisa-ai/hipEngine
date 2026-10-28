@@ -3430,48 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--llama-compat` / `llama-compat*` routes (default OFF, semantic diagnostic)
-- Added 2026-06-30. Bench flag `--llama-compat` forces the closest hipEngine
-  replica of llama.cpp MTP semantics: B2, `draft_p_min=0`, full draft vocab,
-  shifted MTP context replay, device MTP KV, no adaptive B1 probe/fallback, and
-  one target block verifier per cycle. Suite routes `llama-compat` and
-  `llama-compat-dp4a` are fixed to B2 so the artifact label matches the forced
-  child `draft_n_max`. Follow-up replication routes
-  `llama-compat-device-chain{,-dp4a}` and
-  `llama-compat-device-seed-chain{,-dp4a}` add prewarmed resident device-chain
-  drafting and optional resident target `pending_h` starts without changing the
-  shipped default path.
-- Purpose: isolate whether the remaining llama HIP MTP gap is semantic-policy
-  mismatch versus implementation/backend cost. The exact compat route is
-  precision-preserving; `llama-compat-dp4a` adds the already-known
-  accuracy-traded q8_1/dp4a regime. Full-suite B2 evidence landed the same day:
-  exact compat **51.16 tok/s = 0.934x AR**, dp4a compat **52.48 tok/s = 0.958x
-  AR**, prewarmed device-chain dp4a **52.79 tok/s = 0.965x AR**, and
-  device-seed-chain dp4a **52.53 tok/s = 0.960x AR**. All remove the serial B1
-  probe and keep acc/output ~0.56, but lose to AR because the compat
-  draft/context + block verifier lifecycle is too costly. Split instrumentation
-  shows device-chain `draft_topk_readback` is almost all GPU drain
-  (`draft_device_chain_drain` **3.830 ms/output**) and not D2H
-  (`draft_topk_d2h` **0.008 ms/output**). Follow-up Q6 top-1/gather plus
-  direct-state verifier cleanup lifts the best compat dp4a B2 diagnostic row to
-  **55.41 tok/s = 1.014x AR**, with unchanged acceptance. The new
-  `llama-compat-device-chain-dp4a-allsync` route adds
-  `--resident-mtp-draft-sync-stage-timings` and
-  `--target-block-sync-stage-timings` for attribution only; its buckets show the
-  remaining verifier cost is target linear-attention/MoE operation time, not
-  snapshot/commit bookkeeping. The current active replication route is
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit`:
-  **60.56 tok/s**, **16.534 ms/output**, **1.1055x AR**, acc/output **0.609**,
-  draft acceptance **0.780**, target rows/output **1.172**, verifier drain
-  **14.071 ms/output**, replay/commit **0.043 ms/output**, and zero replay rows.
-  The semantic-safe serial-state row remains the exact control at **51.85 tok/s**
-  / **19.308 ms/output**.
-- Remove / promote when: after full-suite stage-bucket evidence decides the
-  question. Current evidence says these are replication diagnostics, not default
-  promotion candidates; keep only the smallest route set needed for future parity
-  audits, or delete the routes during the next MTP flag cleanup unless another
-  llama.cpp semantic delta is identified.
-
 ## `--resident-mtp-draft-sync-stage-timings` (default OFF, attribution-only)
 - Added 2026-07-01. Bench flag inserts `hipDeviceSynchronize()` boundaries inside
   the resident MTP draft `_run_one()` path when `--record-cycle-stage-timings` is
@@ -11555,7 +11513,7 @@ seed cycles and verify output, acceptance, hidden/KV/cursor continuity; confirm
 the public NextN provider is unchanged. Do not remove the compatibility cache
 until its replacement implements those same lifetime and commit semantics.
 
-### R0281-TARGET-POLICY — GGUF verifier controls and native naming
+### R0281-TARGET-POLICY / R0284 — GGUF verifier controls and native naming
 
 The standalone benchmark leaves block verification and direct state commit
 off, but the AR/MTP suite's default route enables both and llama-compat forces
@@ -11564,6 +11522,24 @@ serial-exact schedules, replay and captured-row commit. These are active
 transaction-policy interfaces, not unused scaffolding. Use
 `--target-block-verify --target-block-verify-mode MODE`; the verifier mode is
 not an optional value on the boolean switch.
+
+R0284's `--llama-compat` benchmark composition forces B2/top1, full draft
+vocabulary, shifted prompt replay, device draft KV, bulk verification and
+captured-row commit, with adaptive probes/fallback disabled. Applying it is
+idempotent; it preserves explicit arithmetic, seed/chain, native-cycle and
+observation choices. The suite derives fixed `[2]` labels from every route
+containing that flag, so new aliases cannot inherit misleading scope budgets.
+The benchmark flag does not itself enable DP4A, and its direct partial-commit
+policy is not a promise of exact target state or cross-engine token equality.
+
+The separate `Qwen35GGUFBringupGenerator.generate_speculative_mtp_detailed()`
+compatibility caller also uses the shared assets and adapters. Public resident
+NextN scheduling and that direct compatibility loop are different owners;
+removing a benchmark alias must not remove either implementation implicitly.
+The historical rates and current parity rerun recipes remain in
+`docs/archive/MTP-LLAMACPP-PARITY-HISTORY.md` and
+`docs/campaigns/MTP-LLAMACPP-PARITY.md`; the original ledger text is preserved
+in the sweep inventory rather than restated as current performance.
 
 Direct commit selects a captured Conv/GDN/hidden row; replay policies restore
 a snapshot and advance the consumed prefix instead. The benchmark's bulk
@@ -11608,7 +11584,10 @@ and proposal-graph consumers must migrate with it, not replace it by deletion.
 
 **Decision needed:** preserve named comparison controls or consolidate them
 into an explicit benchmark verifier policy, and decide whether to rename the
-legacy native API/registry surface in the same coordinated migration. Do not
+legacy native API/registry surface in the same coordinated migration. R0284's
+remaining alias-retention decision belongs to that migration alongside
+R0281-CONTEXT, R0281-DRAFT-CHAIN and R0281-SELECTED-DP4A; it is not a separate
+speed-only gate. Do not
 remove a correct target-only or fallback capability because a historical
 throughput comparison preferred a different complete-cycle route.
 
