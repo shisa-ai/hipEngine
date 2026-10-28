@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -210,16 +211,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "reason": "generator has no prepare_request_scratch",
             }
         else:
-            warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
-            previous = os.environ.get(warmup_env)
-            os.environ[warmup_env] = "1"
             try:
                 probe = preparer(
                     max_prompt_tokens=int(
                         min(int(args.mtp_probe_prompt_tokens), int(args.context))
                     ),
                     max_new_tokens=0,
-                    sampling_params=sampling,
+                    sampling_params=replace(sampling, speculative_mtp=True),
                     max_batch_size=max(1, int(args.max_active_requests)),
                     release_after_probe=True,
                 )
@@ -246,11 +244,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "packed_mtp_prefill_reason"
                     ),
                 }
-            finally:
-                if previous is None:
-                    os.environ.pop(warmup_env, None)
-                else:
-                    os.environ[warmup_env] = previous
             if mtp_warmup_info.get("status") == "warmed":
                 mtp_after_snapshot = _snapshot(runner)
                 mtp_after_sysfs = _sysfs_used_bytes(card)

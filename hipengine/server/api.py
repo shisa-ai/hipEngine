@@ -6268,22 +6268,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 scratch_probe_failed_attempts: list[dict[str, Any]] = []
 
                 def run_scratch_probe() -> Any:
-                    mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
-                    previous_mtp_warmup = os.environ.get(mtp_warmup_env)
-                    os.environ[mtp_warmup_env] = "1" if mtp_startup_warmup_requested else "0"
-                    try:
-                        return scratch_preparer(
-                            max_prompt_tokens=scratch_probe_prompt_tokens,
-                            max_new_tokens=0,
-                            sampling_params=sampling,
-                            max_batch_size=scratch_probe_batch_size,
-                            release_after_probe=True,
-                        )
-                    finally:
-                        if previous_mtp_warmup is None:
-                            os.environ.pop(mtp_warmup_env, None)
-                        else:
-                            os.environ[mtp_warmup_env] = previous_mtp_warmup
+                    return scratch_preparer(
+                        max_prompt_tokens=scratch_probe_prompt_tokens,
+                        max_new_tokens=0,
+                        sampling_params=replace(
+                            sampling, speculative_mtp=mtp_startup_warmup_requested,
+                        ),
+                        max_batch_size=scratch_probe_batch_size,
+                        release_after_probe=True,
+                    )
 
                 while True:
                     try:

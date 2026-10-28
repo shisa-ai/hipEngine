@@ -1462,7 +1462,9 @@ class LLM:
 
         Backends that keep lazy prompt/decode workspaces may implement this hook
         so server startup can prove the selected resident context has enough
-        transient headroom without decoding to the output limit.
+        transient headroom without decoding to the output limit. Set
+        ``sampling_params.speculative_mtp`` to include implemented MTP warmup;
+        this probe intent does not change later generation requests.
         """
 
         generator = self._get_text_generator()

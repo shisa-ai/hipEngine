@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
+from hipengine import SamplingParams
 from hipengine.dispatch import SlotMove, WorkItem, WorkKind
 from hipengine.dispatch.d2_resolver import CostTable, PhysicalWidthCost, d2_partition
 from hipengine.generation import (
@@ -5858,7 +5859,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     monkeypatch.setattr(qwen35_gguf, "_new_mtp_draft_runner", lambda assets, *, runtime: FakeDraft())
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", retired_override)
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "0")
     monkeypatch.setattr(
         qwen35_gguf.Qwen35GGUFBringupGenerator, "_load_mtp_serving_assets",
         lambda self: pytest.fail("target scratch probe must not load legacy draft assets"),
@@ -5867,7 +5868,10 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
 
     generator = _generator()
     generator.weight_index = _mtp_capable_weight_index()
-    result = generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=8)
+    result = generator.prepare_request_scratch(
+        max_prompt_tokens=4, max_batch_size=8,
+        sampling_params=SamplingParams(speculative_mtp=True),
+    )
 
     assert result["packed_ar_prefill_skipped"] is True
     assert result["packed_mtp_prefill_skipped"] is False
@@ -7752,6 +7756,29 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
         "logits_d2h_bytes": 12,
     }
     assert len([call for call in calls if call[0] == "step"]) == 1
+
+
+@pytest.mark.parametrize("probe_mtp", [False, True])
+def test_gguf_scratch_probe_uses_sampling_intent_not_stale_startup_marker(
+    monkeypatch, probe_mtp: bool,
+) -> None:
+    generator = _generator()
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "0" if probe_mtp else "1",
+    )
+    monkeypatch.setattr(generator, "_prepare_kv_policy", lambda params: None)
+    monkeypatch.setattr(generator, "_get_shared_runner", lambda: SimpleNamespace(vocab_size=10))
+    # Width one cannot create a packed group even when MTP warmup is requested.
+    result = generator.prepare_request_scratch(
+        max_prompt_tokens=7, max_batch_size=1,
+        sampling_params=SamplingParams(speculative_mtp=probe_mtp),
+    )
+    expected = "batch_width_le_1" if probe_mtp else "startup_warmup_disabled"
+    assert result["packed_mtp_prefill_skipped"] is True
+    assert result["packed_mtp_verify_skipped"] is True
+    assert result["packed_mtp_prefill_reason"] == expected
+    assert result["packed_mtp_verify_reason"] == expected
 
 
 def test_shared_slot_runner_declares_same_round_prefill_decode_only() -> None:

@@ -578,7 +578,6 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_HOT_VOCAB_ENV = "HIPENGINE_GGUF_MTP_HOT_VOCAB"
-_GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
@@ -900,10 +899,6 @@ def _gguf_mtp_hot_vocab_setting(execution_profile: str) -> str | None:
     if value.lower() in {"", "0", "false", "off", "none"}:
         return None
     return value
-
-
-def _gguf_mtp_server_startup_warmup_enabled() -> bool:
-    return os.environ.get(_GGUF_MTP_SERVER_STARTUP_WARMUP_ENV, "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_stream_draft_enabled() -> bool:
@@ -1965,7 +1960,7 @@ class Qwen35GGUFBringupGenerator:
                 result["packed_ar_prefill_widths"].append(width)
         result["packed_ar_prefill_prompt_lengths"] = sorted(set(result["packed_ar_prefill_prompt_lengths"]))
 
-        if not _gguf_mtp_server_startup_warmup_enabled():
+        if not bool(getattr(sampling_params, "speculative_mtp", False)):
             result["packed_mtp_prefill_skipped"] = True
             result["packed_mtp_prefill_reason"] = "startup_warmup_disabled"
             result["packed_mtp_verify_skipped"] = True

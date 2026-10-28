@@ -4365,7 +4365,7 @@ def test_server_eager_loads_model_on_startup(caplog) -> None:
         {
             "max_prompt_tokens": 131071,
             "max_new_tokens": 0,
-            "sampling_params": SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True),
+            "sampling_params": SamplingParams(max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True, speculative_mtp=True),
             "max_batch_size": 1,
             "release_after_probe": True,
         }
@@ -4818,14 +4818,21 @@ def test_startup_scratch_probe_runs_batch_width_when_context_unknown() -> None:
     assert scratch_probe["context_unknown"] is True
 
 
-def test_startup_scratch_probe_sets_mtp_warmup_env_only_when_serving_enabled(monkeypatch) -> None:
+@pytest.mark.parametrize("previous_marker", [None, "0", "1"])
+def test_startup_scratch_probe_passes_mtp_warmup_sampling_without_env_mutation(
+    monkeypatch, previous_marker: str | None,
+) -> None:
     class EnvCaptureFakeLLM(FakeLLM):
         def prepare_request_scratch(self, **kwargs) -> dict[str, Any]:
             payload = super().prepare_request_scratch(**kwargs)
-            payload["mtp_startup_warmup"] = os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP")
+            payload["mtp_startup_warmup"] = kwargs["sampling_params"].speculative_mtp
+            payload["legacy_marker"] = os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP")
             return payload
 
-    monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", raising=False)
+    if previous_marker is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", previous_marker)
     fake = EnvCaptureFakeLLM(outputs=["warm"])
     config = ServerConfig(
         model="fake-path",
@@ -4840,8 +4847,11 @@ def test_startup_scratch_probe_sets_mtp_warmup_env_only_when_serving_enabled(mon
 
     assert response.status_code == 200
     scratch_result = response.json()["startup"]["checks"]["scratch_probe"]["result"]
-    assert scratch_result["mtp_startup_warmup"] == "1"
-    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") is None
+    assert scratch_result["mtp_startup_warmup"] is True
+    assert scratch_result["legacy_marker"] == previous_marker
+    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") == previous_marker
+    assert all(not params.speculative_mtp for _, params in fake.prepares)
+    assert all(not params.speculative_mtp for _, params in fake.calls)
 
     fake_off = EnvCaptureFakeLLM(outputs=["warm"])
     config_off = ServerConfig(
@@ -4857,8 +4867,38 @@ def test_startup_scratch_probe_sets_mtp_warmup_env_only_when_serving_enabled(mon
 
     assert response_off.status_code == 200
     scratch_result_off = response_off.json()["startup"]["checks"]["scratch_probe"]["result"]
-    assert scratch_result_off["mtp_startup_warmup"] == "0"
-    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") is None
+    assert scratch_result_off["mtp_startup_warmup"] is False
+    assert scratch_result_off["legacy_marker"] == previous_marker
+    assert os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP") == previous_marker
+
+
+@pytest.mark.parametrize("probe_mtp", [False, True])
+def test_startup_scratch_probe_retry_preserves_explicit_warmup_intent(
+    monkeypatch, probe_mtp: bool,
+) -> None:
+    observed = []
+
+    class RetryFakeLLM(FakeLLM):
+        def prepare_request_scratch(self, **kwargs):
+            observed.append((
+                kwargs["max_batch_size"], kwargs["sampling_params"].speculative_mtp,
+                os.environ.get("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"),
+            ))
+            if kwargs["max_batch_size"] > 1:
+                raise MemoryError("retry narrow")
+            return super().prepare_request_scratch(**kwargs)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "external")
+    fake = RetryFakeLLM(outputs=["warm"])
+    app = create_app(ServerConfig(
+        model="fake-path", served_model_name="fake-model", max_active_requests=4,
+        speculative_mtp_serving="opt_in" if probe_mtp else "off",
+    ), llm=fake)
+    with TestClient(app) as client:
+        response = client.get("/ready")
+    assert response.status_code == 200
+    assert observed == [(4, probe_mtp, "external"), (1, probe_mtp, "external")]
+    assert os.environ["HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"] == "external"
 
 
 def test_startup_memory_summary_counts_live_scratch_probe_peak() -> None:
