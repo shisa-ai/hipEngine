@@ -12948,8 +12948,8 @@
       "start_line": 10627,
       "end_line": 10643,
       "sha256": "8663d4e62478629685f1ec02ca1c9dc17bce754316c91fb3fa6ee386e503ccf7",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-duplicate-R0012",
+      "evidence": ["R0012 already removed dedicated flag/helper/cache term; no runtime/script references remain. Current checked-row59tests pass. Remove duplicate ledger only; generic DPP family decision staysR0442. Worklog: worklog/entries/20261029T205432.027473Z-cleanup-refactor-r0447-f8f7cd.md."],
       "subitems": []
     },
     {
