@@ -3425,9 +3425,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## TimesFM unused attention score buffer
-
-- [2026-09-09] TimesFM `_Buffers.scores` is no longer read by the FP16 attention path (WMMA flash kernel replaced the scores GEMM + softmax chain; 2026-09-09 flash-attn unit). Remove the allocation and its `f16()` sizing once the FP32 strict path also stops using it or a strict-path replacement is registered.
 ## PF-1d MMQ tile template (2026-09-02)
 
 - `gguf_q8_0_mmq_prefill.hip` keeps the tile-parametrized

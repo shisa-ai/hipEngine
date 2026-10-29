@@ -11893,9 +11893,10 @@
       "start_line": 9434,
       "end_line": 9448,
       "sha256": "9e971de5c2c7434806cef15d3d0080703889373f0c29f3f191c926feac8e3217",
-      "status": "aotriton-evaluator-repaired-interface-deferred-timesfm-subitem-open",
+      "status": "aotriton-evaluator-repaired-interface-deferred-timesfm-scores-removed",
       "evidence": [
-        "Admission is already default-on. Current full-logit evaluator unsets strict-arm control, making slot-local comparison on/on; repair per-candidate explicit strict/candidate manifests at capture and artifact provenance. Six RED/GREEN real capture-driver synthetic cases across inherited unset/0/1, focused bundle53pass. Preserve runtime defaults and rollback; move interface removal decision to bottom rather than delete live comparison arm. Independent TimesFM scores note split into its own active heading and remains open for next unit. Evidence: worklog/entries/20261029T151518.411951Z-cleanup-refactor-r0407-aotriton-evaluator-4f9845.md."
+        "Admission is already default-on. Current full-logit evaluator unsets strict-arm control, making slot-local comparison on/on; repair per-candidate explicit strict/candidate manifests at capture and artifact provenance. Six RED/GREEN real capture-driver synthetic cases across inherited unset/0/1, focused bundle53pass. Preserve runtime defaults and rollback; move interface removal decision to bottom rather than delete live comparison arm. Independent TimesFM scores note split into its own active heading and remains open for next unit. Evidence: worklog/entries/20261029T151518.411951Z-cleanup-refactor-r0407-aotriton-evaluator-4f9845.md.",
+        "TimesFM final subitem: neither FP16 flash nor FP32 scalar reads scores. Remove field/allocation/free, preserve live operands and arithmetic. Allocation/reuse/free CPU tests and short-context segment sizing20pass;14actual GPU fixture/reuse/poison/short-context checks plus public decode repeats and model-card correctness guard pass. Public short context found inherited prefill-smaller-than-AR scratch defect, reproduced on4430944ae; size for max segment and bound prefill D2H to actual output size. CPU deterministic bundle before narrow sizing repair passes, final focused/GPU checks cover repair. Evidence: worklog/entries/20261029T152208.901622Z-cleanup-refactor-r0407-timesfm-scores-df9c42.md."
       ],
       "subitems": [
         {
@@ -11911,7 +11912,7 @@
         {
           "line": 9448,
           "text": "- [2026-09-09] TimesFM `_Buffers.scores` is no longer read by the FP16 attention path (WMMA flash kernel replaced the scores GEMM + softmax chain; 2026-09-09 flash-attn unit). Remove the allocation and its `f16()` sizing once the FP32 strict path also stops using it or a strict-path replacement is registered.",
-          "status": "pending"
+          "status": "removed-unused-scores-both-precisions-and-repaired-short-ar-scratch"
         }
       ]
     },

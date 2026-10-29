@@ -97,7 +97,6 @@ class _Buffers:
     quant_scratch: DeviceBuffer  # B*N, 10240     F16
     quantile_out: DeviceBuffer   # B*N, 10240     F16
     qt: DeviceBuffer              # B*H*Q*D       F16 (batched-GEMM attn)
-    scores: DeviceBuffer          # B*H*Q*S       F16
     attn_o: DeviceBuffer          # B*H*Q*D       F16
     pos: DeviceBuffer            # B*N            F32
     num_masked: DeviceBuffer     # B              I32
@@ -110,7 +109,7 @@ class _Buffers:
             self.tok_in, self.hidden, self.hidden2, self.embeddings, self.normed,
             self.qkv, self.attn_out, self.attn_res, self.ff_hidden, self.ff_out,
             self.layer_out, self.point_out, self.quant_scratch, self.quantile_out,
-            self.qt, self.scores, self.attn_o,
+            self.qt, self.attn_o,
             self.pos, self.num_masked, self.q_offset, *self.caches_k, *self.caches_v,
         ):
             free(buffer)
@@ -281,7 +280,6 @@ class TimesFMGPUDecoder:
             quant_scratch=f16(batch * patches * self.spec.quantile_output_dims),
             quantile_out=f16(batch * patches * self.spec.quantile_output_dims),
             qt=f16(batch * self.spec.num_attention_heads * patches * (h // self.spec.num_attention_heads)),
-            scores=f16(batch * self.spec.num_attention_heads * patches * cache_size),
             attn_o=f16(batch * self.spec.num_attention_heads * patches * (h // self.spec.num_attention_heads)),
             pos=malloc(batch * patches * 4),
             num_masked=malloc(batch * 4),
@@ -462,9 +460,9 @@ class TimesFMGPUDecoder:
         num_decode_steps = (horizon - 1) // o
         num_input_patches = context // p
         cache_size = num_input_patches + num_decode_steps * m
-        # Scratch is sized for the prefill segment (the largest); AR steps
-        # reuse the same buffers with smaller row counts.
-        bufs = self._buffers_for(batch, num_input_patches, cache_size)
+        # Scratch must fit both the prefill and one autoregressive segment.
+        scratch_patches = max(num_input_patches, m if num_decode_steps else 0)
+        bufs = self._buffers_for(batch, scratch_patches, cache_size)
         # A prior non-finite forecast can leave NaNs in future AR slots.
         # Attention reads full cache capacity, including masked V slots, so
         # allocation-time initialization is insufficient on reuse (0 * NaN).
@@ -506,7 +504,7 @@ class TimesFMGPUDecoder:
 
         # D2H heads: full point backcast, but only the last quantile patch.
         point_dev = np.empty((batch * num_input_patches, spec.horizon_length * spec.quantile_heads), dtype=host_dt)
-        copy_device_to_host(host_array_ptr(point_dev), bufs.point_out)
+        copy_device_to_host(host_array_ptr(point_dev), bufs.point_out, point_dev.nbytes)
         renormed_outputs = revin(
             point_dev.astype(np.float32).reshape(batch, num_input_patches, o, -1),
             context_mu, context_sigma, reverse=True,

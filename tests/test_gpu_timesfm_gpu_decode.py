@@ -78,6 +78,40 @@ def test_gpu_decode_fp16_production_gate() -> None:
             assert error[b].mean() / scale <= 0.005, f"{name} b{b} exceeds 0.5% mean of signal scale"
 
 
+@pytest.mark.parametrize("precision", ["fp32", "fp16"])
+@pytest.mark.parametrize("patches", [1, 3, 5])
+def test_short_prefill_with_wider_autoregressive_step(precision, patches):
+    """AR feeds four patches even when prefill has fewer rows."""
+    from hipengine.loading.timesfm import load_timesfm_model
+    from hipengine.runtime.timesfm_decode import TimesFMGPUDecoder
+
+    inputs = np.stack([
+        np.sin(np.arange(32 * patches, dtype=np.float32) / 7),
+        np.cos(np.arange(32 * patches, dtype=np.float32) / 11),
+    ])
+    masks = np.zeros_like(inputs, dtype=bool)
+    masks[1, :9] = True
+    local = load_timesfm_model(str(_snapshot()))
+    decoder = TimesFMGPUDecoder(local, precision=precision)
+    try:
+        result = decoder.decode(160, inputs, masks)
+        repeated = decoder.decode(160, inputs, masks)
+        for actual, again in zip(result, repeated, strict=True):
+            assert np.isfinite(actual).all()
+            np.testing.assert_array_equal(actual, again)
+        # A wider, fully front-masked prefix is an independent row-capacity
+        # control: the visible time series and its positional offsets agree.
+        padded = np.pad(inputs, ((0, 0), (128, 0)))
+        padded_masks = np.pad(masks, ((0, 0), (128, 0)), constant_values=True)
+        control = decoder.decode(160, padded, padded_masks)
+        np.testing.assert_allclose(result[0][:, -1], control[0][:, -1], rtol=0.03, atol=0.01)
+        np.testing.assert_allclose(result[1], control[1], rtol=0.03, atol=0.01)
+        np.testing.assert_allclose(result[2], control[2], rtol=0.03, atol=0.01)
+    finally:
+        decoder.close()
+        local.free()
+
+
 def test_gpu_decode_rejects_unknown_precision() -> None:
     from hipengine.loading.timesfm import load_timesfm_model
     from hipengine.runtime.timesfm_decode import TimesFMGPUDecoder
