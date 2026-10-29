@@ -3430,68 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## GGUF Q5/Q6 grouped experiment cleanup
-
-### C8-P2 Q5 planar-dp4a grouped route (default-off; added 2026-09-04, iter40)
-
-- **What exists:** grouped integer-dp4a planar-Q5 sibling
-  (`kernels/hip_gfx1100/quant/gguf_q5_k_qmicro_planar_gemv.*`), a
-  session-gated R24 dispatch route in `gguf_linear.py`
-  (`t16_q5_planar_dp4a`; rows 24 only, R32 keeps the retained source-layout
-  owner), a resident `qmicro_planar` weight sidecar (loader flag
-  `dense_q5_qmicro_planar_ssm_out`, env `HIPENGINE_C8_Q5_PLANAR_DP4A=1`
-  + `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` capability), runner session wiring, and
-  the leaf script `scripts/qwen38_c8_grouped_q5_planar_dp4a_leaf.py`.
-  The zero-valued env rolls the route back at materialization and runner
-  selection. Once a caller binds `planar_dp4a=True` with its library and
-  workspace, dispatch honours that explicit choice without re-reading the
-  environment; absent sidecars and unsupported rows keep the existing owner.
-- **Why:** leaf screen (2026-09-04, actual Qwen3.8-27B-Q4_K_M Q5_K ssm_out
-  weights, shared quantize included): candidate 0.77-0.84x of the retained
-  R24 raw MMQ owner, wins 9/9 across rows 8/24/32; artifact
-  `benchmarks/results/2026-09-04-w7900-qwen38-q4km-c8-q5-planar-dp4a-grouped-leaf.json`.
-- **Automatic policy and resources:** normal materialization does not allocate
-  the optional persistent sidecar, and the runner leaves its choice disabled.
-  The registered raw/source-layout MMQ owners remain available. Explicit
-  low-level sessions can select planar DP4A when their sidecar, library and
-  workspace are present. Do not require another evidence record before that
-  implemented route may execute. Any broader changed-arithmetic default
-  selection follows the execution-profile gate.
-- **Engagement deadlock fix (iter42, 7e03b150c):** the iter40 dispatch gate
-  never fired (session.source_layout conflation + registration deadlock);
-  the leaf/e2e "bit-exact" evidence before this fix was vacuous. Post-fix
-  engagement is evidenced by launch counter (144 launches / 3 verify
-  passes), and the leaf artifact above must be re-read as
-  owner-vs-owner (route never fired).
-- **L4 + retention outcome (engaged, iter42):** full L4 gate PASSED (18
-  prompts, kl_mean 1.02e-4, kl_max 2.6e-3, top-1 0.9977, determinism 3/3;
-  artifact
-  `benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q5-planar-dp4a-l4-numerics.json`);
-  k2/R24 retention e2e +0.44% MTP aggregate, positive both orders, IDs
-  identical, 40/40 exact
-  (`benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q5-planar-dp4a-retention-e2e.json`).
-  The route STAYS default-off: +1.23 GB persistent sidecar for a target-stage
-  delta inside control spread does not justify promotion; the env pair
-  remains the operator opt-in for k2-shaped runs.
-- **Allocation-formula gap closed (2026-09-07, UD-U1 repair regression
-  round):** `planned_qwen35_gguf_weight_allocation_nbytes` initially had no
-  `qmicro_planar` formula (the route audit reported the resident
-  formula-unavailable rather than guessing), and the new mandatory admission
-  materializability check turned that gap into a hard refusal of this
-  previously loadable resident. The formula is now exact and derived from the
-  actual converter/allocation ABI: the INT8 `planar.tiles` payload of
-  `convert_gguf_q5_k_qmicro_tile16_to_planar(repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))`
-  = `experts * (out/16) * (bytes_per_row/176) * GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES`
-  (3328 B/block; measured 5120x6144 ssm_out sidecar = 25,559,040 bytes),
-  gated to Q5_K T16 residents exactly like the materializer's own sidecar
-  gate. Byte-exactness is pinned against the real CPU converter in
-  `tests/test_live_gguf_ud_admission.py`; the audit reports the sidecar
-  formula-sized. No kernel, dispatch, or default-change is involved.
-- Remove the kernel, wrapper, registry entry, session/runner/env wiring,
-  loader sidecar, leaf script, and tests if the P2 residual closes by
-  another axis AND the flag pair has had no operator use for a full
-  campaign cycle, or if a later owner-parity regression voids the axis.
-
 ## C8: direct-resident verify route scope (added 2026-09-04, iter60)
 
 The 2026-09-02 direct-resident promotion (7daa03723) enabled
@@ -11418,3 +11356,39 @@ verifier variants bypassed the grouped decode wrapper; those runs do not prove
 gfx1100 engagement. This is a validation follow-up, not a runnability gate.
 Historical promotion evidence remains in
 `../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
+
+### R0393-Q5 — Optional planar-Q5 sidecar lifecycle
+
+The planar-Q5 route is implemented and executable. The public dispatch and
+allocation-formula defects are repaired; an explicit
+`q5_raw_mmq_target_session(planar_dp4a=True, ...)` owns its resolved choice,
+library and scratch. Dispatch selects it for compatible R24 recurrent-output
+weights with a resident `qmicro_planar` sidecar; R32 keeps the source-layout
+owner. Keep the existing strict/raw primitives and resource checks.
+
+**Decision needed / removal condition:** retain
+`HIPENGINE_C8_Q5_PLANAR_DP4A` as a supported optional resource choice, replace
+the eager persistent sidecar with a request-owned allocation policy, or retire
+the route. Normal loading leaves that additional resident allocation off;
+this is a persistent-memory tradeoff, not missing numerical evidence. Do not
+remove the kernel, loader sidecar, registry entry, session, tests or diagnostic
+merely because another path is automatic. Operator non-use has not been
+established, so the old campaign-cycle deletion condition is not satisfied.
+
+**Clearing action:** choose the supported interface and allocation lifetime.
+If retained, document it at its policy definition and remove the temporary
+lifecycle entry. If replacing allocation, validate exact planned/converter
+bytes, insufficient resources, session isolation, R24/R32 selection, repeated
+public use and complete teardown. If retiring, remove the whole route in one
+unit and preserve the historical artifacts. A future public gfx1100 C8 request
+must record actual selected-kernel engagement rather than infer it from the
+sidecar's presence.
+
+Historical numerical and complete-model results remain in
+`../benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q5-planar-dp4a-l4-numerics.json`
+and
+`../benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q5-planar-dp4a-retention-e2e.json`.
+The original leaf harness calls the planar kernel directly; the early public
+dispatch deadlock did not make that leaf owner-versus-owner. See the correction
+and source evidence in
+`../worklog/entries/20261029T114236.423489Z-cleanup-refactor-r0393-q5-lifecycle-f07019.md`.
