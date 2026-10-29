@@ -361,10 +361,8 @@ _PREFILL_F16_STAGING_QUANTS = frozenset(
 _PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
 PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"
 
-# B5: production-default changed-arithmetic planar-Q6 integer MMQ. The registered
-# gfx1151 variant is selected only inside a caller-owned workspace context and
-# the backend package's exact row/shape policy. A remains the strict fallback.
-Q6_INTEGER_MMQ_PREFILL_ENV = "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL"
+# gfx1151 planar-Q6 integer MMQ requires a caller-owned workspace and the
+# backend package's row/shape policy. Strict keeps the registered parent.
 
 
 def q6_integer_mmq_for(
@@ -372,11 +370,8 @@ def q6_integer_mmq_for(
     *,
     profile_fell_back_to_strict: bool = False,
 ) -> bool:
-    """Resolve the retained production default with an explicit env override."""
+    """Select planar-Q6 integer MMQ for production without strict fallback."""
 
-    override = os.environ.get(Q6_INTEGER_MMQ_PREFILL_ENV, "").strip().lower()
-    if override:
-        return override in {"1", "true", "yes", "on"}
     profile_value = getattr(profile, "value", profile)
     if profile_value is None or str(profile_value) == "":
         return False

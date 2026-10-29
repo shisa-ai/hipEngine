@@ -16,13 +16,23 @@ from scripts.execution_profile_gguf_batch_route_gate import BatchRouteCapture, b
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen38_q4_verifier_numerics import _environment
-from hipengine.runtime.gguf_linear import PREFILL_F16_STAGING_ENV, Q6_INTEGER_MMQ_PREFILL_ENV
+from hipengine.runtime.gguf_linear import PREFILL_F16_STAGING_ENV
 
 MODES = {
     "no_staging": {PREFILL_F16_STAGING_ENV: "0"},
-    "no_mmq": {Q6_INTEGER_MMQ_PREFILL_ENV: "0"},
-    "neither": {PREFILL_F16_STAGING_ENV: "0", Q6_INTEGER_MMQ_PREFILL_ENV: "0"},
+    "no_mmq": {},
+    "neither": {PREFILL_F16_STAGING_ENV: "0"},
 }
+
+
+def _configure_mode_sessions(sessions, mode):
+    """Apply this diagnostic's Q6 opt-out to its own sessions only."""
+
+    if mode not in MODES:
+        raise ValueError(f"unknown prefill composition mode: {mode}")
+    if mode in {"no_mmq", "neither"}:
+        for session in sessions:
+            session.use_q6_integer_mmq = False
 
 
 def main():
@@ -54,6 +64,7 @@ def main():
             stack, sessions, _, _ = gate._make_public_profile_sessions(
                 args, candidate=True, max_sequence_length=644)
             with stack:
+                _configure_mode_sessions(sessions, mode)
                 actual_flags = {
                     "staging": sessions[0].use_prefill_f16_staging,
                     "mmq": sessions[0].use_q6_integer_mmq,

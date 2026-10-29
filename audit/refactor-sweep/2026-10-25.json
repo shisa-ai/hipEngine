@@ -4214,7 +4214,8 @@
         {
           "line": 3764,
           "text": "- Planar-Q6 integer-MMQ now requires explicit target-verifier workspace",
-          "status": "pending"
+          "status": "resolved-removed-env-retired-under-R0398-session-diagnostic-kept",
+          "evidence": ["R0398 removes historical misleading environment name and updates composition diagnostic to owned session configuration; verifier-only workspace/row/shape and strict fallback unchanged. No compatibility alias or AR widening."]
         },
         {
           "line": 3770,
@@ -11731,8 +11732,8 @@
       "start_line": 9240,
       "end_line": 9250,
       "sha256": "b9606140789774e0211a92d7c46de22360b5daa54505a17ed593de82ec0be204",
-      "status": "pending",
-      "evidence": [],
+      "status": "repaired-retired-q6-mmq-env-profile-and-workspace-preserved",
+      "evidence": ["Delete process override constant/read from q6_integer_mmq_for; profile+strict-fallback selects session choice. Keep target-verifier-only workspace, exact backend/quant/shape/rows17-48 registry rewrite, parent and peer fallbacks. Diagnostic composition script no longer imports retired constant; no_mmq/neither explicitly disable only owned sessions, with new CPU coverage. Four RED profile/config cases then321focused pass/1noHIP skip. Also resolves R0163 base-line3764 misleading-name rename debt by retiring name rather than adding alias. Public and CPU checks in worklog/entries/20261029T124032.688533Z-cleanup-refactor-r0398-q6-mmq-47d061.md; no arithmetic/default or ordinary-AR admission change."],
       "subitems": []
     },
     {

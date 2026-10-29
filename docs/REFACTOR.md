@@ -2723,11 +2723,6 @@ should be removed or collapsed.
   the unbounded FP16 experiment only after a geometry/profile/horizon-owned
   storage plan passes the full long-horizon numerical and serving gates.
   Do not re-enable it by copying the historical D24 verifier manifest.
-- Planar-Q6 integer-MMQ now requires explicit target-verifier workspace
-  admission. The historical `HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` name is
-  misleading: it no longer authorizes ordinary AR prefill. Rename it with
-  compatibility handling when the verifier configuration is consolidated;
-  widen AR admission only after independent long-prefill/stateful gates.
 
 ## 2026-09-06 GGUF file-type stamp switches — open
 
@@ -3429,17 +3424,6 @@ category and control/ownership gates before closing this entry.
   `_GGUFPackedTargetState` only once lease-backed allocation supports every
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
-
-## RF-B5A — selective planar-Q6 integer-MMQ route (2026-09-03)
-
-`HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` is the rollback override for gfx1151
-B5's production rows17-48 planar-Q6 route. The dispatcher selects the
-registered Q8_1/`mmq64x64` composite only under its exact quant/shape/row
-policy and an active bounded resident workspace. The complete gate improves
-C5-C8 one-group MTP 1.75-2.08%, passes 216 rows at 100% top-1/max KL 0.002231,
-and preserves all task IDs and acceptance. Strict, peer, standard-Q6, Q4/Q5,
-and misses keep exact A owners. Retire the env override after its rollback
-window; retain policy and strict fallback.
 
 ## RF-B2A — prefill F16-staging route switch (2026-09-02)
 
