@@ -3430,34 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31) — RESOLVED
-
-Resolved: `_maybe_run_partitioned_speculative_decode` now treats a zero
-partition bound as one whole-batch AR step instead of "do not partition"
-(`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`
-pins the engine decision against a runner whose capability would grant the
-wide cycle), and the admission owner caps gfx1151 production MTP widths at
-four (9c8ff5444), so C5-C8 never enter MTP and the census artifact's true-AR
-column stays their operative baseline -- no remeasure row is claimed here.
-Decision: the partitioner-level threshold is retained deliberately as the
-zero-bound signal the engine maps; it is not a redundant defense. The
-observation below records the measured inert state from 2026-09-19.
-
-`GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus a
-zero `partition_max_requests` result make an over-bound due batch take one
-full-width AR step rather than chained MTP subgroups. **Measured 2026-09-19: it
-does not.** `_maybe_run_partitioned_speculative_decode` treats a zero bound as
-"do not partition" and returns `None`, so `_run_decode` falls through to
-`_maybe_run_speculative_cycle` on the whole wide work item, and the 8-row
-width-8 protocol runs 8-row speculative cycles this way. The defense was inert
-on the server benchmark only while admission capped explicit groups at four
-before the partitioner saw them; admission broadened when the 2026-09-05 width
-policy listed `(8, 3)`, so this entry's precondition is met. Evidence:
-`benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
-Move demotion to the admission owner (or make a zero partition bound mean one
-whole-batch AR step), remeasure C5-C8 against current AR, and remove the
-partitioner-level defense once redundant.
-
 ## RF-B1A — MTP serving target WMMA-prefill transfer (2026-09-02)
 
 `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` remains the explicit override

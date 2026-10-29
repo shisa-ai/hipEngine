@@ -11711,8 +11711,8 @@
       "start_line": 9202,
       "end_line": 9229,
       "sha256": "14a6d2040a4138294bf7c842c07ce5872ba73cd20d3277edfc3c7d6c0d7cfadd",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-zero-bound-contract-retained-stale-incident-removed",
+      "evidence": ["Current engine maps partition_max_requests<=0 directly to one full-work AR batch, without consulting wide speculative capability. gfx1151 package threshold and adapter zero-bound policy remain deliberate routing, not redundant fallback. 173 engine+adapter tests pass, including wide-capable zero-bound repeated-decode/completion/drain and widths4/5/8 adapter routing. R0064 already verified same incident repair in worklog/entries/20261026T071736.963919Z-cleanup-refactor-r0061-r0064-328b17.md; no rerun of historical census/no new perf claim. Remove contradictory pre-repair narrative; preserve policy/strict fallback. Wider public group validation remains separately owned by R0196; this unit does not close it. Worklog worklog/entries/20261029T122338.477390Z-cleanup-refactor-r0396-whole-batch-c1bace.md."],
       "subitems": []
     },
     {
