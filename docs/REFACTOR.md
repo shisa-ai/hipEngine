@@ -3576,29 +3576,6 @@ separate. Finish discovery consolidation for the other wrappers when they are
 touched, preserving their dependency-path and override contracts; do not replace
 those contracts merely because the owner helper has the same function name.
 
-### GGUF MTP accept pinned staging (kept, measured neutral)
-
-- `hipengine/generation/qwen35_gguf_mtp2.py::_accept_staging_backing` / `_upload_accept_array_staged` is
-  default-on with the blocking `copy_host_to_device` path as automatic fallback. Measured perf-neutral
-  (worklog `20260830T160316…`): uploads 85.4-101.6 ms -> 0.1 ms per lane-cycle with no rate change.
-- Audit defect (2026-08-30): the fallback is not actually complete. `runtime.host_register(...)` exceptions
-  escape instead of selecting the pageable path, and `Qwen35GGUFMTP2Adapter.close()` neither calls
-  `host_unregister()` nor clears the registered NumPy arena. Before keeping this path as load-bearing code,
-  track the registered pointer/runtime, unregister it on close and partial initialization, catch registration
-  failure, and test both paths. If the accept cycle redesign removes staging, delete it instead.
-- **Repaired 2026-08-31.** A failed `host_register` now selects the pageable path and latches the adapter
-  off (`_accept_staging_backing` -> `_reset_accept_staging`), the registered pointer and `host_unregister`
-  callable are tracked, and `close()` releases the arena exactly once as its final teardown action. A failed
-  unregister therefore still propagates after ngram, batch-accept workspace, and target scratch cleanup;
-  a runtime without `host_unregister` still drops every arena reference. The page-locked 4 MiB arena no
-  longer leaks per adapter. CPU lifecycle coverage lives in
-  `tests/test_unit_qwen35_gguf_mtp2_accept_staging.py` (registration failure, sticky-off, single registration,
-  unregister-on-close, failure-safe remaining cleanup, missing-unregister release, no re-registration). Both runner call
-  sites are teardown-only, so the latch cannot disable staging for a live session. Still neutral: this is
-  lifecycle hygiene, not a rate win.
-- Remove the fallback only if pipelining work makes the page-locked path load-bearing, or delete the staging
-  path too if the accept cycle is redesigned (route (b), `20260830T155541…`). Do not re-justify it as a speedup.
-
 ### All-GEMV small-row prefill A/B - measured verdict: GEMV is worse
 
 - Measured with `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL=0` against the shipping WMMA route, same protocol, widths

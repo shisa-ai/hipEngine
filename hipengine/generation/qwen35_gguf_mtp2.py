@@ -4757,9 +4757,11 @@ class Qwen35GGUFMTP2Adapter:
     def _accept_staging_backing(self, runtime: Any) -> Any:
         """Return the page-locked accept upload arena, registering it once.
 
-        ``None`` means staging is unavailable and callers keep the blocking pageable path.
-        Page-locking reuses the existing runtime capability (see
-        ``qwen35_gguf_runner.py:2651`` ``runtime.host_register``); no new core API.
+        ``None`` selects blocking pageable uploads when the runtime cannot
+        register host memory or registration fails under locked-memory pressure.
+        A registration failure is sticky for this adapter; a successful arena
+        is retained until close unregisters it. Both paths are supported parts
+        of the accept-upload contract, not competing numerical variants.
         """
         state = getattr(self, "_accept_staging_state", "uninit")
         if state == "off":
@@ -4822,15 +4824,13 @@ class Qwen35GGUFMTP2Adapter:
     ) -> bool:
         """Enqueue one accept upload from page-locked memory; False if it must stay blocking.
 
-        A blocking pageable host upload synchronizes the device once per call: measured
-        as 85.4-101.6 ms per lane-cycle, 96.5% of the accept window at C5-C8
-        (worklog 20260830T155357). Bytes are copied into a persistent registered arena
-        and released with ``memcpy_async`` on the same stream the device-to-device
-        accept copies already use. The accept window ends in the blocking D2H
-        ``_read_target_batch_accept``, which drains these enqueued copies before the
-        cycle returns, so a slot cannot still be in flight when the next cycle reuses
-        it. The source ``array`` is never referenced by the transfer, so the temporary
-        dying here is safe.
+        Each upload owns one bounded slot of the adapter's registered arena.
+        Oversized uploads or exhausted slots use the blocking pageable path.
+        Bytes are copied into the persistent arena before ``memcpy_async`` on
+        stream zero, so temporary metadata arrays may die as soon as this
+        method returns. The accept window ends in the blocking default-stream
+        D2H ``_read_target_batch_accept`` dependency, which drains these uploads
+        before the next cycle reuses the slots or close releases the arena.
         """
         array = np.ascontiguousarray(values)
         if array.nbytes > tensor.numel * tensor.dtype.itemsize:

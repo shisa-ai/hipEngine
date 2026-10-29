@@ -11523,8 +11523,8 @@
       "start_line": 8903,
       "end_line": 9152,
       "sha256": "1f2480b65d50febbffcdfa3544c7ec25bf90fb5b2fefaad9867a50facbae63f1",
-      "status": "partial-prefill-and-decode-selector-ownership-unified",
-      "evidence": ["Fixed remaining prefill owner gap: direct/shared streaming and fallback AR now use call-time resident resolver; remove duplicate public WMMA constant; reject explicit empty diagnostic values. Preserve shippingTrue, explicit per-call overrides, existing pool-key partition and dense speculative policy. RED6cases then190focused pass/1skip, CPU deterministic bundle bg-716, public gfx1151 startup unset/0/1 streaming selects effectiveTrue/False/True with two output tokens and zero live teardown; docs/audit/test-tier/whitespace pass. Live service slots retain startup choice rather than reconfigure on env mutation. Remaining R0393 subitems still open. Worklog worklog/entries/20261029T094616.035151Z-cleanup-refactor-r0393-prefill-selector-b49dd9.md.", "Consolidate eleven literalTrue GEMV session args behind existing unchangedTrue public default; preserve low-level raw/pack8 use, dense T16 row/layout selection, MoE safety and env/session/explicit precedence. RED owner test then213focused pass/1skip; AST parity after normalizing public name toTrue; public stream startup checks bg719, docs/audit/test-tier/whitespace pass. CPU deterministic bundle from preceding selector unit covers unchanged production behavior. Worklog worklog/entries/20261029T095842.571085Z-cleanup-refactor-r0393-decode-selector-b7eb77.md."],
+      "status": "partial-selectors-unified-and-pinned-staging-closed",
+      "evidence": ["Fixed remaining prefill owner gap: direct/shared streaming and fallback AR now use call-time resident resolver; remove duplicate public WMMA constant; reject explicit empty diagnostic values. Preserve shippingTrue, explicit per-call overrides, existing pool-key partition and dense speculative policy. RED6cases then190focused pass/1skip, CPU deterministic bundle bg-716, public gfx1151 startup unset/0/1 streaming selects effectiveTrue/False/True with two output tokens and zero live teardown; docs/audit/test-tier/whitespace pass. Live service slots retain startup choice rather than reconfigure on env mutation. Remaining R0393 subitems still open. Worklog worklog/entries/20261029T094616.035151Z-cleanup-refactor-r0393-prefill-selector-b49dd9.md.", "Consolidate eleven literalTrue GEMV session args behind existing unchangedTrue public default; preserve low-level raw/pack8 use, dense T16 row/layout selection, MoE safety and env/session/explicit precedence. RED owner test then213focused pass/1skip; AST parity after normalizing public name toTrue; public stream startup checks bg719, docs/audit/test-tier/whitespace pass. CPU deterministic bundle from preceding selector unit covers unchanged production behavior. Worklog worklog/entries/20261029T095842.571085Z-cleanup-refactor-r0393-decode-selector-b7eb77.md.", "Pinned accept staging is supported resource handling, not removable temporary debt: runtime registration/unregister lifecycle repaired already, and pageable upload remains necessary for absent/failing registration and slot/size limits. Actual enqueue tests bind staged/pageable bytes, retained source lifetime, stream0, no eager synchronization and single unregister across five resource cases;195focused pass. Real public physicalC2 MTP pinned/failure-injected registration requests verify paths/repeatIDs/teardown. Source docstrings own contract; stale staging subsection removed. Worklog worklog/entries/20261029T101049.238820Z-cleanup-refactor-r0393-accept-staging-945c0f.md."],
       "subitems": [
         {
           "line": 8905,
@@ -11554,27 +11554,27 @@
         {
           "line": 9045,
           "text": "### GGUF MTP accept pinned staging (kept, measured neutral)",
-          "status": "pending"
+          "status": "resolved-supported-resource-path-not-temporary-debt"
         },
         {
           "line": 9047,
           "text": "- `hipengine/generation/qwen35_gguf_mtp2.py::_accept_staging_backing` / `_upload_accept_array_staged` is",
-          "status": "pending"
+          "status": "resolved-actual-enqueue-pinned-and-pageable-paths-bound"
         },
         {
           "line": 9050,
           "text": "- Audit defect (2026-08-30): the fallback is not actually complete. `runtime.host_register(...)` exceptions",
-          "status": "pending"
+          "status": "resolved-existing-registration-failure-fallback-and-close-release"
         },
         {
           "line": 9055,
           "text": "- **Repaired 2026-08-31.** A failed `host_register` now selects the pageable path and latches the adapter",
-          "status": "pending"
+          "status": "resolved-existing-lifecycle-repair-tested"
         },
         {
           "line": 9065,
           "text": "- Remove the fallback only if pipelining work makes the page-locked path load-bearing, or delete the staging",
-          "status": "pending"
+          "status": "resolved-keep-pageable-resource-fallback-source-owns-contract"
         },
         {
           "line": 9068,

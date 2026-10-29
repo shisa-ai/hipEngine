@@ -2086,8 +2086,9 @@ def test_device_chain_oracle_trace_preserves_per_request_proposal_and_target_row
     )
 
 
+@pytest.mark.parametrize("staging", ("pinned", "registration-fails", "unsupported", "slot-too-small", "slots-exhausted"))
 def test_physical_accept_enqueue_keeps_candidate_and_target_ids_on_device(
-    monkeypatch,
+    monkeypatch, staging,
 ) -> None:
     draft = DraftBatch(
         request_ids=(10, 20),
@@ -2206,17 +2207,37 @@ def test_physical_accept_enqueue_keeps_candidate_and_target_ids_on_device(
         lambda *args, **kwargs: launches.append(args),
     )
 
+    from hipengine.core.hip import HipMemcpyKind
+
     class Runtime:
         def __init__(self) -> None:
             self.device_copies: list[tuple[int, int, int]] = []
+            self.host_copies: list[tuple[int, int, int]] = []
+            self.registrations = []
+            self.unregistrations = []
 
         def memcpy_async(self, dst, src, nbytes, kind, stream):
-            self.device_copies.append((int(dst), int(src), int(nbytes)))
+            assert stream == 0
+            copies = self.host_copies if kind == HipMemcpyKind.HOST_TO_DEVICE else self.device_copies
+            copies.append((int(dst), int(src), int(nbytes)))
 
         def device_synchronize(self):
             raise AssertionError("accept enqueue must not synchronize")
 
     runtime = Runtime()
+
+    def register(ptr, nbytes):
+        runtime.registrations.append((int(ptr), int(nbytes)))
+        if staging == "registration-fails":
+            raise RuntimeError("hipHostRegister failed")
+
+    if staging != "unsupported":
+        runtime.host_register = register
+        runtime.host_unregister = runtime.unregistrations.append
+    if staging == "slot-too-small":
+        adapter._ACCEPT_STAGING_SLOT_BYTES = 1
+    if staging == "slots-exhausted":
+        adapter._ACCEPT_STAGING_SLOTS = 1
 
     pending = adapter._enqueue_target_batch_accept(
         batch,
@@ -2233,8 +2254,35 @@ def test_physical_accept_enqueue_keeps_candidate_and_target_ids_on_device(
     assert {result.target_top1.ptr for result in results}.issubset(
         {src for _dst, src, _nbytes in runtime.device_copies}
     )
-    assert (buffers.token_ids.ptr, (100, 200)) in uploads
-    assert all(ptr != buffers.target_top1.ptr for ptr, _values in uploads)
+    expected = {
+        buffers.token_ids.ptr: (100, 200),
+        buffers.positions.ptr: tuple(batch.positions),
+        buffers.parent_rows.ptr: tuple(batch.parent_rows),
+        buffers.draft_depths.ptr: tuple(batch.draft_depths),
+        buffers.row_to_request.ptr: tuple(batch.row_to_request),
+        buffers.active_mask.ptr: tuple(int(value) for value in batch.active_mask),
+        remaining.ptr: (3, 3),
+    }
+    # Read retained host sources only after enqueue returns. The NumPy metadata
+    # temporaries have gone away; asynchronous copies must refer to the arena.
+    staged = {}
+    for dst, src, nbytes in runtime.host_copies:
+        dtype = np.uint8 if dst == buffers.active_mask.ptr else np.int32
+        staged[dst] = tuple(int(value) for value in np.frombuffer(ctypes.string_at(src, nbytes), dtype=dtype))
+    assert {**dict(uploads), **staged} == expected
+    assert not (set(dict(uploads)) & set(staged))
+    expected_staged = 7 if staging == "pinned" else 1 if staging == "slots-exhausted" else 0
+    assert len(runtime.host_copies) == expected_staged
+    assert len(uploads) == len(expected) - expected_staged
+    assert len(runtime.registrations) == (0 if staging == "unsupported" else 1)
+    arena = getattr(adapter, "_accept_staging_arena", None)
+    if arena is not None:
+        for _dst, src, nbytes in runtime.host_copies:
+            assert arena.ctypes.data <= src and src + nbytes <= arena.ctypes.data + arena.nbytes
+    adapter._release_accept_staging()
+    adapter._release_accept_staging()
+    assert runtime.unregistrations == ([] if arena is None else [arena.ctypes.data])
+    assert adapter._accept_staging_arena is None
 
 
 def test_physical_adapter_emits_one_gpu_accept_payload_for_the_group(
