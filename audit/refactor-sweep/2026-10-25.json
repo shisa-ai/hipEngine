@@ -11429,28 +11429,28 @@
       "start_line": 8728,
       "end_line": 8745,
       "sha256": "59bfa911f039276d57c0e2f547e53fe584d80d38915e8c523283e2386f591237",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-standalone-hidden-interface-ownership",
+      "evidence": ["Live dense suite and native-context/paired diagnostics still consume explicit hidden convention. Moved R0389 to bottom with constructor/CLI versus benchmark-adapter decision, stream/prompt/proposal/commit/cleanup clearing work; removed second-campaign prerequisite for running explicit implemented path. Distinguished standalone pre/post convention from public precision/provenance seed contract; no runtime/default/numerical change.332focused session/hidden-contract/MTP2/suite tests pass; suite help/docs/audit/worklog/whitespace pass. Worklog worklog/entries/20261029T082338.709275Z-cleanup-refactor-r0389-hidden-policy-33c893.md."],
       "subitems": [
         {
           "line": 8730,
           "text": "- **State:** immutable policy infrastructure retained; `post_output_norm`",
-          "status": "pending"
+          "status": "deferred-live-diagnostic-convention-interface"
         },
         {
           "line": 8732,
           "text": "- **Paths:** `Qwen35GGUFDraftHiddenPolicy` and the explicit",
-          "status": "pending"
+          "status": "deferred-caller-aware-interface-or-adapter-migration"
         },
         {
           "line": 8735,
           "text": "- **Why retained:** it is the request-owned single source of truth for prompt",
-          "status": "pending"
+          "status": "preserved-prompt-proposal-commit-and-chain-tap-contracts"
         },
         {
           "line": 8739,
           "text": "- **Removal trigger:** if no second model/conversion campaign consumes the",
-          "status": "pending"
+          "status": "replaced-campaign-absence-with-concrete-interface-decision"
         }
       ]
     },

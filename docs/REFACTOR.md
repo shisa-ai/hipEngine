@@ -3430,24 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF-OI4 — default-off post-norm draft-hidden diagnostic (2026-08-25)
-
-- **State:** immutable policy infrastructure retained; `post_output_norm`
-  rejected for Qwen3.8 promotion, `pre_output_norm` remains strict/default.
-- **Paths:** `Qwen35GGUFDraftHiddenPolicy` and the explicit
-  `draft_hidden_variant` decoder argument in `runtime/qwen35_gguf_mtp.py`, plus
-  `--draft-hidden-variant` in `scripts/qwen36_dense_gguf_suite.py`.
-- **Why retained:** it is the request-owned single source of truth for prompt
-  priming and steady target proposals, preserves strict target commit/rollback
-  ownership, prevents accidental double normalization, and enables future model
-  artifacts to test their declared convention without ad-hoc branches.
-- **Removal trigger:** if no second model/conversion campaign consumes the
-  manifest, move post-norm transformation into benchmark/test support and remove
-  the runtime candidate path. If a future model promotes post-norm, bind the
-  variant to that model/provider manifest and rerun full category, heldout,
-  long/lifecycle, and same-host economics gates; never select by prompt or live
-  acceptance.
-
 ## SPECDEC2 post-reject cooldown experiment (2026-08-29)
 
 - `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` (default off) forces a
@@ -11694,3 +11676,34 @@ every acceptance prefix, reset/failure/cleanup and a public fixed-budget
 request. A new timing-adaptive default needs its own declared policy and
 comparison against fixed budgets; this extraction does not change or promote
 one. Keep the named diagnostic controls until their owner is decided.
+
+### R0389 — Standalone draft-hidden diagnostic ownership
+
+`Qwen35GGUFDraftHiddenPolicy` and the dense suite's `--draft-hidden-variant`
+remain live. The standalone decoder defaults to pre-output-norm and can
+explicitly normalize both prompt chunks and proposal seeds once into owned
+buffers. Its manifest keeps target-commit hidden pre-output-norm and chained
+NextN hidden post-output-norm. These are different ownership points, not a
+single global model convention. The public NextN hidden-seed contract has its
+own precision/provenance rules; do not infer its behavior from the standalone
+policy's default.
+
+**Decision needed:** retain this supported diagnostic constructor/CLI interface
+or migrate the post-norm transform into a benchmark-owned adapter. No second
+model campaign is required to run an explicit implemented convention. Do not
+remove the manifest or let an explicit post-norm request silently use pre-norm.
+A public model/provider convention must bind its actual hidden contract,
+not select from prompt text or observed acceptance.
+
+**Clearing action:** migrate constructor, manifest/result metadata, prompt
+chunk transform, proposal normalization, stream retirement and owned-buffer
+cleanup together. Keep the target journal's commit/rollback tap unchanged.
+Run `tests/test_unit_qwen35_gguf_mtp_session.py`,
+`tests/test_unit_qwen35_gguf_hidden_seed_contract.py`,
+`tests/test_unit_qwen35_gguf_mtp2_seam.py` and
+`tests/test_unit_qwen36_dense_gguf_suite.py`; exercise both explicit taps in the
+dense suite, prompt chunks on both sides of the chunk bound and unrelated
+lengths, first/following proposals, repeat/reset, failed priming, cancellation
+and teardown. Verify the public fixed contract separately. A changed hidden
+convention is a numerical/policy change and needs its applicable task and
+execution-profile gate; this disposition changes neither convention nor API.
