@@ -12928,8 +12928,8 @@
       "start_line": 10567,
       "end_line": 10586,
       "sha256": "ae74f74c1ab7e0051a760d7ed5559876b9481665a333bbecd8843e96c1c2f6b5",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-neutral-timing-and-scoped-readback",
+      "evidence": ["Schema2 neutral submission/trailing-wait fields remove host_bound inference. Explicit compact resident-token stepping, exact-buffer scoped readback patch restored on errors, profile construction and generator cleanup.6 CPU regressions and real skip/readback diagnostics; worklog: worklog/entries/20261029T203821.686459Z-cleanup-refactor-r0445-a8b7cd.md."],
       "subitems": []
     },
     {
