@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare production and compact-activation Q6 selected-down caches."""
+"""Compare ordinary and compact Q6 activation caches with interleaved weights."""
 
 from __future__ import annotations
 
@@ -26,6 +26,18 @@ from scripts.laguna_target_ar_bench import (
     _load_prompts,
     _progress,
 )
+
+# These staging peers predate planar records and WMMA prefetch.
+_COMPARISON_POLICY = {
+    "q6_qmicro": True,
+    "q6_half_row_activation": False,
+    "q6_skip_padded_activation": False,
+    "q6_qmicro_planar": False,
+    "q6_qmicro_permute": False,
+    "q6_wmma_prefetch_weight": False,
+    "q6_wmma_prefetch_activation": False,
+    "q6_precomputed_activation_sums": False,
+}
 
 _MODES = {
     "production_activation_cache": False,
@@ -59,6 +71,7 @@ def _child_session(
         prefill_chunk_size=512,
         prefill_attention_chunk_size=128,
         q6_compact_activation=q6_compact_activation,
+        **_COMPARISON_POLICY,
     )
 
 
@@ -129,6 +142,7 @@ def main() -> int:
         model_sha256=DEFAULT_MODEL_SHA256,
         prefill_chunk_size=512,
         prefill_attention_chunk_size=128,
+        **_COMPARISON_POLICY,
     )
     try:
         for q6_compact_activation in _MODES.values():
@@ -205,6 +219,7 @@ def main() -> int:
             )
         ),
     }
+    result["comparison_policy"] = dict(_COMPARISON_POLICY)
     rendered = json.dumps(result, indent=2)
     print(rendered)
     if args.output is not None:

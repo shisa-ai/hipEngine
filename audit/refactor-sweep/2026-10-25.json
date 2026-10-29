@@ -9594,28 +9594,28 @@
       "start_line": 7287,
       "end_line": 7306,
       "sha256": "6399e224a08da24eaf5873f5ce8f835d573deac6edce3279300cb7a14222ee89",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-harness-repaired-bottom-primitive-migration",
+      "evidence": ["Reproduced real comparison-child prerequisite failures and repaired owner/child interleaved policy; explicitly hold later half-row/padded/permute/WMMA-prefetch/sums off and record policy in results. Host construction/main provenance tests and real primitive wrapper stub-launch checks cover all staging peers, pointers, streams and tile-neighbor/unrelated lanes. Runtime/defaults/kernels unchanged. Remaining selector/numerical-caller migration and unavailable local public model consolidated in bottom R0324–R0326."],
       "subitems": [
         {
           "line": 7289,
           "text": "- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_COMPACT_ACTIVATION` and the optional",
-          "status": "pending"
+          "status": "resolved-comparison-layout-and-later-prerequisites-repaired"
         },
         {
           "line": 7294,
           "text": "- The actual leaf improves **3.36%**, fifteen complete-state pp512 pairs",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7299,
           "text": "- Clean selector-unset publication is satisfied at",
-          "status": "pending"
+          "status": "resolved-historical-checkpoint-not-current-removal-gate"
         },
         {
           "line": 7303,
           "text": "- After both triggers pass, remove the public constructor override and the",
-          "status": "pending"
+          "status": "deferred-bottom-live-primitive-comparison-public-validation"
         }
       ]
     },
@@ -9625,28 +9625,28 @@
       "start_line": 7307,
       "end_line": 7323,
       "sha256": "6d6e4317ccbb235caffb605e0c494f22dae02811d3b16cb2c2212589b499700f",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-harness-repaired-bottom-primitive-migration",
+      "evidence": ["Half-row A/B owner/child explicitly share interleaved resident policy, hold later padded/permute/WMMA-prefetch/sums off and record comparison policy. RED/GREEN host tests bind executable constructor prerequisites, state/provenance, cleanup and real primitive wrapper dispatch. Runtime/defaults/kernels unchanged; remaining selector/caller/public validation in shared bottom R0324–R0326."],
       "subitems": [
         {
           "line": 7309,
           "text": "- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_HALF_ROW_ACTIVATION` and optional",
-          "status": "pending"
+          "status": "resolved-comparison-layout-and-later-prerequisites-repaired"
         },
         {
           "line": 7313,
           "text": "- The actual 23-layer screen improves **21/23** layers and",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7316,
           "text": "- Keep the rollback through clean selector-unset publication and one later",
-          "status": "pending"
+          "status": "deferred-bottom-live-primitive-comparison-public-validation"
         },
         {
           "line": 7319,
           "text": "- Clean selector-unset publication is satisfied at",
-          "status": "pending"
+          "status": "resolved-historical-checkpoint-not-current-removal-gate"
         }
       ]
     },
@@ -9656,28 +9656,28 @@
       "start_line": 7324,
       "end_line": 7341,
       "sha256": "c1175bd4ae4a1b3e73d5d9feb39ba4cec43795183f8ea4776699a6521a713757",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-harness-repaired-bottom-primitive-migration",
+      "evidence": ["Padded-row A/B owner/child explicitly share interleaved resident policy, hold later permute/WMMA-prefetch/sums off and record comparison policy. RED/GREEN host tests bind executable constructor prerequisites, state/provenance, cleanup and real primitive wrapper dispatch. Runtime/defaults/kernels unchanged; remaining selector/caller/public validation in shared bottom R0324–R0326."],
       "subitems": [
         {
           "line": 7326,
           "text": "- Added 2026-07-26 with gfx1151",
-          "status": "pending"
+          "status": "resolved-comparison-layout-and-later-prerequisites-repaired"
         },
         {
           "line": 7330,
           "text": "- The candidate skips only LDS stores and K16 sums for padded slots that the",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7334,
           "text": "- Keep the rollback through clean selector-unset publication and one later",
-          "status": "pending"
+          "status": "deferred-bottom-live-primitive-comparison-public-validation"
         },
         {
           "line": 7337,
           "text": "- Clean selector-unset publication is satisfied at",
-          "status": "pending"
+          "status": "resolved-historical-checkpoint-not-current-removal-gate"
         }
       ]
     },

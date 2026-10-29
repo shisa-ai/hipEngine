@@ -3430,61 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q6 compact-activation rollback
-
-- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_COMPACT_ACTIVATION` and the optional
-  `q6_compact_activation=False` resident-session rollback. The Q6-specific
-  activation cache omits unused Q8 sum metadata and stores its bounded K16
-  quant sums as int16, reducing LDS **5,632 -> 5,120 B** without changing
-  arithmetic or resident bytes.
-- The actual leaf improves **3.36%**, fifteen complete-state pp512 pairs
-  improve **550.584 -> 552.807 tok/s (+0.404%, 15/15 wins)**, and tracing
-  cuts Q6 **125.380 -> 119.566 ms (-4.64%)**. Keep the explicit rollback
-  through clean selector-unset publication and one later selected-down
-  checkpoint.
-- Clean selector-unset publication is satisfied at
-  **550.625/517.017/431.789 tok/s**, and the production trace records
-  **119.384 ms** Q6 plus **71.641 ms** Q4. The one-later-selected-down
-  checkpoint trigger remains open.
-- After both triggers pass, remove the public constructor override and the
-  one-purpose A/B harness. Retain the ordinary 48-byte activation cache only
-  where other Q4/Q6 template instantiations or unmeasured backends require it.
-
-## Laguna Q6 half-row activation rollback
-
-- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_HALF_ROW_ACTIVATION` and optional
-  `q6_half_row_activation=False` session rollback. It is constrained to the
-  qmicro/compact-cache/64-row/local128 Q6 body and changes only activation
-  staging ownership.
-- The actual 23-layer screen improves **21/23** layers and
-  **111.798 -> 111.490 ms (-0.276%)** with exact BF16 output. Complete pp512
-  A/B is exact and positive at **552.562 -> 553.018 tok/s (+0.083%)**.
-- Keep the rollback through clean selector-unset publication and one later
-  selected-down checkpoint. Then remove the public constructor override and
-  the one-purpose A/B harness while retaining the backend capability/default.
-- Clean selector-unset publication is satisfied at
-  **549.150/514.956/430.300 tok/s**; it is headline-neutral, while the clean
-  trace preserves the Q6 sub-window win at **119.384 -> 118.568 ms (-0.684%)**.
-  The one-later-selected-down checkpoint remains open.
-
-## Laguna Q6 padded-activation rollback
-
-- Added 2026-07-26 with gfx1151
-  `LAGUNA_Q6_SKIP_PADDED_ACTIVATION` and optional
-  `q6_skip_padded_activation=False` session rollback. It is constrained to
-  the exact qmicro/compact/half-row/64-row Q6 body.
-- The candidate skips only LDS stores and K16 sums for padded slots that the
-  guarded dot and output loops never consume. The actual 23-layer screen is
-  exact and improves **112.008 -> 111.806 ms (-0.180%, 19/23 layers)**;
-  complete pp512 is exact at **552.983 -> 553.559 tok/s (+0.104%)**.
-- Keep the rollback through clean selector-unset publication and one later
-  selected-down checkpoint. Then remove the constructor override and
-  one-purpose A/B harness while retaining the backend default.
-- Clean selector-unset publication is satisfied at
-  **551.459/517.307/432.099 tok/s**. The repeated 23-layer and complete-state
-  A/B evidence remains positive; the one-later-selected-down checkpoint is
-  still open.
-
 ## Laguna Q6 qmicro-permute rollback
 
 - Added 2026-07-26 with gfx1151 `LAGUNA_Q6_QMICRO_PERMUTE` and optional
@@ -10567,6 +10512,39 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0324 / R0325 / R0326 — Laguna Q6 activation comparison migration
+
+`q6_compact_activation`, `q6_half_row_activation` and
+`q6_skip_padded_activation` still own the three live staging comparisons in
+`scripts/laguna_q6_*activation_ab.py`. The current planar consumer requires
+all three; it cannot run the earlier ordinary/full-row/padded peers against
+planar resident bytes. Their scripts also inherited later activation-prefetch
+defaults that rejected an interleaved resident before kernel planning.
+
+The three harnesses now explicitly load and borrow interleaved qmicro weights,
+disable permute/WMMA-prefetch/precomputed sums, and record `comparison_policy`
+in results. Compact-cache comparison holds half-row and padding-elision off;
+half-row comparison holds padding-elision off. Owner and child use matching
+layout policy. Host tests reproduce the former construction failures, bind
+both arms and result provenance, and run the real Q6 primitive wrapper with
+stubbed launch symbols across tile-neighbor and unrelated lane counts.
+Production defaults, arithmetic and kernels are unchanged. Original July
+numbers remain in the pinned sweep source and immutable artifacts, not a
+new performance claim for these repaired comparisons.
+
+**Remaining work:** migrate constructor-level controls and numerical/A/B
+callers to explicit primitive ownership together. Do not delete these distinct
+comparison arms or registered fallback instantiations with the selectors.
+Public validation is blocked by the local Laguna model resource described in
+R0313–R0320; it is not an admission restriction.
+
+**Clearing action:** run Q6 activation-comparison, resident-layout, runner,
+selected-MMQ and full Q4/Q6 MoE oracles, then exercise each repaired harness
+and public `LLM.generate()` with an available Laguna artifact. Confirm
+matching resident/consumer layouts, selected defaults, exact outputs and
+cleanup before retiring the public overrides. Preserve the enabled backend
+capabilities and ordinary cache consumers needed by other quant/shape routes.
 
 ### R0323 — Laguna fused selected-SiLU pack comparison ownership
 
