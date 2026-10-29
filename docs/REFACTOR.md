@@ -3430,23 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` (diagnostic rejected)
-- Added 2026-07-02. Bench flag
-  `--resident-mtp-draft-selected-silu-down-fused`, draft-profile flag
-  `--selected-silu-down-fused`, and suite routes ending in `-siludown` route
-  selected MoE `silu(gate)*up` directly into a Q5_K selected-down GEMV.
-- Purpose: test a llama.cpp-shaped fused GLU/down idea without changing row
-  economy or draft precision. The fused kernel is bit-exact versus the existing
-  BF16 chain (`silu_mul_separate_out_bf16` + `gguf_q5_k_selected_gemv_bf16_bf16_out`).
-- Result: rejected by draft-chain profile before full-suite. It removes one
-  launch, but the fused Q5 body is slower: active router-row control
-  **5.973 ms/cycle kernel / 7.044 ms/cycle host** vs fused
-  **6.054 ms/cycle kernel / 7.206 ms/cycle host**; selected-down family
-  **0.325 -> 0.391 ms/cycle**.
-- Remove when: the next parity checkpoint no longer needs this negative evidence,
-  or if a different fused Q5 selected-down body replaces it and wins the draft
-  parent profile. Do not promote the flag as-is.
-
 ## `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING`
 - Added 2026-07-03. Default-off verifier diagnostic that seeds the target
   verifier F32 residual buffer from host-dequantized `token_embd.weight` rows
@@ -10895,6 +10878,37 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0304 — Legacy selected-SiLU/down comparison ownership
+
+The rejected `siludown` and `siludown-allsync` suite presets are removed.
+Explicit benchmark `--resident-mtp-draft-selected-silu-down-fused` and profiler
+`--selected-silu-down-fused` comparisons remain, as do the registered fused
+primitive and its independent fused/unfused numerical test in
+`tests/test_gpu_gguf_k_selected_pack8_dp4a_gemv.py`.
+`HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` is the captured
+construction control for these explicit comparisons. The original sweep source
+and unchanged July artifacts preserve the rejection history.
+
+`apply_moe_down_combine()` selects either separate BF16 SiLU then Q5 selected
+down, or the fused primitive that rounds the intermediate to BF16 internally.
+Both feed the same device-owned selected-order down output into routing-weighted
+shared-gate/residual combine and the final BF16-to-F32 cast. The legacy draft
+captures the selector at construction; it is separate from Generation-2 NextN.
+Omitted and negative benchmark options preserve inherited settings, as does
+omitting the profiler switch. No kernel, arithmetic or default changes here.
+
+**Decision needed:** keep the explicit diagnostic or migrate it into an
+owner-local legacy composite plan before removing its environment/CLI readers.
+Do not delete shared registered primitives or silently run an unfused control
+under a fused comparison label.
+
+**Clearing action:** migrate constructor capture, helper argument, benchmark/
+profiler cache/provenance and explicit CLI callers together. Run selected-down
+branch/marker/stream ownership and parser contracts, then the fused/unfused
+numerical comparison. A changed runtime route needs live legacy proposal,
+commit/reset and cleanup plus separate public NextN preservation. A new
+changed-arithmetic default needs its execution-profile gates.
 
 ### R0302 — Resident draft F32 router and shared-gate comparison ownership
 

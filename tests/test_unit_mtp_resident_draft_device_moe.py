@@ -116,5 +116,46 @@ def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired
     assert not any(hasattr(runner, name) for name in _LEGACY)
 
 
+@pytest.mark.parametrize("fused", [False, True])
+@pytest.mark.parametrize("stream", [0, 7])
+def test_selected_silu_down_comparison_keeps_device_owned_combine(monkeypatch, fused, stream):
+    calls = []
+    names = (
+        "silu_mul_separate_out_bf16", "gguf_q5_k_selected_gemv_bf16_bf16_out",
+        "gguf_q5_k_selected_silu_gemv_bf16_bf16_out", "f32_to_bf16",
+        "weighted_sum_shared_gate_combine_residual_out_bf16_f32w", "bf16_to_f32",
+    )
+    for name in names:
+        monkeypatch.setattr(draft, name, lambda *args, _name=name, **kwargs: calls.append((_name, args, kwargs)))
+    monkeypatch.setattr(draft, "copy_device_to_host", _fail)
+    runtime = object()
+    libs = {name: object() for name in ("silu_lib", "k_lib", "combine_lib", "cast_lib")}
+    markers = []
+    draft.apply_moe_down_combine(
+        gate_bf16_ptr=1, up_bf16_ptr=2, selected_ptr=3, routing_ptr=4,
+        shared_out_ptr=5, shared_gate_logit_ptr=6, residual_ptr=7,
+        down_exps_ptr=8, inter_bf16_ptr=9, down_out_bf16_ptr=10,
+        attended_bf16_ptr=11, shared_bf16_ptr=12, ffn_out_bf16_ptr=13,
+        ffn_out_f32_ptr=14, top_k=2, inter=256, hidden=64, num_experts=256,
+        runtime=runtime, stream=stream, stage_marker=markers.append,
+        selected_silu_down_fused=fused, **libs,
+    )
+    expected = ([
+        ("gguf_q5_k_selected_silu_gemv_bf16_bf16_out", (1, 2, 3, 8, 10, 2, 2, 256, 256, 64), libs["k_lib"]),
+    ] if fused else [
+        ("silu_mul_separate_out_bf16", (1, 2, 9, 2, 256), libs["silu_lib"]),
+        ("gguf_q5_k_selected_gemv_bf16_bf16_out", (9, 3, 8, 10, 2, 2, 256, 256, 64), libs["k_lib"]),
+    ]) + [
+        ("f32_to_bf16", (7, 11, 64), libs["cast_lib"]),
+        ("f32_to_bf16", (5, 12, 64), libs["cast_lib"]),
+        ("weighted_sum_shared_gate_combine_residual_out_bf16_f32w", (10, 4, 12, 6, 11, 13, 2, 64), libs["combine_lib"]),
+        ("bf16_to_f32", (13, 14, 64), libs["cast_lib"]),
+    ]
+    assert calls == [(name, args, {"stream": stream, "library": library, "runtime": runtime}) for name, args, library in expected]
+    assert markers == (["draft_run_moe_selected_silu_down_fused"] if fused else
+                       ["draft_run_moe_selected_silu", "draft_run_moe_selected_down"]) + [
+                           "draft_run_moe_combine_cast_inputs", "draft_run_moe_weighted_combine"]
+
+
 def test_constructor_has_no_retired_device_moe_selector():
     assert "HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE" not in inspect.getsource(draft.Qwen35GGUFResidentMTPDraftRunner.__post_init__)

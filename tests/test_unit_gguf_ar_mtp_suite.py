@@ -14,6 +14,20 @@ from scripts.gguf_mtp_category_bench import (
 )
 
 
+@pytest.mark.parametrize("suffix", ["", "-allsync"])
+def test_rejected_siludown_suite_aliases_are_absent(monkeypatch, tmp_path, capsys, suffix):
+    route = "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-siludown" + suffix
+    assert route not in suite.MTP_ROUTES
+    assert route not in suite.MTP_ROUTE_DEFAULT_BUDGETS
+    assert all("--resident-mtp-draft-selected-silu-down-fused" not in args for args in suite.MTP_ROUTES.values())
+    monkeypatch.setattr(sys, "argv", ["gguf_ar_mtp_suite.py", "--mtp-route", route, "--dry-run", "--raw-root", str(tmp_path)])
+    with pytest.raises(SystemExit) as excinfo:
+        suite.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_retired_gate_up_x8_suite_aliases_are_absent() -> None:
     assert not any("x8gateup" in name for name in suite.MTP_ROUTES)
     assert not any("x8gateup" in name for name in suite.MTP_ROUTE_DEFAULT_BUDGETS)
@@ -417,7 +431,7 @@ def test_compatibility_route_policy_is_fixed_b2_and_preserves_explicit_dimension
 
 
 @pytest.mark.parametrize("scope", ["smoke", "partial", "full"])
-@pytest.mark.parametrize("suffix", ["siludown", "draftdenseq8", "siludown-allsync"])
+@pytest.mark.parametrize("suffix", ["draftdenseq8"])
 def test_compatibility_aliases_record_only_effective_b2_and_refuse_mislabels(
     monkeypatch, tmp_path, capsys, scope, suffix,
 ):

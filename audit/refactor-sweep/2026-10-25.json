@@ -9044,28 +9044,28 @@
       "start_line": 6868,
       "end_line": 6884,
       "sha256": "272e29e32e4bbf375497fddc99447dd52f92a5e47076bc6ee6d7b3840dbc57ce",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-rejected-presets-removed-comparison-deferred",
+      "evidence": ["Removed rejected siludown and siludown-allsync suite presets; direct benchmark/profiler selection, shared registered fused/unfused primitives and independent numerical test remain. RED reproduces both alias-presence failures before removal. Characterized actual apply_moe_down_combine fused/unfused pointer/order/library/stream/marker behavior and identical combine ownership, with no host readback. Bound direct CLI positive/omitted/negative inherited semantics. Historical source and July artifacts unchanged. Remaining legacy composite-policy ownership moved to bottom R0304. Worklog: worklog/entries/20261029T011119.117185Z-cleanup-refactor-r0304-selected-silu-down-4f6b11.md."],
       "subitems": [
         {
           "line": 6869,
           "text": "- Added 2026-07-02. Bench flag",
-          "status": "pending"
+          "status": "partial-presets-removed-explicit-comparisons-preserved"
         },
         {
           "line": 6873,
           "text": "- Purpose: test a llama.cpp-shaped fused GLU/down idea without changing row",
-          "status": "pending"
+          "status": "resolved-branch-ownership-and-oracle-preserved"
         },
         {
           "line": 6876,
           "text": "- Result: rejected by draft-chain profile before full-suite. It removes one",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 6881,
           "text": "- Remove when: the next parity checkpoint no longer needs this negative evidence,",
-          "status": "pending"
+          "status": "deferred-bottom-R0304-composite-comparison-owner"
         }
       ]
     },

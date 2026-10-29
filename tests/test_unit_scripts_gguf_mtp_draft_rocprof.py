@@ -92,6 +92,29 @@ def test_draft_profiler_router_comparison_publishes_only_positive_request(monkey
     assert os.environ.get(name) == ("1" if enabled else ambient)
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("ambient", [None, "0", "1"])
+def test_draft_profiler_preserves_explicit_silu_down_comparison(monkeypatch, enabled, ambient):
+    name = "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
+    if ambient is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, ambient)
+
+    def child(args):
+        assert args.selected_silu_down_fused is enabled
+        profiler._apply_route_env(args)
+        return 0
+
+    monkeypatch.setattr(profiler, "_run_child", child)
+    argv = ["gguf_mtp_draft_rocprof.py", "--child"]
+    if enabled:
+        argv.append("--selected-silu-down-fused")
+    monkeypatch.setattr(sys, "argv", argv)
+    assert profiler.main() == 0
+    assert os.environ.get(name) == ("1" if enabled else ambient)
+
+
 @pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])
 @pytest.mark.parametrize("sync,event", [(False, False), (True, False), (False, True), (True, True)])
 def test_draft_profiler_reports_shared_dual_without_retired_env_reader(
