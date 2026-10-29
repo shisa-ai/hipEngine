@@ -11227,38 +11227,38 @@
       "start_line": 8545,
       "end_line": 8605,
       "sha256": "aee1016be0e7f60beb64a533661776802c3de7abc4b885fd6c7c53d4c97407c4",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-strict-staged-plan-control-migration",
+      "evidence": ["Staged long dense-linear route already package-default plain gfx1151 Q4KM; env and row-wise strict references remain live. Corrected stale blanket-rowwise runtime comment without execution change. Added15 host dispatcher cases at37/1023/1024/1025/1536 with unset/zero/one and row-wise/staged FFN call counts;87 host tests pass1skip3deselected; gate help/docs/audit/tier pass. Bottom R0382 names plan/strict registry/transaction/gate attribution migration and separates capability policy from per-artifact benchmark permission. Historical scalar zero-KL is not staged arithmetic validation. No runtime/default/arithmetic change or fresh GPU/perf claim. Worklog worklog/entries/20261029T070304.872563Z-cleanup-refactor-r0382-staged-long-b85977.md."],
       "subitems": [
         {
           "line": 8547,
           "text": "- Retained 2026-08-21 as the RF1 strict eager/oracle fallback in",
-          "status": "pending"
+          "status": "triaged-live-strict-reference-and-staged-default-bottom-r0382"
         },
         {
           "line": 8559,
           "text": "- Measured 2026-09-12: the flip is exactly at `start_position + rows == 1024`.",
-          "status": "pending"
+          "status": "triaged-live-strict-reference-and-staged-default-bottom-r0382"
         },
         {
           "line": 8570,
           "text": "- This is deliberately not the fast long-context route (direct cycle cost",
-          "status": "pending"
+          "status": "triaged-live-strict-reference-and-staged-default-bottom-r0382"
         },
         {
           "line": 8573,
           "text": "- The staged route is now the default for the measured artifact (2026-09-19):",
-          "status": "pending"
+          "status": "triaged-live-strict-reference-and-staged-default-bottom-r0382"
         },
         {
           "line": 8589,
           "text": "- Removal trigger: the gates have now qualified the staged linear route on the",
-          "status": "pending"
+          "status": "triaged-live-strict-reference-and-staged-default-bottom-r0382"
         },
         {
           "line": 8599,
           "text": "- Removal trigger: after RF2 context-bucketed split-K N1/N2 graphs are qualified",
-          "status": "pending"
+          "status": "triaged-live-strict-reference-and-staged-default-bottom-r0382"
         }
       ]
     },

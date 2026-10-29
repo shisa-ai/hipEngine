@@ -7431,15 +7431,13 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("prefused dense input norm requires a BF16 residual")
         if decode_row_scratches is not None and len(decode_row_scratches) != rows:
             raise ValueError("native decode row scratch count must match verifier rows")
-        # The staged linear-attention chain reassociates BF16 projections
-        # against scalar AR at the split-attention boundary (one BF16 ULP in the
-        # layer-46 output on the retained B3 fixture), so dense linear rows keep
-        # the row-wise c1 route at long context by default. Dense full-attention
-        # rows do not: their staged chain resolves the same split-K leaf and
-        # tiling the row-wise route uses, so they keep batched projections and a
-        # staged FFN across the boundary. ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG``
-        # admits the staged linear chain there for production-numerics
-        # evaluation; the row-wise route stays the registered strict fallback.
+        # Dense linear rows use staged projections/FFN above the split boundary
+        # when the backend policy selects them; other configurations and the
+        # explicit opt-out keep the scalar-AR reference. The original boundary
+        # fixture differed by one BF16 ULP, so the two chains remain distinct.
+        # Dense full-attention rows select their own staged split-K chain.
+        # HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG overrides selection in either
+        # direction without changing single-row decode.
         strict_long_rows = (
             rows > 1
             and not bool(self.weights.config.is_moe)

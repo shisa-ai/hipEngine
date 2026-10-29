@@ -1593,6 +1593,48 @@ def test_native_staged_linear_rows_long_is_env_gated(monkeypatch) -> None:
     assert [call[0] for call in calls] == ["scalar", "ffn"]
 
 
+@pytest.mark.parametrize("end_position", [37, 1023, 1024, 1025, 1536])
+@pytest.mark.parametrize("override", [None, "0", "1"])
+def test_native_staged_linear_default_and_control_cover_context_transition(
+    monkeypatch, end_position, override,
+) -> None:
+    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+    from hipengine.runtime import qwen35_gguf_runner as qgr
+
+    runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1151"
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(hidden_size=16, is_moe=False),
+        file_type_name="MOSTLY_Q4_K_M", artifact_preset_key=None,
+    )
+    runner.runtime = SimpleNamespace()
+    calls = []
+    def record(name):
+        def call(*args, **kwargs):
+            calls.append((name, kwargs))
+        return call
+    monkeypatch.setattr(runner, "_run_linear_attention_attn_chain_rows_exact", record("staged"))
+    monkeypatch.setattr(runner, "_run_linear_attention_attn_only", record("scalar"))
+    monkeypatch.setattr(runner, "_run_post_attention_ffn_rows", record("ffn"))
+    monkeypatch.setattr(qgr, "_use_gguf_full_attention_split_decode", lambda context: context >= 1024)
+    if override is None:
+        monkeypatch.delenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, raising=False)
+    else:
+        monkeypatch.setenv(qgr._GGUF_STAGED_LINEAR_ROWS_LONG_ENV, override)
+    runner._run_native_attention_bulk_ffn_layer_rows(
+        46, LINEAR_ATTENTION, 0x1000, 0x2000,
+        SimpleNamespace(attn_out=SimpleNamespace(ptr=0x5000)),
+        rows=4, decode_scratch=SimpleNamespace(), start_position=end_position - 4,
+    )
+    scalar = end_position >= 1024 and override == "0"
+    assert [name for name, _kwargs in calls] == (
+        ["scalar"] * 4 + ["ffn"] * 4 if scalar else ["staged", "ffn"]
+    )
+    assert [kwargs["rows"] for name, kwargs in calls if name == "ffn"] == (
+        [1] * 4 if scalar else [4]
+    )
+
+
 def test_native_staged_linear_rows_long_reads_the_backend_capability(monkeypatch) -> None:
     """The admission is a file-type default with an explicit env override.
 

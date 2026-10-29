@@ -3430,67 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Dense long split-K multi-row eager verifier row-wise strict dispatch
-
-- Retained 2026-08-21 as the RF1 strict eager/oracle fallback in
-  `Qwen35GGUFFullStackRunner._run_native_attention_bulk_ffn_layer_rows`
-  (`strict_long_rows`). When a dense (non-MoE) multi-row verifier batch is in
-  long split-K territory (`_use_gguf_full_attention_split_decode(start_position +
-  rows)`), each attention and FFN row routes through the registered c1/strict
-  dispatch while keeping the native split-K attention leaf, so selected
-  Conv/GDN state and BF16 K/V stay byte-exact. Retained short-context batched
-  staging is unchanged. Rationale: a real B3 full accept ending at 1024 crossed
-  a BF16 rounding boundary in the staged multi-row linear-attention/FFN output
-  versus scalar AR (layer 46 row 3, max abs 0.015625). The retained 13/13
-  transition packet and real crossing are in
-  `worklog/entries/20260821T052947.067917Z-gfx1151-mtp-rf1-boundary-4k-46c738.md`.
-- Measured 2026-09-12: the flip is exactly at `start_position + rows == 1024`.
-  `scripts/ud_mtp_ar_verify_numerics_gate.py` reports `max_abs_diff` 0.073-0.280
-  at 1021/1022/1023 and exactly `0.0` at 1024, 1536, 2048 and 4096, because the
-  per-row branch runs the same per-token kernels as `session.step`. **A
-  long-context run of that gate therefore reports zero KL for a reason that has
-  nothing to do with the multi-row arithmetic**: at 4096 it pooled 162 rows with
-  mean = p95 = p99 = max = `0.000e+00` and top-1 1.0000. Do not read a
-  long-context zero-KL result from this gate as a multi-row verifier pass, and do
-  not read it as a speed claim either — the retained per-row route is 44.7 s per
-  8 generated tokens and the long-graph alternative measured 0.9989x (see the RF2
-  entry above).
-- This is deliberately not the fast long-context route (direct cycle cost
-  0.4–1.6 s, 44.7 s per 8 generated tokens) and does not raise the 1023 graph
-  context cap.
-- The staged route is now the default for the measured artifact (2026-09-19):
-  the backend package capability
-  `GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES` (`mostly_q4_k_m` on
-  gfx1151) admits dense linear-attention rows above the split threshold, and
-  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` overrides it in either direction as
-  the rollback seam. The row-wise route in this entry stays registered as the
-  strict fallback for a preset-bound or unknown-manifest artifact, an unlisted
-  file type, gfx1100, and `=0`. The 2026-09-12 BF16 boundary that motivated the
-  blanket rule (layer 46, max abs 0.015625) does not reproduce on the current
-  dense Q4_K_M path: on the eager route
-  (`scripts/gguf_mtp_long_context_gate.py --disable-target-graph`, gfx1151,
-  Qwen3.8-27B Q4_K_M) every straddle case at 1,020-1,028, 3,528-3,532 and 8,192
-  is exact against the serial-exact teacher with `staged_chain_calls` 48 and
-  `row_wise_attn_calls` 0, the matched row-wise control is exact as well, and
-  the committed long-context task packet binds task, AR-id and eager-ownership
-  equality at a 4,096-token context.
-- Removal trigger: the gates have now qualified the staged linear route on the
-  admitted (backend, model, quant) cell, the capability default is the promoted
-  path, and `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` is a documented rollback.
-  Retire the env override and the
-  row-wise long-context branch together when the row-wise c1 route stops being
-  the registered strict fallback for an unlisted artifact - that is, when every
-  admitted artifact family has its own packet and the strict chain is reachable
-  through the registry rather than through this branch. A gate failure on a
-  newly admitted family means removing that family from the capability, not
-  restoring a default-off flag.
-- Removal trigger: after RF2 context-bucketed split-K N1/N2 graphs are qualified
-  and the eager long path becomes a non-authoritative fallback, re-evaluate
-  whether the row-wise serialization can be consolidated into the registered
-  strict chain. The strict eager/unfused fallback itself must remain per
-  `EXECUTION-PROFILES.md` invariant #8; only the duplicated per-row staging in
-  the eager verifier may be collapsed once RF2 changes ownership semantics.
-
 ## gfx1151 native full-attention prefill dynamic LDS overflows at large context
 
 - Found 2026-08-22 during RF1 long-context qualification:
@@ -11724,3 +11663,40 @@ of the context route boundary and unrelated lengths, repeated strict/candidate
 order, output/state comparison and teardown. Keep the package default and
 strict fallback during interface migration; any changed reduction default
 requires its execution-profile numerical/task gate.
+
+### R0382 — Long-context staged verifier and scalar-reference ownership
+
+Dense multi-row linear-attention verification uses the staged chain above the
+split boundary when `_gguf_staged_linear_rows_long_enabled()` selects it. The
+package default covers plain gfx1151 Q4_K_M;
+`HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` selects staged or scalar rows in either
+direction. Other current defaults use
+the scalar-AR reference. Short-context staging, single-row decode and staged
+full-attention rows have independent selection and must not be conflated with
+this linear-attention policy.
+
+The scalar branch runs attention and FFN once per row. A long-context numerical
+gate that takes that branch compares scalar arithmetic with itself; zero KL
+there does not certify staged multi-row arithmetic or speed. Historical
+boundary differences and the later staged-route repair are preserved in the
+original sweep source and immutable results. The old blanket-rowwise comment
+is corrected, not the execution policy.
+
+**Decision needed:** retain the explicit comparison or migrate the selector and
+row-wise orchestration into one caller-owned strict/staged plan. Keep the
+registered strict primitives and Conv/GDN/KV transaction ownership. Retiring the
+branch must not make strict requests silently use staged arithmetic. Review the
+existing artifact-derived default policy separately against capability-only
+product rules; do not perpetuate the old instruction that every runnable
+artifact needs its own benchmark packet. Arithmetic-default promotion and
+runtime capability remain separate contracts.
+
+**Clearing action:** migrate policy binding, strict registry chain, row-scratch
+views, initial snapshots, selected-state commit and gate route attribution
+together. Run `tests/test_live_gguf_native_spec_cycle.py` staged/strict routing
+nodes and `scripts/gguf_mtp_long_context_gate.py --help`. Before changing
+execution, exercise the gate with target graphs disabled and public generation
+at split-boundary straddles and unrelated contexts; assert staged/scalar call
+counts, full outputs/state, every acceptance prefix, reset/reuse, failure
+rollback and teardown. Native graph/submission economics remain separate work.
+This disposition changes no route, default, arithmetic or admission behavior.
