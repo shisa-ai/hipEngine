@@ -3430,20 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 SWA producer-value-tail diagnostic
-
-- Added 2026-07-30 as a separately registered exact mixed40 attention
-  primitive. Finished tail probability-producer waves copy the last 64
-  staged-V vectors on pair owners and the last 32 on singleton owners,
-  balancing the copy loop without changing attention arithmetic.
-- The 21x100 leaf improves **3.270%** at unchanged kernel resources, but seven
-  resident p512/d128 pairs reject standalone ownership at
-  **20.509962 -> 20.507264 tok/s (-0.01316%)**, only **4/7** wins.
-- Keep the symbol only through the current attention campaign for a compounded
-  producer/denominator/PV scheduling screen. Remove it, its wrapper, registry
-  key, leaf selector, and focused test call if no compound candidate uses it;
-  never make it the default independently.
-
 ## Laguna gfx1151 Q4T16 dual-interleaved expert production rollback
 
 - Originated 2026-07-30 as an unregistered exact leaf primitive and
@@ -10049,6 +10035,39 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0353 — SWA value-tail reference ownership
+
+The standalone mixed40 value-tail primitive remains a live leaf comparison.
+Its local512 and V-stage128 siblings are controls for later compound
+comparisons, and the shared kernel template still implements producer-wave
+staged-value tail copies. Deleting the wrapper/registry/leaf choices would
+break these references; the July conditional removal instruction is stale.
+Default production uses the later output-sharded/dense-ring route, not the
+standalone reference. No production default or kernel changes here.
+
+Host tests bind the four named leaf pairs, distinct wrapper symbols, spans and
+shape rejection. They also exposed leaf resource leaks: buffers were recorded
+only after every allocation succeeded, and timing created its second event
+before entering cleanup. The leaf now records each allocation immediately,
+releases the first event if second-event creation fails, and attempts outer
+cleanup after cache or second-event destruction errors. Synthetic equality and
+timing outputs in these tests are control-flow fixtures, not numerical or
+performance evidence.
+
+**Remaining work:** separate diagnostic-only instantiations/wrappers from the
+production build without removing the shared template or live predecessor
+oracles. Keep the generalized leaf harness and its parser/result readers until
+replacement comparisons select the same symbols. Historical standalone
+rejection remains in the pinned sweep source/artifacts, not a reason to disable
+compound implementations.
+
+**Clearing action:** run value-tail reference, SWA issue and KV attention host
+contracts. On ROCm, execute standalone/local512/V-stage128/dual-tail leaf pairs
+and primitive oracles, including allocation/event failure cleanup, then public
+`LLM.generate()` confirming the default compound route and full state/resource
+parity. Local ROCm/Laguna resources remain unavailable as recorded by
+R0340/R0273; these real numerical/public checks remain open.
 
 ### R0349–R0351 — Global exp/mixed32 diagnostic migration
 

@@ -10453,23 +10453,23 @@
       "start_line": 7933,
       "end_line": 7946,
       "sha256": "b19fccfe0adb06641d1b42f90d2c75ee86f288cfa88072dabdd8273c491f43c9",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-live-reference-preserved-leaf-cleanup-fixed-bottom-build-migration",
+      "evidence": ["Four standalone/local512/V-stage128/dual-tail leaf pairs and wrapper/registry/span contracts are live. RED4 exposed partial allocation and second timing event creation leaks; leaf-only cleanup repaired, no production/kernel change. Focused150 pass/11 HIP skips. Bottom R0353 owns diagnostic-only build separation and missing local ROCm/Laguna real numerical/public checks. Historical rejection preserved in pinned sweep source/artifacts; conditional no-compound-user removal is stale."],
       "subitems": [
         {
           "line": 7935,
           "text": "- Added 2026-07-30 as a separately registered exact mixed40 attention",
-          "status": "pending"
+          "status": "resolved-live-reference-and-wrapper-contract-bound"
         },
         {
           "line": 7939,
           "text": "- The 21x100 leaf improves **3.270%** at unchanged kernel resources, but seven",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7942,
           "text": "- Keep the symbol only through the current attention campaign for a compounded",
-          "status": "pending"
+          "status": "deferred-bottom-diagnostic-build-separation"
         }
       ]
     },

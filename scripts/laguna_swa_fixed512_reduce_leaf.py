@@ -135,8 +135,9 @@ def _tracked_status() -> list[str]:
 
 def _time_ms(runtime, fn, burst: int) -> float:
     start = runtime.event_create()
-    stop = runtime.event_create()
+    stop = None
     try:
+        stop = runtime.event_create()
         runtime.event_record(start)
         for _ in range(burst):
             fn()
@@ -144,8 +145,11 @@ def _time_ms(runtime, fn, burst: int) -> float:
         runtime.event_synchronize(stop)
         return float(runtime.event_elapsed_time_ms(start, stop)) / burst
     finally:
-        runtime.event_destroy(stop)
-        runtime.event_destroy(start)
+        try:
+            if stop is not None:
+                runtime.event_destroy(stop)
+        finally:
+            runtime.event_destroy(start)
 
 
 def _download(runtime, buffer, dtype) -> np.ndarray:
@@ -204,31 +208,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     query = rng.normal(0.0, 0.12, size=(Q_HEADS, HEAD_DIM)).astype(np.float32)
     gate = rng.normal(0.0, 0.4, size=Q_HEADS).astype(np.float32)
     allocations = []
+
+    def allocate(nbytes):
+        buffer = malloc(nbytes, runtime=runtime)
+        allocations.append(buffer)
+        return buffer
+
     try:
-        key_device = malloc(keys.nbytes, runtime=runtime)
-        value_device = malloc(values.nbytes, runtime=runtime)
-        query_device = malloc(query.nbytes, runtime=runtime)
-        gate_device = malloc(gate.nbytes, runtime=runtime)
-        control_context = malloc(query.nbytes, runtime=runtime)
-        candidate_context = malloc(query.nbytes, runtime=runtime)
-        control_gated = malloc(query.size * 2, runtime=runtime)
-        candidate_gated = malloc(query.size * 2, runtime=runtime)
-        score_scratch = malloc(Q_HEADS * CAPACITY * 4, runtime=runtime)
-        physical_scratch = malloc(Q_HEADS * CAPACITY * 4, runtime=runtime)
-        allocations.extend(
-            (
-                key_device,
-                value_device,
-                query_device,
-                gate_device,
-                control_context,
-                candidate_context,
-                control_gated,
-                candidate_gated,
-                score_scratch,
-                physical_scratch,
-            )
-        )
+        key_device = allocate(keys.nbytes)
+        value_device = allocate(values.nbytes)
+        query_device = allocate(query.nbytes)
+        gate_device = allocate(gate.nbytes)
+        control_context = allocate(query.nbytes)
+        candidate_context = allocate(query.nbytes)
+        control_gated = allocate(query.size * 2)
+        candidate_gated = allocate(query.size * 2)
+        score_scratch = allocate(Q_HEADS * CAPACITY * 4)
+        physical_scratch = allocate(Q_HEADS * CAPACITY * 4)
         for device, host in (
             (key_device, keys),
             (value_device, values),
@@ -508,9 +504,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         }
         return result
     finally:
-        cache.free()
-        for allocation in reversed(allocations):
-            free(allocation, runtime=runtime)
+        try:
+            cache.free()
+        finally:
+            for allocation in reversed(allocations):
+                free(allocation, runtime=runtime)
 
 
 def main() -> int:
