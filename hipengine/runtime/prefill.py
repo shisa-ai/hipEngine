@@ -107,21 +107,18 @@ def resolve_prefill_config_for_sequence(
     Callers must not rewrite the returned config afterwards; the recorded
     ``tuning["chunk_sizes"]`` always describes the config this call returned.
 
-    Precedence is per field, highest first:
+    Any explicit non-zero chunk field makes the incoming config authoritative;
+    it is returned unchanged. Disabling auto-tuning also returns it unchanged.
+    Otherwise automatic policies apply in descending precedence:
 
-    1. an explicit non-zero field on the incoming ``config`` (a manual
-       override, e.g. ``--prefill-linear-chunk-size``),
-    2. ``geometry_chunk_sizes`` - a model+quant keyed measurement from the
-       backend package (``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY``),
-    3. the architecture profile (``_ARCH_CHUNK_PROFILES[target_arch]``),
-    4. the shape/memory policy: the retained 1024/4096 policy for prompts above
-       1K, the 52K-class 1024-row full-attention query reduction on 24GB-class
-       cards, and 768-token chunks for 128K-class and longer prompts.
+    1. ``geometry_chunk_sizes`` from the backend package
+       (``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY``),
+    2. the architecture profile (``_ARCH_CHUNK_PROFILES[target_arch]``),
+    3. the shape/memory policy for the remaining fields.
 
-    Layers 2 and 3 set only ``linear_chunk_size`` and ``moe_chunk_size``. A
-    manual field is never overridden, and the remaining fields still receive
-    the shape/memory policy, so a manual linear size no longer suppresses the
-    long-context scratch-headroom policy.
+    Geometry and architecture policies set only ``linear_chunk_size`` and
+    ``moe_chunk_size``. Manual configurations do not receive automatic
+    long-context scratch-headroom adjustments on their unset fields.
     """
 
     max_sequence = int(max_sequence_length)
@@ -201,10 +198,8 @@ def resolve_prefill_config_for_sequence(
                 "full_attn_post_chunk_size": _PREFILL_FULL_ATTN_POST_CHUNK,
                 "full_attn_rope_chunk_size": _PREFILL_FULL_ATTN_ROPE_CHUNK,
             }
-        # The shape/memory policy is the lowest layer, so it also honors manual
-        # fields: a manual linear size must not suppress the long-context
-        # full-attention scratch-headroom reduction on the fields the caller
-        # left unset.
+        # Manual configs returned above; apply the automatic shape/memory
+        # baseline before architecture and geometry overrides.
         base = _apply_chunk_policy(config, shape_policy, manual_fields=manual_fields)
         tuning.update(
             {

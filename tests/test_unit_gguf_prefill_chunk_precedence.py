@@ -11,8 +11,9 @@ session applied ``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY`` in its constructor
   ran 512/512.
 
 The contract these tests pin down: the resolver is the single owner of the final
-sizes, precedence is per field (manual > geometry > arch > shape/memory), and the
-recorded ``chunk_sizes`` always describes the config the call returned.
+sizes. A manual config is returned unchanged; automatic configs apply geometry
+before architecture before shape/memory policy. The recorded ``chunk_sizes``
+always describes the config the call returned.
 """
 
 from __future__ import annotations

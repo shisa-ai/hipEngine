@@ -12727,38 +12727,38 @@
       "start_line": 10415,
       "end_line": 10430,
       "sha256": "39be24e2f9cf1b0c41816845b0feb88b84dbccc46edf0d3a8620a0b08c10c826",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-architecture-geometry-policy",
+      "evidence": ["PARO supplies architecture without geometry; GGUF supplies backend geometry. Preserve defaults; bottom records policy and migration decision. Correct stale per-field manual prose to implemented whole-config contract.75 focused tests pass,1 superseded skip. Worklog: worklog/entries/20261029T195712.777984Z-cleanup-refactor-r0439-258d7d.md."],
       "subitems": [
         {
           "line": 10417,
           "text": "- The H2048-MoE chunk *value* is settled: the geometry policy is now",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10421,
           "text": "- What remains is the arch layer. `_ARCH_CHUNK_PROFILES[\"gfx1151\"]` is",
-          "status": "pending"
+          "status": "deferred-geometry-aware-fallback-policy"
         },
         {
           "line": 10423,
           "text": "  - H5120 dense: right, 398.6 vs 387.7 tok/s at 1024;",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10424,
           "text": "  - H2048-MoE: wrong, 1363.7 tok/s, the worst of five values measured.",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10425,
           "text": "- The H2048-MoE geometry entry only shields the GGUF lane from that profile. The",
-          "status": "pending"
+          "status": "resolved-source-consumer-inventory"
         },
         {
           "line": 10427,
           "text": "- Removal condition: key the arch profile by geometry, or fold the measured",
-          "status": "pending"
+          "status": "deferred-shared-policy-migration"
         }
       ]
     },

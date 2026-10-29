@@ -3427,22 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## The gfx1151 arch chunk profile is geometry-blind (2026-10-03)
-
-- The H2048-MoE chunk *value* is settled: the geometry policy is now
-  `(1024, 1024)`, bit-exact against the 512 it replaced and +1.4% prefill at
-  4K. See
-  `worklog/entries/20261003T100200.274738Z-lhl-gfx1151-h2048moe-prefill-chunk-1024-promoted-d001da`.
-- What remains is the arch layer. `_ARCH_CHUNK_PROFILES["gfx1151"]` is
-  `(256, 256)` and is applied without regard to model geometry:
-  - H5120 dense: right, 398.6 vs 387.7 tok/s at 1024;
-  - H2048-MoE: wrong, 1363.7 tok/s, the worst of five values measured.
-- The H2048-MoE geometry entry only shields the GGUF lane from that profile. The
-  PARO 35B-A3B lane has the same geometry and is likely running 256.
-- Removal condition: key the arch profile by geometry, or fold the measured
-  per-geometry values into the geometry layer and drop the arch layer for
-  gfx1151, **after** measuring the PARO H2048-MoE path. Then delete this entry.
-
 ## Direct `Qwen35GGUFResidentSession` construction is not the shipping AR route (2026-10-03)
 
 - `use_wmma_prefill` and `use_gemv_decode` default to `False` at the session
@@ -10810,3 +10794,27 @@ profile selection is independent and must not change as a side effect.
 
 Source review and CLI validation:
 `../worklog/entries/20261029T195224.685777Z-cleanup-refactor-r0438-1c85f6.md`.
+
+### R0439 — Architecture chunk fallback ownership
+
+Automatic gfx1151 prefill still has a `(256, 256)` architecture fallback.
+GGUF passes its backend geometry policy into the common resolver; the PARO
+resolver call supplies architecture but no geometry tuple. A non-zero manual
+chunk field preserves the entire caller config, and disabled auto-tuning also
+bypasses these policies. Otherwise geometry overrides architecture, which
+overrides the shape/memory baseline. Reporting comes from the same resolver.
+
+**Deferred policy decision:** make the architecture fallback geometry-aware or
+move its supported shapes into backend-owned policies shared by the applicable
+runners. Do not copy GGUF's quant-specific setting into PARO based only on hidden
+size, or remove the fallback without defining unknown-geometry behavior.
+Declare the proposed geometry/quant contract, compare PARO prefill on the same
+host with explicit chunk overrides, then migrate both consumers without
+changing manual-config precedence. Run chunk-precedence, GGUF prefill-plan and
+row-cap tests, plus public generation on the affected GGUF and PARO paths.
+Check short, chunk-boundary and long inputs and reported versus executed sizes.
+Numerical or performance claims require the corresponding profile/benchmark
+checks; missing measurements do not prevent explicit evaluation.
+
+Current-source review and documentation correction:
+`../worklog/entries/20261029T195712.777984Z-cleanup-refactor-r0439-258d7d.md`.
