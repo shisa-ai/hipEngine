@@ -3427,47 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Full-attention context leaf: QK unroll depth selector
-
-`hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans`
-(`hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip`) selects a QK
-unroll depth by an integer `variant` argument, so the microbench can compare
-depths in one session without adding one exported symbol per depth:
-
-| variant | QK tokens | addressing |
-| --- | ---: | --- |
-| 0 | 2 | per-token int32 offset table |
-| 1 | 4 | per-token int32 offset table |
-| 2 | 4 | per-token int64 offset table |
-
-Nothing in `hipengine/` dispatches to it; only
-`scripts/qwen4exp_fullattn_prefill_microbench.py` and the worklog entries for this
-campaign call it.
-
-Removal trigger: the unroll depth stops being a live tuning axis - for example
-once the leaf's per-token offset table itself is replaced - at which point this
-symbol, its Python wrapper, its `__init__` export, and the microbench
-`--qk-variants` path all go away.
-
-## Full-attention context leaf: rejected per-block base table
-
-Do not re-attempt compressing the per-token offset table. Replacing it with one
-int64 element offset per logical block, rebuilt in-loop from an incrementally
-tracked (block, offset-in-block) pair, cuts the shared-memory request from 18,471
-to 10,423 bytes and doubles residency from 3 to 6 blocks per CU, and measured
-**1.41x slower** (40.38 ms against 28.59 ms) on the p4096 prefill launch.
-
-The reason is that the table is not overhead but a precomputed address stream:
-reading the next address from shared memory lets the hardware issue independent
-loads, whereas the incremental tracker puts the address on a serial recurrence
-every load depends on. The same effect explains the int64 variant's 1.38x
-regression at only one fewer block per CU.
-
-An earlier revision of this ledger listed this as the next lever to implement; it
-was implemented, measured, and rejected. The kernel now carries a comment at the
-precompute loop recording why the table is per-token. Full measurements are in
-the campaign worklog entry and `benchmarks/results/`.
-
 ## GR up-projection: unregistered LDS-staged f32 prototype
 
 `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_gr_staged_f32.{hip,py}` is a
@@ -11000,3 +10959,27 @@ it calls the reference directly and is not made obsolete by removing the switch.
 
 Current-source consumer review and CPU route checks:
 `../worklog/entries/20261029T185354.280363Z-cleanup-refactor-r0427-fixed256-f9d7e7.md`.
+
+### R0428 — Full-attention unroll comparison interface
+
+`qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans`
+is a diagnostic wrapper, not a production dispatch route. Its caller is
+`scripts/qwen4exp_fullattn_prefill_microbench.py --replay <capture.npz>
+--qk-variants 0,1,2`. The selector compares two-token/int32,
+four-token/int32 and four-token/int64 address-table variants. The script
+rejects `--qk-variants` without a replay rather than silently ignoring it;
+help and argument validation do not require a HIP runtime.
+
+**Deferred decision:** retain this comparison interface or retire its replay
+arms. If retiring it, remove the experimental HIP export, Python wrapper,
+package export and `--qk-variants` handling together. Preserve the promoted
+launcher and its shared kernel template, and the fixed256 consumers recorded
+in R0427. Run the CLI regressions and promoted-route GPU parity tests after
+removal; historical captures and measurements remain evidence, not callers.
+
+R0429's rejected per-block table is already removed from the implementation.
+Its rejection and rationale belong to
+`../worklog/entries/20260928T155352.726337Z-lhl-qwen4exp-fullattn-qk4-promoted-6575b7.md`
+and the source comment at the per-token offset precompute loop, not an open
+cleanup item. Current review and command-contract checks:
+`../worklog/entries/20261029T185840.489411Z-cleanup-refactor-r0428-r0429-7e8f0a.md`.

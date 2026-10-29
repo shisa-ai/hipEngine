@@ -35,8 +35,6 @@ if str(REPO_ROOT) not in sys.path:
 
 import numpy as np
 
-ctypes.CDLL("libamdhip64.so")
-
 from hipengine.core.device import Device
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import (
@@ -205,12 +203,15 @@ def main() -> int:
                    help="KV capacities to try on the promoted route; 'auto' uses "
                         "the captured cache size, 0 forces the int64 fallback")
     p.add_argument("--qk-variants", default="",
-                   help="comma-separated QK unroll experiment ids (0=2-token "
+                   help="comma-separated replay-only QK unroll experiment ids (0=2-token "
                         "int32, 1=4-token int32, 2=4-token int64)")
     p.add_argument("--repetitions", type=int, default=30)
     p.add_argument("--warmup", type=int, default=5)
     args = p.parse_args()
+    if args.qk_variants and not args.replay:
+        p.error("--qk-variants requires --replay")
 
+    ctypes.CDLL("libamdhip64.so")
     rows = args.rows
     max_ctx = args.max_context if args.max_context is not None else args.context
     blen = (max_ctx + BS - 1) // BS

@@ -12393,33 +12393,33 @@
       "start_line": 10065,
       "end_line": 10086,
       "sha256": "6cf39cbf48fce7befad8e839ca86f2e22fa24957f4f4c5ede9b93625bb528d50",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-cli-deferred-diagnostic-retirement",
+      "evidence": ["Replay-only diagnostic selector remains live. Fix CPU-only help and reject ignored --qk-variants without --replay; RED/GREEN CLI tests. Move retention decision to bottom. Worklog: worklog/entries/20261029T185840.489411Z-cleanup-refactor-r0428-r0429-7e8f0a.md."],
       "subitems": [
         {
           "line": 10072,
           "text": "| variant | QK tokens | addressing |",
-          "status": "pending"
+          "status": "triaged-diagnostic-interface"
         },
         {
           "line": 10073,
           "text": "| --- | ---: | --- |",
-          "status": "pending"
+          "status": "triaged-diagnostic-interface"
         },
         {
           "line": 10074,
           "text": "| 0 | 2 | per-token int32 offset table |",
-          "status": "pending"
+          "status": "triaged-diagnostic-interface"
         },
         {
           "line": 10075,
           "text": "| 1 | 4 | per-token int32 offset table |",
-          "status": "pending"
+          "status": "triaged-diagnostic-interface"
         },
         {
           "line": 10076,
           "text": "| 2 | 4 | per-token int64 offset table |",
-          "status": "pending"
+          "status": "triaged-diagnostic-interface"
         }
       ]
     },
@@ -12429,8 +12429,8 @@
       "start_line": 10087,
       "end_line": 10105,
       "sha256": "0b0344212fc4f4692777226bad500315b21b23c37588fd317f6eeca9c0ac53ea",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-historical-rejection-removed",
+      "evidence": ["Rejected BLOCK_BASE_TABLE implementation already removed; rationale remains in source and worklog/entries/20260928T155352.726337Z-lhl-qwen4exp-fullattn-qk4-promoted-6575b7.md. Review: worklog/entries/20261029T185840.489411Z-cleanup-refactor-r0428-r0429-7e8f0a.md."],
       "subitems": []
     },
     {
