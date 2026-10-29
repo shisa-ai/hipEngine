@@ -9765,38 +9765,38 @@
       "start_line": 7397,
       "end_line": 7430,
       "sha256": "a2d57adb103a9b3511befd77eefcf70910c87496173d8aa38448fd19fc4e731f",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-bottom-primitive-reference-owner-migration",
+      "evidence": ["131 focused host checks pass, including real wrapper integer/hoist/default reference symbol selection at 63/64/65/193 rows, raw pointer/stream forwarding and prerequisite errors before build/runtime. qmicro leaf is generalized across layouts/staging/WMMA/prefetch/sums with distinct outputs/mismatch checks, not deletable one-purpose code. Bottom R0330 owns production/reference separation plus actual-weight/public local-model validation. Runtime/defaults/kernels unchanged; historical evidence preserved."],
       "subitems": [
         {
           "line": 7399,
           "text": "- Added 2026-07-26 as the optional `integer_wmma` wrapper argument and matching",
-          "status": "pending"
+          "status": "resolved-current-reference-symbol-and-prerequisite-contracts-bound"
         },
         {
           "line": 7403,
           "text": "- The CPU-reference gate and actual layer-1 leaf are BF16-byte exact. Twenty-one",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7406,
           "text": "- Keep the explicit comparator through clean selector-unset publication and",
-          "status": "pending"
+          "status": "deferred-bottom-generalized-leaf-reference-owner-migration"
         },
         {
           "line": 7411,
           "text": "- Clean selector-unset publication is satisfied at",
-          "status": "pending"
+          "status": "resolved-historical-checkpoint-not-current-removal-gate"
         },
         {
           "line": 7417,
           "text": "- The immediately queued activation-fragment hoist is also admitted at the",
-          "status": "pending"
+          "status": "deferred-bottom-hoist-reference-owner-migration-history-preserved"
         },
         {
           "line": 7426,
           "text": "- The refreshed family trace is now satisfied: the 115-call Q6 window improves",
-          "status": "pending"
+          "status": "resolved-historical-trace-not-current-blocker"
         }
       ]
     },

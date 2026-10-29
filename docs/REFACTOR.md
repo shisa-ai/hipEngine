@@ -3430,40 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q6 selected-down integer-WMMA leaf selector
-
-- Added 2026-07-26 as the optional `integer_wmma` wrapper argument and matching
-  actual-weight leaf A/B mode. An unspecified value selects integer WMMA only
-  for the already-constrained planar-qmicro/compact/half-row/skip-padded
-  row64 path; `False` preserves the packed-dot comparator.
-- The CPU-reference gate and actual layer-1 leaf are BF16-byte exact. Twenty-one
-  counter-rotated natural-M512 pairs improve **4.7654 -> 4.5655 ms (-4.20%,
-  21/21 wins)** with zero resident-byte change.
-- Keep the explicit comparator through clean selector-unset publication and
-  one refreshed selected-down family trace. Then remove the one-purpose leaf
-  A/B mode and make the admitted production specialization unconditional
-  inside the planar-row64 wrapper while retaining packed-dot bodies for all
-  other template shapes and unmeasured backends.
-- Clean selector-unset publication is satisfied at
-  **576.137/543.213/459.054 tok/s**, improving every preceding production
-  length with deterministic tokens, exact positions, and complete allocation
-  return. The refreshed trace cuts selected down
-  **189.049 -> 181.583 ms (-3.95%)** and the 115-call Q6 window
-  **1,124.852 -> 792.625 ms (-29.54%)**.
-- The immediately queued activation-fragment hoist is also admitted at the
-  leaf gate: **4.5645 -> 4.5126 ms (-1.136%, 20/21 wins)**, zero BF16
-  mismatches, and unchanged local128/VGPR96/LDS5120B/scratch0 resources.
-  Clean selector-unset publication is satisfied at
-  **577.396/545.366/459.716 tok/s**, improving every required length. Keep
-  `wmma_hoist_activation=False` only through one refreshed family trace. Then
-  remove both one-purpose
-  wrapper selectors and collapse the admitted hoisted specialization into the
-  unconditional planar-row64 gfx1151 production route.
-- The refreshed family trace is now satisfied: the 115-call Q6 window improves
-  **792.625 -> 779.709 ms (-1.63%)** with unchanged resources. Selector
-  collapse is unblocked and should accompany the next accepted Q6 body or the
-  post-campaign cleanup, whichever comes first.
-
 ## Laguna Q6 WMMA weight-prefetch rollback
 
 - Added 2026-07-27 as gfx1151
@@ -10457,6 +10423,36 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0330 — Laguna Q6 integer-WMMA reference ownership
+
+`integer_wmma` and `wmma_hoist_activation` are primitive wrapper controls, not
+session flags. Unset values select integer WMMA for planar qmicro and then
+activation hoist; explicit false values still select distinct packed-dot and
+unhoisted references. Later prefetch/sum specializations depend on this chain.
+The wrapper rejects incompatible combinations before compiler/runtime access.
+
+`scripts/laguna_q6_qmicro_leaf.py` is a generalized comparison, not a one-purpose
+integer-WMMA harness: it owns legacy/interleaved/planar residents, ordinary/
+compact/half-row/padded staging, permute, WMMA, hoist, both prefetch stages and
+precomputed sums, with separate outputs and mismatch checks. Do not delete it
+with these two selector names. Host tests bind current default/reference symbols,
+raw pointer/stream ownership across 63/64/65/193 rows and prerequisite failures.
+Historical publication/trace evidence remains in the pinned sweep source and
+original artifacts, not an outstanding checkpoint or a new measurement here.
+
+**Remaining work:** separate production specialization from explicit reference
+ownership across the shared wrapper and generalized leaf before collapsing
+controls. Preserve packed-dot/non-planar bodies and the numerical comparisons.
+Actual-weight/full-model validation shares the local Laguna artifact resource
+blocker recorded in R0313–R0320.
+
+**Clearing action:** migrate reference entry points and leaf callers together;
+run WMMA reference-control, activation/layout comparison and full Q6 primitive
+oracles, then the actual-weight generalized leaf and public `LLM.generate()`.
+Confirm default symbol, byte-layout agreement, exact outputs and cleanup.
+Changed arithmetic requires its execution-profile gate; preserve historical
+result readers when retiring mode labels.
 
 ### R0329 — Laguna source-F16 boundary comparison ownership
 
