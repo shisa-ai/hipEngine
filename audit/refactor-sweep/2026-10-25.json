@@ -10897,23 +10897,23 @@
       "start_line": 8217,
       "end_line": 8232,
       "sha256": "9bbb7536ef659ff53c3fc603872e3367bf0bf6c37b019422c5eda29514b5d4a5",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-exact-teacher-plan-ownership",
+      "evidence": ["Live constructor rollback/default package policy and exact-teacher/leaf consumers preserved; temporary setter/profiler option already absent. Bottom R0367 records explicit kernel-plan ownership decision and clearing commands. Host route checks span singleton/2/17 input rows and ordinary/paired residents; constructor default/explicit values and distinct exact/halfdot leaf operand sharing covered. RED3 partial-allocation leaks fixed in interleaved leaf; shared upload and timing helpers release on copy/second-event/destroy failures. No kernel/runtime/default/arithmetic change. Worklog worklog/entries/20261029T051941.870930Z-cleanup-refactor-r0367-halfdot-655c78.md."],
       "subitems": [
         {
           "line": 8219,
           "text": "- Added 2026-07-31 as constructor override",
-          "status": "pending"
+          "status": "triaged-live-rollback-preserved-and-decision-moved-bottom"
         },
         {
           "line": 8223,
           "text": "- The quality-gated candidate improves the actual layer-1 leaf",
-          "status": "pending"
+          "status": "triaged-live-rollback-preserved-and-decision-moved-bottom"
         },
         {
           "line": 8227,
           "text": "- The temporary session setter and comparison CLI are removed after",
-          "status": "pending"
+          "status": "triaged-live-rollback-preserved-and-decision-moved-bottom"
         }
       ]
     },

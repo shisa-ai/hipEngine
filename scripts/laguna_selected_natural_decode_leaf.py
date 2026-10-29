@@ -142,7 +142,11 @@ def _upload(runtime, values: np.ndarray):
     if not array.flags.c_contiguous:
         array = np.ascontiguousarray(array)
     buffer = malloc(array.nbytes, runtime=runtime)
-    copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+    try:
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+    except BaseException:
+        free(buffer, runtime=runtime)
+        raise
     return buffer
 
 
@@ -159,8 +163,9 @@ def _event_ms(
     burst: int,
 ) -> float:
     start = runtime.event_create()
-    end = runtime.event_create()
+    end = None
     try:
+        end = runtime.event_create()
         runtime.event_record(start)
         for _ in range(burst):
             fn()
@@ -168,8 +173,11 @@ def _event_ms(
         runtime.event_synchronize(end)
         return float(runtime.event_elapsed_time_ms(start, end)) / burst
     finally:
-        runtime.event_destroy(end)
-        runtime.event_destroy(start)
+        try:
+            if end is not None:
+                runtime.event_destroy(end)
+        finally:
+            runtime.event_destroy(start)
 
 
 def _cache_tiles(
@@ -453,23 +461,24 @@ def _screen_pair_silu_halfdot(
     burst: int,
 ) -> dict:
     buffers = []
+
+    def upload(values):
+        buffer = _upload(runtime, values)
+        buffers.append(buffer)
+        return buffer
+
+    def allocate(nbytes):
+        buffer = malloc(nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
     try:
-        x_dev = _upload(runtime, x)
-        selected_dev = _upload(runtime, selected)
-        tiles_a_dev = _upload(runtime, tiles_a)
-        tiles_b_dev = _upload(runtime, tiles_b)
-        control_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
-        candidate_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
-        buffers.extend(
-            (
-                x_dev,
-                selected_dev,
-                tiles_a_dev,
-                tiles_b_dev,
-                control_out_dev,
-                candidate_out_dev,
-            )
-        )
+        x_dev = upload(x)
+        selected_dev = upload(selected)
+        tiles_a_dev = upload(tiles_a)
+        tiles_b_dev = upload(tiles_b)
+        control_out_dev = allocate(TOP_K * out_features * 2)
+        candidate_out_dev = allocate(TOP_K * out_features * 2)
 
         def launch(wrapper: Callable[..., None], out_ptr: int) -> None:
             wrapper(
@@ -566,25 +575,25 @@ def _screen_pair_silu_interleaved(
     halfdot: bool = False,
 ) -> dict:
     buffers = []
+
+    def upload(values):
+        buffer = _upload(runtime, values)
+        buffers.append(buffer)
+        return buffer
+
+    def allocate(nbytes):
+        buffer = malloc(nbytes, runtime=runtime)
+        buffers.append(buffer)
+        return buffer
+
     try:
-        x_dev = _upload(runtime, x)
-        selected_dev = _upload(runtime, selected)
-        tiles_a_dev = _upload(runtime, tiles_a)
-        tiles_b_dev = _upload(runtime, tiles_b)
-        tiles_dual_dev = _upload(runtime, tiles_dual)
-        control_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
-        candidate_out_dev = malloc(TOP_K * out_features * 2, runtime=runtime)
-        buffers.extend(
-            (
-                x_dev,
-                selected_dev,
-                tiles_a_dev,
-                tiles_b_dev,
-                tiles_dual_dev,
-                control_out_dev,
-                candidate_out_dev,
-            )
-        )
+        x_dev = upload(x)
+        selected_dev = upload(selected)
+        tiles_a_dev = upload(tiles_a)
+        tiles_b_dev = upload(tiles_b)
+        tiles_dual_dev = upload(tiles_dual)
+        control_out_dev = allocate(TOP_K * out_features * 2)
+        candidate_out_dev = allocate(TOP_K * out_features * 2)
 
         def control() -> None:
             wrapper = (

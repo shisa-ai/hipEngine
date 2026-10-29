@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 selected gate/up halfdot rollback
-
-- Added 2026-07-31 as constructor override
-  `use_selected_halfdot_decode`. The gfx1151 capability defaults on; `false`
-  restores the exact interleaved pair-coefficient F32 owner without changing
-  resident bytes or the surrounding fused SiLU boundary.
-- The quality-gated candidate improves the actual layer-1 leaf
-  **0.110406 -> 0.090545 ms (-17.989%)** and all seven same-resident p512/d128
-  pairs **22.999793 -> 23.084044 tok/s (+0.36631%)**. Recurrent
-  candidate-vs-exact quality is max KL **0.008202** and top-1 **93.75%**.
-- The temporary session setter and comparison CLI are removed after
-  default-on production measures **23.089693 tok/s**. Retain the constructor
-  rollback, gfx1151 capability, both four-axis registrations, exact fallback,
-  and diagnostic leaf/quality selectors until a later exact path matches or
-  exceeds the candidate.
-
 ## Laguna gfx1151 LC-D3 long-global geometry and context-split prototypes
 
 - Added 2026-08-02 while screening the second through fifth LC-D3 milestones.
@@ -9956,6 +9940,44 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0367 — Selected gate/up halfdot and exact-teacher ownership
+
+`use_selected_halfdot_decode` remains a live constructor rollback, not the
+retired session setter or profiler comparison. The gfx1151 package defaults
+it on; gfx1100 defaults it off. Paired expert residents use halfdot only for
+one input row. The exact interleaved route handles wider inputs and the
+explicit false override. Ordinary expert residents keep their own routes;
+the halfdot switch does not change layout or allocations.
+
+`scripts/laguna_gguf_correctness.py --selected-halfdot` creates a halfdot
+session, a repeat session and a false-override exact teacher sharing its
+resident weights. Removing that override would erase the teacher comparison.
+The natural-decode leaf also compares exact interleaved and halfdot symbols
+on identical paired bytes. Host tests cover backend policy, explicit values,
+single/multirow route choice, operand sharing and distinct leaf controls.
+Partial allocation, upload and timing-event failures now release their owned
+resources. Production routing and arithmetic are unchanged.
+
+**Decision needed:** keep the constructor rollback and diagnostic selectors,
+or migrate their exact-teacher and fallback ownership into an explicit
+kernel plan. Preserve both registered implementations. This is not a request
+to disable the default halfdot path or re-promote its arithmetic.
+
+**Clearing action:** migrate the correctness script's candidate/repeat/exact
+sessions and leaf selectors together, then run
+`uv run pytest tests/test_unit_laguna_halfdot_reference.py
+ tests/test_unit_laguna_scalar_q_retirement.py
+ tests/test_unit_laguna_tile8_comparison.py
+ tests/test_unit_laguna_weighted_hidden_split_runtime.py
+ tests/test_unit_laguna_gguf_runner.py
+ tests/test_gpu_gguf_t16_selected_gemv_decode.py`. On a HIP host with the
+model/oracle, run `uv run python scripts/laguna_gguf_correctness.py
+ --backend hip_gfx1151 --selected-halfdot` and compare a public generation
+request under default and explicit exact policy, recording actual routes,
+aligned teacher logits, reset/reuse and teardown. Do not remove the wider-row
+exact fallback. Historical performance/quality evidence remains in the sweep
+source and the July 31 result artifacts; no fresh numerical claim is made.
 
 ### R0354 — Paired expert cache and ordinary-layout migration
 
