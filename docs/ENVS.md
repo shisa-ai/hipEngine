@@ -760,7 +760,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
 | `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` | unset (F16 route sets `1`) | Hyper-connection read projections launched directly on F16 activations (bit-identical). |
 | `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | `1` | Scale-only GR read also publishes half(mixed); `0` keeps per-projection conversions. |
-| `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | `1` | The scale-only norm launch also computes the inject logits (bit-identical); `0` keeps them separate. |
+| `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | retired | Ignored. The supported scale-only norm computes inject logits when an inject projection is present. The separate kernel remains available to parity tests and fallback paths. |
 | `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | `1` | Scale-only GR read for Q8_0 up projections; `0` is the rollback. |
 | `HIPENGINE_QWEN4_EXP_GR_WIDE` | unset (F16 route sets `1`) | Hyper-connection up projection on the F16 wide route. |
 | `HIPENGINE_QWEN4_EXP_GR_WRITE_NORM` | `1` | Fused GR write plus next norm for chunks of at least 1,024 rows (bit-identical); `0` rolls back. |

@@ -3709,15 +3709,10 @@ def run_qwen4_exp_gr_read(
         and os.environ.get("HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY", "1")
         not in {"", "0", "false", "False"}
     )
-    # The norm launch also computes the inject logits when it runs
-    # scale-only and there is an inject projection; bit-identical to the
-    # separate launch. HIPENGINE_QWEN4_EXP_GR_NORM_INJECT=0 keeps them apart.
-    norm_inject = (
-        scale_only
-        and inject_weight is not None
-        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_NORM_INJECT", "1")
-        not in {"", "0", "false", "False"}
-    )
+    # The exact fused norm computes inject logits whenever this supported
+    # scale-only path has an inject projection. The separate kernel remains
+    # available to parity tests and the non-fused fallback.
+    norm_inject = scale_only and inject_weight is not None
     scale_only = _run_qwen4_exp_gr_norm_down(
         residual_ptr, norm_weight_ptr, down_weight, scratch,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
