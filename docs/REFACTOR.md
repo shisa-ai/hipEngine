@@ -3427,54 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Exact-iu8 risk multiplier: pinned at 4.0 in production, and why
-
-- `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is now **explicitly bound to `"4.0"`** in
-  `hipengine/generation/qwen4_exp_profiles.py`, which is the value the code default
-  already had. The binding is a pin, not a change: it stops a future edit to the
-  default in `_qwen4_exp_q4_iu8_risk_multiplier()` from silently moving the
-  production profile, and it puts the measured alternative at the binding site.
-- **The alternative was measured, gated and deliberately not taken.** 1.0 cuts the
-  repaired share of rows 3.40x and passes the production numerical gate with
-  3.3-6.4x margin, but its wall benefit does not survive the canonical protocol
-  (isolating harness -2.11%, canonical interleaved A/B/A flat with the 4.0 arm's
-  clean repetitions slightly ahead). Evidence and both halves of the reading:
-  `benchmarks/results/2026-10-04-qwen4exp-q4-iu8-risk-mult-1/README.md`.
-- **The gate candidate `q4_iu8_risk_mult_1` stays in
-  `scripts/qwen4exp_layer2_profile_gate.py`**, but note that its recorded artifact
-  was produced while production was still 4.0, so its teacher arm is the pre-change
-  default. Re-gating 1.0 or 0.5 later needs production bound back to 4.0 or an
-  explicitly different teacher.
-- **The real lever this exposed is the repair kernel's launch geometry.** The wall
-  falls 2.11% where a proportional model over the recorded 1370 ms share predicts
-  5.7%, because the pass launches over `risk_capacity = compact * 2 * ffn`
-  regardless of `risk_count`. Making it proportional to the queued count is worth
-  more than the multiplier and is orthogonal to the numerics question. This is the
-  entry to act on; the multiplier is parked behind it.
-- **The first measurement the launch-geometry unit should make, before building
-  anything.** `gguf_q4_k_selected_dual_sparse_exact_repair_bf16` takes
-  `grid_blocks` defaulting to **1024** (`gguf_q4_k_selected_prefill.py:600,1161`)
-  and the runner never passes it, so every call launches 1024 blocks whatever the
-  risk count is. The kernel's loop is `for (slot = blockIdx.x; slot < bounded; slot
-  += gridDim.x)` with `bounded = min(risk_count, max_risks)`, so the *work* is
-  already proportional - 46.6k slots per call at 4.0 against 13.7k at 1.0, ~46
-  against ~13 iterations per block. A 3.4x cut in inner work showing up as 2.11% of
-  wall is the anomaly to explain, and the cheapest explanations to distinguish are:
-  (a) **the 1370 ms share is inflated** - it is from a 2026-09-16 capture whose own
-  README says its per-kernel times are diagnostic, and if the true share is nearer
-  500 ms then 359 ms saved is most of it and there is no anomaly; (b) the 4.0-only
-  extra rows are not uniformly spread across calls, so the aggregate ratio
-  overstates the wall effect; (c) empty-block cost, which should be nearly free on a
-  GPU but is a one-line experiment. **Measure (a) first** by profiling the repair
-  kernel with `--kernel-trace` at both multipliers rather than inferring from the old
-  capture - it is the explanation that would make this whole lever smaller than the
-  1370 ms figure promises, so it decides whether the unit is worth building.
-- Removal condition for the explicit pin: once the repair pass is proportional to
-  `risk_count`, re-measure the multiplier on the canonical protocol in the same
-  session as the change, and either bind the winner or delete the env var and make
-  the chosen bound a named constant (keeping the strict path's 4.0 as a constant
-  rather than an environment string).
-
 ## The host/device loop split in `qwen4exp_decode_host_bound_probe.py`
 
 `scripts/qwen4exp_decode_host_bound_probe.py` reports `host_bound: true` and a
@@ -10776,3 +10728,33 @@ Historical numerical and timing evidence remains in
 `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.
 Current ownership review:
 `../worklog/entries/20261029T202553.939702Z-cleanup-refactor-r0443-95c64b.md`.
+
+### R0444 — Risk multiplier ownership and repair-grid follow-up
+
+The profile binder publishes `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT="1.0"`;
+the unbound helper default remains `4.0`. The former ledger claim that the
+profile deliberately stayed at `4.0` is superseded. The corrected historical
+comparison applied overrides after binding and recorded differing repair queues;
+the earlier apparent null comparison did not establish multiplier independence.
+See `../worklog/entries/20261004T001845.395977Z-lhl-qwen4exp-risk-mult-promotion-e7992b.md`.
+Do not reuse a historical candidate label as proof of its teacher's current value.
+
+**Deferred ownership decision:** retain an explicit diagnostic multiplier or
+replace environment transport with a profile-owned value. Preserve the bound
+and unbound semantics, effective-value reporting, strict/reference contract and
+post-binding diagnostic isolation. A repair-grid experiment is not permission
+to change the risk threshold or the repair coverage contract.
+
+**Deferred optimization follow-up:** the sparse repair wrapper still defaults
+to 1024 grid blocks, and the runner does not override that count. The device
+loop is bounded by the queued count and capacity, so fixed launch geometry is
+not fixed repair work. Use `scripts/qwen4exp_repair_grid_probe.py` to compare
+explicit grids and profile the actual repair calls before proposing a launch
+policy. Record effective multiplier, queue counts, overflow handling and cache/
+stream ownership; run numerical repair parity and public same-profile checks
+for any adopted change. Earlier fixed-cost estimates are historical hypotheses,
+not a fresh promise of recoverable wall time. Kernel traces follow the cached-
+build protocol in `docs/OPTIMIZATION.md`.
+
+Current-source correction and checks:
+`../worklog/entries/20261029T203123.488199Z-cleanup-refactor-r0444-d80e45.md`.

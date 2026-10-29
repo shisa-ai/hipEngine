@@ -12887,38 +12887,38 @@
       "start_line": 10519,
       "end_line": 10566,
       "sha256": "a394cf3a94dec10a4b82973e1a69d2238d2cc70dfc15a93f74c1668fa0c2576c",
-      "status": "pending",
-      "evidence": [],
+      "status": "corrected-pin-deferred-owner-and-grid-study",
+      "evidence": ["Binder publishes1.0, unbound helper4.0; stale no-benefit premise superseded by post-binder comparison. Fixed grid distinct from risk-count-bounded work. Bottom separates multiplier ownership and measured grid followup.56 profile tests and grid-probe help pass. Worklog: worklog/entries/20261029T203123.488199Z-cleanup-refactor-r0444-d80e45.md."],
       "subitems": [
         {
           "line": 10521,
           "text": "- `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is now **explicitly bound to `\"4.0\"`** in",
-          "status": "pending"
+          "status": "resolved-superseded-binding-corrected"
         },
         {
           "line": 10526,
           "text": "- **The alternative was measured, gated and deliberately not taken.** 1.0 cuts the",
-          "status": "pending"
+          "status": "resolved-superseded-history-corrected"
         },
         {
           "line": 10532,
           "text": "- **The gate candidate `q4_iu8_risk_mult_1` stays in",
-          "status": "pending"
+          "status": "resolved-explicit-teacher-contract"
         },
         {
           "line": 10537,
           "text": "- **The real lever this exposed is the repair kernel's launch geometry.** The wall",
-          "status": "pending"
+          "status": "deferred-grid-study-no-fixed-work-inference"
         },
         {
           "line": 10543,
           "text": "- **The first measurement the launch-geometry unit should make, before building",
-          "status": "pending"
+          "status": "deferred-explicit-grid-probe-and-trace"
         },
         {
           "line": 10561,
           "text": "- Removal condition for the explicit pin: once the repair pass is proportional to",
-          "status": "pending"
+          "status": "deferred-independent-profile-value-ownership"
         }
       ]
     },
