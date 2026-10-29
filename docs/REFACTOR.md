@@ -3430,61 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna cached-only attention scheduling rollback
-
-- Added 2026-07-26 with the gfx1151
-  `LAGUNA_PREFILL_KV_PREAPPEND` capability and the optional
-  `prefill_kv_preappend` session override. Complete M128 global tiles and
-  pre-wrap SWA tiles append before cached-only qrow4 attention; partial,
-  wrapped, verifier, gfx1100, and unmeasured paths preserve the established
-  attend-then-append sequence.
-- The implementation-tree gate is exact and positive at pp512
-  (**507.391 -> 528.771 tok/s, +4.214%**) and at 1K/4K
-  (**1.103x/1.047x**). Keep the explicit rollback through clean
-  selector-unset publication and one later attention-family checkpoint.
-- Clean selector-unset publication is now satisfied at **526.451 tok/s**
-  median / **526.288 tok/s** minimum; 1K/4K improve **3.218%/5.701%**, and
-  cached tracing cuts attention **219.709 -> 176.580 ms (-19.63%)**.
-  The one-later-attention-checkpoint trigger remains open.
-- After both triggers pass, remove the public constructor override while
-  retaining the backend capability/default and the automatic safety
-  fallbacks. Do not remove the source-qualified kernels: wrapped SWA and
-  staged verifier transactions still require them.
-- The next exact checkpoint adds `LAGUNA_PREFILL_CACHED_META` and the optional
-  `prefill_cached_meta` session/cache rollback. It selects metadata-only qrow4
-  for every safe SWA tile and global tiles from position 128, retaining the
-  established cached body at global position 0. Matched seven-pair pp512
-  improves **533.507 -> 542.785 tok/s (+1.739%, 7/7 wins)** and every compared
-  output/state digest is exact. Clean selector-unset publication is now
-  satisfied at **542.088 tok/s** median / **542.022 tok/s** minimum, with
-  1K/4K at **478.856/387.725 tok/s** and traced attention
-  **175.802 -> 160.123 ms (-8.92%)**. Remove the public positive selector after
-  one later attention-family checkpoint; retain source-qualified registered
-  fallbacks for global start 0, partial tiles, wrapped SWA, verifier
-  transactions, and unmeasured backends.
-- The next exact global-only checkpoint adds
-  `LAGUNA_PREFILL_GLOBAL_QROW6` and the optional
-  `prefill_global_qrow6` session/cache rollback. It applies only to complete
-  preappended global M128 tiles from position 128; global position 0 and every
-  SWA tile retain qrow4. Seven complete-state pairs improve
-  **546.056 -> 548.774 tok/s (+0.498%, 7/7 wins)** with identical
-  logits/hidden/KV/token/cursor. Remove the public positive selector after
-  clean selector-unset publication plus one later attention checkpoint. The
-  first trigger is satisfied at **547.064/513.180/428.628 tok/s**, with traced
-  attention **158.702 -> 152.406 ms (-3.97%)**. Keep automatic qrow4
-  fallbacks and do not reintroduce the rejected SWA qrow6 surface.
-- The next exact checkpoint adds `LAGUNA_PREFILL_DENSE_INITIAL` and optional
-  `prefill_dense_initial` session/cache rollback. It selects only consecutive
-  complete M128 initial tiles with no wrap or explicit eviction, preserving
-  cached-metadata/current-source fallbacks everywhere else. Seven matched
-  complete-state pairs improve **552.144 -> 559.539 tok/s (+1.339%, 5/7
-  wins)** with identical logits/hidden/KV/token/cursor. Remove the public
-  positive selector after clean selector-unset publication plus one later
-  attention checkpoint; keep the automatic safety fallbacks permanently.
-  The publication trigger is satisfied at **559.290/523.090/439.044 tok/s**,
-  with traced attention **153.226 -> 141.846 ms (-7.43%)**. Keep the rollback
-  through one later attention checkpoint.
-
 ## Laguna Q6 qmicro resident-layout rollback
 
 - Added 2026-07-26 with the gfx1151 `LAGUNA_Q6_QMICRO` capability and optional
@@ -10661,6 +10606,41 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0321 — Laguna cached-attention comparison and policy migration
+
+`prefill_kv_preappend`, `prefill_cached_meta`, `prefill_global_qrow6` and
+`prefill_dense_initial` remain constructor/cache controls. gfx1151 enables all
+four by package default. gfx1100 also enables preappend, with role-scoped
+attention selection; it is no longer uniformly attend-then-append. Package
+role variants take precedence over the legacy cache flags after their own
+shape, range and metadata checks.
+
+Unscoped preappend permits complete M128 tiles and global 256/512/1024/2048-row
+tiles within capacity. Partial tiles and wrapped SWA preserve the source path;
+the runner also excludes staged verifier transactions. Dense-initial selection
+requires consecutive pending positions and unmodified metadata. Legacy global
+qrow6 starts at position 128, while SWA stays qrow4. Preserve those automatic
+checks and registered source fallbacks when retiring public overrides.
+
+The cached-meta, global-qrow6 and dense-initial A/B scripts still construct
+children with explicit controls and distinct prerequisite settings. The host
+cache tests cover all legacy flag combinations, positions on both sides of
+128 plus unrelated positions, role precedence, partial/wrap/wide admission and
+metadata invalidation. Original July promotion evidence remains in the pinned
+sweep source and immutable worklogs; it is not a new result from this pass.
+
+**Blocker:** retire the public overrides with their live comparison callers,
+without conflating legacy flags and package-role policy. The same local Laguna
+artifact resource described in R0313–R0320 prevents public-route validation;
+this does not restrict execution or disable any default.
+
+**Clearing action:** migrate session/cache construction and all three attention
+A/B callers together, preserving primitive comparisons and historical readers.
+Run cached-attention, runner, role-policy and dense-metadata contracts; then
+GPU global/SWA parity across partial, eviction, wrap and verifier cases plus
+public `LLM.generate()` at short, boundary-neighbor and unrelated lengths.
+Confirm selected variants, append ordering, state/output equality and cleanup.
 
 ### R0312 — Head-major K/V resource-budget integration
 

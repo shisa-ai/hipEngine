@@ -9496,43 +9496,43 @@
       "start_line": 7193,
       "end_line": 7247,
       "sha256": "9493dfb8c044e4ba81be5f1b710c7b6582913f1a6f3a9d547c8c86b0f86e423a",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-bottom-laguna-cached-attention-policy-migration",
+      "evidence": ["Current gfx1100 role-scoped preappend and unscoped wide global tiles replace the old M128/gfx1151-only description. Added real cache host routing for all flag combinations at 0/127/128/257, package role precedence, partial/wrap/wide capability and metadata invalidation, plus exact child override ownership in three live attention A/B scripts. Original focused bundle: 95 passed/66 new-fixture failures (missing spans_mode); repaired changed file: 82 passed. Combined 161 cases covered, other 79 unchanged bundle cases already passed; no broad rerun. Docs/audit/tier/compile/whitespace gates pass. Bottom entry names coordinated constructor/cache/harness migration and shared local public-model resource blocker. No runtime/default/kernel change. Worklog: worklog/entries/20261029T024159.262366Z-cleanup-refactor-r0321-laguna-cached-attention-ec54ca.md."],
       "subitems": [
         {
           "line": 7195,
           "text": "- Added 2026-07-26 with the gfx1151",
-          "status": "pending"
+          "status": "resolved-current-role-and-wide-global-preappend-contracts"
         },
         {
           "line": 7201,
           "text": "- The implementation-tree gate is exact and positive at pp512",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7205,
           "text": "- Clean selector-unset publication is now satisfied at **526.451 tok/s**",
-          "status": "pending"
+          "status": "resolved-historical-publication-not-current-policy"
         },
         {
           "line": 7209,
           "text": "- After both triggers pass, remove the public constructor override while",
-          "status": "pending"
+          "status": "deferred-bottom-coordinated-policy-caller-public-validation"
         },
         {
           "line": 7213,
           "text": "- The next exact checkpoint adds `LAGUNA_PREFILL_CACHED_META` and the optional",
-          "status": "pending"
+          "status": "deferred-bottom-live-cached-meta-comparison-migration"
         },
         {
           "line": 7225,
           "text": "- The next exact global-only checkpoint adds",
-          "status": "pending"
+          "status": "deferred-bottom-live-qrow6-comparison-migration"
         },
         {
           "line": 7236,
           "text": "- The next exact checkpoint adds `LAGUNA_PREFILL_DENSE_INITIAL` and optional",
-          "status": "pending"
+          "status": "deferred-bottom-live-dense-initial-comparison-migration"
         }
       ]
     },
