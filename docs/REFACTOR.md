@@ -3430,35 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q4 gate/up pair-decode wave-column rollback
-
-- Added 2026-07-26 when direct per-column T16 decode became the next gfx1151
-  candidate default. The older `mmq128x32_d8_f32_wavecols` mode remains an
-  explicit session-level rollback beside
-  `mmq128x32_d8_f32_wavecols_direct`. The candidate preserves resident bytes
-  and arithmetic, is BF16-byte identical, improves the actual layer-1 leaf
-  **8.107 -> 6.916 ms**, and improves the implementation-worktree pp512 screen
-  **447.582 -> 472.533 tok/s**.
-- Removal trigger is satisfied: clean selector-unset pp512 improves
-  **449.020 -> 474.363 tok/s**, direct all-exact quality/lifecycle pass, and
-  cached all-family tracing names the intended direct template. Remove the
-  explicit pair-decode session route during immediate cleanup; keep no
-  duplicate positive selector solely for historical benchmarking.
-
-## Laguna Q4-down pair-decode wave-column rollback
-
-- Added 2026-07-26 when direct per-column Q4-down decode became the next
-  gfx1151 candidate default. The older
-  `mmq64x32_d4_f32_wavecols_q4` mode remains explicit rollback beside
-  `mmq64x32_d4_f32_wavecols_direct_q4`. The candidate is BF16-byte identical
-  and improves the implementation-worktree pp512 screen
-  **473.774 -> 483.409 tok/s** while Q6 stays on row-vector production.
-- Removal trigger is satisfied: clean selector-unset pp512 improves
-  **473.963 -> 480.629 tok/s**, direct all-exact quality/lifecycle pass, and
-  cached tracing cuts the Q4 consumer **90.280 -> 71.378 ms**. Remove the
-  explicit Q4 pair-decode selector during immediate cleanup. Do not couple
-  this cleanup to the independently retained Q6 row-vector kernel.
-
 ## Laguna Q6 selected-down 32-row rollback
 
 - Added 2026-07-26 when the exact 64-row/local128 Q6 selected-down body became
@@ -10672,17 +10643,22 @@ contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
 
-### R0313 / R0314 — Laguna row-vector selector migration
+### R0313 / R0314 / R0315 / R0316 — Laguna legacy MMQ selector migration
 
-`mmq128x32_d8_f32_rowvec` and `mmq64x32_d4_f32_rowvec` are explicit comparison
-modes, not defaults. Current package defaults select later wave-column modes;
-the low-level `rowvec` staging primitives also serve those later modes and Q6
-comparisons, so they are not removable with the two old names.
+`mmq128x32_d8_f32_rowvec`, `mmq64x32_d4_f32_rowvec`,
+`mmq128x32_d8_f32_wavecols` and `mmq64x32_d4_f32_wavecols_q4` are explicit
+comparison modes, not defaults. Current package defaults select later
+wave-column modes; the low-level `rowvec` staging primitives also serve those
+later modes and Q6 comparisons, so they are not removable with the old names.
+The pair-decode and direct peers share row-vector/wave-column staging and one
+residual pass; their direct-consume flag differs. The real host caller preserves
+lane count, stream/runtime and fused shared-combine output ownership for both.
 
 `tests/test_live_laguna_moe_gpu.py` still uses the gate/up mode across the full
-Q4/Q6 comparison chain and directly compares row-vector down against its
-baseline. `scripts/laguna_prefill_production_publication.py` recognizes the old
-gate/up name when normalizing historical quality metadata. Preserve that
+Q4/Q6 comparison chain and directly compares row-vector/pair-decode down
+against their peers. `scripts/laguna_prefill_production_publication.py`
+recognizes the old gate/up and down names when normalizing historical quality
+metadata. Preserve that
 historical reader even after runtime retirement. Original July timing/quality
 results remain in the pinned sweep source and immutable worklogs; they are not
 new measurements from this pass.
@@ -10695,7 +10671,7 @@ a local validation-resource blocker, not an admission restriction or a reason
 to disable the existing default.
 
 **Clearing action:** provide an implemented Laguna model artifact, remove the
-two names from resolver/fusion/config tables, and preserve the low-level
+legacy names from resolver/fusion/config tables, and preserve the low-level
 row-vector reference in the Q4/Q6 GPU fixture. Run selected-MMQ, runner,
 publication and grouped-prefill contracts plus the full MoE quant-oracle nodes;
 then exercise `LLM.generate()` at short, boundary-neighbor and unrelated prompt

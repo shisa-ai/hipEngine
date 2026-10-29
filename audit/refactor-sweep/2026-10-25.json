@@ -9355,18 +9355,18 @@
       "start_line": 7098,
       "end_line": 7112,
       "sha256": "fd49179ecdf15dbd3211a304b3725e5721b19fd9ae9fde7a1f50375682ab4cf8",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-consolidated-laguna-legacy-mmq-migration",
+      "evidence": ["Verified pair-decode gate/up is explicit/nondefault and historical publication normalization still recognizes it. Added real run_laguna_moe_rows host-stub comparisons versus direct consume at 3/6/17 rows, binding rowvec/wave-column/one-pass flags, differing direct flag, lane count, stream/runtime and shared-combine output ownership. Same numerical-fixture/public-artifact blocker as R0313/R0314; bottom entry consolidated, not duplicated. 116 focused checks and gates pass. Runtime/defaults/kernels/history unchanged. Worklog: worklog/entries/20261029T021913.531715Z-cleanup-refactor-r0315-r0316-laguna-pair-c34d9e.md."],
       "subitems": [
         {
           "line": 7100,
           "text": "- Added 2026-07-26 when direct per-column T16 decode became the next gfx1151",
-          "status": "pending"
+          "status": "resolved-explicit-peer-and-launch-ownership-contracts"
         },
         {
           "line": 7107,
           "text": "- Removal trigger is satisfied: clean selector-unset pp512 improves",
-          "status": "pending"
+          "status": "deferred-bottom-laguna-legacy-mmq-fixture-and-public-resource"
         }
       ]
     },
@@ -9376,18 +9376,18 @@
       "start_line": 7113,
       "end_line": 7126,
       "sha256": "6d9ac9bbf5f6c57e097868cd9d9241eead306edcbb5627dc18b3d8db0caf3ce9",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-consolidated-laguna-legacy-mmq-migration",
+      "evidence": ["Verified pair-decode down is explicit/nondefault, live Q4/Q6 MoE numerical peer still selects it and publication normalizer recognizes its historical arithmetic. Real caller host-stub tests compare pair/direct consume flags at 3/6/17 rows while preserving Q6 row32 configuration, lane/stream/runtime and fused-combine destination. Consolidated into existing R0313/R0314 bottom fixture/public-model resource blocker. 116 focused and gates pass; no runtime/default/kernel edit or fresh numerical/performance claim. Worklog: worklog/entries/20261029T021913.531715Z-cleanup-refactor-r0315-r0316-laguna-pair-c34d9e.md."],
       "subitems": [
         {
           "line": 7115,
           "text": "- Added 2026-07-26 when direct per-column Q4-down decode became the next",
-          "status": "pending"
+          "status": "resolved-live-peer-and-independent-q6-contracts"
         },
         {
           "line": 7121,
           "text": "- Removal trigger is satisfied: clean selector-unset pp512 improves",
-          "status": "pending"
+          "status": "deferred-bottom-laguna-legacy-mmq-fixture-and-public-resource"
         }
       ]
     },
