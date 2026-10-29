@@ -3430,21 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 selected-Q4 scalar-Q rollback
-
-- Added 2026-07-30 after exact adjacent-column T16 Q-payload reuse improved the
-  actual gate/up leaf **1.945%** and all seven p512/d128 model pairs.
-  Production keeps the existing
-  `selected_dual_t16_natural_tile8_parallel_silu...` variant name; the
-  separately registered `...parallel_silu_scalarq...` sibling restores the
-  pre-change one-nibble-per-load body exactly.
-- Keep scalar-Q through clean selector-unset publication and one later decode
-  wall census. Remove its launcher, wrapper, registry key, and comparison-only
-  exactness call if pair-Q remains positive and spill-free after that census.
-- **Clean publication passed:** selector-unset production improves
-  **20.800509 -> 20.830515 tok/s (+0.14426%)** with exact repeated state.
-  Keep scalar-Q only through the next decode wall census.
-
 ## Laguna gfx1151 selected gate/up halfdot rollback
 
 - Added 2026-07-31 as constructor override

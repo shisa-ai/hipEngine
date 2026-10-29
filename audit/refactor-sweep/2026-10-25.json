@@ -10536,23 +10536,23 @@
       "start_line": 7991,
       "end_line": 8005,
       "sha256": "4f9ee6ff0b08bd76545b1f8cd4100c5a3343387f06341ae31aec58dbc5c6c16a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-already-retired-in-58d5eb952",
+      "evidence": ["Already retired by 58d5eb952055bf4becc3e6df09bebb961566ad11: scalarq wrapper/registration/export removed and pre-pair-Q fused HIP launcher/symbol replaced. Current tree has no scalarq leaf or GPU-test call. New host checks bind absence and preserve distinct pairq versus paircoeff actual C-symbol selection/pointers/stream on gfx1100/gfx1151 aliases. Focused19 passed/1 HIP skip. Remove stale ledger only, preserve all surviving references, no kernel/runtime/default change. Worklog worklog/entries/20261029T051336.870057Z-cleanup-refactor-r0356-scalar-q-734858.md."],
       "subitems": [
         {
           "line": 7993,
           "text": "- Added 2026-07-30 after exact adjacent-column T16 Q-payload reuse improved the",
-          "status": "pending"
+          "status": "resolved-scalarq-absent-pairq-and-paircoeff-preserved"
         },
         {
           "line": 7999,
           "text": "- Keep scalar-Q through clean selector-unset publication and one later decode",
-          "status": "pending"
+          "status": "resolved-scalarq-absent-pairq-and-paircoeff-preserved"
         },
         {
           "line": 8002,
           "text": "- **Clean publication passed:** selector-unset production improves",
-          "status": "pending"
+          "status": "resolved-scalarq-absent-pairq-and-paircoeff-preserved"
         }
       ]
     },
