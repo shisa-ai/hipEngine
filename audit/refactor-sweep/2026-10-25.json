@@ -12470,38 +12470,38 @@
       "start_line": 10162,
       "end_line": 10235,
       "sha256": "25fe2e0fc50e108962d6a9c24db06cab985af2ae5e88beab5b1557e8eead6a26",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-composition-and-interface",
+      "evidence": ["Corrected never-evaluated/current-production claims; fixed historical WMMA composition documented without changing arms. Retain scope/identity/cache regressions; bottom records explicit retain/promote/retire decision and shared-module constraints.26 focused tests pass. Worklog: worklog/entries/20261029T191254.312246Z-cleanup-refactor-r0432-fa6eb2.md."],
       "subitems": [
         {
           "line": 10180,
           "text": "- **Promote** by passing the calibrated production gate (mean/p95/p99/max KL,",
-          "status": "pending"
+          "status": "deferred-new-composition-decision"
         },
         {
           "line": 10184,
           "text": "- **Remove** if the gate fails: delete",
-          "status": "pending"
+          "status": "deferred-retirement-shared-consumer-audit"
         },
         {
           "line": 10196,
           "text": "- **Unset means off, and `=0` means layer 0, not off.** Layer 0 is a real index",
-          "status": "pending"
+          "status": "resolved-tested-interface-contract"
         },
         {
           "line": 10200,
           "text": "- **The variant name exists in two places.** `STAGED_F32_VARIANT` in the backend",
-          "status": "pending"
+          "status": "resolved-tested-lazy-import-contract"
         },
         {
           "line": 10209,
           "text": "### Gate gotcha: `--layers` takes ranges, the env selectors do not",
-          "status": "pending"
+          "status": "resolved-tested-interface-contract"
         },
         {
           "line": 10222,
           "text": "### Why the composed route exists at all",
-          "status": "pending"
+          "status": "resolved-historical-teacher-description"
         }
       ]
     },

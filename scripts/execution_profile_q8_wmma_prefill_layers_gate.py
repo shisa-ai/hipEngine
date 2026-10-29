@@ -733,35 +733,12 @@ SELECTORS: dict[str, Route] = {
             f"{WMMA_LAYERS_ENV} and {DENSE_WIDE_ENV} cleared in both arms"
         ),
     ),
-    # The composition that promotion would actually create, which the plain
-    # ``staged_f32`` route cannot measure because it clears WMMA in both arms.
-    #
-    # In production the f16 WMMA route owns layers 16-47, so a staged scope of
-    # 13-15 does not compete with it: the exact chain runs on 13-15, WMMA takes
-    # over from 16, and the staged tile only ever replaces the exact chain on
-    # 13-15. The teacher here is therefore **current production** (WMMA on
-    # 16-47), not the exact chain, and the measured drift is the marginal cost
-    # of adding the staged tile at 13-15 to a composition that is already
-    # certified.
-    #
-    # This matters because the plain route's numbers cannot be reused for it.
-    # Summing WMMA's 16-47 drift with the staged 13-15 increment would be a
-    # summed-KL budget, which the scope ladders in this route's own packet show
-    # to be invalid: 8-47's max KL exceeds 0-47's while its mean is lower, and
-    # 0-7's mean exceeds 0-47's, so scope contributions are neither additive nor
-    # monotonic.
-    # The end-to-end promotion certificate for the composition above.
-    #
-    # ``staged_f32_over_wmma`` measures the marginal cost against current
-    # production, which is the right question for "what does adding this cost"
-    # but not the question the production envelope asks. The envelope is defined
-    # against the exact chain, so the full promoted composition has to be scored
-    # against the exact chain directly. Summing the marginal cost onto WMMA's own
-    # 16-47 drift would be a summed-KL budget, which this packet's ladders show
-    # is invalid.
-    #
-    # So: candidate = staged on the named scope **with WMMA still bound at
-    # 16-47**, exactly as promotion would leave it; teacher = the exact chain.
+    # Historical composition: staged on the named exact-parent scope, with
+    # WMMA fixed at 16-47 and dense-wide disabled. This is not a live lookup of
+    # the current production profile. The over-WMMA route measures marginal
+    # drift; composed-vs-exact measures the whole composition against the exact
+    # chain. Neither result can be obtained by adding independently measured
+    # drifts, and neither describes a different production composition.
     "staged_f32_composed_vs_exact": Route(
         kind=(
             "hipengine_execution_profile_q8_staged_f32_composed_vs_exact_gate"
