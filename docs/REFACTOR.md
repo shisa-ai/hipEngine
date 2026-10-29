@@ -3430,34 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF-OI5 — resolved: profile-owned MTP width/depth policy (2026-09-05)
-
-- The scalar physical-width ceiling is now a package-owned set of exact
-  `(physical width, draft depth)` cells resolved by the shared GGUF MTP
-  adapter. gfx1151 production preserves C1-C4/K1-K3 and adds C8/K3; C5-C7
-  fail closed to AR. Its strict profile preserves the certified C1-C4 cells.
-  The independently evidenced gfx1100 policy is narrower: production owns
-  `(1,2)`, `(1,3)`, `(2,2)`, and `(8,3)`, while strict owns `(2,2)`.
-  Model evidence still rejects every unmatched model/quant/profile/context/
-  horizon/sampling key to K0.
-- gfx1151 C8/K3 measures 52.103 tok/s versus 52.025 true AR (1.0015x), with
-  exact cancellation/refill lifecycle and full drain. gfx1100 automatic C8/K3
-  measures 98.643 tok/s versus 88.250 true AR (1.1178x), with 10/10 exact
-  task cells. Evidence:
-  `benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json`
-  and
-  `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
-- **The gfx1151 half of that row is withdrawn (2026-09-19).** Re-measured on the
-  same instrument the cell is 46.88 tok/s against 50.10 true AR (0.936x) with
-  0 of 10 cells reproducing the AR output, because the prompt-streaming policy
-  refuses a pending set of 8 rows while the route runs anyway; the gfx1100 cell
-  is untouched by that measurement. See the 2026-09-19 entry at the top of this
-  ledger and
-  `benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
-- Roll back by removing only the failing exact cell from that backend/profile
-  policy. Do not restore a scalar ceiling or broaden intervening widths. Keep
-  the registered strict fallback.
-
 ## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31) — RESOLVED
 
 Resolved: `_maybe_run_partitioned_speculative_decode` now treats a zero

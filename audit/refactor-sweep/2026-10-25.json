@@ -11680,28 +11680,28 @@
       "start_line": 9174,
       "end_line": 9201,
       "sha256": "70844bf222c97e6450256be58cb8206d8ec312087a999dbe7c7ae8ad2046e697",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-backend-policy-implemented-stale-history-removed",
+      "evidence": ["Backend packages expose exact width/depth tables; shared adapter validates cells, clamps resident capacity and separates automatic performance policy from explicit implementation capability (R0077). Historical gfx1151 C8 withdrawal is already in package table and existing wide-provider finding. Current gfx1100 table also includes (2,3), absent from stale ledger. 242 seam/serving-capability tests pass, including real-package tables, malformed policy, listed/unlisted cells, explicit/automatic intent and structural limits. No runtime/default change or new benchmark claim. Preserve original promotion/withdrawal artifact paths in worklog/entries/20261029T121740.480751Z-cleanup-refactor-r0395-width-policy-82192a.md; no unresolved RF-OI5 action to defer."],
       "subitems": [
         {
           "line": 9176,
           "text": "- The scalar physical-width ceiling is now a package-owned set of exact",
-          "status": "pending"
+          "status": "resolved-package-policy-and-explicit-capability-covered"
         },
         {
           "line": 9184,
           "text": "- gfx1151 C8/K3 measures 52.103 tok/s versus 52.025 true AR (1.0015x), with",
-          "status": "pending"
+          "status": "archived-original-artifacts-linked-in-worklog-no-new-claim"
         },
         {
           "line": 9191,
           "text": "- **The gfx1151 half of that row is withdrawn (2026-09-19).** Re-measured on the",
-          "status": "pending"
+          "status": "resolved-withdrawal-already-in-backend-table-and-tests"
         },
         {
           "line": 9198,
           "text": "- Roll back by removing only the failing exact cell from that backend/profile",
-          "status": "pending"
+          "status": "resolved-cell-policy-and-registered-fallback-preserved"
         }
       ]
     },
