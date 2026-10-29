@@ -11751,7 +11751,11 @@ def _gguf_c8_q5_planar_dp4a_enabled(
     *,
     request_count: int,
 ) -> bool:
-    """Opt-in C8-P2 planar-dp4a R24 owner pass; default-off (L4 pending)."""
+    """Select the optional planar Q5 sidecar route for physical C8.
+
+    Materialization must have reserved the sidecar; this selector does not
+    allocate it. The target session carries the resolved choice to dispatch.
+    """
 
     return _gguf_c8_q5_raw_mmq_enabled(
         backend,

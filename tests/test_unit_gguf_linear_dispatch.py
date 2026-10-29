@@ -7558,13 +7558,13 @@ def _capture_q5_planar_launch(
 
 
 def test_q5_planar_dp4a_route_defaults_off(monkeypatch) -> None:
-    """Without the env opt-in the dispatch keeps the retained raw MMQ owner."""
+    """The default session keeps the raw MMQ owner even with a resident sidecar."""
 
     key, args, kwargs, planar_calls = _capture_q5_planar_launch(
         monkeypatch,
         rows=24,
         env=None,
-        planar_dp4a=True,
+        planar_dp4a=False,
     )
     assert key == _Q5_RAW_MMQ_BF16
     assert args == (10_000_000, 10, 200, 24, 6_144, 5_120)
@@ -7572,7 +7572,7 @@ def test_q5_planar_dp4a_route_defaults_off(monkeypatch) -> None:
 
 
 def test_q5_planar_dp4a_route_selects_variant_and_launches(monkeypatch) -> None:
-    """Env + session + resident planar sidecar select the dp4a R24 route."""
+    """An explicit session plus resident sidecar selects the DP4A R24 route."""
 
     key, _args, _kwargs, planar_calls = _capture_q5_planar_launch(
         monkeypatch,
@@ -7626,14 +7626,23 @@ def test_q5_planar_dp4a_route_requires_resident_sidecar(monkeypatch) -> None:
     assert planar_calls == []
 
 
-def test_q5_planar_dp4a_route_env_off_rolls_back(monkeypatch) -> None:
-    """A zero-valued env rolls the route back at the dispatch layer too."""
+@pytest.mark.parametrize("env", (None, "0", "invalid"))
+def test_q5_planar_dp4a_explicit_session_is_authoritative(monkeypatch, env) -> None:
+    """The runner resolves the env before the scope; dispatch never reselects it."""
 
     key, _args, _kwargs, planar_calls = _capture_q5_planar_launch(
         monkeypatch,
         rows=24,
-        env="0",
+        env=env,
         planar_dp4a=True,
+    )
+    assert key is None
+    assert len(planar_calls) == 1
+
+
+def test_q5_planar_dp4a_disabled_session_cannot_be_enabled_by_environment(monkeypatch) -> None:
+    key, _args, _kwargs, planar_calls = _capture_q5_planar_launch(
+        monkeypatch, rows=24, env="1", planar_dp4a=False,
     )
     assert key == _Q5_RAW_MMQ_BF16
     assert planar_calls == []
@@ -7661,6 +7670,28 @@ def test_q5_planar_dp4a_session_requires_planar_library() -> None:
             planar_dp4a=True,
         ):
             pass
+
+
+def test_q5_planar_scope_restores_after_nested_disable_and_failure() -> None:
+    state = gguf_linear_module._q5_raw_mmq_target_session
+    assert state.get() is None
+    with q5_raw_mmq_target_session(
+        workspace_ptr=10_000_000, workspace_nbytes=245_760,
+        planar_dp4a=True, planar_library=object(),
+    ):
+        outer = state.get()
+        assert outer is not None and outer.planar_dp4a
+        with q5_raw_mmq_target_session(enabled=False):
+            assert state.get() is None
+        assert state.get() is outer
+        with pytest.raises(RuntimeError, match="fixture failure"):
+            with q5_raw_mmq_target_session(
+                workspace_ptr=20_000_000, workspace_nbytes=245_760,
+            ):
+                assert state.get().workspace_ptr == 20_000_000
+                raise RuntimeError("fixture failure")
+        assert state.get() is outer
+    assert state.get() is None
 
 
 def test_q5_planar_dp4a_variant_registers_at_module_import() -> None:

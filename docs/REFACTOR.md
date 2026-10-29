@@ -3466,18 +3466,21 @@ category and control/ownership gates before closing this entry.
   `dense_q5_qmicro_planar_ssm_out`, env `HIPENGINE_C8_Q5_PLANAR_DP4A=1`
   + `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` capability), runner session wiring, and
   the leaf script `scripts/qwen38_c8_grouped_q5_planar_dp4a_leaf.py`.
-  The zero-valued env rolls the route back at both layers.
+  The zero-valued env rolls the route back at materialization and runner
+  selection. Once a caller binds `planar_dp4a=True` with its library and
+  workspace, dispatch honours that explicit choice without re-reading the
+  environment; absent sidecars and unsupported rows keep the existing owner.
 - **Why:** leaf screen (2026-09-04, actual Qwen3.8-27B-Q4_K_M Q5_K ssm_out
   weights, shared quantize included): candidate 0.77-0.84x of the retained
   R24 raw MMQ owner, wins 9/9 across rows 8/24/32; artifact
   `benchmarks/results/2026-09-04-w7900-qwen38-q4km-c8-q5-planar-dp4a-grouped-leaf.json`.
-- **Default-off by construction:** nothing dispatches it without the env;
-  the retained raw (R24) / source-layout (R32) MMQ owners remain the route
-  defaults and registered strict fallbacks. Promotion requires the full L4
-  production-profile campaign (arms differ by bf16-reassociation only at
-  the decode, sharing the d4s4 activation producer; owner-parity 1e-4 and
-  outer KL/top-1 contracts already registered) plus the tracked-clean
-  ten-prompt e2e plus heldouts with candidate/control ordering.
+- **Automatic policy and resources:** normal materialization does not allocate
+  the optional persistent sidecar, and the runner leaves its choice disabled.
+  The registered raw/source-layout MMQ owners remain available. Explicit
+  low-level sessions can select planar DP4A when their sidecar, library and
+  workspace are present. Do not require another evidence record before that
+  implemented route may execute. Any broader changed-arithmetic default
+  selection follows the execution-profile gate.
 - **Engagement deadlock fix (iter42, 7e03b150c):** the iter40 dispatch gate
   never fired (session.source_layout conflation + registration deadlock);
   the leaf/e2e "bit-exact" evidence before this fix was vacuous. Post-fix

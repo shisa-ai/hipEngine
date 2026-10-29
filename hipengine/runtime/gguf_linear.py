@@ -10333,21 +10333,7 @@ def _q8_t16_tiles_decode_dispatch(
     return GGUFLinearDispatch(candidate, "t16")
 
 
-_Q5_PLANAR_DP4A_TARGET_ENV = "HIPENGINE_C8_Q5_PLANAR_DP4A"
 _Q5_PLANAR_DP4A_VARIANT = "q8_1_dp4a_grouped_bf16_bf16_out"
-
-
-def _q5_planar_dp4a_target_enabled(session: _Q5RawMMQTargetSession) -> bool:
-    """Opt-in C8-P2 planar-dp4a owner pass at R24; default-off (L4 pending)."""
-
-    if not session.planar_dp4a:
-        return False
-    raw = os.environ.get(_Q5_PLANAR_DP4A_TARGET_ENV, "0").strip().lower()
-    if raw in {"", "1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"{_Q5_PLANAR_DP4A_TARGET_ENV} must be a boolean value")
 
 
 def _q5_raw_mmq_target_eligible(
@@ -10394,7 +10380,8 @@ def _q5_raw_mmq_target_dispatch(
     ):
         return dispatch
     source_layout = bool(session.source_layout and rows == 32)
-    if _q5_planar_dp4a_target_enabled(session) and rows == 24:
+    if session.planar_dp4a and rows == 24:
+        # The caller already resolved policy before lending this workspace.
         # The planar branch is R24-only by shape; the source-layout owner
         # keeps R32 because this branch never matches rows == 32
         # (source_layout only applies at rows == 32 downstream).
