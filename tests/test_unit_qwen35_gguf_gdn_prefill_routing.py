@@ -1617,6 +1617,23 @@ def test_fp16_recurrent_state_defaults_only_for_validated_gfx1151_q4ks(
     )
 
 
+@pytest.mark.parametrize("use_fp16_state", [False, True])
+def test_gdn_explicit_state_writer_dtype_ignores_later_environment_changes(monkeypatch, use_fp16_state):
+    """Session-owned dtype controls all writers after allocation."""
+    selectors = (
+        qgr._gdn_decode_gate_kernel,
+        qgr._gdn_decode_segments_kernel,
+        qgr._gdn_decode_order_state_rows_kernel,
+        qgr._gdn_decode_order_segments_state_rows_kernel,
+        qgr._gdn_decode_order_segments_inplace_kernel,
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1" if use_fp16_state else "0")
+    expected = tuple(select(use_fp16_state) for select in selectors)
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "0" if use_fp16_state else "1")
+    assert tuple(select(use_fp16_state) for select in selectors) == expected
+    assert all("fp16state" in fn.__name__ for fn in expected) == use_fp16_state
+
+
 def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch) -> None:
     """Verify-capture decode-order row-state writers route to fp16 under the flag.
 

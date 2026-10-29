@@ -89,6 +89,22 @@ def test_fp16_state_environment_explicitly_disables_promoted_default(
     assert os.environ[gate.FP16_STATE_ENV] == "1"
 
 
+@pytest.mark.parametrize("inherited", [None, "0", "1"])
+def test_fp16_state_environment_nested_failure_restores_caller(monkeypatch, inherited):
+    if inherited is None:
+        monkeypatch.delenv(gate.FP16_STATE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(gate.FP16_STATE_ENV, inherited)
+    with pytest.raises(RuntimeError, match="injected capture failure"):
+        with gate.fp16_state_environment(True):
+            assert os.environ[gate.FP16_STATE_ENV] == "1"
+            with gate.fp16_state_environment(False):
+                assert os.environ[gate.FP16_STATE_ENV] == "0"
+            assert os.environ[gate.FP16_STATE_ENV] == "1"
+            raise RuntimeError("injected capture failure")
+    assert os.environ.get(gate.FP16_STATE_ENV) == inherited
+
+
 def test_cycle_tokens_reaches_exact_target_without_input_mutation() -> None:
     source = (3, 5, 7)
 

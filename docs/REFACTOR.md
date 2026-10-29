@@ -3430,90 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## fp16 recurrent state (HIPENGINE_GGUF_FP16_RECURRENT_STATE)
-
-- Added 2026-08-19 for the gfx1151 Qwen3.8 Q4_K_S R2 topline: GDN recurrent
-  state stored fp16 (fp32 accumulate, RNE half round-trip) via templated
-  `state_t` kernels. The flag routes decode gate/segments, the compact
-  peer-wave32 prefill writer, the chain prefill, and the fused
-  `gdn_recurrent_rmsnorm_gate+cast` owner (the Qwen3.8 `ssm_out` quantizes as
-  `gguf_q5_k_t16_v1`) to fp16-state instantiations; strict FP32 remains the
-  registered fallback.
-- Fail-closed guards raise when the flag is combined with an FP32-state writer
-  that has no fp16 variant yet. As of 2026-08-20 the decode_order state-rows
-  writers (verify-capture and segmented) are fp16-capable (see the
-  20260820T065950 worklog entry and `kernel: fp16-state decode_order state-rows
-  prefill writers`), so their fail-closed guard in
-  `_run_linear_attention_prefill_layer_rows` was removed and the dispatch
-  selects the fp16-state variant under the flag. The in-place segmented
-  decode_order writer remains fp16-capable as a generic fallback, but the
-  Q4_K_S production packed-AR path now uses the registered compact-peer
-  segmented sibling: each indexed slot stays FP32-register-resident across its
-  packed token segment and converts only at a chunk boundary. This repairs the
-  failed c4/c8 prefill top-1 scopes and removes the per-token global-state
-  fallback from the measured route; the repaired 1,170-row hard gate passes.
-  The packed AR prefill/decode guards that required
-  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` remain removed. Remaining
-  fail-closed guards:
-  producer-folded chain-journal output/snapshot fusion under FP16 state, any
-  MTP2 request without the complete non-fallback production manifest, and any
-  `HIPENGINE_GGUF_GDN_PREFILL_MODE` other than the auto
-  `chain_compact_peer_wave32` Q4_K_S route. P8 keeps consumer-owned dtype-sized
-  rollback snapshots and the strict unfused cast instead of enabling the
-  independently excluded gfx1151 producer-folded aliases.
-- Removal triggers: (1) after the c8 fp16-vs-fp32 benchmark and the
-  strict-teacher gate validate the production route, decide whether the fp16
-  state becomes the default and the flag collapses to a
-  remove/rollback seam; (2) complete the SPECDEC2 P8 numerical/task/lifecycle/
-  economics packet for the registered FP16 chain-row manifest, then decide
-  whether the remaining legacy/env MTP guards can collapse; (3) drop
-  `gdn_effective_mode`/frozen-mode assumptions if
-  the flag is later allowed beyond the compact-peer-wave32 route.
-- Checkpoint 2026-08-20 (audited): the 450-row c1 numerical capture passes at
-  global mean/p95/p99/max KL `5.28e-5/2.80e-4/5.81e-4/1.43e-3` and 99.78%
-  top-1. The repaired packed c4/c8 gate passes every hard category/shape/
-  transition threshold over 1,170 rows at `1.02e-4/3.19e-4/1.05e-3/3.2866e-2`
-  and 99.829% top-1, with exact repeats, sparse/neighbor/permutation isolation,
-  and indexed decode ownership. One long-c8 row passes manual review (same
-  wide-margin top-1 and improved teacher NLL). See
-  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-production-gate.json`
-  and `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-packed-production-gate.json`.
-- The clean FP32-A/FP16/FP32-B p512 bracket retains FP16 as non-regressive:
-  aggregate decode improves c1/c4/c8 `12.9005/42.5856/57.2905 ->
-  13.0204/43.8535/59.0106 tok/s` (`+0.93%/+2.98%/+3.00%`); aggregate prefill
-  improves `+0.47%/+1.65%/+3.31%`; tracked peak saves 1.15 GiB. See
-  `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json`.
-- Decision correction: the fixed 3% materiality threshold is removed. FP16 is
-  now the backend/file-type scoped default for gfx1151 `mostly_q4_k_s`;
-  `HIPENGINE_GGUF_FP16_RECURRENT_STATE=0` is the strict-storage rollback. The
-  clean predeclared serving screen is non-regressive: c1 exact goodput improves
-  `8.2121 -> 8.2434 tok/s`, exact c8 server throughput improves
-  `13.0999 -> 13.2738 tok/s` (**+1.33%**), and c8 ITL-p99 improves
-  `0.8532 -> 0.8287 s`. Both modes share the absolute 0.5-second SLO failure;
-  that serving-path issue does not erase the candidate win. See `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
-  SPECDEC2 P8 retains the runtime-resolved production manifest, exact FP32
-  fallback, and complete C1/C2/C4 numerical/lifecycle/economics packet. Native
-  target graph FP16 state diverges after layer 51 for accepted rows; exact eager
-  target verify/selected commit is therefore mandatory until a separately
-  qualified graph fix lands. P9 promotes no automatic cell because the positive
-  capacity-1 C1 premise does not engage on the normal capacity-4 server owner;
-  automatic stays K0 and producer-folded chain snapshot/fusion remains excluded.
-- 2026-08-27 Q4_K_M follow-up confirms the blocker under the production bar:
-  capacity-matched c1/B3 is 14.287 vs 9.730 tok/s (+46.84%) with the 1,170-row
-  KL/top-1/determinism/isolation gate passed, but c1 on capacity>1 remains K0.
-  HTTP plan `realized_group_rows` is prompt multiplicity inside one request,
-  not the eventual group of concurrent children; resident physical streaming,
-  refill, and survivor ownership remain unqualified. An oracle-only FP16 device
-  proposal reached the eager target then failed precommit with `FP16 recurrent
-  state device proposal requires eager selected commit`, recovered 10/10 to AR,
-  and regressed 6.77%; its diagnostic source was removed. Removal trigger:
-  qualify resident realized-group c1-only admission on capacity>1 plus dynamic
-  refill/survivor/load/SLO, and either implement+production-qualify FP16 eager
-  selected commit or repair the FP16 native graph. Until then automatic K0 and
-  eager host proposal/target are required. Evidence:
-  `benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json`,
-  `...-t11-t13-ownership.json`, and `...-t23-t24-policy-scheduler.json`.
-
 ## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
 
 - Added 2026-08-20. The fixed256 context-batch body gained a runtime block-width
@@ -11348,7 +11264,8 @@ routes have comparison callers; they are not unused merely because another
 route is automatic. Preserve the strict unfused fallback and named capability
 errors. R0377's standalone Q8 cluster8 release-age note is consolidated here:
 its automatic route and explicit exact control already share this ownership
-decision. The FP16-state entry elsewhere in the ledger remains separate.
+decision. The FP16-state entry R0380 separately owns storage and speculative
+writer migration; consolidating R0377 does not resolve it.
 
 **Clearing action:** migrate selector parsing, backend metadata, registered
 prepare/recurrent/segmented siblings, session scratch planning, typed writers
@@ -11740,3 +11657,50 @@ in the original sweep source and
 `benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-pair-col8-c8-retained.json`;
 they are not fresh measurements of this disposition. No execution, arithmetic
 or default changes here.
+
+### R0380 — Recurrent-state storage controls and speculative writers
+
+FP16-state promotion is completed work: gfx1151's plain Q4_K_S default uses
+FP16 storage with FP32 accumulation, while `HIPENGINE_GGUF_FP16_RECURRENT_STATE=0`
+selects strict FP32 storage. The numerical and serving artifacts remain in the
+original sweep source and August 20/27 results; their timings are not fresh
+measurements of this disposition. The FP32/FP16 comparison harness still uses
+the override, so deleting it would compare the default against itself.
+
+The runner freezes storage dtype before allocation. Decode, compact-peer
+single/segmented prefill, decode-order row writers, fused output/cast and
+consumer-owned rollback snapshots must use that dtype. An environment mutation
+cannot redirect an allocated session. Prefill modes without an FP16 recurrence,
+prefill-score capture and regular fused prefill without a typed writer still
+raise capability errors. Keep these checks and registered FP32 references;
+removing a selector does not make unlike state buffers interchangeable.
+
+SPECDEC2 has an eager FP16 target route whose current binder requires a complete
+non-fallback production manifest selecting the typed chain-row writer. This is
+not the legacy tree/chain path, which rejects FP16 state. Native target graphs
+remain excluded after the recorded accepted-row divergence; the native device
+proposal path still raises `FP16 recurrent state device proposal requires eager
+selected commit`. Producer-folded output/snapshot aliases are separate from
+consumer-owned typed rollback. Historical capacity-one economics do not prove
+realized-group ownership for a capacity-greater-than-one service owner.
+
+**Decision needed:** retain the storage override as a supported comparison or
+migrate it into a caller-owned execution plan. Keep frozen allocation dtype;
+retiring an environment name is not a reason to retire that invariant. Separate
+this interface cleanup from implementing typed speculative selected commit,
+repairing the observed native-graph divergence and reviewing profile/admission
+ownership against capability-only product rules. Missing benchmark rows are
+not runtime capability failures and must not become new restrictions.
+
+**Clearing action:** migrate storage resolution, allocation pricing, all writer
+selection, profile binding, snapshots and comparison provenance together. Run
+`tests/test_unit_qwen35_gguf_gdn_prefill_routing.py`, session-mode,
+scratch-plan-boundary, FP16-state batch-gate and MTP2-seam tests, including nested
+failure restoration and explicit dtype after environment changes. On HIP run
+`tests/test_gpu_qwen35_gguf_gdn_fp16_state.py` and public generation/serving for
+FP32/FP16, short/segmented/long prompts, sparse and changing widths, reset/reuse,
+failure rollback and teardown. Any graph repair must compare accepted-row
+state against eager, including the recorded failing layer region. Any arithmetic
+promotion needs its execution-profile gate; route availability and explicit
+requests follow capability contracts independently. This disposition changes
+no runtime, default, arithmetic or speculative admission policy.

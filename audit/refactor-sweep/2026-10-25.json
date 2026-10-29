@@ -11160,43 +11160,43 @@
       "start_line": 8448,
       "end_line": 8531,
       "sha256": "a9c6a26f41d9cfb7cb8ccf3c1ddca9ed3b69dfe1403a9163f47cfd48974b04bf",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-storage-control-and-speculative-writer-migration",
+      "evidence": ["FP16 state promotion already completed; strict-storage comparisons remain live and allocation dtype/writers must stay frozen. Current eager SPECDEC2 profile-bound typed route exists; native graph and device selected-commit limitations remain distinct. Moved concise storage/control/writer and observed graph repair decision to bottom R0380; corrected stale ENVS claim that speculative always uses FP32. Added nested exception environment restoration and explicit writer dtype immunity to later env mutation;394 focused host checks pass. No runtime/kernel/default/arithmetic/admission change or fresh perf claim. Worklog worklog/entries/20261029T065217.880731Z-cleanup-refactor-r0380-fp16-state-b408b8.md."],
       "subitems": [
         {
           "line": 8450,
           "text": "- Added 2026-08-19 for the gfx1151 Qwen3.8 Q4_K_S R2 topline: GDN recurrent",
-          "status": "pending"
+          "status": "triaged-promotion-complete-live-typed-contract-bottom-r0380"
         },
         {
           "line": 8457,
           "text": "- Fail-closed guards raise when the flag is combined with an FP32-state writer",
-          "status": "pending"
+          "status": "triaged-promotion-complete-live-typed-contract-bottom-r0380"
         },
         {
           "line": 8479,
           "text": "- Removal triggers: (1) after the c8 fp16-vs-fp32 benchmark and the",
-          "status": "pending"
+          "status": "triaged-promotion-complete-live-typed-contract-bottom-r0380"
         },
         {
           "line": 8487,
           "text": "- Checkpoint 2026-08-20 (audited): the 450-row c1 numerical capture passes at",
-          "status": "pending"
+          "status": "triaged-promotion-complete-live-typed-contract-bottom-r0380"
         },
         {
           "line": 8496,
           "text": "- The clean FP32-A/FP16/FP32-B p512 bracket retains FP16 as non-regressive:",
-          "status": "pending"
+          "status": "triaged-promotion-complete-live-typed-contract-bottom-r0380"
         },
         {
           "line": 8501,
           "text": "- Decision correction: the fixed 3% materiality threshold is removed. FP16 is",
-          "status": "pending"
+          "status": "triaged-promotion-complete-live-typed-contract-bottom-r0380"
         },
         {
           "line": 8516,
           "text": "- 2026-08-27 Q4_K_M follow-up confirms the blocker under the production bar:",
-          "status": "pending"
+          "status": "triaged-promotion-complete-live-typed-contract-bottom-r0380"
         }
       ]
     },
