@@ -60,8 +60,8 @@ _POST_MERGE_SOURCE_SHA256 = {
     # `use_activation_pack_reuse` opt-out, so the runner and the scoped-reuse
     # test move again while the owner itself is unchanged.
     "hipengine/runtime/laguna_gguf_runner.py": (
-        # MoE-tail constructor comparison moved to a scoped helper; H8B pack ownership is unchanged.
-        "371c90790e63b0685df8f43fcab04d43dff62104f43de9d0770544a3c9983dcf"
+        # R0355/R0357 retire only dense/shared T16 setters; H8B pack ownership is unchanged.
+        "87fdb718f4ac9575f711fae5c274b25318d2fb34e9c675900a07394b5f650377"
     ),
     "hipengine/runtime/laguna_moe.py": (
         # R0270 retires only the unused one-plane D4 gate selector; H8B scopes stay.

@@ -110,8 +110,6 @@ COMPARISON_ARGUMENTS = (
     "compare_global_mixed32",
     "compare_selected_natural_decode",
     "compare_selected_natural_tile8_decode",
-    "compare_q4_decode_t16_sidecar",
-    "compare_q4_decode_t16_dual_interleaved",
     "compare_raw_k_prefill_rowbatch",
     "compare_grouped_exact_iq",
     "compare_pair16_grouped_gate_up",
@@ -409,16 +407,6 @@ def _parse_args() -> argparse.Namespace:
         "--compare-selected-natural-tile8-decode",
         action="store_true",
         help="counterbalance natural selected gate/up against exact tile8",
-    )
-    parser.add_argument(
-        "--compare-q4-decode-t16-sidecar",
-        action="store_true",
-        help="counterbalance pack8 and compact T16 dense/shared Q4 decode",
-    )
-    parser.add_argument(
-        "--compare-q4-decode-t16-dual-interleaved",
-        action="store_true",
-        help="counterbalance separate and paired T16 dense/shared Q4 decode",
     )
     parser.add_argument(
         "--ordinary-q4-expert-t16",
@@ -800,14 +788,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_selected_natural_tile8_parallel_silu_decode=(
                 False if args.compare_selected_natural_tile8_decode else None
             ),
-            use_q4_decode_t16_sidecar=(
-                False if args.compare_q4_decode_t16_sidecar else None
-            ),
-            use_q4_decode_t16_dual_interleaved=(
-                False
-                if args.compare_q4_decode_t16_dual_interleaved
-                else None
-            ),
             use_q4_expert_t16_dual_interleaved=(
                 False
                 if args.ordinary_q4_expert_t16 or args.compare_selected_natural_tile8_decode
@@ -1169,14 +1149,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_selected_natural_tile8_decode(
                             mode == "candidate"
                         )
-                    if args.compare_q4_decode_t16_sidecar:
-                        owner.set_q4_decode_t16_sidecar(
-                            mode == "candidate"
-                        )
-                    if args.compare_q4_decode_t16_dual_interleaved:
-                        owner.set_q4_decode_t16_dual_interleaved(
-                            mode == "candidate"
-                        )
                     owner.reset_state()
                     started = time.perf_counter()
                     result = owner.prefill(token_stream[:length])
@@ -1448,13 +1420,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "ordinary_t16_natural16_vs_tile8_without_parallel_silu"
                 if args.compare_selected_natural_tile8_decode else None
             ),
-            "compare_q4_decode_t16_sidecar": (
-                args.compare_q4_decode_t16_sidecar
-            ),
             "q4_decode_t16_sidecar": active_q4_decode_t16_sidecar,
-            "compare_q4_decode_t16_dual_interleaved": (
-                args.compare_q4_decode_t16_dual_interleaved
-            ),
             "q4_decode_t16_dual_interleaved": (
                 active_q4_decode_t16_dual_interleaved
             ),

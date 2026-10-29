@@ -10510,23 +10510,23 @@
       "start_line": 7975,
       "end_line": 7990,
       "sha256": "f860080525cf0b064a7645e4003d7e7f83b66c7cd2e0e01080231d597a47b333",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-obsolete-profiler-and-session-seam-retired",
+      "evidence": ["Retired profiler comparison CLI/list/branch/result booleans and public session setters. Constructor rollbacks, active policy result fields, default paired materialization, tile2/pack8/separate reference registrations and standalone leaf harness preserved. Actual synthetic-weight materialization through real linear dispatch confirms paired default and both pack8 rollback controls, no separate sidecar duplicates, exact pointers and cleanup. RED2 retirement checks; GREEN417 focused checks. Original historical evidence remains in pinned source; no production defaults/kernels/arithmetic change. Worklog worklog/entries/20261029T050527.430392Z-cleanup-refactor-r0355-r0357-dense-t16-af9d51.md."],
       "subitems": [
         {
           "line": 7977,
           "text": "- Added 2026-07-30 as",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         },
         {
           "line": 7981,
           "text": "- The temporary same-resident diagnostic duplicated the old separate sidecars",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         },
         {
           "line": 7986,
           "text": "- Remove the comparison CLI and session setter after tracked-clean",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         }
       ]
     },
@@ -10562,33 +10562,33 @@
       "start_line": 8006,
       "end_line": 8025,
       "sha256": "19a00d6bbdde24c04441a655f98aa90ab40fc85c9426eff2415392f6fa385bae",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-obsolete-profiler-and-session-seam-retired",
+      "evidence": ["Retired profiler comparison CLI/list/branch/result booleans and public session setters. Constructor rollbacks, active policy result fields, default paired materialization, tile2/pack8/separate reference registrations and standalone leaf harness preserved. Actual synthetic-weight materialization through real linear dispatch confirms paired default and both pack8 rollback controls, no separate sidecar duplicates, exact pointers and cleanup. RED2 retirement checks; GREEN417 focused checks. Original historical evidence remains in pinned source; no production defaults/kernels/arithmetic change. Worklog worklog/entries/20261029T050527.430392Z-cleanup-refactor-r0355-r0357-dense-t16-af9d51.md."],
       "subitems": [
         {
           "line": 8008,
           "text": "- Added 2026-07-30 as",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         },
         {
           "line": 8012,
           "text": "- The additive 96-weight sidecar passes exact actual-weight leaves and all",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         },
         {
           "line": 8015,
           "text": "- Remove the comparison CLI and session setter after tracked-clean",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         },
         {
           "line": 8019,
           "text": "- Tracked-clean publication passes at **21.851538 tok/s**, with all three",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         },
         {
           "line": 8022,
           "text": "- The post-sidecar census passes at **43.972461 ms/token** kernel sum and",
-          "status": "pending"
+          "status": "resolved-seam-retired-required-capabilities-and-fallbacks-preserved"
         }
       ]
     },

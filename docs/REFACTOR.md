@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 dense/shared dual-interleaved T16 selector
-
-- Added 2026-07-30 as
-  `LagunaGGUFResidentSession.set_q4_decode_t16_dual_interleaved(...)` and
-  `--compare-q4-decode-t16-dual-interleaved`. The gfx1151 capability defaults
-  on; false restores the exact resident-pack8 fused gate/up path.
-- The temporary same-resident diagnostic duplicated the old separate sidecars
-  only for seven counterbalanced pairs. All seven candidates win
-  **21.898558 -> 21.954474 tok/s (+0.25534%)** with exact state.
-  Production removes the duplicates: 48 paired payloads replace 96 separate
-  payloads at the same **214,597,632-byte** auxiliary residency.
-- Remove the comparison CLI and session setter after tracked-clean
-  selector-unset publication and the first post-retention wall census. Retain
-  the architecture capability, paired materializer contract, registered tile2
-  owner, and pack8 exact fallback.
-
 ## Laguna gfx1151 selected-Q4 scalar-Q rollback
 
 - Added 2026-07-30 after exact adjacent-column T16 Q-payload reuse improved the
@@ -3460,26 +3444,6 @@ category and control/ownership gates before closing this entry.
 - **Clean publication passed:** selector-unset production improves
   **20.800509 -> 20.830515 tok/s (+0.14426%)** with exact repeated state.
   Keep scalar-Q only through the next decode wall census.
-
-## Laguna gfx1151 dense/shared Q4 T16 sidecar selector
-
-- Added 2026-07-30 as
-  `LagunaGGUFResidentSession.set_q4_decode_t16_sidecar(...)` and
-  `--compare-q4-decode-t16-sidecar`. The gfx1151 capability defaults on;
-  false restores the resident-pack8 fused gate/up plus SiLU path.
-- The additive 96-weight sidecar passes exact actual-weight leaves and all
-  seven same-resident p512/d128 pairs, improving
-  **21.311596 -> 21.852204 tok/s (+2.53669%)**.
-- Remove the comparison CLI and session setter after tracked-clean
-  selector-unset publication and its first wall census. Retain the
-  architecture capability, materialized T16 sidecars, and registered pack8
-  fallback.
-- Tracked-clean publication passes at **21.851538 tok/s**, with all three
-  trajectories exact and the capability active. Remove the comparison seam
-  after the pending post-sidecar wall census.
-- The post-sidecar census passes at **43.972461 ms/token** kernel sum and
-  **46.007636 ms/token** span. The comparison seam is now eligible for
-  removal; retain only the capability, T16 materialization, and pack8 fallback.
 
 ## Laguna gfx1151 selected gate/up halfdot rollback
 

@@ -4262,16 +4262,6 @@ class LagunaGGUFResidentSession:
 
         self.use_selected_natural_tile8_decode = bool(enabled)
 
-    def set_q4_decode_t16_sidecar(self, enabled: bool) -> None:
-        """Select compact exact Q4 dense/shared decode tiles or pack8."""
-
-        self.use_q4_decode_t16_sidecar = bool(enabled)
-
-    def set_q4_decode_t16_dual_interleaved(self, enabled: bool) -> None:
-        """Select paired exact Q4 dense/shared decode tiles."""
-
-        self.use_q4_decode_t16_dual_interleaved = bool(enabled)
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 
