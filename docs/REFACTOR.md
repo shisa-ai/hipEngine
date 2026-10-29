@@ -3430,115 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 exact SWA exp-domain selector
-
-- Added 2026-07-29 as the default-off
-  `LagunaKVCache.swa_gqa3_vstage64_vec16_direct_assume_exp_fixed512` field,
-  `LagunaGGUFResidentSession.set_decode_swa_assume_exp(...)`, and
-  `--compare-swa-assume-exp`. It leaves compiler `expf` intact and only asserts
-  the exact score-minus-maximum domain at saturated
-  72Q/8KV/D128/SWA512. The retained direct-store body is the rollback.
-- Promote only if seven tracked-clean p512/d128 pairs improve and every
-  generated ID/state field remains exact. On promotion, make the gfx1151
-  capability select the assumed-domain sibling, retain explicit false rollback
-  through the decode campaign, then collapse the positive selector after one
-  checkpoint. On rejection, remove the field, setter, comparison lane, and
-  registered candidate primitive.
-- Promotion gate satisfied 2026-07-29: **19.140826 -> 19.245912 tok/s
-  (+0.549%, -0.285 ms/token)** with 7/7 wins, complete sample separation, and
-  exact IDs/state. gfx1151 now defaults the capability true. Keep explicit
-  false rollback through this decode campaign; then remove positive selector
-  semantics while retaining the generic registered rollback.
-
-## Laguna gfx1151 mixed32 SWA decode selector
-
-- Added 2026-07-29 as the default-off
-  `LagunaKVCache.swa_mixed32_vstage64_vec16_direct_assume_exp_fixed512`
-  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32(...)`, and
-  `--compare-swa-mixed32`. False restores the exact 24-block GQA3
-  assumed-domain owner; shorter/non-natural shapes and peer backends retain
-  their existing registered routes.
-- Promotion gate satisfied: the exact 32-block 2+2+2+3 owner improves the
-  leaf **5.41%** and all seven resident p512/d128 pairs
-  **19.268862 -> 19.371717 tok/s (+0.534%)** with identical trajectories and
-  allocation lifecycle.
-- Keep the explicit false rollback through clean production publication and
-  the next attention campaign checkpoint. Then remove positive selector
-  semantics and make mixed32 unconditional for the qualified gfx1151 shape,
-  while permanently retaining the registered 24-block GQA3 and generic
-  fallbacks.
-
-## Laguna gfx1151 mixed32 exact exp4 selector
-
-- Added 2026-07-29 as the default-off
-  `LagunaKVCache.swa_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512`
-  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp4(...)`, and
-  `--compare-swa-mixed32-exp4`. False restores the retained serial-exp
-  mixed32 sibling; it never selects a different geometry, arithmetic order,
-  or non-natural route.
-- Promotion gate satisfied: the exact four-lane issue schedule improves the
-  leaf **0.091487 -> 0.089135 ms (-2.57%)** and all seven resident p512/d128
-  pairs **19.368030 -> 19.432503 tok/s (+0.333%, -0.171 ms/token)** with
-  complete sample separation and identical trajectories/state/lifecycle.
-- Keep the explicit false rollback through clean production publication and
-  the next attention checkpoint. Then collapse the positive selector into the
-  qualified gfx1151 mixed32 dispatch while permanently retaining the
-  registered serial-exp mixed32 sibling for compiler/codegen bisection.
-
-## Laguna gfx1151 mixed32 exact exp8 selector
-
-- Added 2026-07-29 as the default-off
-  `LagunaKVCache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512`
-  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp8(...)`, and
-  `--compare-swa-mixed32-exp8`. False restores retained exp4; it changes no
-  geometry, arithmetic order, or non-natural route.
-- Promotion gate satisfied: the exact eight-lane issue schedule improves the
-  leaf **0.089191 -> 0.083755 ms (-6.09%)**, stable cached trace
-  **83.557 -> 78.667 us (-5.85%)**, and all seven resident p512/d128 pairs
-  **19.427449 -> 19.510986 tok/s (+0.430%, -0.220 ms/token)** with complete
-  sample separation and identical trajectories/state/lifecycle.
-- Clean selector-unset production is published at **19.515697 tok/s**
-  (**+0.470% / -0.241 ms/token** over clean exp4), with exact repeated state.
-  Keep the explicit false rollback through the next attention checkpoint.
-  Then collapse the positive selector into the qualified gfx1151 mixed32
-  dispatch while retaining registered exp4 for compiler/codegen bisection.
-
-## Laguna gfx1151 mixed32 exact exp16 selector
-
-- Added 2026-07-29 as the default-off
-  `LagunaKVCache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512`
-  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp16(...)`, and
-  `--compare-swa-mixed32-exp16`. False restores retained exp8; it changes no
-  geometry, arithmetic order, or non-natural route.
-- Promotion gate satisfied: exact sixteen-lane issue improves the leaf
-  **0.083740 -> 0.082224 ms (-1.81%)**, stable cached trace
-  **78.814 -> 77.265 us (-1.97%)**, and all seven resident p512/d128 pairs
-  **19.506557 -> 19.523370 tok/s (+0.0862%, -0.0441 ms/token)** with complete
-  sample separation and identical trajectories/state/lifecycle.
-- Clean selector-unset production is published at **19.530105 tok/s**
-  (**+0.0738% / -0.0378 ms/token** over clean exp8), with exact repeated
-  state. Keep the explicit false rollback through the next attention
-  checkpoint. Then collapse the positive selector into the qualified gfx1151
-  mixed32 dispatch while retaining registered exp8 for compiler/codegen
-  bisection.
-
-## Laguna gfx1151 mixed32 exact exp32 selector
-
-- Added 2026-07-29 as the session-scoped
-  `LagunaKVCache.swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512`
-  field, `LagunaGGUFResidentSession.set_decode_swa_mixed32_exp32(...)`, and
-  `--compare-swa-mixed32-exp32`. False restores retained exp16.
-- Promotion gate satisfied: exact wave32 issue improves the leaf
-  **0.082313 -> 0.081551 ms (-0.93%)**, stable trace
-  **77.185 -> 76.838 us (-0.45%)**, and all seven resident pairs
-  **19.524103 -> 19.538164 tok/s (+0.0720%, -0.0369 ms/token)** with complete
-  separation and exact state.
-- Clean selector-unset production is aggregate-flat at **19.530839 tok/s**
-  (**+0.0038%** versus exp16), so retain on the stronger separated A/B and
-  leaf/trace evidence. Keep false rollback through the next wall census.
-  Then collapse positive selector semantics while retaining exp16 as the
-  compiler/codegen rollback. Wave32 closes the natural issue-width screen.
-
 ## Laguna gfx1151 exact global exp-domain selector
 
 - Added 2026-07-29 as the default-off
@@ -10215,6 +10106,41 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0343–R0348 — SWA issue-schedule diagnostic migration
+
+The six profiler comparisons cover direct versus assumed-exp GQA3, GQA3
+versus mixed32, and the mixed32 serial/exp4/exp8/exp16/exp32 issue schedules.
+Their session setters alone no longer select those pairs: current mixed40
+successors override them. Real KV route tests reproduced the same mixed40
+symbol in both arms of every comparison.
+
+`scripts/laguna_swa_issue_diagnostic.py` now scopes each comparison's policy:
+required predecessors are enabled, later issue/producer/mixed40 successors
+are disabled, and every touched field is restored before session close,
+including nested scopes and failed bodies. The profiler enters this scope
+only for the six named comparisons and records `swa_issue_comparison_basis`.
+An incompatible split/tile16/gate/wave-local policy raises a named error.
+No production runtime, package defaults, kernels or arithmetic change.
+
+Host checks execute actual allocation, serial position publication, setters
+and KV route selection with an inert runtime, covering unsaturated, saturated
+and wrapped rings plus teardown. Historical July measurements remain in the
+sweep's pinned source and artifacts, not evidence for the repaired comparison.
+
+**Remaining work:** consolidate the public setters/cache ladder and profiler
+mode/result readers into the diagnostic owner, preserving generic shape and
+peer-backend routes. Remove the temporary scoped field policy once reference
+variant selection no longer depends on mutating production cache flags.
+Actual-weight/GPU/public validation shares R0340/R0273's missing local ROCm
+runtime and Laguna artifact.
+
+**Clearing action:** run SWA issue-scope, KV attention, runner and profiler
+contracts. On ROCm, execute each repaired pair against its registered primitive
+oracle, including unsaturated/saturated/wrapped rings and resource cleanup;
+then public `LLM.generate()` with the default successor route. Confirm symbols,
+full-state parity and teardown before retiring the six public controls or
+moving reference-only primitives out of production builds.
 
 ### R0341 — Laguna natural tile8 diagnostic ownership
 

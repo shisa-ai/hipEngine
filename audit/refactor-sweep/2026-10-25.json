@@ -10168,23 +10168,23 @@
       "start_line": 7738,
       "end_line": 7757,
       "sha256": "aefa272f4dc01172e879ebc8965eeb819ac929da8d1bf8ec32142bffb8d70f2d",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7740,
           "text": "- Added 2026-07-29 as the default-off",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7746,
           "text": "- Promote only if seven tracked-clean p512/d128 pairs improve and every",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7752,
           "text": "- Promotion gate satisfied 2026-07-29: **19.140826 -> 19.245912 tok/s",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },
@@ -10194,23 +10194,23 @@
       "start_line": 7758,
       "end_line": 7775,
       "sha256": "aa5102c3374486b36f94b940933cf6fdf8b2a451081be08fbf4dd92eeaa1aca9",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7760,
           "text": "- Added 2026-07-29 as the default-off",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7766,
           "text": "- Promotion gate satisfied: the exact 32-block 2+2+2+3 owner improves the",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7770,
           "text": "- Keep the explicit false rollback through clean production publication and",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },
@@ -10220,23 +10220,23 @@
       "start_line": 7776,
       "end_line": 7792,
       "sha256": "9883a9a00eb51431d6a2b157256f5d7c4f7ef4a6f577f26a68aad8fe372968a5",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7778,
           "text": "- Added 2026-07-29 as the default-off",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7784,
           "text": "- Promotion gate satisfied: the exact four-lane issue schedule improves the",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7788,
           "text": "- Keep the explicit false rollback through clean production publication and",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },
@@ -10246,23 +10246,23 @@
       "start_line": 7793,
       "end_line": 7810,
       "sha256": "75d6ff74efc3e195c3dece10d03801e487aaaab4005272e1de46f9c6fb35de20",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7795,
           "text": "- Added 2026-07-29 as the default-off",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7800,
           "text": "- Promotion gate satisfied: the exact eight-lane issue schedule improves the",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7805,
           "text": "- Clean selector-unset production is published at **19.515697 tok/s**",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },
@@ -10272,23 +10272,23 @@
       "start_line": 7811,
       "end_line": 7829,
       "sha256": "a3a65b2b1e4b50d288d680582e64c157777d3eb33148e7e224b0540ad89caa4d",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7813,
           "text": "- Added 2026-07-29 as the default-off",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7818,
           "text": "- Promotion gate satisfied: exact sixteen-lane issue improves the leaf",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7823,
           "text": "- Clean selector-unset production is published at **19.530105 tok/s**",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },
@@ -10298,23 +10298,23 @@
       "start_line": 7830,
       "end_line": 7846,
       "sha256": "2364f370db5735634dc686542d98ad21d1a03d100d52d947355d7db6650bba3e",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7832,
           "text": "- Added 2026-07-29 as the session-scoped",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7836,
           "text": "- Promotion gate satisfied: exact wave32 issue improves the leaf",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7841,
           "text": "- Clean selector-unset production is aggregate-flat at **19.530839 tok/s**",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },

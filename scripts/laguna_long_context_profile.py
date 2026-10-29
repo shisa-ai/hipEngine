@@ -23,6 +23,7 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_moe_tail_diagnostic import unfused_moe_tail
+from scripts.laguna_swa_issue_diagnostic import comparison_name as swa_issue_comparison_name, swa_issue_comparison
 from scripts.laguna_prefill_profile import _profile_token_stream
 from scripts.laguna_target_ar_bench import (
     DEFAULT_CACHE,
@@ -817,6 +818,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         _configure_moe_tail_comparison(
             diagnostic_scopes, owner, enabled=args.moe_tail_next_rmsnorm,
         )
+        diagnostic_scopes.enter_context(swa_issue_comparison(owner, args))
         active_matrix_rows = owner.prefill_chunk_size
         if args.warmup_rows > active_matrix_rows:
             raise ValueError("LPF-5 warmup rows must fit one retained chunk")
@@ -1406,6 +1408,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args.compare_swa_gqa3_vstage64_vec16_direct
             ),
             "compare_swa_assume_exp": args.compare_swa_assume_exp,
+            "swa_issue_comparison_basis": swa_issue_comparison_name(args),
             "compare_swa_mixed32": args.compare_swa_mixed32,
             "compare_swa_mixed32_exp4": args.compare_swa_mixed32_exp4,
             "compare_swa_mixed32_exp8": args.compare_swa_mixed32_exp8,
