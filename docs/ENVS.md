@@ -378,9 +378,8 @@ independent workload gates.
 | `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` | unset | Diagnostic | Slot-local AOTriton variant of the INT8 prefill route (gate provenance key). |
 | `HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` | unset (adopted single plane) | Rollback seam | Declares the layer-outer hidden-plane alias mode for INT8 evaluation sessions; `0` rolls back to the multi-plane layout. |
 | `HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE` | backend capability | Attention policy | Overrides the backend's AOTriton-prefill threshold policy (the measured 512-token crossover) on either side. |
-| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV` | unset | Attention R&D | Selects the optional contiguous head-major KV layout. Gapped BF16 prefix pages use the registered gather independently of that backend default; explicit `0` also disables the gapped gather. |
-| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES` | `536870912` (512 MiB) | Attention R&D | Byte cap for the head-major KV route. |
-| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS` | unset | Attention R&D | Token cap for the head-major KV route. |
+| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES` | `536870912` (512 MiB) | Attention R&D | Resource cap for the head-major K/V pair, including demand-sized gapped gather buffers. |
+| `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS` | `65792` | Attention R&D | Resource cap for head-major K/V capacity. Contiguous layout follows backend package policy; gapped gather uses its own switch below. |
 | `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM` | unset | Attention R&D | At >= 512 query rows, PARO defaults to an isolated stream; GGUF defaults to same-stream after observed stability failures. `0`/`1` selects the comparison policy for either family. |
 | `HIPENGINE_GGUF_GAPPED_GATHER` | unset (enabled) | Prefill R&D | Gather gapped BF16 prefix pages into demand-sized head-major buffers so suffix attention uses the contiguous route. Requires the registered copy kernel and obeys token/byte caps, including allocation rounding. `0` selects the native paged fallback. |
 | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE` | `auto` (gfx1100: `baseline`; gfx1151: `tile32x128`) | Schedule diagnostic | Accepts `auto`, `baseline` or `tile32x128`; used by kernel-isolation profiles. The full-stack runner caches the callable after first resolution; select before construction/use. |
@@ -1432,6 +1431,8 @@ These names appear in the tree but must not be confused with env knobs:
 - Removed or never-shipped flags that tests assert are absent or ineffective:
   `HIPENGINE_GGUF_Q4K_ROWTILE` (rowtiles are default-on; scoped comparisons
   use `q4k_rowtile_session(False)`), `HIPENGINE_GGUF_AR_STREAM_PREFILL`,
+  `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV` (contiguous layout uses package
+  policy; gapped gather has its own switch; token/byte resource caps remain),
   `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`,
   `HIPENGINE_GGUF_MTP_SERVER_VERIFY_FINAL_STATE_FASTPATH`,
   `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_SUFFIX_ROW_CHUNK`,

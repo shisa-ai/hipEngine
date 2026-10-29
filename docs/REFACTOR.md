@@ -3430,27 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV*`
-
-- Added 2026-08-04 for the Nathan-review P0 gfx1151 promotion. The backend
-  capability now defaults one cross-layer BF16 K/V scratch pair on before
-  AOTriton when the resident rounded capacity is at most 65,792 tokens and the
-  pair is at most 512 MiB. `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV=0` restores
-  strided AOTriton; `*_MAX_TOKENS` and `*_MAX_BYTES` can tighten admission.
-  Allocation or registry failure also falls back exactly, and gfx1100 remains
-  default-off.
-- The retained gate is byte-exact for permuted page-copy fixtures and complete
-  p512 hidden/GDN/KV/logit state. Copy-inclusive 512/4K/32K/64K full prefill is
-  **-0.028%/+0.616%/+3.383%/+7.001%**; the 64K pair adds 134,742,016 tracked
-  bytes. Evidence:
-  `benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`.
-- Remove the boolean A/B environment branch after one non-regressive release
-  checkpoint no longer needs direct bisection. Keep strided AOTriton as the
-  mandatory oversized/allocation-denied/unsupported-backend fallback. Keep the
-  two capacity controls until a general scratch-budget admission API replaces
-  them; do not raise the default beyond 65,792 without a separate 128K-class
-  correctness, memory, stability, and copy-inclusive performance gate.
-
 ## Laguna D8 row-vector selected gate/up rollback
 
 - Added 2026-07-26 after the exact wave-column MMQ128x32 consumer became the
@@ -4639,8 +4618,8 @@ category and control/ownership gates before closing this entry.
   equality at a 4,096-token context.
 - Removal trigger: the gates have now qualified the staged linear route on the
   admitted (backend, model, quant) cell, the capability default is the promoted
-  path, and `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` is a documented rollback
-  exactly like `GGUF_AOTRITON_HEAD_MAJOR_KV`. Retire the env override and the
+  path, and `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` is a documented rollback.
+  Retire the env override and the
   row-wise long-context branch together when the row-wise c1 route stops being
   the registered strict fallback for an unlisted artifact - that is, when every
   admitted artifact family has its own packet and the strict chain is reachable
@@ -10719,6 +10698,33 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0312 — Head-major K/V resource-budget integration
+
+The redundant `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV` boolean reader is removed.
+Contiguous head-major layout follows backend package policy: enabled on gfx1151,
+disabled on gfx1100. Gapped BF16 gather independently resolves its registered
+copy kernel and keeps `HIPENGINE_GGUF_GAPPED_GATHER` as its own control.
+Oversized, allocation-denied and unsupported-copy cases keep their existing
+strided/native fallbacks; kernel bodies and default arithmetic are unchanged.
+
+`HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS` and `*_MAX_BYTES` still bound
+the contiguous pair and demand-sized gapped gather. Planning and allocation use
+the same pair-byte calculation. Historical promotion evidence remains in
+`benchmarks/results/2026-08-04-gfx1151-q4km-aotriton-head-major-prefill.json`;
+its old rollback command describes that historical implementation only.
+
+**Remaining work:** replace both resource controls with the common scratch
+budget without dropping requested-context sizing, allocation rounding or
+partial-allocation cleanup. This is resource accounting, not a reason to
+reintroduce the retired boolean or gate execution on artifact identity.
+
+**Clearing action:** migrate the planner, contiguous allocator and gapped
+allocator/admission together. Run head-major policy, capacity-route terms,
+gapped-slot and request-ownership tests plus head-major GPU copy fixtures.
+A resource-policy replacement also needs public short/long/gapped requests,
+allocation-denial fallback and zero tracked cleanup. Do not use historical
+copy-inclusive speed rows as evidence for a changed capacity policy.
 
 ### R0311 — Family-specific AOTriton stream policy
 

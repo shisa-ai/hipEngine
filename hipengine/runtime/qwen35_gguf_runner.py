@@ -9098,7 +9098,6 @@ class Qwen35GGUFFullStackRunner:
 _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS"
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_AOTRITON_PREFILL_ENABLE_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE"
-_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV = "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV"
 _GGUF_GAPPED_GATHER_ENV = "HIPENGINE_GGUF_GAPPED_GATHER"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV = (
     "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
@@ -10274,10 +10273,8 @@ def _env_int(name: str, default: int, *aliases: str) -> int:
 
 
 def _gguf_aotriton_head_major_kv_enabled(backend: str) -> bool:
-    """Resolve the architecture package default with an explicit rollback."""
+    """Resolve the architecture package's contiguous head-major layout policy."""
 
-    if _env_value(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV) is not None:
-        return _env_flag(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, False)
     return bool(
         backend_package_capability(
             backend,
@@ -12787,13 +12784,6 @@ def _gguf_gapped_slot_local_fast_route_available(
     """
 
     if not _gguf_gapped_gather_prefill_enabled():
-        return False
-    # A contiguous cache can opt out of head-major layout as an optimization.
-    # A gapped cache needs the gather to run the same attention route at all.
-    if (
-        _env_value(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV) is not None
-        and not _env_flag(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, False)
-    ):
         return False
     if resolve(
         backend=str(backend),

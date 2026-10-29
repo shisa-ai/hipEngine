@@ -9287,23 +9287,23 @@
       "start_line": 7050,
       "end_line": 7070,
       "sha256": "e9aee1b1cee1372067d653dbeb32d3bbd26b420f200bd62908acf89d73e2b78f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-boolean-removed-resource-budget-deferred",
+      "evidence": ["Two retirement cases fail on parent and pass after deleting the unused boolean constant/readers. Contiguous package policy remains gfx1151-on/gfx1100-off; gapped gather retains its own switch independently. Token/byte limits, planner/allocator agreement, denial cleanup and fallback remain. 136 focused host checks, 14 GPU copy/policy fixtures and CPU deterministic bundle pass. Fresh public Qwen3.8-27B UD-Q4_K_S gfx1151 BF16-KV AR requests at prompt lengths 37/511/777 plus LLM.generate match parent tokens and 64 head-major dispatches; both sessions close at zero tracked bytes/allocations. Docs/audit/tier gates pass. Historical promotion artifact preserved; remaining common resource-budget migration bottom-referred as R0312. No kernel/arithmetic/default change or speed claim. Worklog: worklog/entries/20261029T015952.050970Z-cleanup-refactor-r0312-head-major-a24a43.md."],
       "subitems": [
         {
           "line": 7052,
           "text": "- Added 2026-08-04 for the Nathan-review P0 gfx1151 promotion. The backend",
-          "status": "pending"
+          "status": "resolved-boolean-retired-package-resource-fallbacks-preserved"
         },
         {
           "line": 7059,
           "text": "- The retained gate is byte-exact for permuted page-copy fixtures and complete",
-          "status": "pending"
+          "status": "resolved-history-preserved-gpu-and-public-preservation-pass"
         },
         {
           "line": 7064,
           "text": "- Remove the boolean A/B environment branch after one non-regressive release",
-          "status": "pending"
+          "status": "resolved-boolean-removed-capacity-controls-bottom-R0312"
         }
       ]
     },

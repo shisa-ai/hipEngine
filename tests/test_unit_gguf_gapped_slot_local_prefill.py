@@ -156,7 +156,7 @@ def test_gapped_gather_does_not_require_contiguous_layout_optimization(
     monkeypatch: pytest.MonkeyPatch, context_tokens: int,
 ) -> None:
     """A layout-required gather must not inherit the contiguous optimization default."""
-    monkeypatch.delenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV", "0")
     monkeypatch.delenv(gguf_runner._GGUF_GAPPED_GATHER_ENV, raising=False)
     assert not gguf_runner._gguf_aotriton_head_major_kv_enabled("hip_gfx1100")
     scratch = replace(
@@ -187,8 +187,8 @@ def test_gapped_gather_does_not_require_contiguous_layout_optimization(
     assert len(allocations) == 2
 
 
-def test_gapped_gather_preserves_explicit_head_major_rollback(monkeypatch):
-    monkeypatch.setenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, "0")
+def test_gapped_gather_preserves_its_own_explicit_rollback(monkeypatch):
+    monkeypatch.setenv(gguf_runner._GGUF_GAPPED_GATHER_ENV, "0")
     assert not gguf_runner._gguf_gapped_slot_local_fast_route_available(
         backend="hip_gfx1100", context_tokens=1224, kv_width=1024,
     )

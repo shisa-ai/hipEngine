@@ -27,7 +27,6 @@ from hipengine.kernels.hip_gfx1100.attention import (
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.runtime.qwen35_gguf_runner import (
-    _GGUF_AOTRITON_HEAD_MAJOR_KV_ENV,
     _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
     _gguf_aotriton_head_major_buffers,
     _gguf_aotriton_head_major_kv_enabled,
@@ -84,15 +83,11 @@ def test_head_major_copy_is_registered_through_attention_registry() -> None:
     ) is qwen35_copy_paged_kv_bf16_to_head_major_dense_prefix_spans
 
 
-def test_head_major_policy_defaults_only_on_gfx1151_and_keeps_env_rollback(monkeypatch) -> None:
-    monkeypatch.delenv(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, raising=False)
+def test_head_major_policy_defaults_only_on_gfx1151_and_ignores_retired_boolean(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV", "0")
     assert _gguf_aotriton_head_major_kv_enabled("hip_gfx1151") is True
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV", "1")
     assert _gguf_aotriton_head_major_kv_enabled("hip_gfx1100") is False
-
-    monkeypatch.setenv(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, "0")
-    assert _gguf_aotriton_head_major_kv_enabled("hip_gfx1151") is False
-    monkeypatch.setenv(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, "1")
-    assert _gguf_aotriton_head_major_kv_enabled("hip_gfx1100") is True
 
 
 def test_head_major_scratch_is_reported_separately_from_bulk_scratch() -> None:
@@ -184,14 +179,8 @@ def test_head_major_scratch_allocation_denial_frees_partial_and_falls_back(monke
             return replace(allocated, nbytes=nbytes)
         raise HipError(2, "forced capacity denial")
 
-    monkeypatch.setenv(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, "1")
     monkeypatch.setattr(runner_module, "malloc", fake_malloc)
-    monkeypatch.setattr(
-        runner_module,
-        "free",
-        lambda buffer, *, runtime: freed.append(buffer),
-    )
-
+    monkeypatch.setattr(runner_module, "free", lambda buffer, *, runtime: freed.append(buffer))
     result = _try_allocate_gguf_aotriton_head_major_kv_scratch(
         backend="hip_gfx1151",
         capacity_tokens=257,
@@ -217,7 +206,6 @@ def test_head_major_scratch_allocation_denial_frees_partial_and_falls_back(monke
 def test_head_major_scratch_rejects_capacity_above_validated_64k_class(monkeypatch) -> None:
     import hipengine.runtime.qwen35_gguf_runner as runner_module
 
-    monkeypatch.setenv(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, "1")
     monkeypatch.setenv(_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV, "65792")
     monkeypatch.setattr(
         runner_module,
