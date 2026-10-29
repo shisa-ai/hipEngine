@@ -3430,39 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Qwen3.8-27B gfx1100 packed route: T2 production drift, not a blocker (corrected 2026-08-19)
-
-- The current C2 packed decode route is NOT byte-exact vs the c1 oracle for
-  Qwen3.8-27B Q4_K_M on gfx1100: prompt row 2 (last token 9708) diverges at
-  decode token 73 (observed 6866 vs oracle 3154), deterministic at c2 and c4
-  (the two packed widths are byte-identical to each other). The pre-C2 tree
-  (b08ed12d6) was byte-exact on the same host/protocol.
-- **Corrected classification (supersedes the earlier "regression/blocker"
-  label):** this is a **T2 production drift** (width-specific packed
-  arithmetic vs c1), which `docs/EXECUTION-PROFILES.md` explicitly allows for
-  the `production` profile ("width- and shape-specific arithmetic is
-  allowed"; "cross-width generated-ID equality is diagnostic, not a
-  promotion requirement"). The produced text is fluent and valid ("giving
-  back to society" vs "making a positive impact on society"), the packed
-  trajectory is the oracle shifted by exactly 2 tokens after the single
-  step-73 flip, and both end in the same repeat loop. It is **not** a
-  correctness bug and **not** a production gate failure; the F1 harness
-  "mismatch" is a composition-invariance detector, not a correctness oracle.
-- It becomes a requirement only if this route is ever declared `strict`
-  (bit-stable on retained fixtures) or `batch_invariant` (result preserved
-  across widths/slots/admission order). If that is needed, restore
-  cross-width parity (bisect af5d00098 / 29a786afc) or keep the route
-  `production`. Optional: measure the step-73 logit margin (3154 vs 6866)
-  in a high-precision reference to confirm the narrow-margin flip. Evidence:
-  `benchmarks/results/2026-08-19-concurrency2-qwen38-27b-oldproto-c1-c4-old-vs-new-diagnostic.json`,
-  worklog `qwen38-27b-old-vs-new-ab` and
-  `qwen38-27b-packed-drift-correction`.
-- Separate pre-existing performance fact (not C2-specific, the item to
-  profile): the dense 27B packed c2/c4 step costs ~5x the c1 step (ITL 36ms
-  -> 184/198ms) in BOTH trees, so neither design scales this model's
-  aggregate throughput; rocprof kernel-family audit of the packed step is
-  the follow-up.
-
 ## RF-OI2 — default-off adaptive MTP budget diagnostic (2026-08-25)
 
 - **State:** rejected for promotion; retained only as explicit diagnostic and
@@ -11684,3 +11651,37 @@ harness's host-proposal mode alone cannot certify device handoff. Keep
 `tests/test_live_gguf_native_spec_cycle.py` launch/binding checks and the delayed
 metadata-upload test in `tests/test_live_qwen35_gguf_nextn_provider.py`.
 This sweep adds host guard coverage only; it does not claim the crossing fixed.
+
+### R0387 — Dense gfx1100 packed-step profiling follow-up
+
+The August dense Qwen3.8-27B packed-versus-scalar comparison is historical
+evidence, not an active token-correctness repair. Its source artifact remains
+`benchmarks/results/2026-08-19-concurrency2-qwen38-27b-oldproto-c1-c4-old-vs-new-diagnostic.json`;
+the classification correction is preserved in
+`worklog/entries/20260819T092204.420429Z-lhl-qwen38-27b-packed-drift-correction-493ec4.md`.
+The current F1 harness treats cross-width generated-ID equality as diagnostic
+under `production` and keeps control/length failures binding. T2 identifies
+width-dependent arithmetic; it does not waive numerical/task or state-ownership
+gates, and fluent text alone cannot certify them. Preserve strict and
+batch-invariant contracts separately.
+
+**Remaining work:** profile the dense packed decode step on gfx1100 before
+choosing a kernel, state-transfer or submission change. The old comparison did
+not show aggregate scaling, but it is not a measurement of today's route.
+Keep default packed execution and its scalar comparison; do not infer a
+current speed result or disable the route from the old timing.
+
+**Clearing action:** inspect `scripts/server_f1_concurrency_bench.py --help`,
+then collect matched current c1/c2/c4 and neighboring/unrelated logical-width
+requests on one gfx1100 host with model, quant, KV policy, context, sampler,
+queue count and execution profile recorded. Confirm actual public packed
+submission and slot/state ownership. Profile warmed cache-only execution with
+`rocprofv3 --kernel-trace`; separate projection/attention work, state/KV copies,
+host submission and synchronization, and separate capture from replay. Check
+teacher-forced numerics/tasks for changed arithmetic and exact ownership,
+ragged/shrinking groups, cancellation, repeats and cleanup. Preserve complete
+request-wall and per-request latency alongside aggregate throughput.
+Run `tests/test_unit_server_f1_concurrency_bench.py`,
+`tests/test_unit_gguf_ar_decode_control.py` and execution-profile contract tests
+before changing the comparison interface. This disposition adds no timing,
+numerical result, production promotion or runtime change.

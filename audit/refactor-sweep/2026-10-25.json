@@ -11367,28 +11367,28 @@
       "start_line": 8675,
       "end_line": 8707,
       "sha256": "afb195b9693e266e201d4cb83179a30fdea9c745b9b50232a0bb1050d97b5462",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-current-packed-step-profile-history-removed",
+      "evidence": ["Removed historical incident narrative from active debt; preserved immutable artifact and correction worklog. Current F1 production correctness treats cross-width ID equality diagnostic while control/length failures bind. T2 classification is not whole-model numerical/task certification; no fluent-text quality inference. Moved specific gfx1100 dense packed-step profiling to bottom with current same-host public route/rocprof/ownership/wall packet; no runtime/default, new timing or numerical claim.96focused F1/AR control/profile tests pass; F1 help/docs/audit/worklog/whitespace pass. Worklog worklog/entries/20261029T080300.651186Z-cleanup-refactor-r0387-packed-drift-427ed3.md."],
       "subitems": [
         {
           "line": 8677,
           "text": "- The current C2 packed decode route is NOT byte-exact vs the c1 oracle for",
-          "status": "pending"
+          "status": "resolved-historical-incident-preserved-in-evidence"
         },
         {
           "line": 8682,
           "text": "- **Corrected classification (supersedes the earlier \"regression/blocker\"",
-          "status": "pending"
+          "status": "resolved-profile-specific-contract-not-promotion-proof"
         },
         {
           "line": 8693,
           "text": "- It becomes a requirement only if this route is ever declared `strict`",
-          "status": "pending"
+          "status": "resolved-permanent-strict-batch-invariant-contract"
         },
         {
           "line": 8702,
           "text": "- Separate pre-existing performance fact (not C2-specific, the item to",
-          "status": "pending"
+          "status": "deferred-current-gfx1100-packed-step-profile"
         }
       ]
     },
