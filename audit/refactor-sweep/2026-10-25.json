@@ -12076,29 +12076,18 @@
       "start_line": 9539,
       "end_line": 9552,
       "sha256": "442a88bb50740b9a9c72344bd314360c6c0b9d40e596797dd6bd377e861dbe56",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-control-deferred-decode",
+      "evidence": [
+        "worklog/entries/20261029T172026.382460Z-cleanup-refactor-r0415-gdn-register-f765dd.md",
+        "tests/test_unit_qwen4exp_gdn_register_scope.py",
+        "tests/test_gpu_qwen4exp_gdn_register.py",
+        "docs/REFACTOR.md R0415 — Register-state GDN decode follow-up"
+      ],
       "subitems": [
-        {
-          "line": 9541,
-          "text": "- Production binds `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL=1`; strict binds0.",
-          "status": "pending"
-        },
-        {
-          "line": 9544,
-          "text": "- Full72-trajectory admission passes exactly; prefill improves9.50-10.55% and",
-          "status": "pending"
-        },
-        {
-          "line": 9548,
-          "text": "- Keep the registered strict serial fallback. Remove the environment selector",
-          "status": "pending"
-        },
-        {
-          "line": 9550,
-          "text": "- Resource review accepts256 VGPR/24-byte scratch with the measured whole-model",
-          "status": "pending"
-        }
+        {"text": "Preserve production/strict choices and registry/shape guards", "status": "fixed-runner-owned-public-routing-verified"},
+        {"text": "Honor accepted prefill-first decision and optimize decode next", "status": "deferred-decode-profiling-clearing-action-at-ledger-bottom"},
+        {"text": "Remove environment transport and keep strict fallback", "status": "fixed-scoped-diagnostics-profile-and-clone-publication"},
+        {"text": "Preserve accepted resource review and rejected barrier schedules", "status": "unchanged-kernel-and-decision-preserved-in-deferred-entry"}
       ]
     },
     {

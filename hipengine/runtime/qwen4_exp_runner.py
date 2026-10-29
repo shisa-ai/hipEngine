@@ -358,13 +358,24 @@ def _qwen4_exp_gdn_peer_layer_allowed(
     )
 
 
+@contextlib.contextmanager
+def gdn_register_prefill(runner: Any, enabled: bool):
+    """Bind register-state serial prefill on the owning diagnostic runner."""
+    prior = getattr(runner, "gdn_register_prefill", False)
+    runner.gdn_register_prefill = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.gdn_register_prefill = prior
+
+
 def qwen4_exp_gdn_register_prefill_selected(
     *, backend: str, rows: int, num_k_heads: int, num_v_heads: int, head_dim: int,
+    published: bool = False,
 ) -> bool:
     return (
         rows >= 2 and (num_k_heads, num_v_heads, head_dim) == (16, 48, 128)
-        and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL", "0")
-        not in {"", "0", "false", "False"}
+        and published
         and is_registered(KernelKey(
             backend, "gdn_recurrence_norm_gate", "f32_state",
             "qwen4exp_sigmoid_register_prefill",
@@ -8079,6 +8090,7 @@ def run_qwen4_exp_gdn_layer(
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
     prefill_variant: str | None = None,
+    gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
     gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
@@ -8233,6 +8245,7 @@ def run_qwen4_exp_gdn_layer(
         num_k_heads=num_k_heads, num_v_heads=num_v_heads, head_dim=head_dim,
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
         prefill_variant=prefill_variant,
+        gdn_register_prefill=gdn_register_prefill,
         gdn_tile16_prefill=gdn_tile16_prefill,
         gdn_peer_prefill_layers=gdn_peer_prefill_layers,
         gdn_exact_bulk_conv=gdn_exact_bulk_conv,
@@ -8531,6 +8544,7 @@ def run_qwen4_exp_gdn_token_mixer(
     stream: int = 0,
     runtime: HipRuntime | None = None,
     prefill_variant: str | None = None,
+    gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
     gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
@@ -8812,6 +8826,7 @@ def run_qwen4_exp_gdn_token_mixer(
             serial_prefill = qwen4_exp_gdn_prefill_f32
             backend = str(weights["attn_qkv"].backend)
             if qwen4_exp_gdn_register_prefill_selected(
+                published=gdn_register_prefill,
                 backend=backend, rows=rows, num_k_heads=num_k_heads,
                 num_v_heads=num_v_heads, head_dim=head_dim,
             ):
@@ -9164,6 +9179,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # wave-norm leaf where that admission applies, and None (the register
     # parent) everywhere else. A diagnostic scope may outrank it.
     gdn_prefill_variant: str | None = None
+    gdn_register_prefill: bool = False
     # GDN tile-16 prefill owner inside the columnwarp gate, for the binding
     # Hk16/Hv48/D128 envelope. True on every runner the profile constructs, and
     # the prefill chunk path is its only reader: decode runs one row, and the
@@ -10938,6 +10954,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     pending_write=pending_write,
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
+                    gdn_register_prefill=self.gdn_register_prefill,
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
                     gdn_peer_prefill_layers=self.gdn_peer_prefill_layers,
                     gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,

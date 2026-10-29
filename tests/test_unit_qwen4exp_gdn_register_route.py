@@ -12,11 +12,14 @@ def test_register_prefill_route_requires_flag_shape_and_registration(monkeypatch
         "num_k_heads": 16,
         "num_v_heads": 48,
         "head_dim": 128,
+        "published": False,
     }
     monkeypatch.setattr(runner, "is_registered", lambda key: True)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL", raising=False)
     assert not select(**shape)
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL", "1")
+    assert not select(**shape)
+    shape["published"] = True
     assert select(**shape)
     for override in ({"rows": 1}, {"num_k_heads": 8}, {"num_v_heads": 32}, {"head_dim": 64}):
         assert not select(**(shape | override))
@@ -28,7 +31,4 @@ def test_register_prefill_route_requires_flag_shape_and_registration(monkeypatch
 def test_register_ab_changes_only_its_flag(mode, value):
     environment = {"other": "unchanged"}
     _apply_mode(mode, environment=environment, route_package="gdn-register")
-    assert environment == {
-        "other": "unchanged",
-        "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": value,
-    }
+    assert environment == {"other": "unchanged"}

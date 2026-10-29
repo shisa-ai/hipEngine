@@ -49,7 +49,9 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # the serial sigmoid owners run, and the retired gate writes no key.
     assert generator.gdn_peer_prefill_layers is None
     assert "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL" not in os.environ
-    for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL"):
+    assert generator.gdn_register_prefill is True
+    assert "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL" not in os.environ
+    for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "1"
     # The PF-1 fork-b leaf is request-local runner state too, so the recovery
     # pass publishes it on the runner and writes no process key.

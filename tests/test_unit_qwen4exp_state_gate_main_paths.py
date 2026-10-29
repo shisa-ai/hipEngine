@@ -29,10 +29,13 @@ from hipengine.kernels.registry import (
 from scripts import qwen4exp_row4_state_gate as gate
 
 PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4",
-            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair")
+            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register")
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    "gdn-register": KernelKey(
+        "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
+        "qwen4exp_sigmoid_register_prefill"),
     "q51-pair": KernelKey(
         "hip_gfx1151", "moe_linear", "gguf_q5_1",
         "selected_grouped_prefill_pair2_bf16_bf16_out"),
@@ -87,6 +90,7 @@ def _runner(**overrides):
 
     published = {
         "prefill_chunk_size": 1024,
+        "gdn_register_prefill": True,
         "q51_pair_prefill": True,
         "q51_exact_grouped_down": True,
         "q51_fold128_prefill": True,
@@ -224,6 +228,11 @@ def test_main_records_the_runner_owned_premise(
     elif package == "q5k-row4":
         assert control["runner_field"] == "q5k_row4_prefill"
         assert control["before"] is False and control["after"] is True
+    elif package == "gdn-register":
+        assert control["runner_field"] == "gdn_register_prefill"
+        assert control["before"] is False and control["after"] is True
+        assert control["published_value"] is True
+        assert control["isolation"] == "tiled and peer prefill off; wave-norm variant unset"
     elif package == "q51-pair":
         assert control["runner_field"] == gate.Q51_PAIR_FIELD
         assert control["before"] is False and control["after"] is True

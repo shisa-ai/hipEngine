@@ -1099,6 +1099,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.qsa_ordered_decode_v2 = bool(
         getattr(generator, "qsa_ordered_decode_v2", False))
     runner.gdn_prefill_variant = getattr(generator, "gdn_prefill_variant", None)
+    runner.gdn_register_prefill = getattr(generator, "gdn_register_prefill", False)
     runner.gdn_peer_prefill_layers = getattr(
         generator, "gdn_peer_prefill_layers", None)
     runner.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))

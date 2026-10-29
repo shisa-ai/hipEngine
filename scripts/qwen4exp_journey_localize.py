@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, qsa_h256_prefill_mode
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -166,12 +166,23 @@ def h256_arm_mode(arm):
     return None
 
 
+def register_arm_enabled(arm, published):
+    """Preserve each arm's register-state choice after environment retirement."""
+    if arm in {"all_flags_strict", "gdn_flags_strict", "base_plus_gdn_flags"}:
+        return False
+    if arm.startswith("strict_plus_"):
+        return arm in {"strict_plus_gdn", "strict_plus_gdn_serial", "strict_plus_gdn_multi"}
+    return published
+
+
 def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
-                     *, h256_mode=None):
+                     *, h256_mode=None, register_prefill=None):
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with phase_peer_scope(runner, prefill_flags), qsa_h256_prefill_mode(runner, h256_mode):
+    with phase_peer_scope(runner, prefill_flags), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+            runner, getattr(runner, "gdn_register_prefill", False)
+            if register_prefill is None else register_prefill):
         runner.reset()
         result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
@@ -277,6 +288,9 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(gdn_register_prefill(
+                    generator.runner, register_arm_enabled(
+                        arm, generator.runner.gdn_register_prefill)))
                 arm_scope.enter_context(qsa_h256_prefill_mode(
                     generator.runner, h256_arm_mode(arm)))
                 if serial_gdn({**bound, **ARMS[arm]}):
@@ -293,6 +307,7 @@ def main():
                                 pre, dec = dec, pre
                             candidate.extend(split_trajectory(
                                 generator.runner, tokens[key], forced, pre, dec,
+                                register_prefill=arm != "strict_prefill_production_decode",
                                 h256_mode=("parent" if arm == "strict_prefill_production_decode"
                                            else None)))
                         else:

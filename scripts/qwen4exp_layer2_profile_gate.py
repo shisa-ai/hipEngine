@@ -46,7 +46,7 @@ if str(ROOT) not in sys.path:
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_peer_prefill, gdn_prefill_variant,
+    gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill,
     q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     qsa_ordered_decode_v2,
@@ -107,6 +107,7 @@ class CandidateSpec:
     # keeps the base profile's published variant (the register parent on a
     # strict base); a wide/narrow name binds that leaf for the measured rows.
     gdn_prefill_variant: str | None = None
+    gdn_register_prefill: bool | None = None
     # Explicit QSA ordered-v2 sparse decode selection for this arm, same
     # protocol. ``None`` keeps the base profile's published decision (on for a
     # production base, the ordered v1 parent on a strict one); the gate binds a
@@ -665,7 +666,6 @@ CANDIDATES = {
         classification="diagnostic",
         mechanism="current GDN suffix over strict non-GDN arithmetic",
         environment={
-            "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
             "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_dpp_prefill",
@@ -673,6 +673,7 @@ CANDIDATES = {
         },
         base_profile="strict",
         scenario_id="qwen4exp-ud-q4-k-xl-gdn-isolated",
+        gdn_register_prefill=True,
         gdn_prefill_variant="qwen4exp_sigmoid_wave_norm_prefill",
         gdn_peer_prefill=",".join(map(str, range(35, 48))),
         candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
@@ -1736,6 +1737,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # the profile's own decision comes back when the stack unwinds.
         dispatch_stack.enter_context(qsa_prefill_head_mode(
             candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
+    if candidate_spec.gdn_register_prefill is not None:
+        dispatch_stack.enter_context(gdn_register_prefill(
+            candidate_generator.runner, candidate_spec.gdn_register_prefill))
     if candidate_spec.gdn_prefill_variant is not None:
         # Same for the GDN serial owner: the arm names its leaf explicitly and
         # the base profile's published variant is restored on exit.

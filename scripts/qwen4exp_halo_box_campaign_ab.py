@@ -1632,6 +1632,21 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         from hipengine.runtime.qwen4_exp_runner import q5k_row4_prefill
         return q5k_row4_prefill(runner, mode == "after")
 
+    if route_package == "gdn-register":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("gdn-register needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import (
+            gdn_register_prefill, gdn_peer_prefill,
+        )
+        return _combined_scope(
+            gdn_serial_scope(environment=environment),
+            gdn_peer_prefill(runner, False),
+            gdn_prefill_variant(runner, None),
+            gdn_register_prefill(runner, mode == "after"),
+        )
+
     if route_package == "q51-pair":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -1973,7 +1988,7 @@ def _apply_mode(
         if route_package == "q51-pair":
             return  # route_scope binds the owning runner.
         if route_package == "gdn-register":
-            flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
+            return  # route_scope binds the owning runner.
         if route_package == "gdn-wave-norm":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
@@ -2648,6 +2663,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "before": {"q51_down": "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"},
                 "after": {"q51_down": row4_key.variant},
             }
+    if args.route_package == "gdn-register":
+        artifact["selection_control"] = {
+            "runner_field": "gdn_register_prefill", "before": False, "after": True,
+            "published_value": generator.runner.gdn_register_prefill,
+            "scope": "per measured run; restored on exit",
+            "isolation": "tiled and peer prefill off; wave-norm variant unset",
+        }
     if args.route_package == "q51-pair":
         artifact["selection_control"] = {
             "runner_field": Q51_PAIR_FIELD, "before": False, "after": True,

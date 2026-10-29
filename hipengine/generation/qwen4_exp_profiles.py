@@ -1243,7 +1243,6 @@ def _bind(
             else "0"
         ),
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
         # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
         # profile binds them and no runner reads them.
@@ -1392,6 +1391,7 @@ def _bind(
     generator.qsa_h256_prefill_mode = qsa_h256_prefill_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
     generator.gdn_prefill_variant = gdn_prefill_variant
+    generator.gdn_register_prefill = production
     generator.gdn_peer_prefill_layers = gdn_peer_prefill_layers
     generator.q51_down_m1 = q51_down_m1
     generator.q51_pair_prefill = production
@@ -1449,6 +1449,7 @@ def _bind(
         runner.qsa_h256_prefill_mode = qsa_h256_prefill_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
         runner.gdn_prefill_variant = gdn_prefill_variant
+        runner.gdn_register_prefill = production
         runner.gdn_peer_prefill_layers = gdn_peer_prefill_layers
         runner.q51_down_m1 = q51_down_m1
         runner.q51_pair_prefill = production

@@ -3427,20 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp register-state serial GDN rollback
-
-- Production binds `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL=1`; strict binds0.
-  The registry/shape-guarded serial branch uses Hk16/Hv48/D128 and rows>=2.
-  Suffix arithmetic and decode routes are unchanged.
-- Full72-trajectory admission passes exactly; prefill improves9.50-10.55% and
-  every request wall improves3.28-6.79%. Decode p4096 loses3.63% amid drift.
-  Retain the win under the owner's prefill-first direction and optimize decode
-  next; do not hide the adverse phase rows or claim thermal causality.
-- Keep the registered strict serial fallback. Remove the environment selector
-  when dispatch is owned directly by the manifest and rollback needs expire.
-- Resource review accepts256 VGPR/24-byte scratch with the measured whole-model
-  win. Avoid the rejected per-column/every8 scheduling barriers.
-
 ## Qwen4Exp Q4 shared-activation output-pair admission
 
 - `selected_dual_grouped_pair2_bf16_bf16_out` is retained after exact
@@ -11219,3 +11205,28 @@ must first profile the current path and follow `OPTIMIZATION.md`.
 
 Implementation and validation:
 `../worklog/entries/20261029T163722.751625Z-cleanup-refactor-r0412-h256-prefill-2bd929.md`.
+
+### R0415 — Register-state GDN decode follow-up
+
+Register-state serial prefill is now runner-owned through `gdn_register_prefill`:
+production on, strict off. The retired environment selector is ignored. The
+rows>=2, Hk16/Hv48/D128 and registry guards, registered strict serial fallback,
+suffix arithmetic and decode routes are unchanged. Diagnostic scopes restore
+the owning runner on exit and isolate the serial comparison from tiled, peer
+and wave-norm owners.
+
+**Deferred work:** optimize decode without reopening the lead's accepted
+prefill-first decision. The original entry recorded a p4096 decode loss amid
+drift alongside the accepted whole-request improvement; this migration makes
+no new timing claim and does not attribute that result to temperature. The
+accepted resource review and rejection of per-column/every8 scheduling barriers
+still stand; their original measurements remain in Git history.
+
+**Clearing action:** profile today's decode path under `OPTIMIZATION.md` before
+choosing an optimization. Run the full profile gate and matched whole-model
+prefill/decode comparison for any arithmetic or performance candidate, keeping
+the serial strict fallback. Remove this follow-up only after the decode work
+is completed or the lead explicitly retires it.
+
+Implementation and validation:
+`../worklog/entries/20261029T172026.382460Z-cleanup-refactor-r0415-gdn-register-f765dd.md`.

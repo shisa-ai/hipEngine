@@ -197,7 +197,7 @@ def main():
     if args.route_package == "q51-pair":
         flag = ""  # route_scope binds the runner.
     if args.route_package == "gdn-register":
-        flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
+        flag = ""  # route_scope binds the owning runner.
     if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
         # Request-local on the runner; no env key names this leaf.
         flag = ""
@@ -539,7 +539,15 @@ def main():
                 "published_value": generator.runner.q51_pair_prefill,
                 "scope": "per measured run; restored on exit",
             }
-        if args.route_package in {"gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+        if args.route_package == "gdn-register":
+            assert generator.runner.gdn_register_prefill is True
+            report["selection_control"] = {
+                "runner_field": "gdn_register_prefill", "before": False, "after": True,
+                "published_value": generator.runner.gdn_register_prefill,
+                "scope": "per measured run; restored on exit",
+                "isolation": "tiled and peer prefill off; wave-norm variant unset",
+            }
+        if args.route_package in {"q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.
