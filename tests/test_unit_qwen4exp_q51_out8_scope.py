@@ -343,12 +343,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q5k_row4_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, True, True, True, True, False, False,
         False, False, False)
 
     owner.q51_out8 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, False, True, True, True, False, False,
+        False, False, False, False, True, False, False, True, True, True, False, False,
         False, False, False)
 
 
@@ -521,8 +521,10 @@ def _published(monkeypatch):
     for name in COMPETITOR_ENV:
         monkeypatch.delenv(name, raising=False)
     resolved = _resolve(ExecutionProfile.PRODUCTION)
-    resolved.binder(SimpleNamespace(), resolved)
-    yield {name: os.environ.get(name) for name in COMPETITOR_ENV}
+    generator = SimpleNamespace()
+    resolved.binder(generator, resolved)
+    yield {**{name: os.environ.get(name) for name in COMPETITOR_ENV},
+           "q51_pair_prefill": generator.q51_pair_prefill}
 
 
 def _down_key(**kwargs):
@@ -564,7 +566,8 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     # The five owners the campaign already closes for the pair2 parent, plus the
     # pair2 selection itself and the expert-grid family.
     assert set(envs) == set(campaign.Q51_PAIR2_PREEMPTING_ENV) | {
-        PAIR_ENV, EXPERT_GRID_ENV}
+        EXPERT_GRID_ENV}
+    assert dict(bindings)["q51_pair_prefill"] is False
     assert envs == module.OUT8_PREEMPTING_ENV
     # The fold siblings are held off too, even though their guards require the
     # pair2 parent variant.
@@ -587,7 +590,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
     with _published(monkeypatch) as published:
         assert published[ROUTED_F16_ENV] == "1"
         assert published[IU8_EXACT_ENV] == "1"
-        assert published[PAIR_ENV] == "1"
+        assert published[PAIR_ENV] is None
+        assert published["q51_pair_prefill"] is True
         # The F16 WMMA down owner below the chain is runner state now, so the
         # plan publishes it off through the field and names no process key.
         assert published[WMMA_ENV] is None
@@ -601,9 +605,10 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         # With those two out of the way the pair2 parent still replaces the rung
         # on a production chunk, so the rung decides nothing either way.
         assert runner_module.qwen4_exp_q51_pair_prefill_selected(
-            QWEN4_EXP_BACKEND, "gguf_q5_1", rows=1024, in_features=512) is True
-        assert _down_key(q51_out8=True).variant == PAIR2_VARIANT
-        assert _down_key(q51_out8=False).variant == PAIR2_VARIANT
+            QWEN4_EXP_BACKEND, "gguf_q5_1", rows=1024, in_features=512,
+            published=published["q51_pair_prefill"]) is True
+        assert _down_key(q51_out8=True, q51_pair_prefill=published["q51_pair_prefill"]).variant == PAIR2_VARIANT
+        assert _down_key(q51_out8=False, q51_pair_prefill=published["q51_pair_prefill"]).variant == PAIR2_VARIANT
 
 
 def test_the_route_closure_makes_the_output1_base_the_owner(
@@ -647,10 +652,10 @@ def test_the_route_closure_launches_only_the_owner_it_names(
     counts = _counting_stubs(
         (OUT8_VARIANT, OUT1_VARIANT, PAIR2_VARIANT, GRID64_VARIANT, M1_VARIANT))
     runner = SimpleNamespace(**{GATE_FIELD: True})
-    with _published(monkeypatch):
+    with _published(monkeypatch) as published:
         # The lane's own arm first: the launch reaches the pair2 parent, so the
         # rung's owners stay at zero however the field is set.
-        _launch(_down_key(q51_out8=False))
+        _launch(_down_key(q51_out8=False, q51_pair_prefill=published["q51_pair_prefill"]))
         assert counts == {
             OUT8_VARIANT: 0, OUT1_VARIANT: 0, PAIR2_VARIANT: 1,
             GRID64_VARIANT: 0, M1_VARIANT: 0}

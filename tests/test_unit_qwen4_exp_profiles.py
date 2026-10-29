@@ -391,7 +391,9 @@ def test_historical_q4km_binder_structure_not_qualification(
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
     )
     assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "1"
+    assert production_generator.q51_pair_prefill is True
+    assert fake_runner.q51_pair_prefill is True
+    assert "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
     # The GDN serial owner is request-local runner state published from the
     # plan's own selection, so the binder writes no process-wide switch for it.
@@ -578,7 +580,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.q51_register_cache is False
     assert strict_generator.q51_row_publish is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
+    assert strict_generator.q51_pair_prefill is False
+    assert "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert strict_generator.gdn_prefill_variant is None
     assert "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM" not in os.environ

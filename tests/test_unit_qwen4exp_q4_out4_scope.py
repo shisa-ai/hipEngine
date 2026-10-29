@@ -367,12 +367,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q5k_row4_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, True, True, True, True, False, False,
         False, False, False)
 
     owner.q4_out4 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, True, False, True, True, True, False, False, False,
+        False, False, False, False, True, False, True, True, True, False, False, False,
         False, False, False)
 
 

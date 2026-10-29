@@ -36,7 +36,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_PAIR2_GATE_FIELD,
     Q51_PAIR2_PREEMPTING_ENV,
     Q51_PAIR2_PREEMPTING_FIELDS,
-    Q51_PAIR_PREFILL_ENV,
+    Q51_PAIR_FIELD,
     head_route_configuration,
     restore_route_configuration,
 )
@@ -80,7 +80,7 @@ RUNNER_ROUTE_OFF = {
 #:   * the Q5_1 WMMA owner below the chain is the owning runner's
 #:     ``q51_wmma_down`` field (the production plan publishes it off), so the
 #:     arm binds it off on the runner it measures;
-#:   * ``HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`` makes the pair2 parent exist at
+#:   * runner-local ``q51_pair_prefill`` makes the pair2 parent exist at
 #:     rows>=64, and the production plan publishes it on - so pair2 is not off by
 #:     default and would replace the rung on this harness's 1024-row chunks;
 #:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
@@ -96,12 +96,10 @@ RUNNER_ROUTE_OFF = {
 #: every binding it made rather than implying a single-route delta.
 OUT8_PREEMPTING_ENV = tuple(dict.fromkeys(
     Q51_PAIR2_PREEMPTING_ENV
-    + (
-        Q51_PAIR_PREFILL_ENV,
-        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
-    )
+    + ("HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",)
 ))
 OUT8_SIBLING_FIELDS = (
+    Q51_PAIR_FIELD,
     Q51_FOLD128_FIELD,
     Q51_FOLD_PAIR_FIELD,
     "q51_register_cache",

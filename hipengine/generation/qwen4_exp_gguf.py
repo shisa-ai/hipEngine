@@ -332,6 +332,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.q4_out4 = True
         self.q4_bundle_prefill = False
         self.q51_down_m1 = False
+        self.q51_pair_prefill = False
         self.q51_fold128_prefill = False
         self.q51_fold_pair_prefill = False
         self.q51_register_cache = False
@@ -1101,6 +1102,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.gdn_peer_prefill_layers = getattr(
         generator, "gdn_peer_prefill_layers", None)
     runner.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
+    runner.q51_pair_prefill = bool(getattr(generator, "q51_pair_prefill", False))
     runner.q51_fold128_prefill = bool(
         getattr(generator, "q51_fold128_prefill", False))
     runner.q51_fold_pair_prefill = bool(

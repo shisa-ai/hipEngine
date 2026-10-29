@@ -396,6 +396,7 @@ def run_qwen4_exp_batch_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
     state: Qwen4ExpBatchGdnState,
@@ -505,6 +506,7 @@ def run_qwen4_exp_batch_gdn_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
@@ -624,6 +626,7 @@ def _run_layer_ffn(
     top_k: int,
     stream: int,
     runtime: HipRuntime,
+    q51_pair_prefill: bool = False,
     q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
@@ -684,6 +687,7 @@ def _run_layer_ffn(
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=runtime,
         q51_down_m1=q51_down_m1,
+        q51_pair_prefill=q51_pair_prefill,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_exact_grouped_down=q51_exact_grouped_down,
@@ -715,6 +719,7 @@ def run_qwen4_exp_batch_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
     attention_state: Qwen4ExpBatchAttentionState,
@@ -832,6 +837,7 @@ def run_qwen4_exp_batch_qsa_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
@@ -956,6 +962,7 @@ class Qwen4ExpGGUFBatchRunner:
     # key of the segment it builds.
     q8_wmma_tiles: tuple[int, int] | None = None
     q51_down_m1: bool = False
+    q51_pair_prefill: bool = False
     q51_fold128_prefill: bool = False
     q51_fold_pair_prefill: bool = False
     forkb_grouped_down: bool = False
@@ -1854,6 +1861,7 @@ class Qwen4ExpGGUFBatchRunner:
 
         return (
             bool(self.q51_down_m1),
+            bool(getattr(self, "q51_pair_prefill", False)),
             bool(self.q51_fold128_prefill),
             bool(self.q51_fold_pair_prefill),
             bool(self.q51_exact_grouped_down),
@@ -2126,6 +2134,7 @@ class Qwen4ExpGGUFBatchRunner:
                     num_v_heads=cfg.gdn_time_step_rank,
                     head_dim=cfg.gdn_state_size,
                     conv_kernel=cfg.gdn_conv_kernel,
+                    q51_pair_prefill=self.q51_pair_prefill,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
@@ -2171,6 +2180,7 @@ class Qwen4ExpGGUFBatchRunner:
                     index_heads=cfg.indexer_head_count,
                     index_dim=cfg.indexer_key_length,
                     index_rotary_dim=cfg.rope_dimension_count,
+                    q51_pair_prefill=self.q51_pair_prefill,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,

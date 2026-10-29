@@ -173,6 +173,7 @@ def _published_environment() -> dict[str, str]:
 
 def _published_runner() -> SimpleNamespace:
     return SimpleNamespace(
+        q51_pair_prefill=True,
         q51_exact_grouped_down=True,
         q4_exact_grouped_gate=True, q4_exact_grouped_all=True,
         q51_down_m1=True, forkb_grouped_down=True,

@@ -1243,11 +1243,6 @@ def _bind(
             else "0"
         ),
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
-        # The four expert-down ladder rungs are request-local runner state now
-        # (see ``q51_fold128_prefill`` and its siblings below), so no process
-        # key names them. ``HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`` stays: it
-        # still decides whether the pair2 parent variant exists at all.
-        "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
         # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
@@ -1399,6 +1394,7 @@ def _bind(
     generator.gdn_prefill_variant = gdn_prefill_variant
     generator.gdn_peer_prefill_layers = gdn_peer_prefill_layers
     generator.q51_down_m1 = q51_down_m1
+    generator.q51_pair_prefill = production
     generator.q51_fold128_prefill = q51_fold128_prefill
     generator.q51_fold_pair_prefill = q51_fold_pair_prefill
     generator.q51_register_cache = q51_register_cache
@@ -1455,6 +1451,7 @@ def _bind(
         runner.gdn_prefill_variant = gdn_prefill_variant
         runner.gdn_peer_prefill_layers = gdn_peer_prefill_layers
         runner.q51_down_m1 = q51_down_m1
+        runner.q51_pair_prefill = production
         runner.q51_fold128_prefill = q51_fold128_prefill
         runner.q51_fold_pair_prefill = q51_fold_pair_prefill
         runner.q51_register_cache = q51_register_cache

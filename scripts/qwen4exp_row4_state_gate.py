@@ -35,7 +35,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
     router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_FIELD,
-    Q51_PAIR_PREFILL_ENV,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
+    Q51_PAIR_FIELD,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
     q51_pair2_control_record,q51_register_cache_control_record,
     q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
     Q8_DOWN_FORKB_FIELD,Q8_DOWN_ROW4_FIELD,Q8_DOWN_BUNDLE_FIELD,
@@ -46,7 +46,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
-                   "q4-bundle", "prefill-bundle"}:
+                   "q4-bundle", "prefill-bundle", "q51-pair"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -195,7 +195,7 @@ def main():
     if args.route_package in {"q4-bundle", "prefill-bundle"}:
         flag = ""  # Runner-local selection is bound by arm_control.
     if args.route_package == "q51-pair":
-        flag = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
+        flag = ""  # route_scope binds the runner.
     if args.route_package == "gdn-register":
         flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
     if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
@@ -532,7 +532,14 @@ def main():
                 "runner_field": "q5k_row4_prefill", "before": False, "after": True,
                 "scope": "per measured run; restored on exit",
             }
-        if args.route_package in {"q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+        if args.route_package == "q51-pair":
+            assert generator.runner.q51_pair_prefill is True
+            report["selection_control"] = {
+                "runner_field": Q51_PAIR_FIELD, "before": False, "after": True,
+                "published_value": generator.runner.q51_pair_prefill,
+                "scope": "per measured run; restored on exit",
+            }
+        if args.route_package in {"gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.
@@ -638,7 +645,7 @@ def main():
             # count off (or requires the parent it rides) and binds the
             # published register-cache/row-publish siblings off. The record
             # separates every bound value from the plan's published one.
-            assert os.environ.get(Q51_PAIR_PREFILL_ENV, "") not in {"", "0"}, (
+            assert getattr(generator.runner, Q51_PAIR_FIELD, False), (
                 "production must bind the grouped pair2 Q5_1 selection")
             assert getattr(generator.runner, Q51_PAIR2_GATE_FIELD, False), (
                 "the pair2 chain's own gate must be published on the runner")

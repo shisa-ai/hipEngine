@@ -384,6 +384,7 @@ class Qwen4ExpMixedTargetPass:
                     q4_tile_m=getattr(batch, "q4_tile_m", None),
                     q4_tile_n=getattr(batch, "q4_tile_n", None),
                     q51_down_m1=getattr(batch, "q51_down_m1", False),
+                    q51_pair_prefill=getattr(batch, "q51_pair_prefill", False),
                     q51_fold128_prefill=getattr(
                         batch, "q51_fold128_prefill", False),
                     q51_fold_pair_prefill=getattr(

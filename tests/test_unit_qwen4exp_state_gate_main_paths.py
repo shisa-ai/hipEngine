@@ -29,10 +29,13 @@ from hipengine.kernels.registry import (
 from scripts import qwen4exp_row4_state_gate as gate
 
 PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4",
-            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle")
+            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair")
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    "q51-pair": KernelKey(
+        "hip_gfx1151", "moe_linear", "gguf_q5_1",
+        "selected_grouped_prefill_pair2_bf16_bf16_out"),
     "q4-bundle": KernelKey(
         "hip_gfx1151", "moe_linear", "gguf_q4_k",
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"),
@@ -62,10 +65,6 @@ LEAF_KEYS = {
 
 #: The leaf keys and binder keys of the packages that still own a process key.
 PROCESS_KEYED = {
-    "q51-pair": (
-        KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1",
-                  "selected_grouped_prefill_pair2_bf16_bf16_out"),
-        "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"),
     "q4-pair": (
         KernelKey("hip_gfx1151", "moe_linear", "gguf_q4_k",
                   "selected_dual_grouped_pair2_bf16_bf16_out"),
@@ -88,6 +87,7 @@ def _runner(**overrides):
 
     published = {
         "prefill_chunk_size": 1024,
+        "q51_pair_prefill": True,
         "q51_exact_grouped_down": True,
         "q51_fold128_prefill": True,
         "q51_fold_pair_prefill": True,
@@ -131,14 +131,9 @@ def stubs(registry):
 
 @pytest.fixture
 def premise_env(monkeypatch):
-    """The chain gates the four arms ride in production.
+    """A stale process key cannot control the runner-owned pair2 premise."""
 
-    Both chains' own gates are request-local runner state, so only the Q5_1
-    pair2 selection key is set here; every arm reads its chain gate off the
-    runner the fixture builds.
-    """
-
-    monkeypatch.setenv(gate.Q51_PAIR_PREFILL_ENV, "1")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL", "0")
 
 
 def _install_generator(monkeypatch, runner):
@@ -229,6 +224,10 @@ def test_main_records_the_runner_owned_premise(
     elif package == "q5k-row4":
         assert control["runner_field"] == "q5k_row4_prefill"
         assert control["before"] is False and control["after"] is True
+    elif package == "q51-pair":
+        assert control["runner_field"] == gate.Q51_PAIR_FIELD
+        assert control["before"] is False and control["after"] is True
+        assert control["published_value"] is True
     elif package == "q51-fold-pair":
         assert control["runner_field"] == gate.Q51_FOLD_PAIR_FIELD
         assert control["rung"]["prerequisite"] == gate.Q51_FOLD128_FIELD
@@ -259,15 +258,14 @@ def test_main_still_refuses_a_missing_published_parent(
 
 @pytest.mark.parametrize(
     "package,key,message",
-    [("q51-fold128", gate.Q51_PAIR_PREFILL_ENV,
+    [("q51-fold128", gate.Q51_PAIR_FIELD,
       "production must bind the grouped pair2 Q5_1 selection"),
-     ("q51-fold-pair", gate.Q51_PAIR_PREFILL_ENV,
+     ("q51-fold-pair", gate.Q51_PAIR_FIELD,
       "production must bind the grouped pair2 Q5_1 selection")])
 def test_main_still_refuses_a_closed_chain_gate(
         stubs, premise_env, monkeypatch, tmp_path, package, key, message):
-    monkeypatch.setenv(key, "0")
     with pytest.raises(AssertionError, match=message):
-        _run_main(monkeypatch, tmp_path, package, _runner())
+        _run_main(monkeypatch, tmp_path, package, _runner(**{key: False}))
     assert "" not in os.environ
 
 

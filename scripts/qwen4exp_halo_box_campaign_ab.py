@@ -47,7 +47,7 @@ PF13_FIELDS = (FORKB_FIELD, Q5_M1_FIELD)
 Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_FIELD = "qsa_h256_prefill_mode"
 Q4_BUNDLE_FIELD = "q4_bundle_prefill"
-Q51_PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
+Q51_PAIR_FIELD = "q51_pair_prefill"
 MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
 MMQ_PREPACK_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
 MMQ_VECTOR_ROUTE_PACKAGES = ("q8-mmq-raw-vector", "q8-mmq-vec4")
@@ -610,10 +610,8 @@ Q51_PAIR2_PREEMPTING_FIELDS = ("q51_wmma_down",)
 Q51_PAIR2_GATE_FIELD = "q51_exact_grouped_down"
 #: Kept for callers that name the single exact owner.
 Q51_IU8_EXACT_ENV = "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
-#: The pair2 chain's own selection gate. It decides whether the parent variant
-#: is the pair2 leaf at all, so a fold arm requires it and records it rather
-#: than forcing it: with the gate off neither fold can launch.
-Q51_PAIR_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
+#: ``Q51_PAIR_FIELD`` decides whether the parent variant is the pair2 leaf.
+#: Fold arms require and record it rather than forcing it.
 #: The two fold rungs are request-local runner state
 #: (``runner.q51_fold128_prefill`` / ``runner.q51_fold_pair_prefill``), so no
 #: process key names them. ``fold_pair`` replaces ``fold128`` on its rows>=512
@@ -697,7 +695,7 @@ def q51_fold_scope(route_package, mode, runner, *, environment=os.environ):
     holds ``fold_pair`` off in both arms; an arm that counts ``fold_pair``
     requires its published ``fold128`` parent, because the fold-pair selector
     keeps the parent when it is not selected and the arm would count zero
-    launches. The pair2 selection gate is still a process key and is recorded,
+    launches. The pair2 selection is recorded from the owning runner,
     never forced.
     """
 
@@ -713,10 +711,9 @@ def q51_fold_scope(route_package, mode, runner, *, environment=os.environ):
     else:
         raise ValueError(
             f"not a Q5_1 fold route package: {route_package!r}")
-    closed = {"", "0", "false", "False"}
-    if environment.get(Q51_PAIR_PREFILL_ENV, "") in closed:
+    if not getattr(runner, Q51_PAIR_FIELD, False):
         raise ValueError(
-            f"{Q51_PAIR_PREFILL_ENV} must be on for the grouped pair2 Q5_1 "
+            f"runner.{Q51_PAIR_FIELD} must be on for the grouped pair2 Q5_1 "
             "down chain; without it the parent variant is never the pair2 "
             "leaf and neither fold can launch")
     if pinned is None and not getattr(runner, Q51_FOLD128_FIELD, False):
@@ -769,7 +766,7 @@ def q51_fold_control_record(route_package, runner=None, *, environment=os.enviro
             else Q51_FOLD_PAIR_FIELD),
         "rung": rung,
         "prerequisite": {
-            Q51_PAIR_PREFILL_ENV: environment.get(Q51_PAIR_PREFILL_ENV),
+            Q51_PAIR_FIELD: getattr(runner, Q51_PAIR_FIELD, None),
         },
         "scope": "per measured run; restored on exit",
         **q51_pair2_control_record(runner, environment=environment),
@@ -1172,22 +1169,22 @@ PF13_LEAF_KEYS = {
     "q51_down_m1": ("moe_linear", "gguf_q5_1", PF13_M1_VARIANT),
     "forkb_grouped_down": ("linear", "gguf_q8_0", PF13_FORKB_VARIANT),
 }
-#: Owners that keep either leaf from being selected. The Q5_1 side is the pair2
-#: preemptor set plus the pair2 selection itself (the M1 leaf sits below it); the
-#: Q8_0 side is the two owners in front of the sorted chain, so the ``before``
-#: arm falls through to the strict per-expert selected down rather than to a
-#: third grouped owner. Every key is read per dispatch, so closing them after
-#: construction takes effect.
+#: Owners that keep either leaf from being selected. The Q5_1 side closes the
+#: pair2 preemptors; the pair2 selection itself is bound through runner state
+#: below. The Q8_0 side closes the two owners in front of the sorted chain, so
+#: the ``before`` arm falls through to the strict per-expert selected down.
+#: Every process key is read per dispatch, so closing it after construction
+#: takes effect.
 PF13_PREEMPTING_ENV = tuple(dict.fromkeys(
     Q51_PAIR2_PREEMPTING_ENV
     + Q8_DOWN_PREEMPTING_ENV
-    + (Q51_PAIR_PREFILL_ENV,)
 ))
-#: The replacement siblings each leaf's ladder applies while published: fold128
-#: -> fold_pair -> register_cache -> row_publish on the Q5_1 side, and row4 ->
+#: The replacement siblings each leaf's ladder applies while published: pair2
+#: -> fold128 -> fold_pair -> register_cache -> row_publish on the Q5_1 side, and row4 ->
 #: bundle -> register on the Q8_0 side. Both arms hold every one off so the
 #: counted variant is the leaf itself and not the sibling that would replace it.
 PF13_SIBLING_FIELDS = (
+    Q51_PAIR_FIELD,
     Q51_FOLD128_FIELD,
     Q51_FOLD_PAIR_FIELD,
     "q51_register_cache",
@@ -1253,6 +1250,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
     from hipengine.runtime.qwen4_exp_runner import (
         forkb_grouped_down,
         q51_down_m1,
+        q51_pair_prefill,
         q51_fold128_prefill,
         q51_fold_pair_prefill,
         q51_register_cache,
@@ -1271,7 +1269,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         environment[key] = "0"
     try:
         with contextlib.ExitStack() as scope:
-            for manager in (q51_fold128_prefill, q51_fold_pair_prefill,
+            for manager in (q51_pair_prefill, q51_fold128_prefill, q51_fold_pair_prefill,
                             q51_register_cache, q51_row_publish,
                             q8_down_row4_prefill, q8_down_bundle_prefill,
                             q8_down_register):
@@ -1634,6 +1632,14 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         from hipengine.runtime.qwen4_exp_runner import q5k_row4_prefill
         return q5k_row4_prefill(runner, mode == "after")
 
+    if route_package == "q51-pair":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("q51-pair needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import q51_pair_prefill
+        return q51_pair_prefill(runner, mode == "after")
+
     if route_package == "pf13":
         if runner is None:
             # Binding nothing would measure whatever the plan published and
@@ -1965,7 +1971,7 @@ def _apply_mode(
         if route_package == "q4-bundle":
             return  # route_scope binds the owning runner.
         if route_package == "q51-pair":
-            flag = Q51_PAIR_ENV
+            return  # route_scope binds the owning runner.
         if route_package == "gdn-register":
             flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
         if route_package == "gdn-wave-norm":
@@ -2642,6 +2648,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "before": {"q51_down": "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"},
                 "after": {"q51_down": row4_key.variant},
             }
+    if args.route_package == "q51-pair":
+        artifact["selection_control"] = {
+            "runner_field": Q51_PAIR_FIELD, "before": False, "after": True,
+            "published_value": getattr(generator.runner, Q51_PAIR_FIELD, None),
+            "scope": "per measured run; restored on exit",
+        }
     artifact["route_package"] = args.route_package
     if args.route_package == "q4-bundle":
         artifact["selection_control"] = {

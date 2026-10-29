@@ -3427,15 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp Q5_1 output-pair reuse (2026-09-05)
-
-Production selects pair2 through `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`,
-guarded by rows>=64 and registry capability; strict binds zero. The full
-12-case A/B retains a3.73-4.17% prefill win with exact outputs. Short rows
-and the post-binder opt-out keep M1; strict keeps its original exact parent.
-Remove the environment selector when this runtime dispatch moves directly
-under the manifest; retain rollback and registered strict fallbacks.
-
 ## Qwen4Exp register-state serial GDN rollback
 
 - Production binds `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL=1`; strict binds0.

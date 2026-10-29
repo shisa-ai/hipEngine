@@ -4851,6 +4851,7 @@ def _qwen4_exp_q51_down_key(
     in_features: int,
     q51_down_m1: bool = False,
     q51_out8: bool = True,
+    q51_pair_prefill: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
@@ -4889,6 +4890,7 @@ def _qwen4_exp_q51_down_key(
         variant = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
     if qwen4_exp_q51_pair_prefill_selected(
         backend, quant, rows=rows, in_features=in_features,
+        published=q51_pair_prefill,
     ):
         variant = "selected_grouped_prefill_pair2_bf16_bf16_out"
     key = _qwen4_exp_q51_fold128_key(
@@ -5974,13 +5976,24 @@ def summarize_qwen4_exp_risk_diagnostics(
     }
 
 
+@contextlib.contextmanager
+def q51_pair_prefill(runner: Any, enabled: bool):
+    """Bind pair2 selection on one runner and restore it on exit."""
+    prior = getattr(runner, "q51_pair_prefill", False)
+    runner.q51_pair_prefill = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q51_pair_prefill = prior
+
+
 def qwen4_exp_q51_pair_prefill_selected(
-    backend: str, quant: str, *, rows: int, in_features: int
+    backend: str, quant: str, *, rows: int, in_features: int,
+    published: bool = False,
 ) -> bool:
     return (
         rows >= 64 and in_features <= 4096
-        and os.environ.get("HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL", "0")
-        not in {"", "0", "false", "False"}
+        and published
         and is_registered(KernelKey(
             backend, "moe_linear", quant, "selected_grouped_prefill_pair2_bf16_bf16_out"))
     )
@@ -6030,6 +6043,7 @@ def run_qwen4_exp_moe(
     graph_cache: MoeGraphCache | None = None,
     graph_key: object | None = None,
     q51_down_m1: bool = False,
+    q51_pair_prefill: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
@@ -6167,6 +6181,7 @@ def run_qwen4_exp_moe(
                 stream=graph_stream,
                 runtime=active_runtime,
                 q51_down_m1=q51_down_m1,
+                q51_pair_prefill=q51_pair_prefill,
                 q51_fold128_prefill=q51_fold128_prefill,
                 q51_fold_pair_prefill=q51_fold_pair_prefill,
                 q51_register_cache=q51_register_cache,
@@ -7073,6 +7088,7 @@ def run_qwen4_exp_moe(
                         rows=rows, in_features=ffn,
                         q51_down_m1=q51_down_m1,
                         q51_out8=q51_out8,
+                        q51_pair_prefill=q51_pair_prefill,
                         q51_fold128_prefill=q51_fold128_prefill,
                         q51_fold_pair_prefill=q51_fold_pair_prefill,
                         q51_register_cache=q51_register_cache,
@@ -7659,6 +7675,7 @@ def run_qwen4_exp_dense_qsa_layer(
     qsa_ordered_decode_v2: bool = False,
     qsa_wave32: bool = True,
     q51_down_m1: bool = False,
+    q51_pair_prefill: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
@@ -7764,6 +7781,7 @@ def run_qwen4_exp_dense_qsa_layer(
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
         q51_down_m1=q51_down_m1,
+        q51_pair_prefill=q51_pair_prefill,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
@@ -7827,6 +7845,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
     q51_down_m1: bool = False,
+    q51_pair_prefill: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
@@ -7994,6 +8013,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         stream=stream,
         runtime=active_runtime,
         q51_down_m1=q51_down_m1,
+        q51_pair_prefill=q51_pair_prefill,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
@@ -8063,6 +8083,7 @@ def run_qwen4_exp_gdn_layer(
     gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
     q51_down_m1: bool = False,
+    q51_pair_prefill: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
@@ -8283,6 +8304,7 @@ def run_qwen4_exp_gdn_layer(
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
         q51_down_m1=q51_down_m1,
+        q51_pair_prefill=q51_pair_prefill,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
@@ -9223,6 +9245,9 @@ class Qwen4ExpGGUFResidentModelRunner:
     # grid gate still decides whether that family is selected at all. A
     # diagnostic scope may outrank it.
     q51_down_m1: bool = False
+    # Pair2 selection is profile-owned; rows, input width and registry
+    # capability still guard the selected variant at dispatch.
+    q51_pair_prefill: bool = False
     # Q5_1 fold128 selection, published by the profile binder for the grouped
     # pair2 chain's rows>=64 scope: True on a production plan, False on every
     # plan that keeps the pair2 parent. It is the parent of the folded-pair,
@@ -10539,6 +10564,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         ),
                     ),
                     q51_down_m1=self.q51_down_m1,
+                    q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
@@ -10596,6 +10622,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
                     qsa_wave32=self.qsa_wave32,
                     q51_down_m1=self.q51_down_m1,
+                    q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
@@ -10916,6 +10943,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     q51_down_m1=self.q51_down_m1,
+                    q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
@@ -10964,6 +10992,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     batched_selection=self.qsa_batched_selection,
                     qsa_wave32=self.qsa_wave32,
                     q51_down_m1=self.q51_down_m1,
+                    q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,

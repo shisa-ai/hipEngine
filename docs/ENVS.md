@@ -839,6 +839,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` / `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL` | retired | No longer read. Exact grouped Q4 gate/up admission is runner-owned; scoped controls preserve the direct fallback and the restricted policy's exact-Q5-down prerequisite. |
 | `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` | retired | No longer read. The profile publishes grouped Q8_0 down selection on its runner; scoped diagnostics preserve the strict comparison. |
 | `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL` | retired | No longer read. The profile publishes Q5_K gate/up row4 selection on its runner; `q5k_row4_prefill(runner, False)` selects the diagnostic parent without changing the row, registry or higher-priority route guards. |
+| `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL` | retired; ignored | The profile publishes `q51_pair_prefill` on its runner: production on, strict off. `q51_pair_prefill(runner, False)` preserves the diagnostic parent comparison; row, input-width and registry guards are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` | retired; ignored | The profile publishes `q4_bundle_prefill` on its runner: production on, strict off. `q4_bundle_prefill(runner, False)` preserves the diagnostic parent comparison; expert-grid, pair2-precedence and registry guards are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` | production profile | Selected-dual grouped pair2 prefill for Q4_K (rows>=64, in_features<=4096). |
 | `HIPENGINE_QWEN4_EXP_Q4_OUT4` | retired | No longer read. The owning runner selects the out4 fallback below the exact expertgrid family; `q4_out4(runner, False)` retains the base comparison without changing higher-priority owners. |
@@ -852,7 +853,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` | retired | No longer read. Q5_1 selected GEMV uses the logical256 t64 owner; the wave64 variant remains registered for direct diagnostics. |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT` | `0` | Default-off exact iu8-risk+repair selected Q5_K gate/up route (the layer-2 Q5_K layer). |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_K iu8 route; 16.0 keeps the route bit-identical to the strict parent in practice. |
-| `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL` | production profile | Selected grouped pair2 prefill for Q5_1 (rows>=64). |
 | `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE` | retired | No longer read. The owning runner carries the register-cache fallback decision, with rows>=512, K640 and folded-pair parent guards unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH` | retired | No longer read. The owning runner carries the profile's row-publication decision; the register-cache parent and shape guards remain. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_1 iu8 route. |

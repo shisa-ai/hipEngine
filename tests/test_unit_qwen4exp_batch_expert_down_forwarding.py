@@ -55,6 +55,7 @@ WMMA_DOWN_FIELD = "q51_wmma_down"
 #: pair follows the tuple as ``_q4_tile_policy()``, so it is not listed here.
 POLICY_FIELDS = (
     "q51_down_m1",
+    "q51_pair_prefill",
     "q51_fold128_prefill",
     "q51_fold_pair_prefill",
     CHAIN_GATE_FIELD,
@@ -146,7 +147,7 @@ def test_the_production_batch_width_is_the_only_width_that_reaches_fold128():
     # gate is live wherever the grouped chain runs, which is every multi-row
     # width.
     assert QWEN4_EXP_MAX_BATCH_ROWS == 64
-    assert len(POLICY_FIELDS) == 14
+    assert len(POLICY_FIELDS) == 15
 
 
 def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
@@ -233,7 +234,7 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q8_down_bundle_prefill = ""
     runner.q5k_row4_prefill = False
     assert runner._expert_down_policy() == (
-        True, True, False, False, True, True, True, False, False, False, False,
+        True, False, True, False, False, True, True, True, False, False, False, False,
         True, False, False)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.

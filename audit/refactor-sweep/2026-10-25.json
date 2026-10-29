@@ -12058,9 +12058,17 @@
       "start_line": 9530,
       "end_line": 9538,
       "sha256": "890505dd6c259dbfc7f14ec7e2c389413536f64a24b8d0440fe1f03a24fe9d86",
-      "status": "pending",
-      "evidence": [],
-      "subitems": []
+      "status": "fixed",
+      "evidence": [
+        "worklog/entries/20261029T170807.738254Z-cleanup-refactor-r0414-q51-pair-ba0af2.md",
+        "tests/test_unit_qwen4exp_q51_pair_scope.py",
+        "tests/test_gpu_qwen4exp_q51_pair.py"
+      ],
+      "subitems": [
+        {"text": "Replace environment selector with profile-owned dispatch", "status": "fixed-runner-field-scalar-batch-mixed-and-capture-forwarding"},
+        {"text": "Preserve guards, production/strict defaults and registered fallback", "status": "unchanged-arithmetic-and-admission-guards-public-route-verified"},
+        {"text": "Preserve rollback and diagnostic prerequisites", "status": "fixed-exception-safe-scopes-fold-prerequisite-pf13-and-out8-controls"}
+      ]
     },
     {
       "id": "R0415",
