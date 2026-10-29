@@ -87,6 +87,8 @@ def _decode_strategy(
     rows: int,
     activation_dtype: str,
     backend: str,
+    in_features: int | None = None,
+    threads: int = 256,
 ) -> str | None:
     if rows != 1 or activation_dtype != "bf16":
         return None
@@ -100,7 +102,9 @@ def _decode_strategy(
         return "fixedk_onebarrier"
     if mode == "onebarrier":
         return mode
-    if backend_package_capability(
+    if threads != 256:
+        return None
+    if in_features in {3072, 6144, 9216} and backend_package_capability(
         backend, "LAGUNA_F16_DECODE_FIXEDK", False
     ):
         return "fixedk_onebarrier"
@@ -180,7 +184,8 @@ def launch_f16_weight_linear(
     resolved_backend = _backend((weight,), backend)
     variant = _variant(activation_dtype, output_dtype)
     strategy = _decode_strategy(
-        rows=rows, activation_dtype=activation_dtype, backend=resolved_backend
+        rows=rows, activation_dtype=activation_dtype, backend=resolved_backend,
+        in_features=in_features, threads=threads,
     )
     if strategy is None:
         strategy = _prefill_strategy(
@@ -268,7 +273,8 @@ def launch_f16_weight_linear_triple(
     resolved_backend = _backend((weight_a, weight_b, weight_c), backend)
     variant = "bf16_f32_out"
     strategy = _decode_strategy(
-        rows=rows, activation_dtype="bf16", backend=resolved_backend
+        rows=rows, activation_dtype="bf16", backend=resolved_backend,
+        in_features=in_features, threads=threads,
     )
     if strategy is None:
         strategy = _prefill_strategy(

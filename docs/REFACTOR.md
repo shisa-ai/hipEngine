@@ -3430,34 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna source-F16 decode fixed-K selector
-
-- Added 2026-07-28 as
-  `HIPENGINE_LAGUNA_F16_DECODE=auto|gemv|onebarrier|fixedk`.
-  gfx1151 `auto` now selects exact K3072/K6144/K9216 fixed-K single/triple
-  siblings for rows==1. Explicit `onebarrier` retains the prior exact generic-K
-  default, `gemv` retains the two-barrier root, and peer backends retain GEMV.
-- The primitive preserves every output byte and improves all six natural
-  roles **0.57-1.71%**, with weighted leaf family
-  **31.316 -> 31.097 ms/token (-0.698%)**. If full-state, cached trace, and
-  clean p512/d128 gates transfer positively, keep `gemv` only through the
-  active decode campaign and then collapse the gfx1151 positive selection
-  into the default dispatch. Remove the candidate and selector if any
-  production gate regresses.
-- The promotion trigger is satisfied: seven same-session p512/d128 pairs move
-  **14.758912 -> 14.800191 tok/s (+0.280%)**, every candidate beats every
-  control, all generated hashes match, and cached tracing records exactly
-  **18,288 = 144 x 127** candidate calls with zero retained decode GEMVs.
-  Keep explicit `gemv` through LD-2, then collapse the positive selector as
-  described above.
-- The fixed-K successor also satisfies promotion: the six-role family moves
-  **30.952 -> 24.482 ms/token (-20.90%)**, seven exact production pairs move
-  **14.786076 -> 16.391201 tok/s (+10.856%)**, and cache-only tracing records
-  **18,288/18,288** fixed-K calls with no fallback. Keep `onebarrier` for one
-  release/bisection window; then remove positive `fixedk` selector semantics
-  and make it unconditional for qualified gfx1151 K widths. Permanently retain
-  the generic registered path for unsupported K/rows/backends.
-
 ## Laguna selected natural tile8 decode selector
 
 - Added 2026-07-28 as
@@ -10262,6 +10234,36 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0340 — Source-F16 decode comparison migration and shape validation
+
+Automatic single/triple decode previously selected fixed-K from backend policy
+without checking K or launch width. Real dispatch/wrapper host tests reproduced
+rejection of supported generic-K inputs and 64-thread launches. Automatic
+selection now limits fixed-K to K3072/K6144/K9216 with 256 threads, uses the
+backend's generic-K one-barrier route for other K widths, and keeps ordinary
+GEMV for other launch widths. Explicit `fixedk`/`onebarrier` requests preserve
+named primitive incompatibility errors. Prefill, F32 activation, peer backend
+policy and all kernels/arithmetic are unchanged.
+
+`HIPENGINE_LAGUNA_F16_DECODE` still owns live long-context profiler comparisons
+between GEMV, one-barrier and fixed-K. Its complete values and automatic shape
+policy are documented in `docs/ENVS.md`. Historical July gates remain in the
+sweep's pinned source and artifacts; their release-window conditions do not
+replace migration of those callers.
+
+**Remaining work:** move process-global comparison selection into a scoped
+source-F16 diagnostic owner and migrate profiler environment restoration and
+result readers before retiring the selector. Real GPU/public validation of the
+shape repair is still outstanding: this host cannot load `libamdhip64.so`,
+and the local Laguna artifact is unavailable as recorded in R0273.
+
+**Clearing action:** run shape-policy, F16 projection, backend, runner and
+profiler tests. On a ROCm host, execute generic-K widths below/above/unrelated
+to the fixed set, single/triple and alternate launch widths against the GEMV
+oracle. Run public `LLM.generate()` with an available artifact and verify the
+intended variant, output/continuation and clean teardown. Preserve generic
+registered owners and explicit capability failures during selector migration.
 
 ### R0336 — Laguna packed-output comparison migration
 

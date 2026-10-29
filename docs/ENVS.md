@@ -521,7 +521,7 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED` | true | Fuses shared-prefill SiLU-mul + rotate into one launch (default on after the 2026-08-16 gfx1151 byte-equality gate); `0` opts out. |
 | `HIPENGINE_PARO_FFN_MEGAKERNEL` | false | Opt-in single-kernel selected FFN for the verify path (tokens > 1); AR decode keeps the unfused path so the AR baseline is untouched. |
 | `HIPENGINE_LAGUNA_F16_PREFILL` | retired | No longer read. Diagnostics use `f16_prefill_strategy(mode)` in `hipengine.runtime.f16_weight_linear`; target-AR exposes `--f16-prefill-strategy`. Automatic backend policy and shape fallbacks are unchanged. |
-| `HIPENGINE_LAGUNA_F16_DECODE` | unset | gfx1151 Laguna F16-weight decode route: `gemv` or `onebarrier`; used by the long-context profiling harness for A/B arms. |
+| `HIPENGINE_LAGUNA_F16_DECODE` | unset (`auto`) | Source-F16 decode strategy: `auto`, `gemv`, `onebarrier`, or `fixedk`. Automatic selection uses backend capabilities, fixed-K widths 3072/6144/9216 and 256-thread launch compatibility; other widths use the generic-K route, and other launch widths use GEMV. Explicit requests keep their primitive capability errors. The long-context profiler uses this control for paired comparisons. |
 | `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` | true | Maple exact expert-major grouped MoE prefill; `0` restores the original row/route-gather chain. |
 | `HIPENGINE_MAPLE_FUSE_MOE` | false | Opt-in fused Maple MoE chain (kept off pending a kernel-efficiency fix; see `docs/REFACTOR.md`). |
 | `HIPENGINE_MAPLE_FUSE_QKATTN` | false | Opt-in fused Maple qknorm_rope_kv_write + attention_decode kernel (see `docs/REFACTOR.md`). |

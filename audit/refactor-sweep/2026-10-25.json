@@ -10085,28 +10085,28 @@
       "start_line": 7674,
       "end_line": 7701,
       "sha256": "14410e74a7767557486310c5dd20854da790f28c9f06850c30490f9ccf146089",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-auto-shape-capability-repaired-bottom-comparison-migration",
+      "evidence": ["Real single/triple dispatch plus primitive wrapper RED 10 fail/6 pass reproduced automatic fixed-K rejection for generic K and non256 threads. Automatic selection now checks K3072/6144/9216 and threads256; other K use backend generic onebarrier, alternate threads use GEMV. Explicit strategies retain named incompatibility errors. Focused 156 pass/28 HIP skips; kernels/arithmetic unchanged. ENVS corrected; bottom R0340 owns process-global comparison migration and outstanding GPU/public repair validation (local libamdhip64.so unavailable, Laguna artifact absent)."],
       "subitems": [
         {
           "line": 7676,
           "text": "- Added 2026-07-28 as",
-          "status": "pending"
+          "status": "partial-auto-input-capability-repaired-live-selector-documented"
         },
         {
           "line": 7681,
           "text": "- The primitive preserves every output byte and improves all six natural",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-kernels-unchanged"
         },
         {
           "line": 7688,
           "text": "- The promotion trigger is satisfied: seven same-session p512/d128 pairs move",
-          "status": "pending"
+          "status": "deferred-bottom-live-comparison-owner-migration"
         },
         {
           "line": 7694,
           "text": "- The fixed-K successor also satisfies promotion: the six-role family moves",
-          "status": "pending"
+          "status": "partial-shape-policy-repaired-bottom-gpu-public-validation"
         }
       ]
     },
