@@ -9542,23 +9542,23 @@
       "start_line": 7248,
       "end_line": 7266,
       "sha256": "1da50345f1c4dd3229e7804b6496e3a612ab653de4502ff390dc244b8889e5d3",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-bottom-layout-caller-migration-public-resource",
+      "evidence": ["30 new host contracts bind real source/cache legacy/interleaved/planar bytes, unchanged root head/cache, allocation/profile/failure cleanup, session precedence and mismatch rejection. Original focused run 377 passed/3 new fixture failures; explicit later-prefetch prerequisites repaired and changed file 30 passed, covering 380 combined cases without unnecessary rerun. Live MoE/planar comparisons still own layout selectors; bottom R0322 records coordinated migration and absent local Laguna public artifact, not an admission restriction. Defaults, runtime and kernels unchanged."],
       "subitems": [
         {
           "line": 7250,
           "text": "- Added 2026-07-26 with the gfx1151 `LAGUNA_Q6_QMICRO` capability and optional",
-          "status": "pending"
+          "status": "resolved-current-layout-cache-and-consumer-contracts-bound"
         },
         {
           "line": 7255,
           "text": "- The actual-weight leaf is BF16-byte exact and improves natural-M512",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7261,
           "text": "- After both triggers pass, remove the public constructor override while",
-          "status": "pending"
+          "status": "deferred-bottom-resident-consumer-comparison-migration"
         }
       ]
     },

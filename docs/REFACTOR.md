@@ -3430,25 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q6 qmicro resident-layout rollback
-
-- Added 2026-07-26 with the gfx1151 `LAGUNA_Q6_QMICRO` capability and optional
-  `q6_qmicro=False` resident-session rollback. Sparse `ffn_down_exps` Q6
-  payloads convert from the existing legacy cache once before upload; the
-  cache fingerprint, quant key, byte count, root lm-head, and other backends
-  stay unchanged.
-- The actual-weight leaf is BF16-byte exact and improves natural-M512
-  selected prefill **1.65%** plus top-10 exact decode **6.99%**. Clean
-  selector-unset publication is now satisfied at **530.447 tok/s** median /
-  **525.864 tok/s** minimum, with 1K/4K at **473.118/381.375 tok/s** and
-  traced Q6 **126.594 -> 123.473 ms (-2.465%)**. Keep the explicit rollback
-  through one later selected-down checkpoint.
-- After both triggers pass, remove the public constructor override while
-  retaining the backend capability, legacy consumer instantiations required
-  by other backends, and the host legacy-to-qmicro cache adapter. If clean
-  publication regresses, disable the capability and remove the qmicro runtime
-  default before starting another selected-down premise.
-
 ## Laguna fused selected-SiLU pack rollback
 
 - Added 2026-07-26 with the gfx1151
@@ -10606,6 +10587,37 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0322 — Laguna Q6 resident-layout comparison migration
+
+`q6_qmicro` controls both expert-down resident bytes and their consumers;
+`q6_qmicro_planar` further selects the record ordering. gfx1151 defaults to
+planar qmicro, while gfx1100 defaults to legacy bytes. Borrowed sessions adopt
+the resident's layout before package defaults, and validation rejects a
+resident/kernel-plan mismatch. Do not remove either side independently.
+
+The materializer converts expert-down tiles after reading either GGUF source
+or the versioned legacy cache. Root lm-head tiles stay legacy. Host tests bind
+source/cache byte equality, unchanged cache payload/fingerprint, allocation
+bytes, profile metadata, failure cleanup and session layout precedence.
+The live MoE fixture still requests legacy and interleaved/planar comparisons;
+`scripts/laguna_q6_planar_ab.py` also owns an explicit layout pair. Legacy
+sessions on gfx1151 must coordinate later activation-prefetch and precomputed
+sum controls, rather than inheriting incompatible default prerequisites.
+Original July results remain in the pinned sweep source and immutable evidence;
+this pass changes neither production defaults nor kernels.
+
+**Blocker:** retirement must migrate layout comparison ownership, materializer
+and session construction together. The local Laguna model-resource blocker in
+R0313–R0320 prevents the required public-route validation, not execution.
+
+**Clearing action:** migrate live MoE and planar A/B callers to explicit
+resident/consumer layout ownership, retaining the legacy cache adapter and
+registered non-qmicro consumers. Run Q6 resident-layout, materialization,
+runner, linear-dispatch and full MoE numerical tests; then exercise public
+`LLM.generate()` across short, boundary-neighbor and unrelated prompt lengths,
+recording resident/consumer agreement, outputs and teardown. Preserve historical
+result readers and never reinterpret legacy bytes as planar qmicro.
 
 ### R0321 — Laguna cached-attention comparison and policy migration
 
