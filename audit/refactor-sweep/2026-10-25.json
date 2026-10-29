@@ -12439,18 +12439,18 @@
       "start_line": 10106,
       "end_line": 10138,
       "sha256": "c95764c772af8fb208d57e4647d76fda8a1dd5bf3c7e1e842ea30492c94e9cd5",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-duplicate-R0021",
+      "evidence": ["R0021 already removed rejected GR selector; shared registered wrapper still serves dense route and direct diagnostics. Removed obsolete unregistered/promotion/deletion instruction; R0432 remains independent dense-route review.15 focused tests pass. Worklog: worklog/entries/20261029T190514.274565Z-cleanup-refactor-r0430-875516.md."],
       "subitems": [
         {
           "line": 10122,
           "text": "- **Promote** by registering it as the hyper_connection up-projection variant",
-          "status": "pending"
+          "status": "resolved-registered-route-rejected"
         },
         {
           "line": 10127,
           "text": "- **Remove** if the production gate fails, or if the remaining 1.92x is",
-          "status": "pending"
+          "status": "resolved-by-R0021-shared-dense-owner-preserved"
         }
       ]
     },
