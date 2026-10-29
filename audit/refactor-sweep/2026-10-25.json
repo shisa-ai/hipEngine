@@ -11033,23 +11033,23 @@
       "start_line": 8360,
       "end_line": 8379,
       "sha256": "7c709c4d92f920dd9da38b3c89030ebb3bfea4fab24d14138a4ff3362f548e0f",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-efficiency-decision-graph-selection-fixed",
+      "evidence": ["Live fused/unfused references retain observed historical efficiency blockers; default/runtime/kernel arithmetic unchanged. Bottom R0373/R0374 names independent selector removal or profile/repair actions and preserves strict primitive fallbacks. Fixed actual graph control defect: sampled fusion tuple now keys one-entry cache, releases old graph and resets key-local rejection before recapture. Five RED host tests now pass; real gfx1151 leaf tests and guarded full-logit graph transitions pass, actual public LLM.generate reaches both requested fusions with zero live allocation teardown. Host21pass/13skips, CPU deterministic bg-701 and repository gates pass. Worklog worklog/entries/20261029T060332.264079Z-cleanup-refactor-r0373-r0374-maple-fusion-f988a1.md."],
       "subitems": [
         {
           "line": 8362,
           "text": "- `HIPENGINE_MAPLE_FUSE_MOE` default `0` (unfused is the fast path). `=1` uses",
-          "status": "pending"
+          "status": "triaged-live-reference-preserved-graph-key-fixed-decision-bottom"
         },
         {
           "line": 8369,
           "text": "- Blocker to promote: understand/eliminate the fused kernel's ~9% efficiency gap",
-          "status": "pending"
+          "status": "triaged-live-reference-preserved-graph-key-fixed-decision-bottom"
         },
         {
           "line": 8373,
           "text": "- **Rejected path (do not re-promote as-is):** fused down GEMV + weighted",
-          "status": "pending"
+          "status": "triaged-live-reference-preserved-graph-key-fixed-decision-bottom"
         }
       ]
     },
@@ -11059,18 +11059,18 @@
       "start_line": 8380,
       "end_line": 8396,
       "sha256": "6357a4dd3eb1720525a2046768fefd88f5cb43a48e5d90f5539939f4ffb758e3",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-efficiency-decision-graph-selection-fixed",
+      "evidence": ["Live fused/unfused references retain observed historical efficiency blockers; default/runtime/kernel arithmetic unchanged. Bottom R0373/R0374 names independent selector removal or profile/repair actions and preserves strict primitive fallbacks. Fixed actual graph control defect: sampled fusion tuple now keys one-entry cache, releases old graph and resets key-local rejection before recapture. Five RED host tests now pass; real gfx1151 leaf tests and guarded full-logit graph transitions pass, actual public LLM.generate reaches both requested fusions with zero live allocation teardown. Host21pass/13skips, CPU deterministic bg-701 and repository gates pass. Worklog worklog/entries/20261029T060332.264079Z-cleanup-refactor-r0373-r0374-maple-fusion-f988a1.md."],
       "subitems": [
         {
           "line": 8382,
           "text": "- `HIPENGINE_MAPLE_FUSE_QKATTN` default `0` (unfused is the fast path). `=1` uses",
-          "status": "pending"
+          "status": "triaged-live-reference-preserved-graph-key-fixed-decision-bottom"
         },
         {
           "line": 8390,
           "text": "- D0 now snapshots both fusion flags once at the `MapleRunner.step()` boundary,",
-          "status": "pending"
+          "status": "triaged-live-reference-preserved-graph-key-fixed-decision-bottom"
         }
       ]
     },

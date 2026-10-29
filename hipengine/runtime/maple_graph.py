@@ -40,6 +40,7 @@ from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device
 
 # hipStreamCaptureModeRelaxed — matches MoeGraphCache / the HIP graph tests.
 _CAPTURE_MODE_RELAXED = 2
+_UNSET_KEY = object()
 
 
 class MapleGraphCache:
@@ -50,6 +51,7 @@ class MapleGraphCache:
         self._enabled = bool(enabled)
         self._graph_exec: int | None = None
         self._graph: int | None = None
+        self._key: Hashable | object = _UNSET_KEY
         self._eager_only = False
         self._stats = {"capture": 0, "replay": 0, "eager": 0, "reject": 0}
         self._capture_stream = (
@@ -80,6 +82,8 @@ class MapleGraphCache:
     ) -> str:
         """Run the captured decode step for ``key``.
 
+        A changed key releases the old graph and its rejection state before
+        capturing the new decode chain. Only one graph is kept at a time.
         ``eager(stream)`` must launch the full stateless step (24 layers + tail)
         on the given stream and is the numerically-authoritative path.  The
         caller must have already run the eager per-token span update and embed
@@ -92,6 +96,9 @@ class MapleGraphCache:
             eager(stream)
             self._stats["eager"] += 1
             return "eager"
+        if key != self._key:
+            self._release_graph()
+            self._key = key
         if self._graph_exec is not None:
             self._runtime.graph_launch(self._graph_exec, stream)
             self._stats["replay"] += 1
@@ -286,7 +293,7 @@ class MapleGraphCache:
         else:
             self._runtime.device_synchronize()
 
-    def close(self) -> None:
+    def _release_graph(self) -> None:
         rt = self._runtime
         if self._graph_exec:
             try:
@@ -301,6 +308,11 @@ class MapleGraphCache:
         self._graph_exec = None
         self._graph = None
         self._eager_only = False
+
+    def close(self) -> None:
+        self._release_graph()
+        self._key = _UNSET_KEY
+        rt = self._runtime
         if self._capture_stream:
             try:
                 rt.stream_destroy(self._capture_stream)

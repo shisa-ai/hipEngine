@@ -3430,43 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Maple M2 dual+swiglu fusion — opt-in, efficiency blocker
-
-- `HIPENGINE_MAPLE_FUSE_MOE` default `0` (unfused is the fast path). `=1` uses
-  `maple_moe_dual_swiglu_bf16` (fuses dual gate/up gemv + clamped SiLU), which is
-  bit-exact and cuts decode launches 295→271 but is ~9% slower per MoE layer
-  (interleaved micro-benchmark 229.7 vs 210.7 us). The launch savings offset the
-  kernel regression in eager mode (step wall neutral), but in the optional M1
-  c1 hipGraph path launch overhead is amortized so the fusion would regress
-  ~1.4%. The M6 batch helper does not use the c1 graph.
-- Blocker to promote: understand/eliminate the fused kernel's ~9% efficiency gap
-  vs the unfused pair (likely swiglu `expf` tail in tid 0 and/or register/
-  occupancy change). Once the fused kernel is <= the unfused pair, flip the
-  default to 1 and remove the flag + unfused dual+swiglu branch.
-- **Rejected path (do not re-promote as-is):** fused down GEMV + weighted
-  residual in one kernel. It is bit-exact but regresses decode ~3.5% because
-  grid=`out_features` serializes the eight selected experts per output row,
-  losing the parallel-expert down grid and stride-8 weight reads. If revisited,
-  use a parallel-expert grid with a two-pass/atomic weighted residual instead
-  of serializing experts.
-
-## Maple M2 qknorm+attention fusion — opt-in, ~1% regression
-
-- `HIPENGINE_MAPLE_FUSE_QKATTN` default `0` (unfused is the fast path). `=1` uses
-  `maple_attention_fused_qknorm_decode_bf16` (fuses per-layer
-  `qknorm_rope_kv_write` + `attention_decode`). Bit-exact (attention output + K/V
-  cache match bit-for-bit, GPU test) but ~1% slower per decode step (interleaved
-  eager 6442 vs 6377 us): the in-group redundant K/V write (each of the 4 q-head
-  blocks writes the same K/V) plus the folded 88 us qknorm work offset the single
-  launch saved. Remove the flag + fused branch once the fused kernel's efficiency
-  gap is eliminated (e.g. leader-only K/V write + cooperative grid sync).
-- D0 now snapshots both fusion flags once at the `MapleRunner.step()` boundary,
-  rather than rereading them in all 24 layers. The retained fresh-process A/B
-  is **200.279 -> 202.580 tok/s (+1.15%)** with no kernel/launch change.
-  Environment changes remain supported between calls, not during an in-flight
-  token. Remove the two snapshots with the corresponding branches when these
-  flags are retired.
-
 ## gfx1151 Q4 pack8 bulk-prefill WMMA rollback env
 
 - `HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0` (default `1`) rolls the gfx1151
@@ -9826,6 +9789,39 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0373/R0374 — Maple fused decode efficiency and selector retirement
+
+`HIPENGINE_MAPLE_FUSE_MOE=1` selects fused dual gate/up plus clamped SiLU;
+`HIPENGINE_MAPLE_FUSE_QKATTN=1` selects fused Q/K normalization, rotary/KV
+write and attention. Both default to `0` because the original M2 comparisons
+observed kernel/whole-step efficiency regressions, not because of missing
+qualification. The strict unfused chains and their numerical tests remain.
+Historical measurements and the rejected serial-expert down/residual design
+are recorded in `docs/campaigns/MAPLE-PERF.md` and the immutable sweep source;
+this cleanup makes no new performance claim.
+
+Both flags are sampled once per `MapleRunner.step()`. Graph identity now
+includes those sampled choices: a changed tuple releases the old executable
+and graph, clears rejection state and captures the requested chain. Unchanged
+choices replay the existing graph. Previously the cache ignored its key and
+silently replayed the old chain after a between-call selector change.
+
+**Decision needed:** remove the experimental runtime fusion routes while
+preserving primitive references, or profile and repair the efficiency gap
+before promoting a route and retiring its selector. Treat the two fusions
+independently. Do not delete the mandatory unfused primitive chains, and do
+not reintroduce the serial-expert down/residual design unchanged.
+
+**Clearing action:** run `uv run pytest
+ tests/test_unit_maple_graph_selection.py tests/test_gpu_maple_runtime.py
+ tests/test_gpu_maple_ternary_kernels.py
+ tests/test_gpu_maple_attention_kernels.py`, then use the Maple profiling and
+c1 benchmark tools for same-host eager/graph comparisons. Include both
+individual selector changes and their combination, actual public
+`LLM.generate()` engagement, full-logit/state parity for strict variants,
+reset/reuse and graph/workspace teardown. A replacement arithmetic variant
+uses its execution-profile gate rather than inheriting strict bit parity.
 
 ### R0371 — Moonshine top-1 and unfused LM-head route ownership
 

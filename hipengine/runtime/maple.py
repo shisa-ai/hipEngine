@@ -996,7 +996,7 @@ class MapleRunner:
             graph = self._graph_cache()
             if graph is not None and graph.enabled:
                 graph.run(
-                    (),
+                    (fuse_qkattn, fuse_moe),
                     eager=_decode_body,
                     argmax_index_ptr=b.argmax_index.ptr,
                     argmax_value_ptr=b.argmax_value.ptr,
@@ -1053,8 +1053,7 @@ class MapleRunner:
         dense/MoE work row-batched beyond SWA capacity while attention replays
         the pre-chunk ring mapping and serializes only post-wrap rows. Returns
         the final row's next-token prediction and top logit while preserving the
-        token-serial continuation contract. The row/route-gather MoE remains an
-        explicit rollback path.
+        token-serial continuation contract.
         """
 
         self._require_open()
