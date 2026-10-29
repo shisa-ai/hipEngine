@@ -10116,23 +10116,23 @@
       "start_line": 7702,
       "end_line": 7720,
       "sha256": "d0f86949065d357f0ca81d20b3253a4c63baf5777ee15008ec4fb22e482fe80a",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-tile8-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real profiler CLI run/route tests show default dual-interleaved residency ignores tile8 setter; ordinary resident comparison also needs later parallel/fused-SiLU overlays off. Profiler now owns those prerequisites only for tile8 comparison and records explicit basis; unset package defaults unchanged. RED1/1 after test mappingproxy fixture repair; GREEN139 focused plus four multi-row cases, final changed file6 pass (143 combined). Bottom R0341 owns diagnostic constructor/setter migration and unavailable ROCm/Laguna actual-weight/public validation. Runtime/kernels/production residency unchanged."],
       "subitems": [
         {
           "line": 7704,
           "text": "- Added 2026-07-28 as",
-          "status": "pending"
+          "status": "partial-live-comparison-prerequisites-repaired"
         },
         {
           "line": 7710,
           "text": "- The promotion trigger is satisfied. Actual-weight tile8 improves",
-          "status": "pending"
+          "status": "resolved-history-preserved-not-reused-for-new-basis"
         },
         {
           "line": 7715,
           "text": "- Keep the false rollback and comparison flag through one decode campaign",
-          "status": "pending"
+          "status": "deferred-bottom-reference-diagnostic-owner-migration"
         }
       ]
     },

@@ -781,10 +781,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if args.compare_swa_attention_hipblaslt
                 else args.swa_attention_hipblaslt
             ),
+            use_selected_natural_decode=(
+                True if args.compare_selected_natural_tile8_decode else None
+            ),
             use_selected_natural_tile8_decode=(
                 False
                 if args.compare_selected_natural_tile8_decode
                 else None
+            ),
+            use_selected_natural_tile8_parallel_decode=(
+                False if args.compare_selected_natural_tile8_decode else None
+            ),
+            use_selected_natural_tile8_parallel_silu_decode=(
+                False if args.compare_selected_natural_tile8_decode else None
             ),
             use_q4_decode_t16_sidecar=(
                 False if args.compare_q4_decode_t16_sidecar else None
@@ -795,7 +804,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else None
             ),
             use_q4_expert_t16_dual_interleaved=(
-                False if args.ordinary_q4_expert_t16 else None
+                False
+                if args.ordinary_q4_expert_t16 or args.compare_selected_natural_tile8_decode
+                else None
             ),
             raw_k_prefill_rowbatch=(
                 raw_k_control
@@ -1423,6 +1434,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "compare_selected_natural_tile8_decode": (
                 args.compare_selected_natural_tile8_decode
+            ),
+            "selected_natural_tile8_comparison_basis": (
+                "ordinary_t16_natural16_vs_tile8_without_parallel_silu"
+                if args.compare_selected_natural_tile8_decode else None
             ),
             "compare_q4_decode_t16_sidecar": (
                 args.compare_q4_decode_t16_sidecar

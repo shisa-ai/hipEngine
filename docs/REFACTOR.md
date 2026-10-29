@@ -3430,25 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna selected natural tile8 decode selector
-
-- Added 2026-07-28 as
-  `LagunaGGUFResidentSession(..., use_selected_natural_tile8_decode=False)`
-  plus `set_selected_natural_tile8_decode(...)` and
-  `--compare-selected-natural-tile8-decode`. False restores the exact
-  16-column natural gate/up owner; non-natural shapes and peer backends retain
-  the registered generic/natural fallbacks.
-- The promotion trigger is satisfied. Actual-weight tile8 improves
-  **5.35-7.13%** with zero BF16 mismatches. Seven p512/d128 pairs improve
-  **16.991621 -> 17.007001 tok/s (+0.091%)** with 7/7 wins and exact state.
-  Cache-only tracing records all **5,969** intended calls, zero fallback, and
-  local128/VGPR96/LDS512/scratch0.
-- Keep the false rollback and comparison flag through one decode campaign
-  checkpoint. Then remove positive selector semantics and make tile8
-  unconditional for the qualified gfx1151 shape. Permanently retain the
-  natural tile16 and generic registered owners for unsupported
-  shapes/backends.
-
 ## Laguna gfx1151 exact SWA exp-domain selector
 
 - Added 2026-07-29 as the default-off
@@ -10234,6 +10215,41 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0341 — Laguna natural tile8 diagnostic ownership
+
+The session's natural tile8 setter remains a live profiler control, but the
+newer dual-interleaved resident gate/up route takes precedence over it. On
+ordinary T16 bytes, parallel and fused-SiLU successors also override the
+original tile8 body. The old profiler comparison therefore did not isolate
+natural tile16 versus tile8 under package defaults.
+
+`--compare-selected-natural-tile8-decode` now requests ordinary expert T16
+residency, enables natural decoding, and holds parallel/fused-SiLU overlays
+off in both arms. The existing setter then reaches distinct natural16/tile8
+routes. JSON declares
+`ordinary_t16_natural16_vs_tile8_without_parallel_silu` as the comparison
+basis. Unset profiling and production loading retain package defaults;
+multi-row ordinary dispatch keeps its registered route. Historical July
+measurements remain in the sweep's pinned source and artifacts, not evidence
+for the repaired comparison.
+
+Host CLI-to-constructor and real route-selection checks cover both arms,
+unset defaults and multi-row fallback. No runtime, kernel, arithmetic or
+production residency changes are made.
+
+**Remaining work:** migrate constructor/setter and profiler comparison to a
+scoped diagnostic owner before retiring the public tile8 control. Keep
+ordinary natural16/tile8 reference bodies and dual-layout dispatch distinct.
+Actual-weight/public validation is blocked locally by the unavailable ROCm
+runtime and Laguna artifact recorded in R0340/R0273.
+
+**Clearing action:** run tile8-comparison, runner, profiler and MoE numerical
+contracts; execute the repaired paired comparison on a ROCm host with an
+available Laguna artifact. Confirm distinct selected symbols, full-state
+parity and cleanup, then public `LLM.generate()` on default dual residency
+and ordinary diagnostic residency. Migrate result readers with the diagnostic
+owner; do not silently compare the same interleaved route twice.
 
 ### R0340 — Source-F16 decode comparison migration and shape validation
 
