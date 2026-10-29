@@ -193,7 +193,6 @@ class Qwen4ExpGGUFTextGenerator:
         # from it inherits the published decisions.
         self.dense_f16_pair_enabled = False
         self.dense_wide_tail_variant = None
-        self.norm_f16_publication_enabled = False
         self.dense_mmq_token64_enabled = False
         self.dense_mmq_raw_vector_enabled = False
         self.dense_mmq_vec4_enabled = False
@@ -937,7 +936,6 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     request.
     """
 
-    runner.norm_f16_publication_enabled = bool(getattr(generator, "norm_f16_publication_enabled", False))
     runner.dense_wide_tail_variant = getattr(generator, "dense_wide_tail_variant", None)
     runner.dense_f16_pair_enabled = bool(
         getattr(generator, "dense_f16_pair_enabled", False))

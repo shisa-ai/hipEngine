@@ -3542,19 +3542,19 @@ Bit-identical (`tests/test_gpu_qwen4exp_gr_read_residual.py`); `code-p4096`
 1560.4 -> 1587.1 and `code-p512` 1018.4 -> 1024.5 prefill tok/s, same
 process, identical output tokens. Historical layer2 isolation arms use the execution-local
 `gr_f16_direct(False)` scope; it restores nested state on exit and leaves
-peer contexts and process environment unchanged. The publication/tail
-consumers below remain open.
+peer contexts and process environment unchanged.
 
-The direct launch makes three older mechanisms unreachable for this quant at
-prefill row counts: the publication loan and its policy table
-(`GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES`, layers 13-47, rows 4096 only),
-the padded tail leaf (`GGUF_DENSE_WIDE_F16_TAIL_POLICIES`,
-`dense_wide256_padded_f16in_f32_f32_out`) and its manifest scope.
+The obsolete publication loan, its backend admission table, profile binding,
+manifest scope and diagnostic campaign arm are removed. Direct launches keep
+the registered norm publisher; ordinary norm/down remains the fallback.
+Activation-pair reuse retains its separate same-context ownership and
+invalidation checks. Workspace alias checks apply before either route writes.
 
-Remaining work: resolve the publication loan, both policy tables and padded
-tail variant against all their consumers before
-removing them; direct GR launches alone do not prove these shared mechanisms
-are unused.
+Remaining work: resolve the padded tail leaf
+(`GGUF_DENSE_WIDE_F16_TAIL_POLICIES`,
+`dense_wide256_padded_f16in_f32_f32_out`) and its manifest scope against all
+consumers. Direct GR launches alone do not prove the generic staging tail is
+unused.
 
 ## Qwen4Exp routed gate/up without a grouped activation copy (`HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED`)
 

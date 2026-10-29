@@ -874,64 +874,28 @@ def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
         str(n) for n in range(48)
     )
-    assert generator.norm_f16_publication_enabled is True
+    assert not hasattr(generator, "norm_f16_publication_enabled")
     # The f16 WMMA dense route is retired at this scope for this quant; the
     # selector and its env var stay available for explicit opt-in and gating.
     assert PRODUCTION_Q8_WMMA_PREFILL_LAYERS == tuple(range(16, 48))
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
 
 
-@pytest.mark.parametrize("profile,quant,selected,fallback,enabled", [
-    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "f32_f16_publish", "strict", "1"),
-    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "strict", "strict", "0"),
-    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", None, None, "0"),
+@pytest.mark.parametrize("profile,quant", [
+    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl"),
+    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl"),
+    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m"),
 ])
-def test_norm_publication_manifest_and_binding(profile, quant, selected, fallback, enabled):
+def test_retired_norm_publication_has_no_manifest_or_binding(profile, quant, monkeypatch):
+    monkeypatch.setenv(NORM_F16_PUBLICATION_ENV, "1")
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     resolved = _resolve(profile, quant=quant)
-    rows = [row for row in resolved.manifest["selections"]
-            if row["layer"] == "gr_grouped_rmsnorm"]
-    if selected is None:
-        assert rows == []
-    else:
-        assert len(rows) == 1
-        assert rows[0]["scope"] == "prefill_rows4096_branches4_h2560_hc_down_layers13_47"
-        assert rows[0]["selected_variant"] == selected
-        assert rows[0]["strict_fallback_variant"] == fallback
-        assert rows[0]["registry_quant"] == "bf16_f32"
+    assert not any(row["scope"] == "prefill_rows4096_branches4_h2560_hc_down_layers13_47"
+                   for row in resolved.manifest["selections"])
     generator = SimpleNamespace(runner=None)
     resolved.binder(generator, resolved)
-    assert generator.norm_f16_publication_enabled == (enabled == "1")
-
-
-def test_norm_publication_named_manifest_ignores_legacy_rollback(monkeypatch):
-    monkeypatch.setenv(NORM_F16_PUBLICATION_ENV, "0")
-    register_gfx1151_kernels(replace=True)
-    register_qwen4_exp_gfx1151_profiles()
-    resolved = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
-    row = next(row for row in resolved.manifest["selections"]
-               if row["layer"] == "gr_grouped_rmsnorm")
-    assert row["selected_variant"] == "f32_f16_publish"
-    assert row["strict_fallback_variant"] == "strict"
-    generator = SimpleNamespace(runner=None)
-    resolved.binder(generator, resolved)
-    assert generator.norm_f16_publication_enabled is True
-
-
-def test_norm_publication_rebinding_cannot_leak_into_q4_or_strict():
-    register_gfx1151_kernels(replace=True)
-    register_qwen4_exp_gfx1151_profiles()
-    for profile, quant, enabled in (
-        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
-        (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", "0"),
-        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
-        (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "0"),
-    ):
-        resolved = _resolve(profile, quant=quant)
-        generator = SimpleNamespace(runner=None)
-        resolved.binder(generator, resolved)
-        assert generator.norm_f16_publication_enabled == (enabled == "1")
+    assert not hasattr(generator, "norm_f16_publication_enabled")
 
 
 def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
@@ -948,7 +912,7 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ""
-    assert generator.norm_f16_publication_enabled is False
+    assert not hasattr(generator, "norm_f16_publication_enabled")
 
 
 # DP-2 loans one F16 staging plane to two immediate consumers of the wide route.

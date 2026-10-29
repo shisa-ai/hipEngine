@@ -170,19 +170,16 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
-    _invalidate_wide_f16_publication,
+    _invalidate_wide_f16_pair,
     _q8_dense_wide_enabled,
     _wide_f16_consumer_key,
     dense_wide_tail_session,
-    norm_f16_publication_session,
     wide_f16_activation_pair,
     wide_f16_activation_enabled,
-    wide_f16_activation_publication,
     wide_f16_activation_session,
     wide_f16_activation_workspace,
     wide_f16_pair_enabled,
     wide_f16_pair_session,
-    wide_f16_publication_keys,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
     wmma_prefill_session,
@@ -3371,7 +3368,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         # is declared, so the output projection skips its own conversion.
         workspace = wide_f16_activation_workspace()
         if workspace is not None and workspace.nbytes >= count * q_width * 2:
-            _invalidate_wide_f16_publication()
+            _invalidate_wide_f16_pair()
             gated_f16 = workspace.ptr
         qwen4_exp_qsa_gate_context_strided_f32(
             scratch.context.ptr,
@@ -3510,7 +3507,7 @@ def _run_qwen4_exp_gr_norm_down(
         if is_registered(producer) and _wide_f16_consumer_key(
                 down_weight, rows=rows, in_features=width,
                 out_features=low_rank) is not None:
-            _invalidate_wide_f16_publication()
+            _invalidate_wide_f16_pair()
             if pending_write is not None and not (scale_ptr and inject_out_ptr):
                 _qwen4_exp_gr_flush_write(
                     pending_write, residual_ptr, rows, branches, hidden,
@@ -3557,31 +3554,6 @@ def _run_qwen4_exp_gr_norm_down(
         _qwen4_exp_gr_flush_write(
             pending_write, residual_ptr, rows, branches, hidden,
             stream=stream, runtime=runtime)
-    keys = None
-    if (workspace is not None and workspace.nbytes >= count * 2
-            and (rows, branches, hidden, low_rank) == (4096, 4, 2560, 320)
-            and not iu8_down):
-        keys = wide_f16_publication_keys(
-            down_weight, rows=rows, in_features=width, out_features=low_rank,
-        )
-    if keys is not None:
-        producer, consumer = keys
-        # Enter before publication so nesting invalidates an earlier loan
-        # before overwriting it. Only the immediately following launch can read.
-        with wide_f16_activation_publication(
-            scratch.normalized.ptr, count, stream=stream, runtime=runtime,
-            consumer_key=consumer,
-        ):
-            resolve(backend=producer.backend, layer=producer.layer,
-                    quant=producer.quant, variant=producer.variant)(
-                residual_ptr, norm_weight_ptr, scratch.normalized.ptr,
-                workspace.ptr, rows, branches, hidden, eps,
-                stream=stream, runtime=runtime,
-            )
-            launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
-                rows, width, low_rank, activation_dtype=GGUF_ACTIVATION_F32,
-                output_dtype=GGUF_OUTPUT_F32, stream=stream, runtime=runtime)
-        return False
     qwen4_exp_grouped_rmsnorm_bf16_f32(
         residual_ptr, norm_weight_ptr, scratch.normalized.ptr, rows, branches, hidden, eps,
         stream=stream, runtime=runtime,
@@ -3592,7 +3564,7 @@ def _run_qwen4_exp_gr_norm_down(
             scratch.low_rank.ptr, rows, width, low_rank, stream=stream, runtime=runtime,
         )
     else:
-        # Publication refusal must not let ordinary staging write the same
+        # Alias refusal must not let ordinary staging write the same
         # unsafe alias. Shadow only this launch; the session owner is restored.
         with (wide_f16_activation_session(False) if unsafe_workspace else contextlib.nullcontext()):
             launch_gguf_linear(down_weight, scratch.normalized.ptr, scratch.low_rank.ptr,
@@ -3785,7 +3757,7 @@ def run_qwen4_exp_gr_read(
             # products. The fused kernel then applies the sigmoid gated mean
             # to the logits while they are still in registers, so neither the
             # logits nor the gate reach ``scratch.gate``; no caller reads it.
-            _invalidate_wide_f16_publication()
+            _invalidate_wide_f16_pair()
             gguf_q8_0_f32_to_f16(
                 scratch.low_rank.ptr, workspace.ptr, rows * low_rank,
                 stream=stream, runtime=active_runtime,
@@ -8651,7 +8623,7 @@ def run_qwen4_exp_gdn_token_mixer(
                     and image_workspace is not None
                     and image_workspace.nbytes >= core_count * 2
                 ):
-                    _invalidate_wide_f16_publication()
+                    _invalidate_wide_f16_pair()
                     core_image_kwargs["core_f16_ptr"] = image_workspace.ptr
                 state_rows_kwargs = {}
                 if state_rows_capture:
@@ -9048,7 +9020,6 @@ class Qwen4ExpGGUFResidentModelRunner:
     # own decision, not the effective one: a diagnostic scope may outrank it.
     dense_f16_pair_enabled: bool = False
     dense_wide_tail_variant: str | None = None
-    norm_f16_publication_enabled: bool = False
     # Same shape for the Q8 MMQ lane: the profile publishes which variant
     # siblings this runner's prefill may select. Publication is independent of
     # the MMQ parent's own switch, so a diagnostic that re-enables
@@ -9489,8 +9460,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         """
 
         with (workspace_scope, wide_f16_pair_session(enabled),
-              dense_wide_tail_session(self.dense_wide_tail_variant),
-              norm_f16_publication_session(self.norm_f16_publication_enabled)):
+              dense_wide_tail_session(self.dense_wide_tail_variant)):
             yield
 
     def _allocate_extra_prefill_workspace(self, chunk_size):

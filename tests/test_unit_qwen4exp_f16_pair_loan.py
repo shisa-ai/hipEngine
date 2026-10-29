@@ -105,7 +105,7 @@ def test_same_key_different_weight_and_wrong_order_invalidate(fake_pair):
         assert len(p.casts) == 6 and loan.accepted == 1
 
 
-def test_nested_pair_session_and_publication_never_restore_outer_loan(fake_pair):
+def test_nested_pair_and_session_never_restore_outer_loan(fake_pair):
     p = fake_pair
     with p.session(), p.pair() as outer:
         assert p.launch()
@@ -122,8 +122,7 @@ def test_nested_pair_session_and_publication_never_restore_outer_loan(fake_pair)
         assert len(p.casts) == 5
     with p.session(), p.pair():
         assert p.launch()
-        with linear.wide_f16_activation_publication(X, ROWS * K, stream=7, runtime=RT, consumer_key=KEY):
-            pass
+        linear._invalidate_wide_f16_pair()
         assert p.launch(True)
         assert len(p.casts) == 7
 
@@ -151,9 +150,6 @@ def test_copied_context_cannot_accept_overwrite_or_open_parent_pair(fake_pair):
         assert copied.run(p.launch, True) is False
         with pytest.raises(ValueError, match="owning context"):
             copied.run(lambda: p.pair().__enter__())
-        with pytest.raises(ValueError, match="owning context"):
-            copied.run(lambda: linear.wide_f16_activation_publication(
-                X, ROWS * K, stream=7, runtime=RT, consumer_key=KEY).__enter__())
         with pytest.raises(ValueError, match="owning context"):
             copied.run(lambda: p.session().__enter__())
         assert Context().run(p.launch, True) is False
@@ -202,15 +198,14 @@ def test_unsafe_workspace_shadows_staging_during_parent_fallback(fake_pair, alia
     assert not p.casts
 
 
-def test_pair_does_not_expand_single_use_dp5_publication(fake_pair):
+def test_pair_exit_does_not_extend_reuse(fake_pair):
     p = fake_pair
     with p.session():
-        with linear.wide_f16_activation_publication(X, ROWS * K, stream=7, runtime=RT, consumer_key=KEY):
-            with p.pair() as loan:
-                assert p.launch() and p.launch(True)
-                assert loan.accepted == 2 and len(p.casts) == 1
-            assert p.launch(True)
-            assert len(p.casts) == 2
+        with p.pair() as loan:
+            assert p.launch() and p.launch(True)
+            assert loan.accepted == 2 and len(p.casts) == 1
+        assert p.launch(True)
+        assert len(p.casts) == 2
 
 
 def test_producer_f16_mirror_declines_the_loan_and_casts_nothing(fake_pair):

@@ -947,18 +947,14 @@ improves 1.036%/0.594%/0.445%, aggregate request wall −0.162%; two request
 cases are slower, so no all-case request or decode-speed claim follows.
 [Evidence and rollback](../benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md).
 
-UD production also lends the same F16 workspace to a single immediate HC-down
-consumer after grouped norm publishes F32 and F16 together. Admission is exactly
-4096 rows, branches4/H2560 and K10240/N320 within layers13–47. The loan binds
-source/count/stream/runtime/workspace/consumer identity, is invalidated on use,
-intervening writes or scope exit, and adds no device allocation. Alias rejection
-shadows unsafe workspace during parent fallback. The named manifest records
-`f32_f16_publish`, with registered strict norm and norm+cast fallbacks; strict,
-Q4_K_M and every shape miss preserve parent publication. Native14-case full
-logit/state/KV and clean72-trajectory A/B gates pass. This is a bounded prefill
-operation win (+0.154% weighted4096 prefill), not an all-request improvement
-(aggregate request wall0.9970x, worst case2.77% slower).
-[Publication evidence](../benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/README.md).
+The direct GR norm/down route writes F32 and F16 norm outputs into disjoint
+caller-owned buffers and launches its F16 consumer directly. Workspace alias
+checks run before route selection; an unsafe workspace is shadowed during the
+ordinary norm/down fallback. The obsolete single-consumer publication loan,
+backend admission table, manifest scope and diagnostic arm have been removed.
+The norm publisher and its strict norm+cast primitive remain registered for
+direct launches and parity checks. Activation-pair reuse is a separate contract.
+[Historical publication evidence](../benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/README.md).
 
 #### Fusion Planner
 

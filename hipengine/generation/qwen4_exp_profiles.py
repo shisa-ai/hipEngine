@@ -278,20 +278,6 @@ def _dense_wide_tail_selection(*, production: bool) -> VariantSelection:
     )
 
 
-_NORM_F16_SCOPE = "prefill_rows4096_branches4_h2560_hc_down_layers13_47"
-_NORM_F16_EVIDENCE = "benchmarks/results/2026-10-06-qwen4exp-norm-f16-publish/README.md"
-
-
-def _norm_f16_selection(*, production: bool) -> VariantSelection:
-    enabled = production
-    return _selection(
-        "gr_grouped_rmsnorm", _NORM_F16_SCOPE,
-        "f32_f16_publish" if enabled else "strict",
-        "strict", "bf16_f32",
-        evidence=_NORM_F16_EVIDENCE if enabled else None,
-    )
-
-
 _ROUTER_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant()
 _ROUTER_UD_LOGITS_SELECTED_VARIANT = _selected_router_producer_variant(recovery=True)
 _ROUTER_VARIANT_EVIDENCE = {
@@ -533,7 +519,7 @@ def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...
     if recovery:
         return _recovery_gdn_scopes(
             selections, variant="qwen4exp_sigmoid_strict_prefill", evidence=None,
-        ) + (_dense_wide_tail_selection(production=False), _norm_f16_selection(production=False))
+        ) + (_dense_wide_tail_selection(production=False),)
     return selections
 
 
@@ -871,7 +857,7 @@ def _production_selections(
                 else _ARITHMETIC_RECOVERY_EVIDENCE
             ),
         ))
-    return tuple(result) + (_dense_wide_tail_selection(production=True), _norm_f16_selection(production=True))
+    return tuple(result) + (_dense_wide_tail_selection(production=True),)
 
 
 def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
@@ -1386,10 +1372,6 @@ def _bind(
     # already built. A generator that builds its runner later still receives the
     # decision, and any c1 runner it clones inherits it; an unbound one keeps the
     # parent route.
-    generator.norm_f16_publication_enabled = any(
-        row["scope"] == _NORM_F16_SCOPE and row["selected_variant"] == "f32_f16_publish"
-        for row in resolved.manifest["selections"]
-    )
     generator.dense_wide_tail_variant = (
         next(row["selected_variant"] for row in resolved.manifest["selections"]
              if row["scope"] == _DENSE_WIDE_TAIL_SCOPE)
@@ -1470,7 +1452,6 @@ def _bind(
     generator.q8_mapped_down = q8_mapped_down
     runner = getattr(generator, "runner", None)
     if runner is not None:
-        runner.norm_f16_publication_enabled = generator.norm_f16_publication_enabled
         runner.dense_wide_tail_variant = generator.dense_wide_tail_variant
         runner.dense_f16_pair_enabled = dp2_pair_enabled
         runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled

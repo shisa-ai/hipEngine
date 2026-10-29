@@ -1,4 +1,4 @@
-"""DP-5 producer admission is registry-axis policy, not a quant/backend branch."""
+"""GR direct-off diagnostics use ordinary norm/down with safe staging."""
 from types import SimpleNamespace
 
 import pytest
@@ -34,14 +34,10 @@ def setup(monkeypatch):
         return lambda *a, **k: calls.append(("publisher", a, k))
     monkeypatch.setattr(runner, "resolve", resolve)
     def launch(*a, **k):
-        assert linear._consume_wide_f16_publication(
-            NORM, COUNT, stream=7, runtime=RT,
-            consumer_key=linear.KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PADDED)) == HALF
         calls.append(("down", a, k))
     monkeypatch.setattr(runner, "launch_gguf_linear", launch)
-    # Exercise the publication-loan fallback, not the default direct launch.
-    with (runner.gr_f16_direct(False), linear.dense_wide_tail_session(PADDED),
-          linear.norm_f16_publication_session(True)):
+    # Direct-off diagnostics use the ordinary parent even with the old policy.
+    with runner.gr_f16_direct(False), linear.dense_wide_tail_session(PADDED):
         yield calls
 
 
@@ -52,12 +48,11 @@ def run(w=None, rows=4096, branches=4, hidden=2560, low_rank=320):
         stream=7, runtime=RT)
 
 
-def test_admitted_immediate_pair(setup):
+def test_direct_off_uses_parent_without_publication(setup):
     with linear.wide_f16_activation_session(workspace_ptr=HALF, workspace_nbytes=COUNT*2):
         run()
-    assert [v[0] for v in setup] == ["publisher", "down"]
-    assert setup[0][1][:4] == (X, GAMMA, NORM, HALF)
-    assert linear._consume_wide_f16_publication(NORM, COUNT, stream=7, runtime=RT) == 0
+    assert [v[0] for v in setup] == ["parent", "down"]
+    assert setup[0][1][:3] == (X, GAMMA, NORM)
 
 
 @pytest.mark.parametrize("change", [
@@ -81,9 +76,7 @@ def test_scope_miss_keeps_parent(setup, monkeypatch, change):
 def test_disabled_keeps_parent(setup, monkeypatch, env, value):
     monkeypatch.setenv(env,value)
     monkeypatch.setattr(runner, "launch_gguf_linear", lambda *a, **k: setup.append(("down",a,k)))
-    from contextlib import nullcontext
-    with (linear.wide_f16_activation_session(workspace_ptr=HALF, workspace_nbytes=COUNT*2),
-          linear.norm_f16_publication_session(False) if env == ENV else nullcontext()):
+    with linear.wide_f16_activation_session(workspace_ptr=HALF, workspace_nbytes=COUNT*2):
         run()
     assert [v[0] for v in setup] == ["parent", "down"]
 

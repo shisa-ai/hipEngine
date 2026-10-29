@@ -2616,15 +2616,6 @@ GGUF_DENSE_WIDE_F16_PAIR_POLICIES = {
         },
     },
 }
-GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES = {
-    ("linear", "gguf_q8_0", "dense_wide256_f32_f32_out"): {
-        "rows": frozenset({4096}),
-        "shape": (10240, 320),
-        "layers": frozenset(range(13, 48)),
-        "roles": frozenset({"hc_attn_down", "hc_ffn_down"}),
-        "producer": ("gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish"),
-    },
-}
 GGUF_DENSE_WIDE_F16_TAIL_POLICIES = {
     ("linear", "gguf_q8_0", "dense_wide256_f16in_f32_f32_out"): {
         "rows": (512, 4096),
@@ -3970,7 +3961,6 @@ __all__ = [
     "GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED",
     "GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED",
     "GGUF_DENSE_WIDE_F16_PAIR_POLICIES",
-    "GGUF_DENSE_WIDE_F16_PUBLICATION_POLICIES",
     "GGUF_RAW_K_PREFILL_VARIANT",
     "QWEN4_EXP_MOE_GRAPH",
     "QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS",

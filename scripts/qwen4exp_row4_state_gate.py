@@ -61,8 +61,6 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # route selection. Pin the #19 q8-wmma-down T1 route off in BOTH arms
         # so this gate keeps isolating the q5k gate/up arithmetic alone.
         environment["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] = "0"
-    if package == "norm-f16-publish":
-        return  # route_scope binds the runner-local publication policy.
     if package == "dense-wide-padded":
         # route_scope binds the runner's parent for both registry arms.
         return

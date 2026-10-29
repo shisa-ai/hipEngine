@@ -1,4 +1,4 @@
-"""DP-5 native producer/consumer uses the existing workspace without a cast."""
+"""Direct GR staging shares parent bits without a separate staging cast."""
 from __future__ import annotations
 
 import ctypes
@@ -19,7 +19,7 @@ except OSError:
 pytestmark = pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime unavailable")
 
 
-def test_native_norm_consumer_single_use_and_nondefault_stream(monkeypatch):
+def test_native_direct_norm_consumer_nondefault_stream(monkeypatch):
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as wide
@@ -66,7 +66,7 @@ def test_native_norm_consumer_single_use_and_nondefault_stream(monkeypatch):
             for enabled in ("0","1","1","0"):
                 start=len(casts)
                 live=memory_stats()["current_allocated_bytes"]
-                with linear.norm_f16_publication_session(enabled == "1"):
+                with runner.gr_f16_direct(enabled == "1"):
                     runner._run_qwen4_exp_gr_norm_down(xd.ptr,gd.ptr,weight,scratch,rows=rows,
                         branches=branches,hidden=hidden,low_rank=n,eps=1e-6,stream=stream,runtime=runtime)
                 runtime.stream_synchronize(stream)
