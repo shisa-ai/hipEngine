@@ -104,12 +104,63 @@ def test_runner_policy_resolves_rollback_before_workspace_binding(monkeypatch, v
         monkeypatch.delenv(ENV, raising=False)
     else:
         monkeypatch.setenv(ENV, value)
-    kwargs = dict(request_count=8, model_name="Qwen3.8-27B", file_type_name="MOSTLY_Q4_K_M")
+    kwargs = dict(request_count=8)
     assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", **kwargs) is enabled
     assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1151", **kwargs) is False
-    for change in (dict(request_count=7), dict(model_name="Qwen3.6-27B"),
-                   dict(file_type_name="MOSTLY_Q4_K_S")):
-        assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", **(kwargs | change)) is False
+    for request_count in (1, 7, 9, 13):
+        assert _gguf_c8_q6_dp4a_grouped_enabled(
+            "hip_gfx1100", request_count=request_count,
+        ) is False
+
+
+def test_runner_uses_backend_declared_target_policy(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    calls = []
+    def capability(backend, name, default):
+        calls.append((backend, name, default))
+        return frozenset({3, 8})
+
+    monkeypatch.setattr(runner, "backend_package_capability", capability)
+    assert runner._gguf_c8_q6_dp4a_grouped_enabled(
+        "test_backend", request_count=3, enabled=True,
+    ) is True
+    assert calls == [("test_backend", "GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS", ())]
+    assert runner._gguf_c8_q6_dp4a_grouped_enabled(
+        "test_backend", request_count=4, enabled=True,
+    ) is False
+
+
+def test_backend_declares_automatic_target_width_without_identity():
+    from hipengine.kernels.backends import backend_package_capability
+
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS", (),
+    ) == frozenset({8})
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS", (),
+    ) == ()
+
+
+@pytest.mark.parametrize("model_name,file_type_name", (
+    (None, None), ("Unfamiliar hybrid", "MOSTLY_Q4_K_S"),
+    ("Qwen3.6-27B", "MOSTLY_Q5_K_M"),
+))
+def test_compatible_session_does_not_select_on_artifact_identity(monkeypatch, model_name, file_type_name):
+    from types import SimpleNamespace
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_q6_dp4a_grouped = True
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        weights=SimpleNamespace(model_name=model_name, file_type_name=file_type_name),
+    )
+    scratch = SimpleNamespace(moe_q8_1=SimpleNamespace(ptr=44, nbytes=100_000))
+    monkeypatch.delenv(ENV, raising=False)
+    with session._q6_dp4a_grouped_target_context(scratch, request_count=8):
+        assert q6._Q6_DP4A_GROUPED_SESSION.get().workspace_ptr == 44
+    assert q6._Q6_DP4A_GROUPED_SESSION.get() is None
 
 
 @pytest.mark.parametrize("selected", (True, False))

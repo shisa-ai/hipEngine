@@ -984,6 +984,7 @@ condition. Reachability is stated against the two in-scope artifacts: Qwen3.8-27
 | `GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER` | `False` | Packed verifier initial-state gather uses its existing unfused route on gfx1151. R0182 replaces the gfx1100 environment policy with this plain capability. | declined |
 | `GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY` | `{}` | Direct resident verifier indexing is disabled on gfx1151; resident-to-packed import remains the owner. R0176 makes this existing difference a direct capability read. | declined |
 | `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` | `False` | C8 Q5-K MMQ SSM-out route closed; `q5_raw_mmq_target_session` gets no library and the retained owner runs | declined |
+| `GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS` | `()` | Automatic target execution keeps the existing BF16 owner; explicit grouped-Q6 workspace scopes and registered primitives remain executable. This names variant-selection policy, not missing kernel capability. | automatic policy unchanged |
 | `GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH` | `{}` | gfx1151's own flat `GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS = 8` | N/A |
 | `GGUF_SPECDEC2_MTP2_PHYSICAL_C1` | `False` | legacy singleton; the call site's own comment records that gfx1151 evidence retains it | declined |
 | `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING` | `False` | no production prompt streaming | declined |

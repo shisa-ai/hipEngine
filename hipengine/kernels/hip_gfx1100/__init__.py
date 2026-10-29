@@ -588,6 +588,10 @@ GGUF_DENSE_Q5_T16_H5120 = True
 # operation-complete Q8_1+Q5 MMQ. The env opt-out is resolved by the materializer
 # and runner; exact T16 grouped rowtiles remain the strict fallback.
 GGUF_C8_Q5_RAW_MMQ_SSM_OUT = True
+# Automatic grouped-Q6 target selection uses the physical-C8 owner. The
+# planar-Q6 adapter independently checks rows, input geometry and workspace;
+# model metadata and aggregate GGUF quant labels do not determine its ABI.
+GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS = frozenset({8})
 # Q5T16 and planar-qmicro Q6T16 true rowtile primitives were extended and
 # validated to rows 5-8 (strict bit-parity vs the per-row producer), so native
 # batch decode rewrites rows 2-8 to the true rowtile instead of padded WMMA.
@@ -1562,6 +1566,7 @@ __all__ = [
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
     "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
     "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
+    "GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
     "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES",

@@ -3432,31 +3432,6 @@ category and control/ownership gates before closing this entry.
 
 ## GGUF Q5/Q6 grouped experiment cleanup
 
-### Grouped q8_1 DP4A planar-Q6 variant - retained C8 default with temporary rollback
-
-- Kernel `q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_kernel<8>` (rows
-  8-64, integer dp4a decode over planar-qmicro tiles, u32 record loads) is
-  registered as `linear_q8_1 / t16_q8_1_dp4a_gemv_grouped_bf16_bf16_out`.
-  The L4 gate and fresh final-stack composition gate passed; production
-  Qwen3.8 `Q4_K_M` physical C8/K3 now defaults on at `c1bb38d49`. Artifact:
-  `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
-- The gfx1100 profile snapshots the Q6 choice onto its generator: production
-  defaults true, strict selects false and an explicit production override is
-  captured without writing the process environment. Sessions inherit that
-  choice at configuration/reuse. Constructing a strict peer cannot change a
-  live production owner's Q6 selection. Standalone sessions with an
-  unspecified choice retain the diagnostic environment lookup of
-  `HIPENGINE_C8_Q6_DP4A_GROUPED`.
-  `q6_dp4a_grouped_target_session` lends bounded scratch; the adapter does
-  not reselect policy inside that scope.
-- **Remaining cleanup / removal condition:** replace the runner's gfx1100 + request count 8 +
-  `Qwen3.8` metadata + `MOSTLY_Q4_K_M` match with plugin-owned variant policy
-  expressed in kernel capabilities and geometry. Preserve the current
-  arithmetic-selection envelope until that migration's profile gate passes.
-  Keep workspace ownership and the registered BF16 primitive. Validate public
-  packed-C8 selection on gfx1100, explicit controls, supported/missed geometry,
-  bounded scratch and strict/production owner isolation.
-
 ### C8-P2 Q5 planar-dp4a grouped route (default-off; added 2026-09-04, iter40)
 
 - **What exists:** grouped integer-dp4a planar-Q5 sibling
@@ -11419,3 +11394,27 @@ interface, or implement an explicit no-marker mode that records its scope and
 uses the matching rollup. Test missing/present libraries, explicit override,
 child forwarding and trace-marker matching. Coordinate shared discovery with
 R0393; preserve each wrapper's dependency-path and measurement contracts.
+
+### R0393-Q6 — Grouped-Q6 rollback interface and gfx1100 public engagement
+
+The runner no longer matches model names or aggregate GGUF file-type labels.
+`GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS` declares automatic physical-C8
+selection in the gfx1100 package. The planar-Q6 adapter checks actual rows,
+input width and bounded workspace. Strict/production choices are owner-local;
+explicit workspace scopes do not re-read the process environment. Keep those
+resource contracts and the registered strict BF16 primitive.
+
+**Decision needed / removal condition:** keep
+`HIPENGINE_C8_Q6_DP4A_GROUPED` as a supported production rollback and standalone
+diagnostic, or replace it with an explicit session/profile interface. Remove
+the environment reader and reference only after the replacement preserves
+those controls; do not remove the workspace scope as temporary policy debt.
+
+**Hardware follow-up:** run a real public packed-C8 request on gfx1100 and
+record selected Q6 variant, grouped-kernel engagement, repeatability and
+allocation drain. gfx1151 normal public requests keep their existing BF16
+selection. Explicit peer diagnostic scopes bound successfully, but selected
+verifier variants bypassed the grouped decode wrapper; those runs do not prove
+gfx1100 engagement. This is a validation follow-up, not a runnability gate.
+Historical promotion evidence remains in
+`../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.

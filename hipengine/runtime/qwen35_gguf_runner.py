@@ -11707,19 +11707,21 @@ def _gguf_c8_q6_dp4a_grouped_enabled(
     backend: str,
     *,
     request_count: int,
-    model_name: str | None = None,
-    file_type_name: str | None = None,
     enabled: bool | None = None,
 ) -> bool:
-    """Resolve the retained Qwen3.8 Q4_K_M physical-C8 Q6 owner."""
+    """Resolve backend target-width policy before binding Q6 scratch.
+
+    Planar-Q6 layout, row and activation geometry are checked by the selected
+    adapter. Model names and the GGUF file's aggregate quant label are not
+    execution requirements.
+    """
 
     return (
-        str(backend) == "hip_gfx1100"
-        and int(request_count) == 8
-        and "qwen3.8" in str(model_name or "").casefold()
-        and str(file_type_name or "").upper() == "MOSTLY_Q4_K_M"
-        and (_env_flag(_GGUF_C8_Q6_DP4A_GROUPED_ENV, False)
-             if enabled is None else bool(enabled))
+        (_env_flag(_GGUF_C8_Q6_DP4A_GROUPED_ENV, False)
+         if enabled is None else bool(enabled))
+        and int(request_count) in backend_package_capability(
+            backend, "GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS", (),
+        )
     )
 
 
@@ -18934,8 +18936,6 @@ class Qwen35GGUFResidentSession:
         enabled = _gguf_c8_q6_dp4a_grouped_enabled(
             self.runner.backend,
             request_count=request_count,
-            model_name=getattr(self.runner.weights, "model_name", None),
-            file_type_name=getattr(self.runner.weights, "file_type_name", None),
             enabled=self.use_q6_dp4a_grouped,
         )
         if not enabled:
