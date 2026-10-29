@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
             prefill_chunk_size=512,
         )
 
-    flag = os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "0")
+    flag = os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "1")
     arm = args.tag or f"flag{flag}"
     print(f"[config] case={args.case} prompt_tokens={prompt_tokens} steps={args.steps} "
           f"requests={args.requests} capacity={max_sequence_length} "

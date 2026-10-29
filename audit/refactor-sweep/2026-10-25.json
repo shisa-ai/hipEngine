@@ -12583,38 +12583,38 @@
       "start_line": 10312,
       "end_line": 10345,
       "sha256": "c907700c84ea6d6bd5e78e7054e77f66fbf3d7188e9042838a57be1bbb2c0b67",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-reporting-deferred-comparison-ownership",
+      "evidence": ["Correct RT4/DE5 unset reporting defaults to1, matching default-on runtime;14 RED/GREEN parameter cases. Preserve full-clear comparison pending explicit policy/lifecycle migration; historical parity and sync-order lesson retained. Worklog: worklog/entries/20261029T192838.841154Z-cleanup-refactor-r0435-cd24b0.md."],
       "subitems": [
         {
           "line": 10314,
           "text": "- Added 2026-09-30, **promoted to default the same day**. When enabled (now the",
-          "status": "pending"
+          "status": "resolved-default-preserved-reporting-fixed"
         },
         {
           "line": 10320,
           "text": "- **Exactness proven by parent parity, not asserted.** `scripts/qwen4exp_layer2_profile_gate.py`",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10329,
           "text": "- **Note on the gate comparison:** an earlier single run compared the candidate",
-          "status": "pending"
+          "status": "resolved-same-profile-comparison-contract"
         },
         {
           "line": 10334,
           "text": "- Removal condition: once the bounded path has survived a release cycle without a",
-          "status": "pending"
+          "status": "deferred-explicit-reset-comparison-policy"
         },
         {
           "line": 10338,
           "text": "- Not exercised by any test: rollback, cancellation and c2. The bound is",
-          "status": "pending"
+          "status": "deferred-lifecycle-validation-for-control-retirement"
         },
         {
           "line": 10341,
           "text": "- **Diagnostic script gotcha:** `scripts/qwen4exp_rt4_kv_compare.py` initially",
-          "status": "pending"
+          "status": "resolved-synchronize-before-copy-preserved"
         }
       ]
     },

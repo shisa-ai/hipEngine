@@ -3427,40 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` (RT-4) — promoted to default
-
-- Added 2026-09-30, **promoted to default the same day**. When enabled (now the
-  default), `Qwen4ExpGGUFResidentModelRunner.reset()` clears only
-  `[0, written_cache_bytes())` of each K/V cache instead of the full allocated
-  capacity. Measured at 128K capacity: reset 15.689/15.519 ms -> 1.133/1.741 ms,
-  **14.17 ms saved per request**, decode identical in both regimes. Artifact:
-  `benchmarks/results/2026-09-30-qwen4exp-rt4-bounded-kv-reset/`.
-- **Exactness proven by parent parity, not asserted.** `scripts/qwen4exp_layer2_profile_gate.py`
-  run twice, `production_baseline` (no flag) and `bounded_kv_reset` (flag on),
-  both under the production profile: **identical `candidate_logits_sha256`**
-  (`260979d6...`). Both runs also produce an **identical `strict_logits_sha256`**,
-  which is the control showing the harness is reproducible, so the match is
-  evidence rather than coincidence. Independently, the raw K/V buffers are
-  **byte-identical at all 12 attention states** across three arms (flag off, off,
-  on), and the invariant `last_nonzero < bound` holds at every state
-  (1,064,959 vs 1,310,720).
-- **Note on the gate comparison:** an earlier single run compared the candidate
-  against the **strict** arm and showed differing logits hashes. That is the
-  gate's intended strict-vs-production difference, not a property of this flag -
-  which is why the parent-parity pair above, not the strict comparison, is the
-  binding evidence for a T1 candidate.
-- Removal condition: once the bounded path has survived a release cycle without a
-  rollback, delete the env flag and `_qwen4_exp_bounded_kv_reset_enabled`, keep
-  `tests/test_gpu_qwen4exp_kv_reset_bounded.py` as the permanent contract for the
-  bound, and drop the flag-contract test.
-- Not exercised by any test: rollback, cancellation and c2. The bound is
-  re-derived from `position` on each prefill, which is an argument rather than a
-  measurement.
-- **Diagnostic script gotcha:** `scripts/qwen4exp_rt4_kv_compare.py` initially
-  read buffers with `copy_device_to_host` before `device_synchronize()`, which
-  captured partially-written state and produced a phantom arm difference. Any
-  probe that reads device buffers must sync **before** the copy.
-
 ## `scripts/execution_profile_gguf_c1_pack8_wide_gate.py` (superseded harness)
 
 - Added 2026-09-30 (`e5f43ce21`) to measure this lever's KL envelope, and
@@ -10847,3 +10813,32 @@ Historical performance and Q8_0 coverage remain in
 measurements or an admission list for other implemented quantizations.
 Source review and focused checks:
 `../worklog/entries/20261029T192349.450639Z-cleanup-refactor-r0434-4bc573.md`.
+
+### R0435 — Bounded KV reset comparison ownership
+
+Bounded reset remains default-on. `written_cache_bytes()` rounds the host
+position to whole blocks and clamps the result to cache capacity; reset clears
+that prefix before setting position to zero. Its contract requires allocation
+and prior clears to leave the remaining bytes zero. The full-clear alternative
+is still selected by `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET=0`.
+
+**Deferred decision:** keep the full/bounded comparison interface or migrate
+`scripts/qwen4exp_rt4_kv_compare.py` and the layer2 candidate to explicit reset
+policy before removing the environment reader. The RT-4 and DE-5 diagnostics
+now report the default-on setting when the environment is unset. They preserve
+explicit spellings; changing report defaults does not change runtime reset.
+A release cycle alone does not remove these comparison consumers.
+
+Keep `tests/test_gpu_qwen4exp_kv_reset_bounded.py` as the range and reuse
+contract. Before retiring the full-clear control, exercise repeated requests,
+long-to-short reuse, rollback, cancellation and changing request widths through
+public generation/serving, comparing cleared buffers and post-reset outputs.
+Do not assume the low-level range tests establish every lifecycle case.
+The RT-4 reader synchronizes before device-to-host copying; keep that ordering
+so unfinished device writes cannot create a false arm difference.
+
+Historical parity and timing evidence stays in
+`benchmarks/results/2026-09-30-qwen4exp-rt4-bounded-kv-reset/`. Compare bounded
+and full-clear arms under the same arithmetic profile; strict-versus-production
+logit differences do not isolate reset behavior. Reporting regression evidence:
+`../worklog/entries/20261029T192838.841154Z-cleanup-refactor-r0435-cd24b0.md`.

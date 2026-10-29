@@ -297,7 +297,7 @@ def main() -> int:
                 {
                     "case": args.case,
                     "model_root": str(args.model_root),
-                    "bounded_kv_reset": os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "0"),
+                    "bounded_kv_reset": os.environ.get("HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET", "1"),
                     "sizes": sizes,
                     "rows": rows,
                 },
