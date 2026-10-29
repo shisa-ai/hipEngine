@@ -9153,28 +9153,28 @@
       "start_line": 6938,
       "end_line": 6961,
       "sha256": "56479388c70b8ea2a64d9b70c5dcdb37b10d20668c621abbd4726768bfadb124",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-consolidated-R0281-AR-DECODE",
+      "evidence": ["Duplicate of already-reviewed R0281 packed decode reader/diagnostic migration. Reverified default-on reader, resident/compatibility consumers and explicit serial writers in concurrency baseline, F1 and live-server tools. Existing control/capability/grouping/layout and selected live-tier host contracts pass. Removed duplicate release-window/results prose; bottom R0281-AR-DECODE / R0308 owns remaining coherent control migration. Pinned source and immutable worklogs preserve E1/E2/E3/F1 history; runtime/defaults/kernels unchanged, no new speed/parity claim. Worklog: worklog/entries/20261029T013822.281055Z-cleanup-refactor-r0308-r0309-packed-ar-e7e1c4.md."],
       "subitems": [
         {
           "line": 6939,
           "text": "- Added 2026-07-05 as a packed-verifier AR diagnostic, then replaced by the",
-          "status": "pending"
+          "status": "resolved-default-packed-callers-reverified"
         },
         {
           "line": 6945,
           "text": "- Purpose: provide the first useful GGUF AR c>N server backend after fixing",
-          "status": "pending"
+          "status": "resolved-existing-state-and-capability-contracts"
         },
         {
           "line": 6950,
           "text": "- Result: E1/E2 retain direct physical c8 at **127.902/246.872 aggregate",
-          "status": "pending"
+          "status": "resolved-history-preserved-no-new-claim"
         },
         {
           "line": 6958,
           "text": "- Remove when: the one-release rollback window ends on both gfx11 targets; both",
-          "status": "pending"
+          "status": "deferred-bottom-R0281-AR-DECODE-R0308-live-writer-migration"
         }
       ]
     },
@@ -9184,33 +9184,33 @@
       "start_line": 6962,
       "end_line": 6986,
       "sha256": "d0953dedfac78f24010accce99b66e59e19de84e571a5e7f9afe7d871f57d86d",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-consolidated-R0281-AR-PREFILL",
+      "evidence": ["Duplicate of already-reviewed R0281 packed prefill control migration. Reverified default-on startup/compatibility/resident reader, serial baseline writer and both backend final-output mask declarations. Existing layout/hidden-sink tests and packed-prefill/warmup/ragged/capability host contracts pass. Removed duplicate release-window/results prose; bottom R0281-AR-PREFILL / R0309 owns coherent serial-control migration. Pinned source and immutable worklogs preserve rejected verifier-as-prefill, state audit and E3/F1 history. Runtime/defaults/kernels unchanged; no new timing or parity claim. Worklog: worklog/entries/20261029T013822.281055Z-cleanup-refactor-r0308-r0309-packed-ar-e7e1c4.md."],
       "subitems": [
         {
           "line": 6963,
           "text": "- Added 2026-07-05 after the packed-decode AR route exposed prompt prefill as",
-          "status": "pending"
+          "status": "resolved-default-prefill-caller-and-mask-contracts"
         },
         {
           "line": 6969,
           "text": "- Purpose: remove the serial per-slot prompt-prefill wall from coalesced",
-          "status": "pending"
+          "status": "resolved-history-preserved-no-new-claim"
         },
         {
           "line": 6973,
           "text": "- Result: the 2026-07-13 state audit found the old packed full-attention decode",
-          "status": "pending"
+          "status": "resolved-history-and-separate-state-contracts-preserved"
         },
         {
           "line": 6981,
           "text": "- Result addendum: E3/F1 covers exact C13 prompt/state/KV plus **189/189** real",
-          "status": "pending"
+          "status": "resolved-history-preserved-no-new-claim"
         },
         {
           "line": 6984,
           "text": "- Remove when: the one-release rollback window ends on both gfx11 targets. Keep",
-          "status": "pending"
+          "status": "deferred-bottom-R0281-AR-PREFILL-R0309-live-writer-migration"
         }
       ]
     },

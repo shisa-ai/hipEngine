@@ -3430,55 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_AR_PACKED_DECODE` (default-on packed decode)
-- Added 2026-07-05 as a packed-verifier AR diagnostic, then replaced by the
-  retained decode-shaped packed AR path. The current default-on route calls
-  `Qwen35GGUFResidentSession.step_batch_native(..., scatter_state=False)` for
-  prepared multi-prompt GGUF greedy AR, keeps packed multi-slot state canonical
-  across decode cycles, and scatters back only before stream/scalar fallback or
-  a changed chunk layout.
-- Purpose: provide the first useful GGUF AR c>N server backend after fixing
-  default-route request coalescing while preserving each request's canonical
-  state. The exact route uses c1 per-slot linear-attention state slices and
-  keeps full attention plus MoE/FFN row-batched. Deferred flush copies the full
-  live KV prefix instead of only the last dirty row.
-- Result: E1/E2 retain direct physical c8 at **127.902/246.872 aggregate
-  tok/s** on gfx1151/gfx1100 with complete token/hidden/state/KV and profiler
-  gates. E3/F1 then retain C13 as c8+sparse-c8, middle-hole/new admission, and
-  real p512/128-output SSE logical c1/c8/c9/c13/serial-c13 at
-  **15.701/86.338/57.127/72.522/42.764 tok/s** on gfx1151 and
-  **25.583/136.122/88.592/111.380/31.708** on gfx1100. Each packet preserves
-  all **189** server prompt/output rows, and every packed static/live route
-  records zero serial/resident fallback.
-- Remove when: the one-release rollback window ends on both gfx11 targets; both
-  correctness/profiler/repetition/live-server triggers are met. Keep only
-  registry-resolved unsupported-shape fallback.
-
-## `HIPENGINE_GGUF_AR_PACKED_PREFILL` (default-on packed prompt prefill)
-- Added 2026-07-05 after the packed-decode AR route exposed prompt prefill as
-  the remaining c>N server AR limiter. The current default-on route calls
-  `Qwen35GGUFResidentSession.prefill_batch_native(...)` for multi-prompt GGUF
-  greedy AR, packs prompt rows slot-major, scatters the resulting KV/recurrent
-  state back to each resident session, and samples only each slot's final
-  prompt row before entering packed decode.
-- Purpose: remove the serial per-slot prompt-prefill wall from coalesced
-  OpenAI-server AR batches without reusing the MTP verifier result contract.
-  The rejected verifier-as-prefill probe sampled/copied all prompt rows and
-  measured c=8 **50.56 tok/s**, below the retained packed-decode baseline.
-- Result: the 2026-07-13 state audit found the old packed full-attention decode
-  reduction first changed BF16 layer output at layer 31, then Conv/GDN state at
-  layer 32 and live KV at layer 35. Packed prefill now uses the span-aware paged
-  prefill reduction below 512 rows; if any slot crosses the AOTriton threshold,
-  full attention runs slot-locally with c1 math while linear/MoE remains packed.
-  Steady c4 and ragged `[512,64,64,64]` are token/Conv/GDN/live-KV exact. The old
-  **65.91/82.41/63.17 tok/s** row predates these gates and exact generated-ID
-  accounting; it is historical rather than a current retained baseline.
-- Result addendum: E3/F1 covers exact C13 prompt/state/KV plus **189/189** real
-  server prompt-ID/usage/output rows per gfx11 target under repeated p512 bursts
-  and live c8→c13 admission.
-- Remove when: the one-release rollback window ends on both gfx11 targets. Keep
-  fallback for total prompt slabs beyond the current packed hidden-row guard.
-
 ## `scripts/qwen35_batch_hidden_bisect.py --compare-full-attn-rowchunk-boundary`
 - Added 2026-07-09 as a default-off PARO c>N diagnostic mode. It compares two
   native rows=6 batch variants directly: no-rowchunk full attention versus the
@@ -10182,7 +10133,7 @@ intended family's guarded numerical/fallback tests and public generation with
 actual selected kernels, complete-wall/latency and cleanup recorded across
 neighboring and unrelated concurrency/row regimes on the intended backend.
 
-### R0281-AR-DECODE — Packed decode controls and scalar baseline callers
+### R0281-AR-DECODE / R0308 — Packed decode controls and scalar baseline callers
 
 `HIPENGINE_GGUF_AR_PACKED_DECODE` is default on and still read by both the
 resident model runner and the direct compatibility AR adapter.
@@ -10210,8 +10161,11 @@ Reader retirement also needs real public packed and explicit-serial requests at
 neighboring/unrelated logical widths, ragged and shrinking groups, repeated
 output, selected path/fallback reasons and zero tracked cleanup. Historical
 F1/E3 packets establish prior results, not migration of these live writers.
+R0308's duplicate release-window item is consolidated here; elapsed time alone
+does not retire an explicit serial comparison. Its original result history
+remains in the sweep's pinned source and immutable worklogs.
 
-### R0281-AR-PREFILL — Packed prefill diagnostic control migration
+### R0281-AR-PREFILL / R0309 — Packed prefill diagnostic control migration
 
 `HIPENGINE_GGUF_AR_PACKED_PREFILL` defaults on. Startup warmup, the compatibility
 adapter and the resident scheduler read it; `scripts/gguf_concurrency_baseline.py`
@@ -10242,6 +10196,9 @@ needs public packed and explicit-serial requests with short/long/ragged prompts,
 selected route, final-output/hidden-seed accounting, repeated output and cleanup
 recorded. Do not re-run historical arithmetic promotion as a prerequisite for
 running the existing default; apply the numerical gates only to changed math.
+R0309's duplicate release-window item is consolidated here. Historical
+verifier-as-prefill, state-audit and F1/E3 results remain in the sweep's pinned
+source and immutable worklogs, not as fresh claims about this unchanged route.
 
 ### R0281-FAIR-BURST — Scheduler control retirement decision
 
