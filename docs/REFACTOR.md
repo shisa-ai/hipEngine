@@ -3427,16 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp unused `moe_f32` layer scratch
-
-Since 2026-10-14 the residual write after the routed experts reads the BF16
-MoE output directly (`qwen4_exp_gr_write_bf16_bf16`, bit-identical to
-widening it first), so the per-layer-scratch `moe_f32` buffers
-(`rows * hidden * 4` bytes in both layer scratch classes of
-`hipengine/runtime/qwen4_exp_runner.py`) are allocated but never read.
-Removal condition: delete the field, its allocation and its capacity-plan
-entry in the next scratch-planner change.
-
 ## Qwen4Exp decode routes of the UD production plan
 
 The `gguf_ud_q4_k_xl` production binder selects three decode routes that

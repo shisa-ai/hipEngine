@@ -1673,7 +1673,6 @@ class Qwen4ExpQSALayerScratch:
     ffn_gr: Qwen4ExpGRScratch
     moe: Qwen4ExpMoEScratch
     after_attention: DeviceBuffer
-    moe_f32: DeviceBuffer
     output: DeviceBuffer
     runtime: HipRuntime
     closed: bool = False
@@ -1722,8 +1721,6 @@ class Qwen4ExpQSALayerScratch:
             owners.append(moe)
             after_attention = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(after_attention)
-            moe_f32 = malloc(rows * hidden * 4, runtime=active_runtime)
-            owners.append(moe_f32)
             output = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(output)
         except Exception:
@@ -1736,14 +1733,13 @@ class Qwen4ExpQSALayerScratch:
             raise
         return cls(
             attention_gr, qsa, ffn_gr, moe,
-            after_attention, moe_f32, output, active_runtime,
+            after_attention, output, active_runtime,
         )
 
     def close(self) -> None:
         if self.closed:
             return
         free(self.output, runtime=self.runtime)
-        free(self.moe_f32, runtime=self.runtime)
         free(self.after_attention, runtime=self.runtime)
         self.moe.close()
         self.ffn_gr.close()
@@ -1815,7 +1811,6 @@ class Qwen4ExpGDNLayerScratch:
     ffn_gr: Qwen4ExpGRScratch
     moe: Qwen4ExpMoEScratch
     after_attention: DeviceBuffer
-    moe_f32: DeviceBuffer
     output: DeviceBuffer
     runtime: HipRuntime
     closed: bool = False
@@ -1861,8 +1856,6 @@ class Qwen4ExpGDNLayerScratch:
             owners.append(moe)
             after_attention = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(after_attention)
-            moe_f32 = malloc(rows * hidden * 4, runtime=active_runtime)
-            owners.append(moe_f32)
             output = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(output)
         except Exception:
@@ -1875,14 +1868,13 @@ class Qwen4ExpGDNLayerScratch:
             raise
         return cls(
             attention_gr, gdn, ffn_gr, moe,
-            after_attention, moe_f32, output, active_runtime,
+            after_attention, output, active_runtime,
         )
 
     def close(self) -> None:
         if self.closed:
             return
         free(self.output, runtime=self.runtime)
-        free(self.moe_f32, runtime=self.runtime)
         free(self.after_attention, runtime=self.runtime)
         self.moe.close()
         self.ffn_gr.close()

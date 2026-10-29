@@ -51,13 +51,13 @@ def qwen4_exp_scratch_breakdown(config, *, context_tokens: int, prefill_chunk_si
     def gdn_layer(n):
         mixer = 4 * n * (2 * qkv_width + 2 * config.gdn_inner_size
                          + 2 * config.gdn_time_step_rank + h)
-        return 2 * gr(n) + mixer + moe(n) + n * (4 * branches * h + 4 * h)
+        return 2 * gr(n) + mixer + moe(n) + n * (4 * branches * h)
 
     def qsa_layer(n):
         mixer = 4 * n * (6 * q_width + 3 * kv_width
                          + 2 * config.indexer_head_count * config.indexer_key_length
                          + config.indexer_key_length + h)
-        return 2 * gr(n) + mixer + moe(n) + n * (4 * branches * h + 4 * h)
+        return 2 * gr(n) + mixer + moe(n) + n * (4 * branches * h)
 
     def ple(n):
         return n * (22 * branches * h + 4 * h + 4 * branches)

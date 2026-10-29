@@ -15,14 +15,28 @@ def config():
     return qwen4_exp_gguf_config_from_metadata(_info())
 
 
-def test_original_allocation_sequence_matches_frozen_census():
+def test_allocation_sequence_matches_frozen_census_except_retired_moe_scratch():
     path = Path(__file__).resolve().parents[1] / (
         "benchmarks/results/2026-09-15-chunk4096-accounting/artifact.json")
     frozen = json.loads(path.read_bytes())["captures"]["resume-scratch-census.json"]
     for row in frozen["records"]:
         actual = census(config(), context=row["context"], chunk=row["chunk"])
-        assert actual["allocations"] == row["allocations"]
-        assert actual["owner_bytes"] == row["owner_bytes"]
+        # Preserve the historical artifact; account only for the four removed
+        # layer buffers, leaving every surviving allocation and byte count exact.
+        retired = {
+            "gdn_scratch.moe_f32": 4 * config().hidden_size,
+            "qsa_scratch.moe_f32": 4 * config().hidden_size,
+            "gdn_prefill_scratch.moe_f32": 4 * min(row["context"], row["chunk"]) * config().hidden_size,
+            "qsa_prefill_scratch.moe_f32": 4 * min(row["context"], row["chunk"]) * config().hidden_size,
+        }
+        assert {item["owner"]: item["nbytes"] for item in row["allocations"]
+                if item["owner"] in retired} == retired
+        expected = [item for item in row["allocations"] if item["owner"] not in retired]
+        owners = dict(row["owner_bytes"])
+        for name, nbytes in retired.items():
+            owners[name.split(".")[0]] -= nbytes
+        assert actual["allocations"] == expected
+        assert actual["owner_bytes"] == owners
 
 
 def test_extra_workspace_owns_no_decode_or_kv_state():

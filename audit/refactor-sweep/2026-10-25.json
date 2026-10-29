@@ -13008,8 +13008,8 @@
       "start_line": 10736,
       "end_line": 10745,
       "sha256": "9b9d12186df688502f29f5da909472a6ceb40b3e3fc0cf452953344366ee1baf",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-unused-layer-scratch",
+      "evidence": ["Removed QSA/GDN moe_f32 buffers and matching capacity terms. RED/GREEN lifetime regressions plus allocation census pass. Full CPU run had one historical census expectation failure; explicit subtraction of the four retired buffers preserves the artifact and all other exact expectations, with 27 focused tests passing. Fixtures, smoke modes, docs/audit gates and public production generation passed. Worklog: worklog/entries/20261029T221847.413715Z-cleanup-cleanup-refactor-r0453-7a5c2f.md."],
       "subitems": []
     },
     {
