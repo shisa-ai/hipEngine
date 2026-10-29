@@ -3425,54 +3425,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## 2026-09-06 screening override — removed 2026-10-26
-
-The switch, runtime screening branch and response markers were removed by
-R0077. See "Explicit MTP capability admission replaces screening" above.
-The following describes the superseded diagnostic contract:
-
-`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` lets `Qwen35GGUFMTP2Adapter`
-admit width/depth cells outside the backend's listed
-`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS` policy so the Qwen3.8 gfx1100
-better-MTP campaign (Packet 0) can measure explicitly unqualified cells.
-It is scoped to groups whose every request carries static eligibility with
-`automatic_eligible=false`, so automatic policy cannot widen and qualified
-Qwen3.6/gfx1151 routes are untouched; admission is recorded in
-`physical_width_contract()["last_screening_cell"]`. Remove this env, the
-`_physical_width_depth_admitted_for_group` screening branch, and its tests
-when the campaign's final C1-C8/K1-K7 matrix lands and every measured cell
-either has a qualified serving-evidence row or stays explicitly rejected.
-
-**Open interaction (2026-09-21).** The guard now also blocks screening every
-BF16 cell the implementation declarations cover, because those declarations are
-automatic-eligible: `automatic_eligible` no longer implies "this cell is in the
-listed policy", which is the invariant the guard was written against. A cell
-covered by an explicit-only evidence row (`automatic_eligible=false`) is still
-screenable; a cell with no row of its own is not, and reaches the adapter as
-ordinary automatic intent instead. Measuring a BF16 cell outside the listed
-policy therefore needs the guard keyed on the listed cell table rather than on
-`automatic_eligible` -- decide that with the campaign owner before extending the
-matrix, since removing the guard lets screening widen automatic intent.
-
-## 2026-09-07 Dual C1 target-route dispatch — singleton vs packed frontier
-
-`Qwen35GGUFMTP2Adapter` dispatches one-request C1 cycles to the legacy
-singleton target verifier (graph-captured, device-side acceptance,
-`_ensure_active_singleton_target_verifier`) and everything else (C2-C8 and
-packed-C1) to `_execute_target_frontier_batch` (eager, host accept sync).
-The 2026-09-07 stage-timing diagnostic
-(`benchmarks/results/2026-09-07-w7900-packed-route-c1-stage-timing-diagnostic.json`)
-showed the packed C1 cycle costs ~88 ms versus the legacy graph replay's
-~48 ms for the identical 4-row frontier, entirely from eager launch overhead
-plus the ~57 ms/cycle host accept readback. The packed route can at best
-reach parity at C1 (same verify work; no batching advantage with one
-request), so the legacy singleton route is the correct C1 default and stays.
-When (and only when) the packed frontier path is graph-captured with
-device-side acceptance and re-measured at parity-or-better on the C1
-balanced-pair protocol, delete the singleton verifier dispatch branch and
-its graph-bucket preparation so one target route serves C1-C8. Until then
-this is a documented duplicate dispatch route, not dead code.
-
 ## 2026-09-09 INT8 layer_outer hidden-plane alias — route-scoped gate pending promotion
 
 `HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` aliases the two full-capacity
@@ -11266,3 +11218,32 @@ The original leaf harness calls the planar kernel directly; the early public
 dispatch deadlock did not make that leaf owner-versus-owner. See the correction
 and source evidence in
 `../worklog/entries/20261029T114236.423489Z-cleanup-refactor-r0393-q5-lifecycle-f07019.md`.
+
+### R0402 — Singleton and packed target-verifier ownership
+
+`Qwen35GGUFMTP2Adapter` still has two target owners. The native singleton
+verifier uses `_ensure_active_singleton_target_verifier` and graph-bucket
+preparation; gfx1151 singleton requests still use it. Backend-declared physical
+C1 requests and wider groups use `_execute_target_frontier_batch` with
+`verify_target_blocks_batch`. That packed target pass is eager, but its device
+proposal path enqueues acceptance and selects state on device before reading a
+bounded summary. Host-materialized proposals still have a host-result path.
+Do not describe every packed request as host-accepted or delete either owner
+as dead code.
+
+**Decision needed:** keep the singleton verifier as a supported specialization,
+or converge on the packed target owner. If keeping it, document the ownership
+boundary and close this duplication entry. If converging, implement packed
+target graph capture and compare both routes through the same public C1
+request before removing singleton dispatch and graph-bucket preparation.
+Preserve backend capabilities, sampled acceptance, DMS handling, cancellation,
+selected-row state commits and singleton survivors in nonzero resident slots.
+
+**Clearing validation:** run
+`uv run pytest -o addopts='' -q tests/test_unit_qwen35_gguf_mtp2_c1_physical.py tests/test_unit_qwen35_gguf_mtp2_seam.py tests/test_unit_gguf_mtp_native_state_attribution.py`,
+then repeated public `LLM.generate()` or HTTP requests confirming the intended
+owner, graph replay, matching outputs and complete allocation drain. Convergence
+also needs a matched C1 route-comparison harness; the existing server benchmark
+does not expose that comparison. The old timing artifact is historical, not a
+measurement of the device-accept path:
+`../benchmarks/results/2026-09-07-w7900-packed-route-c1-stage-timing-diagnostic.json`.

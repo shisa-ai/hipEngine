@@ -11790,8 +11790,10 @@
       "start_line": 9311,
       "end_line": 9329,
       "sha256": "68916e623c63d8eaabf3f5482a6ef906eb990eb6d82fb7de29e6de01cec29221",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-target-owner-specialization-or-convergence",
+      "evidence": [
+        "Singleton verifier remains active on gfx1151; backend-declared physical C1 uses the packed batch owner. Packed target verification is eager but device proposals use device acceptance and selected-state commit before bounded summary readback; old blanket host-sync and timing claims are stale. Move only the specialization-versus-convergence decision to the bottom, preserving existing routes. 108 focused route/commit/attribution tests pass; no runtime, GPU or performance claim. worklog/entries/20261029T140628.514334Z-cleanup-refactor-r0402-target-routes-5e6745.md. R0401's obsolete screening-history section also removed; its completed R0077 disposition is unchanged."
+      ],
       "subitems": []
     },
     {
