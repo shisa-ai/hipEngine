@@ -11206,18 +11206,18 @@
       "start_line": 8532,
       "end_line": 8544,
       "sha256": "59a841513dddc34c0054b2b01ddcd2e87fb47a82ce2688d43c48fd65c68324a7",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-live-thread-comparison-migration",
+      "evidence": ["Live c1 threads execution-profile gate still compares exact256 and production1024 through env and resets frozen leaf cache each leg. Runtime-width body is not obsolete; bottom R0381 names caller-owned diagnostic migration coordinated with later fixed256 reference cleanup. New tests bind both backend defaults,256/512/1024/invalid overrides, strict-candidate-strict actual resolver, launch kwargs, cache reset and exception restoration;101 focused checks and CLI help pass. No runtime/kernel/default/arithmetic change or new perf claim. Worklog worklog/entries/20261029T065835.550222Z-cleanup-refactor-r0381-c1-threads-94725b.md."],
       "subitems": [
         {
           "line": 8534,
           "text": "- Added 2026-08-20. The fixed256 context-batch body gained a runtime block-width",
-          "status": "pending"
+          "status": "triaged-live-thread-gate-and-strict-reference-bottom-r0381"
         },
         {
           "line": 8539,
           "text": "- Removal trigger: after split-K3 / split-policy or WMMA-tile variants on the c1",
-          "status": "pending"
+          "status": "triaged-live-thread-gate-and-strict-reference-bottom-r0381"
         }
       ]
     },

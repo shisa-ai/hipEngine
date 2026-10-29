@@ -3430,19 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
-
-- Added 2026-08-20. The fixed256 context-batch body gained a runtime block-width
-  entrypoint (`...fixed256_threads_spans`); gfx1151 promotes `threads=1024`
-  (T2 non-exact, execution-profile gate-passed) via the capability, with the
-  exact 256-thread leaf kept as the registered strict fallback.
-  `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` forces any width for A/B/bisection.
-- Removal trigger: after split-K3 / split-policy or WMMA-tile variants on the c1
-  exact spine replace this geometry (or a fresh gfx1151 route/profile check
-  overturns the 1024 win), collapse the runtime-threads entrypoint back to a
-  fixed constexpr and drop the capability/env unless a named validation gap
-  still needs the override.
-
 ## Dense long split-K multi-row eager verifier row-wise strict dispatch
 
 - Retained 2026-08-21 as the RF1 strict eager/oracle fallback in
@@ -11704,3 +11691,36 @@ state against eager, including the recorded failing layer region. Any arithmetic
 promotion needs its execution-profile gate; route availability and explicit
 requests follow capability contracts independently. This disposition changes
 no runtime, default, arithmetic or speculative admission policy.
+
+### R0381 — Short-C1 attention thread comparison ownership
+
+`GGUF_SHORT_C1_BATCH_ATTN_THREADS` selects gfx1151's 1024-thread short-C1
+context-batch leaf. The exact 256-thread leaf is still a separate registered
+reference. `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` is a live control in
+`scripts/execution_profile_gguf_c1_threads_gate.py`, which compares the two
+reduction trees. Other model/context routes, including the separate short
+split-K policy, do not make this runtime-width entry point unused.
+
+The runner caches its first resolved leaf. The gate explicitly resets that
+cache at each strict/candidate boundary; changing the environment alone does
+not redirect a live runner. Preserve that distinction when moving diagnostic
+configuration, and keep the exact reference rather than treating 1024 threads
+as byte-identical arithmetic. Historical promotion results stay in the original
+sweep source and artifacts; this disposition measures no new numerical or
+performance result.
+
+**Decision needed:** retain the thread-width comparison interface or migrate it
+to an explicit caller-owned diagnostic plan before retiring the environment
+reader/runtime-width entry point. Coordinate this with the full-attention
+fixed256 reference cleanup elsewhere in the ledger. Do not collapse the body
+to a single constexpr while the numerical gate still selects both widths.
+
+**Clearing action:** migrate resolver, leaf-cache boundaries, gate provenance,
+strict registration and callers together. Run
+`tests/test_unit_gguf_c1_threads_control.py`, decode-repack-dispatch and
+layer-execution tests plus the gate's `--help`. Runtime changes need the full
+thread-gate suite and public short-C1 requests on gfx1151, including both sides
+of the context route boundary and unrelated lengths, repeated strict/candidate
+order, output/state comparison and teardown. Keep the package default and
+strict fallback during interface migration; any changed reduction default
+requires its execution-profile numerical/task gate.
