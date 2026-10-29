@@ -3430,123 +3430,7 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1100 prefill route booleans are duplicated and inert-by-pooling (2026-08-30)
-
-### Resolved 2026-08-30: the branch is live, this section's premise is superseded
-
-The claim above ("no backend package declares it, so the branch is dead today") is no longer true.
-`hipengine/kernels/hip_gfx1100/__init__.py:593` now declares `GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8`
-and exports it at :959, shipped by `72a29e9ad` ("perf: ship grouped prefill on gfx1100, C8 AR
-45.68 -> 78.67"). The equal-length requirement described above is what that work replaced: the
-route now groups the compatible subset instead of refusing the whole wave, and the effect is
-observable, not inferred - `native_full_prefill_groups` is exactly 0 at C1 and 39-56 per prompt at
-C4 / 151-176 at C8 (min-max over 10 prompts), in
-`benchmarks/results/2026-08-30-w7900-q4km-c1c8-grouped-prefill-promotion.json`. What still stands
-from this section: the mixed-length case is handled by subsetting, so a wave of all-different
-lengths still yields many one-row groups - 6-9% of decode steps at each width run below the logical
-width - and that residue is what still has no owner.
-
-Resident AR/MTP pools, direct streaming and the fallback AR session now resolve
-prefill through `_resident_session_wmma_prefill_default()` at acquisition time.
-The separate `_GGUF_PUBLIC_USE_WMMA_PREFILL` constant is removed. The diagnostic
-choice is part of the pool key; selecting another route cannot reuse a session
-configured for the first. Empty and unrecognised values raise, while unset
-keeps the shipping WMMA route. An explicit per-call choice still wins. Tests
-cover both direct and shared-runner streaming, fallback scopes and pool reuse.
-The dense speculative `mtp_target_dense` route retains its explicit True:
-its prefill policy is not part of this diagnostic seam.
-
-Every public session construction/acquisition now passes the existing
-`_GGUF_PUBLIC_USE_GEMV_DECODE` owner instead of repeating literal True.
-Do not delete this preference merely because dense T16 dispatch is row/layout
-owned: low-level raw/pack8 dispatch and `resolve_qwen35moe_fastpath_safety`
-still consume it. The public default remains True, explicit low-level/session
-controls remain available, and the observed raw-MoE safety guard is unchanged.
-Dense T16 diagnostic toggles do not prove a GEMV-versus-WMMA engine comparison.
-
-
-### Pending 2026-08-30: the packed prefill row is an A/B question, not a missing capability
-
-The 2026-08-29 grouped-prefill promotion left the Q4_K "prefill" column as `—` with "this row needs a
-separate full-engine measurement". `scripts/gguf_packed_grouping_probe.py --kind prefill --widths 1..8`
-now shows the grouped path is reachable at every width (e.g. 8.00x at rows=2, 1.97x at rows=97), so the
-gate is "does a win in two of six projections move the engine", not "can grouped prefill run".
-
-> **2026-08-30 correction: do not treat the probe as evidence about the engine at all.**
-> `resolve_gguf_linear_dispatch(weight, rows)` ignores every route preference - env and session session
-> flags alike - and picks purely by quant layout and row count: dense T16 uses `gemv_rowtile_n16` at
-> rows==1 and `t16_wmma_prefill_bf16_bf16_out` for every rows>1 (proven by
-> `tests/test_unit_gguf_gemv_decode_dispatch.py::test_gguf_row_decode_preferences_do_not_override_the_t16_rowtile`,
-> which passes for all three env combinations). The Q4_K_T16 1536x1536 rows=1 probe arm therefore ran
-> `gemv_rowtile` on both sides: `--route packed-grouped` only swaps qkv/gate_up, and `gemv-prefill` only
-> differs at rows==1. A "full-GEMV prefill" arm is unreachable through the resolver; it needs the session
-> route below.
-
-The A/B that is worth the expensive run: same process, same model, same schedule, `--route exact` /
-`--route packed-grouped` / `--route gemv-prefill`, at each engine width 1/2/4/8, plus the default-packed
-engine control, and the correctness gate on every arm. Widths matter independently - 23% at rows=2 may
-not carry an e2e win while 72% at rows=129 probably does - so record per width, and do not promote the
-row without a measured engine delta. The probe supports both missing arms (`--route gemv-prefill` now
-sweats rows>1 explicitly; `--route packed-grouped` covers rows>1 at every width).
-
-> **2026-08-30: the engine-side A/B was then run, and it did not move.** Packed-grouped QKV+gate_up at
-> the resident AR route costs 63ms (17.70ms -> 18.07ms median, +0.37ms, over 58 cells / 194 tokens and
-> 264 paired launches) - see
-> `benchmarks/results/w7900-gguf-q4ks-ar-packed-grouping-e2e-default-route-2026-08-30.json`. The row stays
-> `—`: 3 of 6 projections regressed (down_proj 0.62x at rows=2) and prefill is a small share of AR wall at
-> these shapes.
-
-Remove when: the packed row is published, or the A/B says the branch is not needed.
-
-### Pending 2026-08-30: the all-GEMV prefill arm - knob landed, width-1 arm answered
-
-The 2026-08-20 "gemv-prefill-blocked" row rejected a *global* `use_wmma_prefill=False` at -8.4%: it
-changed decode too. A prefill-only arm needs no new kernel - Q4_K GEMV is already registered for
-rows>1 (`gguf_gemm.py:429 full_gemv`), and the rowtile is already a flag-free route.
-
-The gap was a control-surface gap, and it was worse than "a knob is missing":
-`launch_gguf_linear:2447` resolves `use_wmma_prefill` through `_resolve_use_wmma_prefill`, which prefers
-an **active session flag over the environment** (`gguf_linear.py:1469`), and every resident session
-construction passed `use_wmma_prefill=True` unconditionally. A bench could not reach the all-GEMV arm by
-any env variable.
-
-> **Landed at 802a7e32b + 356be6858, and the first attempt was inert.** `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL`
-> is validated (`0`/`1` only, empty rejected - an empty value would otherwise look like "env unset" and
-> fall back to the session's True). The first wiring only touched the two sites REFACTOR named, and those
-> are inside `prepare_request_scratch`: the resident AR route pins True in `_open_ar_serving_slots` (pool
-> `ar_batch`) and `_reserve_sessions` (pool `continuous_ar_dynamic_kv`), plus four `mtp_target`
-> acquire/construct sites. Ten sites now resolve through one helper; the single remaining literal is
-> `_generate_dense_speculative_mtp_detailed` (dense speculative MTP, deliberately out of scope, asserted
-> by name). Lesson for any future "make a route reachable" claim: name the function the server reaches,
-> and prove it with a 2-minute launch-count check before scheduling a 12-minute sweep.
->
-> **Width-1 result (measured on host `epyc`, AMD Radeon Pro W7900 (gfx1100) GPU 0, C=1, 64
-> AR-only packets, packet-window trace):**
-> all-GEMV prefill moves exactly 2464 launches (`wmma_prefill` 7392 -> 4928, `local32_gemv`
-> 136224 -> 138688), halves prefill-class kernel wall 9279.8ms -> 4465.1ms and drops `other` wall 29% as
-> the Q4_K repacks disappear - and AR median gets **7.0% worse** (17.68ms -> 18.91ms, mean
-> 17.799 -> 18.933). Independent reproduction of the 2026-08-20 -8.4%, with sub-window and end-to-end now
-> agreeing. Artifact:
-> `benchmarks/results/w7900-gguf-q4ks-ar-wmma-prefill-session-knob-width1-2026-08-30.json`.
-
-Remove when: the all-GEMV prefill arm is measured at widths >= 2, or the arm is dropped. If it is
-dropped, delete the "prefill" column from the packed-grouping probe rather than leaving a column nobody
-can fill.
-
-### Pending 2026-08-30: `packed e2e` stays default when the win is concentrated in two projections
-
-Same discipline as the rowtile 50%-share rule below: a 3.9x sub-window win that lands on qkv+gate_up
-while down_proj regresses (0.62x at rows=2) is not a promotion. No env flag was added for the grouped
-AR route, so there is nothing to remove - this line exists so the next agent does not re-add a
-`HIPENGINE_GGUF_*PACKED*` default-on flag from the 2026-08-29 grouped-prefill evidence without the
-engine-side A/B.
-
-### All-GEMV small-row prefill A/B - measured verdict: GEMV is worse
-
-- Measured with `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL=0` against the shipping WMMA route, same protocol, widths
-  1-3 (worklog `20260830T164432…`): AR -15.0% / -21.8% / -29.9% and explicit K3 -20.4% / -28.6% / -36.1%.
-- Verdict: the WMMA route is the better one and the knob stays diagnostic-only. Remove the knob once the
-  small-row WMMA kernel itself is fixed; do not promote the GEMV route as a small-row fallback.
+## GGUF Q5/Q6 grouped experiment cleanup
 
 ### Grouped q8_1 DP4A planar-Q6 variant - retained C8 default with temporary rollback
 
@@ -11019,18 +10903,23 @@ retiring ambient selection changes no chain body or arithmetic.
 
 The small-row control gap is implemented, not an open feature task.
 `_resident_session_wmma_prefill_default()` resolves
-`HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` at session acquisition: unset/empty
-keeps WMMA, explicit false disables that preference and invalid values raise.
-Ten generator sites and the compact-DMS owner use it; the dense speculative
-MTP route retains its separate literal selection. The benchmark consumes the
-same default and keeps explicit `--[no-]use-wmma-prefill` comparisons.
+`HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` at session acquisition: unset
+keeps WMMA, explicit false disables that preference and empty or invalid values
+raise. Resident AR/MTP pools, direct streaming, fallback AR and the compact-DMS
+owner use it; the dense speculative MTP route retains its separate literal
+selection. The benchmark consumes the same default and keeps explicit
+`--[no-]use-wmma-prefill` comparisons.
 
 Session pool keys include the resolved preference. Opposite choices cannot
 reuse each other's pooled session; changing the environment does not retune an
 already-live session. This selector does not promise that every projection
 uses a different kernel: layout, geometry and capability dispatch still apply.
-The historical all-GEMV rejection and measurements remain in the original
-sweep inventory, later prefill ledger entries and result artifacts.
+The historical all-GEMV comparison is closed in
+`worklog/entries/20260830T164432.870072Z-lhl-gemv-prefill-worse-ab-776d22.md`.
+Its timing result is not a reason to remove the supported reference route.
+Original grouped-prefill and decode-preference findings remain in the sweep
+inventory, immutable worklogs and result artifacts; they are not open
+feature-admission or duplicate-selector defects.
 
 **Decision needed:** keep the diagnostic selector or replace it with an
 explicit session-owned prefill plan. Preserve working comparison routes and
