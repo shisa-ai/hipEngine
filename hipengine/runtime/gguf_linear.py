@@ -4651,6 +4651,14 @@ def _record_gguf_linear_dispatch(
     activation_dtype: str,
     output_dtype: str,
 ) -> None:
+    # Final keys are observed after cache lookup, unlike selector decisions.
+    # Record inactive parents too so the teacher is observed rather than absent.
+    if _wmma_prefill_dispatch_records.get() is not None:
+        _record_route_engagement(
+            "staged_f32", rows=rows,
+            engaged=variant == _Q8_STAGED_F32_VARIANT,
+            reason="final dispatch", detail=variant,
+        )
     records = _GGUF_LINEAR_DISPATCH_RECORDER.get()
     if records is None:
         return

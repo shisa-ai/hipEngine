@@ -12650,48 +12650,48 @@
       "start_line": 10358,
       "end_line": 10395,
       "sha256": "6ed576482f2a714af06af90c820a7cc576135310ff091a9099d813cac5eddca1",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-staged-recorder-deferred-historical-artifact",
+      "evidence": ["Staged engagement mapped for all three gates and recorded at shared final dispatch after cache lookup.47 focused tests, full CPU bundle and real AR server request with512-row active/inactive records passed. Historical dense-wide artifact refresh deferred at bottom. Worklog: worklog/entries/20261029T194103.398080Z-cleanup-refactor-r0437-a865f5.md."],
       "subitems": [
         {
           "line": 10360,
           "text": "- Found 2026-09-30 while re-gating the live default at 16-47",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10362,
           "text": "- `hipengine/runtime/gguf_linear.py`'s `_record_wmma_prefill_dispatch` records",
-          "status": "pending"
+          "status": "resolved-dense-wide-recorder-present"
         },
         {
           "line": 10366,
           "text": "- Consequence: the engagement check added in `056e6fbd8` - the mechanism that",
-          "status": "pending"
+          "status": "resolved-route-summary-present"
         },
         {
           "line": 10374,
           "text": "- The detector covers the *retired* route and is blind to the live one. Any",
-          "status": "pending"
+          "status": "resolved-obsolete-description"
         },
         {
           "line": 10377,
           "text": "- **CLOSED 2026-09-30 (`20260930T113806`).** Both defects are fixed:",
-          "status": "pending"
+          "status": "resolved-existing-fix-preserved"
         },
         {
           "line": 10383,
           "text": "- Verified end-to-end on the reduced screen: `--route dense_wide --layers 16-47`",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10387,
           "text": "- **Residual, not closed:** the canonical `dense_wide` 16-47 re-gate of",
-          "status": "pending"
+          "status": "deferred-historical-evidence-refresh"
         },
         {
           "line": 10390,
           "text": "- **Residual, not closed:** a route with no entry in `ROUTE_ENGAGEMENT_SELECTORS`",
-          "status": "pending"
+          "status": "resolved-final-dispatch-recorder"
         }
       ]
     },

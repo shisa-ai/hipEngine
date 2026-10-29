@@ -3427,44 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Route-engagement recorder coverage (`wmma_prefill_dispatch_recorder`)
-
-- Found 2026-09-30 while re-gating the live default at 16-47
-  (`benchmarks/results/2026-09-30-qwen4exp-rt1-chunk4096-gate/DENSE-WIDE-REGATE-AT-HEAD.md`).
-- `hipengine/runtime/gguf_linear.py`'s `_record_wmma_prefill_dispatch` records
-  only the `wmma_prefill` selector, and `_record_selector` records the collateral
-  selectors `use_wmma` moves (`q4k_rowtile`, `native_batch_decode_session`, …).
-  **The `dense_wide` route has no recorder.**
-- Consequence: the engagement check added in `056e6fbd8` - the mechanism that
-  caught the WMMA-route false pass - **cannot see the route that is the live
-  production default at 16-47** (`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS`). A
-  `--route dense_wide` gate reports `candidate_route_engaged: False` regardless
-  of whether the route ran, because the selector never appears in
-  `selector_states`. The gate has a row floor for it
-  (`ROUTE_ROW_FLOORS["dense_wide"]`) but no dispatch recorder, so the floor is
-  never fed.
-- The detector covers the *retired* route and is blind to the live one. Any
-  future `dense_wide` certificate is unverifiable on route engagement for the
-  same reason the pre-`056e6fbd8` certificates are.
-- **CLOSED 2026-09-30 (`20260930T113806`).** Both defects are fixed:
-  `_record_route_engagement` now records the route at all six decision points of
-  `_q8_dense_wide_dispatch`, and `_summarise_engagement` takes a `route_selector`
-  from `ROUTE_ENGAGEMENT_SELECTORS` instead of hardcoding `wmma_prefill`. Only
-  the first was in the original entry; fixing it alone would have left the flags
-  wrong, because the gate read the wrong key.
-- Verified end-to-end on the reduced screen: `--route dense_wide --layers 16-47`
-  now reports `candidate_route_engaged: True`, `route: dense_wide`,
-  `selectors_differing: ['dense_wide']`, with `dense_wide` at t=0.0000 c=0.2640
-  differs=True. The `wmma` route is unchanged.
-- **Residual, not closed:** the canonical `dense_wide` 16-47 re-gate of
-  `20260930T113116` predates this fix, so that artifact still cannot say whether
-  the route ran. Repeat it to give the live default engagement evidence.
-- **Residual, not closed:** a route with no entry in `ROUTE_ENGAGEMENT_SELECTORS`
-  (`staged_f32`, `staged_f32_composed_vs_exact`, `staged_f32_over_wmma`) now
-  reports `route_engagement_recorded: false` rather than a wrong answer, but it
-  still has no recorder. Add one before relying on any of those gates for
-  engagement.
-
 ## Qwen4Exp chunked WY GDN prefill screen arm (GD-4)
 
 - `qwen4_exp_gdn_prefill_wy_f32_kernel` / `hipengine_qwen4_exp_gdn_prefill_wy_f32`
@@ -10830,3 +10792,20 @@ Historical parity and timing evidence stays in
 and full-clear arms under the same arithmetic profile; strict-versus-production
 logit differences do not isolate reset behavior. Reporting regression evidence:
 `../worklog/entries/20261029T192838.841154Z-cleanup-refactor-r0435-cd24b0.md`.
+
+### R0437 — Historical dense-wide engagement artifact refresh
+
+The dense-wide selector recorder and route-specific summary are implemented.
+Staged-F32 gates now record the final selected dispatch, including cache hits,
+and all three staged gate names map to that record. The shared final-dispatch
+path is the coverage boundary; this does not claim graph-replay instrumentation.
+
+**Deferred evidence decision:** the canonical dense-wide 16–47 artifact from
+`20260930T113116` predates engagement recording. Preserve it as historical
+evidence with that limitation; rerun the same composition with independent
+engagement records if a new claim relies on it. Do not treat its old scope as
+the current production profile or retroactively add evidence to its artifact.
+The original limitation is recorded in
+`benchmarks/results/2026-09-30-qwen4exp-rt1-chunk4096-gate/DENSE-WIDE-REGATE-AT-HEAD.md`.
+Implementation and validation:
+`../worklog/entries/20261029T194103.398080Z-cleanup-refactor-r0437-a865f5.md`.

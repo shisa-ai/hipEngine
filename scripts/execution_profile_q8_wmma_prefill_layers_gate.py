@@ -176,6 +176,9 @@ ROUTE_ROW_FLOORS = {
 ROUTE_ENGAGEMENT_SELECTORS = {
     "wmma": "wmma_prefill",
     "dense_wide": "dense_wide",
+    "staged_f32": "staged_f32",
+    "staged_f32_composed_vs_exact": "staged_f32",
+    "staged_f32_over_wmma": "staged_f32",
 }
 
 
