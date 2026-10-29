@@ -3430,51 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM`
-
-- Added 2026-07-12 as a default-on PARO prefill rollback/bisection control.
-  The retained path creates one lazy nonblocking stream plus two reusable HIP
-  events for AOTriton query rows above the proven-safe 256-row bucket, and
-  keeps all pre/post work on the caller stream. Setting the flag to `0`
-  restores the old same-stream dispatch without changing model math.
-- Purpose: isolate AOTriton's high-scratch dispatch from the queue used by
-  later low-scratch linear-attention convolution kernels. On gfx1151 the same
-  captured convolution changes from about `1.83 ms` after same-stream
-  4096-row AOTriton to `119 us` when AOTriton uses the isolated queue. The
-  clean 256-row AOTriton trace uses much less scratch (`992/1008` versus
-  `2560` bytes) and does not trigger the cliff. The first
-  final clean matched prefill A/Bs improve 4K `885.141 -> 1089.031` (+23.03%),
-  32K `765.316 -> 906.145` (+18.40%), 64K `621.691 -> 716.775` (+15.29%),
-  and 128K `418.838 -> 474.641 tok/s` (+13.32%). Decode stays within
-  `-0.16%..+0.12%`, tracked peak is unchanged, and every shape matches sampled
-  seed, final hidden, all 30 Conv/GDN state families, and all 10 live K/V
-  families. The 1K 256-query negative control never enters isolation and is
-  not promoted. Retained evidence:
-  `benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json`.
-- A clean W7900/gfx1100 transfer matrix measured the earlier global-isolation
-  policy in balanced 15-sample legs. Isolated prefill changes by
-  `+1.638%/+0.495%/+0.192%` and total measured wall falls by
-  `1.653%/0.127%/0.562%` at 512/1K/4K, with byte-exact hidden/state/KV at every
-  shape. The merged threshold intentionally leaves the 256-query 512/1K path
-  same-stream; its 4K/4096-query result directly validates the scoped gfx1100
-  default. Retained evidence:
-  `benchmarks/results/2026-07-12-w7900-gfx1100-paro-gfx1151-transfer.json`.
-- GPF-4 extends the same selector to GGUF but is **default-off on both
-  backends** after the final stability gate rejected its provisional gfx1151
-  capability. Clean focus is byte-exact and often fast, but automatic-route
-  32K collapses once to 294.254 tok/s, its fresh 1+5 replacement fails to
-  finish the warmup after 481 s, and 128K measured run 2 stays GPU-active past
-  1200 s. A same-stream 32K control immediately completes normally. Keep `=1`
-  only as a diagnostic; do not remove the same-stream GGUF route. Evidence:
-  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-candidate-focus.json`,
-  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-clean-promotion.json`,
-  and
-  `benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json`.
-- Remove when: either upstream removes the queue-scratch cliff so isolation is
-  unnecessary, or a replacement isolation design passes the full stability
-  gate and survives one release cycle. Then delete the rejected duplicate
-  route and selector; keep only the proven scheduling policy.
-
 ## `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV*`
 
 - Added 2026-08-04 for the Nathan-review P0 gfx1151 promotion. The backend
@@ -10764,6 +10719,43 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0311 — Family-specific AOTriton stream policy
+
+`HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM` is shared by PARO and GGUF,
+but their defaults differ. PARO enables isolation at 512 query rows and above;
+GGUF uses same-stream dispatch on both gfx11 packages after the recorded GPF-4
+stability rejection. Explicit `0`/`1` selects either policy, still subject to
+the row threshold. The PARO exactness script actively compares both settings
+and restores inherited/nested values after errors.
+
+Both resident families lazily allocate one stream and two events, reuse the
+bridge and release it with the session. Partial event-allocation failure
+releases newly created handles before retry; partial published bridge state
+is an error, not permission to use mismatched handles. Existing decode-state
+tests check caller/isolation stream event ordering.
+
+Historical PARO evidence remains in the July 12
+`gfx1151-paro-aotriton-stream-isolation` and
+`w7900-gfx1100-paro-gfx1151-transfer` result artifacts. GGUF's observed slow/stuck
+long-prompt attempts and same-stream control are recorded in
+`benchmarks/results/2026-07-14-gfx1151-gguf-prefill-gpf4-final-rejected.json`;
+its candidate-focus and clean-promotion artifacts remain historical evidence.
+This is an observed stability blocker, not missing qualification. No unchanged
+failing workload needs a rerun just to retire a ledger paragraph.
+
+**Decision needed:** keep the explicit family-aware A/B control or replace it
+with resolved execution policy. Do not delete PARO's default isolation or make
+GGUF inherit it merely because both readers use the same environment name.
+
+**Clearing action:** migrate both readers, comparison script, bridge ownership
+and execution metadata together. Run stream policy/lifecycle, PARO exactness
+and decode-state event-order tests. Any policy replacement needs real public
+prefill requests below/above/unrelated to the row threshold, state/KV/output
+comparison, repeated cleanup and long-prompt stability for affected families.
+A changed GGUF isolation design must finish the recorded long-prompt protocol
+and same-stream controls before replacing its default; timing claims need
+copy/queue-inclusive end-to-end evidence, not a clean short focus leg.
 
 ### R0310 — PARO rowchunk-boundary diagnostic ownership
 

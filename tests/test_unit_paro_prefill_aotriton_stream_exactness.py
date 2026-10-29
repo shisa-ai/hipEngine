@@ -1,6 +1,26 @@
 from __future__ import annotations
 
-from scripts.paro_prefill_aotriton_stream_exactness import comparison_mismatches
+import os
+
+import pytest
+
+from scripts.paro_prefill_aotriton_stream_exactness import ISOLATION_ENV, _isolation_mode, comparison_mismatches
+
+
+@pytest.mark.parametrize("previous", [None, "0", "1"])
+def test_isolation_comparison_restores_nested_modes_after_failure(monkeypatch, previous):
+    if previous is None:
+        monkeypatch.delenv(ISOLATION_ENV, raising=False)
+    else:
+        monkeypatch.setenv(ISOLATION_ENV, previous)
+    with _isolation_mode(True):
+        assert os.environ[ISOLATION_ENV] == "1"
+        with pytest.raises(RuntimeError, match="synthetic"):
+            with _isolation_mode(False):
+                assert os.environ[ISOLATION_ENV] == "0"
+                raise RuntimeError("synthetic")
+        assert os.environ[ISOLATION_ENV] == "1"
+    assert os.environ.get(ISOLATION_ENV) == previous
 
 
 def _leg(*, seed: int = 7, hidden: str = "hidden", conv: str = "conv", kv: str = "kv") -> dict:

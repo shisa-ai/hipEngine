@@ -381,7 +381,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV` | unset | Attention R&D | Selects the optional contiguous head-major KV layout. Gapped BF16 prefix pages use the registered gather independently of that backend default; explicit `0` also disables the gapped gather. |
 | `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES` | `536870912` (512 MiB) | Attention R&D | Byte cap for the head-major KV route. |
 | `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS` | unset | Attention R&D | Token cap for the head-major KV route. |
-| `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM` | unset | Attention R&D | Runs AOTriton prefill on an isolated stream for large query rows (>= 512). |
+| `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM` | unset | Attention R&D | At >= 512 query rows, PARO defaults to an isolated stream; GGUF defaults to same-stream after observed stability failures. `0`/`1` selects the comparison policy for either family. |
 | `HIPENGINE_GGUF_GAPPED_GATHER` | unset (enabled) | Prefill R&D | Gather gapped BF16 prefix pages into demand-sized head-major buffers so suffix attention uses the contiguous route. Requires the registered copy kernel and obeys token/byte caps, including allocation rounding. `0` selects the native paged fallback. |
 | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE` | `auto` (gfx1100: `baseline`; gfx1151: `tile32x128`) | Schedule diagnostic | Accepts `auto`, `baseline` or `tile32x128`; used by kernel-isolation profiles. The full-stack runner caches the callable after first resolution; select before construction/use. |
 | `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 single-wave rowtile variant. |

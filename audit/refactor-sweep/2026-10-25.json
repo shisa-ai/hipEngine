@@ -9251,33 +9251,33 @@
       "start_line": 7005,
       "end_line": 7049,
       "sha256": "d32520b64745f8118cb7e0faec6f9aa874b03d07744823a95bc25fdad38a557c",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-family-stream-policy-and-observed-gguf-stability",
+      "evidence": ["Verified distinct PARO default-on and GGUF default-off readers under shared selector; live PARO exactness A/B writer remains. Added actual bridge row-gate tests at 37/511/512/777 with unset/off/on for both families; partial event allocation cleanup/retry/idempotent release and nested comparison restoration after failure covered. Existing bridge reuse and decode-state event-order tests retained. Corrected ENVS family-default ambiguity and bottom-referred coherent policy migration plus recorded GGUF long-prompt stability blocker. Historical July PARO/transfer/GPF-4 artifacts preserved; no runtime/default/kernel changes or new timing claim. Worklog: worklog/entries/20261029T014840.389427Z-cleanup-refactor-r0311-aotriton-stream-7539dd.md."],
       "subitems": [
         {
           "line": 7007,
           "text": "- Added 2026-07-12 as a default-on PARO prefill rollback/bisection control.",
-          "status": "pending"
+          "status": "resolved-family-defaults-row-gate-and-bridge-lifecycle"
         },
         {
           "line": 7012,
           "text": "- Purpose: isolate AOTriton's high-scratch dispatch from the queue used by",
-          "status": "pending"
+          "status": "resolved-implementation-and-history-preserved"
         },
         {
           "line": 7026,
           "text": "- A clean W7900/gfx1100 transfer matrix measured the earlier global-isolation",
-          "status": "pending"
+          "status": "resolved-history-preserved-no-new-claim"
         },
         {
           "line": 7034,
           "text": "- GPF-4 extends the same selector to GGUF but is **default-off on both",
-          "status": "pending"
+          "status": "deferred-bottom-R0311-observed-gguf-long-prompt-stability"
         },
         {
           "line": 7045,
           "text": "- Remove when: either upstream removes the queue-scratch cliff so isolation is",
-          "status": "pending"
+          "status": "deferred-bottom-R0311-family-policy-and-live-comparison"
         }
       ]
     },

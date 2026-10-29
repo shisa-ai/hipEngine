@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 import pytest
 
+from hipengine.runtime import qwen35_paro_runner as paro_module
 from hipengine.runtime import qwen35_gguf_runner as runner_module
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
@@ -35,6 +37,69 @@ def test_gguf_aotriton_isolated_stream_policy_is_opt_in_after_stability_rejectio
     monkeypatch.setenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", "1")
     assert runner_module._gguf_aotriton_isolated_prefill_stream_applies("hip_gfx1151", 4096) is True
     assert runner_module._gguf_aotriton_isolated_prefill_stream_applies("hip_gfx1100", 4096) is True
+
+
+@pytest.mark.parametrize("session_class,default", [
+    (paro_module.Qwen35ParoResidentSession, True), (Qwen35GGUFResidentSession, False),
+])
+@pytest.mark.parametrize("control", [None, "0", "1"])
+@pytest.mark.parametrize("rows", [37, 511, 512, 777])
+def test_shared_isolation_selector_preserves_family_defaults_and_row_gate(monkeypatch, session_class, default, control, rows):
+    name = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
+    if control is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, control)
+    session = object.__new__(session_class)
+    session.runner = SimpleNamespace(backend="hip_gfx1151")
+    bridge = object()
+    allocations = []
+    session._ensure_prefill_aotriton_bridge = lambda: allocations.append(True) or bridge
+    result = session._prefill_aotriton_bridge_for_rows(rows)
+    expected = rows >= 512 and (default if control is None else control == "1")
+    assert result is (bridge if expected else None)
+    assert allocations == ([True] if expected else [])
+
+
+@pytest.mark.parametrize("session_class", [paro_module.Qwen35ParoResidentSession, Qwen35GGUFResidentSession])
+@pytest.mark.parametrize("failure_at", [1, 2])
+def test_isolation_bridge_partial_allocation_is_cleaned_and_retryable(session_class, failure_at):
+    session = object.__new__(session_class)
+    calls = []
+
+    class Runtime:
+        def stream_create(self):
+            calls.append(("stream_create", 7))
+            return 7
+
+        def event_create(self):
+            index = sum(kind == "event_create" for kind, _ in calls) + 1
+            calls.append(("event_create", index))
+            if index == failure_at:
+                raise RuntimeError("synthetic event failure")
+            return 10 + index
+
+        def event_destroy(self, handle):
+            calls.append(("event_destroy", handle))
+
+        def stream_destroy(self, handle):
+            calls.append(("stream_destroy", handle))
+
+    session.runtime = Runtime()
+    with pytest.raises(RuntimeError, match="synthetic event failure"):
+        session._ensure_prefill_aotriton_bridge()
+    cleanup = [(kind, handle) for kind, handle in calls if kind.endswith("destroy")]
+    assert cleanup == ([("event_destroy", 11)] if failure_at == 2 else []) + [("stream_destroy", 7)]
+    assert not getattr(session, "_prefill_aotriton_stream", 0)
+    assert not getattr(session, "_prefill_aotriton_input_ready_event", 0)
+    assert not getattr(session, "_prefill_aotriton_output_ready_event", 0)
+    retry_events = iter((22, 23))
+    session.runtime.event_create = lambda: next(retry_events)
+    assert session._ensure_prefill_aotriton_bridge().stream == 7
+    session._release_prefill_aotriton_bridge()
+    count = len(calls)
+    session._release_prefill_aotriton_bridge()
+    assert len(calls) == count
 
 
 def test_gguf_full_attention_prefill_accepts_aotriton_stream_bridge() -> None:
