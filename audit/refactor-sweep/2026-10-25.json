@@ -9313,18 +9313,18 @@
       "start_line": 7071,
       "end_line": 7083,
       "sha256": "1f1cf79b1348f2f51ddf8d338392d697af9d7e63356ec51476b81fa757d9ba98",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-rowvec-fixture-migration-and-local-public-artifact",
+      "evidence": ["Confirmed mode is explicit/nondefault on both backends; current defaults use later wave-column modes. Live full Q4/Q6 numerical fixture still selects rowvec gate/up throughout comparison ladder; publication normalizer recognizes historical mode. Initial retirement test reproduced parent reachability but no runtime removal was landed because required public model artifact is absent locally. Added final characterization of explicit/nondefault modes and preserved low-level rowvec/fusion primitive contracts. 106 focused checks pass. Consolidated bottom R0313/R0314 with fixture migration and public-artifact clearing action. Runtime/defaults/kernels/history unchanged. Worklog: worklog/entries/20261029T021242.593586Z-cleanup-refactor-r0313-r0314-laguna-rowvec-3f210f.md."],
       "subitems": [
         {
           "line": 7073,
           "text": "- Added 2026-07-26 after the exact wave-column MMQ128x32 consumer became the",
-          "status": "pending"
+          "status": "resolved-live-comparison-and-historical-normalizer-contracts"
         },
         {
           "line": 7079,
           "text": "- Removal trigger is now satisfied by the retained Q4-down checkpoint at",
-          "status": "pending"
+          "status": "deferred-bottom-R0313-R0314-fixture-and-public-validation-resource"
         }
       ]
     },
@@ -9334,18 +9334,18 @@
       "start_line": 7084,
       "end_line": 7097,
       "sha256": "2fb30b5a7341311e505aa8d5944553b75b3b68278c8b28521397cd4c5798beb0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-rowvec-fixture-migration-and-local-public-artifact",
+      "evidence": ["Confirmed all-rowvec down is explicit/nondefault; live full-MoE fixture compares it to baseline/wave-column Q4 and Q6 paths. Low-level rowvec primitive remains used by later production modes/Q6 and must survive selector retirement. No runtime removal landed because user-surface Laguna validation artifact is absent locally. Added host characterization and preserved existing numerical comparison fixture. 106 focused checks pass; docs/audit/tier gates pass. Consolidated bottom R0313/R0314 names migration and actual public-artifact blocker. History/defaults/kernels unchanged; no new timing or parity claim. Worklog: worklog/entries/20261029T021242.593586Z-cleanup-refactor-r0313-r0314-laguna-rowvec-3f210f.md."],
       "subitems": [
         {
           "line": 7086,
           "text": "- Added 2026-07-26 after the exact Q4-only wave-column MMQ64x32 consumer",
-          "status": "pending"
+          "status": "resolved-live-q4-q6-comparison-and-primitive-ownership"
         },
         {
           "line": 7093,
           "text": "- Removal trigger is satisfied. Remove the explicit all-row-vector selector",
-          "status": "pending"
+          "status": "deferred-bottom-R0313-R0314-fixture-and-public-validation-resource"
         }
       ]
     },

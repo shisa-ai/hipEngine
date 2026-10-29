@@ -3430,33 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna D8 row-vector selected gate/up rollback
-
-- Added 2026-07-26 after the exact wave-column MMQ128x32 consumer became the
-  gfx1151 production default. The older `mmq128x32_d8_f32_rowvec` mode remains
-  an explicit session-level rollback. Clean selector-unset pp512 improves
-  **385.602 -> 432.355 tok/s**, cached tracing measures **434.994 tok/s**, and
-  the canonical absolute-quality gate passes unchanged at maximum KL
-  **0.049542582** and **316/320** top-1.
-- Removal trigger is now satisfied by the retained Q4-down checkpoint at
-  **448.203 tok/s**. Remove the explicit gfx1151 session rollback during the
-  immediate post-publication cleanup; keep the underlying scalar-staged D8
-  body only if it still serves a tested unmeasured-backend fallback.
-
-## Laguna Q4 down row-vector rollback
-
-- Added 2026-07-26 after the exact Q4-only wave-column MMQ64x32 consumer
-  became the gfx1151 production default. The older
-  `mmq64x32_d4_f32_rowvec` mode remains an explicit session-level rollback.
-  The implementation-worktree four-mode screen improves Q4-wave/Q6-row
-  **433.791 -> 448.945 tok/s (+3.493%)**; Q6 wave columns regress and remain
-  rejected. Clean publication confirms **433.081 -> 448.203 tok/s
-  (+3.492%)**, max KL **0.049542582**, and the complete trace/lifecycle gate.
-- Removal trigger is satisfied. Remove the explicit all-row-vector selector
-  during immediate cleanup while retaining the row-vector kernel internally
-  for production Q6 unless a different direct-consume mapping wins its own
-  quant-isolated gate.
-
 ## Laguna Q4 gate/up pair-decode wave-column rollback
 
 - Added 2026-07-26 when direct per-column T16 decode became the next gfx1151
@@ -10698,6 +10671,36 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0313 / R0314 — Laguna row-vector selector migration
+
+`mmq128x32_d8_f32_rowvec` and `mmq64x32_d4_f32_rowvec` are explicit comparison
+modes, not defaults. Current package defaults select later wave-column modes;
+the low-level `rowvec` staging primitives also serve those later modes and Q6
+comparisons, so they are not removable with the two old names.
+
+`tests/test_live_laguna_moe_gpu.py` still uses the gate/up mode across the full
+Q4/Q6 comparison chain and directly compares row-vector down against its
+baseline. `scripts/laguna_prefill_production_publication.py` recognizes the old
+gate/up name when normalizing historical quality metadata. Preserve that
+historical reader even after runtime retirement. Original July timing/quality
+results remain in the pinned sweep source and immutable worklogs; they are not
+new measurements from this pass.
+
+**Blocker:** selector retirement must migrate those numerical comparisons to
+explicit primitive ownership and validate the user-facing route. The configured
+`~/models/gguf/laguna-s-2.1-Q4_K_M.gguf` artifact and the live fixture's
+`/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf` are unavailable on this host. This is
+a local validation-resource blocker, not an admission restriction or a reason
+to disable the existing default.
+
+**Clearing action:** provide an implemented Laguna model artifact, remove the
+two names from resolver/fusion/config tables, and preserve the low-level
+row-vector reference in the Q4/Q6 GPU fixture. Run selected-MMQ, runner,
+publication and grouped-prefill contracts plus the full MoE quant-oracle nodes;
+then exercise `LLM.generate()` at short, boundary-neighbor and unrelated prompt
+sizes, recording selected defaults, output parity and cleanup. Keep historical
+publication normalization and the separate Q6 row-vector implementation.
 
 ### R0312 — Head-major K/V resource-budget integration
 
