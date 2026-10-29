@@ -268,12 +268,12 @@ def test_policy_reports_requested_depth_alongside_admitted_cap() -> None:
     assert plan.candidate_counts == (7,)
     assert plan.requested_candidate_counts == (7,)
 
-    # Suppression zeroes the admitted depth but preserves the request.
+    # A real resource refusal preserves the request while planning a repair.
     plan = _plan(
         _capability(max_candidates_per_request=8),
         semantics,
         (7,),
-        suppress_speculation=(True,),
+        claims_fit=False,
     )
     assert plan.candidate_counts == (0,)
     assert plan.requested_candidate_counts == (7,)
@@ -302,6 +302,12 @@ def test_policy_reports_requested_depth_alongside_admitted_cap() -> None:
     assert legacy.requested_candidate_counts == (0,)
 
 
+def test_retired_cooldown_parameter_is_not_a_planner_input() -> None:
+    from inspect import signature
+
+    assert "suppress_speculation" not in signature(plan_speculative_requests).parameters
+
+
 def test_policy_rejects_misaligned_or_negative_desired_depth() -> None:
     semantics = (_semantics(1), _semantics(2))
     with pytest.raises(ValueError, match="desired_candidate_counts"):
@@ -320,27 +326,16 @@ def test_policy_rejects_misaligned_or_negative_desired_depth() -> None:
         )
 
 
-def test_suppressed_request_plans_k0_transitional_for_catchup_repair() -> None:
-    semantics = (_semantics(1), _semantics(2))
-    plan = _plan(
-        _capability(),
-        semantics,
-        (2, 2),
-        suppress_speculation=(True, False),
-    )
+def test_unsupported_peer_plans_k0_transitional_for_catchup_repair() -> None:
+    semantics = (_semantics(1, sampling_mode="top_p"), _semantics(2))
+    plan = _plan(_capability(), semantics, (2, 2))
     assert plan.candidate_counts == (0, 2)
-    assert plan.reasons[0] is SpecPlanReason.POLICY_SELECTED_AR
+    assert plan.reasons[0] is SpecPlanReason.UNSUPPORTED_SAMPLING
     assert plan.reasons[1] is SpecPlanReason.SPECULATIVE_QUALIFIED
-    # desired stayed positive for the suppressed request, so its K0 class is
-    # TRANSITIONAL: prepare_k0 must run the target-hidden catchup advance.
+    # The refused row keeps positive intent, so its K0 class remains
+    # TRANSITIONAL: prepare_k0 repairs provider state before the AR decode.
     assert plan.k0_classes[0] is SpecK0Class.TRANSITIONAL
     assert plan.k0_classes[1] is SpecK0Class.NOT_K0
-
-
-def test_suppress_speculation_must_align_with_semantics() -> None:
-    semantics = (_semantics(1), _semantics(2))
-    with pytest.raises(ValueError, match="suppress_speculation"):
-        _plan(_capability(), semantics, (2, 2), suppress_speculation=(True,))
 
 
 @pytest.mark.parametrize(
@@ -370,9 +365,9 @@ def test_suppress_speculation_must_align_with_semantics() -> None:
         (_capability(), (_semantics(1),), (0,), {}),
         (
             _capability(),
-            (_semantics(1), _semantics(2)),
+            (_semantics(1, sampling_mode="top_p"), _semantics(2)),
             (2, 2),
-            {"suppress_speculation": (True, False)},
+            {},
         ),
     ),
 )

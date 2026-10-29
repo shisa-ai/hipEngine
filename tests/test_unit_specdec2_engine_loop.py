@@ -497,6 +497,25 @@ def test_one_speculative_cycle_is_one_engine_tick_with_multi_token_events() -> N
     assert loop.completed[request_id].finish_reason == "length"
 
 
+def test_engine_ignores_retired_post_reject_cooldown_hook() -> None:
+    class Runner(_CycleRunner):
+        def speculative_post_reject_cooldown(self, request_ids):
+            raise AssertionError("retired cooldown must not suppress a live request")
+
+    runner = Runner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit_speculative(
+        [10], max_new_tokens=3, desired_candidate_count=2,
+    )
+
+    loop.poll(max_ticks=2)
+
+    assert runner.decodes == []
+    assert len(runner.cycle_plans) == 1
+    assert runner.cycle_plans[0].candidate_counts == (2,)
+    assert loop.completed[request_id].generated_tokens == (1, 2, 8000)
+
+
 def test_late_ar_arrival_joins_future_mixed_cycle_without_second_loop() -> None:
     runner = _CycleRunner()
     loop = ResidentEngineLoop(

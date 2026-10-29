@@ -276,16 +276,9 @@ def plan_speculative_requests(
     target_physical_available: bool = True,
     prefer_graph: bool = True,
     ar_target_widths: Sequence[int] = (1, 2, 4, 8),
-    suppress_speculation: Sequence[bool] = (),
     declared_logical_c: int = 0,
 ) -> SpecRequestPlan:
-    """Choose K or K0 for every request before opening any mutable owner.
-
-    ``suppress_speculation`` optionally forces a request to a K0-transitional
-    cycle (desired count preserved, planned count zero) so its provider state
-    is repaired through the target-hidden catchup instead of immediately
-    re-speculating.
-    """
+    """Choose K or K0 for every request before opening any mutable owner."""
 
     semantics = tuple(request_semantics)
     if not semantics:
@@ -299,9 +292,6 @@ def plan_speculative_requests(
     desired = tuple(int(count) for count in desired_candidate_counts)
     if len(desired) != len(semantics) or any(count < 0 for count in desired):
         raise ValueError("desired_candidate_counts must be non-negative and aligned")
-    suppression = tuple(bool(flag) for flag in suppress_speculation)
-    if suppression and len(suppression) != len(semantics):
-        raise ValueError("suppress_speculation must align with request_semantics")
     quantum = int(context_bucket_size)
     if quantum <= 0:
         raise ValueError("context_bucket_size must be positive")
@@ -349,12 +339,8 @@ def plan_speculative_requests(
     selected_mode = semantics[0].mode
     counts_list: list[int] = []
     reasons_list: list[SpecPlanReason] = []
-    for row_index, (row, desired_count) in enumerate(zip(semantics, desired, strict=True)):
+    for row, desired_count in zip(semantics, desired, strict=True):
         if desired_count == 0:
-            counts_list.append(0)
-            reasons_list.append(SpecPlanReason.POLICY_SELECTED_AR)
-            continue
-        if len(suppression) > row_index and suppression[row_index]:
             counts_list.append(0)
             reasons_list.append(SpecPlanReason.POLICY_SELECTED_AR)
             continue

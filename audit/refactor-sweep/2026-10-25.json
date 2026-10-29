@@ -11481,18 +11481,18 @@
       "start_line": 8758,
       "end_line": 8772,
       "sha256": "ae90a2ae0663038ff1881ce6bfb06e541e69444eef5f93f32126e1db042a0f4c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed-rejected-cooldown",
+      "evidence": ["Removed the rejected cooldown env reader, adapter pending set/commit/cleanup bookkeeping, runner hook, engine probe and planner suppress_speculation parameter. Ordinary transitional K0 catchup remains, with AST equality for prepare_k0/_drop_request after stripping only obsolete set discards. Three RED retirement tests now pass; 222 focused tests, CPU deterministic bundle, public gfx1151 fixed-B2 MTP repeated requests with stale env=1, docs/audit/test-tier/whitespace checks pass. Each public request executes three cycles with no recoverable failures; output IDs repeat and teardown has zero live allocations. No kernel/arithmetic/default policy change or performance claim. Worklog: worklog/entries/20261029T083937.904678Z-cleanup-refactor-r0391-cooldown-355d69.md."],
       "subitems": [
         {
           "line": 8760,
           "text": "- `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` (default off) forces a",
-          "status": "pending"
+          "status": "resolved-removed-flag-state-hook-and-planner-input"
         },
         {
           "line": 8766,
           "text": "- **Settled 2026-08-29:** with the packed-decode hidden fix (`6b580ad25`) the",
-          "status": "pending"
+          "status": "resolved-removed-rejected-arm-history-preserved-in-immutable-worklogs"
         }
       ]
     },

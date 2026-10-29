@@ -3430,21 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## SPECDEC2 post-reject cooldown experiment (2026-08-29)
-
-- `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` (default off) forces a
-  K0-transitional cycle after any request whose last physical cycle accepted
-  zero candidates, routing the provider repair through the target-hidden
-  catchup instead of immediate re-speculation. Wiring:
-  `plan_speculative_requests(suppress_speculation=...)`, engine-loop probe,
-  runner hook `speculative_post_reject_cooldown`, adapter telemetry read.
-- **Settled 2026-08-29:** with the packed-decode hidden fix (`6b580ad25`) the
-  policy nets 1.1700x vs the 1.1890x default at D24 (code benefits, en/mixed
-  pay more for the lost speculation cycles). Not retained as default.
-  **Ready:** remove the flag, hook, and planner parameter whenever the
-  campaign stops considering longer-D cooldown economics; the measured
-  evidence lives in worklog entries 20260829T052637/074350.
-
 ## gfx1100 grouped multi-request prefill is unreachable by construction (2026-08-30)
 
 `ResidentBatchScheduler.next_prefill_batch_work` ("emit one stable multi-request

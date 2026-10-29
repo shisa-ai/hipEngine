@@ -3407,17 +3407,6 @@ class ResidentEngineLoop:
         )
         if not any(desired) and not publish_ar_plan:
             return None
-        suppression: tuple[bool, ...] = ()
-        cooldown_probe = getattr(
-            self.runner, "speculative_post_reject_cooldown", None
-        )
-        if callable(cooldown_probe):
-            suppression = tuple(
-                bool(flag)
-                for flag in cooldown_probe(tuple(work.request_ids))
-            )
-            if len(suppression) != len(desired) or not any(suppression):
-                suppression = ()
         semantics: list[SpeculativeRequestSemantics] = []
         sampler_block = self.scheduler.sampler_params_block(work.request_ids)
         for request_id in work.request_ids:
@@ -3474,7 +3463,6 @@ class ResidentEngineLoop:
             context_bucket_size=self.scheduler.context_bucket_size,
             graph_available=graph_available,
             target_physical_available=target_available,
-            suppress_speculation=suppression,
             declared_logical_c=work.declared_logical_c,
         )
         if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
@@ -3530,7 +3518,6 @@ class ResidentEngineLoop:
                 claims_fit=False,
                 graph_available=graph_available,
                 target_physical_available=target_available,
-                suppress_speculation=suppression,
                 declared_logical_c=work.declared_logical_c,
             )
         self._last_speculative_plan = plan

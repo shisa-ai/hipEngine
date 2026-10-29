@@ -747,6 +747,16 @@ def _capability_adapter(
     return adapter
 
 
+def test_rejected_cooldown_has_no_adapter_state_or_runner_hook(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN", "1")
+    adapter = _capability_adapter((7,))
+
+    assert not hasattr(adapter, "post_reject_cooldown_enabled")
+    assert not hasattr(adapter, "_post_reject_pending")
+    assert not hasattr(adapter, "post_reject_cooldown")
+    assert not hasattr(Qwen35GGUFResidentModelRunner, "speculative_post_reject_cooldown")
+
+
 def _claims_plan(request_ids: tuple[int, ...], depth: int) -> SimpleNamespace:
     return SimpleNamespace(
         request_ids=request_ids,
@@ -3302,7 +3312,6 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     adapter._intents = {7: 3}
     adapter._prompt_hidden_rows = {7: np.zeros((1, 4), dtype=np.float32)}
     adapter._disabled_requests = set()
-    adapter._post_reject_pending = set()
     adapter.owner = SimpleNamespace(
         _row=lambda request_id: row,
         _flush_row_owner=lambda owned_row: None,
@@ -3336,7 +3345,6 @@ def _prepare_k0_adapter(row: SimpleNamespace) -> Qwen35GGUFMTP2Adapter:
     adapter._intents = {7: 3}
     adapter._prompt_hidden_rows = {}
     adapter._disabled_requests = set()
-    adapter._post_reject_pending = set()
     adapter.owner = SimpleNamespace(
         _row=lambda request_id: row,
         _flush_row_owner=lambda owned_row: None,

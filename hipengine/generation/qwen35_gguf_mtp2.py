@@ -995,10 +995,6 @@ class Qwen35GGUFMTP2Adapter:
         )
         self.physical_prompt_streaming = bool(self.physical_prompt_streaming_widths)
         self.device_chain_qualification_oracle = bool(device_chain_qualification_oracle)
-        self.post_reject_cooldown_enabled = _env_enabled(
-            "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
-        )
-        self._post_reject_pending: set[int] = set()
         if not 1 <= self.candidate_budget <= MTP2_MAX_CANDIDATE_DEPTH:
             raise ValueError(
                 "MTP2 candidate budget must be within "
@@ -3136,18 +3132,6 @@ class Qwen35GGUFMTP2Adapter:
             )
         )
 
-    def post_reject_cooldown(self, request_ids: Sequence[int]) -> tuple[bool, ...]:
-        """Report a one-shot catchup need for each request.
-
-        A request is suppressed exactly once per fully rejected physical
-        cycle: the pending flag is set at reject commit and cleared when the
-        K0-transitional catchup advance repairs the provider state.
-        """
-
-        if not self.post_reject_cooldown_enabled:
-            return tuple(False for _ in request_ids)
-        return tuple(int(request_id) in self._post_reject_pending for request_id in request_ids)
-
     def prepare_k0(
         self,
         plan: SpecRequestPlan,
@@ -3221,7 +3205,6 @@ class Qwen35GGUFMTP2Adapter:
                 target.last_target_hidden,
             )
             row.mtp2_k0_catchups += 1
-            self._post_reject_pending.discard(int(rid))
 
     def note_speculative_ar_commit(
         self,
@@ -6025,15 +6008,6 @@ class Qwen35GGUFMTP2Adapter:
                 # autoregressive decoding without losing them.
                 note_commit(int(request_id))
             finish_reasons.append("eos" if eos_finished else None)
-            if (
-                self.post_reject_cooldown_enabled
-                and int(accepted) == 0
-                and int(
-                    plan.candidate_counts[plan.request_ids.index(request_id)]
-                )
-                > 0
-            ):
-                self._post_reject_pending.add(int(request_id))
             row.mtp2_proposal_ms += float(states[index].last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_cycle_profile_start_ns.append(int(target_started_ns))
@@ -7374,7 +7348,6 @@ class Qwen35GGUFMTP2Adapter:
         rid = int(request_id)
         self._streaming_refused_requests.discard(rid)
         self._sampling_mode_by_request.pop(rid, None)
-        self._post_reject_pending.discard(rid)
         self.drop_c1_shadow_lifecycle(rid, reason="request_drop")
         state = self._states.get(rid)
         if state is not None:
