@@ -3430,18 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Qwen3.6 shared-prefill SiLU/rotate rollback env
-
-- `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0` rolls packed-PARO shared
-  expert prefill back to registered `silu_mul_separate_out_fp16` followed by
-  `paro_rotate1_fp16`. The default exact pair-rotate route preserves the FP16
-  activation rounding point, removes one launch and the intermediate store/load
-  per layer, and measures **29.643 -> 21.617 us (1.371x)** at the actual
-  512x512/group128/krot8 leaf on gfx1151. Bracketed c4/c8 complete runs remain
-  within noise while prefill throughput is non-regressive. Remove this env
-  branch after one non-regressive release window when no campaign bisection
-  needs the two-launch control; keep the registered primitive fallback.
-
 ## fp16 recurrent state (HIPENGINE_GGUF_FP16_RECURRENT_STATE)
 
 - Added 2026-08-19 for the gfx1151 Qwen3.8 Q4_K_S R2 topline: GDN recurrent

@@ -2814,61 +2814,19 @@ def test_qwen35_decode_state_runs_shared_expert_paro_w4_bf16(monkeypatch) -> Non
     assert down_args[4] == scratch.shared_out.ptr
 
 
-def test_qwen35_decode_state_runs_shared_expert_paro_w4_fp16_large_prefill_uses_fused_w4(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED", "0")
+@pytest.mark.parametrize("retired", [None, "0", "1", "true"])
+@pytest.mark.parametrize("tokens", [9, 15, 17, 37])
+def test_qwen35_decode_state_fuses_large_prefill_shared_silu_and_down_rotate(
+    monkeypatch, retired, tokens,
+) -> None:
+    if retired is None:
+        monkeypatch.delenv("HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED", retired)
     runtime = FakeRuntime()
     state = _state(runtime, _prepared_moe_weights())
-    scratch = state.reserve_moe_c1_scratch(tokens=16, activation_dtype="fp16")
-    hidden = _tensor(0xCA00, (16, 4096), "fp16")
-    calls = []
-
-    def record(label):
-        def fake(*args, **kwargs):
-            calls.append((label, args, kwargs))
-        return fake
-
-    monkeypatch.setattr(qwen_runtime, "paro_rotate1_fp16", record("rotate1"))
-    monkeypatch.setattr(qwen_runtime, "paro_rotate2_fp16", record("rotate2"))
-    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_dual_fp16", record("fusedw4_dual"))
-    monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", record("fusedw4_single"))
-    monkeypatch.setattr(qwen_runtime, "silu_mul_separate_out_fp16", record("silu_separate"))
-    # Small decode batches use the GEMV path; larger prefill still uses fused W4.
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_dual_pack8_transposed_fp16", record("unexpected_dual_gemv"))
-    monkeypatch.setattr(qwen_runtime, "gemv_awq_pack8_transposed_fp16", record("unexpected_single_gemv"))
-    monkeypatch.setattr(qwen_runtime, "silu_mul_dual_out_fp16", record("unexpected_silu_dual"))
-
-    out = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=16)
-
-    assert out is scratch.shared_out
-    labels = [label for label, _a, _k in calls]
-    assert labels == [
-        "rotate2",  # gate/up input rotations
-        "fusedw4_dual",  # fused W4 prefill dual (separate inputs, separate outputs)
-        "silu_separate",  # silu(gate) * up from two separate buffers
-        "rotate1",  # down input rotation still uses rotate1 for FP16 prefill
-        "fusedw4_single",  # fused W4 prefill single down
-    ]
-    fused_dual = calls[1][1]
-    assert fused_dual[0] == scratch.shared_gate_input.ptr
-    assert fused_dual[1] == scratch.shared_up_input.ptr
-    assert fused_dual[8] == scratch.shared_gate_out.ptr
-    assert fused_dual[9] == scratch.shared_up_out.ptr
-    silu_args = calls[2][1]
-    assert silu_args == (
-        scratch.shared_gate_out.ptr,
-        scratch.shared_up_out.ptr,
-        scratch.shared_intermediate.ptr,
-        16,
-        768,
-    )
-
-
-def test_qwen35_decode_state_fuses_large_prefill_shared_silu_and_down_rotate(monkeypatch) -> None:
-    monkeypatch.delenv("HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED", raising=False)
-    runtime = FakeRuntime()
-    state = _state(runtime, _prepared_moe_weights())
-    scratch = state.reserve_moe_c1_scratch(tokens=16, activation_dtype="fp16")
-    hidden = _tensor(0xCA00, (16, 4096), "fp16")
+    scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype="fp16")
+    hidden = _tensor(0xCA00, (tokens, 4096), "fp16")
     calls = []
 
     def record(label):
@@ -2883,7 +2841,7 @@ def test_qwen35_decode_state_fuses_large_prefill_shared_silu_and_down_rotate(mon
     monkeypatch.setattr(qwen_runtime, "silu_mul_separate_out_fp16", record("unexpected_silu_separate"))
     monkeypatch.setattr(qwen_runtime, "silu_mul_pair_rotate_out_fp16", record("silu_pair_rotate"), raising=False)
 
-    out = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=16)
+    out = state.shared_expert_paro_w4_fp16(hidden, scratch, tokens=tokens, stream=0x79)
 
     assert out is scratch.shared_out
     assert [label for label, _args, _kwargs in calls] == [
@@ -2892,6 +2850,11 @@ def test_qwen35_decode_state_fuses_large_prefill_shared_silu_and_down_rotate(mon
         "silu_pair_rotate",
         "fusedw4_single",
     ]
+    assert all(kwargs["stream"] == 0x79 for _label, _args, kwargs in calls)
+    assert calls[2][1][6:8] == (tokens, state.config.shared_expert_intermediate_size)
+    fused_dual = calls[1][1]
+    assert fused_dual[:2] == (scratch.shared_gate_input.ptr, scratch.shared_up_input.ptr)
+    assert fused_dual[8:10] == (scratch.shared_gate_out.ptr, scratch.shared_up_out.ptr)
     fused_args = calls[2][1]
     assert fused_args[:6] == (
         scratch.shared_gate_out.ptr,
@@ -2906,10 +2869,11 @@ def test_qwen35_decode_state_fuses_large_prefill_shared_silu_and_down_rotate(mon
 @pytest.mark.parametrize("retired", [None, "0", "1", "true"])
 @pytest.mark.parametrize("tokens,unequal_krot", [(1, False), (3, False), (7, True)])
 def test_shared_expert_fp16_ignores_retired_fused_rotate(monkeypatch, retired, tokens, unequal_krot) -> None:
-    if retired is None:
-        monkeypatch.delenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", retired)
+    for name in ("HIPENGINE_SHARED_EXPERT_FUSED_ROTATE", "HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED"):
+        if retired is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, retired)
     runtime = FakeRuntime()
     weights = _prepared_moe_weights()
     if unequal_krot:

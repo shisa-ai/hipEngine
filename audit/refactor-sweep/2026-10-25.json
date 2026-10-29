@@ -11144,13 +11144,13 @@
       "start_line": 8436,
       "end_line": 8447,
       "sha256": "313a4e46d5a82dd5be9c0b9ebc2878cc9cf34980a36c0e015afd0256a415fa2e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed-unused-runtime-optout-and-prefill-branches",
+      "evidence": ["No live harness consumer for shared-prefill SiLU/rotate opt-out. Removed helper, three conditional separate-SiLU branches and final separate-rotate branch; non-small batches unconditionally use existing default pair-rotate. Registered strict separate SiLU/rotate references preserved. RED four zero-setting nodes; focused659pass. Real gfx1151 leaf raw-bit parity and public LLM.generate at15/17/37 with unset/zero control both pass, route traced and teardown returns to allocation baseline. No kernel/default arithmetic or fresh perf claim. Docs/audit/tier gates and CPU bg-704 pass; final affected host bundle659pass after added small-batch env coverage. Worklog worklog/entries/20261029T063635.200453Z-cleanup-refactor-r0379-shared-silu-732945.md."],
       "subitems": [
         {
           "line": 8438,
           "text": "- `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0` rolls packed-PARO shared",
-          "status": "pending"
+          "status": "resolved-runtime-rollback-retired-default-chain-preserved"
         }
       ]
     },

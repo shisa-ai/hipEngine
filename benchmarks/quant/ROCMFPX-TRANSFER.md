@@ -75,8 +75,9 @@ Q8_1x2 and the same operation-complete oracle.
 Packed-PARO shared-expert prefill previously wrote FP16 SiLU output and launched
 registered down-rotation separately. The retained route calls the already
 registered pair-rotate primitive directly, preserving the FP16 activation
-rounding point. A strict registered two-primitive fallback remains; the
-rollback env is `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0`.
+rounding point. Registered SiLU and rotation primitives remain available as
+numerical references. The campaign originally exposed a rollback environment
+control; that unused production opt-out has been removed.
 
 The actual rows512/features512/group128/krot8 leaf improves 1.371x. A kernel
 trace proves the expected `silu_mul_separate_out` launch disappears once per

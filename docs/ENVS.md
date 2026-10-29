@@ -518,7 +518,6 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_W4_MULTI_ROW_PACK8_DUAL` | follows the umbrella | Dual-output multi-row pack8 override. |
 | `HIPENGINE_W4_MULTI_ROW_SMALL_BATCH` | true | Weight-amortized multi-row W4 GEMV for small batches (win scales with row count); `0` disables. |
 | `HIPENGINE_LINEAR_AB_DUAL_SEPARATE` | true | Uses the separate-output dual A/B GEMV for small-batch decode rows; `0` restores the single GEMV fallback. |
-| `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED` | true | Fuses shared-prefill SiLU-mul + rotate into one launch (default on after the 2026-08-16 gfx1151 byte-equality gate); `0` opts out. |
 | `HIPENGINE_PARO_FFN_MEGAKERNEL` | false | Opt-in single-kernel selected FFN for the verify path (tokens > 1); AR decode keeps the unfused path so the AR baseline is untouched. |
 | `HIPENGINE_LAGUNA_F16_PREFILL` | retired | No longer read. Diagnostics use `f16_prefill_strategy(mode)` in `hipengine.runtime.f16_weight_linear`; target-AR exposes `--f16-prefill-strategy`. Automatic backend policy and shape fallbacks are unchanged. |
 | `HIPENGINE_LAGUNA_F16_DECODE` | unset (`auto`) | Source-F16 decode strategy: `auto`, `gemv`, `onebarrier`, or `fixedk`. Automatic selection uses backend capabilities, fixed-K widths 3072/6144/9216 and 256-thread launch compatibility; other widths use the generic-K route, and other launch widths use GEMV. Explicit requests keep their primitive capability errors. The long-context profiler uses this control for paired comparisons. |
@@ -1379,6 +1378,11 @@ These names appear in the tree but must not be confused with env knobs:
   Shared gate/up uses the promoted split-output route for supported row
   counts; other shapes keep their existing prefill fallback. Regression
   tests retain the names.
+
+- `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED` is retired and ignored.
+  Shared-expert FP16 prefill uses the pair-rotate primitive; small batches keep
+  their existing packed SiLU/rotate route. Registered separate SiLU and
+  rotation primitives remain numerical references. Tests retain the old name.
 
 - `HIPENGINE_YUE2_NAR_ATTENTION` is retired and appears only in regression
   tests. Attention selection uses kernel geometry; setting it has no effect.
