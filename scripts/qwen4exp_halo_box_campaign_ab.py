@@ -46,7 +46,7 @@ Q5_M1_FIELD = "q51_down_m1"
 PF13_FIELDS = (FORKB_FIELD, Q5_M1_FIELD)
 Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_FIELD = "qsa_h256_prefill_mode"
-Q4_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
+Q4_BUNDLE_FIELD = "q4_bundle_prefill"
 Q51_PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
 MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
 MMQ_PREPACK_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
@@ -1603,7 +1603,21 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         from scripts.qwen4exp_dense_wide_padded_gate_support import parent_scope
         return parent_scope(runner)
 
-    if route_package in {"qsa-h256-wave", "qsa-h256-page256", "prefill-bundle"}:
+    if route_package in {"q4-bundle", "prefill-bundle"}:
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError(f"{route_package} needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import (
+            q4_bundle_prefill, qsa_h256_prefill_mode,
+        )
+        bundle = q4_bundle_prefill(runner, mode == "after")
+        if route_package == "q4-bundle":
+            return bundle
+        return _combined_scope(bundle, qsa_h256_prefill_mode(
+            runner, "page256" if mode == "after" else "parent"))
+
+    if route_package in {"qsa-h256-wave", "qsa-h256-page256"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         if runner is None:
@@ -1949,7 +1963,7 @@ def _apply_mode(
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ""
         if route_package == "q4-bundle":
-            flag = Q4_BUNDLE_ENV
+            return  # route_scope binds the owning runner.
         if route_package == "q51-pair":
             flag = Q51_PAIR_ENV
         if route_package == "gdn-register":
@@ -2629,6 +2643,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "after": {"q51_down": row4_key.variant},
             }
     artifact["route_package"] = args.route_package
+    if args.route_package == "q4-bundle":
+        artifact["selection_control"] = {
+            "runner_field": Q4_BUNDLE_FIELD, "before": False, "after": True,
+            "published_value": getattr(generator.runner, Q4_BUNDLE_FIELD, None),
+            "scope": "per measured run; restored on exit",
+        }
     if args.route_package in {"qsa-h256-wave", "qsa-h256-page256"}:
         artifact["selection_control"] = {
             "runner_field": QSA_H256_FIELD,

@@ -3427,15 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp Q4 bundled publication (2026-09-05)
-
-Production selects bundled Q4 publication through
-`HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL=1`; strict binds zero. Its complete
-12-case timing and real-model state gates pass correctness, and the owner
-accepted the measured decode tradeoff. Keep the old exact grouped owner as
-strict fallback. Replace the environment selector with direct profile-owned
-selection when that runtime boundary is migrated; keep rollback capability.
-
 ## Qwen4Exp Q5_1 output-pair reuse (2026-09-05)
 
 Production selects pair2 through `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`,

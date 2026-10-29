@@ -2,7 +2,7 @@
 
 Two contracts are under test:
 
-* ``step`` forwards the twelve plan-published expert-down decisions - the Q5_1
+* ``step`` forwards the plan-published expert-down and Q4 gate/up decisions - the Q5_1
   exact grouped down chain gate, the F16 WMMA down owner below it, its out8
   fallback rung, the Q4_K exact grouped gate/up chain's gate and `_ALL` joint
   term, that chain's out4 fallback rung, the Q5_1 down M1 leaf, the two Q5_1
@@ -11,7 +11,8 @@ Two contracts are under test:
   leaves the c1 path selects.
 * The captured ``post_mixer`` segment records the MoE launches, and the MoE runs
   eager inside it, so the selection is baked into the graph. The capture key
-  therefore carries all twelve decisions, and the compact F16 Q4_K gate/up
+  therefore carries all these decisions, including Q4 bundled publication,
+  and the compact F16 Q4_K gate/up
   tile pair with them: a runner whose selection or tile pair changes
   captures a new segment instead of replaying one built under the old one.
 
@@ -47,7 +48,7 @@ Q4_OUT4_FIELD = "q4_out4"
 #: Decode cannot reach the production admission that also selects it, so a
 #: captured decode segment bakes its launch in and the key must say so.
 WMMA_DOWN_FIELD = "q51_wmma_down"
-#: The twelve decisions, in the order the runner publishes them. The order is the
+#: The decisions, in the order the runner publishes them. The order is the
 #: contract: ``_expert_down_policy`` and the ``(layer, rows) + policy`` capture
 #: key both read this sequence, and ``test_the_policy_tuple_is_boolean_normalized``
 #: pins it against the runner's own tuple. The compact F16 Q4_K gate/up tile
@@ -62,6 +63,7 @@ POLICY_FIELDS = (
     Q4_GATE_FIELD,
     Q4_GATE_ALL_FIELD,
     Q4_OUT4_FIELD,
+    "q4_bundle_prefill",
     "forkb_grouped_down",
     "q8_down_row4_prefill",
     "q8_down_bundle_prefill",
@@ -144,7 +146,7 @@ def test_the_production_batch_width_is_the_only_width_that_reaches_fold128():
     # gate is live wherever the grouped chain runs, which is every multi-row
     # width.
     assert QWEN4_EXP_MAX_BATCH_ROWS == 64
-    assert len(POLICY_FIELDS) == 13
+    assert len(POLICY_FIELDS) == 14
 
 
 def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
@@ -231,8 +233,8 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q8_down_bundle_prefill = ""
     runner.q5k_row4_prefill = False
     assert runner._expert_down_policy() == (
-        True, True, False, False, True, True, True, False, False, False, True,
-        False, False)
+        True, True, False, False, True, True, True, False, False, False, False,
+        True, False, False)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
     assert runner._expert_down_policy() == tuple(

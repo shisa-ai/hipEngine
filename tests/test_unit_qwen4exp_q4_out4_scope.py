@@ -368,12 +368,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, True, False, True, True, True, True, False, False,
-        False, False)
+        False, False, False)
 
     owner.q4_out4 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, True, False, True, True, True, False, False, False,
-        False, False)
+        False, False, False)
 
 
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:
@@ -582,7 +582,8 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     assert off == "0"
     assert set(envs) == {
         ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV, T16_GATE_UP_ENV,
-        EXPERT_GRID_ENV, PAIR_ENV, BUNDLE_ENV}
+        EXPERT_GRID_ENV, PAIR_ENV}
+    assert dict(bindings)["q4_bundle_prefill"] is False
     assert envs == module.Q4_OUT4_PREEMPTING_ENV
     # The chain's own switches are runner state, so the arm records and
     # requires them instead of forcing them.
@@ -601,7 +602,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         assert published[ROUTED_F16_ENV] == "1"
         assert published[IU8_EXACT_ENV] == "1"
         assert published[PAIR_ENV] == "1"
-        assert published[BUNDLE_ENV] == "1"
+        assert published[BUNDLE_ENV] is None
+        assert generator.runner.q4_bundle_prefill is True
         assert published[EXPERT_GRID_ENV] is None   # default 64
         # The chain's own switches are runner state, published on every plan.
         assert generator.runner.q4_exact_grouped_gate is True

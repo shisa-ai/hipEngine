@@ -45,7 +45,8 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
-    if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256"}:
+    if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
+                   "q4-bundle", "prefill-bundle"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -192,7 +193,7 @@ def main():
                                "prompt_tokens": len(tokens), "prompt_token_ids": tokens})
     flag = ""
     if args.route_package in {"q4-bundle", "prefill-bundle"}:
-        flag = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
+        flag = ""  # Runner-local selection is bound by arm_control.
     if args.route_package == "q51-pair":
         flag = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
     if args.route_package == "gdn-register":
@@ -716,9 +717,19 @@ def main():
             # default instead of through a binder-set value.
             os.environ.setdefault(flag, "1")
             assert os.environ[flag] == "1", "production must select the retained route without an override"
+        if args.route_package in {"q4-bundle", "prefill-bundle"}:
+            assert generator.runner.q4_bundle_prefill is True
+            report["selection_control"] = {
+                "runner_field": "q4_bundle_prefill", "before": False, "after": True,
+                "scope": "per measured run; restored on exit",
+                "published_value": generator.runner.q4_bundle_prefill,
+            }
         if args.route_package == "prefill-bundle":
-            assert os.environ[flag] == "1"
             assert generator.runner.qsa_h256_prefill_mode == "page256"
+            report["selection_control"]["additional_control"] = {
+                "runner_field": "qsa_h256_prefill_mode",
+                "before": "parent", "after": "page256",
+            }
         if args.include_heldouts:
             report["heldout_suite"] = {
                 "path": str(heldout_path),

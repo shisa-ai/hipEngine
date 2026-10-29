@@ -5368,10 +5368,22 @@ def qwen4_exp_grouped_row4_prefill_selected(
     )
 
 
-def qwen4_exp_q4_bundle_prefill_selected(backend: str, quant: str) -> bool:
+@contextlib.contextmanager
+def q4_bundle_prefill(runner: Any, enabled: bool):
+    """Temporarily bind bundled Q4 publication on one owning runner."""
+    prior = getattr(runner, "q4_bundle_prefill", False)
+    runner.q4_bundle_prefill = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q4_bundle_prefill = prior
+
+
+def qwen4_exp_q4_bundle_prefill_selected(
+    backend: str, quant: str, *, published: bool = False,
+) -> bool:
     return (
-        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL", "0")
-        not in {"", "0", "false", "False"}
+        published
         and is_registered(KernelKey(
             backend, "moe_linear", quant,
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"))
@@ -5435,6 +5447,7 @@ def _qwen4_exp_q4_gate_up_key(
     rows: int,
     in_features: int,
     q4_out4: bool = True,
+    q4_bundle_prefill: bool = False,
 ) -> KernelKey:
     """The exact grouped Q4_K gate/up owner, before its own launch.
 
@@ -5469,7 +5482,9 @@ def _qwen4_exp_q4_gate_up_key(
         backend, quant, rows=rows, in_features=in_features,
     ):
         variant = "selected_dual_grouped_pair2_bf16_bf16_out"
-    elif expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(backend, quant):
+    elif expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(
+        backend, quant, published=q4_bundle_prefill,
+    ):
         variant = "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"
     return KernelKey(backend, "moe_linear", quant, variant)
 
@@ -6002,6 +6017,7 @@ def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
     *,
+    q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
     scratch: Qwen4ExpMoEScratch,
     rows: int,
@@ -6140,6 +6156,7 @@ def run_qwen4_exp_moe(
             run_qwen4_exp_moe(
                 mixed_ptr,
                 weights,
+                q4_bundle_prefill=q4_bundle_prefill,
                 q5k_row4_prefill=q5k_row4_prefill,
                 scratch=scratch,
                 rows=rows,
@@ -6675,6 +6692,7 @@ def run_qwen4_exp_moe(
                     quant=weights["expert_gate"].spec.quant_key,
                     rows=rows, in_features=hidden,
                     q4_out4=q4_out4,
+                    q4_bundle_prefill=q4_bundle_prefill,
                 )
                 grouped_q4_gate = resolve(
                     backend=grouped_q4_key.backend, layer=grouped_q4_key.layer,
@@ -7608,6 +7626,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
     attention_state: Qwen4ExpDenseAttentionState,
     scratch: Qwen4ExpQSALayerScratch,
@@ -7739,6 +7758,7 @@ def run_qwen4_exp_dense_qsa_layer(
     )
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
+        q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
@@ -7775,6 +7795,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
     attention_state: Qwen4ExpDenseAttentionState,
     index_state: Qwen4ExpQSAIndexDeviceState,
@@ -7962,6 +7983,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
         scratch=scratch.moe,
         rows=rows,
@@ -8012,6 +8034,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
     conv_state_ptr: int,
     recurrent_state_ptr: int,
@@ -8253,6 +8276,7 @@ def run_qwen4_exp_gdn_layer(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
@@ -9177,6 +9201,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # and the pair2/bundle preemptors inside it, and the iu8 chain above that is
     # unaffected. A diagnostic scope may outrank it.
     q4_out4: bool = True
+    q4_bundle_prefill: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder for every plan and ``None`` (the dispatch heuristic) on an
     # unbound runner: M is 64 from 512 rows up and 16 below, N is 16. The pair
@@ -10485,6 +10510,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_scratch,
+                    q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank,
                     num_k_heads=cfg.gdn_group_count,
@@ -10536,6 +10562,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_dense_qsa_layer(
                     residual_ptr,
                     binding,
+                    q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
                     index_state=self.index_states[binding.qsa_state_index],
                     scratch=self.qsa_scratch,
@@ -10868,6 +10895,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_prefill_scratch,
+                    q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=count,
                     branches=cfg.residual_branch_count,
                     hidden=cfg.hidden_size,
@@ -10911,6 +10939,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_qsa_prefill_layer(
                     residual_ptr,
                     binding,
+                    q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
                     index_state=self.index_states[binding.qsa_state_index],
                     scratch=self.qsa_prefill_scratch,

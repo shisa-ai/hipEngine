@@ -12040,9 +12040,17 @@
       "start_line": 9521,
       "end_line": 9529,
       "sha256": "1798137693db064d8ff9b2be8211803da07835a30943498ff4850d30f11d9e12",
-      "status": "pending",
-      "evidence": [],
-      "subitems": []
+      "status": "fixed",
+      "evidence": [
+        "worklog/entries/20261029T165643.836935Z-cleanup-refactor-r0413-q4-bundle-9728bf.md",
+        "tests/test_unit_qwen4exp_q4_bundle_scope.py",
+        "tests/test_gpu_qwen4exp_q4_bundle.py"
+      ],
+      "subitems": [
+        {"text": "Replace environment selector with profile-owned selection", "status": "fixed-runner-field-forwarding-and-capture-key"},
+        {"text": "Preserve strict fallback and rollback", "status": "fixed-exception-safe-scopes-and-diagnostic-consumers"},
+        {"text": "Preserve accepted tradeoff and existing arithmetic", "status": "unchanged-defaults-and-kernels"}
+      ]
     },
     {
       "id": "R0414",

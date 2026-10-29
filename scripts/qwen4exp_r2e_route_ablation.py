@@ -123,8 +123,8 @@ OUT8_SIBLING_FIELDS = (
 #:     but the arm closes it rather than depend on that nesting;
 #:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
 #:     with the expertgrid64 family (default ``64``);
-#:   * ``HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL`` and
-#:     ``HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL`` are the pair2/bundle preemptors
+#:   * ``HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL`` and runner-local
+#:     ``q4_bundle_prefill`` are the pair2/bundle preemptors
 #:     inside that family, published on by the production plan. Their guards
 #:     require the expert-grid family, so they are inert once it is closed, but
 #:     an arm that names a leaf should not depend on that guard staying narrow.
@@ -139,7 +139,6 @@ Q4_OUT4_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_T16_GATE_UP",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
     "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL",
-    "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL",
 )
 
 # route -> (runner field bindings, process keys, disabled value) for a leaf whose
@@ -152,7 +151,8 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
         OUT8_PREEMPTING_ENV,
         "0",
     ),
-    "q4_out4": ((("q4_out4", False),), Q4_OUT4_PREEMPTING_ENV, "0"),
+    "q4_out4": ((("q4_out4", False), ("q4_bundle_prefill", False)),
+                Q4_OUT4_PREEMPTING_ENV, "0"),
 }
 
 # route -> runner fields that must stay published for the counted leaf to mean
