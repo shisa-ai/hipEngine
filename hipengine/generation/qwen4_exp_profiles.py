@@ -137,7 +137,7 @@ PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "Q4_DP4A64",
-    "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
+    "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "GR_WIDE",
 )
 # The QSA prefill head grouping and the ordered-v2 sparse decode leaf are
@@ -154,7 +154,6 @@ _Q4_DECODE_RECOVERY_EVIDENCE = "benchmarks/results/20261022-qwen38fn-q4-decode-r
 PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
     "Q8_0_SELECTED_WMMA_DOWN": "1",
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
-    "QSA_H256_WAVE_PREFILL": "page256",
     "QSA_ORDERED_DECODE": "1",
 }
 _Q8_QSA_RESTORATION_EVIDENCE = (
@@ -1046,6 +1045,8 @@ def _bind(
     # manifest names that WMMA owner for the same scope, which is why this value
     # follows the binder rather than the manifest row.
     qsa_prefill_head_mode = "quad" if production else "parent"
+    # Scalar H256 sparse-prefill fallback; WMMA still owns eligible chunks.
+    qsa_h256_prefill_mode = "page256" if production else "parent"
     # QSA ordered-v2 sparse decode, published as request-local state on the
     # owning runner rather than a process-wide switch. It is the c1 H256
     # indexed sparse decode leaf of the ordered route: the v1 ordered switch
@@ -1249,7 +1250,6 @@ def _bind(
         # still decides whether the pair2 parent variant exists at all.
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
         # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
         # profile binds them and no runner reads them.
@@ -1395,6 +1395,7 @@ def _bind(
     generator.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
     generator.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
+    generator.qsa_h256_prefill_mode = qsa_h256_prefill_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
     generator.gdn_prefill_variant = gdn_prefill_variant
     generator.gdn_peer_prefill_layers = gdn_peer_prefill_layers
@@ -1449,6 +1450,7 @@ def _bind(
         runner.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
         runner.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
+        runner.qsa_h256_prefill_mode = qsa_h256_prefill_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
         runner.gdn_prefill_variant = gdn_prefill_variant
         runner.gdn_peer_prefill_layers = gdn_peer_prefill_layers

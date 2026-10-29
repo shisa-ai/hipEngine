@@ -3427,17 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp H256 wave sparse rows (2026-09-05)
-
-Production selects page256 wave prefill through
-`HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL=page256`; strict binds zero.
-The owner accepted the measured hot-decode tradeoff on 2026-09-05.
-Keep the score-product register boundary: removing it changes arithmetic
-under the current compiler. Preserve `strict_rows_spans` and the separate
-ordered decode parent. Retain the post-binder opt-out for reproducing the
-tradeoff and rollback; remove the generic-wave experimental selector when
-no longer needed for bisection. Decode performance remains open work.
-
 ## Qwen4Exp Q4 bundled publication (2026-09-05)
 
 Production selects bundled Q4 publication through
@@ -11223,3 +11212,28 @@ Historical diagnostic:
 `../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-whole-model-ab.json`.
 This triage changes no execution behavior and claims no fresh performance or
 numerical result.
+
+### R0412 — H256 generic-wave diagnostic retirement
+
+The H256 scalar sparse-prefill choice is now runner-owned:
+`qsa_h256_prefill_mode` selects `parent`, `wave`, or `page256`. Production
+publishes `page256`; strict publishes `parent`. The retired
+`HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` has no effect. Diagnostic scopes
+restore the runner's selection on exit, including failures. Shape/registry
+checks, WMMA precedence, head grouping, the score-product register boundary
+and the separate ordered decode parent are unchanged.
+
+**Deferred decision:** retire generic-wave bisection support when it is no
+longer needed, or keep it as an explicit diagnostic. The lead's accepted
+prefill/decode tradeoff is not reopened by this control migration. Decode
+performance is separate optimization work, not a reason to undo that choice.
+
+**Clearing action:** decide whether the generic-wave comparison remains useful.
+If retiring it, remove the `wave` scope value and its campaign/state-gate
+packages together; preserve page256 and the strict `strict_rows_spans` fallback.
+Run the H256 scope/runtime tests, existing GPU H256 parity tests and public
+`LLM.generate()` with the scalar fallback engaged. Any decode optimization
+must first profile the current path and follow `OPTIMIZATION.md`.
+
+Implementation and validation:
+`../worklog/entries/20261029T163722.751625Z-cleanup-refactor-r0412-h256-prefill-2bd929.md`.

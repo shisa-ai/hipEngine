@@ -818,7 +818,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` | `0` | Opt-in ordered sparse-attention decode route for head_dim 256. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` | retired | No longer read. The owning target/draft runner carries ordered-v2 selection; the v1 prerequisite, geometry/count guards and separate fused diagnostic remain. |
 | `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR` | retired | No longer read. The resolved profile publishes prefill head grouping on the owning runner; scoped diagnostics may select pair or quad without changing independent batch attention selection. |
-| `HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` | `page256` under production | Selects the `strict_h256_page256_wave_rows_spans` prefill variant; otherwise `strict_h256_wave_rows_spans`. |
+| `HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` | retired; ignored | Runner-owned `qsa_h256_prefill_mode` now selects `parent`, `wave`, or `page256`. Production publishes `page256`, strict publishes `parent`; diagnostic scopes restore the prior mode on exit. |
 | `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` | production profile | Uses the flash sparse-attention prefill owner for dense rows with head_dim 256, gated by the `HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL` | production profile | Uses the sigmoid register GDN recurrence prefill kernel for rows>=2 and the (16, 48, 128) head geometry. |
 | `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM` | retired | No longer read. Serial GDN prefill consumes runner-local profile selection with registered wide/register fallback. |

@@ -14,7 +14,8 @@ def test_pair_admission(monkeypatch):
 
 
 def test_pair_arm_retains_other_defaults():
-    from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode,Q51_PAIR_ENV,QSA_H256_ENV,Q4_BUNDLE_ENV
+    from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode,Q51_PAIR_ENV,Q4_BUNDLE_ENV
+    QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
     env={QSA_H256_ENV:"page256",Q4_BUNDLE_ENV:"1"}
     _apply_mode("after",environment=env,route_package="q51-pair")
     assert env=={QSA_H256_ENV:"page256",Q4_BUNDLE_ENV:"1",Q51_PAIR_ENV:"1"}

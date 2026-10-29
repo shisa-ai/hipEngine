@@ -50,8 +50,8 @@ def test_route_scope_leaves_non_head_packages_untouched():
     owned = _runner("quad")
     with route_scope("qsa-h256-page256", "after", owned):
         assert owned.qsa_prefill_head_mode == "quad"
-    with route_scope("qsa-h256-page256", "after", None):
-        pass
+    with pytest.raises(ValueError, match="needs the owning runner"):
+        route_scope("qsa-h256-page256", "after", None)
     assert owned.qsa_prefill_head_mode == "quad"
 
 
@@ -339,11 +339,15 @@ def test_probe_and_halo_record_the_wmma_override():
         assert attribute in constants, module.__name__
 
 
-def test_state_gate_still_writes_environment_flags_for_env_owned_packages():
+def test_state_gate_h256_binding_does_not_change_head_grouping():
     from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
 
     owned = _runner("quad")
     env: dict[str, str] = {}
     apply_state_gate_mode(owned, "qsa-h256-page256", "1", "WAVE", environment=env)
-    assert env == {"WAVE": "page256"}
-    assert owned.qsa_prefill_head_mode == "quad"
+    assert env == {}
+    assert not hasattr(owned, "qsa_h256_prefill_mode")
+    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+    with route_scope("qsa-h256-page256", "after", owned):
+        assert owned.qsa_h256_prefill_mode == "page256"
+        assert owned.qsa_prefill_head_mode == "quad"

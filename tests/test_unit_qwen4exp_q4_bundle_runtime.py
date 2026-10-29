@@ -11,7 +11,8 @@ def test_bundle_selection_requires_flag_and_registered_owner(monkeypatch):
 
 
 def test_bundle_arm_does_not_toggle_other_candidates():
-    from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, Q4_BUNDLE_ENV, QSA_H256_ENV
+    from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, Q4_BUNDLE_ENV
+    QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
     stale_row4 = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
     env={QSA_H256_ENV:"0",stale_row4:"1"}
     _apply_mode("after",environment=env,route_package="q4-bundle")

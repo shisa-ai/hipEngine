@@ -45,7 +45,7 @@ FORKB_FIELD = "forkb_grouped_down"
 Q5_M1_FIELD = "q51_down_m1"
 PF13_FIELDS = (FORKB_FIELD, Q5_M1_FIELD)
 Q5K_ROW4_FIELD = "q5k_row4_prefill"
-QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
+QSA_H256_FIELD = "qsa_h256_prefill_mode"
 Q4_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
 Q51_PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
 MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
@@ -1603,6 +1603,15 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         from scripts.qwen4exp_dense_wide_padded_gate_support import parent_scope
         return parent_scope(runner)
 
+    if route_package in {"qsa-h256-wave", "qsa-h256-page256", "prefill-bundle"}:
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError(f"{route_package} needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import qsa_h256_prefill_mode
+        selected = "wave" if route_package == "qsa-h256-wave" else "page256"
+        return qsa_h256_prefill_mode(runner, selected if mode == "after" else "parent")
+
     if route_package == "q5k-row4":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -1889,6 +1898,10 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
+    if route_package in {"qsa-h256-wave", "qsa-h256-page256"}:
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        return  # route_scope binds the runner-local H256 choice.
     if route_package == "q5k-row4":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -1934,7 +1947,7 @@ def _apply_mode(
     if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        flag = QSA_H256_ENV
+        flag = ""
         if route_package == "q4-bundle":
             flag = Q4_BUNDLE_ENV
         if route_package == "q51-pair":
@@ -1996,9 +2009,8 @@ def _apply_mode(
         if route_package == "q51-row-publish":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
+        assert flag, f"{route_package} has no process key to bind"
         environment[flag] = "1" if mode == "after" else "0"
-        if route_package == "qsa-h256-page256" and mode == "after":
-            environment[flag] = "page256"
         return
     if route_package == "pf13":
         # Both leaves are request-local on the runner, so no process key carries
@@ -2617,6 +2629,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "after": {"q51_down": row4_key.variant},
             }
     artifact["route_package"] = args.route_package
+    if args.route_package in {"qsa-h256-wave", "qsa-h256-page256"}:
+        artifact["selection_control"] = {
+            "runner_field": QSA_H256_FIELD,
+            "before": "parent",
+            "after": "wave" if args.route_package == "qsa-h256-wave" else "page256",
+            "published_value": getattr(generator.runner, QSA_H256_FIELD, None),
+            "scope": "per measured run; restored on exit",
+        }
     if args.route_package == "q5k-row4":
         artifact["selection_control"] = {
             "runner_field": Q5K_ROW4_FIELD, "before": False, "after": True,

@@ -193,6 +193,9 @@ def main():
             if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
                 generator.runner.configure_mmq_prefill_resources()
             spec = CANDIDATES[args.candidate]
+            from hipengine.runtime.qwen4_exp_runner import qsa_h256_prefill_mode
+            dispatch_stack.enter_context(qsa_h256_prefill_mode(
+                generator.runner, spec.qsa_h256_prefill_mode))
             if spec.requires_dispatch_count:
                 from hipengine.kernels.registry import KernelKey
                 counter = dispatch_stack.enter_context(count_candidate_dispatch(

@@ -2807,25 +2807,40 @@ def _qwen4_exp_qsa_prefill_head_key(
     return candidate if is_registered(candidate) else key
 
 
-def qwen4_exp_qsa_h256_wave_prefill_variant() -> str:
+@contextlib.contextmanager
+def qsa_h256_prefill_mode(runner: Any, mode: str | None = None):
+    """Bind parent, generic wave or page256 H256 prefill on one runner."""
+
+    if mode is not None and mode not in {"parent", "wave", "page256"}:
+        raise ValueError(f"invalid H256 prefill mode {mode!r}")
+    prior = getattr(runner, "qsa_h256_prefill_mode", "parent")
+    if mode is not None:
+        runner.qsa_h256_prefill_mode = mode
+    try:
+        yield prior
+    finally:
+        runner.qsa_h256_prefill_mode = prior
+
+
+def qwen4_exp_qsa_h256_wave_prefill_variant(published: str = "parent") -> str:
     return (
         "strict_h256_page256_wave_rows_spans"
-        if os.environ.get("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL") == "page256"
+        if published == "page256"
         else "strict_h256_wave_rows_spans"
     )
 
 
 def qwen4_exp_qsa_h256_wave_prefill_selected(
-    *, head_dim: int, rows: int, backend: str, block_size: int = 256
+    *, head_dim: int, rows: int, backend: str, block_size: int = 256,
+    published: str = "parent",
 ) -> bool:
     return (
         head_dim == 256 and rows >= 16
-        and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL", "0")
-        not in {"", "0", "false", "False"}
-        and (os.environ.get("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL") != "page256"
-             or block_size == 256)
+        and published in {"wave", "page256"}
+        and (published != "page256" or block_size == 256)
         and is_registered(KernelKey(
-            backend, "qsa_sparse_attention", "bf16_kv", qwen4_exp_qsa_h256_wave_prefill_variant()))
+            backend, "qsa_sparse_attention", "bf16_kv",
+            qwen4_exp_qsa_h256_wave_prefill_variant(published)))
     )
 
 
@@ -2850,6 +2865,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     index_rotary_dim: int,
     rope_positions_ptr: int | None = None,
     cache_only: bool = False,
+    h256_mode: str = "parent",
     head_mode: str | None = _QSA_HEAD_PARENT,
     batched_selection: bool = True,
     qsa_wave32: bool = True,
@@ -2858,6 +2874,11 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     runtime: HipRuntime | None = None,
 ) -> DeviceBuffer | None:
     """Append a contiguous QSA chunk, optionally omitting unused attention.
+
+    ``h256_mode`` is the owning runner's scalar H256 sparse-prefill choice;
+    page256 keeps its block-size guard and the generic wave leaf is diagnostic.
+    Head grouping and WMMA precedence are separate decisions. Kernel arithmetic
+    and the ordered decode route are unchanged.
 
     ``head_mode`` is the owning runner's H256 prefill head grouping decision
     for the scalar rows owner (see :func:`qsa_prefill_head_mode`). It selects
@@ -3309,11 +3330,11 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         backend = str(weights.projections["attn_q"].backend)
         if qwen4_exp_qsa_h256_wave_prefill_selected(
             head_dim=head_dim, rows=sparse_rows, backend=backend,
-            block_size=attention_state.block_size,
+            block_size=attention_state.block_size, published=h256_mode,
         ):
             sparse_key=_qwen4_exp_qsa_prefill_head_key(
                 KernelKey(backend,"qsa_sparse_attention","bf16_kv",
-                          qwen4_exp_qsa_h256_wave_prefill_variant()),
+                          qwen4_exp_qsa_h256_wave_prefill_variant(h256_mode)),
                 query_heads=query_heads,kv_heads=kv_heads,mode=head_mode)
             sparse_attention_rows = resolve(
                 backend=sparse_key.backend,layer=sparse_key.layer,
@@ -7777,6 +7798,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     top_k: int,
     rope_positions_ptr: int | None = None,
     head_mode: str | None = _QSA_HEAD_PARENT,
+    h256_mode: str = "parent",
     batched_selection: bool = True,
     qsa_wave32: bool = True,
     stream: int = 0,
@@ -7902,6 +7924,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         index_rotary_dim=index_rotary_dim,
         rope_positions_ptr=rope_positions_ptr,
         head_mode=head_mode,
+        h256_mode=h256_mode,
         batched_selection=batched_selection,
         qsa_wave32=qsa_wave32,
         stream=stream,
@@ -9070,6 +9093,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
     qsa_prefill_head_mode: str = "parent"
+    qsa_h256_prefill_mode: str = "parent"
     # QSA chunk selection owner: True runs the batched score/top-k/expand path,
     # False the strict per-row fallback. The prefill chunk path is its only
     # reader and forwards it to the token mixer, so a diagnostic binds the
@@ -10906,6 +10930,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
+                    h256_mode=self.qsa_h256_prefill_mode,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     batched_selection=self.qsa_batched_selection,
                     qsa_wave32=self.qsa_wave32,

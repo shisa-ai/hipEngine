@@ -336,6 +336,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.q51_register_cache = False
         self.q51_row_publish = False
         self.forkb_grouped_down = False
+        self.qsa_h256_prefill_mode = "parent"
         self.q5k_row4_prefill = False
         self.q8_down_row4_prefill = False
         self.q8_down_bundle_prefill = False
@@ -1091,6 +1092,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
         getattr(generator, "dense_mmq_vec4_enabled", False))
     runner.qsa_prefill_head_mode = str(
         getattr(generator, "qsa_prefill_head_mode", "parent"))
+    runner.qsa_h256_prefill_mode = str(
+        getattr(generator, "qsa_h256_prefill_mode", "parent"))
     runner.qsa_ordered_decode_v2 = bool(
         getattr(generator, "qsa_ordered_decode_v2", False))
     runner.gdn_prefill_variant = getattr(generator, "gdn_prefill_variant", None)

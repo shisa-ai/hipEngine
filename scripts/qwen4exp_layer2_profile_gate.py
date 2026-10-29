@@ -50,7 +50,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     qsa_ordered_decode_v2,
-    qsa_prefill_head_mode,
+    qsa_prefill_head_mode, qsa_h256_prefill_mode,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -101,6 +101,8 @@ class CandidateSpec:
     # the base profile published; the gate binds a non-None value with
     # ``qsa_prefill_head_mode`` around the measured rows and restores it after.
     qsa_prefill_head_mode: str | None = None
+    # None preserves the base profile; parent, wave or page256 binds one arm.
+    qsa_h256_prefill_mode: str | None = None
     # Explicit GDN serial-prefill owner for this arm, same protocol. ``None``
     # keeps the base profile's published variant (the register parent on a
     # strict base); a wide/narrow name binds that leaf for the measured rows.
@@ -162,7 +164,7 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
-    "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
+    "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "GR_WIDE",
 )
 # The QSA prefill head grouping, the ordered-v2 sparse decode leaf and the GDN
@@ -297,6 +299,7 @@ CANDIDATES = {
         # arm closes its scope explicitly: on the UD base that is a no-op, and on
         # any lane that publishes a scope it keeps the arm conservative.
         qsa_ordered_decode_v2=False,
+        qsa_h256_prefill_mode="parent",
         gdn_peer_prefill=False,
     ),
     # The risk multiplier as a CONFIGURATION.  The production repair is a
@@ -828,8 +831,7 @@ CANDIDATES["q8_blockscale_guarded_mmq"] = replace(
 CANDIDATES["q8_blockscale_guarded_quad"] = replace(
     CANDIDATES["q8_blockscale_guarded"], name="q8_blockscale_guarded_quad",
     scenario_id="qwen4exp-q8-blockscale-guarded-qsa-quad",
-    environment={**CANDIDATES["q8_blockscale_guarded"].environment,
-                 "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256"},
+    qsa_h256_prefill_mode="page256",
     qsa_prefill_head_mode="quad",
 )
 CANDIDATES["q8_blockscale_guarded_restore"] = replace(
@@ -1726,6 +1728,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         print(json.dumps({"t16_populate": t16_hook}), flush=True)
     bound_environment: dict[str, str | None] = {}
     dispatch_stack = ExitStack()
+    if candidate_spec.qsa_h256_prefill_mode is not None:
+        dispatch_stack.enter_context(qsa_h256_prefill_mode(
+            candidate_generator.runner, candidate_spec.qsa_h256_prefill_mode))
     if candidate_spec.qsa_prefill_head_mode is not None:
         # Request-local state, so the arm is bound around the measured rows and
         # the profile's own decision comes back when the stack unwinds.

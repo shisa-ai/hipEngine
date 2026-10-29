@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, qsa_h256_prefill_mode
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -155,11 +155,23 @@ def set_flags(flags):
             os.environ[key] = value
 
 
-def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags):
+def h256_arm_mode(arm):
+    """Keep strict QSA arms on the parent without process-wide selectors."""
+    if arm in CANDIDATES:
+        return CANDIDATES[arm].qsa_h256_prefill_mode
+    if arm == "all_flags_strict" or arm == "q8down_off_without_qsa":
+        return "parent"
+    if arm.startswith("strict_plus_") and arm != "strict_plus_qsa":
+        return "parent"
+    return None
+
+
+def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
+                     *, h256_mode=None):
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with phase_peer_scope(runner, prefill_flags):
+    with phase_peer_scope(runner, prefill_flags), qsa_h256_prefill_mode(runner, h256_mode):
         runner.reset()
         result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
@@ -265,6 +277,8 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(qsa_h256_prefill_mode(
+                    generator.runner, h256_arm_mode(arm)))
                 if serial_gdn({**bound, **ARMS[arm]}):
                     arm_scope.enter_context(
                         gdn_peer_prefill(generator.runner, False))
@@ -278,7 +292,9 @@ def main():
                             if arm == "production_prefill_strict_decode":
                                 pre, dec = dec, pre
                             candidate.extend(split_trajectory(
-                                generator.runner, tokens[key], forced, pre, dec))
+                                generator.runner, tokens[key], forced, pre, dec,
+                                h256_mode=("parent" if arm == "strict_prefill_production_decode"
+                                           else None)))
                         else:
                             run = _candidate_trajectory(generator.runner, tokens[key], forced)
                             candidate.extend(r["logits"] for r in run)

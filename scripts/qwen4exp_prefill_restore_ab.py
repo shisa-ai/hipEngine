@@ -27,7 +27,7 @@ from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
 )
-from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode
+from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode, qsa_h256_prefill_mode
 from scripts.qwen4exp_journey_localize import set_flags
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace, workspace_description
@@ -39,7 +39,6 @@ from scripts.qwen4exp_q8_repair_depth_gate import (
 SHARED_DECODE_SAFE_FLAGS = frozenset(
     "HIPENGINE_QWEN4_EXP_" + flag for flag in (
         "Q8_0_SELECTED_WMMA_DOWN", "Q8_DOWN_VARIANT",
-        "QSA_H256_WAVE_PREFILL",
         "QSA_ORDERED_DECODE",
     )
 )
@@ -271,6 +270,10 @@ def main():
                           for name in args.candidate}
         report["arm_head_modes"] = {
             name: mode for name, mode in arm_head_modes.items() if mode is not None}
+        arm_h256_modes = {name: CANDIDATES[name].qsa_h256_prefill_mode
+                          for name in args.candidate}
+        report["arm_h256_modes"] = {
+            name: mode for name, mode in arm_h256_modes.items() if mode is not None}
         original_step = runner.step
         last = {}
         names = ("moe_graph_cache", "layer_graph_cache")
@@ -299,6 +302,7 @@ def main():
             workspace = workspaces.get(arm)
             with (
                 qsa_prefill_head_mode(runner, arm_head_modes.get(arm)),
+                qsa_h256_prefill_mode(runner, arm_h256_modes.get(arm)),
                 use_workspace(runner, workspace)
                 if workspace is not None else nullcontext(),
             ):

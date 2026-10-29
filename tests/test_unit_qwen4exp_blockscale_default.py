@@ -19,7 +19,7 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT"] == (
         "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out")
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
+    assert generator.qsa_h256_prefill_mode == "page256"
     # The four-head prefill leaf is request-local runner state, not an env
     # switch: the binder publishes the plan's own selection.
     assert generator.qsa_prefill_head_mode == "quad"

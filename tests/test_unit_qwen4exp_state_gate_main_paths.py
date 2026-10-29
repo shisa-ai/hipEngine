@@ -28,10 +28,15 @@ from hipengine.kernels.registry import (
 )
 from scripts import qwen4exp_row4_state_gate as gate
 
-PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4")
+PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4",
+            "qsa-h256-wave", "qsa-h256-page256")
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    "qsa-h256-wave": KernelKey(
+        "hip_gfx1151", "qsa_sparse_attention", "bf16_kv", "strict_h256_wave_rows_spans"),
+    "qsa-h256-page256": KernelKey(
+        "hip_gfx1151", "qsa_sparse_attention", "bf16_kv", "strict_h256_page256_wave_rows_spans"),
     "q5k-row4": KernelKey(
         "hip_gfx1151", "linear", "gguf_q5_k",
         "selected_grouped_row4_gemv_bf16_bf16_out"),
@@ -83,6 +88,7 @@ def _runner(**overrides):
         "q51_register_cache": True,
         "q51_row_publish": True,
         "q5k_row4_prefill": True,
+        "qsa_h256_prefill_mode": "page256",
         "q8_down_row4_prefill": True,
         "q8_down_bundle_prefill": True,
         "q8_down_register": True,
@@ -201,7 +207,11 @@ def test_main_records_the_runner_owned_premise(
     report = _run_main(monkeypatch, tmp_path, package, _runner())
     control = report["selection_control"]
     assert control["scope"] == "per measured run; restored on exit"
-    if package == "q5k-row4":
+    if package.startswith("qsa-h256-"):
+        assert control["runner_field"] == "qsa_h256_prefill_mode"
+        assert control["before"] == "parent"
+        assert control["after"] == ("wave" if package == "qsa-h256-wave" else "page256")
+    elif package == "q5k-row4":
         assert control["runner_field"] == "q5k_row4_prefill"
         assert control["before"] is False and control["after"] is True
     elif package == "q51-fold-pair":

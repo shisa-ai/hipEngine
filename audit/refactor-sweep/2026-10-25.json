@@ -12022,9 +12022,17 @@
       "start_line": 9510,
       "end_line": 9520,
       "sha256": "375d4266d56f2d942158f063c20b7d445cf36b107116e811feb47e91ccd433fa",
-      "status": "pending",
-      "evidence": [],
-      "subitems": []
+      "status": "deferred",
+      "evidence": [
+        "worklog/entries/20261029T163722.751625Z-cleanup-refactor-r0412-h256-prefill-2bd929.md",
+        "tests/test_unit_qwen4exp_qsa_h256_scope.py",
+        "docs/REFACTOR.md#r0412--h256-generic-wave-diagnostic-retirement"
+      ],
+      "subitems": [
+        {"text": "Replace process selector and preserve rollback", "status": "fixed-runner-owned-profile-and-diagnostic-scopes"},
+        {"text": "Preserve score-product boundary and strict/decode parents", "status": "unchanged-no-kernel-arithmetic-edit"},
+        {"text": "Generic-wave bisection retirement and decode optimization", "status": "deferred-explicit-decision-and-profile-first-clearing-action"}
+      ]
     },
     {
       "id": "R0413",

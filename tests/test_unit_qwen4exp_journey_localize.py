@@ -9,6 +9,34 @@ from scripts.qwen4exp_journey_localize import (
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 
 
+def test_h256_arm_bindings_preserve_strict_and_production_choices():
+    from scripts.qwen4exp_journey_localize import h256_arm_mode
+
+    for arm in ("production_conservative", "all_flags_strict",
+                "strict_plus_gdn", "strict_plus_matrix", "strict_plus_dense",
+                "q8down_off_without_qsa"):
+        assert h256_arm_mode(arm) == "parent"
+    for arm in ("bound", "strict_plus_qsa", "gdn_flags_strict",
+                "q8down_off_without_matrix"):
+        assert h256_arm_mode(arm) is None
+
+
+def test_split_h256_scope_restores_on_failure(monkeypatch):
+    from scripts import qwen4exp_journey_localize as module
+
+    def fail(ids):
+        assert runner.qsa_h256_prefill_mode == "parent"
+        raise RuntimeError("prefill failed")
+
+    runner = SimpleNamespace(qsa_h256_prefill_mode="page256",
+                             reset=lambda: None, prefill=fail)
+    monkeypatch.setattr(module, "clear_arm_graphs", lambda runner: None)
+    monkeypatch.setattr(module, "set_flags", lambda flags: None)
+    with pytest.raises(RuntimeError, match="prefill failed"):
+        module.split_trajectory(runner, [1], [], {}, {}, h256_mode="parent")
+    assert runner.qsa_h256_prefill_mode == "page256"
+
+
 def test_localization_disables_only_named_families():
     assert ARMS["bound"] == {}
     assert ARMS["decode_strict"] == {PREFIX + "Q4_DP4A64": "0"}

@@ -45,8 +45,8 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
-    if package == "q5k-row4":
-        return  # route_scope binds the runner-local gate/up choice.
+    if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256"}:
+        return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
         return
@@ -115,7 +115,7 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # a request-local package returns above, so an empty name here would be
         # a wiring bug rather than a missing key.
         assert flag, f"{package} has no process key to bind"
-        environment[flag] = "page256" if package=="qsa-h256-page256" and enabled=="1" else enabled
+        environment[flag] = enabled
 
 
 @contextmanager
@@ -190,9 +190,7 @@ def main():
                 raise ValueError("heldout exceeds runner capacity")
             gate_cases.append({"id": row["id"], "category": row["category"],
                                "prompt_tokens": len(tokens), "prompt_token_ids": tokens})
-    flag = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
-    if args.route_package == "q5k-row4":
-        flag = ""
+    flag = ""
     if args.route_package in {"q4-bundle", "prefill-bundle"}:
         flag = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
     if args.route_package == "q51-pair":
@@ -520,6 +518,13 @@ def main():
             report["sidecar_bytes"] = generator.runner._q8_mmq_weight_sidecars.nbytes
             report["sidecar_count"] = len(generator.runner._q8_mmq_weight_sidecars.mapping)
             os.environ[flag] = "0"
+        if args.route_package in {"qsa-h256-wave", "qsa-h256-page256"}:
+            assert generator.runner.qsa_h256_prefill_mode == "page256"
+            report["selection_control"] = {
+                "runner_field": "qsa_h256_prefill_mode", "before": "parent",
+                "after": "wave" if args.route_package == "qsa-h256-wave" else "page256",
+                "scope": "per measured run; restored on exit",
+            }
         if args.route_package == "q5k-row4":
             assert generator.runner.q5k_row4_prefill is True
             report["selection_control"] = {
@@ -713,7 +718,7 @@ def main():
             assert os.environ[flag] == "1", "production must select the retained route without an override"
         if args.route_package == "prefill-bundle":
             assert os.environ[flag] == "1"
-            assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
+            assert generator.runner.qsa_h256_prefill_mode == "page256"
         if args.include_heldouts:
             report["heldout_suite"] = {
                 "path": str(heldout_path),
@@ -741,9 +746,6 @@ def main():
                 narrow_enabled[0] = enabled == "1"
                 apply_state_gate_mode(generator.runner,args.route_package,enabled,flag)
                 observed_chunks.clear()
-                if args.route_package == "prefill-bundle":
-                    os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = (
-                        "page256" if enabled == "1" else "0")
                 start_calls = calls[0]
                 start_mapped=mapped_calls[0]
                 start_owners = dict(mapped_owner_calls)
@@ -992,7 +994,6 @@ def main():
             register(gdn_narrow_key, gdn_narrow_original, replace=True)
         if qsa_original is not None:
             register(qsa_key, qsa_original, replace=True)
-            os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = "page256"
         generator.close()
         report["memory_after_close"] = memory_stats()
         if narrow_candidate is not None or gdn_narrow_key is not None:

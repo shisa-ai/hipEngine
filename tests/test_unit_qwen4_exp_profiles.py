@@ -351,6 +351,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     # scope now, so a leftover process value is inert and stays untouched.
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "0")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL", "stale")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL", "stale")
     production.binder(production_generator, production)
     assert configure_calls == [True]
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
@@ -420,7 +421,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     large_pair = _selection_map(production)[("moe_linear", "prefill_rows_ge512_k640_exact_grouped_q5_1_down")]
     assert large_pair["selected_variant"] == "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
     assert large_pair["strict_fallback_variant"] == pair["strict_fallback_variant"]
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
+    assert production_generator.qsa_h256_prefill_mode == "page256"
+    assert fake_runner.qsa_h256_prefill_mode == "page256"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "stale"
     # The Q8_0 down ladder rungs are request-local runner state published from
     # the binder's own fallback policy, so no process key carries them.
     assert production_generator.q8_down_row4_prefill is True
@@ -579,7 +582,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT" not in os.environ
     assert strict_generator.qsa_prefill_head_mode == "parent"
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
+    assert strict_generator.qsa_h256_prefill_mode == "parent"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "stale"
     for retired in RETIRED_DS4_MMQ_ENV:
         assert retired not in os.environ
     # The retired peer gate keeps the leftover value the production bind above

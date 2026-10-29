@@ -106,15 +106,14 @@ def test_the_restored_flags_are_not_in_the_disabled_set(module):
 
     recovery = set(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
     restored = set(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
-    # The QSA prefill head grouping, the ordered-v2 sparse decode leaf and the
-    # GDN peer prefill layer scope are request-local runner state now, so they
-    # are neither recovery flags nor restored environment values.
-    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 11
-    assert len(PRODUCTION_Q8_QSA_RESTORED_FLAGS) == 4
-    # Three selectors are restored; Q8_DOWN_VARIANT is a companion value.
+    # H256 prefill, head grouping, ordered-v2 decode and GDN peer scope
+    # are runner-owned, not recovery or restored environment values.
+    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 10
+    assert len(PRODUCTION_Q8_QSA_RESTORED_FLAGS) == 3
+    # Two selectors are restored; Q8_DOWN_VARIANT is a companion value.
     # Q4 decode now keeps the strict owner after the long-context failure.
     assert "Q4_DP4A64" in recovery - restored
-    assert len(restored & recovery) == 3
+    assert len(restored & recovery) == 2
     assert restored - recovery == {"Q8_DOWN_VARIANT"}
     still_disabled = [flag for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
                       if flag not in restored]
