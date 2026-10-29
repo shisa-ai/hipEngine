@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import laguna_gate_doublebuf_ab as comparison
+from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 
 
 @pytest.mark.parametrize("values,message", [
@@ -32,8 +33,8 @@ def test_mode_parser_preserves_generalized_arms_and_owns_default_copy():
 @pytest.mark.parametrize("mode,expected", [
     ("mmq128x32_d8_f32_wavecols_direct_doublebuf", [("gate", "mmq128x32_d8_f32_wavecols_direct_doublebuf")]),
     ("selected_down:custom_down", [("down", "custom_down")]),
-    ("q6_wmma_current", [("activation", False), ("weight", False)]),
-    ("q6_wmma_prefetch", [("activation", False), ("weight", True)]),
+    ("q6_wmma_current", [("q6_sums", False), ("activation", False), ("weight", False)]),
+    ("q6_wmma_prefetch", [("q6_sums", False), ("activation", False), ("weight", True)]),
     ("q6_wmma_prefetch_activation", [("weight", True), ("activation", True), ("q6_sums", False)]),
     ("q6_wmma_precomputed_sums", [("weight", True), ("activation", True), ("q6_sums", True)]),
     ("q4_precomputed_sums_off", [("q4_sums", False)]),
@@ -90,3 +91,22 @@ def test_runtime_comparison_captures_complete_state_and_closes_child(monkeypatch
         assert ("sync",) in calls
     assert calls[:2] == [("child", 3), ("mode", "custom_gate")]
     assert calls[-1] == ("close",)
+
+
+@pytest.mark.parametrize("mode,expected", [
+    ("q6_wmma_current", (False, False, False)),
+    ("q6_wmma_prefetch", (True, False, False)),
+    ("q6_wmma_prefetch_activation", (True, True, False)),
+    ("q6_wmma_precomputed_sums", (True, True, True)),
+])
+@pytest.mark.parametrize("initial", [(True, True, True), (False, False, False)])
+def test_q6_comparison_real_setters_keep_sum_producer_and_consumer_consistent(mode, expected, initial):
+    session = object.__new__(LagunaGGUFResidentSession)
+    session.q6_qmicro_planar = True
+    (session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,
+     session.q6_precomputed_activation_sums) = initial
+    comparison._apply_mode(session, mode)
+    assert (
+        session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,
+        session.q6_precomputed_activation_sums,
+    ) == expected

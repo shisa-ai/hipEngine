@@ -9806,33 +9806,33 @@
       "start_line": 7431,
       "end_line": 7473,
       "sha256": "bdebc189846d65eef475d4e33e097b240e73e4dbfb793948246e36c079121dda",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-comparison-sum-policy-repaired-bottom-owner-migration",
+      "evidence": ["Real setter-state RED reproduced current/weight-only A/B arms leaving sums enabled after activation prefetch off; repaired both to disable sums first. Four Q6 arms tested from both default-on/off states. Real caller/wrapper tests bind half-sum producer and matching four consumer symbols, raw pointer/stream ownership. Focused bundle 134 pass plus four added real-caller checks (138 combined). Production runtime/setters/defaults/kernels unchanged. Bottom R0331 owns coordinated constructor/setter/generalized-comparison/leaf/fixture migration and local actual-weight/public validation resource."],
       "subitems": [
         {
           "line": 7433,
           "text": "- Added 2026-07-27 as gfx1151",
-          "status": "pending"
+          "status": "resolved-current-prefetch-comparison-contracts-bound"
         },
         {
           "line": 7439,
           "text": "- The candidate overlaps the next K32 planar-qmicro record plus `d`/scale",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7445,
           "text": "- Clean selector-unset publication is satisfied at **636.073 tok/s** pp512,",
-          "status": "pending"
+          "status": "deferred-bottom-production-reference-owner-migration"
         },
         {
           "line": 7452,
           "text": "- The retained successor adds `LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION`, the",
-          "status": "pending"
+          "status": "deferred-bottom-activation-prefetch-owner-migration-history-preserved"
         },
         {
           "line": 7461,
           "text": "- The published exact successor adds",
-          "status": "pending"
+          "status": "partial-comparison-sums-repaired-bottom-producer-consumer-migration"
         }
       ]
     },

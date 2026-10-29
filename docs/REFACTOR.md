@@ -3430,49 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q6 WMMA weight-prefetch rollback
-
-- Added 2026-07-27 as gfx1151
-  `LAGUNA_Q6_WMMA_PREFETCH_WEIGHT`, the optional
-  `q6_wmma_prefetch_weight` resident-session field/setter, and two
-  one-purpose benchmark modes. It applies only to the admitted
-  planar-qmicro/compact/half-row/skip-padded/integer-WMMA/activation-hoist
-  row64 specialization.
-- The candidate overlaps the next K32 planar-qmicro record plus `d`/scale
-  global loads with current fragment compute. It adds no resident bytes,
-  second LDS plane, arithmetic change, or scratch. The exact layer leaf
-  improves **4.518 -> 4.104 ms (-9.156%)**; seven complete-state pairs
-  improve **618.294 -> 623.900 tok/s (+0.907%)**. The resource cost is
-  VGPR **96 -> 104** with LDS fixed at 5,120 bytes.
-- Clean selector-unset publication is satisfied at **636.073 tok/s** pp512,
-  and the subsequent all-family trace cuts the exact 23-call Q6 body
-  **112.746 -> 101.963 ms (-9.564%)**. Collapse the prefetch and
-  already-satisfied activation-hoist selectors into the unconditional
-  gfx1151 production specialization with the next retained Q6 body or
-  post-campaign cleanup; retain the non-prefetch template only for unmeasured
-  backends and non-production geometries.
-- The retained successor adds `LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION`, the
-  `q6_wmma_prefetch_activation` session field/setter, and a candidate wrapper
-  solely for A/B rollback. It improves clean pp512
-  **636.073 -> 639.114 tok/s** and the 23-call Q6 body
-  **101.963 -> 100.367 ms**, with VGPR104 -> 112 and unchanged
-  LDS/scratch/resident bytes. Collapse weight prefetch, activation prefetch,
-  and activation hoist into one unconditional gfx1151 production symbol after
-  the current 700 campaign no longer needs the three independent bisection
-  points; preserve one non-prefetch fallback for unmeasured geometries.
-- The published exact successor adds
-  `LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS`, a resident-session rollback, and
-  distinct producer/consumer exports. It reuses Q6's unused D4 raw-sum field
-  for two `int16` K16 quant sums without changing the 160-byte ABI. The
-  actual inclusive leaf improves **4.1501 -> 4.1162 ms (-0.818%)** and 11
-  complete-state pp512 pairs save **1.407 ms** at the paired median with
-  **6/11 wins**. Clean selector-unset 512/1K/4K subsequently improves
-  **645.803/575.942/468.311 -> 647.207/576.799/468.431 tok/s**, while the
-  traced 23-call Q6 body falls **100.367 -> 99.459 ms (-0.905%)**. Both
-  promotion gates pass. Keep the rollback through the current 700 campaign,
-  then collapse this and the three older Q6 WMMA selectors into one
-  unconditional gfx1151 production symbol.
-
 ## Laguna Q4 raw-nibble P8 prefetch rollback
 
 - Added 2026-07-27 as gfx1151 mode
@@ -10423,6 +10380,38 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0331 — Laguna Q6 prefetch/sum comparison ownership
+
+`q6_wmma_prefetch_weight`, `q6_wmma_prefetch_activation` and
+`q6_precomputed_activation_sums` remain live constructor/setter controls in the
+generalized runtime A/B, qmicro leaf and layout/staging comparisons. gfx1151
+enables all three on its planar route. Later features require earlier ones;
+precomputed sums must agree between activation producer and down consumer.
+R0330 owns the shared integer-WMMA/hoist primitive-reference migration.
+
+The generalized A/B's `q6_wmma_current` and `q6_wmma_prefetch` arms previously
+left sums enabled when disabling activation prefetch. Real setter-state tests
+reproduce those inconsistent states; both arms now disable sums first. The
+four Q6 arms select distinct consistent weight/activation/sum states from
+both enabled and disabled starting policies. Real caller/wrapper host tests
+bind half-sum production and matching consumer symbol, pointers and streams.
+Runtime setters, backend defaults, arithmetic and kernels are unchanged.
+July publication/trace rows remain historical evidence in the sweep source and
+artifacts; the old campaign-name condition no longer describes the blocker.
+
+**Remaining work:** replace public controls with explicit production/reference
+ownership across constructor, setters, generalized A/B/leaf and numerical
+fixtures. Preserve layout/staging harness prerequisites and result readers.
+Actual-weight/public validation shares the local Laguna model resource blocker
+recorded in R0313–R0320, not a missing-measurement admission rule.
+
+**Clearing action:** run runtime-mode, WMMA-reference, activation/layout,
+runner and full MoE numerical contracts; then execute the generalized comparison
+and public `LLM.generate()` with an available Laguna artifact. Confirm matching
+sum producer/consumer, route/default selection, exact full state and cleanup
+before retiring the three public controls. Keep non-prefetch reference bodies
+needed by other declared shapes and comparisons.
 
 ### R0330 — Laguna Q6 integer-WMMA reference ownership
 
