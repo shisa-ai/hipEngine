@@ -1,13 +1,30 @@
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from hipengine.speculative.mtp_budget import (
+    MtpBudgetCycleResult,
+)
+from scripts.mtp_budget_diagnostics import (
     MtpAdaptiveBudgetConfig,
     MtpAdaptiveBudgetPolicy,
-    MtpBudgetCycleResult,
     MtpBudgetSequencePolicy,
 )
+
+
+def test_runtime_budget_contract_exports_no_benchmark_controllers() -> None:
+    import hipengine.speculative as speculative
+    import hipengine.speculative.mtp_budget as contract
+
+    for name in ("MtpAdaptiveBudgetConfig", "MtpAdaptiveBudgetPolicy", "MtpBudgetSequencePolicy"):
+        assert not hasattr(contract, name)
+        assert not hasattr(speculative, name)
+    tree = ast.parse(Path(contract.__file__).read_text())
+    imports = [node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+    assert not any(module and module.startswith("scripts") for module in imports)
 
 
 def _record(

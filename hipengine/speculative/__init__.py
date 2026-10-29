@@ -65,11 +65,8 @@ from hipengine.speculative.frontier import (
     TargetFrontier,
 )
 from hipengine.speculative.mtp_budget import (
-    MtpAdaptiveBudgetConfig,
-    MtpAdaptiveBudgetPolicy,
     MtpBudgetCycleResult,
     MtpBudgetPolicy,
-    MtpBudgetSequencePolicy,
 )
 from hipengine.speculative.mtp import (
     MTP_CHAIN_CANDIDATE_BUDGETS,
@@ -318,11 +315,8 @@ __all__ = [
     "SpecGraphStageCache",
     "describe_failure",
     "MTP_CHAIN_CANDIDATE_BUDGETS",
-    "MtpAdaptiveBudgetConfig",
-    "MtpAdaptiveBudgetPolicy",
     "MtpBudgetCycleResult",
     "MtpBudgetPolicy",
-    "MtpBudgetSequencePolicy",
     "MissingMtpWeightsError",
     "MtpChainCompiler",
     "MtpDraftProvider",

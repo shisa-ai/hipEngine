@@ -82,7 +82,7 @@ supported updates of the requested existing result cells.
 | Consumer | Prompt priming | Rollback | Graph stages | Candidate depth |
 | --- | --- | --- | --- | --- |
 | PARO | Shared bounded hidden chunks; historical rows batch KV-only priming, final row computes a full prediction | Completed-checkpoint journal owns provider and target restore; spare-slot copy contains mutable state and cursors, not live KV | Shared verifier graph ownership binds split counts and allocation identities; eager is preferred after measured graph slowdown, while graph plans execute | Public adapter supports depths 1–3 and prefers two; the shared planner bounds each cycle by output/context/resource room |
-| GGUF dense | Streaming chunk sink, carried hidden row and prefix checkpoints | Shared journal owns single-request provider/target undo and retryable release; packed routes retain owner-local checkpoints | Shared proposal-graph lifecycle cache; native target stage wrappers | Shared planner consumes declared capability; standalone adaptive policy also exists |
+| GGUF dense | Streaming chunk sink, carried hidden row and prefix checkpoints | Shared journal owns single-request provider/target undo and retryable release; packed routes retain owner-local checkpoints | Shared proposal-graph lifecycle cache; native target stage wrappers | Shared planner consumes declared capability; standalone benchmark controllers use a typed session seam |
 | GGUF MoE | Request-sized target-hidden and draft-KV buffers; shared prompt chunk ledger | Transactional target and provider checkpoints | Compatible native graph buckets; temporary boundary transitions resume MTP | Shared planner selects the deepest legal provider/bucket depth |
 | Qwen4 | Bounded cache-only prompt workspace with final full predictor row | Reusable device transaction snapshot and KV/index cursors | Model-specific execution, not currently a native-cycle graph consumer | Provider supports chains up to four candidates |
 | Gemma | Assistant starts from target hidden; no historical draft KV cache | Attention cursors rewind; no device-state copy to eliminate | One-token AR graph owner is not used by multi-row MTP verification | Non-staged provider bounds its configured depth to 1–8 and each cycle to remaining outputs minus one |
@@ -103,8 +103,10 @@ cycle results and the state journal, `hipengine/speculative/graph_stage.py` for
 bounded graph-cache ownership, `hipengine/speculative/native_cycle.py`
 and `hipengine/speculative/native_cycle_graph.py` for device stages and graph
 binding, and `hipengine/speculative/policy.py` for capability-driven candidate
-selection. `hipengine/speculative/mtp_budget.py` is a separate optional,
-timing-adaptive policy with a dense-session injection seam, not a public default.
+selection. `hipengine/speculative/mtp_budget.py` holds the observation and
+policy protocol for a dense-session diagnostic seam. Concrete adaptive and
+sequence controllers live in `scripts/mtp_budget_diagnostics.py`; runtime does
+not import them, and they do not select public serving defaults.
 These owners provide the common machinery without parallel engines.
 The state journal has real PARO, Qwen4 and dense GGUF consumers; it is not an
 unused rollback record.

@@ -11398,28 +11398,28 @@
       "start_line": 8708,
       "end_line": 8727,
       "sha256": "fa4c523bf7047066cd383b42b6d78b83bb8d971bc347d874502be7a744a3e6cc",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-seam-ownership-controllers-extracted",
+      "evidence": ["Moved all concrete sequence/adaptive controller classes AST-identically to scripts/mtp_budget_diagnostics.py; runtime module/package exports only cycle observation and policy protocol. Dense suite import migrated with every function/class AST unchanged, CLI diagnostics and metadata preserved. Live session policy seam/CLI retention decision moved to bottom with transition/lifecycle clearing action; no fixed/default, algorithm or policy change. RED import missing then314focused policy/suite/session/MTP2 tests pass; help/docs/audit/test-tier/diff gates pass. Worklog worklog/entries/20261029T081135.159700Z-cleanup-refactor-r0388-budget-diagnostics-b6c161.md."],
       "subitems": [
         {
           "line": 8710,
           "text": "- **State:** rejected for promotion; retained only as explicit diagnostic and",
-          "status": "pending"
+          "status": "resolved-benchmark-implementation-outside-runtime"
         },
         {
           "line": 8712,
           "text": "- **Paths:** `hipengine/speculative/mtp_budget.py`, optional `budget_policy` in",
-          "status": "pending"
+          "status": "resolved-concrete-controllers-extracted-contract-kept"
         },
         {
           "line": 8715,
           "text": "- **Why retained:** the request-owned sequence policy is the first real gfx1151",
-          "status": "pending"
+          "status": "resolved-transition-diagnostics-preserved-no-algorithm-change"
         },
         {
           "line": 8720,
           "text": "- **Removal trigger:** before exposing adaptive depth in public generation,",
-          "status": "pending"
+          "status": "deferred-supported-diagnostic-seam-or-driver-migration"
         }
       ]
     },

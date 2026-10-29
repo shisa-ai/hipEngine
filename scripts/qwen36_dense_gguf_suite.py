@@ -44,7 +44,7 @@ from hipengine.runtime.qwen35_gguf_nextn import (
     borrow_qwen35_gguf_nextn_fallback_weights,
 )
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
-from hipengine.speculative.mtp_budget import (
+from scripts.mtp_budget_diagnostics import (
     MtpAdaptiveBudgetConfig,
     MtpAdaptiveBudgetPolicy,
     MtpBudgetSequencePolicy,

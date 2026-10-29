@@ -3430,26 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF-OI2 — default-off adaptive MTP budget diagnostic (2026-08-25)
-
-- **State:** rejected for promotion; retained only as explicit diagnostic and
-  transition-contract infrastructure.
-- **Paths:** `hipengine/speculative/mtp_budget.py`, optional `budget_policy` in
-  `runtime/qwen35_gguf_mtp.py`, and `--budget-sequence` / `--adaptive-budget`
-  in `scripts/qwen36_dense_gguf_suite.py`.
-- **Why retained:** the request-owned sequence policy is the first real gfx1151
-  proof of all nine B1/B2/B3 transitions over independent proposal/target graph
-  buckets, including reject/partial/full outcomes and clean teardown. The EMA
-  controller supplies reproducible negative evidence without prompt/token
-  branches, but loses to fixed B3 on aggregate/train/category economics.
-- **Removal trigger:** before exposing adaptive depth in public generation,
-  either (a) replace the rejected EMA controller with a deterministic policy
-  that beats the best fixed budget on full train and every heldout/category
-  gate, then remove the old controller/config, or (b) if no successor campaign
-  consumes variable-budget transitions, move the sequence owner into test
-  support and remove the runtime policy hook and benchmark CLI flags. Never
-  remove the fixed B1/B2/B3 graph buckets or strict transaction fallbacks.
-
 ## RF-OI4 — default-off post-norm draft-hidden diagnostic (2026-08-25)
 
 - **State:** immutable policy infrastructure retained; `post_output_norm`
@@ -11685,3 +11665,32 @@ Run `tests/test_unit_server_f1_concurrency_bench.py`,
 `tests/test_unit_gguf_ar_decode_control.py` and execution-profile contract tests
 before changing the comparison interface. This disposition adds no timing,
 numerical result, production promotion or runtime change.
+
+### R0388 — Dense budget diagnostic interface ownership
+
+The sequence schedule and timing-adaptive controller now live in
+`scripts/mtp_budget_diagnostics.py`, not the runtime speculative package. The
+dense suite still exposes `--budget-sequence` and `--adaptive-budget`; its
+fresh request-owned policy instances preserve existing comparison metadata.
+`hipengine/speculative/mtp_budget.py` contains only the observation record and
+policy protocol consumed by the optional dense-session injection seam.
+Production does not import the concrete diagnostic controllers. Fixed-budget
+serving, independent graph buckets and strict transaction fallbacks are
+unchanged. The historical adaptive result remains evidence of that experiment,
+not a reason to remove transition coverage or a claim about a new selector.
+
+**Decision needed:** retain the dense-session policy seam and CLI diagnostics as
+supported comparison interfaces, or replace them with a test/benchmark-owned
+cycle driver. The implementations have moved, but the call sites are live;
+do not remove their flags while silently dropping the requested experiment.
+Public candidate-depth selection is a separate shared-planner contract.
+
+**Clearing action:** migrate callers, request-start/choice/post-commit
+observations, output-tail clipping, cancellation ordering and summary metadata
+together if replacing the seam. Run `tests/test_unit_mtp_budget_policy.py`,
+`tests/test_unit_qwen36_dense_gguf_suite.py` and session cancellation/bucket
+checks, then exercise the suite with a complete B1/B2/B3 transition schedule,
+every acceptance prefix, reset/failure/cleanup and a public fixed-budget
+request. A new timing-adaptive default needs its own declared policy and
+comparison against fixed budgets; this extraction does not change or promote
+one. Keep the named diagnostic controls until their owner is decided.
