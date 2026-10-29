@@ -3430,26 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna fused selected-SiLU pack rollback
-
-- Added 2026-07-26 with the gfx1151
-  `LAGUNA_FUSED_SELECTED_SILU_PACK` capability and session-local
-  `set_fused_selected_silu_pack(...)` rollback. The exact composite preserves
-  the standalone SiLU BF16 boundary, reuses selected-down scratch, and leaves
-  the required standalone SiLU plus activation-quant primitive fallback
-  registered.
-- Primitive and production Q4_K/Q6_K MoE equality pass. Seven complete-state
-  pp512 pairs are exact and win **7/7**, paired geometric throughput improves
-  **0.651%**, and tracing removes 47 launches while cutting the target window
-  **10.301 -> 6.377 ms (-38.09%)**. Clean selector-unset publication then
-  improves **543.807 -> 546.100 tok/s (+0.422%)** and records the intended 47
-  fused/zero standalone calls. Keep the session rollback through one later
-  selected-down checkpoint.
-- After that trigger passes, remove the public setter while retaining the
-  backend capability/default and registered unfused numerical fallback. If
-  a later checkpoint regresses, disable the capability before another
-  selected-down experiment.
-
 ## Laguna Q6 compact-activation rollback
 
 - Added 2026-07-26 with gfx1151 `LAGUNA_Q6_COMPACT_ACTIVATION` and the optional
@@ -10587,6 +10567,32 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0323 — Laguna fused selected-SiLU pack comparison ownership
+
+`set_fused_selected_silu_pack(...)` still selects the two live arms of
+`scripts/laguna_fused_silu_pack_ab.py`; the MoE numerical fixture also requests
+the composite directly. gfx1151 enables it by default. The caller admits only
+compatible one-plane gate/up and down routes with enough selected-down scratch;
+a failed compact gate launch restores the strict route-major chain.
+
+Host contracts cover all declared mode pairs, scratch sizes below/at/away from
+the capacity boundary, fused deferral, fallback reduction/output ownership,
+stream/runtime forwarding and comparison child cleanup/state capture. Preserve
+the standalone SiLU BF16 boundary and registered activation-quant fallback.
+July numerical/promotion results remain in the pinned sweep source and original
+evidence; the old one-later-checkpoint wording is not a current removal gate.
+
+**Blocker:** retire the session setter with the live fused/unfused comparison,
+not by silently making both arms fused. The local Laguna artifact resource
+blocker described in R0313–R0320 also prevents public validation here.
+
+**Clearing action:** migrate the A/B caller to explicit composite/primitive
+ownership and retain its complete-state comparisons. Run fused-SiLU comparison,
+selected-MMQ and runner contracts plus primitive and full Q4/Q6 MoE oracles;
+then exercise public `LLM.generate()` with compatible and fallback shapes,
+confirming selected route, outputs and teardown. Keep the enabled capability
+and registered strict unfused chain.
 
 ### R0322 — Laguna Q6 resident-layout comparison migration
 

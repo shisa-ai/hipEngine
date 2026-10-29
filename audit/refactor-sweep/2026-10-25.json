@@ -9568,23 +9568,23 @@
       "start_line": 7267,
       "end_line": 7286,
       "sha256": "ed160f1abe799fe0375b82a47ea0054a5802f1c763e23cc130f6723e07d94fd0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-bottom-live-comparison-owner-public-resource",
+      "evidence": ["115 new host checks bind all declared fused/unfused mode pairs, scratch admission below/at/away from boundary, real caller deferral/fallback/output/stream ownership, borrowed comparison child and complete-state capture/cleanup. Original focused run 207 passed/6 new fixture failures; corrected fallback stub and changed file 115 passed, combining 213 cases. Live setter/harness plus GPU fixture preserved; bottom R0323 records coordinated migration/public artifact blocker. Runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7269,
           "text": "- Added 2026-07-26 with the gfx1151",
-          "status": "pending"
+          "status": "resolved-current-deferral-fallback-and-scratch-contracts-bound"
         },
         {
           "line": 7275,
           "text": "- Primitive and production Q4_K/Q6_K MoE equality pass. Seven complete-state",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7282,
           "text": "- After that trigger passes, remove the public setter while retaining the",
-          "status": "pending"
+          "status": "deferred-bottom-live-fused-unfused-comparison-migration"
         }
       ]
     },
