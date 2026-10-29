@@ -11996,9 +11996,25 @@
       "start_line": 9501,
       "end_line": 9509,
       "sha256": "e7c4b76bb764c89170e8dd2e2eba19aa17fd4e5bae22a977a0e709aa7b53bfb3",
-      "status": "pending",
-      "evidence": [],
-      "subitems": []
+      "status": "fixed",
+      "evidence": [
+        "worklog/entries/20261029T160110.035014Z-cleanup-refactor-r0411-q5k-row4-c65606.md",
+        "hipengine/runtime/qwen4_exp_runner.py:q5k_row4_prefill",
+        "tests/test_unit_qwen4exp_q5k_row4_scope.py",
+        "tests/test_gpu_qwen4exp_row4_runtime.py"
+      ],
+      "subitems": [
+        {
+          "line": 9503,
+          "text": "Production binder selection and strict fallback",
+          "status": "fixed-runner-owned-profile-publication-preserves-row-registry-preemptor-guards"
+        },
+        {
+          "line": 9505,
+          "text": "Keep rollback and reproducible A/B; replace process selector",
+          "status": "fixed-runner-scopes-and-harness-bindings-retire-env-reader-and-writer"
+        }
+      ]
     },
     {
       "id": "R0412",

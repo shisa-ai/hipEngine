@@ -45,6 +45,8 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
+    if package == "q5k-row4":
+        return  # route_scope binds the runner-local gate/up choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
         return
@@ -188,9 +190,9 @@ def main():
                 raise ValueError("heldout exceeds runner capacity")
             gate_cases.append({"id": row["id"], "category": row["category"],
                                "prompt_tokens": len(tokens), "prompt_token_ids": tokens})
-    flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
-            if args.route_package == "q5k-row4"
-            else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
+    flag = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
+    if args.route_package == "q5k-row4":
+        flag = ""
     if args.route_package in {"q4-bundle", "prefill-bundle"}:
         flag = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
     if args.route_package == "q51-pair":
@@ -518,7 +520,13 @@ def main():
             report["sidecar_bytes"] = generator.runner._q8_mmq_weight_sidecars.nbytes
             report["sidecar_count"] = len(generator.runner._q8_mmq_weight_sidecars.mapping)
             os.environ[flag] = "0"
-        if args.route_package in {"q5k-row4", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+        if args.route_package == "q5k-row4":
+            assert generator.runner.q5k_row4_prefill is True
+            report["selection_control"] = {
+                "runner_field": "q5k_row4_prefill", "before": False, "after": True,
+                "scope": "per measured run; restored on exit",
+            }
+        if args.route_package in {"q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.
@@ -669,9 +677,7 @@ def main():
             # the preemptors the scope closes.
             assert generator.runner.q8_mapped_down is True, (
                 "production must publish the token-major mapped down owner")
-            assert os.environ.get(
-                Q8_MAPPED_DOWN_MAP_GATE, "") not in {
-                "", "0"}, (
+            assert getattr(generator.runner, Q8_MAPPED_DOWN_MAP_GATE, False), (
                 "production must build the grouped row4 gate/up map")
             assert getattr(generator.runner, Q8_DOWN_FORKB_FIELD, False), (
                 "the Q8_0 expert-down chain gate must be on")

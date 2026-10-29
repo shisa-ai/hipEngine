@@ -28,10 +28,13 @@ from hipengine.kernels.registry import (
 )
 from scripts import qwen4exp_row4_state_gate as gate
 
-PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle")
+PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4")
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    "q5k-row4": KernelKey(
+        "hip_gfx1151", "linear", "gguf_q5_k",
+        "selected_grouped_row4_gemv_bf16_bf16_out"),
     "q51-fold128": KernelKey(
         "hip_gfx1151", "moe_linear", "gguf_q5_1",
         "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"),
@@ -48,10 +51,6 @@ LEAF_KEYS = {
 
 #: The leaf keys and binder keys of the packages that still own a process key.
 PROCESS_KEYED = {
-    "q5k-row4": (
-        KernelKey("hip_gfx1151", "linear", "gguf_q5_k",
-                  "selected_grouped_row4_gemv_bf16_bf16_out"),
-        "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"),
     "q51-pair": (
         KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1",
                   "selected_grouped_prefill_pair2_bf16_bf16_out"),
@@ -83,6 +82,7 @@ def _runner(**overrides):
         "q51_fold_pair_prefill": True,
         "q51_register_cache": True,
         "q51_row_publish": True,
+        "q5k_row4_prefill": True,
         "q8_down_row4_prefill": True,
         "q8_down_bundle_prefill": True,
         "q8_down_register": True,
@@ -201,7 +201,10 @@ def test_main_records_the_runner_owned_premise(
     report = _run_main(monkeypatch, tmp_path, package, _runner())
     control = report["selection_control"]
     assert control["scope"] == "per measured run; restored on exit"
-    if package == "q51-fold-pair":
+    if package == "q5k-row4":
+        assert control["runner_field"] == "q5k_row4_prefill"
+        assert control["before"] is False and control["after"] is True
+    elif package == "q51-fold-pair":
         assert control["runner_field"] == gate.Q51_FOLD_PAIR_FIELD
         assert control["rung"]["prerequisite"] == gate.Q51_FOLD128_FIELD
     elif package == "q8-down-bundle":

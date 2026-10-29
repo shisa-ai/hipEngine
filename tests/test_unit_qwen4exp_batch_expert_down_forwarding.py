@@ -65,6 +65,7 @@ POLICY_FIELDS = (
     "forkb_grouped_down",
     "q8_down_row4_prefill",
     "q8_down_bundle_prefill",
+    "q5k_row4_prefill",
 )
 #: The per-decision default a ``getattr`` fallback uses, which is the value an
 #: unbound owner carries: the production-only rungs stay off, the chain gates and
@@ -143,7 +144,7 @@ def test_the_production_batch_width_is_the_only_width_that_reaches_fold128():
     # gate is live wherever the grouped chain runs, which is every multi-row
     # width.
     assert QWEN4_EXP_MAX_BATCH_ROWS == 64
-    assert len(POLICY_FIELDS) == 12
+    assert len(POLICY_FIELDS) == 13
 
 
 def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
@@ -228,9 +229,10 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.forkb_grouped_down = 0
     runner.q8_down_row4_prefill = 1
     runner.q8_down_bundle_prefill = ""
+    runner.q5k_row4_prefill = False
     assert runner._expert_down_policy() == (
         True, True, False, False, True, True, True, False, False, False, True,
-        False)
+        False, False)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
     assert runner._expert_down_policy() == tuple(

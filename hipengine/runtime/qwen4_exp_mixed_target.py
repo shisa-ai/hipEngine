@@ -389,6 +389,7 @@ class Qwen4ExpMixedTargetPass:
                         batch, "q51_fold_pair_prefill", False),
                     forkb_grouped_down=getattr(
                         batch, "forkb_grouped_down", False),
+                    q5k_row4_prefill=getattr(batch, "q5k_row4_prefill", False),
                     q8_down_row4_prefill=getattr(
                         batch, "q8_down_row4_prefill", False),
                     q8_down_bundle_prefill=getattr(

@@ -3427,15 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp Q5_K grouped row4 candidate (2026-09-05)
-
-`selected_grouped_row4_gemv_bf16_bf16_out` is now selected by the production
-binder through `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL`; strict binds zero.
-The clean Framework all-category gate retained the path. Keep the post-binder
-opt-out for rollback and the reproducible A/B harness; replace it with direct
-manifest-driven selection when runtime profile dispatch owns this boundary.
-Always retain selected-GEMV strict fallback.
-
 ## Qwen4Exp H256 wave sparse rows (2026-09-05)
 
 Production selects page256 wave prefill through

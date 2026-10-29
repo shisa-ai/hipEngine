@@ -336,6 +336,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.q51_register_cache = False
         self.q51_row_publish = False
         self.forkb_grouped_down = False
+        self.q5k_row4_prefill = False
         self.q8_down_row4_prefill = False
         self.q8_down_bundle_prefill = False
         self.q8_down_register = False
@@ -1118,6 +1119,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q8_wmma_tiles = getattr(generator, "q8_wmma_tiles", None)
     runner.forkb_grouped_down = bool(
         getattr(generator, "forkb_grouped_down", False))
+    runner.q5k_row4_prefill = bool(getattr(generator, "q5k_row4_prefill", False))
     runner.q8_down_row4_prefill = bool(
         getattr(generator, "q8_down_row4_prefill", False))
     runner.q8_down_bundle_prefill = bool(

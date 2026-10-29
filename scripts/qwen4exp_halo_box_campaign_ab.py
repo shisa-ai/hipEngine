@@ -44,7 +44,7 @@ BEFORE_COMMIT = "0436e138b5fe6a43b1b1bae5df6c33fff2110148"
 FORKB_FIELD = "forkb_grouped_down"
 Q5_M1_FIELD = "q51_down_m1"
 PF13_FIELDS = (FORKB_FIELD, Q5_M1_FIELD)
-ROW4_ENV = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
 Q4_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
 Q51_PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
@@ -965,7 +965,7 @@ Q8_DOWN_CHAIN_GATES: tuple[str, ...] = ()
 #: The token-major mapped path's own prerequisite: the grouped row4 gate/up map
 #: this invocation builds. The arm fails loudly without it instead of measuring
 #: a neutral A/B.
-Q8_MAPPED_DOWN_MAP_GATE = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+Q8_MAPPED_DOWN_MAP_GATE = Q5K_ROW4_FIELD
 #: Owners that preempt the token-major mapped path. The routed F16 WMMA down and
 #: the Q8_0 WMMA down preempt the expert-down chains the same arm counts; the
 #: grouped Q5_K IU8 gate/up owner additionally sets ``grouped_prefill`` and keeps
@@ -1152,7 +1152,10 @@ def q8_mapped_down_control_record(*, runner=None, environment=os.environ):
                 None if runner is None
                 else getattr(runner, Q8_DOWN_FORKB_FIELD, None)),
         },
-        "mapped_gate_up_map": environment.get(Q8_MAPPED_DOWN_MAP_GATE),
+        "mapped_gate_up_map": {
+            "runner_field": Q8_MAPPED_DOWN_MAP_GATE,
+            "published_value": getattr(runner, Q8_MAPPED_DOWN_MAP_GATE, None),
+        },
     }
 
 
@@ -1376,13 +1379,12 @@ def q8_mapped_down_scope(*, environment=os.environ, runner=None):
     state and is required through ``runner``.
     """
 
-    closed = {"", "0", "false", "False"}
     if not getattr(runner, Q8_DOWN_FORKB_FIELD, False):
         raise ValueError(
             f"runner.{Q8_DOWN_FORKB_FIELD} must be on for the Q8_0 "
             "expert-down chain; without it the counted Q8_0 down leaf cannot "
             "launch")
-    if environment.get(Q8_MAPPED_DOWN_MAP_GATE, "") in closed:
+    if not getattr(runner, Q8_MAPPED_DOWN_MAP_GATE, False):
         raise ValueError(
             f"{Q8_MAPPED_DOWN_MAP_GATE} must be on for the token-major mapped "
             "down arm; without it the current call builds no row4 map and the "
@@ -1600,6 +1602,14 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError("dense-wide-padded needs the owning runner")
         from scripts.qwen4exp_dense_wide_padded_gate_support import parent_scope
         return parent_scope(runner)
+
+    if route_package == "q5k-row4":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("q5k-row4 needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import q5k_row4_prefill
+        return q5k_row4_prefill(runner, mode == "after")
 
     if route_package == "pf13":
         if runner is None:
@@ -1879,6 +1889,10 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
+    if route_package == "q5k-row4":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        return  # route_scope binds the runner-local gate/up choice.
     if route_package == "norm-f16-publish":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -1920,7 +1934,7 @@ def _apply_mode(
     if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
+        flag = QSA_H256_ENV
         if route_package == "q4-bundle":
             flag = Q4_BUNDLE_ENV
         if route_package == "q51-pair":
@@ -2603,6 +2617,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "after": {"q51_down": row4_key.variant},
             }
     artifact["route_package"] = args.route_package
+    if args.route_package == "q5k-row4":
+        artifact["selection_control"] = {
+            "runner_field": Q5K_ROW4_FIELD, "before": False, "after": True,
+            "published_value": getattr(generator.runner, Q5K_ROW4_FIELD, None),
+            "scope": "per measured run; restored on exit",
+        }
     if args.route_package=="q8-down-register":
         artifact["arms"] = {
             "before":{"q8_down":"selected_grouped_row4_bundle_gemv_bf16_bf16_out"},

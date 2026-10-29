@@ -838,7 +838,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` | retired | No longer read. Exact grouped Q5_1 down selection is runner-owned and remains enabled by default; scoped diagnostics retain the direct fallback. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` / `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL` | retired | No longer read. Exact grouped Q4 gate/up admission is runner-owned; scoped controls preserve the direct fallback and the restricted policy's exact-Q5-down prerequisite. |
 | `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` | retired | No longer read. The profile publishes grouped Q8_0 down selection on its runner; scoped diagnostics preserve the strict comparison. |
-| `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL` | production profile | Grouped row4 GEMV prefill variant. |
+| `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL` | retired | No longer read. The profile publishes Q5_K gate/up row4 selection on its runner; `q5k_row4_prefill(runner, False)` selects the diagnostic parent without changing the row, registry or higher-priority route guards. |
 | `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` | production profile | Selected-dual grouped rowbatch8/out4 expertgrid64 bundle prefill for Q4_K. |
 | `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` | production profile | Selected-dual grouped pair2 prefill for Q4_K (rows>=64, in_features<=4096). |
 | `HIPENGINE_QWEN4_EXP_Q4_OUT4` | retired | No longer read. The owning runner selects the out4 fallback below the exact expertgrid family; `q4_out4(runner, False)` retains the base comparison without changing higher-priority owners. |

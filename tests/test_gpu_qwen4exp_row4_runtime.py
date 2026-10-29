@@ -10,13 +10,16 @@ from hipengine.runtime import qwen4_exp_runner as runner
 
 def test_row4_benchmark_arm_and_engagement():
     from scripts.qwen4exp_halo_box_campaign_ab import (
-        _apply_mode, validate_row4_engagement, PF13_FIELDS, ROW4_ENV,
+        _apply_mode, route_scope, validate_row4_engagement, PF13_FIELDS,
     )
     env = {}
-    _apply_mode("before", environment=env, route_package="q5k-row4")
-    assert env == {ROW4_ENV: "0"}
-    _apply_mode("after", environment=env, route_package="q5k-row4")
-    assert env[ROW4_ENV] == "1"
+    owner = SimpleNamespace(q5k_row4_prefill=True)
+    for mode in ("before", "after"):
+        _apply_mode(mode, environment=env, route_package="q5k-row4")
+        assert env == {}
+        with route_scope("q5k-row4", mode, owner):
+            assert owner.q5k_row4_prefill is (mode == "after")
+        assert owner.q5k_row4_prefill is True
     # The PF-1/PF-3 package's two leaves are runner state now, so neither mode
     # writes a process key for either one.
     assert PF13_FIELDS == ("forkb_grouped_down", "q51_down_m1")
@@ -36,10 +39,10 @@ def test_row4_admission(monkeypatch):
     monkeypatch.setattr(runner, "is_registered", lambda key: key.quant == "candidate")
     weight = SimpleNamespace(spec=SimpleNamespace(quant_key="candidate"))
     weights = {"expert_gate": weight, "expert_up": weight}
-    assert runner.qwen4_exp_grouped_row4_prefill_selected(weights, rows=64, backend="fake")
-    assert not runner.qwen4_exp_grouped_row4_prefill_selected(weights, rows=63, backend="fake")
+    assert runner.qwen4_exp_grouped_row4_prefill_selected(weights, rows=64, backend="fake", published=True)
+    assert not runner.qwen4_exp_grouped_row4_prefill_selected(weights, rows=63, backend="fake", published=True)
     weights["expert_up"] = SimpleNamespace(spec=SimpleNamespace(quant_key="missing"))
-    assert not runner.qwen4_exp_grouped_row4_prefill_selected(weights, rows=64, backend="fake")
+    assert not runner.qwen4_exp_grouped_row4_prefill_selected(weights, rows=64, backend="fake", published=True)
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL", "0")
     assert not runner.qwen4_exp_grouped_row4_prefill_selected(weights, rows=64, backend="fake")
 
@@ -105,7 +108,8 @@ def test_live_row4_matches_parent(monkeypatch):
         def run(enabled):
             monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL", enabled)
             result = runner.run_qwen4_exp_moe(
-                mixed.ptr, weights, scratch=scratch, rows=rows, hidden=hidden,
+                mixed.ptr, weights, q5k_row4_prefill=enabled == "1",
+                scratch=scratch, rows=rows, hidden=hidden,
                 ffn=ffn, experts=experts, top_k=topk, runtime=runtime)
             runtime.device_synchronize()
             return [

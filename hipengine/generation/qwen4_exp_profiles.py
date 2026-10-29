@@ -1125,6 +1125,9 @@ def _bind(
     # the sorted parent variant and the registry carrying it, and the strict
     # binder publishes False.
     q8_down_row4_prefill = bool(production)
+    # Token-major Q5_K gate/up row4 retains its row/registry guards and the
+    # grouped-chain preemptors; only its selection moves off process state.
+    q5k_row4_prefill = bool(production)
     # Q8_0 down bundle sibling of the row4 expert-down owner, published as
     # request-local state on the owning runner rather than a process-wide
     # switch. The row4 rung it replaces publishes alongside it. The dispatch-time
@@ -1206,7 +1209,6 @@ def _bind(
             "1" if production else "0"
         ),
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT": "selected_grouped_wmma_prefill_bf16_bf16_out",
-        "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",
         # Exact iu8-risk+repair gate/up: bit-identical to the pair2 owner
@@ -1433,6 +1435,7 @@ def _bind(
     # pair on the runner it measures (see ``q8_wmma_tiles`` in the runner).
     generator.q8_wmma_tiles = (64, 32)
     generator.forkb_grouped_down = forkb_grouped_down
+    generator.q5k_row4_prefill = q5k_row4_prefill
     generator.q8_down_row4_prefill = q8_down_row4_prefill
     generator.q8_down_bundle_prefill = q8_down_bundle_prefill
     generator.q8_down_register = q8_down_register
@@ -1464,6 +1467,7 @@ def _bind(
         runner.q4_tile_n = 16
         runner.q8_wmma_tiles = (64, 32)
         runner.forkb_grouped_down = forkb_grouped_down
+        runner.q5k_row4_prefill = q5k_row4_prefill
         runner.q8_down_row4_prefill = q8_down_row4_prefill
         runner.q8_down_bundle_prefill = q8_down_bundle_prefill
         runner.q8_down_register = q8_down_register

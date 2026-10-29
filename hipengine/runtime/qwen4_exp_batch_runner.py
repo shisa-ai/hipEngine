@@ -396,6 +396,7 @@ def run_qwen4_exp_batch_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    q5k_row4_prefill: bool = False,
     state: Qwen4ExpBatchGdnState,
     scratch: Qwen4ExpGDNLayerScratch,
     rows: int,
@@ -503,6 +504,7 @@ def run_qwen4_exp_batch_gdn_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            q5k_row4_prefill=q5k_row4_prefill,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -609,6 +611,7 @@ def _run_layer_ffn(
     weights: object,
     scratch: object,
     *,
+    q5k_row4_prefill: bool = False,
     rows: int,
     branches: int,
     hidden: int,
@@ -672,6 +675,7 @@ def _run_layer_ffn(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        q5k_row4_prefill=q5k_row4_prefill,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=runtime,
@@ -707,6 +711,7 @@ def run_qwen4_exp_batch_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    q5k_row4_prefill: bool = False,
     attention_state: Qwen4ExpBatchAttentionState,
     index_state: Qwen4ExpBatchQsaIndexState,
     selection: Qwen4ExpBatchQsaSelectionScratch,
@@ -822,6 +827,7 @@ def run_qwen4_exp_batch_qsa_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            q5k_row4_prefill=q5k_row4_prefill,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -947,6 +953,7 @@ class Qwen4ExpGGUFBatchRunner:
     q51_fold_pair_prefill: bool = False
     forkb_grouped_down: bool = False
     q8_down_row4_prefill: bool = False
+    q5k_row4_prefill: bool = False
     q8_down_bundle_prefill: bool = False
 
     def __init__(
@@ -1823,8 +1830,9 @@ class Qwen4ExpGGUFBatchRunner:
         The MoE runs eager inside the layer's captured ``post_mixer`` segment,
         so the expert-path selectors resolve at capture time and their launches
         are baked into the graph. Every capture key therefore carries these
-        twelve plan-published decisions: a runner whose selection changes
-        captures a new segment instead of replaying one built under the old
+        plan-published decisions, including Q5_K gate/up row4: a runner whose
+        selection changes captures a new segment instead of replaying one built
+        under the old
         selection. ``q51_exact_grouped_down`` is the exact grouped Q5_1 down
         chain's own gate, and every Q5_1 ladder rung sits inside the chain it
         gates; ``q51_wmma_down`` admits the F16 WMMA down owner below that
@@ -1850,6 +1858,7 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.forkb_grouped_down),
             bool(self.q8_down_row4_prefill),
             bool(self.q8_down_bundle_prefill),
+            bool(self.q5k_row4_prefill),
         )
 
     def step(
@@ -2097,6 +2106,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_gdn_layer(
                     residual_ptr,
                     gdn_binding,
+                    q5k_row4_prefill=self.q5k_row4_prefill,
                     state=self.gdn_states[gdn_binding.gdn_state_index],
                     scratch=gdn_scratch,
                     rows=rows,
@@ -2134,6 +2144,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_qsa_layer(
                     residual_ptr,
                     qsa_binding,
+                    q5k_row4_prefill=self.q5k_row4_prefill,
                     attention_state=attention_states[qsa_binding.qsa_state_index],
                     index_state=self.index_states[qsa_binding.qsa_state_index],
                     selection=selection,

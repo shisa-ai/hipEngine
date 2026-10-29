@@ -4,21 +4,22 @@ import pytest
 
 def test_qsa_benchmark_modes_and_engagement():
     from scripts.qwen4exp_halo_box_campaign_ab import (
-        _apply_mode, QSA_H256_ENV, ROW4_ENV, validate_qsa_h256_engagement,
+        _apply_mode, QSA_H256_ENV, validate_qsa_h256_engagement,
     )
-    env = {ROW4_ENV: "1"}
+    stale_row4 = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+    env = {stale_row4: "1"}
     _apply_mode("before", environment=env, route_package="qsa-h256-wave")
-    assert env == {ROW4_ENV: "1", QSA_H256_ENV: "0"}
+    assert env == {stale_row4: "1", QSA_H256_ENV: "0"}
     _apply_mode("after", environment=env, route_package="qsa-h256-wave")
     assert env[QSA_H256_ENV] == "1"
     _apply_mode("after", environment=env, route_package="qsa-h256-page256")
     assert env[QSA_H256_ENV] == "page256"
-    assert env[ROW4_ENV] == "1"
+    assert env[stale_row4] == "1"
     # The head leaf is request-local: neither head package writes an env key.
     for package in ("qsa-head-pair", "qsa-head-quad"):
         for mode in ("before", "after"):
             _apply_mode(mode, environment=env, route_package=package)
-            assert env == {ROW4_ENV: "1", QSA_H256_ENV: "page256"}
+            assert env == {stale_row4: "1", QSA_H256_ENV: "page256"}
     validate_qsa_h256_engagement("after", 48, 4096)
     for shape in (512, 1024, 4096):
         validate_qsa_h256_engagement("before", 0, shape)

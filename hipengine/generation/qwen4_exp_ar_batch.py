@@ -675,6 +675,7 @@ def make_qwen4_exp_ar_batch_runner(
         getattr(generator, "q51_fold_pair_prefill", False))
     batch.forkb_grouped_down = bool(
         getattr(generator, "forkb_grouped_down", False))
+    batch.q5k_row4_prefill = bool(getattr(generator, "q5k_row4_prefill", False))
     batch.q8_down_row4_prefill = bool(
         getattr(generator, "q8_down_row4_prefill", False))
     batch.q8_down_bundle_prefill = bool(

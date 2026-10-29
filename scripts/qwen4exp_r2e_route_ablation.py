@@ -45,7 +45,6 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 ROUTES = {
     "moe_wmma_27_47": (("HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",), "0"),
     "q8_mmq": (("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",), "0"),
-    "row4_gemv": (("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL",), "0"),
     "q4_iu8": (("HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"), "0"),
     "decode_dp4a": (("HIPENGINE_QWEN4_EXP_Q4_DP4A64",), "0"),
@@ -61,6 +60,7 @@ RUNNER_ROUTE_MODES = {
 # down and Q5_1 down M1 selectors are request-local state on the runner, so the
 # ablation binds the field instead of writing a process key nothing reads.
 RUNNER_ROUTE_OFF = {
+    "row4_gemv": "q5k_row4_prefill",
     "q51_down_m1": "q51_down_m1",
     "forkb_grouped_down": "forkb_grouped_down",
 }

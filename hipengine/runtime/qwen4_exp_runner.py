@@ -5316,12 +5316,27 @@ def _qwen4_exp_q4_compact_tiles(
     )
 
 
+_Q5K_ROW4_PREFILL_UNSET = object()
+
+
+@contextlib.contextmanager
+def q5k_row4_prefill(runner: Any, enabled: bool | object = _Q5K_ROW4_PREFILL_UNSET):
+    """Bind the runner's Q5_K gate/up row4 choice and restore it on exit."""
+
+    prior = getattr(runner, "q5k_row4_prefill", False)
+    if enabled is not _Q5K_ROW4_PREFILL_UNSET:
+        runner.q5k_row4_prefill = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q5k_row4_prefill = prior
+
+
 def qwen4_exp_grouped_row4_prefill_selected(
-    weights: Mapping[str, GGUFDeviceWeight], *, rows: int, backend: str
+    weights: Mapping[str, GGUFDeviceWeight], *, rows: int, backend: str,
+    published: bool = False,
 ) -> bool:
-    if rows < 64 or os.environ.get(
-        "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL", "0"
-    ) in {"", "0", "false", "False"}:
+    if rows < 64 or not published:
         return False
     return all(
         is_registered(KernelKey(
@@ -5966,6 +5981,7 @@ def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
     *,
+    q5k_row4_prefill: bool = False,
     scratch: Qwen4ExpMoEScratch,
     rows: int,
     hidden: int,
@@ -5996,6 +6012,9 @@ def run_qwen4_exp_moe(
     q4_tile_n: int | None = None,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert.
+
+    ``q5k_row4_prefill`` is the owning runner's gate/up row4 choice. It keeps
+    the rows>=64 and registered-kernel guards, below grouped-chain preemptors.
 
     ``q51_down_m1`` is the owning runner's plan-published Q5_1 down M1 decision
     (see :func:`q51_down_m1`); it only selects inside the exact grouped Q5_1
@@ -6100,6 +6119,7 @@ def run_qwen4_exp_moe(
             run_qwen4_exp_moe(
                 mixed_ptr,
                 weights,
+                q5k_row4_prefill=q5k_row4_prefill,
                 scratch=scratch,
                 rows=rows,
                 hidden=hidden,
@@ -7353,7 +7373,7 @@ def run_qwen4_exp_moe(
             )
         else:
             row4 = qwen4_exp_grouped_row4_prefill_selected(
-                weights, rows=rows, backend=backend)
+                weights, rows=rows, backend=backend, published=q5k_row4_prefill)
             if row4:
                 # Map only: projections publish original token-major lanes,
                 # leaving SiLU/down/ordered combine ownership unchanged.
@@ -7567,6 +7587,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    q5k_row4_prefill: bool = False,
     attention_state: Qwen4ExpDenseAttentionState,
     scratch: Qwen4ExpQSALayerScratch,
     position: int,
@@ -7697,6 +7718,7 @@ def run_qwen4_exp_dense_qsa_layer(
     )
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
+        q5k_row4_prefill=q5k_row4_prefill,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
@@ -7732,6 +7754,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    q5k_row4_prefill: bool = False,
     attention_state: Qwen4ExpDenseAttentionState,
     index_state: Qwen4ExpQSAIndexDeviceState,
     scratch: Qwen4ExpQSALayerScratch,
@@ -7916,6 +7939,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        q5k_row4_prefill=q5k_row4_prefill,
         scratch=scratch.moe,
         rows=rows,
         hidden=hidden,
@@ -7965,6 +7989,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    q5k_row4_prefill: bool = False,
     conv_state_ptr: int,
     recurrent_state_ptr: int,
     scratch: Qwen4ExpGDNLayerScratch,
@@ -8205,6 +8230,7 @@ def run_qwen4_exp_gdn_layer(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        q5k_row4_prefill=q5k_row4_prefill,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
@@ -9182,6 +9208,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     # register siblings, which read the variant it selects. A diagnostic scope
     # may outrank it.
     q8_down_row4_prefill: bool = False
+    # Q5_K token-major gate/up row4, published by the profile binder.
+    q5k_row4_prefill: bool = False
     # Q8_0 down bundle selection, published by the profile binder for the row4
     # ladder's rows>=512 scope: True on a production plan, False on every plan
     # that keeps the row4 parent. The register sibling downstream replaces it in
@@ -10443,6 +10471,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    q5k_row4_prefill=self.q5k_row4_prefill,
                     moe_graph_cache=self.moe_graph_cache,
                     moe_graph_key=(
                         "gdn", layer,
@@ -10503,6 +10532,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    q5k_row4_prefill=self.q5k_row4_prefill,
                     moe_graph_cache=self.moe_graph_cache,
                     moe_graph_key=(
                         "qsa", layer,
@@ -10832,6 +10862,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
                     gdn_peer_prefill_layers=self.gdn_peer_prefill_layers,
                     gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,
+                    q5k_row4_prefill=self.q5k_row4_prefill,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -10875,6 +10906,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
+                    q5k_row4_prefill=self.q5k_row4_prefill,
                     batched_selection=self.qsa_batched_selection,
                     qsa_wave32=self.qsa_wave32,
                     q51_down_m1=self.q51_down_m1,

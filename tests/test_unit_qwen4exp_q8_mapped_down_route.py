@@ -28,7 +28,8 @@ RETIRED_MAPPED_DOWN_ENV = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
 def _owner(**fields):
     """A runner with the sorted chain's own gate published."""
 
-    return SimpleNamespace(**{Q8_DOWN_FORKB_FIELD: True, **fields})
+    return SimpleNamespace(**{Q8_DOWN_FORKB_FIELD: True,
+                              Q8_MAPPED_DOWN_MAP_GATE: True, **fields})
 
 
 BUNDLE = "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
@@ -166,7 +167,7 @@ def test_campaign_arm_writes_no_process_switch():
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_route_scope_binds_the_runner_selection(mode, expected):
     owner = SimpleNamespace(q8_mapped_down=None, q8_down_register=True,
-                            forkb_grouped_down=True)
+                            forkb_grouped_down=True, q5k_row4_prefill=True)
     env = {
         RETIRED_MAPPED_DOWN_ENV: "1",
         Q8_MAPPED_DOWN_MAP_GATE: "1",
@@ -200,7 +201,8 @@ def test_building_the_route_scope_enters_nothing():
     # The campaign builds one scope per arm and enters it around the measured
     # run; an eager ExitStack would bind the arm before the run and leave it
     # bound when the caller never enters.
-    owner = SimpleNamespace(q8_mapped_down=True, forkb_grouped_down=True)
+    owner = SimpleNamespace(q8_mapped_down=True, forkb_grouped_down=True,
+                            q5k_row4_prefill=True)
     env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
     env.update({key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV})
     scope = route_scope("q8-mapped-down", "before", owner, environment=env)
@@ -213,11 +215,12 @@ def test_building_the_route_scope_enters_nothing():
     assert owner.q8_mapped_down is True
 
 
-@pytest.mark.parametrize("gate", [None, "", "0", "false", "False"])
+@pytest.mark.parametrize("gate", [None, False])
 def test_route_scope_fails_loudly_without_the_row4_map_gate(gate):
     # Without the gate the invocation builds no row4 map, so the mapped owner
     # cannot engage and the arm would report a neutral A/B as the comparison.
-    owner = SimpleNamespace(q8_mapped_down=True, forkb_grouped_down=True)
+    owner = SimpleNamespace(q8_mapped_down=True, forkb_grouped_down=True,
+                            q5k_row4_prefill=gate)
     env = {key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
     if gate is None:
         env.pop(Q8_MAPPED_DOWN_MAP_GATE, None)
@@ -257,7 +260,7 @@ def test_route_scope_leaves_the_register_selector_alone():
     # The mapped admission is not the register rewrite; a mapped arm must not
     # move the register decision it inherits from the plan.
     owner = SimpleNamespace(q8_mapped_down=True, q8_down_register=True,
-                            forkb_grouped_down=True)
+                            forkb_grouped_down=True, q5k_row4_prefill=True)
     env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
     env.update({key: "1" for key in Q8_DOWN_PREEMPTING_ENV})
     with route_scope("q8-mapped-down", "before", owner, environment=env):
@@ -266,7 +269,7 @@ def test_route_scope_leaves_the_register_selector_alone():
 
 
 def test_row4_map_gate_names_the_grouped_gate():
-    assert Q8_MAPPED_DOWN_MAP_GATE == "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+    assert Q8_MAPPED_DOWN_MAP_GATE == "q5k_row4_prefill"
 
 
 def test_state_gate_arm_writes_no_process_switch():
@@ -448,5 +451,6 @@ def test_mapped_control_record_separates_prior_and_effective():
         key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
     assert record["chain_gate"] == {
         "runner_field": Q8_DOWN_FORKB_FIELD, "published_value": True}
-    assert record["mapped_gate_up_map"] == "1"
+    assert record["mapped_gate_up_map"] == {
+        "runner_field": Q8_MAPPED_DOWN_MAP_GATE, "published_value": True}
     assert env[Q8_MAPPED_DOWN_MAP_GATE] == "1"

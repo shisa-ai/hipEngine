@@ -350,6 +350,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     # Same for the retired GDN peer gate: the owner is the runner's published
     # scope now, so a leftover process value is inert and stays untouched.
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL", "stale")
     production.binder(production_generator, production)
     assert configure_calls == [True]
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
@@ -367,7 +368,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert fake_runner.forkb_grouped_down is True
     assert "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "1"
+    assert production_generator.q5k_row4_prefill is True
+    assert fake_runner.q5k_row4_prefill is True
+    assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "stale"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "1"
@@ -550,7 +553,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.forkb_grouped_down is False
     assert "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "0"
+    assert strict_generator.q5k_row4_prefill is False
+    assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "stale"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "0"
