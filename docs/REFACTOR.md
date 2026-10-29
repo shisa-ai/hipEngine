@@ -3427,19 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## The Qwen4Exp routed F16 selector
-
-`HIPENGINE_QWEN4_EXP_ROUTED_F16` (default off) is published by the
-`gguf_ud_q4_k_xl` production binder and read by `run_qwen4_exp_moe`. It
-exists because routed dispatch in this runner is env-selected throughout.
-
-Removal condition: replace it with manifest-driven dispatch when the runner's
-routed-expert selection moves off environment variables. The exact grouped
-chains stay registered as the strict fallbacks and as the production routes
-of `gguf_q4_k_m`; their repair-pass siblings that only the old
-`gguf_ud_q4_k_xl` production plan selected can go once no manifest names
-them.
-
 ## Qwen4Exp unused `moe_f32` layer scratch
 
 Since 2026-10-14 the residual write after the routed experts reads the BF16

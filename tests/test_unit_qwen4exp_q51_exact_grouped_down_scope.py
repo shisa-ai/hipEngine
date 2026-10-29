@@ -260,12 +260,12 @@ def test_the_batch_capture_key_carries_the_gate() -> None:
         q5k_row4_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, False, True, True, True, True, False, False,
         False, False, False, False)
 
     owner.q51_exact_grouped_down = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, False, False, True, True, True, True, False, False,
+        False, False, False, False, False, False, False, True, True, True, True, False, False,
         False, False, False, False)
 
 
@@ -461,7 +461,7 @@ def test_the_layer2_down_arms_close_the_chain_on_the_runner() -> None:
         # The two owners that take the down leg ahead of the F16 owner. The
         # production base binds the routed F16 route on, so an arm that closes
         # only the exact chain still measures the routed route.
-        assert candidate.environment["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "0"
+        assert candidate.routed_f16_enabled is False
         assert "HIPENGINE_QWEN4_EXP_T16_DOWN" not in candidate.environment
         # The F16 owner's own admission is runner state now, so the arm binds
         # it on the runner instead of naming a process key.

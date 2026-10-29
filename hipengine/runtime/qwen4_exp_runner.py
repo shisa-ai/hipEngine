@@ -5561,10 +5561,9 @@ def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
 # Wide-tile routed F16 GEMMs over the raw expert weights (fast profile): the
 # gate/up pair with a SwiGLU epilogue and the down projection, each decoding a
 # weight tile once per macro tile of grouped rows. The binder publishes the
-# selector; without it the grouped chains below are untouched.
+# runner's manifest selection; without it the grouped chains below are untouched.
 # WMMA QSA prefill attention (fast profile); see run_qwen4_exp_qsa_prefill_token_mixer.
 _QSA_WMMA_ENV = "HIPENGINE_QWEN4_EXP_QSA_WMMA"
-_ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
 # Grouped prefill row counts each gate/up quant routes from, matching the
 # scopes the fast plan declares.
 _ROUTED_F16_MIN_ROWS = {"gguf_q4_k": 2, "gguf_q5_k": 64}
@@ -5572,8 +5571,16 @@ _ROUTED_F16_GATE_UP_QUANTS = frozenset({"gguf_q4_k", "gguf_q5_k"})
 _ROUTED_F16_DOWN_QUANTS = frozenset({"gguf_q5_1", "gguf_q8_0"})
 
 
-def _routed_f16_enabled() -> bool:
-    return os.environ.get(_ROUTED_F16_ENV, "0") not in {"", "0", "false", "False"}
+@contextlib.contextmanager
+def routed_f16_enabled(runner: Any, enabled: bool | None = None):
+    """Override routed F16 selection on one runner for a diagnostic scope."""
+    prior = getattr(runner, "routed_f16_enabled", False)
+    if enabled is not None:
+        runner.routed_f16_enabled = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.routed_f16_enabled = prior
 
 
 def _routed_f16_gate_up_tile_rows(compact_rows: int, experts: int) -> int:
@@ -6022,6 +6029,7 @@ def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
     *,
+    routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -6163,6 +6171,7 @@ def run_qwen4_exp_moe(
             run_qwen4_exp_moe(
                 mixed_ptr,
                 weights,
+                routed_f16_enabled=routed_f16_enabled,
                 q4_pair_prefill=q4_pair_prefill,
                 q4_bundle_prefill=q4_bundle_prefill,
                 q5k_row4_prefill=q5k_row4_prefill,
@@ -6323,7 +6332,7 @@ def run_qwen4_exp_moe(
     # The down GEMM reads the grouped SwiGLU rows the paired gate/up writes,
     # so the two are selected together.
     routed_f16 = (
-        _routed_f16_enabled()
+        routed_f16_enabled
         and len(gate_quants) == 1
         and gate_quants <= _ROUTED_F16_GATE_UP_QUANTS
         and rows >= _ROUTED_F16_MIN_ROWS[weights["expert_gate"].spec.quant_key]
@@ -7498,6 +7507,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
@@ -7635,6 +7645,7 @@ def run_qwen4_exp_dense_qsa_layer(
     )
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
+        routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
@@ -7674,6 +7685,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
@@ -7867,6 +7879,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
@@ -7920,6 +7933,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
@@ -8171,6 +8185,7 @@ def run_qwen4_exp_gdn_layer(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
@@ -9080,6 +9095,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     # never reaches the production term, so a decode capture that ran this owner
     # is keyed on it. A diagnostic scope may outrank it.
     q51_wmma_down: bool = False
+    # Manifest-derived routed-expert selection; unbound runners keep the parent.
+    routed_f16_enabled: bool = False
     # Q4_K exact grouped gate/up gate and its `_ALL` joint term, published by the
     # profile binder for every plan: the chain runs on every Q4_K/Q4_K multi-row
     # chunk unless an arm closes the gate, and `_ALL` only narrows it to chunks
@@ -10418,6 +10435,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_scratch,
+                    routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
@@ -10473,6 +10491,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_dense_qsa_layer(
                     residual_ptr,
                     binding,
+                    routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
@@ -10810,6 +10829,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_prefill_scratch,
+                    routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
@@ -10858,6 +10878,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_qsa_prefill_layer(
                     residual_ptr,
                     binding,
+                    routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,

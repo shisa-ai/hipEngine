@@ -117,16 +117,11 @@ def test_down_only_route_engages_with_current_map_and_production_gate_up() -> No
         quant=_REPAIR_KEY[2], variant=_REPAIR_KEY[3],
     )
 
-    controls = {
-        "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-    }
-    saved = {key: os.environ.get(key) for key in controls}
     from hipengine.runtime.qwen4_exp_runner import (
-        q51_exact_grouped_down, q51_wmma_down)
+        q51_exact_grouped_down, q51_wmma_down, routed_f16_enabled as routed_f16)
 
     try:
         # Close newer down owners so this diagnostic measures its named leaf.
-        os.environ.update(controls)
         setattr(runner_module, _DOWN_ALIAS, counted_down)
         register(KernelKey(*_RISK_GATE_UP_KEY), counted_risk, replace=True)
         register(KernelKey(*_REPAIR_KEY), counted_repair, replace=True)
@@ -136,18 +131,14 @@ def test_down_only_route_engages_with_current_map_and_production_gate_up() -> No
         # Both decisions are runner state: closing the chain gate for the
         # measured prefill falls through to the F16 down owner, admitting that
         # owner selects it, and both published values come back on exit.
-        with q51_exact_grouped_down(generator.runner, False), \
+        with routed_f16(generator.runner, False), \
+                q51_exact_grouped_down(generator.runner, False), \
                 q51_wmma_down(generator.runner, True):
             generator.runner.prefill([int(token) for token in tokens])
     finally:
         setattr(runner_module, _DOWN_ALIAS, original_down)
         register(KernelKey(*_RISK_GATE_UP_KEY), original_risk, replace=True)
         register(KernelKey(*_REPAIR_KEY), original_repair, replace=True)
-        for key, value in saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
         generator.close()
 
     # The former ValueError would have aborted before this point.

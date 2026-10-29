@@ -249,7 +249,7 @@ def test_main_records_the_runner_owned_premise(
         assert control["forced_environment"] == Q4_PAIR_ENV
         assert control["forced_runner_fields"] == {
             "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
-            "q4_bundle_prefill": True,
+            "q4_bundle_prefill": True, "routed_f16_enabled": False,
         }
     elif package == "q8-wave-scale":
         from scripts.qwen4exp_halo_box_campaign_ab import Q8_WAVE_ENV

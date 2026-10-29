@@ -343,12 +343,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q5k_row4_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, False, True, True, True, True, False, False,
         False, False, False, False)
 
     owner.q51_out8 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, False, True, True, True, False, False,
+        False, False, False, False, True, False, False, False, True, True, True, False, False,
         False, False, False, False)
 
 
@@ -523,6 +523,7 @@ def _published(monkeypatch):
     generator = SimpleNamespace()
     resolved.binder(generator, resolved)
     yield {**{name: os.environ.get(name) for name in COMPETITOR_ENV},
+           "routed_f16_enabled": generator.routed_f16_enabled,
            "q51_pair_prefill": generator.q51_pair_prefill}
 
 
@@ -587,7 +588,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
     """The shipped lane's own owners, read from the binder, not from a fixture."""
 
     with _published(monkeypatch) as published:
-        assert published[ROUTED_F16_ENV] == "1"
+        assert published[ROUTED_F16_ENV] is None
+        assert published["routed_f16_enabled"] is True
         assert published[IU8_EXACT_ENV] == "1"
         assert published[PAIR_ENV] is None
         assert published["q51_pair_prefill"] is True
@@ -598,7 +600,7 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
 
         # The real predicates, in dispatch order. Routed F16 takes the whole
         # down leg, and the iu8 chain sits above the ladder inside the chain.
-        assert runner_module._routed_f16_enabled() is True
+        assert published["routed_f16_enabled"] is True
         assert runner_module._qwen4_exp_q51_iu8_exact_enabled() is True
         # With those two out of the way the pair2 parent still replaces the rung
         # on a production chunk, so the rung decides nothing either way.

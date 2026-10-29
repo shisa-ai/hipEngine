@@ -27,6 +27,7 @@ def test_q4_pair_ab_scopes_its_owner_and_restores_prerequisites(mode):
     environment = {"other": "unchanged", "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "stale"}
     prior_env = dict(environment)
     owner = SimpleNamespace(q4_pair_prefill=True, q4_bundle_prefill=False,
+                            routed_f16_enabled=True,
                             q4_exact_grouped_gate=False, q4_exact_grouped_all=False)
     prior_owner = vars(owner).copy()
     _apply_mode(mode, environment=environment, route_package="q4-pair")
@@ -34,6 +35,7 @@ def test_q4_pair_ab_scopes_its_owner_and_restores_prerequisites(mode):
     with pytest.raises(RuntimeError, match="failure"):
         with route_scope("q4-pair", mode, owner, environment=environment):
             assert owner.q4_pair_prefill is (mode == "after")
+            assert owner.routed_f16_enabled is False
             assert owner.q4_bundle_prefill is True
             assert owner.q4_exact_grouped_gate is True
             assert owner.q4_exact_grouped_all is True

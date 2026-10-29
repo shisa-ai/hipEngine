@@ -747,7 +747,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE` | `1` | QSA gate reads the strided projection in place; `0` is the rollback. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` | retired | Ignored. Ordered v2 uses the registered three-pass route; the fused experiment is removed. |
 | `HIPENGINE_QWEN4_EXP_QSA_WMMA` | unset (fast/F16 route sets `1`) | QSA prefill attention on the WMMA kernel. |
-| `HIPENGINE_QWEN4_EXP_ROUTED_F16` | unset (production/F16 route sets `1`) | Routed-expert gate/up and down on the wide F16 WMMA GEMMs from two rows (Q4_K) or 64 rows (Q5_K); multi-row decode batches use it too. |
+| `HIPENGINE_QWEN4_EXP_ROUTED_F16` | retired | Ignored. The manifest publishes `runner.routed_f16_enabled`; diagnostic tools bind that runner field temporarily. Routed gate/up and down keep their two-row Q4_K and 64-row Q5_K windows, including multi-row decode batches. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | `1` | The routed F16 gate/up reads token rows through the lane map; `0` builds the gathered activation copy. |
 | `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; UD production selects the F16 WMMA GEMM, with ordered DPP for small multirow widths and named rollback. Strict/Q4_K_M keep tile4. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | unset (F16 route sets `1`) | Warp-per-expert routed gate/up decode owner (reduction order differs). |

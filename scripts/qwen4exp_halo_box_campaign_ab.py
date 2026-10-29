@@ -48,7 +48,6 @@ Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_FIELD = "qsa_h256_prefill_mode"
 Q4_BUNDLE_FIELD = "q4_bundle_prefill"
 Q4_PAIR_ENV = {
-    "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID": "64",
@@ -134,7 +133,7 @@ def q4_pair_control_record(runner):
         "forced_environment": dict(Q4_PAIR_ENV),
         "forced_runner_fields": {
             "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
-            "q4_bundle_prefill": True,
+            "q4_bundle_prefill": True, "routed_f16_enabled": False,
         },
     }
 
@@ -144,12 +143,12 @@ def q4_pair_scope(runner, enabled, *, environment=os.environ):
     """Compare bundle and pair2 inside the same exact grouped chain."""
     from hipengine.runtime.qwen4_exp_runner import (
         q4_pair_prefill, q4_bundle_prefill, q4_exact_grouped_gate,
-        q4_exact_grouped_all,
+        q4_exact_grouped_all, routed_f16_enabled as routed_f16,
     )
     prior = {key: environment.get(key) for key in Q4_PAIR_ENV}
     try:
         environment.update(Q4_PAIR_ENV)
-        with q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
+        with routed_f16(runner, False), q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
             yield
     finally:
         for key, value in prior.items():
@@ -704,7 +703,6 @@ GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
 #: process key. The retired ds4-MMQ Q5_1 suffix is not a preemptor: nothing
 #: reads it.
 Q51_PAIR2_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
 )
@@ -712,7 +710,7 @@ Q51_PAIR2_PREEMPTING_ENV = (
 #: Q5_1 down owner below the chain (``runner.q51_wmma_down``). The production
 #: plan publishes it off, and the arms bind it off on the runner they measure
 #: so the closure does not depend on that publication staying off.
-Q51_PAIR2_PREEMPTING_FIELDS = ("q51_wmma_down",)
+Q51_PAIR2_PREEMPTING_FIELDS = ("q51_wmma_down", "routed_f16_enabled")
 #: The pair2 chain's own gate. It must stay on for the counted leaf to run, so
 #: the arm records it instead of forcing it. The gate is request-local runner
 #: state, so an arm reads it on the runner it measures, not from the
@@ -991,14 +989,14 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
             f"runner.{Q51_PAIR2_GATE_FIELD} must be on for the grouped pair2 "
             "Q5_1 down chain; without it the counted row-publish leaf cannot "
             "launch")
-    from hipengine.runtime.qwen4_exp_runner import q51_wmma_down
+    from hipengine.runtime.qwen4_exp_runner import q51_wmma_down, routed_f16_enabled as routed_f16
 
     previous = {key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV}
     for key in Q51_PAIR2_PREEMPTING_ENV:
         environment[key] = "0"
     try:
         with contextlib.ExitStack() as scope:
-            for manager in (q51_wmma_down,):
+            for manager in (q51_wmma_down, routed_f16):
                 scope.enter_context(manager(runner, False))
             yield previous
     finally:
@@ -1015,7 +1013,6 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
 #: the sorted chain. A down-register arm closes both for both arms; the
 #: profile's own values come back on exit.
 Q8_DOWN_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
 )
 #: The sorted chain's own gate and its two ladder rungs. ``bundle`` replaces
@@ -1065,6 +1062,10 @@ def q8_down_control_record(*, runner=None, environment=os.environ):
         "preempting_owners_previous": {
             key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV
         },
+        "preempting_fields": {
+            "routed_f16_enabled": {"bound_value": False,
+                "published_value": getattr(runner, "routed_f16_enabled", None)},
+        },
         "chain_gate": {
             "runner_field": Q8_DOWN_FORKB_FIELD,
             "published_value": (
@@ -1092,11 +1093,13 @@ def q8_down_scope(*, environment=os.environ, runner=None):
             f"runner.{Q8_DOWN_FORKB_FIELD} must be on for the Q8_0 "
             "expert-down chain; without it the counted Q8_0 down leaf cannot "
             "launch")
+    from hipengine.runtime.qwen4_exp_runner import routed_f16_enabled as routed_f16
     previous = {key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV}
     for key in Q8_DOWN_PREEMPTING_ENV:
         environment[key] = "0"
     try:
-        yield previous
+        with routed_f16(runner, False):
+            yield previous
     finally:
         for key, value in previous.items():
             if value is None:
@@ -1218,6 +1221,10 @@ def q8_mapped_down_control_record(*, runner=None, environment=os.environ):
         "preempting_owners_previous": {
             key: environment.get(key) for key in Q8_MAPPED_DOWN_PREEMPTING_ENV
         },
+        "preempting_fields": {
+            "routed_f16_enabled": {"bound_value": False,
+                "published_value": getattr(runner, "routed_f16_enabled", None)},
+        },
         "chain_gate": {
             "runner_field": Q8_DOWN_FORKB_FIELD,
             "published_value": (
@@ -1331,6 +1338,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         q51_register_cache,
         q51_row_publish,
         q51_wmma_down,
+        routed_f16_enabled as routed_f16,
         q8_down_bundle_prefill,
         q8_down_register,
         q8_down_row4_prefill,
@@ -1344,7 +1352,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         environment[key] = "0"
     try:
         with contextlib.ExitStack() as scope:
-            for manager in (q51_pair_prefill, q51_fold128_prefill, q51_fold_pair_prefill,
+            for manager in (routed_f16, q51_pair_prefill, q51_fold128_prefill, q51_fold_pair_prefill,
                             q51_register_cache, q51_row_publish,
                             q8_down_row4_prefill, q8_down_bundle_prefill,
                             q8_down_register):
@@ -1462,11 +1470,13 @@ def q8_mapped_down_scope(*, environment=os.environ, runner=None):
             f"{Q8_MAPPED_DOWN_MAP_GATE} must be on for the token-major mapped "
             "down arm; without it the current call builds no row4 map and the "
             "mapped owner cannot engage")
+    from hipengine.runtime.qwen4_exp_runner import routed_f16_enabled as routed_f16
     previous = {key: environment.get(key) for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
     for key in Q8_MAPPED_DOWN_PREEMPTING_ENV:
         environment[key] = "0"
     try:
-        yield previous
+        with routed_f16(runner, False):
+            yield previous
     finally:
         for key, value in previous.items():
             if value is None:

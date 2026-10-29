@@ -69,7 +69,7 @@ RUNNER_ROUTE_OFF = {
 #: down chain's non-expertgrid fallback, so every owner that keeps that chain - or
 #: the rung inside it - from running has to move. In dispatch order:
 #:
-#:   * ``HIPENGINE_QWEN4_EXP_ROUTED_F16`` takes the whole down leg from rows>=2
+#:   * ``runner.routed_f16_enabled`` takes the whole down leg from rows>=2
 #:     on the shipped lane, and the production plan publishes it on;
 #:   * ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`` closes the chain gate from
 #:     rows>=16, published on by the production plan;
@@ -108,7 +108,7 @@ OUT8_SIBLING_FIELDS = (
 #: gate/up chain's non-expertgrid fallback, so every owner that keeps that chain -
 #: or the rung inside it - from running has to move. In dispatch order:
 #:
-#:   * ``HIPENGINE_QWEN4_EXP_ROUTED_F16`` takes the whole gate/up leg, and the
+#:   * ``runner.routed_f16_enabled`` takes the whole gate/up leg, and the
 #:     production plan publishes it on;
 #:   * ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`` closes the chain gate from
 #:     rows>=16;
@@ -125,7 +125,6 @@ OUT8_SIBLING_FIELDS = (
 #: the rest are the preemptors the arm must close to exercise it. The arm reports
 #: every binding it made rather than implying a single-route delta.
 Q4_OUT4_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
@@ -142,7 +141,7 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
         "0",
     ),
     "q4_out4": ((("q4_out4", False), ("q4_bundle_prefill", False),
-                 ("q4_pair_prefill", False)),
+                 ("q4_pair_prefill", False), ("routed_f16_enabled", False)),
                 Q4_OUT4_PREEMPTING_ENV, "0"),
 }
 

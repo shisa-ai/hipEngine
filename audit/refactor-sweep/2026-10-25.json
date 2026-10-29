@@ -12998,8 +12998,8 @@
       "start_line": 10723,
       "end_line": 10735,
       "sha256": "8654882c3e10bc02e7e4f37fff1305af9174ac7c6e94926368cefbed85c50ca3",
-      "status": "pending",
-      "evidence": [],
+      "status": "migrated-manifest-runner-selection",
+      "evidence": ["Replaced environment transport with manifest-derived routed_f16_enabled, including scalar/batch/mixed/clone carriers and batch capture keys. Migrated diagnostic scopes and candidate controls. Public production generation with retired key set to 0 observed routed gate/up/down; compact-down GPU diagnostic passed. Full CPU run plus focused fixture repairs and repository gates recorded in worklog/entries/20261029T215920.290113Z-cleanup-cleanup-refactor-r0452-020751.md. Exact repair diagnostics remain live and are not removed merely because manifests do not name them."],
       "subitems": []
     },
     {

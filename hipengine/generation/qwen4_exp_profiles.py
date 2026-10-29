@@ -39,7 +39,6 @@ F16_ROUTE_QUANTS = ("gguf_ud_q4_k_xl",)
 # The opt-in fast profile is where a reduced-precision route lands before its
 # production gate. It carries no route beyond the production plan at present.
 FAST_QUANTS = F16_ROUTE_QUANTS
-_ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
 _ROUTED_F16_GATE_UP = "selected_routed_f16_dual_silu_wmma_prefill_bf16_bf16_out"
 _ROUTED_F16_LINEAR = "selected_routed_f16_wmma_prefill_bf16_bf16_out"
 _QSA_WMMA_VARIANT = "wmma_f16_masked_prefill_f32"
@@ -89,7 +88,6 @@ _F16_ROUTE_BINDER_ENV = {
 # Profile-owned composition selectors: profiles without the composition disable
 # them even when a caller set them before binding, keeping dispatch and manifest aligned.
 _F16_ROUTE_SELECTORS = {
-    _ROUTED_F16_ENV: "1",
     # Hyper-connection up projection on the F16 wide route.
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
     # Hyper-connection read projections launched directly on F16 activations:
@@ -1404,6 +1402,11 @@ def _bind(
     # window by itself and the owner is otherwise a down-only diagnostic. A
     # diagnostic arm admits it on the runner it measures.
     generator.q51_wmma_down = False
+    # Only the manifest selects this route; stale process keys cannot override it.
+    generator.routed_f16_enabled = any(
+        row["selected_variant"] == _ROUTED_F16_GATE_UP
+        for row in resolved.manifest["selections"]
+    )
     # The chain's non-expertgrid fallback rung: every plan keeps the out8
     # owner, and a diagnostic arm pins the output1 base on its own runner.
     generator.q51_out8 = True
@@ -1458,6 +1461,7 @@ def _bind(
         runner.q51_register_cache = q51_register_cache
         runner.q51_row_publish = q51_row_publish
         runner.q51_exact_grouped_down = True
+        runner.routed_f16_enabled = generator.routed_f16_enabled
         runner.q51_wmma_down = False
         runner.q51_out8 = True
         runner.q4_exact_grouped_gate = True

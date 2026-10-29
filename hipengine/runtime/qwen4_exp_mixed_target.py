@@ -368,6 +368,7 @@ class Qwen4ExpMixedTargetPass:
                     mixed = run.output
                 _run_layer_ffn(
                     residual.ptr, mixed.ptr, binding, scratch, rows=rows,
+                    routed_f16_enabled=getattr(batch, "routed_f16_enabled", False),
                     gr_wave_scale=getattr(batch, "gr_wave_scale", False),
                     branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank, ffn=cfg.expert_feed_forward_length,

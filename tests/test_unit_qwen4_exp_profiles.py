@@ -628,7 +628,7 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
     if profile != ExecutionProfile.STRICT:
         # Repair the decode operation, not the complete production composition.
-        assert os.environ["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
+        assert generator.routed_f16_enabled is True
         assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
         assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"
         # The Q5_1 row-publish publication is the fallback selection for its
@@ -1417,7 +1417,6 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     other = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_q4_k_m")
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     selectors = (
-        _ROUTED_F16_ENV,
         "HIPENGINE_QWEN4_EXP_GR_WIDE",
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM",
         "HIPENGINE_QWEN4_EXP_QSA_WMMA",

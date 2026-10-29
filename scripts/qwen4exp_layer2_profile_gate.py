@@ -49,6 +49,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill,
     q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
+    routed_f16_enabled as routed_f16,
     qsa_ordered_decode_v2,
     qsa_prefill_head_mode, qsa_h256_prefill_mode,
 )
@@ -133,6 +134,8 @@ class CandidateSpec:
     # arm can measure it on a non-production chunk, and the published value
     # comes back after.
     q51_wmma_down: bool | None = None
+    # None preserves the manifest selection; explicit arms override one runner.
+    routed_f16_enabled: bool | None = None
     # Explicit Q5_1 out8 fallback rung for this arm, same protocol. ``None``
     # keeps the base profile's published decision (the out8 owner on every
     # plan); ``False`` pins the output1 rowbatch8 base around the measured rows.
@@ -175,7 +178,6 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 # through environment switches.
 
 _F16_ROUTES_OFF = {
-    "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
     "HIPENGINE_QWEN4_EXP_GR_F16_DIRECT": "0",
     "HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT": "0",
@@ -189,17 +191,10 @@ _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dpp_exact",
 }
 _ALL_LAYERS = ",".join(map(str, range(48)))
-#: Owners that take the Q5_1 down leg before the F16 compact owner. The routed
-#: F16 route owns both legs ahead of the Q5_1 branch (so it preempts the arm's
-#: declared gate/up control too). An arm that counts the F16 down owner must
-#: close that route or it measures the base profile's routed F16 owner. The
-#: candidate environment is applied after the bind and restored on exit.
-_F16_DOWN_PREEMPTORS_OFF = {
-    "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-}
+#: Down-only arms close routed F16 through CandidateSpec.routed_f16_enabled.
 _F16_ROUTE_ARMS = {
     "recovery_plan": {},
-    "recovery_plus_routed_f16": {"HIPENGINE_QWEN4_EXP_ROUTED_F16": "1"},
+    "recovery_plus_routed_f16": {},
     "recovery_plus_dense_wide_all_layers": {
         "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": _ALL_LAYERS,
     },
@@ -232,6 +227,7 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
                 "binder" + (", plus " + ", ".join(sorted(extra)) if extra else "")
             ),
             environment={**_F16_ROUTES_OFF, **extra},
+            routed_f16_enabled=name == "recovery_plus_routed_f16",
             base_profile="production",
             scenario_id="qwen4exp-" + name.replace("_", "-"),
             candidate_key=None,
@@ -471,7 +467,8 @@ CANDIDATES = {
             "WMMA, F32 accumulate) with no repair pass; routed-F16 composition "
             "is held off and other Q4_K gate/up controls retain their profile values"
         ),
-        environment=_F16_DOWN_PREEMPTORS_OFF,
+        environment={},
+        routed_f16_enabled=False,
         q51_exact_grouped_down=False,
         q51_wmma_down=True,
         base_profile="production",
@@ -507,9 +504,8 @@ CANDIDATES = {
             "replacing the exact grouped chains for every grouped prefill "
             "dispatch"
         ),
-        environment={
-            "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
-        },
+        environment={},
+        routed_f16_enabled=True,
         base_profile="production",
         scenario_id="qwen4exp-routed-f16",
         candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
@@ -531,8 +527,8 @@ CANDIDATES = {
             "F16-operand router-logits producer, the WMMA QSA prefill "
             "attention, and the tiled GDN recurrence at every GDN layer"
         ),
+        routed_f16_enabled=True,
         environment={
-            "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
             "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
                 str(layer) for layer in range(48)
             ),
@@ -559,21 +555,9 @@ CANDIDATES = {
             "MX-1 as specified: F16-WMMA grouped gate/up (Q4_K) AND F16-WMMA "
             "grouped down (Q5_1), both with no repair pass"
         ),
-        environment={
-            # Two process keys and three runner fields, because the down leg's
-            # own chain tests `exact_grouped_down` BEFORE `q5_wmma`:
-            #   if routed_f16:              <- production base binds this on
-            #   elif down == gguf_q5_1:
-            #     if exact_grouped_down:    <- production chain (repair)
-            #     elif q5_wmma:             <- F16 down owner
-            # So the arm closes the routed F16 owner as well; without
-            # that both legs are the routed F16 route and the compact aliases
-            # the counters watch never launch. Both chain gates are runner state
-            # (`q51_exact_grouped_down`, `q4_exact_grouped_gate`), so they are
-            # the spec's fields rather than process keys, and so is the F16 down
-            # owner's admission (`q51_wmma_down`).
-            **_F16_DOWN_PREEMPTORS_OFF,
-        },
+        # Close both exact chains and the routed owner to reach compact WMMA.
+        environment={},
+        routed_f16_enabled=False,
         q51_exact_grouped_down=False,
         q51_wmma_down=True,
         q4_exact_grouped_gate=False,
@@ -1683,6 +1667,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         dispatch_stack.enter_context(q51_exact_grouped_down(
             candidate_generator.runner,
             candidate_spec.q51_exact_grouped_down))
+    if candidate_spec.routed_f16_enabled is not None:
+        dispatch_stack.enter_context(routed_f16(
+            candidate_generator.runner, candidate_spec.routed_f16_enabled))
     if candidate_spec.q51_wmma_down is not None:
         # And for the F16 WMMA down owner's admission: request-local state, so
         # an arm that measures the down-only route admits it for the measured

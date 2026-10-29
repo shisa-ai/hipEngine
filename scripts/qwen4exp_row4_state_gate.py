@@ -613,7 +613,7 @@ def main():
                 "production must publish the row-publish selection")
             assert os.environ.get(Q51_IU8_EXACT_ENV, "") not in {"", "0"}, (
                 "production must bind the preempting exact Q5_1 down")
-            assert os.environ.get("HIPENGINE_QWEN4_EXP_ROUTED_F16", "") not in {"", "0"}, (
+            assert generator.runner.routed_f16_enabled is True, (
                 "production must bind the preempting routed F16 down")
             assert getattr(generator.runner, Q51_PAIR2_GATE_FIELD, False), (
                 "the pair2 chain's own gate must be published on the runner")
@@ -636,8 +636,7 @@ def main():
             # what it replaced.
             assert generator.runner.q8_down_register is True, (
                 "production must publish the down-register selection")
-            assert os.environ.get("HIPENGINE_QWEN4_EXP_ROUTED_F16", "") not in {
-                "", "0"}, (
+            assert generator.runner.routed_f16_enabled is True, (
                 "production must bind the preempting routed F16 down")
             assert os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "") not in {

@@ -236,13 +236,13 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         **{FIELD: False},
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, False, True, True, True, True, False, False,
         False, False, False, False)
 
     owner.q51_exact_grouped_down = True
     owner.q51_wmma_down = True
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, True, True, True, True, True, False, False,
+        False, False, False, False, True, True, False, True, True, True, True, False, False,
         False, False, False, False)
 
 
@@ -402,7 +402,7 @@ def _load_campaign():
 def test_the_campaign_closes_the_owner_on_the_runner() -> None:
     campaign = _load_campaign()
     assert RETIRED_ENV not in campaign.Q51_PAIR2_PREEMPTING_ENV
-    assert campaign.Q51_PAIR2_PREEMPTING_FIELDS == (FIELD,)
+    assert campaign.Q51_PAIR2_PREEMPTING_FIELDS == (FIELD, "routed_f16_enabled")
     assert RETIRED_ENV not in campaign.PF13_PREEMPTING_ENV
 
     owner = SimpleNamespace(q51_exact_grouped_down=True, **{FIELD: True})
@@ -411,8 +411,8 @@ def test_the_campaign_closes_the_owner_on_the_runner() -> None:
     assert getattr(owner, FIELD) is True
 
     record = campaign.q51_pair2_control_record(owner, environment={})
-    assert record["preempting_owner_fields_closed"] == {FIELD: False}
-    assert record["preempting_owner_fields_previous"] == {FIELD: True}
+    assert record["preempting_owner_fields_closed"] == {FIELD: False, "routed_f16_enabled": False}
+    assert record["preempting_owner_fields_previous"] == {FIELD: True, "routed_f16_enabled": False}
 
 
 def test_the_pf13_arm_closes_the_owner_in_both_arms() -> None:
@@ -435,7 +435,7 @@ def test_the_pf13_arm_closes_the_owner_in_both_arms() -> None:
     control = campaign.pf13_control_record(runner, environment=environment)
     assert control["preempting_owner_fields"] == {
         "bound_value": False,
-        "published_value": {FIELD: True},
+        "published_value": {FIELD: True, "routed_f16_enabled": False},
     }
 
 
@@ -466,7 +466,7 @@ def test_the_layer2_down_arms_bind_the_owner_on_the_runner() -> None:
         assert RETIRED_ENV not in candidate.environment, name
         # The production base binds the routed F16 route on; close it so
         # the compact down owner runs.
-        assert candidate.environment["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "0"
+        assert candidate.routed_f16_enabled is False
         assert "HIPENGINE_QWEN4_EXP_T16_DOWN" not in candidate.environment
 
     import dataclasses

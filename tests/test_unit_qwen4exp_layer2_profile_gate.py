@@ -405,10 +405,8 @@ def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
     assert candidate.classification == "T1"
     assert candidate.base_profile == "production"
     assert candidate.scenario_id == "qwen4exp-f16-compact-down"
-    assert candidate.environment == {
-        # Close the route that the production base binds ahead of this owner.
-        "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-    }
+    assert candidate.environment == {}
+    assert candidate.routed_f16_enabled is False
     # The F16 owner's own admission is runner state, so the arm admits it
     # through the spec's field instead of a process key.
     assert candidate.q51_wmma_down is True
@@ -444,9 +442,8 @@ def test_mx1_full_route_candidate_closes_the_leg_preemptors() -> None:
 
     assert candidate.classification == "T1"
     assert candidate.base_profile == "production"
-    assert candidate.environment == {
-        "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-    }
+    assert candidate.environment == {}
+    assert candidate.routed_f16_enabled is False
     # The gate/up half is the Q4 chain's own field (closed below) and the
     # Q5_1 WMMA down owner is the Q5_1 side's, so neither is a process key.
     assert candidate.q51_wmma_down is True

@@ -366,12 +366,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q5k_row4_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, False, True, True, True, True, False, False,
         False, False, False, False)
 
     owner.q4_out4 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, True, True, True, False, False, False,
+        False, False, False, False, True, False, False, True, True, True, False, False, False,
         False, False, False, False)
 
 
@@ -580,8 +580,9 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     assert dict(bindings)[FIELD] is False
     assert off == "0"
     assert set(envs) == {
-        ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
+        PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
         EXPERT_GRID_ENV}
+    assert dict(bindings)["routed_f16_enabled"] is False
     assert dict(bindings)["q4_pair_prefill"] is False
     assert dict(bindings)["q4_bundle_prefill"] is False
     assert envs == module.Q4_OUT4_PREEMPTING_ENV
@@ -599,7 +600,8 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
 def test_the_production_publication_keeps_the_rung_from_deciding(
         profiles, monkeypatch) -> None:
     with _published(monkeypatch) as (published, generator):
-        assert published[ROUTED_F16_ENV] == "1"
+        assert published[ROUTED_F16_ENV] is None
+        assert generator.runner.routed_f16_enabled is True
         assert published[IU8_EXACT_ENV] == "1"
         assert published[PAIR_ENV] is None
         assert generator.runner.q4_pair_prefill is True
@@ -612,7 +614,7 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
 
         # The real predicates, in dispatch order: the routed-F16 owner takes the
         # gate/up leg, and the iu8 chain sits above the ladder.
-        assert runner_module._routed_f16_enabled() is True
+        assert generator.runner.routed_f16_enabled is True
         assert runner_module._qwen4_exp_q4_iu8_exact_enabled() is True
         # Even with those out of the way the expert-grid family replaces the
         # rung at its default mode, and the published pair2 preemptor inside it

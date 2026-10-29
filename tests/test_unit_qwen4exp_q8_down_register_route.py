@@ -362,7 +362,6 @@ def test_q8_down_control_names_every_preemptor():
     # WMMA down sits in front of the sorted chain; both are forced closed. The
     # chain's own gate is runner state, recorded never forced.
     assert Q8_DOWN_PREEMPTING_ENV == (
-        "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
     )
     # Both ladder rungs and the chain's own gate are request-local runner state,
@@ -433,8 +432,8 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
     record = q8_down_control_record(runner=_owner(), environment=env)
     assert record["preempting_owners_closed"] == {
         key: "0" for key in Q8_DOWN_PREEMPTING_ENV}
-    assert record["preempting_owners_previous"][
-        "HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
+    assert record["preempting_fields"]["routed_f16_enabled"] == {
+        "bound_value": False, "published_value": None}
     assert record["chain_gate"] == {
         "runner_field": Q8_DOWN_FORKB_FIELD, "published_value": True}
     # Recording changes nothing.

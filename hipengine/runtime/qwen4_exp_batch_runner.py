@@ -396,6 +396,7 @@ def run_qwen4_exp_batch_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
     q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
@@ -527,6 +528,7 @@ def run_qwen4_exp_batch_gdn_layer(
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
+            routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
         )
 
@@ -617,6 +619,7 @@ def _run_layer_ffn(
     weights: object,
     scratch: object,
     *,
+    routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
@@ -686,6 +689,7 @@ def _run_layer_ffn(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
@@ -725,6 +729,7 @@ def run_qwen4_exp_batch_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
     q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
@@ -864,6 +869,7 @@ def run_qwen4_exp_batch_qsa_layer(
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
+            routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
         )
 
@@ -944,6 +950,8 @@ class Qwen4ExpGGUFBatchRunner:
     # reaches the production term, so a captured segment that ran this owner
     # is keyed on it.
     q51_wmma_down: bool = False
+    # Manifest-owned selection, included in the captured segment policy key.
+    routed_f16_enabled: bool = False
     # The chain's non-expertgrid fallback rung: every plan publishes the out8
     # owner, and the output1 base is a diagnostic binding on one runner.
     q51_out8: bool = True
@@ -1876,6 +1884,7 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.q51_fold_pair_prefill),
             bool(self.q51_exact_grouped_down),
             bool(self.q51_wmma_down),
+            bool(getattr(self, "routed_f16_enabled", False)),
             bool(self.q51_out8),
             bool(self.q4_exact_grouped_gate),
             bool(self.q4_exact_grouped_all),
@@ -2133,6 +2142,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_gdn_layer(
                     residual_ptr,
                     gdn_binding,
+                    routed_f16_enabled=self.routed_f16_enabled,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     q5k_row4_prefill=self.q5k_row4_prefill,
@@ -2174,6 +2184,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_qsa_layer(
                     residual_ptr,
                     qsa_binding,
+                    routed_f16_enabled=self.routed_f16_enabled,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     q5k_row4_prefill=self.q5k_row4_prefill,

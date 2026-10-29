@@ -329,13 +329,12 @@ def test_pair2_control_names_every_preemptor():
     # pair2 gate is deliberately not in the forced list, and the retired
     # ds4-MMQ Q5_1 suffix is no longer a preemptor because nothing reads it.
     assert Q51_PAIR2_PREEMPTING_ENV == (
-        "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     )
     # The F16 WMMA down owner below the chain is runner state, so the arm
     # holds it off through the field set rather than a process key.
-    assert Q51_PAIR2_PREEMPTING_FIELDS == ("q51_wmma_down",)
+    assert Q51_PAIR2_PREEMPTING_FIELDS == ("q51_wmma_down", "routed_f16_enabled")
     assert Q51_PAIR2_GATE_FIELD not in Q51_PAIR2_PREEMPTING_ENV
     assert Q51_IU8_EXACT_ENV == "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 
@@ -400,12 +399,11 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
     record = q51_pair2_control_record(_chain_gate_owner(), environment=env)
     assert record["preempting_owners_closed"] == {
         key: "0" for key in Q51_PAIR2_PREEMPTING_ENV}
-    assert record["preempting_owners_previous"][
-        "HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
+    assert "HIPENGINE_QWEN4_EXP_ROUTED_F16" not in record["preempting_owners_previous"]
     assert record["preempting_owner_fields_closed"] == {
-        "q51_wmma_down": False}
+        "q51_wmma_down": False, "routed_f16_enabled": False}
     assert record["preempting_owner_fields_previous"] == {
-        "q51_wmma_down": None}
+        "q51_wmma_down": None, "routed_f16_enabled": None}
     assert record["pair2_gate"] == {
         "runner_field": Q51_PAIR2_GATE_FIELD,
         "published_value": True,

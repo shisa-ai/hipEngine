@@ -968,6 +968,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q51_row_publish = bool(getattr(generator, "q51_row_publish", False))
     runner.q51_exact_grouped_down = bool(
         getattr(generator, "q51_exact_grouped_down", True))
+    runner.routed_f16_enabled = bool(
+        getattr(generator, "routed_f16_enabled", False))
     runner.q51_wmma_down = bool(
         getattr(generator, "q51_wmma_down", False))
     runner.q51_out8 = bool(getattr(generator, "q51_out8", True))
