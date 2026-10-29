@@ -398,6 +398,72 @@ def test_fused_b1_block_probe_validation_rejects_inert_config(monkeypatch, capsy
     assert "--fused-b1-block-probe requires --target-block-verify" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("field,value", [
+    ("fused_b1_block_probe", False), ("adaptive_block_after_full_accept", False),
+    ("adaptive_block_verify_active", True), ("cycle_ar_fallback", True),
+    ("topk_branch_redraft", True),
+    ("cycle_draft_window", 0), ("cycle_draft_window", 2), ("cycle_draft_window", 5),
+    ("adaptive_probe_draft_n_max", 0), ("adaptive_probe_draft_n_max", 2),
+    ("cycle_root_topk_accept", 2), ("cycle_root_topk_accept", 40),
+    ("cycle_sibling_topk_accept", 2), ("cycle_sibling_topk_accept", 40),
+])
+def test_fused_b1_probe_rejects_each_non_probe_dimension(field, value):
+    options = dict(fused_b1_block_probe=True, adaptive_block_after_full_accept=True,
+                   adaptive_block_verify_active=False, cycle_ar_fallback=False,
+                   cycle_draft_window=1, adaptive_probe_draft_n_max=1,
+                   cycle_root_topk_accept=1, cycle_sibling_topk_accept=1,
+                   topk_branch_redraft=False)
+    assert should_use_fused_b1_block_probe(**options) is True
+    assert should_use_fused_b1_block_probe(**{**options, field: value}) is False
+    assert should_use_fused_b1_block_probe(**options) is True
+
+
+@pytest.mark.parametrize("override,message", [
+    (["--no-target-block-verify"], "requires --target-block-verify"),
+    (["--no-adaptive-block-after-full-accept"], "requires --adaptive-block-after-full-accept"),
+    (["--adaptive-probe-draft-n-max", "2"], "requires --adaptive-probe-draft-n-max 1"),
+    (["--target-block-min-rows", "1"], "requires --target-block-min-rows 2"),
+    (["--target-block-min-rows", "3"], "requires --target-block-min-rows 2"),
+    (["--root-topk-accept", "2"], "requires strict top-1 linear drafting"),
+    (["--sibling-topk-accept", "2"], "requires strict top-1 linear drafting"),
+    (["--topk-branch-redraft"], "requires strict top-1 linear drafting"),
+])
+def test_fused_b1_probe_cli_preconditions_fail_before_model_load(monkeypatch, tmp_path, capsys, override, message):
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE", "pack8")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS", "128")
+    options = ["--model", str(tmp_path / "absent.gguf"), "--draft-n-max", "5",
+               "--fused-b1-block-probe", "--target-block-verify",
+               "--adaptive-block-after-full-accept", "--adaptive-probe-draft-n-max", "1",
+               "--target-block-min-rows", "2", "--root-topk-accept", "1",
+               "--sibling-topk-accept", "1"]
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main([*options, *override])
+    assert excinfo.value.code == 2
+    error = capsys.readouterr().err
+    assert f"--fused-b1-block-probe {message}" in error
+    assert "Model file not found" not in error
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("budget", [1, 2, 5, 7])
+def test_fused_b1_probe_is_valid_under_larger_configured_budgets(monkeypatch, tmp_path, capsys, budget):
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+    for name, value in [("HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE", "pack8"),
+                        ("HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS", "128"),
+                        ("HIPENGINE_GGUF_DECODE_REPACK", "1")]:
+        monkeypatch.setenv(name, value)
+    options = ["--model", str(tmp_path / "absent.gguf"), "--draft-n-max", str(budget),
+               "--fused-b1-block-probe", "--target-block-verify",
+               "--adaptive-block-after-full-accept", "--adaptive-probe-draft-n-max", "1",
+               "--target-block-min-rows", "2", "--root-topk-accept", "1",
+               "--sibling-topk-accept", "1"]
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(options)
+    assert excinfo.value.code == 1
+    assert "Model file not found" in capsys.readouterr().err
+
+
 def test_compute_speculative_metrics_counts_visible_accepted_tokens() -> None:
     """Accepted draft tokens are visible outputs, not just diagnostic accepts."""
     cycles = [

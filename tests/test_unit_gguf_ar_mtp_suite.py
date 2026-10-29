@@ -772,6 +772,30 @@ def test_suite_exposes_fused_b1_block_probe_route() -> None:
     ]
 
 
+@pytest.mark.parametrize("budget", [1, 2, 5, 7])
+def test_fused_b1_suite_preserves_probe_window_under_configured_budget(monkeypatch, tmp_path, capsys, budget):
+    from scripts.gguf_mtp_bench import build_arg_parser
+
+    route = "resident-fused-b1-block-direct-cap32k-minrows2-pmin05"
+    assert route not in suite.MTP_ROUTE_DEFAULT_BUDGETS
+    options = build_arg_parser().parse_args([*suite.MTP_ROUTES[route], "--draft-n-max", str(budget)])
+    assert options.fused_b1_block_probe is options.adaptive_block_after_full_accept is True
+    assert options.target_block_verify is options.target_block_direct_state_commit is True
+    assert options.draft_n_max == budget
+    assert options.adaptive_probe_draft_n_max == 1
+    assert options.target_block_min_rows == 2
+    assert options.root_topk_accept == options.sibling_topk_accept == 1
+    assert options.mtp_draft_vocab_cap == 32768
+    assert options.llama_compat is False
+    monkeypatch.setattr(sys, "argv", ["gguf_ar_mtp_suite.py", "--mtp-route", route,
+                                    "--budgets", str(budget), "--dry-run", "--raw-root", str(tmp_path)])
+    assert suite.main() == 0
+    output = capsys.readouterr().out
+    assert f"--budgets {budget}" in output
+    assert "--extra-arg=--fused-b1-block-probe" in output
+    assert "--extra-arg=--adaptive-probe-draft-n-max --extra-arg=1" in output
+
+
 def test_suite_llama_compat_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.setattr(
         sys,

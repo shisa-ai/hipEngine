@@ -3430,20 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
-- Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
-  adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with
-  one strict two-row target block instead of the serial target step loop. The suite
-  route mirrors `resident-b1-probe-block-direct-cap32k-minrows2-pmin05` plus this
-  flag. **Default off** until a full-suite row proves it improves wall time.
-- Purpose: test the first queued llama.cpp-parity fix from
-  `docs/campaigns/MTP-LLAMACPP-PARITY.md`: remove or shrink `target_serial_verify_step`
-  without merely shifting the same cost into `target_block_verify_total`.
-- Remove / promote when: promote into the retained route only if exact full-suite
-  B5 beats the current default and stage buckets show serial verifier cost falls
-  below ~2 ms/output with no acceptance regression. Otherwise delete the flag/route
-  after the parity A/B is recorded.
-
 ## `--target-block-direct-partial-replay-mode`
 - Added 2026-07-02. Bench and forced-target-probe flag with choices
   `serial-exact` (default), `serial-state-only`, `direct-commit`,
@@ -11219,7 +11205,7 @@ seed cycles and verify output, acceptance, hidden/KV/cursor continuity; confirm
 the public NextN provider is unchanged. Do not remove the compatibility cache
 until its replacement implements those same lifetime and commit semantics.
 
-### R0281-TARGET-POLICY / R0284 — GGUF verifier controls and native naming
+### R0281-TARGET-POLICY / R0284 / R0299 — GGUF verifier controls and native naming
 
 The standalone benchmark leaves block verification and direct state commit
 off, but the AR/MTP suite's default route enables both and llama-compat forces
@@ -11228,6 +11214,24 @@ serial-exact schedules, replay and captured-row commit. These are active
 transaction-policy interfaces, not unused scaffolding. Use
 `--target-block-verify --target-block-verify-mode MODE`; the verifier mode is
 not an optional value on the boolean switch.
+
+R0299's `--fused-b1-block-probe` is a separate adaptive benchmark schedule,
+not a public feature awaiting enablement. Its named suite route starts with
+one draft token and permits `[prev, draft0]` block verification before full
+acceptance activates the configured larger draft window. It requires block
+verification, adaptive full-accept selection, probe width one, minimum rows
+two and strict root/sibling top-1 without branch redraft. AR fallback and an
+already-active block schedule suppress the probe. The suite's default omits
+the probe flag; llama-compat explicitly disables adaptive probing.
+
+Full-suite staged and unstaged evaluations already exist in
+`benchmarks/results/2026-06-30-ar-mtp-fused-b1-block-direct-cap32k-minrows2-pmin05-b5-full.json`
+and the adjacent `-full-nostage.json` artifact. Their existence removes the
+old pending-evaluation rationale, not the distinction between schedules.
+Preserve the explicit comparison or retire it with this verifier-policy
+migration; include adaptive activation, AR fallback, output-tail rows,
+acceptance/commit accounting and cycle-policy provenance. Do not delete the
+shared block verifier or change the suite default from a historical speed row.
 
 R0284's `--llama-compat` benchmark composition forces B2/top1, full draft
 vocabulary, shifted prompt replay, device draft KV, bulk verification and

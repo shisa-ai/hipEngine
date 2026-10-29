@@ -8894,23 +8894,23 @@
       "start_line": 6747,
       "end_line": 6760,
       "sha256": "4254d6fc3894c2ef15274453b9e067e29210a6498fdbce2c1196370b30237347",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-verifier-policy-ownership",
+      "evidence": ["Explicit adaptive benchmark schedule still has a suite caller; public and llama-compat do not select it. Staged and unstaged June full-suite artifacts already exist, so removed stale pending-evaluation rationale. Consolidated explicit comparison/retirement decision into bottom R0281-TARGET-POLICY/R0284/R0299, with adaptive/tail/accept/commit/provenance clearing requirements. Host tests cover each selector predicate, CLI validation before loading, and suite configured budgets 1/2/5/7 versus fixed B1 probe width. No runtime/default/kernel or artifact changes. Worklog: worklog/entries/20261029T002411.788347Z-cleanup-refactor-r0299-b1-probe-9a1703.md."],
       "subitems": [
         {
           "line": 6748,
           "text": "- Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained",
-          "status": "pending"
+          "status": "deferred-live-schedule-comparison"
         },
         {
           "line": 6753,
           "text": "- Purpose: test the first queued llama.cpp-parity fix from",
-          "status": "pending"
+          "status": "resolved-history-and-actual-caller-recorded"
         },
         {
           "line": 6756,
           "text": "- Remove / promote when: promote into the retained route only if exact full-suite",
-          "status": "pending"
+          "status": "resolved-stale-evaluation-gate-deferred-policy-owner"
         }
       ]
     },
