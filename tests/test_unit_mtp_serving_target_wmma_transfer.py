@@ -1,84 +1,59 @@
-"""B1 mechanism-A transfer switch: MTP serving target verify owner routing.
+"""MTP serving target verify owner routing follows the execution profile.
 
-The July-2026 small-B decision (9cceedbcc) pinned the packed MTP serving
-target verifier to per-row GEMV owners. The B1 build campaign retained the
-transfer: the production execution profile serves verify rows>1 through the
-same retained exact prefill band owners the prefill path uses, while strict
-(and any profile fallback) keeps the GEMV verifier oracle unchanged. The env
-remains an explicit override for bisection and diagnostics. These tests pin
-the switch, its profile scoping, and the registry surface the rewrite
-depends on; they are host-only.
+Production uses the prefill band owners; strict, absent profile context and
+strict fallback keep the GEMV verifier. Stale values of the retired environment
+override cannot change either choice. Tests are host-only.
 """
 
 from __future__ import annotations
 
-import os
-from unittest import mock
-
 import pytest
 
 from hipengine.runtime.gguf_linear import (
-    MTP_SERVING_TARGET_WMMA_PREFILL_ENV,
     mtp_serving_target_use_wmma_prefill,
 )
 
 
+_RETIRED_ENV = "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
+
+
 def test_no_profile_context_keeps_gemv_owners() -> None:
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, None)
-        assert mtp_serving_target_use_wmma_prefill() is False
-        assert mtp_serving_target_use_wmma_prefill(None) is False
+    assert mtp_serving_target_use_wmma_prefill() is False
+    assert mtp_serving_target_use_wmma_prefill(None) is False
 
 
 def test_production_profile_serves_transferred_owners() -> None:
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, None)
-        assert (
-            mtp_serving_target_use_wmma_prefill(
-                "production", profile_fell_back_to_strict=False
-            )
-            is True
-        )
+    assert mtp_serving_target_use_wmma_prefill(
+        "production", profile_fell_back_to_strict=False,
+    ) is True
 
 
 def test_strict_profile_keeps_gemv_oracle() -> None:
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, None)
-        assert mtp_serving_target_use_wmma_prefill("strict") is False
-        assert mtp_serving_target_use_wmma_prefill("legacy_exact") is False
+    assert mtp_serving_target_use_wmma_prefill("strict") is False
+    assert mtp_serving_target_use_wmma_prefill("legacy_exact") is False
 
 
 def test_production_fallback_to_strict_keeps_gemv_owners() -> None:
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, None)
-        assert (
-            mtp_serving_target_use_wmma_prefill(
-                "production", profile_fell_back_to_strict=True
-            )
-            is False
-        )
+    assert mtp_serving_target_use_wmma_prefill(
+        "production", profile_fell_back_to_strict=True,
+    ) is False
 
 
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_env_forces_transfer_on_any_profile(value: str) -> None:
-    with mock.patch.dict(
-        os.environ, {MTP_SERVING_TARGET_WMMA_PREFILL_ENV: value}
-    ):
-        assert mtp_serving_target_use_wmma_prefill() is True
-        assert mtp_serving_target_use_wmma_prefill("strict") is True
-
-
-@pytest.mark.parametrize("value", ["0", "false", "no", "off"])
-def test_env_forces_gemv_off_override(value: str) -> None:
-    with mock.patch.dict(
-        os.environ, {MTP_SERVING_TARGET_WMMA_PREFILL_ENV: value}
-    ):
-        assert (
-            mtp_serving_target_use_wmma_prefill(
-                "production", profile_fell_back_to_strict=False
-            )
-            is False
-        )
+@pytest.mark.parametrize("value", [None, "", "0", "false", "no", "off", "1", "true", "yes", "on", "invalid"])
+def test_retired_env_cannot_change_profile_selection(monkeypatch, value) -> None:
+    if value is None:
+        monkeypatch.delenv(_RETIRED_ENV, raising=False)
+    else:
+        monkeypatch.setenv(_RETIRED_ENV, value)
+    assert mtp_serving_target_use_wmma_prefill("production") is True
+    assert mtp_serving_target_use_wmma_prefill(_ProfileLike()) is True
+    assert mtp_serving_target_use_wmma_prefill("strict") is False
+    assert mtp_serving_target_use_wmma_prefill("legacy_exact") is False
+    assert mtp_serving_target_use_wmma_prefill() is False
+    assert mtp_serving_target_use_wmma_prefill(None) is False
+    assert mtp_serving_target_use_wmma_prefill(
+        "production", profile_fell_back_to_strict=True,
+    ) is False
 
 
 class _ProfileLike:
@@ -86,9 +61,7 @@ class _ProfileLike:
 
 
 def test_profile_enum_objects_unwrap() -> None:
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, None)
-        assert mtp_serving_target_use_wmma_prefill(_ProfileLike()) is True
+    assert mtp_serving_target_use_wmma_prefill(_ProfileLike()) is True
 
 
 def test_serving_modules_consume_the_switch() -> None:

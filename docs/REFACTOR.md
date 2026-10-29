@@ -3430,16 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF-B1A — MTP serving target WMMA-prefill transfer (2026-09-02)
-
-`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` remains the explicit override
-around the production-profile transfer from July's per-row GEMV verifier
-owners to retained exact prefill-band owners. The current gfx1151 one-group
-C5-C8 gate improves 56.3-72.7%, preserves all 40 IDs, and passes the sec-6
-teacher gate at 100% top-1/max KL 6.5e-4. Strict/profile fallback keeps GEMV.
-Retire the override only when a future verifier family supersedes this owner;
-keep registered strict fallbacks.
-
 ## RF-B5A — selective planar-Q6 integer-MMQ route (2026-09-03)
 
 `HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` is the rollback override for gfx1151

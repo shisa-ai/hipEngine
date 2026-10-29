@@ -11721,8 +11721,8 @@
       "start_line": 9230,
       "end_line": 9239,
       "sha256": "91f201d9ccc312edf54455d7e37b6cce138eba943ce23c1b24d92f99ff9fbc7f",
-      "status": "pending",
-      "evidence": [],
+      "status": "repaired-retired-process-override-profile-selection-preserved",
+      "evidence": ["Delete MTP_SERVING_TARGET_WMMA_PREFILL_ENV and runtime read; production profile alone selects transferred prefill owners while strict/no-profile/fallback remain GEMV. Nine stale-value RED cases then169focused green across transfer/adapter/env isolation. Shared profile helper and all serving call sites remain; no arithmetic/default change. ENVS marks retired; historical analyzer strings label old inputs, not current setters. Actual public three-request MTP and CPU deterministic bundle recorded in worklog/entries/20261029T122853.516873Z-cleanup-refactor-r0397-target-prefill-56c7c7.md; preserve historical transfer artifacts. Audit flag marked resolved; no replacement flag."],
       "subitems": []
     },
     {

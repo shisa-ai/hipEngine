@@ -341,22 +341,6 @@ TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
 )
 
-# B1 mechanism-A transfer (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md): route the
-# packed MTP serving target verifier's rows>1 projections through the same
-# retained exact prefill band owners the prefill path uses, instead of the
-# July-2026 small-B per-row GEMV owners (9cceedbcc). Default ON for the
-# production execution profile (retained 2026-09-02 after the B1 gates:
-# one-group suite +56.3/+64.0/+69.5/+72.7 pct C5-C8 with 40/40 exact and
-# identical IDs; sec-6 teacher-forced logits gate top-1 100 pct, max KL
-# 6.5e-4; production-admission measured inert). Strict (and any profile
-# fallback) keeps the GEMV verifier oracle unchanged. The env remains an
-# explicit override for bisection and diagnostics: 1/on forces the transfer,
-# 0/off restores the GEMV owners everywhere.
-MTP_SERVING_TARGET_WMMA_PREFILL_ENV = (
-    "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
-)
-
-
 # B2 P1: prefill F16-staging route (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md).
 # Default OFF: the BF16 owners remain the selected strict fallback. When
 # enabled (env or prefill session), Q4/Q5-T16 dense prefill launches stage
@@ -1297,17 +1281,10 @@ def mtp_serving_target_use_wmma_prefill(
     """Whether MTP serving target verify passes use the prefill band owners.
 
     ``profile`` accepts the generator's execution-profile value (or its
-    string). Resolution order: explicit env override, then the production
-    profile (without strict fallback), then off. Without profile context the
-    answer is off so unrelated callers never drift onto the transferred
-    owners.
+    string). Production without strict fallback uses the transferred owners.
+    Strict, absent profile context and fallback keep GEMV owners.
     """
 
-    override = os.environ.get(
-        MTP_SERVING_TARGET_WMMA_PREFILL_ENV, ""
-    ).strip().lower()
-    if override:
-        return override in {"1", "true", "yes", "on"}
     profile_value = getattr(profile, "value", profile)
     if profile_value is None or str(profile_value) == "":
         return False
