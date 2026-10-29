@@ -3427,37 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## The Qwen4Exp T16 routed-expert routes and tile residency
-
-This unit also owns R0448's down-route selector/sidecar consumers and R0449's
-construction-time residency controls, slot/layer filtering and explicit populate
-method. Their older pending X-7 decisions are superseded by the decision below.
-Audit the shared materializer before deleting loading primitives; preserve
-`rebind_resident_weights` for non-T16 weight replacement.
-Retire the down A/B and layer2 candidate arms together with runtime selection;
-do not leave diagnostic controls that silently select the fallback.
-
-The `production` plan for `qwen4_exp_gguf` / `hip_gfx1151` /
-`gguf_ud_q4_k_xl` runs its routed experts on the wide-tile routed F16 GEMMs
-(`quant/qwen4_exp_routed_f16`), which read the raw expert weights. No profile
-selects the T16 compensated routes any more: `HIPENGINE_QWEN4_EXP_T16_GATE_UP`,
-`HIPENGINE_QWEN4_EXP_T16_DOWN`, `HIPENGINE_QWEN4_EXP_T16_RESIDENT`,
-`HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS`,
-`HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS`, the runner's T16 branches and
-sidecar caches, `Qwen4ExpGGUFTextGenerator.populate_t16_resident_stages`, and
-the `t16` allocation-stage helpers remain only as default-off experiments.
-The T16 routes need a second copy of the expert weights (41.3 GiB gate/up,
-25.2 GiB down) that does not fit beside the raw weights the decode owners
-read, and measured about +8.5% prefill for the down leg against about +48%
-for the raw-layout routed GEMMs.
-
-Removal condition: met on 2026-10-13, when the routed F16 GEMMs passed the
-production gate and became the production route. Delete all of the above,
-keeping the T16 kernels and their round-trip tests only if another model's
-plan names them.
-`Qwen4ExpGGUFResidentModelRunner.rebind_resident_weights` stays: it is the
-general fix for weights republished after construction.
-
 ## The Qwen4Exp routed F16 selector
 
 `HIPENGINE_QWEN4_EXP_ROUTED_F16` (default off) is published by the

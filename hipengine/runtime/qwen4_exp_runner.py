@@ -89,16 +89,9 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
-    qwen35_moe_group_prefix_active,
     qwen35_moe_group_scatter_gather_lowp,
     qwen35_moe_group_scatter,
     qwen35_moe_wmma_tile_map,
-)
-from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
-    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out,
-)
-from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
-    gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
@@ -1993,8 +1986,6 @@ class Qwen4ExpMoEScratch:
     group_wmma_total: DeviceBuffer
     group_gate_up: DeviceBuffer
     group_lane_to_row: DeviceBuffer
-    group_active_experts: DeviceBuffer
-    group_active_count: DeviceBuffer
     runtime: HipRuntime
     closed: bool = False
     group_risk_count: DeviceBuffer | None = None
@@ -2046,8 +2037,6 @@ class Qwen4ExpMoEScratch:
             DType.INT64.itemsize,
             compact * 2 * ffn * DType.BF16.itemsize,
             compact * DType.INT64.itemsize,
-            experts * DType.INT64.itemsize,
-            DType.INT64.itemsize,
         )
         buffers: list[DeviceBuffer] = []
         try:
@@ -2092,8 +2081,6 @@ class Qwen4ExpMoEScratch:
                 self.group_wmma_total,
                 self.group_gate_up,
                 self.group_lane_to_row,
-                self.group_active_experts,
-                self.group_active_count,
             )
         ):
             free(buffer, runtime=self.runtime)
@@ -4344,7 +4331,7 @@ def q51_wmma_down(
     the production grouped MoE route does not own, and ``False`` keeps the
     production admission alone; leaving ``enabled`` unset keeps whatever the
     plan published. The field only decides below the exact grouped Q5_1 down
-    chain and below the T16 owner, and the routed-F16 route still owns the whole
+    chain, and the routed-F16 route still owns the whole
     down leg ahead of the Q5_1 branch, so an arm that names this owner closes
     those first. The binding is a mutable runner field, so it stays in force for
     as long as the scope is open and the published value is restored on exit,
@@ -4870,7 +4857,7 @@ def _qwen4_exp_q51_down_key(
     (``q51_out8``, see :func:`q51_out8`), the output1 base, then the pair2
     preemptor, then the fold128/folded-pair/register-cache/row-publish siblings.
     The caller owns everything above it - ``production_grouped_moe``, the routed
-    F16 and T16 owners, the chain gate and the exact iu8-risk+repair switch - so
+    F16 owner, the chain gate and the exact iu8-risk+repair switch - so
     this function is only reached by a chunk that already runs the chain.
 
     Every input is either a dispatch-time guard (rows, in_features, the
@@ -5571,26 +5558,6 @@ def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
     ) not in {"", "0", "false", "False"}
 
 
-# T16 gate/up admission (2026-10-08): per-weight T16 tile cache keyed by the
-# gate weight's raw device pointer. Populated by the integration helper (the
-# same GGUF read + repack_gguf_q4_k_tile16 path the natural-owner screen
-# validated); the runner branch falls back to the production iu8 chain on a
-# cache miss, so the default path is untouched.
-_T16_GATE_UP_TILES: dict[int, tuple[object, object]] = {}
-_T16_GATE_UP_ENV = "HIPENGINE_QWEN4_EXP_T16_GATE_UP"
-
-
-# T16 Q5_1 down route (2026-10-09 down-leg build, step 4): the same
-# env-gated pattern as the gate/up T16 route. The A/B harness populates
-# the tile cache (repack_gguf_q5_1_tile16_packed on the GGUF down weights,
-# uploaded and keyed by the resident down weight's raw device pointer);
-# the runner branch falls back to the production down chain on a cache
-# miss, so the default path is untouched and the strict fallback is
-# structural.
-_T16_DOWN_TILES: dict[int, object] = {}
-_T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
-
-
 # Wide-tile routed F16 GEMMs over the raw expert weights (fast profile): the
 # gate/up pair with a SwiGLU epilogue and the down projection, each decoding a
 # weight tile once per macro tile of grouped rows. The binder publishes the
@@ -5652,22 +5619,6 @@ def _routed_f16_tile_map(
         runtime=runtime,
     )
     return capacity
-
-
-def _t16_down_enabled() -> bool:
-    """Default-off T16 Q5_1 expert-major down route."""
-
-    return os.environ.get(
-        _T16_DOWN_ENV, "0"
-    ) not in {"", "0", "false", "False"}
-
-
-def _t16_gate_up_enabled() -> bool:
-    """Default-off T16 dual compensated gate/up route."""
-
-    return os.environ.get(
-        _T16_GATE_UP_ENV, "0"
-    ) not in {"", "0", "false", "False"}
 
 
 def _run_qwen4_exp_q51_wmma_down(
@@ -6347,31 +6298,6 @@ def run_qwen4_exp_moe(
         and rows >= 2
         and q51_exact_grouped_down
     )
-    # T16 down route (down-leg build step 4): env-gated, tile-cache-keyed.
-    # A cache miss falls through to the chain below, so the default path is
-    # untouched.
-    t16_down = (
-        _t16_down_enabled()
-        and weights["expert_down"].spec.quant_key == "gguf_q5_1"
-        and rows >= 2
-        and ffn % 32 == 0
-        and hidden % 16 == 0
-    )
-    t16_down_tiles = None
-    if t16_down:
-        down_w = weights["expert_down"]
-        down_allocs = getattr(down_w, "allocations", {})
-        if "t16" in down_allocs:
-            # Binding-owned tile-residency stage
-            # (docs/QWEN4EXP-T16-RESIDENCY.md): the tiles live on the
-            # weight, not the module sidecar.
-            t16_down_tiles = down_allocs["t16"].buffer
-        else:
-            t16_down_raw_ptr = int(
-                down_w.allocation("raw").tensor.ptr
-            )
-            t16_down_tiles = _T16_DOWN_TILES.get(t16_down_raw_ptr)
-        t16_down = t16_down_tiles is not None
     exact_grouped_q4_gate = _qwen4_exp_q4_exact_grouped_chain(
         production_grouped_moe=production_grouped_moe,
         rows=rows,
@@ -6405,8 +6331,6 @@ def run_qwen4_exp_moe(
         and weights["expert_down"].spec.quant_key in _ROUTED_F16_DOWN_QUANTS
         and ffn % 64 == 0
     )
-    if routed_f16:
-        t16_down = False
     grouped_prefill = (
         routed_f16
         or exact_grouped_down or exact_grouped_q4_gate or q5_k_iu8_exact or (
@@ -6443,20 +6367,6 @@ def run_qwen4_exp_moe(
             stream=stream,
             runtime=active_runtime,
         )
-        if t16_down:
-            # The expert-major down kernel consumes a device-resident list of
-            # nonempty experts; this extra single-block launch is charged to
-            # the T16 down route. The standard prefix above still feeds every
-            # other consumer of the grouped map.
-            qwen35_moe_group_prefix_active(
-                scratch.group_counts.ptr,
-                scratch.group_expert_start.ptr,
-                scratch.group_active_experts.ptr,
-                scratch.group_active_count.ptr,
-                experts,
-                stream=stream,
-                runtime=active_runtime,
-            )
         active_runtime.memset_async(
             scratch.group_scatter_offsets.ptr,
             0,
@@ -6570,180 +6480,108 @@ def run_qwen4_exp_moe(
                 and weights["expert_up"].spec.quant_key == "gguf_q4_k"
             )
             if q4_iu8_exact:
-                # T16 gate/up branch (2026-10-08 admission, env-gated, default
-                # off): the bit-lossless T16 repack decoded in registers, F16
-                # WMMA with compensated accumulate, no repair by construction.
-                # Tiles come from a module-level cache keyed by the gate
-                # weight's raw device pointer; a cache miss falls through to
-                # the production iu8-risk+repair chain, so the strict fallback
-                # is structural and the default path is untouched.
-                t16_tiles = None
-                if _t16_gate_up_enabled():
-                    gate_w = weights["expert_gate"]
-                    up_w = weights["expert_up"]
-                    gate_allocs = getattr(gate_w, "allocations", {})
-                    up_allocs = getattr(up_w, "allocations", {})
-                    if "t16" in gate_allocs and "t16" in up_allocs:
-                        # Binding-owned tile-residency stage
-                        # (docs/QWEN4EXP-T16-RESIDENCY.md): the tiles live on
-                        # the weight, not the module sidecar.
-                        t16_tiles = (
-                            gate_allocs["t16"].buffer,
-                            up_allocs["t16"].buffer,
-                        )
-                    else:
-                        gate_raw_ptr = int(
-                            gate_w.allocation("raw").tensor.ptr
-                        )
-                        t16_tiles = _T16_GATE_UP_TILES.get(gate_raw_ptr)
-                if t16_tiles is not None:
-                    tile_capacity = (
-                        scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                # Exact iu8-risk+repair route: GPU tile map with the static
+                # upper bound (no device read), risk-collecting iu8-WMMA
+                # gate/up, sparse exact repair reproducing the pair2 parent,
+                # then the combined-layout SiLU (bit-identical element-wise
+                # to the separate-layout SiLU used by the pair2 path).
+                tile_capacity = (
+                    scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                )
+                active = min(compact, experts)
+                static_tiles = active + (compact - active) // 16
+                if static_tiles > tile_capacity:
+                    raise RuntimeError(
+                        "Qwen4Exp grouped MoE tile capacity is invalid"
                     )
-                    active = min(compact, experts)
-                    static_tiles = active + (compact - active) // 16
-                    if static_tiles > tile_capacity:
-                        raise RuntimeError(
-                            "Qwen4Exp grouped MoE tile capacity is invalid"
-                        )
-                    qwen35_moe_wmma_tile_map(
-                        scratch.group_expert_start.ptr,
-                        scratch.group_wmma_expert_start.ptr,
-                        scratch.group_tile_expert.ptr,
-                        scratch.group_wmma_total.ptr,
-                        experts,
-                        tile_capacity=static_tiles,
-                        stream=stream,
-                        runtime=active_runtime,
-                    )
-                    gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out(
-                        scratch.expert_down.ptr,
-                        scratch.group_expert_start.ptr,
-                        scratch.group_wmma_expert_start.ptr,
-                        scratch.group_tile_expert.ptr,
-                        t16_tiles[0].ptr,
-                        t16_tiles[1].ptr,
-                        scratch.group_gate_up.ptr,
-                        compact,
-                        hidden,
-                        ffn,
-                        ffn,
-                        experts,
-                        static_tiles * 16,
-                        stream=stream,
-                        runtime=active_runtime,
-                    )
-                    silu_mul_dual_out_bf16(
-                        scratch.group_gate_up.ptr,
-                        scratch.expert_intermediate.ptr,
-                        rows=compact,
-                        features=ffn,
-                        stream=stream,
-                        runtime=active_runtime,
-                    )
-                else:
-                    # Exact iu8-risk+repair route: GPU tile map with the static
-                    # upper bound (no device read), risk-collecting iu8-WMMA
-                    # gate/up, sparse exact repair reproducing the pair2 parent,
-                    # then the combined-layout SiLU (bit-identical element-wise
-                    # to the separate-layout SiLU used by the pair2 path).
-                    tile_capacity = (
-                        scratch.group_tile_expert.nbytes // DType.INT64.itemsize
-                    )
-                    active = min(compact, experts)
-                    static_tiles = active + (compact - active) // 16
-                    if static_tiles > tile_capacity:
-                        raise RuntimeError(
-                            "Qwen4Exp grouped MoE tile capacity is invalid"
-                        )
-                    qwen35_moe_wmma_tile_map(
-                        scratch.group_expert_start.ptr,
-                        scratch.group_wmma_expert_start.ptr,
-                        scratch.group_tile_expert.ptr,
-                        scratch.group_wmma_total.ptr,
-                        experts,
-                        tile_capacity=static_tiles,
-                        stream=stream,
-                        runtime=active_runtime,
-                    )
-                    risk_count, risk_indices = scratch.ensure_group_risk_buffers(
-                        compact_rows=compact, out_features_total=2 * ffn
-                    )
-                    active_runtime.memset_async(
-                        risk_count.ptr, 0, DType.INT32.itemsize, stream
-                    )
-                    risk_capacity = compact * 2 * ffn
-                    iu8_gate_up_variant = (
-                        "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
-                        if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES", "3") == "2"
-                        else "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out")
-                    iu8_risk_gate_up = resolve(
-                        backend=backend, layer="moe_linear", quant="gguf_q4_k",
-                        variant=iu8_gate_up_variant,
-                    )
-                    sparse_exact_repair = resolve(
-                        backend=backend, layer="moe_linear", quant="gguf_q4_k",
-                        variant="selected_dual_sparse_exact_repair_bf16",
-                    )
-                    iu8_risk_gate_up(
-                        scratch.expert_down.ptr,
-                        scratch.group_expert_start.ptr,
-                        scratch.group_wmma_expert_start.ptr,
-                        scratch.group_tile_expert.ptr,
-                        weights["expert_gate"].allocation("raw").tensor.ptr,
-                        weights["expert_up"].allocation("raw").tensor.ptr,
-                        scratch.group_gate_up.ptr,
-                        risk_count.ptr,
-                        risk_indices.ptr,
-                        risk_capacity,
-                        _qwen4_exp_q4_iu8_risk_multiplier(),
-                        compact,
-                        hidden,
-                        ffn,
-                        ffn,
-                        experts,
-                        static_tiles * 16,
-                        stream=stream,
-                        runtime=active_runtime,
-                    )
-                    sparse_exact_repair(
-                        scratch.expert_down.ptr,
-                        scratch.group_expert_start.ptr,
-                        weights["expert_gate"].allocation("raw").tensor.ptr,
-                        weights["expert_up"].allocation("raw").tensor.ptr,
-                        scratch.group_gate_up.ptr,
-                        risk_count.ptr,
-                        risk_indices.ptr,
-                        risk_capacity,
-                        compact,
-                        hidden,
-                        ffn,
-                        ffn,
-                        experts,
-                        stream=stream,
-                        runtime=active_runtime,
-                    )
-                    _observe_qwen4_exp_risk_queue(
-                        runtime=active_runtime,
-                        stream=stream,
-                        risk_count=risk_count,
-                        route="q4_iu8_exact",
-                        role="expert_gate_up",
-                        layer=weights["expert_gate"].spec.slot_path,
-                        rows=rows,
-                        compact_rows=compact,
-                        out_features_total=2 * ffn,
-                        experts=experts,
-                        risk_capacity=risk_capacity,
-                    )
-                    silu_mul_dual_out_bf16(
-                        scratch.group_gate_up.ptr,
-                        scratch.expert_intermediate.ptr,
-                        rows=compact,
-                        features=ffn,
-                        stream=stream,
-                        runtime=active_runtime,
-                    )
+                qwen35_moe_wmma_tile_map(
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    scratch.group_wmma_total.ptr,
+                    experts,
+                    tile_capacity=static_tiles,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                risk_count, risk_indices = scratch.ensure_group_risk_buffers(
+                    compact_rows=compact, out_features_total=2 * ffn
+                )
+                active_runtime.memset_async(
+                    risk_count.ptr, 0, DType.INT32.itemsize, stream
+                )
+                risk_capacity = compact * 2 * ffn
+                iu8_gate_up_variant = (
+                    "selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out"
+                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES", "3") == "2"
+                    else "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out")
+                iu8_risk_gate_up = resolve(
+                    backend=backend, layer="moe_linear", quant="gguf_q4_k",
+                    variant=iu8_gate_up_variant,
+                )
+                sparse_exact_repair = resolve(
+                    backend=backend, layer="moe_linear", quant="gguf_q4_k",
+                    variant="selected_dual_sparse_exact_repair_bf16",
+                )
+                iu8_risk_gate_up(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    weights["expert_gate"].allocation("raw").tensor.ptr,
+                    weights["expert_up"].allocation("raw").tensor.ptr,
+                    scratch.group_gate_up.ptr,
+                    risk_count.ptr,
+                    risk_indices.ptr,
+                    risk_capacity,
+                    _qwen4_exp_q4_iu8_risk_multiplier(),
+                    compact,
+                    hidden,
+                    ffn,
+                    ffn,
+                    experts,
+                    static_tiles * 16,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                sparse_exact_repair(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    weights["expert_gate"].allocation("raw").tensor.ptr,
+                    weights["expert_up"].allocation("raw").tensor.ptr,
+                    scratch.group_gate_up.ptr,
+                    risk_count.ptr,
+                    risk_indices.ptr,
+                    risk_capacity,
+                    compact,
+                    hidden,
+                    ffn,
+                    ffn,
+                    experts,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                _observe_qwen4_exp_risk_queue(
+                    runtime=active_runtime,
+                    stream=stream,
+                    risk_count=risk_count,
+                    route="q4_iu8_exact",
+                    role="expert_gate_up",
+                    layer=weights["expert_gate"].spec.slot_path,
+                    rows=rows,
+                    compact_rows=compact,
+                    out_features_total=2 * ffn,
+                    experts=experts,
+                    risk_capacity=risk_capacity,
+                )
+                silu_mul_dual_out_bf16(
+                    scratch.group_gate_up.ptr,
+                    scratch.expert_intermediate.ptr,
+                    rows=compact,
+                    features=ffn,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
             else:
                 grouped_q4_key = _qwen4_exp_q4_gate_up_key(
                     backend=backend,
@@ -7009,33 +6847,7 @@ def run_qwen4_exp_moe(
             q5_wmma = _qwen4_exp_q51_wmma_down_enabled(
                 production_grouped_moe, q51_wmma_down
             )
-            if t16_down:
-                # T16 Q5_1 expert-major down (down-leg build step 4):
-                # F16 WMMA over the bit-lossless Q5_1 tiles with the
-                # compensated accumulate. Changes arithmetic vs the
-                # production down chain; the binding correctness authority
-                # is the layer2 production gate, and the env flag
-                # plus the tile-cache key keep the default path untouched.
-                down_input_ptr = (
-                    scratch.expert_intermediate.ptr
-                    if (exact_grouped_q4_gate or production_grouped_moe)
-                    else scratch.expert_gate.ptr
-                )
-                gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out(
-                    down_input_ptr,
-                    scratch.group_expert_start.ptr,
-                    scratch.group_active_experts.ptr,
-                    scratch.group_active_count.ptr,
-                    t16_down_tiles.ptr,
-                    scratch.expert_down.ptr,
-                    compact,
-                    ffn,
-                    hidden,
-                    experts,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-            elif exact_grouped_down:
+            if exact_grouped_down:
                 # PF-3 production: fused single-loop logical256 Q5_1 down
                 # prefill, bit-exact vs the strict owner. Production selects
                 # M1 after the one-process/one-residency canonical gate;

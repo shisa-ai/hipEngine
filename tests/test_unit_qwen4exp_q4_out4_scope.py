@@ -56,7 +56,6 @@ RETIRED_ENV = "HIPENGINE_QWEN4_EXP_Q4_OUT4"
 FIELD = "q4_out4"
 EXPERT_GRID_ENV = "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID"
 IU8_EXACT_ENV = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
-T16_GATE_UP_ENV = "HIPENGINE_QWEN4_EXP_T16_GATE_UP"
 PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
 BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
 ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
@@ -88,7 +87,7 @@ RETIRED_KEY_FREE_MODULES = (
 #: Every process key that keeps the rung - or the chain it sits in - from
 #: running, in dispatch order.
 COMPETITOR_ENV = (
-    ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV, T16_GATE_UP_ENV,
+    ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
     EXPERT_GRID_ENV, PAIR_ENV, BUNDLE_ENV,
 )
 
@@ -581,7 +580,7 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     assert dict(bindings)[FIELD] is False
     assert off == "0"
     assert set(envs) == {
-        ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV, T16_GATE_UP_ENV,
+        ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
         EXPERT_GRID_ENV}
     assert dict(bindings)["q4_pair_prefill"] is False
     assert dict(bindings)["q4_bundle_prefill"] is False

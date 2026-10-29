@@ -332,7 +332,6 @@ def test_pair2_control_names_every_preemptor():
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
-        "HIPENGINE_QWEN4_EXP_T16_DOWN",
     )
     # The F16 WMMA down owner below the chain is runner state, so the arm
     # holds it off through the field set rather than a process key.

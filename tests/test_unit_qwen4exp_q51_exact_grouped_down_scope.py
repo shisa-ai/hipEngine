@@ -134,7 +134,8 @@ def test_the_chain_and_its_ladder_are_unchanged() -> None:
     source = inspect.getsource(runner_module.run_qwen4_exp_moe)
 
     # Both chain branches survive: gate/up and down.
-    assert source.count("elif exact_grouped_down:") == 2
+    assert source.count("elif exact_grouped_down:") == 1
+    assert source.count("if exact_grouped_down:") == 2
     # The Q5_1 ladder inside the chain is untouched, so every rung stays
     # reachable while the gate is open.
     for rung in ("q51_iu8_exact", "q51_fold128_prefill", "q51_fold_pair_prefill",
@@ -461,7 +462,7 @@ def test_the_layer2_down_arms_close_the_chain_on_the_runner() -> None:
         # production base binds the routed F16 route on, so an arm that closes
         # only the exact chain still measures the routed route.
         assert candidate.environment["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "0"
-        assert candidate.environment["HIPENGINE_QWEN4_EXP_T16_DOWN"] == "0"
+        assert "HIPENGINE_QWEN4_EXP_T16_DOWN" not in candidate.environment
         # The F16 owner's own admission is runner state now, so the arm binds
         # it on the runner instead of naming a process key.
         assert candidate.q51_wmma_down is True, name

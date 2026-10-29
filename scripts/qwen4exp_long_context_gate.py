@@ -67,7 +67,6 @@ from scripts.qwen4exp_layer2_profile_gate import (
     GateError,
     _candidate_trajectory,
     _make_generator,
-    _post_construct_hook,
     _state_summary,
     _strict_trajectory,
 )
@@ -511,7 +510,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     batch_groups: tuple[Any, ...] = ()
     saved = {key: os.environ.get(key) for key in spec.environment}
     gen, candidate_profile, _ = _make_generator(args, spec.base_profile, spec.quant)
-    _post_construct_hook(gen, args)
     os.environ.update(spec.environment)
     try:
         if batch_candidate:

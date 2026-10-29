@@ -9,8 +9,8 @@ Only the transport moves, and the production admission survives: the dispatch
 runs that owner whenever the production grouped MoE route owns the chunk (the
 Q5K gate/up window, ``production_grouped_moe``), whatever the field says, and
 otherwise when the plan-published field is on. The chain around it is untouched:
-the routed-F16 route owns the whole down leg above the Q5_1 branch, the T16 owner
-sits between it and this one, and the exact grouped Q5_1 down chain is tested
+the routed-F16 route owns the whole down leg above the Q5_1 branch, and the
+exact grouped Q5_1 down chain is tested
 before it. Below it the strict rowbatch8 owner stays the fallback.
 
 The owner is also a captured-segment decision: the MoE runs eager inside a
@@ -93,11 +93,10 @@ def test_the_dispatch_reads_the_field_and_no_process_key() -> None:
     assert RETIRED_ENV not in source
     assert "_qwen4_exp_q51_wmma_down_enabled(" in source
     assert "production_grouped_moe, q51_wmma_down" in source
-    # The branch keeps its place in the down-leg order: the T16 owner and the
-    # exact grouped chain are tested first, and the strict owner is the
-    # fallthrough below it.
-    assert source.index("if t16_down:") < source.index("elif q5_wmma:")
-    assert source.rindex("elif exact_grouped_down:") < source.index(
+    # The exact grouped chain precedes WMMA; the strict owner remains the
+    # fallthrough below it. The retired T16 owner no longer intercepts either.
+    assert "t16_down" not in source
+    assert source.index("if exact_grouped_down:") < source.index(
         "elif q5_wmma:")
     assert source.index("elif q5_wmma:") < source.index(
         "_run_qwen4_exp_q51_wmma_down(")
@@ -465,10 +464,10 @@ def test_the_layer2_down_arms_bind_the_owner_on_the_runner() -> None:
         candidate = module.CANDIDATES[name]
         assert candidate.q51_wmma_down is True, name
         assert RETIRED_ENV not in candidate.environment, name
-        # The two owners that take the down leg ahead of the F16 owner stay
-        # process keys; the production base binds the routed F16 route on.
+        # The production base binds the routed F16 route on; close it so
+        # the compact down owner runs.
         assert candidate.environment["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "0"
-        assert candidate.environment["HIPENGINE_QWEN4_EXP_T16_DOWN"] == "0"
+        assert "HIPENGINE_QWEN4_EXP_T16_DOWN" not in candidate.environment
 
     import dataclasses
 

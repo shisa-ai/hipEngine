@@ -12988,8 +12988,8 @@
       "start_line": 10700,
       "end_line": 10722,
       "sha256": "6c53fc1a073d6df9e0379362e88b5fc6877792b74e650247b130b055333827f6",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-t16-experiments",
+      "evidence": ["Removed runtime routes, loading stages, caches, scratch, diagnostic controls and exclusive packed Q5_1 kernel/layout. Shared kernels and general weight rebinding preserved. Focused and full CPU bundles, 67 rebuilt GPU tests, docs/audit gates passed. Public generation with retired controls set observed raw weights and routed-F16 gate/up/down calls. Worklog: worklog/entries/20261029T213646.706846Z-cleanup-cleanup-refactor-r0451-6a5bd5.md."],
       "subitems": []
     },
     {

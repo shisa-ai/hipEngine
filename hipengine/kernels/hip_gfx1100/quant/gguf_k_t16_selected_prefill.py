@@ -201,7 +201,6 @@ _Q5_DENSE_WMMA_LOWVGPR48_BF16 = (
 _EXPERT_MAJOR_COMP_SYMBOLS = {
     "gguf_q4_k_t16": "hipengine_gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16": "hipengine_gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
-    "gguf_q5_1_t16": "hipengine_gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
 }
 
 
@@ -2001,9 +2000,6 @@ gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
 gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
     _make_expert_major_comp_wrapper("gguf_q6_k_t16")
 )
-gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
-    _make_expert_major_comp_wrapper("gguf_q5_1_t16")
-)
 
 
 def _launch_k_t16(
@@ -2176,8 +2172,8 @@ def _check_expert_major_common(
     _check_positive(in_features, "in_features")
     _check_positive(out_features, "out_features")
     _check_positive(num_experts, "num_experts")
-    # Q5_1 blocks hold 32 values; the Q4_K/Q5_K/Q6_K K-family blocks hold 256.
-    block = 32 if quant == "gguf_q5_1_t16" else _QK_K
+    # Q4_K and Q6_K use the K-family block width.
+    block = _QK_K
     if in_features % block != 0:
         raise ValueError(
             f"in_features must be divisible by the {quant} block size {block}"
@@ -2512,20 +2508,6 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             fn,
             replace=replace,
         )
-
-    # The Q5_1 T16 layout is a bit-lossless rearrangement of the raw Q5_1
-    # bytes, so the route is also keyed under the raw quant that execution
-    # profile manifests name for the routed down scopes.
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q5_1",
-            "selected_t16_expert_major_wmma_comp_bf16_bf16_out",
-        ),
-        gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
-        replace=replace,
-    )
 
 
 register_gguf_k_t16_selected_prefill_kernels()

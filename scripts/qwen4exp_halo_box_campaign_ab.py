@@ -697,7 +697,7 @@ GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
 #: Owners that preempt the grouped pair2 Q5_1 down chain - and with it the
 #: row-publish selection - on the shipped lane: the routed F16 WMMA down (the
 #: actual production owner), the exact iu8-risk+repair down, grouped MoE
-#: prefill, and the T16 expert-major down. A row-publish arm holds every one
+#: prefill. A row-publish arm holds every one
 #: of them off for both arms; the profile's own values come back on exit. The
 #: F16 WMMA down owner below the chain is request-local runner state now, so
 #: it is held off through ``Q51_PAIR2_PREEMPTING_FIELDS`` rather than a
@@ -707,7 +707,6 @@ Q51_PAIR2_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
-    "HIPENGINE_QWEN4_EXP_T16_DOWN",
 )
 #: The preemptor the runner carries as a field: the F16 WMMA compact grouped
 #: Q5_1 down owner below the chain (``runner.q51_wmma_down``). The production
@@ -893,7 +892,7 @@ def q51_fold_control_record(route_package, runner=None, *, environment=os.enviro
         },
         "reason": (
             "the routed F16 WMMA down and the exact iu8, grouped-WMMA/grouped-"
-            "MoE, MMQ and T16 owners preempt the pair2 chain the fold rides; "
+            "MoE and MMQ owners preempt the pair2 chain the fold rides; "
             "both arms close them, hold the ladder rung they do not count (or "
             "require the parent they ride), and bind the published register-"
             "cache and row-publish siblings off because either would replace "
@@ -935,7 +934,7 @@ def q51_register_cache_control_record(runner=None, *, environment=os.environ):
         "reason": (
             "the register-cache leaf is the fallback parent of the row-publish "
             "sibling, and the routed F16 WMMA down plus the exact iu8, "
-            "grouped-WMMA/grouped-MoE, MMQ and T16 owners preempt the pair2 "
+            "grouped-WMMA/grouped-MoE and MMQ owners preempt the pair2 "
             "chain that contains it; both arms close those owners, hold the "
             "downstream sibling off and record the pair2 gate because it must "
             "stay on"),
@@ -1918,7 +1917,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             runner, (Q51_FOLD128_FIELD, Q51_FOLD_PAIR_FIELD),
             route_package=route_package)
         # The routed F16 WMMA down, the exact iu8 down and the grouped-WMMA/
-        # grouped-MoE/MMQ/T16 owners all preempt the pair2 chain the arm counts,
+        # grouped-MoE/MMQ owners all preempt the pair2 chain the arm counts,
         # so both arms close them and the profile's own values come back on
         # exit. ``Q51_PAIR2_GATE_FIELD`` must stay on and is recorded, not forced.
         return _combined_scope(
@@ -2905,7 +2904,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "reason": (
                 "the routed F16 WMMA down is the production owner of this "
                 "scope and, behind it, the exact iu8, grouped-WMMA/grouped-MoE, "
-                "MMQ and T16 owners also preempt the pair2 chain the arm "
+                "MMQ owners also preempt the pair2 chain the arm "
                 "counts; both arms close all of them so the counted leaf "
                 "engages, and the pair2 gate is recorded because it must stay "
                 "on"),

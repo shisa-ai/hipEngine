@@ -773,12 +773,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_DPU_REDUCTION` | unset | Recorded in host-speed probe provenance only. |
 | `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Comma-separated layers on the staged-F32 Q8_0 route (candidate). |
 | `HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET` | `0` | `1` runs explicit MTP verification and AR peers in one shared batch target pass. Off by default because it measures slower than separate execution (`docs/REFACTOR.md`). |
-| `HIPENGINE_QWEN4_EXP_T16_DOWN` | unset | T16 tile route for the Q5_1 expert down projection; a tile-cache miss falls through to the default chain. |
-| `HIPENGINE_QWEN4_EXP_T16_GATE_UP` | unset | T16 tile route for the expert gate/up pair; a miss falls back to the production chain. |
-| `HIPENGINE_QWEN4_EXP_T16_GATE_UP_MAX_LAYERS` | unset | Layer cap for `scripts/qwen4exp_t16_populate_tiles.py`. |
-| `HIPENGINE_QWEN4_EXP_T16_RESIDENT` | unset | Materializes T16 expert tiles at load (`docs/QWEN4EXP-T16-RESIDENCY.md`). |
-| `HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS` | unset | Layer cap for T16 residency. |
-| `HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS` | all three roles | Comma-separated roles (`expert_gate`, `expert_up`, `expert_down`) made T16-resident. |
 | `HIPENGINE_QWEN4_EXP_RISK_DIAGNOSTICS` | unset | Records iu8 risk/repair counts; synchronizes the stream, diagnostics only. |
 | `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` | unset | Policy for a caller-set route variable that conflicts with the profile binder. |
 | `HIPENGINE_QWEN4_EXP_GR_STAGED` | retired | No longer read. Regression tests ensure the rejected GR staged-F32 selector cannot be restored; the separate dense staged route remains registered. |
@@ -1116,6 +1110,15 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_QWEN4_EXP_T16_` is the retired Qwen4Exp tile-experiment prefix.
+  `HIPENGINE_QWEN4_EXP_T16_DOWN`, `HIPENGINE_QWEN4_EXP_T16_GATE_UP`,
+  `HIPENGINE_QWEN4_EXP_T16_GATE_UP_MAX_LAYERS`,
+  `HIPENGINE_QWEN4_EXP_T16_RESIDENT`,
+  `HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS` and
+  `HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS` have no readers and are ignored.
+  Qwen4Exp loading keeps raw expert weights; shared T16 layouts used by other
+  models are unaffected.
 
 - `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE` is retired and ignored.
   Runtime selection reads `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE`;

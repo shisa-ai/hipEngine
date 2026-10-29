@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import mmap
 import os
 import resource
@@ -291,68 +291,6 @@ class Qwen4ExpDeviceWeight:
             allocation.free(runtime=runtime)
 
 
-def attach_t16_allocation(
-    weight: "Qwen4ExpDeviceWeight",
-    t16: DeviceTensorAllocation,
-) -> "Qwen4ExpDeviceWeight":
-    """Return a new weight with ``t16`` attached as a tile-residency stage.
-
-    The T16 tile-residency design (docs/QWEN4EXP-T16-RESIDENCY.md): the tiles
-    live on the binding as an allocation stage instead of a module-level
-    sidecar cache. The stage is additive - the raw stage stays until the
-    caller explicitly detaches it (``detach_raw_allocation``), so a partial
-    materialization never loses its strict fallback. The spec's accounting
-    grows by the tile bytes so ``resident_nbytes``-style budgeting sees the
-    transient dual residency honestly.
-    """
-
-    if "t16" in weight.allocations or "t16" in weight.spec.allocation_names:
-        raise ValueError("weight already carries a t16 allocation stage")
-    allocations = dict(weight.allocations)
-    allocations["t16"] = t16
-    spec = replace(
-        weight.spec,
-        allocation_names=(*weight.spec.allocation_names, "t16"),
-        device_nbytes=weight.spec.device_nbytes + int(t16.buffer.nbytes),
-    )
-    return replace(weight, spec=spec, allocations=allocations)
-
-
-def detach_raw_allocation(
-    weight: "Qwen4ExpDeviceWeight",
-    *,
-    runtime: HipRuntime | None = None,
-) -> "Qwen4ExpDeviceWeight":
-    """Return a new weight without the raw stage, freeing its buffer.
-
-    The materialize-then-free half of the residency design: once the tiles
-    are resident the raw bytes they replace are freed, which is what makes
-    the full window net-zero. The freed buffer is gone for good - the strict
-    fallback for a detached layer is the strict profile or re-materialization
-    from the on-disk GGUF (the design's fallback contract), so callers must
-    only detach weights whose t16 stage is attached and verified.
-    """
-
-    raw = weight.allocations.get("raw")
-    if raw is None:
-        raise ValueError("weight has no raw allocation stage to detach")
-    if "t16" not in weight.allocations:
-        raise ValueError("refusing to detach raw before a t16 stage is attached")
-    allocations = {
-        key: allocation
-        for key, allocation in weight.allocations.items()
-        if key != "raw"
-    }
-    spec = replace(
-        weight.spec,
-        allocation_names=tuple(allocations),
-        device_nbytes=weight.spec.device_nbytes - int(raw.buffer.nbytes),
-    )
-    detached = replace(weight, spec=spec, allocations=allocations)
-    raw.free(runtime=runtime)
-    return detached
-
-
 @dataclass
 class Qwen4ExpResidentWeights:
     """Physical Qwen4Exp owners with one device allocation per hot tensor."""
@@ -372,10 +310,8 @@ class Qwen4ExpResidentWeights:
     def swap_weight(self, slot_path: str, weight: Any) -> None:
         """Replace one resident weight object in place.
 
-        The T16 tile-residency path uses this to publish a weight carrying
-        the ``t16`` allocation stage (the frozen-replacement pattern from
-        ``attach_t16_allocation``). The slot must already exist; the caller
-        owns proving the new weight matches the slot's spec.
+        The slot must already exist; the caller owns proving the new weight
+        matches the slot's spec and rebinding runners that hold the old object.
         """
 
         if self.closed:
@@ -395,59 +331,6 @@ class Qwen4ExpResidentWeights:
             allocation.free(runtime=self.runtime)
         self.device_weights = MappingProxyType({})
         self.closed = True
-
-
-def materialize_qwen4_exp_t16_stages(
-    resident: "Qwen4ExpResidentWeights",
-    *,
-    read_tensor: Any,
-    slots: Sequence[str],
-    runtime: HipRuntime | None = None,
-    free_raw: bool = False,
-) -> dict[str, int]:
-    """Populate the ``t16`` allocation stages for the requested slots.
-
-    The load-path half of the T16 tile-residency design
-    (docs/QWEN4EXP-T16-RESIDENCY.md): for each requested routed-expert slot,
-    read the raw tensor bytes through ``read_tensor(name)``, repack through
-    the production T16 layout for the slot's quant (Q4_K or Q5_1; other
-    quants are skipped), upload the tiles, attach them as the binding's
-    ``t16`` stage, and publish the new weight via ``swap_weight``.
-
-    ``free_raw`` defaults to **False**: the raw stage stays resident so the
-    production chains keep their strict fallback. The net-zero full-window
-    phase (detaching the raw the tiles replace) is a separate, explicit
-    step the X-7-admitted routes will turn on - never a silent default.
-    """
-
-    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
-    from hipengine.quant.gguf_t16 import repack_gguf_q5_1_tile16_packed
-
-    populated: dict[str, int] = {}
-    for slot in slots:
-        weight = resident.weight(slot)
-        quant = getattr(weight.spec, "quant_key", "")
-        if quant == "gguf_q4_k":
-            repack = repack_gguf_q4_k_tile16
-        elif quant == "gguf_q5_1":
-            repack = repack_gguf_q5_1_tile16_packed
-        else:
-            continue
-        raw = read_tensor(weight.spec.source.name)
-        tiles = np.ascontiguousarray(repack(raw).tiles)
-        t16 = load_host_array_to_device_as_dtype(
-            f"{slot}.t16",
-            tiles,
-            "int8",
-            source_dtype="int8",
-            runtime=runtime,
-        )
-        new_weight = attach_t16_allocation(weight, t16)
-        if free_raw:
-            new_weight = detach_raw_allocation(new_weight, runtime=runtime)
-        resident.swap_weight(slot, new_weight)
-        populated[slot] = int(t16.buffer.nbytes)
-    return populated
 
 
 def materialize_qwen4_exp_weights(

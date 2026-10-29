@@ -141,7 +141,6 @@ def _patch_gate_for_dispatch(
     )
     monkeypatch.setattr(gate, "sha256_path", lambda path: "b" * 64)
     monkeypatch.setattr(gate, "_host_metadata", lambda: {"hostname": "unit"})
-    monkeypatch.setattr(gate, "_post_construct_hook", lambda generator, args: {})
     monkeypatch.setattr(
         gate, "_make_generator",
         lambda args, profile, quant=None: (_FakeGenerator(), _FakeProfile(), None),

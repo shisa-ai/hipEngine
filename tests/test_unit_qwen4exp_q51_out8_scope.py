@@ -490,7 +490,6 @@ def test_the_profile_gate_can_bind_the_rung() -> None:
 
 ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
 PRODUCTION_MOE_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
-T16_DOWN_ENV = "HIPENGINE_QWEN4_EXP_T16_DOWN"
 #: The retired process switch for the F16 WMMA down owner below the chain;
 #: nothing reads it, and the tests keep the literal to prove it inert.
 WMMA_ENV = "HIPENGINE_QWEN4_EXP_Q5_1_WMMA"
@@ -503,7 +502,7 @@ FOLD_FIELDS = (
 #: Every process key that keeps the rung - or the chain it sits in - from
 #: running, as the dispatch orders them.
 COMPETITOR_ENV = (
-    ROUTED_F16_ENV, PRODUCTION_MOE_ENV, T16_DOWN_ENV, IU8_EXACT_ENV,
+    ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
     WMMA_ENV, PAIR_ENV, EXPERT_GRID_ENV,
 )
 
@@ -595,7 +594,6 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         # The F16 WMMA down owner below the chain is runner state now, so the
         # plan publishes it off through the field and names no process key.
         assert published[WMMA_ENV] is None
-        assert published[T16_DOWN_ENV] is None      # default off
         assert published[EXPERT_GRID_ENV] is None   # default 64
 
         # The real predicates, in dispatch order. Routed F16 takes the whole

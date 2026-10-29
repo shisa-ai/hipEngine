@@ -73,8 +73,6 @@ RUNNER_ROUTE_OFF = {
 #:     on the shipped lane, and the production plan publishes it on;
 #:   * ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`` closes the chain gate from
 #:     rows>=16, published on by the production plan;
-#:   * ``HIPENGINE_QWEN4_EXP_T16_DOWN`` takes the down owner inside the Q5_1
-#:     branch before the chain (diagnostic, default off);
 #:   * ``HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT`` is the chain's own iu8-risk+repair
 #:     owner above the ladder, published on by the production plan;
 #:   * the Q5_1 WMMA owner below the chain is the owning runner's
@@ -116,9 +114,6 @@ OUT8_SIBLING_FIELDS = (
 #:     rows>=16;
 #:   * ``HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT`` is the chain's own iu8-risk+repair
 #:     owner above the ladder, published on by the production plan;
-#:   * ``HIPENGINE_QWEN4_EXP_T16_GATE_UP`` is the T16 gate/up owner inside that
-#:     iu8 branch (diagnostic, default off) - inert once the branch is closed,
-#:     but the arm closes it rather than depend on that nesting;
 #:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
 #:     with the expertgrid64 family (default ``64``);
 #:   * Runner-local ``q4_pair_prefill`` and ``q4_bundle_prefill`` are the pair2/bundle preemptors
@@ -133,7 +128,6 @@ Q4_OUT4_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
-    "HIPENGINE_QWEN4_EXP_T16_GATE_UP",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
 )
 

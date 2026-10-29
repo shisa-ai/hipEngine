@@ -406,11 +406,8 @@ def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
     assert candidate.base_profile == "production"
     assert candidate.scenario_id == "qwen4exp-f16-compact-down"
     assert candidate.environment == {
-        # The two owners that take the Q5_1 down leg before the F16 owner. The
-        # production base binds ROUTED_F16=1, so without these the arm measures
-        # the routed F16 route and counts zero F16 down calls.
+        # Close the route that the production base binds ahead of this owner.
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-        "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
     }
     # The F16 owner's own admission is runner state, so the arm admits it
     # through the spec's field instead of a process key.
@@ -438,8 +435,7 @@ def test_mx1_full_route_candidate_closes_the_leg_preemptors() -> None:
 
     The arm claims the F16-WMMA compact gate/up *and* down owners. The routed
     F16 route owns both legs ahead of the Q5_1 branch and the production base
-    binds it on, so the arm has to close it (and the T16 down owner, which sits
-    between the routed route and the F16 down owner) or it measures the routed
+    binds it on, so the arm has to close it or it measures the routed
     route on both legs while counting zero compact dispatches.
     """
 
@@ -450,7 +446,6 @@ def test_mx1_full_route_candidate_closes_the_leg_preemptors() -> None:
     assert candidate.base_profile == "production"
     assert candidate.environment == {
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-        "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
     }
     # The gate/up half is the Q4 chain's own field (closed below) and the
     # Q5_1 WMMA down owner is the Q5_1 side's, so neither is a process key.

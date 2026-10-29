@@ -191,13 +191,11 @@ _F16_ROUTES_OFF = {
 _ALL_LAYERS = ",".join(map(str, range(48)))
 #: Owners that take the Q5_1 down leg before the F16 compact owner. The routed
 #: F16 route owns both legs ahead of the Q5_1 branch (so it preempts the arm's
-#: declared gate/up control too), and the T16 Q5_1 down owner sits between it and
-#: the F16 owner. An arm that counts the F16 down owner has to close both, or it
-#: measures whichever of them the base profile's own bindings selected; the
+#: declared gate/up control too). An arm that counts the F16 down owner must
+#: close that route or it measures the base profile's routed F16 owner. The
 #: candidate environment is applied after the bind and restored on exit.
 _F16_DOWN_PREEMPTORS_OFF = {
     "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-    "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
 }
 _F16_ROUTE_ARMS = {
     "recovery_plan": {},
@@ -429,11 +427,9 @@ CANDIDATES = {
     #     down branch so the chain falls through to `elif q5_wmma`.
     #   * `q51_wmma_down=True` on the runner admits the F16 down owner there
     #     (request-local state, not a process key).
-    #   * `ROUTED_F16=0` and `T16_DOWN=0` close the two owners that take the down
-    #     leg ahead of it (the routed F16 route owns both legs before the Q5_1
-    #     branch, and the T16 owner sits between it and the F16 owner). Without
-    #     them the production base binds `ROUTED_F16=1` and the arm counts zero
-    #     F16 down calls while measuring another owner.
+    #   * `ROUTED_F16=0` closes the route that owns both legs before the Q5_1
+    #     branch. Otherwise the production base binds `ROUTED_F16=1` and the arm
+    #     counts zero F16 down calls while measuring another owner.
     # The gate/up leg is selected by the independent `exact_grouped_q4_gate`
     # predicate, which stays true because `q4_exact_grouped_all` keeps its
     # production publication of True when only the down chain is closed. No
@@ -467,30 +463,6 @@ CANDIDATES = {
         ),
         count_registered_dispatch=True,
     ),
-    "t16_gate_up": CandidateSpec(
-        name="t16_gate_up",
-        classification="T1",
-        mechanism=(
-            "the T16 expert-major compensated gate/up route (bit-lossless repack "
-            "decoded in registers, F16 WMMA with compensated F32 accumulate, "
-            "no repair by construction) replacing the iu8-risk+repair chain "
-            "for the layers whose tile cache is resident"
-        ),
-        environment={
-            "HIPENGINE_QWEN4_EXP_T16_GATE_UP": "1",
-        },
-        base_profile="production",
-        scenario_id="qwen4exp-t16-gate-up",
-        candidate_key=None,
-        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
-                      "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
-        # The T16 dual wrapper is a direct module-attribute call in the runner
-        # branch, not a registry-resolved variant, so counting patches the
-        # attribute the branch calls (the f16_compact_down pattern).
-        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
-                                "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out"),
-        count_registered_dispatch=False,
-    ),
     "f16_compact_down": CandidateSpec(
         name="f16_compact_down",
         classification="T1",
@@ -522,31 +494,6 @@ CANDIDATES = {
         # qwen4_exp_runner.py's Q5_1 down dispatch.
         dispatch_shape_positions=(6, 7, 8, 9),
         count_registered_dispatch=True,
-    ),
-    "t16_down": CandidateSpec(
-        name="t16_down",
-        classification="T1",
-        mechanism=(
-            "the T16 Q5_1 expert-major compensated down route (bit-lossless "
-            "repack decoded in registers, F16 WMMA with compensated F32 "
-            "accumulate, additive m, no repair by construction) replacing the "
-            "production exact grouped down chain for the layers whose tile "
-            "cache is resident"
-        ),
-        environment={
-            "HIPENGINE_QWEN4_EXP_T16_DOWN": "1",
-        },
-        base_profile="production",
-        scenario_id="qwen4exp-t16-down",
-        candidate_key=None,
-        fallback_key=("hip_gfx1151", "moe_linear", "gguf_q5_1",
-                      "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"),
-        # The T16 down wrapper is a direct module-attribute call in the runner
-        # branch, so counting patches the attribute the branch calls (the
-        # t16_gate_up pattern).
-        direct_dispatch_target=("hipengine.runtime.qwen4_exp_runner",
-                                "gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out"),
-        count_registered_dispatch=False,
     ),
     "routed_f16": CandidateSpec(
         name="routed_f16",
@@ -617,10 +564,9 @@ CANDIDATES = {
             # own chain tests `exact_grouped_down` BEFORE `q5_wmma`:
             #   if routed_f16:              <- production base binds this on
             #   elif down == gguf_q5_1:
-            #     if t16_down:
-            #     elif exact_grouped_down:  <- production chain (repair)
+            #     if exact_grouped_down:    <- production chain (repair)
             #     elif q5_wmma:             <- F16 down owner
-            # So the arm closes the routed F16 and T16 owners as well; without
+            # So the arm closes the routed F16 owner as well; without
             # that both legs are the routed F16 route and the compact aliases
             # the counters watch never launch. Both chain gates are runner state
             # (`q51_exact_grouped_down`, `q4_exact_grouped_gate`), so they are
@@ -1474,29 +1420,6 @@ def _make_generator(args: argparse.Namespace, profile: str, quant: str | None = 
     return resolved.construct_generator(factory), resolved, index
 
 
-def _post_construct_hook(generator, args) -> dict:
-    """Candidate-specific post-construction setup (the T16 tile caches).
-
-    The T16 candidates need the module tile cache populated after
-    generator construction and before any measured row; the bounded
-    populate fills what fits in the UMA slack and reports the window
-    honestly. The down-leg populate reads the Q5_1 ffn_down_exps tensors
-    and fills the _T16_DOWN_TILES cache the same way.
-    """
-
-    if args.candidate == "t16_gate_up":
-        from scripts.qwen4exp_t16_populate_tiles import populate_t16_gate_up_tiles_bounded
-
-        cache = populate_t16_gate_up_tiles_bounded(generator.runner, args.model_root)
-        return {"t16_cache_layers": sorted(cache)}
-    if args.candidate == "t16_down":
-        from scripts.qwen4exp_t16_populate_tiles import populate_t16_down_tiles
-
-        cache = populate_t16_down_tiles(generator.runner, args.model_root)
-        return {"t16_down_cache_layers": sorted(cache)}
-    return {}
-
-
 def _run_batch_candidate(
     args: argparse.Namespace,
     prompt_rows: Sequence[Mapping[str, Any]],
@@ -1724,9 +1647,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         args, candidate_spec.base_profile, candidate_spec.quant
     )
     batch_manifest_binding_value = None
-    t16_hook = _post_construct_hook(candidate_generator, args)
-    if t16_hook:
-        print(json.dumps({"t16_populate": t16_hook}), flush=True)
     bound_environment: dict[str, str | None] = {}
     dispatch_stack = ExitStack()
     if candidate_spec.qsa_h256_prefill_mode is not None:

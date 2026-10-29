@@ -119,7 +119,6 @@ def test_down_only_route_engages_with_current_map_and_production_gate_up() -> No
 
     controls = {
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
-        "HIPENGINE_QWEN4_EXP_T16_DOWN": "0",
     }
     saved = {key: os.environ.get(key) for key in controls}
     from hipengine.runtime.qwen4_exp_runner import (
