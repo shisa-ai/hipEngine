@@ -8790,23 +8790,23 @@
       "start_line": 6668,
       "end_line": 6686,
       "sha256": "70b41de55c850784623da3d8e7e51f92931095caba92803991d8349e0cc479ad",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-draft-head-plan",
+      "evidence": ["Removed rejected scalehoist/-allsync suite presets and derived budgets; direct benchmark/profiler shape and staged/combined numerical oracles remain. Shared family bundle passes 582 focused checks covering all shape dispatch/reduction domains, dp4a off/full logits, timing sink, optional gather and sidecar ownership. Remaining shape/scheduler plan consolidated into bottom R0281-DRAFT-X8; kernels/runtime/defaults unchanged. Historical rows remain in pinned original source and July artifacts. Worklog: worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md."],
       "subitems": [
         {
           "line": 6669,
           "text": "- Added 2026-07-01. Bench flag",
-          "status": "pending"
+          "status": "resolved-rejected-suite-presets-removed"
         },
         {
           "line": 6675,
           "text": "- Purpose: test whether the remaining q8_1/dp4a Q6_K draft stage1 cost is from",
-          "status": "pending"
+          "status": "resolved-comparison-and-history-preserved"
         },
         {
           "line": 6683,
           "text": "- Remove when: the draft Q6_K top-1 path moves to a different retained",
-          "status": "pending"
+          "status": "deferred-existing-draft-head-plan"
         }
       ]
     },
@@ -8816,23 +8816,23 @@
       "start_line": 6687,
       "end_line": 6705,
       "sha256": "7d4c83a36eb9bb89fc5784d79961fbd471d3ddd96f851a7e819a9ebb85f80770",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-draft-head-plan",
+      "evidence": ["Removed rejected pack8llama/-allsync suite presets and derived budgets; direct benchmark/profiler shape, distinct vecdot body and numerical oracles remain. Shared family bundle passes 582 focused checks including its staged/combined vocab/8 routing. Remaining shape/scheduler ownership consolidated into bottom R0281-DRAFT-X8, not a new referral. Runtime/kernel/defaults and historical July artifacts unchanged. Worklog: worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md."],
       "subitems": [
         {
           "line": 6688,
           "text": "- Added 2026-07-01. Bench flag",
-          "status": "pending"
+          "status": "resolved-rejected-suite-presets-removed"
         },
         {
           "line": 6694,
           "text": "- Purpose: test whether the remaining q8_1/dp4a Q6_K draft stage1 cost is the",
-          "status": "pending"
+          "status": "resolved-comparison-and-history-preserved"
         },
         {
           "line": 6702,
           "text": "- Remove when: the draft Q6_K top-1 path moves to a different retained",
-          "status": "pending"
+          "status": "deferred-existing-draft-head-plan"
         }
       ]
     },
@@ -8842,23 +8842,23 @@
       "start_line": 6706,
       "end_line": 6726,
       "sha256": "60666db94e923471730a312b8ab29b1b344ec7b2b87d9bf2157af6d5dcf2fe8c",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-draft-head-plan",
+      "evidence": ["Removed pack16, denseq8all-pack16 and denseq8all-pack16-allsync presets and derived budgets. Direct benchmark/profiler shape and numerical oracles remain. Shared 582-check family bundle covers staged/combined vocab/16 reduction, raw fallback, no X8 sidecar and constructor rejection before allocations at vocab8 versus success at vocab16. Consolidated plan decision into bottom R0281-DRAFT-X8. Runtime/kernel/defaults and historical July artifacts unchanged. Worklog: worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md."],
       "subitems": [
         {
           "line": 6707,
           "text": "- Added 2026-07-01. Bench flag",
-          "status": "pending"
+          "status": "resolved-rejected-suite-presets-removed"
         },
         {
           "line": 6713,
           "text": "- Purpose: test whether the current draft Q6_K stage1 cost is dominated by q8_1",
-          "status": "pending"
+          "status": "resolved-comparison-and-history-preserved"
         },
         {
           "line": 6723,
           "text": "- Remove when: the draft Q6_K top-1 path moves to a different retained",
-          "status": "pending"
+          "status": "deferred-existing-draft-head-plan"
         }
       ]
     },
@@ -8868,23 +8868,23 @@
       "start_line": 6727,
       "end_line": 6746,
       "sha256": "d6f81d64ad6e7e63473207a28d5329b213d53b0e138503c2c00cb5aa39ca43b7",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-draft-head-plan",
+      "evidence": ["Removed rejected x8dscale-f32ssm/-allsync suite presets and derived budgets. Preserve direct benchmark/profiler selection, capped X8 plus FP32 scale-product sidecars, staged/combined wrapper ABIs and numerical oracles. Shared 582-check family bundle verifies both sidecar pointers and vocab/8 reduction, raw/logit fallback and upload-cache ownership. Remaining plan decision joins bottom R0281-DRAFT-X8; no new referral, runtime/kernel/default change or modified historical artifact. Worklog: worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md."],
       "subitems": [
         {
           "line": 6728,
           "text": "- Added 2026-07-01. Bench flag",
-          "status": "pending"
+          "status": "resolved-rejected-suite-presets-removed"
         },
         {
           "line": 6733,
           "text": "- Purpose: test whether the remaining retained X8 Q6_K top-1 cost is dominated",
-          "status": "pending"
+          "status": "resolved-comparison-and-history-preserved"
         },
         {
           "line": 6742,
           "text": "- Remove when: a later draft Q6_K top-1 body/layout or fused top-1/sampler route",
-          "status": "pending"
+          "status": "deferred-existing-draft-head-plan"
         }
       ]
     },

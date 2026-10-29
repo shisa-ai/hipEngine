@@ -51,6 +51,26 @@ def test_retired_q6_row_suite_alias_is_rejected(monkeypatch, tmp_path, capsys, s
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("tail", [
+    "scalehoist", "scalehoist-allsync", "pack8llama", "pack8llama-allsync",
+    "pack16", "denseq8all-pack16", "denseq8all-pack16-allsync",
+    "denseq8all-x8dscale-f32ssm", "denseq8all-x8dscale-f32ssm-allsync",
+])
+def test_rejected_q6_shape_presets_are_absent(monkeypatch, tmp_path, capsys, tail):
+    route = "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-" + tail
+    assert route not in suite.MTP_ROUTES
+    assert route not in suite.MTP_ROUTE_DEFAULT_BUDGETS
+    shapes = {"pack8_scalehoist", "pack8_llama", "pack16", "x8_dscale"}
+    assert not any(shapes.intersection(args) for args in suite.MTP_ROUTES.values())
+    monkeypatch.setattr(sys, "argv", ["gguf_ar_mtp_suite.py", "--mtp-route", route,
+                                    "--dry-run", "--raw-root", str(tmp_path)])
+    with pytest.raises(SystemExit) as excinfo:
+        suite.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_suite_hardware_label_follows_explicit_gfx1100_arch(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_HW_LABEL", raising=False)
     monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
@@ -606,20 +626,7 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--target-block-direct-partial-replay-mode",
         "direct-commit",
     ]
-    assert suite.MTP_ROUTES[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm"
-    ] == [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--resident-mtp-draft-q6-top1-stage1-shape",
-        "x8_dscale",
-        "--selected-down-x8-repack",
-        "q6",
-        "--verify-dense-q8-dp4a-all",
-        "--verify-dense-q8-dp4a-f32",
-    ]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm" not in suite.MTP_ROUTES
     assert not any("sharedq8" in name for name in suite.MTP_ROUTES)
     assert suite.MTP_ROUTES[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1"
@@ -636,28 +643,9 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--verify-lm-head-q6-top1-dp4a",
     ]
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64" not in suite.MTP_ROUTES
-    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16"] == [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--resident-mtp-draft-q6-top1-stage1-shape",
-        "pack16",
-        "--selected-down-x8-repack",
-        "q6",
-        "--verify-dense-q8-dp4a-all",
-    ]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16" not in suite.MTP_ROUTES
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row" not in suite.MTP_ROUTES
-    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist"] == [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--resident-mtp-draft-q6-top1-stage1-shape",
-        "pack8_scalehoist",
-        "--selected-down-x8-repack",
-        "q6",
-    ]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist" not in suite.MTP_ROUTES
     assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-draftsync"] == [
         "--llama-compat",
         "--resident-mtp-device-chain",
@@ -694,18 +682,7 @@ def test_suite_exposes_llama_compat_routes() -> None:
     ]
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-allsync" not in suite.MTP_ROUTES
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync" not in suite.MTP_ROUTES
-    assert suite.MTP_ROUTES["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-allsync"] == [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--resident-mtp-draft-sync-stage-timings",
-        "--target-block-sync-stage-timings",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--resident-mtp-draft-q6-top1-stage1-shape",
-        "pack8_scalehoist",
-        "--selected-down-x8-repack",
-        "q6",
-    ]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-allsync" not in suite.MTP_ROUTES
     assert suite.MTP_ROUTES["llama-compat-device-seed-chain"] == [
         "--llama-compat",
         "--resident-mtp-device-seed",
@@ -735,9 +712,7 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly"
     ] == [2]
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm"
-    ] == [2]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert not any("sharedq8" in name for name in suite.MTP_ROUTE_DEFAULT_BUDGETS)
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1"
@@ -745,12 +720,10 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1"
     ] == [2]
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16"
-    ] == [2]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist"] == [2]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-draftsync"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-chain-dp4a-allsync"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
@@ -765,20 +738,14 @@ def test_suite_exposes_llama_compat_routes() -> None:
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-allsync"
     ] == [2]
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm-allsync"
-    ] == [2]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm-allsync" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1-allsync"
     ] == [2]
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16-allsync"
-    ] == [2]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-pack16-allsync" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-t64-allsync" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
-    assert suite.MTP_ROUTE_DEFAULT_BUDGETS[
-        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-allsync"
-    ] == [2]
+    assert "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-allsync" not in suite.MTP_ROUTE_DEFAULT_BUDGETS
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain"] == [2]
     assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-device-seed-chain-dp4a"] == [2]
 

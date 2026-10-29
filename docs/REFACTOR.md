@@ -3430,85 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack8_scalehoist` (diagnostic rejected)
-- Added 2026-07-01. Bench flag
-  `--resident-mtp-draft-q6-top1-stage1-shape pack8_scalehoist` and suite routes
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist` /
-  `...-scalehoist-allsync` exercise a Q6_K draft lm-head top-1 stage that keeps
-  the retained pack8 `vocab/8` final reduce but hoists each Q6_K block's
-  `d*scale[16]` values into shared memory.
-- Purpose: test whether the remaining q8_1/dp4a Q6_K draft stage1 cost is from
-  repeated Q6 scale loads rather than the dot body or output geometry. Correctness
-  passes against the q8_1/Q6_K oracle, and `rocprofv3` confirms
-  `gguf_q6_k_pack8_gemv_q8_1_dp4a_top1_scalehoist_stage1_kernel` launches.
-  Same-session smoke rejected it: retained `x8q6` rerun **68.65 tok/s**,
-  cycle **14.589 ms/output**, `draft_initial` **2.482 ms/output** vs
-  scalehoist **68.54 tok/s**, cycle **14.610 ms/output**, `draft_initial`
-  **2.485 ms/output**, with identical acceptance.
-- Remove when: the draft Q6_K top-1 path moves to a different retained
-  body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
-  not a performance route and should not update the active llama-compat headline.
-
-## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack8_llama` (diagnostic rejected)
-- Added 2026-07-01. Bench flag
-  `--resident-mtp-draft-q6-top1-stage1-shape pack8_llama` and suite routes
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack8llama` /
-  `...-pack8llama-allsync` exercise a Q6_K draft lm-head top-1 stage that keeps
-  the retained pack8 `vocab/8` final reduce but uses the llama.cpp Q6_K MMVQ
-  vecdot decomposition inside stage1.
-- Purpose: test whether the remaining q8_1/dp4a Q6_K draft stage1 cost is the
-  pack8 dot body rather than final-reduce geometry. Correctness passes against
-  the q8_1/Q6_K oracle for fused and split stage1+stage2 paths. Same-session
-  all-sync moved the intended leaf **1.220 -> 1.205 ms/output**, but async B2
-  smoke rejected the route: retained control **68.88 tok/s**, cycle
-  **14.541 ms/output**, `draft_initial` **2.487 ms/output** vs pack8_llama
-  **67.92 tok/s**, cycle **14.747 ms/output**, `draft_initial`
-  **2.493 ms/output**, with identical acceptance.
-- Remove when: the draft Q6_K top-1 path moves to a different retained
-  body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
-  not a performance route and should not update the active llama-compat headline.
-
-## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack16` (diagnostic rejected)
-- Added 2026-07-01. Bench flag
-  `--resident-mtp-draft-q6-top1-stage1-shape pack16` and suite routes
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-pack16`,
-  `...-denseq8all-pack16`, and `...-denseq8all-pack16-allsync` exercise a
-  Q6_K draft lm-head top-1 stage that keeps the retained pack reduction but
-  doubles the output group from 8 to 16 vocab rows per block.
-- Purpose: test whether the current draft Q6_K stage1 cost is dominated by q8_1
-  activation reloads and final-reduce entries rather than register pressure in
-  the per-output Q6 body. Correctness passes against the q8_1/Q6_K oracle for
-  fused and split stage1+stage2 paths. Same-session denseq8all smoke rejected it:
-  retained control **71.74 tok/s**, cycle **13.961 ms/output**,
-  `draft_initial` **2.479 ms/output** vs pack16 **71.72 tok/s**, cycle
-  **13.963 ms/output**, `draft_initial` **2.487 ms/output**, with identical
-  acceptance. Draft rocprof confirms the kernel-family loss:
-  `gguf_q6_k_pack16_gemv_q8_1_dp4a_top1_stage1` is **3.684 ms/cycle** vs the
-  retained pack8 stage1 **3.603 ms/cycle**.
-- Remove when: the draft Q6_K top-1 path moves to a different retained
-  body/layout or a fused top-1/sampler path supersedes this evidence hook. It is
-  not a performance route and should not update the active llama-compat headline.
-
-## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=x8_dscale` (diagnostic rejected)
-- Added 2026-07-01. Bench flag
-  `--resident-mtp-draft-q6-top1-stage1-shape x8_dscale` and suite routes
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8dscale-f32ssm`
-  / `...-x8dscale-f32ssm-allsync` exercise the retained X8-packed Q6_K draft
-  lm-head top-1 layout with an extra X8-aligned FP32 `d*scale` sidecar.
-- Purpose: test whether the remaining retained X8 Q6_K top-1 cost is dominated
-  by repeatedly unpacking/multiplying Q6 block scales inside the dot body.
-  Correctness passes against the q8_1/Q6_K oracle for fused and split
-  stage1+stage2 paths, but draft-chain rocprof rejects the route:
-  `benchmarks/results/2026-07-01-gguf-mtp-draft-rocprof-llama-compat-b2-q6-x8dscale.json`
-  reports host wall **6.805 -> 8.023 ms/cycle**, kernel time
-  **6.427 -> 7.615 ms/cycle**, and `draft_lm_head_q6_top1`
-  **3.648 -> 4.859 ms/cycle** versus the retained X8 artifact. Extra FP32
-  sidecar memory traffic/register pressure is worse than recomputing scales.
-- Remove when: a later draft Q6_K top-1 body/layout or fused top-1/sampler route
-  supersedes the current X8 evidence set. This route is evidence only; do not
-  promote or rerun full-suite unless a separate change materially alters the
-  dscale memory path.
-
 ## `--fused-b1-block-probe` / `resident-fused-b1-block-direct-cap32k-minrows2-pmin05`
 - Added 2026-06-30. Bench flag `--fused-b1-block-probe` keeps the retained
   adaptive B1-probe policy, but lets B1 probe cycles verify `[prev, draft0]` with
@@ -11037,7 +10958,7 @@ path uses the combined top-1/gather wrapper. Missing requested sidecars raise
 rather than silently switching layouts. The shared wrapper thread control
 also serves non-draft callers and cannot be removed with this shape choice.
 The benchmark/profiler thread options and the wrapper's explicit 64/128-thread
-support remain available for direct experiments and historical replay. Only the
+support remain available for direct experiments and historical replay. The
 rejected `x8q6-t64` and `x8q6-t64-allsync` suite aliases and fixed budgets are
 removed; their recorded comparisons remain in the sweep inventory and artifacts.
 
@@ -11052,8 +10973,7 @@ standalone constructor, or remove exact/Q8_1 comparison oracles.
 shape, dp4a activation, scheduler selection and sidecar construction into one
 owner-local plan.
 Keep target materialization and the Generation-2 NextN provider separate.
-Other shape-specific rejected candidates have their own ledger entries;
-this item does not authorize deleting their common kernels or wrappers.
+This item does not authorize deleting common kernels or numerical comparisons.
 
 R0294's rejected `x8q6-row` and `x8q6-row-allsync` suite presets are removed.
 The explicit benchmark/profiler `row` shape, registered wrappers and numerical
@@ -11066,6 +10986,19 @@ selection creates no X8 sidecar. Its historical timing result remains in the
 original sweep source and unchanged July result artifacts. Include the row
 comparison and its vocabulary-sized scratch in this ownership decision, rather
 than removing shared reduction code or silently substituting X8.
+
+R0295–R0298's rejected scalehoist, pack8_llama, pack16 and x8_dscale suite
+presets are also removed. Explicit benchmark/profiler shapes and registered
+numerical comparisons remain. Scalehoist and pack8_llama read the raw head and
+reduce `vocab/8` candidates; pack16 reduces `vocab/16` and requires vocabulary
+divisible by 16 even when dp4a is disabled. X8 dscale uses the capped X8 head
+plus its separately owned FP32 scale-product sidecar. All shapes keep the same
+raw BF16 top-1/full-logit behavior when their dp4a/device-top-1 preconditions
+are absent. Preserve staged and combined wrappers, sidecar failure behavior,
+shared scheduler choice and result provenance in this plan migration. The
+historical shape comparisons remain in the pinned sweep source and unchanged
+July artifacts; their negative timing rows do not authorize removing the
+explicit comparison capability.
 
 **Clearing action:** migrate draft construction, upload-cache names, top-1
 stage/combined callers, bench/profiler result fields and suite aliases together.

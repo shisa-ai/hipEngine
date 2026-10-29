@@ -585,7 +585,7 @@ def test_post_init_ignores_retired_shared_dual_selector(
     assert sorted(memory_spy.freed_ptrs()) == sorted(memory_spy.allocated_ptrs())
 
 
-@pytest.mark.parametrize("shape", ["pack8", "row", "x8", "x8_dscale"])
+@pytest.mark.parametrize("shape", ["pack8", "row", "pack8_scalehoist", "pack8_llama", "pack16", "x8", "x8_dscale"])
 @pytest.mark.parametrize("dp4a", [False, True])
 @pytest.mark.parametrize("vocab", [8, 16])
 def test_post_init_draft_x8_layout_has_its_own_vocab_scoped_owner(
@@ -614,6 +614,13 @@ def test_post_init_draft_x8_layout_has_its_own_vocab_scoped_owner(
         return packed
 
     monkeypatch.setattr(resident, "repack_gguf_q6_k_x8", record_repack)
+    if shape == "pack16" and vocab % 16:
+        with pytest.raises(ValueError, match="pack16.*vocab divisible by 16"):
+            resident.Qwen35GGUFResidentMTPDraftRunner(
+                weights, np.zeros((16, 4), dtype=np.float32), runtime=_FakeRuntime(), vocab_cap=vocab,
+            )
+        assert memory_spy.allocated_ptrs() == []
+        return
     runner = resident.Qwen35GGUFResidentMTPDraftRunner(
         weights, np.zeros((16, 4), dtype=np.float32), runtime=_FakeRuntime(), vocab_cap=vocab,
     )

@@ -36,8 +36,9 @@ def test_draft_profiler_preserves_independent_timing_mode_arguments(monkeypatch,
     assert args.record_stage_timings is True
 
 
+@pytest.mark.parametrize("shape", ["row", "pack8_scalehoist", "pack8_llama", "pack16", "x8_dscale"])
 @pytest.mark.parametrize("sync,event", [(False, False), (True, False), (False, True), (True, True)])
-def test_draft_profiler_preserves_explicit_row_comparison(monkeypatch, sync, event):
+def test_draft_profiler_preserves_explicit_head_comparison(monkeypatch, shape, sync, event):
     captured = []
 
     def child(args):
@@ -51,7 +52,7 @@ def test_draft_profiler_preserves_explicit_row_comparison(monkeypatch, sync, eve
     monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", "0")
     monkeypatch.setattr(profiler, "_run_child", child)
     argv = ["gguf_mtp_draft_rocprof.py", "--child", "--record-stage-timings",
-            "--q6-top1-dp4a", "--q6-top1-stage1-shape", "row"]
+            "--q6-top1-dp4a", "--q6-top1-stage1-shape", shape]
     if sync:
         argv.append("--sync-stage-timings")
     if event:
@@ -59,10 +60,10 @@ def test_draft_profiler_preserves_explicit_row_comparison(monkeypatch, sync, eve
     monkeypatch.setattr(sys, "argv", argv)
     assert profiler.main() == 0
     args, = captured
-    assert args.q6_top1_stage1_shape == "row"
+    assert args.q6_top1_stage1_shape == shape
     assert args.sync_stage_timings is sync
     assert args.gpu_event_stage_timings is event
-    assert os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] == "row"
+    assert os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] == shape
     assert os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] == "1"
 
 
