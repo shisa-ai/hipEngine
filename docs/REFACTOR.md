@@ -3427,35 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## 2026-09-12 PARO paged-attention backend pin - removal rejected
-
-`hipengine/runtime/qwen35_paro.py` sets
-`_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"` and passes it to
-`resolve_paged_kv_write`, `resolve_paged_attn_decode`, and
-`resolve_paged_attn_prefill`. The class docstring on
-`Qwen35ParoDecodeState` states the assumption explicitly ("Kernel selection
-still flows through the registry/wrappers added in the gfx1100 backend tree"),
-and PARO is a live gfx1151 lane.
-
-Consequence on gfx1151: PARO gets the gfx1100 body for every key it resolves.
-For `paged_attn_decode / w4_paro / bf16_context_batch_c1_exact_spans` that is
-visible, because `hipengine/kernels/hip_gfx1151/__init__.py` deliberately
-overrides that key to `..._fixed256_spans` ("Keep gfx1151 on the generic
-reduction, but pin its geometry to the c4/c8-proven 256-thread shape"). PARO
-therefore runs the c1-exact kernel on gfx1151 while every other gfx1151
-paged-attention caller runs the pinned generic reduction. The later same-host
-PARO comparison showed that this difference is load-bearing: resolving against
-gfx1151 diverged from independent c1 at decode token 25 of 137, twice, while
-the current pin and the per-row control both matched all 137 tokens. The
-generic override's GGUF qualification does not establish its correctness for
-this PARO route.
-
-Do not remove the pin as cleanup. Any replacement requires a separately
-qualified PARO route preserving its declared profile and ownership contracts.
-The open follow-up is to understand and separate the PARO and GGUF semantics
-sharing this registry key, not to substitute the session backend unconditionally.
-See the [upstream decision and reproduction protocol](../worklog/entries/20260912T044256.896835Z-lhl-paro-paged-kv-backend-pin-load-bearing-e64405.md).
-
 ## 2026-09-12 GGUF automatic context sizing knobs
 
 `hipengine/generation/qwen35_gguf.py` added `HIPENGINE_GGUF_AUTO_CONTEXT`
@@ -11175,3 +11146,33 @@ is completed or the lead explicitly retires it.
 
 Implementation and validation:
 `../worklog/entries/20261029T172026.382460Z-cleanup-refactor-r0415-gdn-register-f765dd.md`.
+
+### R0421 — Separate PARO and GGUF attention-key semantics
+
+`hipengine/runtime/qwen35_paro.py` still binds its four paged-KV/attention
+resolutions to `_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"`. The gfx1151 package
+maps `(paged_attn_decode, w4_paro, bf16_context_batch_c1_exact_spans)` to the
+fixed256 generic reduction, while PARO uses the c1-exact body. These consumers
+share a key but have different whole-model batch-versus-c1 behavior.
+
+**Deferred work:** separate the consumer contracts before replacing the pin.
+The [recorded same-host comparison](../worklog/entries/20260912T044256.896835Z-lhl-paro-paged-kv-backend-pin-load-bearing-e64405.md)
+found deterministic PARO divergence when selecting the gfx1151 override;
+current-pin and per-row controls matched independent c1. This is an observed
+failure, not missing benchmark coverage. Preserve the pin and its regression
+test; do not substitute the session backend unconditionally.
+
+**Clearing action:** define distinct PARO/GGUF variant semantics, then compare
+the replacement against current-pin, repeated replacement and `per_row` arms
+using `scripts/qwen35_batch_retained_bench.py --model <PARO-model> --fixture
+<derived-1024-token-fixture> --prompt-length 512 --batch-size 2 --decode-tokens
+128 --warmup-decode-tokens 8 --batch-decode-full-attn-path
+{per_row,native_batch}` on the same gfx1151 host. The linked decision specifies
+the derived fixture and environment. Inspect
+`correctness.generated_token_equality.passed`, not the harness's unrelated
+promotion-plumbing status. Preserve the declared profile and ownership
+contracts, check both consumers, and only then remove the pin. The direct-leaf
+`qwen35_batch_correctness.py` harness does not exercise this registry choice.
+
+Current-source review and focused regression evidence:
+`../worklog/entries/20261029T182650.701375Z-cleanup-refactor-r0421-paro-pin-20d2af.md`.

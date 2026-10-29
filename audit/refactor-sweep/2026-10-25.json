@@ -12216,8 +12216,8 @@
       "start_line": 9619,
       "end_line": 9647,
       "sha256": "879b4d3edf0a145058a449ae38ccb1b98a073c771eb4c2dfe996d03448cced6b",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-paro-gguf-key-separation",
+      "evidence": ["Current four PARO resolutions and gfx1151 fixed256 override still match the observed-failure decision. Preserve load-bearing pin; pin regression and KV dispatch pass9. Move semantic separation to ledger bottom with same-host four-arm reproduction and exact equality field. Worklog: worklog/entries/20261029T182650.701375Z-cleanup-refactor-r0421-paro-pin-20d2af.md."],
       "subitems": []
     },
     {
