@@ -915,6 +915,7 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_TEST_GEMMA4_MODEL_DIR` | `/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF` | Fixture directory for live Gemma MTP flag, INT8 KV generation and resident-session tests. A missing target skips these tests; set this to the installed GGUF directory on other hosts. |
 | `HIPENGINE_GEMMA4_GGUF` | unset | Text GGUF path for `tests/test_live_gemma4_vision.py`; both Gemma image artifact variables must point to existing files. |
 | `HIPENGINE_GEMMA4_MMPROJ` | unset | Gemma 4 vision-sidecar GGUF path for the live encoder-parity and public image-generation tests. |
+| `HIPENGINE_TEST_GGUF_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense Qwen hybrid GGUF fixture for `tests/test_live_gguf_singleton_verify_roots.py`. Set it to a locally installed compatible model; missing model or HIP runtime skips the tests. |
 | `HIPENGINE_TEST_PARO_MODEL` | unset | PARO model directory override for the live PARO tokenizer/EOS tests; falls back to the standard `/models/hipengine/...` candidates. |
 | `HIPENGINE_TEST_PARO_MTP_MODEL` | `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` | Packed PARO model directory with BF16 MTP weights for `tests/test_live_paro_mtp_prompt_priming.py`. The test skips when the model or HIP runtime is unavailable. |
 | `HIPENGINE_TEST_QWEN4EXP_GGUF` | `/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL` | Model fixture for the live constrained-chunk admission test; skips when the model or HIP runtime is unavailable. |

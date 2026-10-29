@@ -11659,18 +11659,18 @@
       "start_line": 9153,
       "end_line": 9173,
       "sha256": "c89799b92de6d27a94ec3420478b8fbf0ddf85da1fe8928c4ed0ea5fd0c5ad54",
-      "status": "pending",
-      "evidence": [],
+      "status": "repaired-singleton-root-view-hardware-followup-merged-R0176",
+      "evidence": ["Trace current captured/deferred singleton route: unsegmented Conv/GDN consumes base pointer, ignoring nonzero layout.state_indices; full slab also supplies wrong byte extent. Bind state_owner.for_slot(index), local index0; multi-session indexed slabs unchanged. RED3zero/nonzero roots then135focused pass/3noHIP skips. Actual gfx1151 copied-state oracle matches hidden+allcapturedConv/GDN rows exactly at slots0/1/3; legacy binding fails nonzero1/3, leaves slot0 equal. All resident bytes unchanged and zero drain. New guarded live regression3pass after per-node env fixture repair; first module-fixture run1pass/2env-resetfail preserved. Public C3->C2 MTP repeatIDs/no recovery/directindices/drain pass; not public singleton engagement. CPUbundlebg738. Keep historical gfx1100 slot0 guard; merge its actual hardware cause/public followup with bottom R0176 rather than assert solved. Worklog worklog/entries/20261029T114932.236223Z-cleanup-refactor-r0394-direct-state-0c77b2.md."],
       "subitems": [
         {
           "line": 9165,
           "text": "- Root cause is scoped, not root-caused: why the single-slot mapping diverges",
-          "status": "pending"
+          "status": "repaired-borrowed-root-base-and-byteextent-old-slot0-cause-still-open"
         },
         {
           "line": 9171,
           "text": "- Remove this entry only when the route is either root-caused and re-qualified",
-          "status": "pending"
+          "status": "deferred-historical-gfx1100-slot0-and-public-validation-merged-R0176"
         }
       ]
     },

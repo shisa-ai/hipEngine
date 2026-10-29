@@ -434,6 +434,44 @@ def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
     assert imported is True
 
 
+@pytest.mark.parametrize("resident_slot", (0, 3, 6))
+def test_singleton_verify_initial_state_uses_selected_slot_view(resident_slot) -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    conv_row_bytes, recurrent_row_bytes = 64, 128
+    view = SimpleNamespace(
+        slot_count=1,
+        layer_conv_states=(DeviceBuffer(0x1000 + resident_slot * conv_row_bytes, conv_row_bytes),),
+        layer_recurrent_states=(DeviceBuffer(0x3000 + resident_slot * recurrent_row_bytes, recurrent_row_bytes),),
+    )
+    selected_slots = []
+    def for_slot(slot):
+        selected_slots.append(slot)
+        return view
+    slab = SimpleNamespace(
+        slot_count=8,
+        layer_conv_states=(DeviceBuffer(0x1000, 8 * conv_row_bytes),),
+        layer_recurrent_states=(DeviceBuffer(0x3000, 8 * recurrent_row_bytes),),
+        for_slot=for_slot,
+    )
+    sessions = (SimpleNamespace(),)
+    owner._direct_resident_linear_state = lambda selected: ((resident_slot,), slab)
+    layout = _build_gguf_packed_verify_layout(
+        (_GGUFPackedVerifySlotBlock(input_token_ids=(11, 12, 13), start_position=7),),
+        slot_capacity=16,
+    )
+    bound_layout, bound_owner, copy_initial = owner._packed_verify_initial_linear_state(
+        sessions, layout, object(),
+    )
+    # Single-segment Conv/GDN leaves have no state-index operand: their base
+    # pointer and nbytes must already name the selected logical slot.
+    assert bound_owner is view
+    assert selected_slots == [resident_slot]
+    assert bound_layout.state_indices.tolist() == [0]
+    assert bound_owner.layer_conv_states[0].nbytes == conv_row_bytes
+    assert bound_owner.layer_recurrent_states[0].nbytes == recurrent_row_bytes
+    assert copy_initial is False
+
+
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch, retired) -> None:
     if retired is None:

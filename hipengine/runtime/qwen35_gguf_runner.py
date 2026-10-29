@@ -26462,6 +26462,12 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError(
                 "direct verifier state indices must align with packed slots"
             )
+        if int(layout.slot_count) == 1:
+            # Single-segment Conv/GDN leaves have no state-index operand.
+            # Bind one slot's pointer and byte extent, not the entire slab;
+            # otherwise a borrowed singleton reads the owner's slot zero.
+            state_owner = state_owner.for_slot(int(state_indices[0]))
+            state_indices = (0,)
         return (
             replace(
                 layout,

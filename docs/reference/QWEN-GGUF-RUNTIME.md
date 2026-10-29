@@ -135,6 +135,14 @@ verifier cleanup; packed-workspace state remains deliberately shared across slot
 Graph invalidation and synchronization precede publication of packed-workspace
 replacements and release of their old buffers.
 
+Packed verification's captured/deferred initial-state binding uses a one-slot
+view for a singleton, including a nonzero borrowed resident slot. Unsegmented
+Conv/GDN leaves read their pointer bases directly, so this view supplies both
+the correct offset and per-slot byte extent; its local state index is zero.
+Multi-session segmented leaves instead consume slab pointers plus explicit
+state indices. Candidate state rows remain provisional and do not mutate any
+resident slot before acceptance commits.
+
 `qwen35_gguf_prefix_state.py` owns snapshot allocation and copying. Capture takes
 explicit per-layer buffers, KV identity metadata and a pool, not a session. The
 session checks the current boundary, available continuation capacity, KV coverage
