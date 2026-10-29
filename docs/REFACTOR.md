@@ -3430,23 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Moonshine gfx1151 exact wave8 top-1 — temporary rollback selector
-
-- `wave8_top1` is now the G1 FP16 runtime default. It materializes the same
-  complete FP16 logit plane, owns bounded FP16-value/int64-index scratch, and
-  replaces only the full-logit argmax scan with stable block partials plus a
-  final reduction. `MoonshineResidentRuntime(lm_head_route="wave8_argmax")`
-  remains the explicit unfused rollback and is required for selective W8A16
-  LM-head diagnostics.
-- The clean production leaf passes at **-12.003% event / -12.005% wall**; the
-  actual-checkpoint 194-step graph gate is byte-exact; and the regenerated real-
-  audio gate passes all **24/24** six-file fallback/candidate eager/graph rows
-  through EOS with pairwise-exact outcomes, zero timed allocation, four graphs,
-  194 replays, and clean teardown. Keep the constructor/script selector through
-  one clean release for rollback and bisection. Then remove the public selector
-  unless a deployment still requires it; retain the separately registered
-  wave8 projection and stable argmax as the mandatory composite fallback.
-
 ## Maple P1 expert-major prefill rollback — temporary opt-out
 
 - `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` defaults to `1`; `=0` restores the
@@ -9856,6 +9839,42 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0371 — Moonshine top-1 and unfused LM-head route ownership
+
+`MoonshineResidentRuntime` defaults to `wave8_top1`, which writes the full
+FP16 logit plane and bounded partial-value/index scratch while selecting
+stable top-1. `wave8_argmax` remains an explicit full-logit projection plus
+argmax path and is required for selective W8A16 LM-head execution. The
+constructor rejects W8A16 LM heads with `wave8_top1` by naming its FP16
+requirement; removing the fallback selector would remove that runnable
+quantized path, not merely a bisection option.
+
+The decoder smoke and route gate still compare both names, including eager
+and graph execution. Host/runtime tests cover default and explicit routes,
+actual token-DAG selection, scratch, full logits, stable tie contract,
+invalid-route errors, W8A16 compatibility and cleanup. No runtime or kernel
+change is needed for this disposition.
+
+**Decision needed:** keep the explicit route selector or replace it with
+caller-owned capability selection plus an explicit numerical reference
+interface. Preserve the unfused projection/argmax implementations and the
+W8A16 route; do not silently downgrade an explicit `wave8_top1` request.
+Historical leaf/checkpoint/audio evidence remains in the original sweep
+source and `benchmarks/results/2026-08-08-gfx1151-moonshine-lm-head-*`
+artifacts; it is not a fresh measurement.
+
+**Clearing action:** migrate constructor, decoder smoke, leaf benchmark and
+route gate together. Run `uv run pytest
+ tests/test_unit_moonshine_lm_head_reference.py
+ tests/test_unit_moonshine_lm_head_route_gate.py
+ tests/test_unit_moonshine_lm_head_bench.py
+ tests/test_gpu_moonshine_runtime.py
+ tests/test_gpu_moonshine_hip_projection.py`, then the real-audio route gate
+and checkpoint eager/graph comparisons on HIP. Include FP16/default,
+explicit unfused and selective W8A16 requests, full logits/top-1, graph
+buckets, no timed allocation, repeat/reset/reuse and teardown before removing
+or replacing the selector.
 
 ### R0370 — Moonshine exact two-region scheduler reference ownership
 

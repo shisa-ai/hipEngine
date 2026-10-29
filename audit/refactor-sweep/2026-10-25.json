@@ -10991,18 +10991,18 @@
       "start_line": 8330,
       "end_line": 8346,
       "sha256": "d5befa2ee8d3a1826f312174da7a40d309bfc4006d842d23c5d09e4f5a8e7ebe",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-live-lm-head-selector-ownership",
+      "evidence": ["wave8_top1 default and explicit wave8_argmax are live runtime/smoke/benchmark/gate consumers; unfused selector required by selective W8A16 LM-head, top1 names FP16 precondition. Preserve both and bounded scratch/full-logit/tie/lifecycle contracts. New CPU token-DAG tests bind actual fused/unfused/quantized dispatch and pointers; existing constructor/runtime/projection/gate tests29pass/4HIP skips. Bottom R0371 names caller-owned selector/reference migration and clearing actions. No runtime/kernel/default/arithmetic change; no RED repair needed for already-correct controls. Worklog worklog/entries/20261029T054141.006360Z-cleanup-refactor-r0371-moonshine-head-f84584.md."],
       "subitems": [
         {
           "line": 8332,
           "text": "- `wave8_top1` is now the G1 FP16 runtime default. It materializes the same",
-          "status": "pending"
+          "status": "triaged-live-fp16-and-w8a16-consumers-preserved-bottom"
         },
         {
           "line": 8338,
           "text": "- The clean production leaf passes at **-12.003% event / -12.005% wall**; the",
-          "status": "pending"
+          "status": "triaged-live-fp16-and-w8a16-consumers-preserved-bottom"
         }
       ]
     },
