@@ -585,7 +585,7 @@ def test_post_init_ignores_retired_shared_dual_selector(
     assert sorted(memory_spy.freed_ptrs()) == sorted(memory_spy.allocated_ptrs())
 
 
-@pytest.mark.parametrize("shape", ["pack8", "x8", "x8_dscale"])
+@pytest.mark.parametrize("shape", ["pack8", "row", "x8", "x8_dscale"])
 @pytest.mark.parametrize("dp4a", [False, True])
 @pytest.mark.parametrize("vocab", [8, 16])
 def test_post_init_draft_x8_layout_has_its_own_vocab_scoped_owner(
@@ -620,17 +620,19 @@ def test_post_init_draft_x8_layout_has_its_own_vocab_scoped_owner(
     try:
         assert runner._q6_top1_dp4a_enabled is dp4a
         assert runner.shared_head is not None
-        assert (runner.shared_head_x8 is not None) is (shape != "pack8")
+        uses_x8 = shape in {"x8", "x8_dscale"}
+        assert runner._q6_top1_stage1_shape == shape
+        assert (runner.shared_head_x8 is not None) is uses_x8
         assert (runner.shared_head_x8_dscale is not None) is (shape == "x8_dscale")
         names = {name for _runtime_id, name in runner.upload_cache._entries}
         prefix = "resident_mtp:output.weight:"
         assert {name for name in names if name.startswith(prefix)} == (
-            set() if shape == "pack8" else
+            set() if not uses_x8 else
             {f"{prefix}q6_x8_top1:vocab{vocab}"} | (
                 {f"{prefix}q6_x8_dscale_top1:vocab{vocab}"} if shape == "x8_dscale" else set()
             )
         )
-        if shape != "pack8":
+        if uses_x8:
             assert len(packed_inputs) == 1
             np.testing.assert_array_equal(packed_inputs[0], raw_head[None, :vocab])
             assert runner.shared_head_x8.nbytes == vocab * 210

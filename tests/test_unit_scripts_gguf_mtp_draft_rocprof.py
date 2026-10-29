@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import numpy as np
@@ -33,6 +34,36 @@ def test_draft_profiler_preserves_independent_timing_mode_arguments(monkeypatch,
     assert args.sync_stage_timings is sync
     assert args.gpu_event_stage_timings is event
     assert args.record_stage_timings is True
+
+
+@pytest.mark.parametrize("sync,event", [(False, False), (True, False), (False, True), (True, True)])
+def test_draft_profiler_preserves_explicit_row_comparison(monkeypatch, sync, event):
+    captured = []
+
+    def child(args):
+        profiler._apply_route_env(args)
+        captured.append(args)
+        return 0
+
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS", "128")
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE", "x8")
+    monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", "0")
+    monkeypatch.setattr(profiler, "_run_child", child)
+    argv = ["gguf_mtp_draft_rocprof.py", "--child", "--record-stage-timings",
+            "--q6-top1-dp4a", "--q6-top1-stage1-shape", "row"]
+    if sync:
+        argv.append("--sync-stage-timings")
+    if event:
+        argv.append("--gpu-event-stage-timings")
+    monkeypatch.setattr(sys, "argv", argv)
+    assert profiler.main() == 0
+    args, = captured
+    assert args.q6_top1_stage1_shape == "row"
+    assert args.sync_stage_timings is sync
+    assert args.gpu_event_stage_timings is event
+    assert os.environ["HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE"] == "row"
+    assert os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] == "1"
 
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])

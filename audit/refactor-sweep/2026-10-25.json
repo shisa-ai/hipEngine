@@ -8764,23 +8764,23 @@
       "start_line": 6649,
       "end_line": 6667,
       "sha256": "53277d8fa6b96bfb6b794b176f97ce814467d69147346ecabb87eb0789a6dee1",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-draft-head-plan",
+      "evidence": ["Removed only rejected row/-allsync suite presets and their derived fixed budgets; direct benchmark/profiler row comparison, kernels, numerical oracles and compatibility defaults remain. Three parent RED failures; 402 focused checks pass, including actual runner row/pack8/logit routing, synchronized timing sink and vocabulary-sized stage2 domains, optional embedding gather and no X8 sidecar ownership. All 71 surviving suite routes, budgets and route environments match parent; all suite functions/classes are AST-identical. Remaining row shape/scratch ownership decision consolidated into bottom R0281-DRAFT-X8. Original timing evidence remains in pinned sweep source and unchanged July artifacts. Worklog: worklog/entries/20261029T000704.219813Z-cleanup-refactor-r0294-q6-row-a5a57e.md."],
       "subitems": [
         {
           "line": 6650,
           "text": "- Added 2026-07-01. Bench flag",
-          "status": "pending"
+          "status": "resolved-rejected-suite-presets-removed"
         },
         {
           "line": 6656,
           "text": "- Purpose: test whether the remaining draft-side Q6_K top-1 gap is caused by",
-          "status": "pending"
+          "status": "resolved-comparison-and-history-preserved"
         },
         {
           "line": 6664,
           "text": "- Remove when: the draft Q6_K top-1 path moves to a different retained",
-          "status": "pending"
+          "status": "deferred-existing-draft-head-plan"
         }
       ]
     },

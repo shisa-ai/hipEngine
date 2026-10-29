@@ -424,14 +424,6 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--resident-mtp-draft-q6-top1-stage1-shape", "pack16",
         "--selected-down-x8-repack", "q6",
     ],
-    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row": [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--resident-mtp-draft-q6-top1-stage1-shape", "row",
-        "--selected-down-x8-repack", "q6",
-    ],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist": [
         "--llama-compat",
         "--resident-mtp-device-chain",
@@ -588,16 +580,6 @@ MTP_ROUTES: dict[str, list[str]] = {
         "--resident-mtp-draft-q6-top1-stage1-shape", "pack16",
         "--selected-down-x8-repack", "q6",
         "--verify-dense-q8-dp4a-all",
-    ],
-    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row-allsync": [
-        "--llama-compat",
-        "--resident-mtp-device-chain",
-        "--resident-mtp-draft-sync-stage-timings",
-        "--target-block-sync-stage-timings",
-        "--verify-dp4a",
-        "--resident-mtp-draft-q6-top1-dp4a",
-        "--resident-mtp-draft-q6-top1-stage1-shape", "row",
-        "--selected-down-x8-repack", "q6",
     ],
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-scalehoist-allsync": [
         "--llama-compat",

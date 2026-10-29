@@ -72,6 +72,21 @@ def test_retired_warmup_and_target_graph_selectors_are_rejected(option, capsys, 
     assert option not in build_arg_parser().format_help()
 
 
+@pytest.mark.parametrize("sync", [False, True])
+def test_explicit_row_head_cli_survives_suite_preset_retirement(monkeypatch, sync):
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE", "x8")
+    options = ["--llama-compat", "--resident-mtp-draft-q6-top1-dp4a",
+               "--resident-mtp-draft-q6-top1-stage1-shape", "row"]
+    if sync:
+        options.append("--resident-mtp-draft-sync-stage-timings")
+    args = build_arg_parser().parse_args(options)
+    apply_llama_compat_args(args)
+    assert args.resident_mtp_draft_q6_top1_stage1_shape == "row"
+    assert args.resident_mtp_draft_q6_top1_dp4a is True
+    assert args.resident_mtp_draft_sync_stage_timings is sync
+    assert args.draft_n_max == 2
+
+
 def test_prompt_catchup_inputs_are_not_retained_in_cycle_history() -> None:
     tree = ast.parse(inspect.getsource(bench.main))
     cycles = [

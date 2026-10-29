@@ -3430,25 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
-- Added 2026-07-01. Bench flag
-  `--resident-mtp-draft-q6-top1-stage1-shape row` and suite routes
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-row` /
-  `...-row-allsync` exercise a llama.cpp-shaped Q6_K draft lm-head top-1
-  stage: one output row per block, two wave32 warps, and a signed
-  `__vsubss4`/dot4 Q6_K MMVQ body. Default stays `pack8`.
-- Purpose: test whether the remaining draft-side Q6_K top-1 gap is caused by
-  hipEngine's pack8 output-row geometry rather than the vector-dot body itself.
-  Correctness passes against the q8_1/Q6_K oracle, but performance rejects the
-  route: all-sync row stage1 is only slightly faster than pack8
-  (**1.202 vs 1.218 ms/output**) while row stage2/gather grows
-  **0.041 -> 0.252 ms/output** because it reduces over `vocab` instead of
-  `vocab/8`; async smoke regresses **69.06 tok/s / 14.501 ms** to
-  **66.95 tok/s / 14.958 ms** with identical acceptance.
-- Remove when: the draft Q6_K top-1 path moves to a different retained
-  body/layout or a fused row-stage/top-1 reduce makes this row-shape diagnostic
-  obsolete. It is evidence, not a performance route.
-
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=pack8_scalehoist` (diagnostic rejected)
 - Added 2026-07-01. Bench flag
   `--resident-mtp-draft-q6-top1-stage1-shape pack8_scalehoist` and suite routes
@@ -11073,6 +11054,18 @@ owner-local plan.
 Keep target materialization and the Generation-2 NextN provider separate.
 Other shape-specific rejected candidates have their own ledger entries;
 this item does not authorize deleting their common kernels or wrappers.
+
+R0294's rejected `x8q6-row` and `x8q6-row-allsync` suite presets are removed.
+The explicit benchmark/profiler `row` shape, registered wrappers and numerical
+oracles remain for geometry comparisons. With q8_1/dp4a and a top-1 output,
+this shape writes one candidate per vocabulary row; synchronized timing reduces
+`vocab` entries, not `vocab/8`. The combined wrapper uses that same domain.
+Without dp4a, device top-1 still uses the raw-Q6 pack8 path; without a top-1
+output the runner computes full BF16-input logits regardless of shape. Row
+selection creates no X8 sidecar. Its historical timing result remains in the
+original sweep source and unchanged July result artifacts. Include the row
+comparison and its vocabulary-sized scratch in this ownership decision, rather
+than removing shared reduction code or silently substituting X8.
 
 **Clearing action:** migrate draft construction, upload-cache names, top-1
 stage/combined callers, bench/profiler result fields and suite aliases together.
