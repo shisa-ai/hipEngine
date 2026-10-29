@@ -25,16 +25,19 @@ MODELS = {
 ROLE_ENVS: dict[str, dict[str, dict[str, str | None]]] = {
     'q4': {
         'current': {
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': None,
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': None,
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': None,
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': None,
         },
         'pre_x2': {
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': '0',
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': '0',
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': '0',
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': None,
         },
         'strict_x2': {
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': '0',
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': '0',
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': '0',
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': 'exact',
@@ -42,11 +45,13 @@ ROLE_ENVS: dict[str, dict[str, dict[str, str | None]]] = {
     },
     'q8': {
         'current': {
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': None,
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': None,
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': None,
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': None,
         },
         'strict_x2': {
+            'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL': '0',
             'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK': '0',
             'HIPENGINE_GGUF_DENSE_WMMA_BULK': '0',
             'HIPENGINE_GGUF_GDN_PREFILL_MODE': 'exact',
@@ -109,6 +114,7 @@ def run_one(
     return {
         'artifact': str(artifact),
         'command': command,
+        'environment': {name: env.get(name) for name in ROLE_ENVS[quant][role]},
         'elapsed_s': time.perf_counter() - started,
         'source_commit': payload['provenance']['hipengine_commit'],
         'clean_tree': not bool(payload['provenance']['dirty']),
@@ -134,6 +140,7 @@ def run_role(quant: str, role: str, block: int, order_index: int) -> dict[str, A
         'artifacts': [executions[str(length)]['artifact'] for length in LENGTHS],
         'env': ROLE_ENVS[quant][role],
         'commands': [executions[str(length)]['command'] for length in LENGTHS],
+        'environments': {str(length): executions[str(length)]['environment'] for length in LENGTHS},
         'elapsed_s': time.perf_counter() - started,
         'source_commits': sorted({executions[str(length)]['source_commit'] for length in LENGTHS}),
         'all_clean_tree': all(executions[str(length)]['clean_tree'] for length in LENGTHS),

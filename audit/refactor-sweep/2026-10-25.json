@@ -11080,13 +11080,13 @@
       "start_line": 8397,
       "end_line": 8407,
       "sha256": "815f9003a43b885467d3203f6fd7dd7dfe942e10bf3d7a86a25f1721f126ee26",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-comparison-control-migration-harness-fixed",
+      "evidence": ["Live cumulative semantic/threshold/probe consumers still need tile8x8, singleton WMMA and fused pair comparisons. Bottom R0375/R0376 names explicit diagnostic-policy migration and clearing commands; no runtime/kernel/default/shape policy change. Threshold harness old roles inherited newer fused dual WMMA/SiLU despite disabling singleton WMMA; fifteen RED environment/provenance cases fixed by explicit per-role fused override and recorded effective env. Synthetic subprocess tests also exercise real fused-dispatch predicate. Focused host dispatch/cumulative/threshold301pass; added role-provenance aggregation check and affected bundle24pass; CPU bg-702 and repository gates pass. Worklog worklog/entries/20261029T061601.286055Z-cleanup-refactor-r0375-r0376-pack8-controls-94bcab.md."],
       "subitems": [
         {
           "line": 8399,
           "text": "- `HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0` (default `1`) rolls the gfx1151",
-          "status": "pending"
+          "status": "triaged-live-controls-preserved-threshold-children-fixed-bottom"
         }
       ]
     },
@@ -11096,13 +11096,13 @@
       "start_line": 8408,
       "end_line": 8418,
       "sha256": "f869d46d8f19712ae1cec0c460cf6d918f3e8523421260fb447685f3ead86289",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-comparison-control-migration-harness-fixed",
+      "evidence": ["Live cumulative semantic/threshold/probe consumers still need tile8x8, singleton WMMA and fused pair comparisons. Bottom R0375/R0376 names explicit diagnostic-policy migration and clearing commands; no runtime/kernel/default/shape policy change. Threshold harness old roles inherited newer fused dual WMMA/SiLU despite disabling singleton WMMA; fifteen RED environment/provenance cases fixed by explicit per-role fused override and recorded effective env. Synthetic subprocess tests also exercise real fused-dispatch predicate. Focused host dispatch/cumulative/threshold301pass; added role-provenance aggregation check and affected bundle24pass; CPU bg-702 and repository gates pass. Worklog worklog/entries/20261029T061601.286055Z-cleanup-refactor-r0375-r0376-pack8-controls-94bcab.md."],
       "subitems": [
         {
           "line": 8410,
           "text": "- `HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=0` (default `1`) rolls the",
-          "status": "pending"
+          "status": "triaged-live-controls-preserved-threshold-children-fixed-bottom"
         }
       ]
     },

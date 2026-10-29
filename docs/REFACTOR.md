@@ -3430,28 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 Q4 pack8 bulk-prefill WMMA rollback env
-
-- `HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK=0` (default `1`) rolls the gfx1151
-  bulk-prefill pack8 route back to the exact tile8x8 leaf without touching
-  Laguna's `wmma_pack8` mode. Added with the D08-X parity campaign route
-  (2026-08-15): pack8 WMMA measures 1.97x/2.33x tile8x8 on the Qwen3.5-0.8B
-  dense-FFN pp512 shapes. The backend default now fails closed outside the five
-  p512 pack8 shapes exercised by the complete-model campaign A/B. Remove the
-  env branch once the parity campaign closes and no A/B bisection still needs
-  the tile8x8 control; expand the shape policy only with matched evidence.
-
-## gfx1151 Q4 operation-complete pack8 prefill rollback env
-
-- `HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=0` (default `1`) rolls the
-  exact Qwen3.5-0.8B Q4_K_M p512 dense gate/up owner back to two registered
-  singleton pack8 WMMAs plus standalone BF16 SiLU. Added with D08-X3
-  (2026-08-15): the fused leaf is byte-exact and 2.089x faster; five paired
-  complete-model blocks improve core/public prefill 13.81%/13.85% with neutral
-  decode and Q8 guards. Remove the env branch after one non-regressive release
-  window when no A/B bisection needs it. Do not broaden the model/quant/rows/
-  K/N policy without separate complete-model evidence.
-
 ## gfx1151 Q8_0 GDN cluster8 route
 
 - `GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE` now routes
@@ -9789,6 +9767,38 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0375/R0376 — gfx1151 pack8 comparison-control ownership
+
+The cumulative semantic packet still selects three distinct chains: tile8x8
+pack8, singleton pack8 WMMA plus separate SiLU, and operation-complete dual
+WMMA/SiLU. `HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK` and
+`HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL` remain enabled by default;
+their opt-outs drive those explicit comparisons. Registered primitive
+fallbacks and backend shape policies are unchanged. Historical timing and
+numerical results remain in the original sweep source and August 15 artifacts.
+
+The threshold sweep now explicitly disables the newer fused pair in older
+control roles and removes inherited overrides for `current`. Disabling only
+singleton WMMA did not prevent the later fused owner from running. Each
+execution records its effective role environment, and synthetic child tests
+also evaluate the real fused-dispatch predicate.
+
+**Decision needed:** migrate active cumulative/threshold/probe consumers to
+explicit diagnostic policy before deleting either environment control. Keep
+tile8x8, singleton WMMA and unfused SiLU as low-level numerical references.
+Do not change backend admission or arithmetic as a side effect of retiring
+comparison controls; broader shape selection is a separate capability task.
+
+**Clearing action:** run `uv run pytest
+ tests/test_unit_qwen35_08b_threshold_environment.py
+ tests/test_unit_qwen35_08b_cumulative_semantic.py
+ tests/test_unit_qwen35_08b_threshold_artifact.py
+ tests/test_unit_gguf_linear_dispatch.py`, then exercise the migrated policies
+through the cumulative packet and public `LLM.generate()` on HIP. Check
+current/older-role engagement, single/paired/fused dispatch, 511/512/513 and
+unrelated lengths, full logits/state, repeated role order and cleanup before
+removing the env readers.
 
 ### R0373/R0374 — Maple fused decode efficiency and selector retirement
 
