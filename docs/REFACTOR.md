@@ -3427,49 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## `HIPENGINE_GGUF_PACK8_GEMV_WIDE` (DE-3 narrow-projection block size)
-
-- Added 2026-09-30; **default ON since 2026-09-30** after the production numerical
-  envelope passed. The flag is now an opt-out (`=0`) retained for rollback and
-  bisection, not an opt-in. The decode-shaped pack8 GEMV launches
-  `out_features / 8` workgroups, so a narrow projection cannot fill the device: measured on gfx1100, out=320
-  runs 40 workgroups at 92.4 GB/s (42% of the 221 GB/s roof) and out=640 runs 80
-  at 121.5 GB/s (55%), while every shape at 2560 or more output features is
-  already at 90.8-102.9%. Raising the block from 128 to 256 at the starved shapes
-  is worth -32.4% and -19.4% of kernel time respectively (+1.490 ms/step over the
-  three narrow shapes) and is neutral within 2%, mixed in sign, above the knee.
-  Artifact: `benchmarks/results/2026-09-30-qwen4exp-de3-threads-lever/`.
-- **This changes arithmetic.** 256 threads per 8-output workgroup means 32
-  threads per output rather than 16, so the K-reduction tree differs; measured
-  divergence is max relative 2.6e-7.
-- **Envelope PASSED on 2026-09-30** via
-  `scripts/qwen4exp_layer2_profile_gate.py --candidate pack8_gemv_wide_256` on
-  Qwen3.8-Flash-Next-UD-Q4_K_XL: `kl_mean` 0.000287 (bound 0.001), `kl_p99`
-  0.004831 (0.02), `kl_max` 0.018131 (0.05), top-1 0.99778 (0.99), all four
-  categories above their 0.97 per-scope floor, three repeat runs bit-identical,
-  clean lifecycle. The `prefill_last` scope scores `kl_mean = 6.9e-14`, so
-  prefill is untouched and the lever is confined to decode. Artifact:
-  `benchmarks/results/2026-09-30-qwen4exp-de3-threads-lever/kl-envelope-gate-qwen4exp.json`.
-- Removal condition: once the wide block has survived a release cycle without a
-  rollback, delete the env flag, `_pack8_gemv_wide_threads_enabled`, and the
-  falsy-spelling tests, and keep only the shape-boundary cases in
-  `tests/test_unit_gguf_pack8_gemv_wide_threads.py`.
-- Only `gguf_q8_0` was measured end to end. The rule is deliberately gated on
-  grid size rather than on the quantization scheme because the reason is
-  occupancy, so the other quants in the decode-shaped pack8 family inherit it;
-  that inheritance is still reasoned rather than measured.
-- **Strict-exact opt-out scope.** The lever applies to one-row launches only, so
-  a caller whose contract is that an N-row block equals N one-row forwards bit
-  for bit cannot inherit it. Gemma 4's runner enters
-  `pack8_gemv_exact_threads_session(True)` around its block and packed-prefill
-  forwards (`hipengine/runtime/gemma4.py`); `_pack8_gemv_decode_threads`
-  returns the parent block size inside that scope. Without it,
-  `tests/test_gpu_gemma4_packed_batch_forward.py` and
-  `tests/test_gpu_gemma4_runner_verify_rows.py` fail. Removal condition: a
-  Gemma 4 profile gate that admits the wide block on both sides of the
-  comparison (or a registered wide variant the strict route can name), after
-  which the scope and `_pack8_gemv_exact_threads` go away.
-
 ## `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` (RT-4) — promoted to default
 
 - Added 2026-09-30, **promoted to default the same day**. When enabled (now the
@@ -10858,3 +10815,35 @@ Historical evidence, including the invalid self-comparison and its correction,
 remains in `benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/`.
 Current-source review and focused checks:
 `../worklog/entries/20261029T191254.312246Z-cleanup-refactor-r0432-fa6eb2.md`.
+
+### R0434 — Pack8 GEMV width controls and exact-thread ownership
+
+`HIPENGINE_GGUF_PACK8_GEMV_WIDE` remains default-on. For eligible single-row
+`pack8_gemv_*` launches with output width at most 640, the selector requests
+256 threads; explicit caller geometry, multi-row launches and the separate
+`pack8_gemv_decode_*` family retain their own policy. Selection occurs after
+the dispatch-cache lookup. The strict/candidate gate still changes this
+control per arm; a release cycle does not make that caller disappear.
+
+**Deferred interface decision:** keep the comparison control or migrate
+`scripts/execution_profile_gguf_c1_pack8_wide_gate.py`, the layer2 gate and
+`scripts/qwen4exp_de3_route_probe.py` to an explicit launch policy before
+removing its environment reader. Preserve per-launch selection, caller
+geometry precedence, narrow/wide boundaries and default behavior. Validate
+with `tests/test_unit_gguf_pack8_gemv_wide_threads.py`, the migrated gate and
+public generation confirming the selected widths and strict/candidate isolation.
+
+Gemma 4's block and packed paths enter `pack8_gemv_exact_threads_session(True)`
+to preserve their repeated-one-row equality contract. The wider block changes
+the reduction tree; changing only the singleton side cannot preserve that
+contract. Keep this scope until both sides have an explicit compatible owner,
+then run `tests/test_gpu_gemma4_packed_batch_forward.py` and
+`tests/test_gpu_gemma4_runner_verify_rows.py` plus public generation/verification
+before removing the scope. Arithmetic-default changes require their profile
+gate; removing a comparison control must not silently change arithmetic.
+
+Historical performance and Q8_0 coverage remain in
+`benchmarks/results/2026-09-30-qwen4exp-de3-threads-lever/`; they are not new
+measurements or an admission list for other implemented quantizations.
+Source review and focused checks:
+`../worklog/entries/20261029T192349.450639Z-cleanup-refactor-r0434-4bc573.md`.

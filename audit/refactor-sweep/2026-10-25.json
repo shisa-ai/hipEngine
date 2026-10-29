@@ -12542,38 +12542,38 @@
       "start_line": 10269,
       "end_line": 10311,
       "sha256": "28a49fd6a11006e227972c98ad4434490fcbaba7c1f23606656ee6f879744eef",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-comparison-and-exact-thread-ownership",
+      "evidence": ["Live gate control and Gemma4 block/packed exact-thread scopes preserved. Replace release-cycle trigger with coordinated comparison-policy migration and strict-owner checks at bottom.21 unit tests and gate help pass; no runtime changes. Worklog: worklog/entries/20261029T192349.450639Z-cleanup-refactor-r0434-4bc573.md."],
       "subitems": [
         {
           "line": 10271,
           "text": "- Added 2026-09-30; **default ON since 2026-09-30** after the production numerical",
-          "status": "pending"
+          "status": "resolved-current-default-preserved"
         },
         {
           "line": 10281,
           "text": "- **This changes arithmetic.** 256 threads per 8-output workgroup means 32",
-          "status": "pending"
+          "status": "resolved-arithmetic-contract-preserved"
         },
         {
           "line": 10284,
           "text": "- **Envelope PASSED on 2026-09-30** via",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10292,
           "text": "- Removal condition: once the wide block has survived a release cycle without a",
-          "status": "pending"
+          "status": "deferred-live-comparison-interface"
         },
         {
           "line": 10296,
           "text": "- Only `gguf_q8_0` was measured end to end. The rule is deliberately gated on",
-          "status": "pending"
+          "status": "historical-coverage-not-admission"
         },
         {
           "line": 10300,
           "text": "- **Strict-exact opt-out scope.** The lever applies to one-row launches only, so",
-          "status": "pending"
+          "status": "deferred-compatible-exact-owner-migration"
         }
       ]
     },
