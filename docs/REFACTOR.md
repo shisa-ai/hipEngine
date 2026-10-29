@@ -3500,8 +3500,10 @@ down projection takes the direct launch only where the dispatch would already
 select the F16 wide tile. Measured on `code-p4096`, Radeon 8060S, same
 process: 1176.4 -> 1224.4 prefill tok/s, identical output tokens.
 
-On the same path the read no longer writes the FP32 normalized plane
-(`HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY`, default on, `0` restores the plane):
+On the supported direct-F16 path the read no longer writes the FP32 normalized
+plane. The `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` opt-out is retired; incompatible
+geometry or projection layouts still use the FP32 plane fallback. On the
+scale-only path,
 the grouped norm stores the F16 plane and `inv_rms[rows, branches]`, and the
 fused up epilogue and a four-logit inject kernel recompute
 `bf16(residual) * inv_rms * weight`, the value the norm stores. `inv_rms`
@@ -3509,9 +3511,9 @@ lives in `scratch.gate`, which that path does not otherwise use, and
 `scratch.normalized` is left unwritten. Bit-identical
 (`tests/test_gpu_qwen4exp_gr_read_residual.py`); `code-p4096` 1320.5 ->
 1382.1 and `code-p512` 850.7 -> 911.4 prefill tok/s, same process, identical
-output tokens. The flag goes with `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`; at that
-point `Qwen4ExpGRScratch.normalized` and `.gate` can shrink to the decode row
-bound and `inv_rms` gets its own buffer in the scratch planner.
+output tokens. Scratch resizing remains open: the FP32 fallback still needs
+`Qwen4ExpGRScratch.normalized` and `.gate` at prefill width. Dedicated
+`inv_rms` and mirror storage must preserve that fallback's capacity.
 
 The scale-only read also writes `half(mixed)` into the otherwise unwritten
 `scratch.normalized` and declares it through
@@ -3523,9 +3525,9 @@ converting `mixed` again; every read and every prefill chunk invalidates the
 declaration first. Bit-identical; `code-p4096` 1390.8 -> 1440.1 and
 `code-p512` 912.2 -> 951.4 prefill tok/s, same process, identical output
 tokens. The image makes the pair loan (`HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR`)
-redundant for projections that read `mixed`. Removal with the two flags
-above: give the image its own buffer in the scratch planner and delete the
-flag.
+redundant for projections that read `mixed`. Remaining work: give the image
+its own buffer in the scratch planner and replace the mirror flag's diagnostic
+callers with explicit controls before deleting it.
 
 The scale-only norm also computes the four inject logits in the same launch
 when the read has an inject projection

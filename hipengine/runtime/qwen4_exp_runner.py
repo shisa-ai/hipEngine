@@ -3706,8 +3706,6 @@ def run_qwen4_exp_gr_read(
         and residual_width % 2048 == 0
         and up_weight.spec.quant_key == "gguf_q8_0"
         and (inject_weight is None or inject_weight.spec.quant_key == "f32")
-        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY", "1")
-        not in {"", "0", "false", "False"}
     )
     # The exact fused norm computes inject logits whenever this supported
     # scale-only path has an inject projection. The separate kernel remains
