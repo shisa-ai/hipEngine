@@ -11294,23 +11294,23 @@
       "start_line": 8623,
       "end_line": 8638,
       "sha256": "a313ec7f5080da2a2d4cfab391d34c7a0c7c0cbd3984b752b01b9d6bfaa2bbdd",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-superseded-routing-blocker-cache-contract-consolidated",
+      "evidence": ["Blanket long-graph non-routability superseded: transactional verifier calls native target cycle when caller allows; gfx1151 graph capability65544 and immutable schedule/split/kernel-family/capacity buckets govern. Bounded8entry cache and oldest-owner close remain live, not removable because old August timing neutral. Consolidated current ownership with existing bottom R0281-NATIVE-CYCLE/R0384 rather than extra deferral.275 focused host checks pass1skip27deselected incl long buckets/cache eviction and transactional/MTP policy; docs/audit pass. No execution/default/kernel or fresh performance/public-GPU claim. Worklog worklog/entries/20261029T071419.173707Z-cleanup-refactor-r0384-long-graphs-71052b.md."],
       "subitems": [
         {
           "line": 8625,
           "text": "- Added 2026-08-22: `gguf_native_spec_cycle.py` retains a bounded eight-entry",
-          "status": "pending"
+          "status": "resolved-stale-blocker-current-live-cache-preserved"
         },
         {
           "line": 8630,
           "text": "- Current blocker: same-protocol 4079-token/eight-output wall is graph 97.206 s",
-          "status": "pending"
+          "status": "resolved-stale-blocker-current-live-cache-preserved"
         },
         {
           "line": 8633,
           "text": "- Removal/promotion trigger: remove the long graph cache if it remains without a",
-          "status": "pending"
+          "status": "resolved-stale-blocker-current-live-cache-preserved"
         }
       ]
     },

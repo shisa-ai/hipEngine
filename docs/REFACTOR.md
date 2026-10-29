@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF2 long-context target graphs are exact but not auto-routable
-
-- Added 2026-08-22: `gguf_native_spec_cycle.py` retains a bounded eight-entry
-  cache of exact target graphs keyed by candidate budget, N1/N2 ownership, and
-  attention schedule/context limit. It is useful for explicit graph diagnostics
-  and future submission optimization; transition and kernel-family boundaries
-  fail closed to eager.
-- Current blocker: same-protocol 4079-token/eight-output wall is graph 97.206 s
-  versus eager 97.101 s (0.9989x), while true AR is 69.635 s (0.7164x graph
-  MTP/AR). No long graph bucket is admitted to automatic routing.
-- Removal/promotion trigger: remove the long graph cache if it remains without a
-  measured exact sub-window or complete-wall benefit after the next targeted
-  submission campaign. Promote a bucket only after a predeclared same-protocol
-  experiment improves complete wall and passes its full context/lifecycle/SLO
-  packet; never use exactness alone as a speed claim.
-
 ## RF1 1024 target/proposal sentinel blocker
 
 - Reconfirmed during the 2026-08-23 Concurrency2 merge against pristine
@@ -8945,7 +8929,7 @@ needs mixed-arrival public serving validation of bounded decode interruption,
 completion, cancellation and cleanup; cold-prefill throughput alone does not
 validate fairness.
 
-### R0281-NATIVE-CYCLE — Native diagnostic interfaces and graph composition
+### R0281-NATIVE-CYCLE / R0384 — Native diagnostic interfaces and graph composition
 
 The four `scripts/gguf_mtp_bench.py` switches are live diagnostic interfaces:
 `--native-spec-target-cycle` selects the target submission (N1),
@@ -8965,6 +8949,18 @@ already has a gfx1151 consumer. Keep their backend scopes distinct. The
 complete-cycle adapter accepts B1/B2 even though target-only graphs support
 other buckets. Unsupported capture/configuration falls back before mutation;
 launch/readback failures must not replay an already-mutated transaction.
+
+R0384's blanket long-graph non-routability note is superseded by current
+selection. The transactional verifier considers native target graphs when its
+caller permits them; gfx1151 declares a long-context graph bound, while other
+backend/storage/state policies keep their own limits. The eight-entry target
+cache keys candidate budget, accept/commit mode, immutable context bucket and
+sampled acceptance; compatibility also checks execution options and bindings.
+Eviction closes the oldest owner. A cycle cannot span short/split-K schedules,
+split-workspace buckets, kernel-family transitions or resident capacity.
+These are resource and graph-topology contracts, not missing-benchmark gates.
+Do not remove the live cache because the historical August timing was neutral;
+that result does not establish current capture-inclusive economics.
 
 The provider-neutral PARO/DFlash target boundary is implemented and has its own
 ledger item. A complete cross-provider proposal/target lifecycle and a combined
