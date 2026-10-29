@@ -376,7 +376,8 @@ independent workload gates.
 | `HIPENGINE_GGUF_INT8_PREFILL_DIRECT` | unset | Correctness/perf gate | Selects the oracle-free direct INT8 prefill attention route (`twopass` candidate) instead of the oracle-bridge strict path (write-through BF16 oracle pair via AOTriton). |
 | `HIPENGINE_GGUF_INT8_PREFILL_KERNEL` | `flash` | Route selector | Direct INT8 prefill attention kernel implementation: `flash`, `wmma`, or `sequential`; other values are errors. |
 | `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` | unset | Diagnostic | Slot-local AOTriton variant of the INT8 prefill route (gate provenance key). |
-| `HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` | unset (adopted single plane) | Rollback seam | Declares the layer-outer hidden-plane alias mode for INT8 evaluation sessions; `0` rolls back to the multi-plane layout. |
+| `HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` | `1` | Rollback seam | DMS `layer_outer` bulk-prefill hidden-plane alias. `0` requests two planes unless the geometry-wide policy already requires one. Separate from the non-DMS INT8 control; workspace growth preserves the resolved plane count. |
+| `HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` | `1` | Rollback seam / comparison control | Non-DMS `layer_outer_shared_oracle` bulk-prefill hidden-plane alias. `0` requests two planes unless the geometry-wide policy already requires one. The capacity estimator uses the same plane decision; the resumable-prefill proof sets this control before workspace construction. |
 | `HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE` | backend capability | Attention policy | Overrides the backend's AOTriton-prefill threshold policy (the measured 512-token crossover) on either side. |
 | `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES` | `536870912` (512 MiB) | Attention R&D | Resource cap for the head-major K/V pair, including demand-sized gapped gather buffers. |
 | `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS` | `65792` | Attention R&D | Resource cap for head-major K/V capacity. Contiguous layout follows backend package policy; gapped gather uses its own switch below. |
@@ -980,7 +981,6 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `HIPENGINE_HW_LABEL` | derived from `HIPENGINE_HIP_ARCH` | Hardware label written into bench artifacts. |
 | `HIPENGINE_LLAMACPP_HEALTH_TIMEOUT` | `600` | Seconds to wait for a llama.cpp server's health endpoint in the engine-matrix harness. |
 | `HIPENGINE_AR_D2_COST_ARTIFACT` / `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` | unset | Measured cost artifact feeding D2 composition in the arbitrary-c lifecycle harness. |
-| `HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` | unset | Declares the hidden-plane alias mode for the INT8 resumable-prefill GPU proof before bulk-prefill workspace construction. |
 | `HIPENGINE_LAGUNA_PREFILL_CHUNK_SIZE` | unset | Prefill chunk size echoed by the Laguna gate/bench harnesses into their provenance environment. |
 | `HIPENGINE_MTP2_MAX_CONTEXT_TOKEN` | unset | Singular spelling that `scripts/bench_env_preflight.py` watches as a common lookalike of `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS`; setting it changes nothing. |
 | `HIPENGINE_QUANT_QUALITY_MIOPEN_DEPTHWISE` | `0` | In the torch-side quant-quality teacher, `1` keeps the MIOpen depthwise route on gfx1151 instead of the fallback. |

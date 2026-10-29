@@ -11802,8 +11802,10 @@
       "start_line": 9330,
       "end_line": 9346,
       "sha256": "788ce74f467bd0c456393aae6266c98af2eb479276e2ced2f22dcced3af234ed",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-hidden-alias-rollback-interface",
+      "evidence": [
+        "Alias promotion is complete and both independent route controls default on. DMS layer_outer and non-DMS layer_outer_shared_oracle use one allocator/estimator plane-count owner; growth preserves its resolved count and geometry-wide aliasing takes precedence. Keep the proof's explicit two-plane comparison arm. Correct ENVS runtime scope/defaults, move only retain/replace/retire interface decision to bottom, and remove historical promotion narrative. 132 focused alias/capacity/workspace/growth/proof tests pass; no runtime/GPU/performance change. worklog/entries/20261029T142538.447187Z-cleanup-refactor-r0403-hidden-alias-013ec8.md. Prior ownership integration: worklog/entries/20261020T190611.875927Z-subagent-deferred-hidden-capacity-gguf-deferred-bulk-prefill-hidden-capacity-a21cd9.md."
+      ],
       "subitems": []
     },
     {

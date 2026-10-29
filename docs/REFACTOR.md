@@ -3425,23 +3425,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## 2026-09-09 INT8 layer_outer hidden-plane alias — route-scoped gate pending promotion
-
-`HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` aliases the two full-capacity
-BF16 prefill hidden planes into one physical plane on the non-DMS
-pure-INT8 route whose lifetime plan resolved to
-`layer_outer_shared_oracle` (the direct-resident capacity route from the
-2026-09-08 engine comparison; two planes are 2.69 GB at 128K there).
-Promoted to default-ON 2026-09-09 with the route's own GPU evidence
-(synthetic 73,728 A/B: one-plane peak reduction with identical decode
-rate and tokens; real-prompt 8,192-token same-session A/B: byte-identical
-greedy IDs; capacity ladder 139,264/147,456/155,648 pass, 163,840 OOM).
-Env "0" is the explicit rollback. Fold this gate into the DMS
-`HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS` decision (or remove whichever env
-becomes redundant) once both routes have carried their adopted evidence
-through a same-suite release cycle without a rollback invocation.
-
-
 ## 2026-09-09 GGUF direct-INT8 prefill attention — speed fixed, numerics rejected, opt-in capacity lever
 
 `HIPENGINE_GGUF_INT8_PREFILL_DIRECT` ports the PARO route's
@@ -11247,3 +11230,27 @@ also needs a matched C1 route-comparison harness; the existing server benchmark
 does not expose that comparison. The old timing artifact is historical, not a
 measurement of the device-accept path:
 `../benchmarks/results/2026-09-07-w7900-packed-route-c1-stage-timing-diagnostic.json`.
+
+### R0403 — DMS and INT8 hidden-plane alias rollback interfaces
+
+Both route-scoped alias controls default on. `HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS`
+controls DMS `layer_outer`; `HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS` controls
+non-DMS `layer_outer_shared_oracle`. They are independent controls, not duplicate
+readers. `_gguf_bulk_prefill_hidden_plane_count` owns the allocator and capacity
+estimator's shared answer. Workspace growth preserves the resolved plane count;
+the geometry-wide one-plane policy still takes precedence over either rollback.
+
+**Decision needed:** retain both rollback interfaces, replace them with an
+explicit workspace policy, or retire them together. The INT8 control is also
+the two-plane comparison arm in `scripts/gguf_resumable_prefill_gpu_proof.py`
+and `scripts/qwen38_int8_alias_realprompt_ab.py`; preserve an explicit comparison
+interface if removing the environment readers. Missing operator-use records do
+not establish that either interface is unused.
+
+**Clearing action:** record the supported interface. If replacing or retiring,
+update allocator/estimator agreement, capacity and growth tests, DMS/non-DMS
+isolation, proof configuration and `docs/ENVS.md` together. Run
+`uv run pytest -o addopts='' -q tests/test_unit_int8_layer_outer_hidden_alias.py tests/test_unit_dms_layer_outer_prefill.py tests/test_unit_qwen35_gguf_capacity_route_terms.py tests/test_unit_gguf_bulk_prefill_workspace_release.py tests/test_unit_gguf_bulk_prefill_deferred_hidden_capacity.py tests/test_unit_gguf_resumable_prefill_gpu_proof.py`,
+then public generation through both affected routes confirming actual plane
+ownership, output agreement and complete teardown. This disposition changes no
+allocation policy and does not reopen completed alias promotion.
