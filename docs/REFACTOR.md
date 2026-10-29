@@ -3427,24 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## The T16 down route flag
-
-`HIPENGINE_QWEN4_EXP_T16_DOWN` (default off) is the env gate for the T16
-Q5_1 expert-major compensated down route — the down-leg candidate built and
-gated on 2026-10-09 (ledger row T16-DOWN; engine A/B +9.46% aggregate
-prefill, 12/12 positive; layer2 gate rejected only on the prefill_last
-mean-KL floor at 1.53x with top-1 18/18). The dispatch is tile-cache-keyed
-with a structural fallback to the production down chain on a miss, so the
-default path is untouched.
-
-Removal condition: this flag is the X-7 decision's direct subject. If the
-owner admits the prefill_last scope for the compensated-T16 class, promote
-the route to the production default and delete the flag (the strict
-fallback stays registered). If the owner rejects it, delete the flag, the
-runner branch, and the sidecar together once the rejection is final —
-keeping the kernel, layout, and their round-trip/quality-gate tests as
-reference lineage.
-
 ## The T16 residency flags
 
 `HIPENGINE_QWEN4_EXP_T16_RESIDENT` and
@@ -3484,6 +3466,11 @@ case the fused kernel is the graph's building block and the flag becomes
 its temporary selector until the graph lands.
 
 ## The Qwen4Exp T16 routed-expert routes and tile residency
+
+This unit also owns R0448's down-route selector and sidecar consumers. The
+older entry's pending X-7 decision is superseded by the decision below.
+Retire the down A/B and layer2 candidate arms together with runtime selection;
+do not leave diagnostic controls that silently select the fallback.
 
 The `production` plan for `qwen4_exp_gguf` / `hip_gfx1151` /
 `gguf_ud_q4_k_xl` runs its routed experts on the wide-tile routed F16 GEMMs

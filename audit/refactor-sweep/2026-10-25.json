@@ -12958,8 +12958,8 @@
       "start_line": 10644,
       "end_line": 10661,
       "sha256": "28bbe4f5c8322b8c39214040015b13130eca224d4c8caa5b016af003fa31a335",
-      "status": "pending",
-      "evidence": [],
+      "status": "consolidated-under-open-R0451",
+      "evidence": ["Pending-X7 premise superseded by R0451 shared T16 retirement decision. Runtime down flag/cache and diagnostics still live; R0451 explicitly owns their coordinated removal.82 focused tests pass; no runtime removal claimed. Worklog: worklog/entries/20261029T210003.157171Z-cleanup-refactor-r0448-fcd57e.md."],
       "subitems": []
     },
     {
