@@ -300,7 +300,11 @@ def test_stage_cache_row_summaries_include_requested_history_without_duplicates(
     ):
         setattr(runner, name, dummy)
 
+    reads = []
+
     def summarize(ptr_or_buffer, elements, *, label, depth=None, token_id=None, position=None, extra=None):
+        ptr = ptr_or_buffer.ptr if isinstance(ptr_or_buffer, DeviceBuffer) else int(ptr_or_buffer)
+        reads.append((label, ptr, elements))
         result = {"label": label}
         if extra:
             result.update(extra)
@@ -315,7 +319,7 @@ def test_stage_cache_row_summaries_include_requested_history_without_duplicates(
         dense_key_cache=DeviceBuffer(0x6000, 4096),
         dense_value_cache=DeviceBuffer(0x7000, 4096),
         dense_cache_len=49,
-        record_cache_rows=(0, 1, 2, 48, 49, 999),
+        record_cache_rows=(0, 1, 2, 48, 49, 999, -1, 2, 0),
     )
 
     cache_summaries = [item for item in summaries if "cache_row" in item]
@@ -332,6 +336,28 @@ def test_stage_cache_row_summaries_include_requested_history_without_duplicates(
         ("draft_stage_dense_value_history", 2),
     ]
     assert all(item["cache_tokens"] == 50 for item in cache_summaries)
+    cache_reads = [(label, ptr, elements) for label, ptr, elements in reads if "dense_" in label]
+    assert [(ptr, elements) for label, ptr, elements in cache_reads] == [
+        (base + row * 2 * 4, 2) for row in (49, 48, 0, 1, 2) for base in (0x6000, 0x7000)
+    ]
+    assert all((item["depth"], item["token_id"], item["position"]) == (0, 1103, 49) for item in cache_summaries)
+
+
+@pytest.mark.parametrize("diagnostic,value", [
+    ("record_stage_stats", True), ("record_cache_rows", (0, 3)),
+    ("record_attention_debug", True), ("record_hidden_stats", True),
+])
+def test_native_proposal_graph_refuses_host_trace_before_capture(diagnostic, value):
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner._device_chain_enabled = True
+    runner._get_or_capture_native_proposal_graph = lambda **kwargs: pytest.fail("host readbacks entered graph capture")
+    with pytest.raises(resident_draft_mod.NativeSpecProposalGraphUnsupportedError, match="diagnostic readbacks"):
+        runner.propose_chain_from_device_seed_graph(
+            0x1000, start_token=1, start_position=2, draft_n_max=2, top_k=1,
+            rope_cos=np.ones((8, 4), dtype=np.float32), rope_sin=np.zeros((8, 4), dtype=np.float32),
+            dense_key_cache=DeviceBuffer(0x2000, 128), dense_value_cache=DeviceBuffer(0x3000, 128),
+            **{diagnostic: value},
+        )
 
 
 def test_attention_debug_recomputes_dense_attention_from_device_rows() -> None:

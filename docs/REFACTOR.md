@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--record-draft-stage-stats`
-- Added 2026-07-02. Bench flag that records compact FP32 summaries for resident
-  MTP draft sub-stage tensors and dense MTP K/V cache rows in
-  `draft_hidden_state_trace`. Default-off extensions
-  `--record-draft-cache-rows` and `--record-draft-attention-debug` add selected
-  history rows plus host-recomputed dense-attention score/weight diagnostics.
-  It forces host-chain resident drafting when enabled so intermediate buffers
-  can be read back, and is not a timing route.
-- Purpose: diagnose the remaining llama.cpp parity miss after hidden-state
-  tracing narrowed the first divergence to the depth-0 MTP block. The first use
-  found and fixed the resident MTP RoPE dimension mismatch (`qk_head_dim=256`
-  vs model `rope.dimension_count=64`); the attention-debug extension ruled out
-  hipEngine's dense-attention kernel math for the seq-position-49 divergence.
-- Remove when: llama.cpp tensor/KV parity is either achieved or superseded by a
-  more complete graph-tensor trace facility. Keep it default-off until then.
-
 ## `--record-target-topk-scores`
 - Added 2026-07-03. Bench flag that asks `verify_target_block()` to copy the
   already-materialized full target lm-head logits back to host for block-verifier
@@ -10862,6 +10846,35 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0306 — Legacy draft stage-trace replacement
+
+`--record-draft-stage-stats` still collects FP32 sub-stage summaries into
+`draft_hidden_state_trace`. `--record-draft-cache-rows` adds requested K/V
+history; `--record-draft-attention-debug` reads dense attention inputs/output
+and recomputes scores/weights on the host. The benchmark requires stage stats
+for both extensions and device K/V for attention debug. Stage stats bypasses
+the device chain; native graph proposal explicitly refuses these readbacks
+before capture. This is a legacy diagnostic, not a timing or public NextN path.
+
+Cache summaries include current and previous rows, then unique valid requested
+history in request order. They use FP32 K/V strides and preserve depth, input
+token and position metadata. Existing attention-debug tests compare a synthetic
+host recomputation to independently prepared device-output rows; they do not
+establish a new model-wide parity result. The pinned original row preserves
+the historical RoPE-dimension fix and attention investigation.
+
+**Decision needed:** keep this explicit host trace or replace it with a
+capture-safe graph tensor trace before retiring its CLI/result fields.
+No implemented graph trace currently substitutes for these summaries.
+
+**Clearing action:** migrate benchmark argument validation, both proposal
+callers, stage/cache/attention summaries and `draft_hidden_state_trace` consumers
+together. Run `tests/test_unit_mtp_resident_draft_device_commit.py`, benchmark
+parser and profiler contracts, then compare trace metadata/values for initial
+catch-up, multiple proposal depths and commit/reset. Any replacement needs
+independent numerical rows plus a public NextN preservation request; host
+trace time must not be reported as a normal device-chain timing result.
 
 ### R0305 — Diagnostic F32 token-embedding seed ownership
 

@@ -9101,23 +9101,23 @@
       "start_line": 6901,
       "end_line": 6916,
       "sha256": "b07236dc723a0a7f21b6722dd698fbc71269593050e9d93dc143daa7770b272e",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-legacy-draft-trace-replacement",
+      "evidence": ["Verified current host-chain stage/cache/attention summaries and benchmark caller/validation/serialization. Extended actual cache-summary tests to bind FP32 addresses/stride, duplicate/negative/future suppression, valid request order and depth/token/position metadata. Added native graph refusal before capture for stage/cache/attention/hidden readbacks. Existing host-chain bypass and independent synthetic attention recomputation tests retained. Moved graph-trace replacement/diagnostic-retirement decision to bottom R0306; runtime/defaults/kernels and historical trace evidence unchanged. Worklog: worklog/entries/20261029T012431.375949Z-cleanup-refactor-r0306-stage-trace-992897.md."],
       "subitems": [
         {
           "line": 6902,
           "text": "- Added 2026-07-02. Bench flag that records compact FP32 summaries for resident",
-          "status": "pending"
+          "status": "resolved-stage-cache-graph-and-caller-contracts"
         },
         {
           "line": 6909,
           "text": "- Purpose: diagnose the remaining llama.cpp parity miss after hidden-state",
-          "status": "pending"
+          "status": "resolved-live-diagnostic-and-history-preserved"
         },
         {
           "line": 6914,
           "text": "- Remove when: llama.cpp tensor/KV parity is either achieved or superseded by a",
-          "status": "pending"
+          "status": "deferred-bottom-R0306-capture-safe-trace-replacement"
         }
       ]
     },
