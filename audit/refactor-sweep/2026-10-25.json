@@ -11922,13 +11922,15 @@
       "start_line": 9449,
       "end_line": 9458,
       "sha256": "e9a2eef299d68fb22a1164ba1035344e74d9563ce97f1c55faf61c5afbd5fb9f",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-false-single-tile-premise-multiple-live-instantiations",
+      "evidence": [
+        "Template now exports128x128,128x64,64x64,64x128; token64 128x64 has registered wrapper and profile/session-owned dispatch remap plus dedicated route and GPU parity files. Do not fold constants and break supported variant. Remove stale single-instantiation deadline/history only; leave all kernels/exports/dispatch and tests unchanged. Focused token64/raw-vector/profile checks and docs/audit pass. Evidence: worklog/entries/20261029T152952.011607Z-cleanup-refactor-r0408-mmq-template-0dcdfa.md."
+      ],
       "subitems": [
         {
           "line": 9451,
           "text": "- `gguf_q8_0_mmq_prefill.hip` keeps the tile-parametrized",
-          "status": "pending"
+          "status": "not-debt-template-supports-live-token64-and-other-exports"
         }
       ]
     },
