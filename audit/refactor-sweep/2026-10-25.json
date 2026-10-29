@@ -10324,23 +10324,23 @@
       "start_line": 7847,
       "end_line": 7865,
       "sha256": "7414a77fc253f9d7f4672653fcdb63f7ff66001e654e183caea0826f5cfe6438",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all three setter pairs selected current mixed40/local1024 in both arms. Scoped diagnostic holds predecessors on/successors off and restores nested/failed policies before owner close; profiler records comparison basis. Final changed file33 pass; prior focused bundle181 pass/11 HIP skips plus repaired split-return tests and new capacity/peer cases gives192 combined. Bottom R0349\u2013R0351 owns setter/cache/reference migration and missing ROCm/Laguna real numerical/public validation. Historical source/artifacts preserved; rejected ordinary-grid/split-launch paths already removed. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7849,
           "text": "- Added 2026-07-29 as the default-off",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7855,
           "text": "- Promote only if the tracked-clean counterbalanced p512/d128 screen is",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7860,
           "text": "- Promotion gate satisfied 2026-07-29: all seven pairs improve",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },
@@ -10350,28 +10350,28 @@
       "start_line": 7866,
       "end_line": 7881,
       "sha256": "7e3c18b1aa65e70c403da4d66d3f987fd8ad114309331ce27567278bf5e07f44",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all three setter pairs selected current mixed40/local1024 in both arms. Scoped diagnostic holds predecessors on/successors off and restores nested/failed policies before owner close; profiler records comparison basis. Final changed file33 pass; prior focused bundle181 pass/11 HIP skips plus repaired split-return tests and new capacity/peer cases gives192 combined. Bottom R0349\u2013R0351 owns setter/cache/reference migration and missing ROCm/Laguna real numerical/public validation. Historical source/artifacts preserved; rejected ordinary-grid/split-launch paths already removed. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7868,
           "text": "- Added 2026-07-29 as the session-scoped",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7873,
           "text": "- The primitive is byte-exact at live 513/576/639 and improves the leaf",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7876,
           "text": "- Promotion gate satisfied 2026-07-29: cached tracing improves",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7879,
           "text": "- After the decode campaign, collapse positive selector semantics while",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },
@@ -10381,28 +10381,28 @@
       "start_line": 7882,
       "end_line": 7903,
       "sha256": "bdc8140834723609a2655b40820675cd89429f08751bb4f4bca650b443c22dbd",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real KV route RED: all three setter pairs selected current mixed40/local1024 in both arms. Scoped diagnostic holds predecessors on/successors off and restores nested/failed policies before owner close; profiler records comparison basis. Final changed file33 pass; prior focused bundle181 pass/11 HIP skips plus repaired split-return tests and new capacity/peer cases gives192 combined. Bottom R0349\u2013R0351 owns setter/cache/reference migration and missing ROCm/Laguna real numerical/public validation. Historical source/artifacts preserved; rejected ordinary-grid/split-launch paths already removed. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7884,
           "text": "- Added 2026-07-29 as the session-scoped",
-          "status": "pending"
+          "status": "resolved-current-comparison-route-and-restoration-bound"
         },
         {
           "line": 7889,
           "text": "- Promotion gate satisfied: live513/576/639 leaves improve",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7894,
           "text": "- Clean selector-unset production is **19.667705 tok/s**, **+0.1917% /",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7896,
           "text": "- The 40-block ordinary-grid point is rejected at live576/live639 and removed.",
-          "status": "pending"
+          "status": "deferred-bottom-scoped-reference-owner-migration"
         }
       ]
     },

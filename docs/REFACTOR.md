@@ -3430,63 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 exact global exp-domain selector
-
-- Added 2026-07-29 as the default-off
-  `LagunaKVCache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape`
-  field, `LagunaGGUFResidentSession.set_decode_global_assume_exp(...)`, and
-  `--compare-global-assume-exp`. It changes no arithmetic and applies only to
-  natural gated capacity-4096 global decode through live4000; the retained
-  direct-store body is the rollback.
-- Promote only if the tracked-clean counterbalanced p512/d128 screen is
-  exact and positive. On promotion, default the gfx1151 capability true and
-  retain explicit false rollback through the decode campaign. On rejection,
-  remove the field, setter, comparison lane, capability, and registered
-  primitive rather than carrying a dead global fork.
-- Promotion gate satisfied 2026-07-29: all seven pairs improve
-  **19.235596 -> 19.243968 tok/s (+0.0435%, -0.0226 ms/token)** with exact
-  IDs/state/lifecycle. gfx1151 now defaults the capability true. Keep explicit
-  false rollback through this campaign, then collapse positive selector
-  semantics while retaining the generic-domain registered rollback.
-
-## Laguna gfx1151 exact global exp32 selector
-
-- Added 2026-07-29 as the session-scoped
-  `LagunaKVCache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape`
-  field, `LagunaGGUFResidentSession.set_decode_global_exp32(...)`, and
-  `--compare-global-exp32`. False restores the retained serial-issue
-  assume-exp sibling.
-- The primitive is byte-exact at live 513/576/639 and improves the leaf
-  **2.25%/3.22%/3.79%**. Promote only if cached tracing is spill-free and the
-  tracked-clean counterbalanced p512/d128 screen is exact and positive.
-- Promotion gate satisfied 2026-07-29: cached tracing improves
-  **88.486 -> 85.601 us (-3.26%)** at VGPR56/scratch0, and all seven resident
-  pairs improve **19.547209 -> 19.556569 tok/s (+0.0479%)** with exact state.
-- After the decode campaign, collapse positive selector semantics while
-  retaining the serial-issue primitive as the compiler/codegen rollback.
-
-## Laguna gfx1151 exact global mixed32 selector
-
-- Added 2026-07-29 as the session-scoped
-  `LagunaKVCache.global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape`
-  field, `LagunaGGUFResidentSession.set_decode_global_mixed32(...)`, and
-  `--compare-global-mixed32`. False restores the retained 24-block GQA2
-  exp32 owner.
-- Promotion gate satisfied: live513/576/639 leaves improve
-  **5.19%/8.39%/8.39%**, the cached trace names the intended
-  grid8192/local256/VGPR56/scratch0 specialization, and all seven resident
-  pairs improve **19.641357 -> 19.668893 tok/s (+0.1402%, -0.0713
-  ms/token)** with byte-exact attention and exact generated state.
-- Clean selector-unset production is **19.667705 tok/s**, **+0.1917% /
-  -0.0975 ms/token** over the preceding packet, with exact repeated state.
-- The 40-block ordinary-grid point is rejected at live576/live639 and removed.
-  The pair-local256 plus singleton-local128 split-launch screen is also removed
-  after exact leaves regress **142.26-154.66%**. Keep the explicit false
-  rollback through the next clean attention census and the resulting
-  single-launch screen. Then collapse positive selector semantics while
-  retaining the 24-block GQA2 exp32 primitive as the exact
-  compiler/occupancy rollback.
-
 ## Laguna gfx1151 SWA producer-value-tail diagnostic
 
 - Added 2026-07-30 as a separately registered exact mixed40 attention
@@ -10106,6 +10049,41 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0349–R0351 — Global exp/mixed32 diagnostic migration
+
+The three profiler comparisons cover direct versus assumed-domain GQA2,
+serial versus wave-wide exponent issue, and GQA2 versus mixed32 ownership.
+All three session setter pairs selected the newer mixed40/local1024 symbol
+in both arms with package defaults; real KV route tests reproduced the defect.
+
+`scripts/laguna_global_issue_diagnostic.py` now scopes each requested pair:
+predecessors are enabled, producer/probability/local512/mixed40 successors
+are disabled, and every touched field is restored before session close,
+including nested scopes and failed bodies. The profiler records
+`global_issue_comparison_basis`. Missing gated split attention fails before
+mutation. Production selection, package defaults, kernels and arithmetic are
+unchanged.
+
+Host tests bind registered pairs at representative live counts and both sides
+of the split and live4000 boundaries, plus allocator teardown and each CLI
+option's scope/exception cleanup. July numerical and speed evidence stays in
+the sweep's pinned source and artifacts; it does not validate the repaired
+comparison. The rejected ordinary-grid and split-launch experiments were
+already removed and require no implementation change here.
+
+**Remaining work:** move the public setters/cache policy ladder and profiler
+mode/result readers into the diagnostic owner, preserving generic and
+peer-backend routes. Remove the scoped field policy when reference variant
+selection no longer mutates production flags. Real numerical/public validation
+shares R0340/R0273's missing local ROCm runtime and Laguna artifact.
+
+**Clearing action:** run global issue, profiler, runner and KV attention
+contracts; on ROCm, exercise each pair against its registered primitive oracle
+on both sides of split/live4000 and capacity-4096 boundaries. Then run public
+`LLM.generate()` with the default successor selected, checking complete state,
+selected symbols and resource teardown before retiring controls or moving
+reference primitives out of production builds.
 
 ### R0343–R0348 — SWA issue-schedule diagnostic migration
 
