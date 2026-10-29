@@ -757,8 +757,10 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
 > 2026-10-14: the two kernels this section retained are selected again for
 > the `gguf_ud_q4_k_xl` production plan after passing the layer2 gate; see
 > "Qwen4Exp decode routes of the UD production plan". The re-admitted
-> selectors are `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` and `_DOWN`; the
-> bare `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` gate/up selector stays deleted.
+> selectors were `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` and `_DOWN`.
+> Those controls are now runner-owned; gate/up still requires the separately
+> enabled DP4A path, which the current production recovery plan disables.
+> The bare `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` selector stays deleted.
 > The text below is the 2026-09-30 record.
 
 - **Both runtime routes and both flags are DELETED**
@@ -3429,10 +3431,13 @@ category and control/ownership gates before closing this entry.
 
 ## Qwen4Exp decode routes of the UD production plan
 
-The `gguf_ud_q4_k_xl` production binder selects three decode routes that
-change reduction order, and one bit-identical decode fusion is on by
-default. All were measured on a Radeon 8060S on the canonical `code-p512` /
-`code-p4096` cases (128 decode transitions).
+The `gguf_ud_q4_k_xl` production manifest declares GDN decode and two
+conditional MoE warp choices; a bit-identical decode fusion is on by default.
+The gate/up warp choice only applies when DP4A is enabled separately. The
+current production recovery plan keeps DP4A off after the recorded decode
+discrepancy, so ordinary production decode does not execute that warp kernel.
+The historical measurements below used a Radeon 8060S on the canonical
+`code-p512` / `code-p4096` cases (128 decode transitions).
 
 - The profile's `decode_c1_d128` row selects `qwen4exp_gdn_rowsplit_decode`
   with `qwen4exp_sigmoid_strict` as its fallback. The binder publishes
@@ -3442,11 +3447,15 @@ default. All were measured on a Radeon 8060S on the canonical `code-p512` /
   four lanes per column, the state read and written once with both dot
   products in registers. Kernel 66 -> 27.5 us per layer; decode 20.87 ->
   21.47 tok/s at p512.
-- `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN=1`
-  (`selected_weighted_sum_warp256_fast_bf16_bf16_out`, Q5_1) and
-  `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP=1`
-  (`selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out`, Q4_K): the
-  warp-per-expert routed-expert kernels. Down 124 -> 73 us, gate/up 128 ->
+- The `decode_c1_compact_le12_q51_down` and
+  `decode_c1_compact_le12_q4_dp4a_enabled_gate_up` manifest rows declare
+  `selected_weighted_sum_warp256_fast_bf16_bf16_out` (Q5_1) and
+  `selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out` (Q4_K).
+  The binder publishes `moe_decode_warp` to scalar and batch runners; their
+  graph cache keys include the selection. The old environment keys are ignored.
+  Geometry and registration checks preserve the parent fallback. Diagnostics
+  use a scoped runner override, without changing the DP4A prerequisite.
+  These are the warp-per-expert routed-expert kernels. Down 124 -> 73 us, gate/up 128 ->
   114 us per layer; decode 21.47 -> 22.65 -> 23.00 tok/s at p512.
 - The one-row hyper-connection read uses three launches instead of six and is
   bit-identical (`tests/test_gpu_qwen4exp_gr_read_decode.py`). Its environment
@@ -3473,8 +3482,9 @@ decode, but top-1 445/450 against the 0.99 floor, `gate-b.json`; reverted),
 and a two-launch read that rebuilt the norm in every block (bit-identical,
 1.4% slower).
 
-Removal condition: declare the two MoE warp variants in the plan with
-strict scopes. GDN decode ownership and the exact GR fusion opt-out are resolved.
+Resolved: the reduction-order choices have explicit manifest scopes and
+runner-owned controls. The GR fusion opt-out is retired. No process selector
+remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Qwen4Exp direct F16 hyper-connection launches (`HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`)
 

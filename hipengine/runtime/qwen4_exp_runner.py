@@ -5146,15 +5146,32 @@ def _qwen4_exp_gdn_decode_step(backend: str, head_dim: int, enabled: bool):
     return qwen4_exp_gdn_decode_f32
 
 
-def _qwen4_exp_moe_decode_warp_enabled(leg: str) -> bool:
-    """Warp-per-expert decode owners for the routed experts (``GATE_UP``, ``DOWN``).
+@contextlib.contextmanager
+def moe_decode_warp(runner: Any, enabled: frozenset[str] | None = None):
+    """Override warp legs on one diagnostic runner, restoring on exit."""
+    prior = getattr(runner, "moe_decode_warp", frozenset())
+    if enabled is not None:
+        if not enabled <= {"GATE_UP", "DOWN"}:
+            raise ValueError("unknown MoE decode warp leg")
+        runner.moe_decode_warp = frozenset(enabled)
+    try:
+        yield prior
+    finally:
+        runner.moe_decode_warp = prior
 
-    Selected by the composition's binder through
-    ``HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_<leg>=1``; see docs/REFACTOR.md.
-    """
-    return os.environ.get(
-        f"HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_{leg}", "0"
-    ) not in {"", "0", "false", "False"}
+
+def _qwen4_exp_moe_decode_warp_key(
+    parent: KernelKey, compact: int, enabled: frozenset[str], leg: str,
+) -> KernelKey:
+    """Select within the caller's c1/DP4A prerequisite, preserving its parent."""
+    variants = {
+        "GATE_UP": "selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out",
+        "DOWN": "selected_weighted_sum_warp256_fast_bf16_bf16_out",
+    }
+    if leg not in enabled or compact > 12:
+        return parent
+    key = KernelKey(parent.backend, parent.layer, parent.quant, variants[leg])
+    return key if is_registered(key) else parent
 
 
 def _qwen4_exp_gr_decode_fused_enabled(
@@ -6039,6 +6056,7 @@ def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
     *,
+    moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
@@ -6181,6 +6199,7 @@ def run_qwen4_exp_moe(
             run_qwen4_exp_moe(
                 mixed_ptr,
                 weights,
+                moe_decode_warp=moe_decode_warp,
                 routed_f16_enabled=routed_f16_enabled,
                 q4_pair_prefill=q4_pair_prefill,
                 q4_bundle_prefill=q4_bundle_prefill,
@@ -6215,7 +6234,7 @@ def run_qwen4_exp_moe(
             )
 
         graph_cache.run(
-            graph_key,
+            (graph_key, moe_decode_warp),
             eager=eager,
             out_ptr=scratch.output.ptr,
             out_nbytes=rows * hidden * DType.BF16.itemsize,
@@ -7227,16 +7246,8 @@ def run_qwen4_exp_moe(
             # selects it and the row count fits; same per-group integer
             # arithmetic as the logical128/t64 owner, a different reduction
             # order. History of the earlier rejection: docs/REFACTOR.md.
-            warp_key = KernelKey(
-                dp4a_key.backend, dp4a_key.layer, dp4a_key.quant,
-                "selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out",
-            )
-            if (
-                compact <= 12
-                and _qwen4_exp_moe_decode_warp_enabled("GATE_UP")
-                and is_registered(warp_key)
-            ):
-                dp4a_key = warp_key
+            dp4a_key = _qwen4_exp_moe_decode_warp_key(
+                dp4a_key, compact, moe_decode_warp, "GATE_UP")
             resolve(
                 backend=dp4a_key.backend,
                 layer=dp4a_key.layer,
@@ -7367,19 +7378,11 @@ def run_qwen4_exp_moe(
             "selected_weighted_sum_logical256_t64_bf16_bf16_out",
         )
         fused_down = bool(rows == 1 and is_registered(fused_down_key))
-        warp_down_key = KernelKey(
-            backend, "linear", down_weight.spec.quant_key,
-            "selected_weighted_sum_warp256_fast_bf16_bf16_out",
-        )
-        if (
-            fused_down
-            and compact <= 12
-            and _qwen4_exp_moe_decode_warp_enabled("DOWN")
-            and is_registered(warp_down_key)
-        ):
+        if fused_down:
             # Vectorized half-block loads, one wave per selected expert; the
             # intra-dot reduction order differs from the logical256/t64 owner.
-            fused_down_key = warp_down_key
+            fused_down_key = _qwen4_exp_moe_decode_warp_key(
+                fused_down_key, compact, moe_decode_warp, "DOWN")
         if fused_down:
             resolve(
                 backend=fused_down_key.backend,
@@ -7517,6 +7520,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
@@ -7655,6 +7659,7 @@ def run_qwen4_exp_dense_qsa_layer(
     )
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
+        moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
@@ -7695,6 +7700,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
@@ -7889,6 +7895,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
@@ -7943,6 +7950,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
@@ -8197,6 +8205,7 @@ def run_qwen4_exp_gdn_layer(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
@@ -9095,6 +9104,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q51_wmma_down: bool = False
     # Manifest-derived routed-expert selection; unbound runners keep the parent.
     routed_f16_enabled: bool = False
+    moe_decode_warp: frozenset[str] = frozenset()
     # Q4_K exact grouped gate/up gate and its `_ALL` joint term, published by the
     # profile binder for every plan: the chain runs on every Q4_K/Q4_K multi-row
     # chunk unless an arm closes the gate, and `_ALL` only narrows it to chunks
@@ -10433,6 +10443,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_scratch,
+                    moe_decode_warp=self.moe_decode_warp,
                     gdn_decode_rowsplit=self.gdn_decode_rowsplit,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
@@ -10490,6 +10501,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_dense_qsa_layer(
                     residual_ptr,
                     binding,
+                    moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
@@ -10828,6 +10840,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_prefill_scratch,
+                    moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
@@ -10878,6 +10891,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_qsa_prefill_layer(
                     residual_ptr,
                     binding,
+                    moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,

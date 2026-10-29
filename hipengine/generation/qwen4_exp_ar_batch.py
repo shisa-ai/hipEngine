@@ -658,6 +658,7 @@ def make_qwen4_exp_ar_batch_runner(
     # dispatch heuristic, so the carrier forwards the published value as-is.
     batch.q51_exact_grouped_down = bool(
         getattr(generator, "q51_exact_grouped_down", True))
+    batch.moe_decode_warp = getattr(generator, "moe_decode_warp", frozenset())
     batch.routed_f16_enabled = bool(getattr(generator, "routed_f16_enabled", False))
     batch.q51_wmma_down = bool(getattr(generator, "q51_wmma_down", False))
     batch.q51_out8 = bool(getattr(generator, "q51_out8", True))

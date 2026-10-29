@@ -396,6 +396,7 @@ def run_qwen4_exp_batch_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
     q51_pair_prefill: bool = False,
@@ -508,6 +509,7 @@ def run_qwen4_exp_batch_gdn_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            moe_decode_warp=moe_decode_warp,
             q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
@@ -619,6 +621,7 @@ def _run_layer_ffn(
     weights: object,
     scratch: object,
     *,
+    moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
@@ -689,6 +692,7 @@ def _run_layer_ffn(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
@@ -729,6 +733,7 @@ def run_qwen4_exp_batch_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
     q51_pair_prefill: bool = False,
@@ -849,6 +854,7 @@ def run_qwen4_exp_batch_qsa_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            moe_decode_warp=moe_decode_warp,
             q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
@@ -952,6 +958,7 @@ class Qwen4ExpGGUFBatchRunner:
     q51_wmma_down: bool = False
     # Manifest-owned selection, included in the captured segment policy key.
     routed_f16_enabled: bool = False
+    moe_decode_warp: frozenset[str] = frozenset()
     # The chain's non-expertgrid fallback rung: every plan publishes the out8
     # owner, and the output1 base is a diagnostic binding on one runner.
     q51_out8: bool = True
@@ -1856,7 +1863,7 @@ class Qwen4ExpGGUFBatchRunner:
 
         return (self.q8_wmma_tiles,)
 
-    def _expert_down_policy(self) -> tuple[bool, ...]:
+    def _expert_down_policy(self) -> tuple[object, ...]:
         """The expert-down decisions a captured layer segment depends on.
 
         The MoE runs eager inside the layer's captured ``post_mixer`` segment,
@@ -1895,6 +1902,7 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.q8_down_row4_prefill),
             bool(self.q8_down_bundle_prefill),
             bool(self.q5k_row4_prefill),
+            getattr(self, "moe_decode_warp", frozenset()),
         )
 
     def step(
@@ -2142,6 +2150,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_gdn_layer(
                     residual_ptr,
                     gdn_binding,
+                    moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
@@ -2184,6 +2193,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_qsa_layer(
                     residual_ptr,
                     qsa_binding,
+                    moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,

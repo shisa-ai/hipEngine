@@ -164,7 +164,7 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
         assert key[1] == width
         assert key[2:2 + len(POLICY_FIELDS)] == policy
         assert key[2 + len(POLICY_FIELDS):] == (
-            runner._q4_tile_policy() + runner._q8_tile_policy())
+            (frozenset(),) + runner._q4_tile_policy() + runner._q8_tile_policy())
 
 
 @pytest.mark.parametrize("field", ("q4_tile_m", "q4_tile_n"))
@@ -216,7 +216,7 @@ def test_an_unbound_runner_forwards_every_parent():
     # or dropping to the output1 base.
     runner = object.__new__(Qwen4ExpGGUFBatchRunner)
     assert runner._expert_down_policy() == tuple(
-        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS)
+        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS) + (frozenset(),)
     assert runner._expert_down_policy()[POLICY_FIELDS.index(CHAIN_GATE_FIELD)]
 
 
@@ -237,11 +237,11 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q5k_row4_prefill = False
     assert runner._expert_down_policy() == (
         True, False, True, False, False, True, False, True, True, False, False, False, False,
-        False, True, False, False)
+        False, True, False, False, frozenset())
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
     assert runner._expert_down_policy() == tuple(
-        bool(getattr(runner, field)) for field in POLICY_FIELDS)
+        bool(getattr(runner, field)) for field in POLICY_FIELDS) + (frozenset(),)
 
 
 # --- target/draft sharing: one publication, every owner reads it -------------

@@ -58,7 +58,13 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     assert generator.forkb_grouped_down is True
     assert "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
-    variants = {row["selected_variant"] for row in profile.manifest["selections"]}
+    conditional = next(row for row in profile.manifest["selections"]
+                       if row["scope"] == "decode_c1_compact_le12_q4_dp4a_enabled_gate_up")
+    assert conditional["selected_variant"] == (
+        "selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out")
+    # Conditional warp ownership does not enable the separately closed DP4A path.
+    variants = {row["selected_variant"] for row in profile.manifest["selections"]
+                if row["scope"] != conditional["scope"]}
     assert "qwen4exp_sigmoid_wave_norm_prefill" in variants
     assert not any("mmq" in variant or "dp4a" in variant or
                    "gdn_tiled" in variant or "gdn_columnwarps" in variant

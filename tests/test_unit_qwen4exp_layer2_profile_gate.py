@@ -24,7 +24,8 @@ def _load_script():
 def test_decode_dp4a_candidate_selects_the_kernel_it_counts() -> None:
     candidate = _load_script().CANDIDATES["decode_dp4a_linear"]
     assert candidate.environment["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
-    assert candidate.environment.get("HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP") == "0"
+    assert "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP" not in candidate.environment
+    assert candidate.moe_decode_warp == frozenset({"DOWN"})
     assert candidate.candidate_key[-1] == (
         "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out")
     assert candidate.count_registered_dispatch

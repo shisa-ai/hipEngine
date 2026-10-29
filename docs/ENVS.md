@@ -750,7 +750,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16` | retired | Ignored. The manifest publishes `runner.routed_f16_enabled`; diagnostic tools bind that runner field temporarily. Routed gate/up and down keep their two-row Q4_K and 64-row Q5_K windows, including multi-row decode batches. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | `1` | The routed F16 gate/up reads token rows through the lane map; `0` builds the gathered activation copy. |
 | `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; UD production selects the F16 WMMA GEMM, with ordered DPP for small multirow widths and named rollback. Strict/Q4_K_M keep tile4. |
-| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | unset (F16 route sets `1`) | Warp-per-expert routed gate/up decode owner (reduction order differs). |
+| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | retired | Ignored. The profile publishes conditional gate/up selection in the owning runner's `moe_decode_warp` set. The separate DP4A prerequisite still applies. |
 | `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | retired | Ignored. The execution profile declares the one-row D128 GDN variant and publishes `gdn_decode_rowsplit` on the owning runner. Diagnostics use its scoped control. |
 | `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` | retired | No longer read. Named profile registration selects the serial GDN variant; the binder publishes it to the owning runner. |
 | `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` | profile-selected | Replaces the multi-column tile-16 GDN prefill body (for example with the row-split recurrence). |
@@ -801,7 +801,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | retired | No longer read. Optional compact WMMA down selection is runner-owned; production grouped-MoE admission, tile-map preparation and strict fallback remain unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | retired | No longer read. The owning runner selects the out8 fallback below the expertgrid family; `q51_out8(runner, False)` retains the output1 comparison without changing higher-priority owners. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` | `0` | Opt-in Q5_1-style grouped WMMA down for Q8_0 experts. |
-| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | unset (F16 route sets `1`) | Warp-per-expert routed down decode owner (reduction order differs); the other half of the pair selected by `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP`. |
+| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | retired | Ignored. The profile publishes down selection in the owning runner's `moe_decode_warp` set. Diagnostics override that runner, not process state. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT` | `0` (production-only binding) | Weight-exact iu8-WMMA Q5_1 down with risk+repair; bit-identical to the pair2 row-publish parent in practice at multiplier 16. |
 | `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` | `64` | Expert-grid mode for the exact grouped routes: `64` (admitted), plus `q4`/`q5` spellings at their call sites. |
 | `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` | retired | No longer read. Exact bulk convolution remains the prefill default; `gdn_exact_bulk_conv(runner, False)` selects the serial diagnostic fallback on the measured runner. |

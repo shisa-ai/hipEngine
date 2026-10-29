@@ -45,7 +45,17 @@ _QSA_WMMA_VARIANT = "wmma_f16_masked_prefill_f32"
 # Routed-expert scopes the plan moves to the wide-tile F16 GEMMs that
 # read the raw expert weights: (layer, scope, registry quant) -> variant.
 # Layers whose gate/up is Q5_K route from 64 rows; the rest from 2.
+_MOE_DECODE_WARP_SCOPES = {
+    "GATE_UP": ("decode_c1_compact_le12_q4_dp4a_enabled_gate_up", "gguf_q4_k",
+                "selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out",
+                "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"),
+    "DOWN": ("decode_c1_compact_le12_q51_down", "gguf_q5_1",
+             "selected_weighted_sum_warp256_fast_bf16_bf16_out",
+             "selected_weighted_sum_logical256_t64_bf16_bf16_out"),
+}
 _F16_ROUTE_SCOPES = {
+    **{("linear", scope, quant): variant
+       for scope, quant, variant, _ in _MOE_DECODE_WARP_SCOPES.values()},
     ("gdn_recurrence_norm_gate", "decode_c1_d128", "f32_state"):
         "qwen4exp_gdn_rowsplit_decode",
     ("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up", "gguf_q4_k"):
@@ -95,9 +105,6 @@ _F16_ROUTE_SELECTORS = {
     # Hyper-connection read projections launched directly on F16 activations:
     # bit-identical to the dispatch they replace under the windows above.
     "HIPENGINE_QWEN4_EXP_GR_F16_DIRECT": "1",
-    # Decode: warp-per-expert routed-expert owners.
-    "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP": "1",
-    "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN": "1",
     # Multi-row FP32 projections over uncompressed weights (the indexer
     # projections) on the small-matrix F16 WMMA GEMM.
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
@@ -345,8 +352,16 @@ def _selection(
     )
 
 
+def _moe_decode_selections() -> tuple[VariantSelection, ...]:
+    # Gate/up only applies inside the separate DP4A prerequisite. Declaring
+    # its conditional owner does not enable DP4A in the recovery composition.
+    return tuple(_selection("linear", scope, parent, parent, quant)
+                 for scope, quant, _, parent in _MOE_DECODE_WARP_SCOPES.values())
+
+
 def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...]:
     selections = (
+        *_moe_decode_selections(),
         _selection("gdn_recurrence_norm_gate", "decode_c1_d128",
                    "qwen4exp_sigmoid_strict", "qwen4exp_sigmoid_strict", "f32_state"),
         _selection(
@@ -553,6 +568,7 @@ def _production_selections(
     *, recovery: bool = False, gdn_prefill_variant: str | None = None,
 ) -> tuple[VariantSelection, ...]:
     selections = (
+        *_moe_decode_selections(),
         _selection("gdn_recurrence_norm_gate", "decode_c1_d128",
                    "qwen4exp_sigmoid_strict", "qwen4exp_sigmoid_strict", "f32_state"),
         _selection(
@@ -1390,6 +1406,11 @@ def _bind(
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.qsa_h256_prefill_mode = qsa_h256_prefill_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
+    generator.moe_decode_warp = frozenset(
+        leg for leg, (scope, quant, variant, _) in _MOE_DECODE_WARP_SCOPES.items()
+        if any(row["scope"] == scope and row["selected_variant"] == variant
+               for row in resolved.manifest["selections"])
+    )
     generator.gdn_decode_rowsplit = any(
         row["scope"] == "decode_c1_d128"
         and row["selected_variant"] == "qwen4exp_gdn_rowsplit_decode"
@@ -1461,6 +1482,7 @@ def _bind(
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.qsa_h256_prefill_mode = qsa_h256_prefill_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
+        runner.moe_decode_warp = generator.moe_decode_warp
         runner.gdn_decode_rowsplit = generator.gdn_decode_rowsplit
         runner.gdn_prefill_variant = gdn_prefill_variant
         runner.gdn_register_prefill = production
