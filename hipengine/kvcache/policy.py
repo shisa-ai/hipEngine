@@ -113,13 +113,11 @@ def resolve_kv_policy(
     block_size: int = 256,
     scale_dtype: str | DType = DType.FP16,
     scale_granularity: str = "per_token_head",
-    admission_gated_int8: bool = False,
 ) -> ResolvedKVPolicy:
     """Resolve user/test KV controls into concrete fixed-page policy metadata.
 
-    ``auto`` deliberately resolves to BF16 unless the caller marks the request as
-    requiring INT8 for admission.  Explicit ``int8_per_token_head`` records that
-    the user/test requested INT8 rather than an admission fallback.
+    ``auto`` resolves to BF16. Explicit ``int8_per_token_head`` records the
+    requested storage; the runtime checks its implementation capabilities.
     """
 
     requested = requested_storage.value if isinstance(requested_storage, DType) else str(requested_storage)
@@ -134,14 +132,9 @@ def resolve_kv_policy(
         storage_layout = KV_STORAGE_TAIL4_HADAMARD_GROUP32
         quantized_tail_layers = 4
     elif requested == KV_STORAGE_AUTO:
-        if admission_gated_int8:
-            storage = DType.INT8_PER_TOKEN_HEAD
-            reason = "admission_gated_int8"
-            int8_admission = True
-        else:
-            storage = DType.BF16
-            reason = "default_bf16"
-            int8_admission = False
+        storage = DType.BF16
+        reason = "default_bf16"
+        int8_admission = False
         int8_explicit = False
     else:
         storage = DType.parse(requested)

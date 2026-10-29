@@ -31,8 +31,7 @@ def add_kv_policy_args(
         choices=KV_STORAGE_CHOICES,
         default=default_storage,
         help=(
-            f"{help_prefix} storage policy. 'auto' resolves conservatively to BF16 "
-            "unless the runtime marks INT8 as admission-gated."
+            f"{help_prefix} storage policy. 'auto' resolves to BF16."
         ),
     )
     parser.add_argument(
@@ -53,14 +52,12 @@ def resolve_args_kv_policy(
     args: argparse.Namespace,
     *,
     block_size: int = 256,
-    admission_gated_int8: bool = False,
 ) -> ResolvedKVPolicy:
     return resolve_kv_policy(
         getattr(args, "kv_storage", KV_STORAGE_AUTO),
         block_size=block_size,
         scale_dtype=getattr(args, "kv_scale_dtype", "fp16"),
         scale_granularity=getattr(args, "kv_scale_granularity", "per_token_head"),
-        admission_gated_int8=admission_gated_int8,
     )
 
 

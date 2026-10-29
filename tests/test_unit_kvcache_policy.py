@@ -95,7 +95,7 @@ def test_kv_live_spans_validates_batch_row_metadata() -> None:
         )
 
 
-def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
+def test_resolve_kv_policy_records_explicit_selection() -> None:
     default = resolve_kv_policy("auto", block_size=256)
     assert default.storage_dtype.value == "bf16"
     assert default.to_json_dict()["int8_explicit"] is False
@@ -115,10 +115,15 @@ def test_resolve_kv_policy_records_explicit_and_admission_selection() -> None:
         "v_scale": "per_token_head",
     }
 
-    gated = resolve_kv_policy("auto", admission_gated_int8=True)
-    assert gated.storage_dtype.value == "int8_per_token_head"
-    assert gated.to_json_dict()["int8_explicit"] is False
-    assert gated.to_json_dict()["int8_admission_gated"] is True
+    with pytest.raises(TypeError, match="admission_gated_int8"):
+        resolve_kv_policy("auto", admission_gated_int8=True)
+
+    from argparse import Namespace
+    from scripts.qwen35_kv_policy_args import resolve_args_kv_policy
+
+    assert resolve_args_kv_policy(Namespace()).storage_dtype.value == "bf16"
+    with pytest.raises(TypeError, match="admission_gated_int8"):
+        resolve_args_kv_policy(Namespace(), admission_gated_int8=True)
 
 
 def test_radix_cache_hits_full_blocks_and_misses_partial_edges() -> None:

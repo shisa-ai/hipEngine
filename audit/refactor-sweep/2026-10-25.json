@@ -12236,8 +12236,8 @@
       "start_line": 9690,
       "end_line": 9726,
       "sha256": "36bee83e9879bd315117eb019bc662315b2fb929019ca7add1c84d9d9c1b2e47",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-unused-admission-selector-removed",
+      "evidence": ["Remove unused admission_gated_int8 selector from policy and shared CLI helper; auto stays BF16 and explicit INT8 keeps runtime capability checks. Preserve JSON compatibility field. Historical INT8/one-slot defaults superseded by BF16/four-slot base; explicit capability misses now raise, effective storage reporting remains. Worklog: worklog/entries/20261029T183705.791249Z-cleanup-refactor-r0423-int8-policy-c7a92f.md."],
       "subitems": []
     },
     {
