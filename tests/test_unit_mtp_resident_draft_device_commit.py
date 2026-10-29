@@ -617,6 +617,44 @@ def test_draft_dense_q8_dp4a_split_helpers_quantize_once(monkeypatch) -> None:
     )
 
 
+@pytest.mark.parametrize("kind", ["single", "dual", "triple"])
+@pytest.mark.parametrize("miss", ["disabled", "stage", "workspace", "library", "rows", "width", "unaligned", "short-workspace"])
+def test_draft_dense_q8_helpers_refuse_unavailable_preconditions_without_launch(monkeypatch, kind, miss):
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner._draft_dense_q8_dp4a_enabled = miss != "disabled"
+    runner._draft_dense_q8_dp4a_stages = frozenset({"other"} if miss == "stage" else {"project"})
+    runner.dense_q8_1 = None if miss == "workspace" else DeviceBuffer(0x4000, 35 if miss == "short-workspace" else 72)
+    runner._q8_dp4a_lib = None if miss == "library" else object()
+    runner.runtime = SimpleNamespace()
+    runner._q4_lib = object()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("unavailable dense-Q8 route must not quantize or launch")
+
+    for name in (
+        "gguf_q4_k_quantize_f32_q8_1", "gguf_q8_0_dp4a_gemv_f32_f32_out",
+        "gguf_q8_0_dp4a_dual_split_rowtile4_gemv_f32_f32_out",
+        "gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out",
+    ):
+        monkeypatch.setattr(resident_draft_mod, name, forbidden)
+    kwargs = dict(stage="project", rows=0 if miss == "rows" else 1,
+                  in_features=0 if miss == "width" else 33 if miss == "unaligned" else 32,
+                  stream=7)
+    if kind == "single":
+        handled = runner._try_dense_q8_dp4a_f32(0x1000, 0x2000, 0x3000, out_features=16, **kwargs)
+    elif kind == "dual":
+        handled = runner._try_dense_q8_dp4a_dual_f32(
+            0x1000, 0x2000, 0x2100, 0x3000, 0x3100,
+            out_features_a=16, out_features_b=8, **kwargs,
+        )
+    else:
+        handled = runner._try_dense_q8_dp4a_triple_f32(
+            0x1000, 0x2000, 0x2100, 0x2200, 0x3000, 0x3100, 0x3200,
+            out_features_a=16, out_features_b=8, out_features_c=8, **kwargs,
+        )
+    assert handled is False
+
+
 def test_draft_dense_q8_dp4a_stage_selector(monkeypatch) -> None:
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     runner._draft_dense_q8_dp4a_enabled = True

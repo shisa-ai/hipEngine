@@ -3430,23 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A` (diagnostic rejected)
-- Added 2026-07-02. Bench flag `--resident-mtp-draft-dense-q8-dp4a`,
-  draft-profile flag `--dense-q8-dp4a`, and suite route
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8`
-  route resident draft dense Q8_0 F32 projections through F32->q8_1 plus
-  raw-Q8 dp4a float-output wrappers.
-- Purpose: test whether copying the verifier/llama.cpp q8_1/raw-Q8 dp4a economy
-  into the draft dense projections (`eh_proj`, Q/K/V, attention output, shared
-  gate/up, shared down) closes the non-Q6 draft drain gap.
-- Result: draft-chain rocprof moved the intended kernel bucket, but full-suite
-  B2 rejected the route: active router-row **64.41 tok/s / 15.547 ms/output**
-  vs draftdenseq8 **64.14 tok/s / 15.612 ms/output**, with worse acceptance and
-  target rows/output.
-- Remove when: the next parity checkpoint no longer needs this negative
-  evidence, or if a future fused dense-draft design replaces the standalone
-  quantize+dp4a calls. Do not promote the flag as-is.
-
 ## `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` (diagnostic rejected)
 - Added 2026-07-02. Bench flag
   `--resident-mtp-draft-selected-silu-down-fused`, draft-profile flag
@@ -10806,7 +10789,7 @@ needs actual public short/long decode and target verification, logits/state
 oracles, reset/cancellation and cleanup. Any changed arithmetic needs its
 execution-profile numerical/task gates; removing a flag is not that gate.
 
-### R0281-DRAFT-DENSE-Q8 — Resident draft stage-policy migration
+### R0281-DRAFT-DENSE-Q8 / R0303 — Resident draft stage-policy migration
 
 The resident draft runner's F32-to-q8_1/raw-Q8 dp4a route is separate from the
 verifier dense-Q8 sidecar controls. Bench and profiler CLIs still set its main
@@ -10822,6 +10805,15 @@ builds its dp4a library and allocates q8_1 workspace from the resolved stage set
 Stage rejection, invalid geometry, absent library or insufficient workspace
 keeps the original raw-Q8 F32 path. This is the older compatibility runner,
 not the Generation-2 NextN provider used by normal public MTP requests.
+
+R0303 describes this same implementation, including initialization/catch-up
+projections, not a second rejected kernel family. Its historical full-suite
+comparison is preserved in the pinned sweep source and unchanged July artifacts.
+Keep the explicit all-stage and proposal-only comparison routes until the
+stage-policy decision below migrates their CLI/result consumers together.
+Single/dual/triple helper tests also bind no-launch refusal for disabled stages,
+missing library/workspace, invalid row/input geometry and undersized scratch;
+these are capability preconditions, not evidence-based admission rules.
 
 **Decision needed:** keep explicit numerical comparison modes or migrate the
 ambient controls to a constructor-owned stage policy, with bench/profiler and

@@ -9013,28 +9013,28 @@
       "start_line": 6851,
       "end_line": 6867,
       "sha256": "9587fe006aff956f7bce820243e5be69de6160749acb05855d38b330e57b907d",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-legacy-draft-stage-policy",
+      "evidence": ["R0303 is the same live dense-Q8 stage implementation already reconciled in R0281-DRAFT-DENSE-Q8, including init/catch-up and proposal projections. Consolidated duplicate row into that existing bottom entry without removing all-stage/proposal-only CLI/profiler/suite comparisons or shared kernels. Added single/dual/triple no-launch refusal contracts for disabled/stage/library/workspace/geometry/scratch misses; existing parser precedence, positive launch, uploads and caller contracts remain. Historical rejection source/artifacts unchanged; no runtime/default/kernel change or new performance claim. Worklog: worklog/entries/20261029T010620.196805Z-cleanup-refactor-r0303-draft-dense-q8-fc5d8d.md."],
       "subitems": [
         {
           "line": 6852,
           "text": "- Added 2026-07-02. Bench flag `--resident-mtp-draft-dense-q8-dp4a`,",
-          "status": "pending"
+          "status": "resolved-existing-stage-and-caller-contracts"
         },
         {
           "line": 6857,
           "text": "- Purpose: test whether copying the verifier/llama.cpp q8_1/raw-Q8 dp4a economy",
-          "status": "pending"
+          "status": "resolved-init-and-proposal-comparisons-preserved"
         },
         {
           "line": 6860,
           "text": "- Result: draft-chain rocprof moved the intended kernel bucket, but full-suite",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 6864,
           "text": "- Remove when: the next parity checkpoint no longer needs this negative",
-          "status": "pending"
+          "status": "deferred-existing-R0281-DRAFT-DENSE-Q8"
         }
       ]
     },
