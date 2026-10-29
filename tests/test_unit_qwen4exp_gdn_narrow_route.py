@@ -65,7 +65,7 @@ def select(variant, rows=512, hk=16, hv=48, d=128):
 def test_ud_manifest_binder_and_outside_parent():
     result = resolve(ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl")
     rows = [r for r in result.manifest["selections"] if r["layer"] == "gdn_recurrence_norm_gate"]
-    assert {r["scope"] for r in rows} == {SCOPE, OUTSIDE}
+    assert {r["scope"] for r in rows} == {SCOPE, OUTSIDE, "decode_c1_d128"}
     bounded = next(r for r in rows if r["scope"] == SCOPE)
     outside = next(r for r in rows if r["scope"] == OUTSIDE)
     assert bounded["selected_variant"] == NARROW
@@ -110,7 +110,9 @@ def test_bound_profile_reaches_runtime_and_does_not_leak_to_strict():
     assert select(bind(production).runner.gdn_prefill_variant).variant == NARROW
     strict = resolve(ExecutionProfile.STRICT, "gguf_ud_q4_k_xl")
     assert select(bind(strict).runner.gdn_prefill_variant) == key()
-    assert all(r["selected_variant"] == "qwen4exp_sigmoid_strict_prefill"
+    assert all(r["selected_variant"] == (
+                   "qwen4exp_sigmoid_strict" if r["scope"] == "decode_c1_d128"
+                   else "qwen4exp_sigmoid_strict_prefill")
                for r in strict.manifest["selections"]
                if r["layer"] == "gdn_recurrence_norm_gate")
 

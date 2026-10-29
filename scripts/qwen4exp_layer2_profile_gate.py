@@ -46,7 +46,7 @@ if str(ROOT) not in sys.path:
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill,
+    gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill, gdn_decode_rowsplit,
     q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     routed_f16_enabled as routed_f16,
@@ -109,6 +109,7 @@ class CandidateSpec:
     # strict base); a wide/narrow name binds that leaf for the measured rows.
     gdn_prefill_variant: str | None = None
     gdn_register_prefill: bool | None = None
+    gdn_decode_rowsplit: bool | None = None
     # Explicit QSA ordered-v2 sparse decode selection for this arm, same
     # protocol. ``None`` keeps the base profile's published decision (on for a
     # production base, the ordered v1 parent on a strict one); the gate binds a
@@ -180,7 +181,6 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
     "HIPENGINE_QWEN4_EXP_GR_F16_DIRECT": "0",
-    "HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT": "0",
     "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP": "0",
     "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN": "0",
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
@@ -228,6 +228,7 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
             ),
             environment={**_F16_ROUTES_OFF, **extra},
             routed_f16_enabled=name == "recovery_plus_routed_f16",
+            gdn_decode_rowsplit=False,
             base_profile="production",
             scenario_id="qwen4exp-" + name.replace("_", "-"),
             candidate_key=None,
@@ -1641,6 +1642,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # the profile's own decision comes back when the stack unwinds.
         dispatch_stack.enter_context(qsa_prefill_head_mode(
             candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
+    if candidate_spec.gdn_decode_rowsplit is not None:
+        dispatch_stack.enter_context(gdn_decode_rowsplit(
+            candidate_generator.runner, candidate_spec.gdn_decode_rowsplit))
     if candidate_spec.gdn_register_prefill is not None:
         dispatch_stack.enter_context(gdn_register_prefill(
             candidate_generator.runner, candidate_spec.gdn_register_prefill))

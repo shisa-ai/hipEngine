@@ -751,7 +751,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | `1` | The routed F16 gate/up reads token rows through the lane map; `0` builds the gathered activation copy. |
 | `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; UD production selects the F16 WMMA GEMM, with ordered DPP for small multirow widths and named rollback. Strict/Q4_K_M keep tile4. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | unset (F16 route sets `1`) | Warp-per-expert routed gate/up decode owner (reduction order differs). |
-| `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | unset (F16 route sets `1`) | Row-split GDN decode step. |
+| `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | retired | Ignored. The execution profile declares the one-row D128 GDN variant and publishes `gdn_decode_rowsplit` on the owning runner. Diagnostics use its scoped control. |
 | `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` | retired | No longer read. Named profile registration selects the serial GDN variant; the binder publishes it to the owning runner. |
 | `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` | profile-selected | Replaces the multi-column tile-16 GDN prefill body (for example with the row-split recurrence). |
 | `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` | unset (F16 route sets `1`) | Multi-row FP32 indexer projections on the small-matrix F16 WMMA GEMM. |

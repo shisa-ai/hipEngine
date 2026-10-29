@@ -3434,8 +3434,11 @@ change reduction order, and one bit-identical decode fusion is on by
 default. All were measured on a Radeon 8060S on the canonical `code-p512` /
 `code-p4096` cases (128 decode transitions).
 
-- `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT=1`
-  (`qwen4exp_gdn_rowsplit_decode`): one 512-thread block per value head,
+- The profile's `decode_c1_d128` row selects `qwen4exp_gdn_rowsplit_decode`
+  with `qwen4exp_sigmoid_strict` as its fallback. The binder publishes
+  `gdn_decode_rowsplit` on the owning runner; the old environment key is
+  ignored. Diagnostics override one runner through the scoped control.
+  The kernel uses one 512-thread block per value head,
   four lanes per column, the state read and written once with both dot
   products in registers. Kernel 66 -> 27.5 us per layer; decode 20.87 ->
   21.47 tok/s at p512.
@@ -3470,8 +3473,8 @@ decode, but top-1 445/450 against the 0.99 floor, `gate-b.json`; reverted),
 and a two-launch read that rebuilt the norm in every block (bit-identical,
 1.4% slower).
 
-Removal condition: declare the three selected reduction-order variants in
-the plan with strict scopes.
+Removal condition: declare the two MoE warp variants in the plan with
+strict scopes. GDN decode ownership and the exact GR fusion opt-out are resolved.
 
 ## Qwen4Exp direct F16 hyper-connection launches (`HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`)
 

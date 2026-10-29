@@ -46,6 +46,8 @@ _QSA_WMMA_VARIANT = "wmma_f16_masked_prefill_f32"
 # read the raw expert weights: (layer, scope, registry quant) -> variant.
 # Layers whose gate/up is Q5_K route from 64 rows; the rest from 2.
 _F16_ROUTE_SCOPES = {
+    ("gdn_recurrence_norm_gate", "decode_c1_d128", "f32_state"):
+        "qwen4exp_gdn_rowsplit_decode",
     ("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up", "gguf_q4_k"):
         _ROUTED_F16_GATE_UP,
     ("moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up", "gguf_q4_k"):
@@ -93,9 +95,7 @@ _F16_ROUTE_SELECTORS = {
     # Hyper-connection read projections launched directly on F16 activations:
     # bit-identical to the dispatch they replace under the windows above.
     "HIPENGINE_QWEN4_EXP_GR_F16_DIRECT": "1",
-    # Decode: the row-split GDN step and the warp-per-expert routed-expert
-    # owners (FP32 or integer operands as before; reduction order differs).
-    "HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT": "1",
+    # Decode: warp-per-expert routed-expert owners.
     "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP": "1",
     "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN": "1",
     # Multi-row FP32 projections over uncompressed weights (the indexer
@@ -347,6 +347,8 @@ def _selection(
 
 def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...]:
     selections = (
+        _selection("gdn_recurrence_norm_gate", "decode_c1_d128",
+                   "qwen4exp_sigmoid_strict", "qwen4exp_sigmoid_strict", "f32_state"),
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
             "qwen4exp_sigmoid_strict_prefill", "qwen4exp_sigmoid_strict_prefill", "f32_state",
@@ -531,7 +533,8 @@ def _recovery_gdn_scopes(
 
     result = []
     for selection in selections:
-        if selection.layer != "gdn_recurrence_norm_gate":
+        if (selection.layer != "gdn_recurrence_norm_gate"
+                or selection.scope == "decode_c1_d128"):
             result.append(selection)
         elif selection.scope == "prefill_rows_ge2_serial_gdn_hk16_hv48_d128":
             result.append(replace(
@@ -550,6 +553,8 @@ def _production_selections(
     *, recovery: bool = False, gdn_prefill_variant: str | None = None,
 ) -> tuple[VariantSelection, ...]:
     selections = (
+        _selection("gdn_recurrence_norm_gate", "decode_c1_d128",
+                   "qwen4exp_sigmoid_strict", "qwen4exp_sigmoid_strict", "f32_state"),
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
             # Multi-column supersedes the DPP route: same kernel template with an 8-wide
@@ -1385,6 +1390,11 @@ def _bind(
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.qsa_h256_prefill_mode = qsa_h256_prefill_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
+    generator.gdn_decode_rowsplit = any(
+        row["scope"] == "decode_c1_d128"
+        and row["selected_variant"] == "qwen4exp_gdn_rowsplit_decode"
+        for row in resolved.manifest["selections"]
+    )
     generator.gdn_prefill_variant = gdn_prefill_variant
     generator.gdn_register_prefill = production
     generator.gdn_peer_prefill_layers = gdn_peer_prefill_layers
@@ -1451,6 +1461,7 @@ def _bind(
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.qsa_h256_prefill_mode = qsa_h256_prefill_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
+        runner.gdn_decode_rowsplit = generator.gdn_decode_rowsplit
         runner.gdn_prefill_variant = gdn_prefill_variant
         runner.gdn_register_prefill = production
         runner.gdn_peer_prefill_layers = gdn_peer_prefill_layers

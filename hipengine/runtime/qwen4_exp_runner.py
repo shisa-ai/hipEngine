@@ -5125,6 +5125,27 @@ def _qwen4_exp_gr_f16_direct_enabled(rows: int, low_rank: int) -> bool:
     )
 
 
+@contextlib.contextmanager
+def gdn_decode_rowsplit(runner: Any, enabled: bool | None = None):
+    """Temporarily select the decode owner on one diagnostic runner."""
+    prior = getattr(runner, "gdn_decode_rowsplit", False)
+    if enabled is not None:
+        runner.gdn_decode_rowsplit = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.gdn_decode_rowsplit = prior
+
+
+def _qwen4_exp_gdn_decode_step(backend: str, head_dim: int, enabled: bool):
+    key = KernelKey(backend, "gdn_recurrence_norm_gate", "f32_state",
+                    "qwen4exp_gdn_rowsplit_decode")
+    if enabled and head_dim == 128 and is_registered(key):
+        return resolve(backend=key.backend, layer=key.layer, quant=key.quant,
+                       variant=key.variant)
+    return qwen4_exp_gdn_decode_f32
+
+
 def _qwen4_exp_moe_decode_warp_enabled(leg: str) -> bool:
     """Warp-per-expert decode owners for the routed experts (``GATE_UP``, ``DOWN``).
 
@@ -7954,6 +7975,7 @@ def run_qwen4_exp_gdn_layer(
     gdn_tile16_prefill: bool = True,
     gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
+    gdn_decode_rowsplit: bool = False,
     q51_down_m1: bool = False,
     q51_pair_prefill: bool = False,
     q51_fold128_prefill: bool = False,
@@ -8111,6 +8133,7 @@ def run_qwen4_exp_gdn_layer(
         gdn_tile16_prefill=gdn_tile16_prefill,
         gdn_peer_prefill_layers=gdn_peer_prefill_layers,
         gdn_exact_bulk_conv=gdn_exact_bulk_conv,
+        gdn_decode_rowsplit=gdn_decode_rowsplit,
     )
     if layer_graph is not None:
         def _segment_gr_write_ffn_read(graph_stream: int) -> None:
@@ -8414,6 +8437,7 @@ def run_qwen4_exp_gdn_token_mixer(
     gdn_tile16_prefill: bool = True,
     gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
+    gdn_decode_rowsplit: bool = False,
 ) -> DeviceBuffer:
     """Execute strict Qwen4Exp GDN projections, Conv, recurrence, and output.
 
@@ -8488,25 +8512,8 @@ def run_qwen4_exp_gdn_token_mixer(
             stream=stream,
             runtime=active_runtime,
         )
-        decode_step = qwen4_exp_gdn_decode_f32
-        rowsplit_decode_key = KernelKey(
-            weights["attn_qkv"].backend, "gdn_recurrence_norm_gate", "f32_state",
-            "qwen4exp_gdn_rowsplit_decode",
-        )
-        if (
-            head_dim == 128
-            and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT", "0")
-            not in {"", "0", "false", "False"}
-            and is_registered(rowsplit_decode_key)
-        ):
-            # One read and one write of the state with both dot products in
-            # registers; FP32 summation order differs from the decode owner.
-            decode_step = resolve(
-                backend=rowsplit_decode_key.backend,
-                layer=rowsplit_decode_key.layer,
-                quant=rowsplit_decode_key.quant,
-                variant=rowsplit_decode_key.variant,
-            )
+        decode_step = _qwen4_exp_gdn_decode_step(
+            weights["attn_qkv"].backend, head_dim, gdn_decode_rowsplit)
         decode_step(
             scratch.conv.ptr,
             scratch.gate.ptr,
@@ -9040,6 +9047,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     # selector keeps the v1 switch, H256 and 1..4096 guards. A diagnostic scope
     # may outrank it.
     qsa_ordered_decode_v2: bool = False
+    # Scalar D128 decode choice from the manifest; batch indexed decode is separate.
+    gdn_decode_rowsplit: bool = False
     # GDN serial-prefill owner, published by the profile binder from the plan's
     # own selection: the narrow checked-index leaf on the UD lane, the wide
     # wave-norm leaf where that admission applies, and None (the register
@@ -10424,6 +10433,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_scratch,
+                    gdn_decode_rowsplit=self.gdn_decode_rowsplit,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
@@ -10837,6 +10847,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     pending_write=pending_write,
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
+                    gdn_decode_rowsplit=self.gdn_decode_rowsplit,
                     gdn_register_prefill=self.gdn_register_prefill,
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
                     gdn_peer_prefill_layers=self.gdn_peer_prefill_layers,

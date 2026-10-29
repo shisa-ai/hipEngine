@@ -13019,12 +13019,12 @@
       "end_line": 10791,
       "sha256": "73076d712db0956f184cbe36fec40d0ff571e0cbcb79a4235f9beb37341d8768",
       "status": "in-progress",
-      "evidence": ["GR fused decode opt-out retired with strict chain preserved for unsupported inputs and explicit oracles. Full CPU bundle, four GPU chain parity cases, public fused-route observation with stale key, and migrated live unfused MTP oracle passed. Worklog: worklog/entries/20261029T222540.137763Z-cleanup-cleanup-refactor-r0454-gr-cff751.md. GDN rowsplit and MoE warp selectors remain open."],
+      "evidence": ["GR fused decode opt-out retired with strict chain preserved for unsupported inputs and explicit oracles. Full CPU bundle, four GPU chain parity cases, public fused-route observation with stale key, and migrated live unfused MTP oracle passed. Worklog: worklog/entries/20261029T222540.137763Z-cleanup-cleanup-refactor-r0454-gr-cff751.md.", "GDN decode now has an explicit manifest row, strict fallback and runner-owned selection; stale process control is ignored and diagnostic arms migrated. Full CPU run plus focused assertion repairs, 74-test bundle, public one-token route and repo gates passed. Worklog: worklog/entries/20261029T223540.738726Z-cleanup-cleanup-refactor-r0454-gdn-b83a70.md. MoE warp selectors remain open."],
       "subitems": [
         {
           "line": 10753,
           "text": "- `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT=1`",
-          "status": "pending"
+          "status": "runner-owned"
         },
         {
           "line": 10758,
