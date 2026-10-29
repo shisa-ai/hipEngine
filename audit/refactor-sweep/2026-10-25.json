@@ -11346,18 +11346,18 @@
       "start_line": 8655,
       "end_line": 8674,
       "sha256": "b10a48d18065feefd8c1c541f66aa8cafa2baf82b6f1fe535f8af303723a79d3",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-retired-ambient-payload-and-tripwire-controls",
+      "evidence": ["Public DMS already explicitly requests device payloads; removed stale default-off serving note and both ambient selectors. Constructor keeps explicit host reference and device ownership; requested device capability errors now propagate rather than silent host substitution. Host-staged append unconditionally clears/reads current overflow status; direct-device append AST unchanged, no added serving D2H. RED9fail5pass then16new host controls pass;130focused host tests pass. TheRock gfx1151 GPU payload/overflow/rollback/direct-pipeline files21pass. Public LLM.generate_detailed two requests: device_payloads true, direct append96/host append0, repeated IDs, teardown0live; sidecar fits geometry but trained against different artifact, ownership only not quality. Worklog worklog/entries/20261029T074746.762664Z-cleanup-refactor-r0386-payload-controls-6c470a.md."],
       "subitems": [
         {
           "line": 8657,
           "text": "- `DMSCompactBackend(..., device_payloads=True)` or",
-          "status": "pending"
+          "status": "removed-environment-selector-explicit-device-serving-preserved"
         },
         {
           "line": 8667,
           "text": "- `HIPENGINE_DMS_DEVICE_TRIPWIRE=1` (default off) reads back the",
-          "status": "pending"
+          "status": "removed-tripwire-host-staged-status-check-unconditional"
         }
       ]
     },

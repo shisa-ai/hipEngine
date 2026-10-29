@@ -35,8 +35,6 @@ from hipengine.kvcache.dms_device import (
     DMSDevicePayloadSnapshot,
     DMSDevicePayloadStore,
     DMSDeviceStagedLayer,
-    DMSDeviceUnavailable,
-    device_payloads_requested,
 )
 from hipengine.kvcache.ledger import FitAwareAdmissionController, ResourceLedger
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
@@ -1178,7 +1176,7 @@ class DMSCompactBackend:
         physical_widths: tuple[int, ...] = (1, 2, 4, 8),
         generation: int = 1,
         codec_qualification: DMSCodecQualification | None = None,
-        device_payloads: bool | None = None,
+        device_payloads: bool = False,
         device_backend: str = "hip_gfx1100",
         _codec_evaluation_access: object | None = None,
     ) -> None:
@@ -1246,18 +1244,14 @@ class DMSCompactBackend:
         self.append_journal_transactions = 0
         self.full_journal_transactions = 0
         self._device_store: DMSDevicePayloadStore | None = None
-        if device_payloads_requested(device_payloads):
-            try:
-                self._device_store = DMSDevicePayloadStore(
-                    retrofit=retrofit,
-                    slots_per_layer=self.slots_per_layer,
-                    max_pack_rows=self.max_pack_rows,
-                    backend=self.device_backend,
-                    codec=self.codec,
-                )
-            except DMSDeviceUnavailable:
-                # Host parent remains the registered fallback.
-                self._device_store = None
+        if device_payloads:
+            self._device_store = DMSDevicePayloadStore(
+                retrofit=retrofit,
+                slots_per_layer=self.slots_per_layer,
+                max_pack_rows=self.max_pack_rows,
+                backend=self.device_backend,
+                codec=self.codec,
+            )
 
     @property
     def device_payloads_enabled(self) -> bool:

@@ -3430,26 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Compact DMS device payloads opt-in (C2-7 U6)
-
-- `DMSCompactBackend(..., device_payloads=True)` or
-  `HIPENGINE_DMS_DEVICE_PAYLOADS=1` moves the BF16 K/V payload into the
-  device slot buffers owned by `DMSDevicePayloadStore`
-  (`hipengine/kvcache/dms_device.py`); the host keeps only the
-  O(rows x heads x capacity) extent metadata. Default is off: the host
-  parent remains the production path until the C2-7 product gate passes
-  (trained `dms_metadata.json`, rocprof kernel-identity rows on a stable
-  GPU, c1-c32 lifecycle rerun). Remove the flag (device mode becomes the
-  only BF16 path) after that gate, keeping the host parent as the
-  registered `cpu_reference` fallback for no-HIP hosts.
-- `HIPENGINE_DMS_DEVICE_TRIPWIRE=1` (default off) reads back the
-  append-kernel overflow status after every device append. The host
-  pre-check already raises `MemoryError` before any device mutation, so
-  the tripwire is a state-drift canary for soak/lifecycle runs, not a
-  correctness gate. Revisit the per-layer-per-step D2H readback in the
-  optimization pass (e.g. fold the status into the next step's metadata
-  staging) before enabling it by default.
-
 ## Qwen3.8-27B gfx1100 packed route: T2 production drift, not a blocker (corrected 2026-08-19)
 
 - The current C2 packed decode route is NOT byte-exact vs the c1 oracle for

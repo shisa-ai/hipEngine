@@ -5,14 +5,12 @@ Drives the registered ``dms_compact`` HIP kernels through
 with the host parent: identical extent metadata, identical slot payloads
 (BF16 bits), device attention within the KL/top-1 gate of
 ``compact_attention_reference``, fail-closed overflow with the device
-state untouched, and determinism across backends. The host parent remains
-the registered fallback; device mode is opt-in. GPU cases skip cleanly on
-no-ROCm runners.
+state untouched, and determinism across backends. Host-reference callers
+select host payloads explicitly; serving requests device storage. GPU cases
+skip cleanly on no-ROCm runners.
 """
 
 from __future__ import annotations
-
-import os
 
 import numpy as np
 import pytest
@@ -65,12 +63,11 @@ def _make_backend(
     )
 
 
-def test_device_payloads_flag_controls_mode() -> None:
+def test_explicit_host_payload_mode() -> None:
     backend = _make_backend(
         num_layers=1, heads=2, dim=16, window=2, slots=32, device=False
     )
     assert backend.device_payloads_enabled is False
-    assert os.environ.get("HIPENGINE_DMS_DEVICE_PAYLOADS") is None
 
 
 def test_int8_payloads_do_not_require_an_evidence_allowlist() -> None:
@@ -196,7 +193,6 @@ def _softmax_kl_max(ref: np.ndarray, cand: np.ndarray) -> float:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 def test_device_pack_append_attention_parity_bit_exact() -> None:
-    os.environ["HIPENGINE_DMS_DEVICE_TRIPWIRE"] = "1"
     try:
         layers, heads, dim, window = 2, 2, 16, 2
         prompts = [6, 4]
@@ -296,7 +292,6 @@ def test_device_pack_append_attention_parity_bit_exact() -> None:
             is not None
         )
     finally:
-        os.environ.pop("HIPENGINE_DMS_DEVICE_TRIPWIRE", None)
         host_b.close()
         dev_b.close()
 

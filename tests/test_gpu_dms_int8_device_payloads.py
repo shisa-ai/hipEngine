@@ -25,7 +25,7 @@ def _quantize(bits):
 
 
 @pytest.mark.parametrize("tokens,dim,heads,q_heads", [(19, 16, 2, 8), (1025, 256, 2, 8), (1025, 256, 4, 24), (8193, 256, 4, 24), (16385, 256, 4, 24)])
-def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, monkeypatch):
+def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads):
     window = 8192 if tokens > 8192 else 7
     slots = (tokens + 8) * heads + 11
     retrofit = SimpleNamespace(num_layers=1, num_kv_heads=heads,
@@ -70,8 +70,6 @@ def test_int8_pack_append_attention_and_restore(tokens, dim, heads, q_heads, mon
         np.testing.assert_array_equal(store.live_counts(0), live)
         snapshot = store.snapshot(base[None, :], cap[None, :])
         # Capacity failure must leave payload, scales, metadata and live counts intact.
-        from hipengine.kvcache.dms_device import ENV_TRIPWIRE
-        monkeypatch.setenv(ENV_TRIPWIRE, "1")
         with pytest.raises(RuntimeError, match="overflow"):
             store.append_layer(0, k[-1], v[-1], np.zeros(heads, np.uint8), tokens,
                                base, np.ones_like(cap), live)

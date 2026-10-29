@@ -4,15 +4,14 @@ Owns the per-layer device slot buffers (BF16 K/V, int32 token positions,
 uint8 evict flags) and launches the registered ``dms_compact`` HIP
 kernels. The host backend keeps only the O(rows x heads x capacity)
 extent metadata; the BF16 K/V payload exists solely here, so the
-no-shadow property holds on the host. The host parent implementation
-remains the registered fallback: when the HIP runtime is unavailable the
-backend constructs without a store and runs entirely host-side.
+no-shadow property holds on the host. Host-reference callers construct the
+backend without a device store; an explicit device request propagates missing
+runtime or kernel capabilities instead of silently selecting host payloads.
 """
 
 from __future__ import annotations
 
 import operator
-import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -27,24 +26,9 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
-ENV_ENABLE = "HIPENGINE_DMS_DEVICE_PAYLOADS"
-ENV_TRIPWIRE = "HIPENGINE_DMS_DEVICE_TRIPWIRE"
-
 
 class DMSDeviceUnavailable(RuntimeError):
-    """The HIP runtime is not available for the device payload path."""
-
-
-def device_payloads_requested(explicit: bool | None) -> bool:
-    """Resolve the opt-in flag: explicit argument, else the environment."""
-    if explicit is not None:
-        return bool(explicit)
-    return os.environ.get(ENV_ENABLE, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def tripwire_enabled() -> bool:
-    """Post-append status readback (default off; enable for soak runs)."""
-    return os.environ.get(ENV_TRIPWIRE, "").strip().lower() in {"1", "true", "yes", "on"}
+    """The requested device payload kernels are unavailable."""
 
 
 @dataclass(frozen=True)
@@ -1239,8 +1223,8 @@ class DMSDevicePayloadStore:
         """Launch the append/decode for one row (one request) on one layer.
 
         The caller must have already verified (host pre-check) that the
-        append cannot overflow; the kernel's own fail-closed status is
-        read back as a tripwire when ``ENV_TRIPWIRE`` is set.
+        append cannot overflow. This host-staged path also reads the kernel's
+        fail-closed status; the direct-device serving path does not read it.
         """
         self._check_closed()
         self._ensure_layer(layer)
@@ -1249,9 +1233,9 @@ class DMSDevicePayloadStore:
         self._upload("append_k", k_new_bits)
         self._upload("append_v", v_new_bits)
         self._upload("append_evict", evict_new.astype(np.uint8))
-        # The kernel only writes ``status`` on overflow; zero it here (not in
-        # the device-direct path) so this path's tripwire read sees a clean
-        # baseline for its own append.
+        # The kernel only writes ``status`` on overflow; clear it here so the
+        # host-staged check cannot read a prior append's status. The direct
+        # device path neither clears nor reads this diagnostic plane.
         self._upload("status", np.zeros(self._heads, dtype=np.int32))
         self.configure_layer(layer, base=base, capacity=capacity, live=live)
         self.append_layer_device(
@@ -1261,14 +1245,13 @@ class DMSDevicePayloadStore:
             evict_ptr=self._stg["append_evict"].ptr,
             row_position=row_position,
         )
-        if tripwire_enabled():
-            status = np.zeros(self._heads, dtype=np.int32)
-            copy_device_to_host(host_array_ptr(status), self._stg["status"], status.nbytes)
-            if int(status.max()) != 0:
-                raise RuntimeError(
-                    f"DMS device append tripwire: kernel reported overflow on "
-                    f"layer {layer} (host pre-check missed it): {status.tolist()}"
-                )
+        status = np.zeros(self._heads, dtype=np.int32)
+        copy_device_to_host(host_array_ptr(status), self._stg["status"], status.nbytes)
+        if int(status.max()) != 0:
+            raise RuntimeError(
+                "DMS device append: kernel reported overflow on "
+                f"layer {layer} (host pre-check missed it): {status.tolist()}"
+            )
 
     def attention_layer(
         self,

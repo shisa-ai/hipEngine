@@ -924,8 +924,8 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_DMS_MTP_METADATA` | `~/dms-artifacts/qwen38-external-v1/sidecar/dms_metadata.json` | Trained external DMS sidecar metadata for the live DMS+INT8 MTP parity gate; produced by `scripts/qwen38_dms_train_sidecar.py`. |
 | `HIPENGINE_IQ4_XS_LAYOUT_GGUF` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | GGUF artifact for the live IQ4_XS T16 layout test. |
 | `HIPENGINE_UD_ROLE_MODEL` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | Published UD K_M model path for the live UD Q5/Q6 role tests. |
-| `HIPENGINE_DMS_DEVICE_PAYLOADS` | unset | DMS device-payload test fixture knob; asserted unset for the host-payload baseline. |
-| `HIPENGINE_DMS_DEVICE_TRIPWIRE` | unset | Set by the DMS device-pack parity test to tripwire device-payload mode for bit-exact comparison. |
+| `HIPENGINE_DMS_DEVICE_PAYLOADS` | retired | No reader. Backend construction selects host/device payloads explicitly; public DMS requests device storage. A missing requested device capability raises instead of silently choosing host payloads. |
+| `HIPENGINE_DMS_DEVICE_TRIPWIRE` | retired | No reader. Host-staged append always checks its current overflow status. Direct-device serving append does not add status readback. |
 | `HIPENGINE_MOONSHINE_CHECKPOINT` | local default | Moonshine model checkpoint override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_SNAPSHOT` | local default | Moonshine HuggingFace snapshot directory override for the Moonshine GPU tests. |
 | `HIPENGINE_MOONSHINE_FIXTURE_DIR` / `HIPENGINE_MOONSHINE_FIXTURES_SIX` / `HIPENGINE_MOONSHINE_SIX_FIXTURE_DIR` | local defaults | Moonshine audio fixture directory overrides for the single- and six-fixture suites. |
