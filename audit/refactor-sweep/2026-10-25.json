@@ -11865,23 +11865,25 @@
       "start_line": 9408,
       "end_line": 9433,
       "sha256": "4ddec3251b04fd2281c50ff4198b447ce72bbdbe8a95526a92943648cf1dc507",
-      "status": "pending",
-      "evidence": [],
+      "status": "workspace-repair-complete-deferred-xtx-server-capacity-refresh",
+      "evidence": [
+        "Current helper reserves only packed context floor per serving slot, deliberately ignores max_positions; C1 MTP/prefix-off skips eager lease. Private KV growth charged against pool. Existing workspace/capacity/prefix bundle146pass. Preserve ownership/page-map tests; no new allocator change. Move only requested XTX server capacity refresh to bottom with exact tier1 probe and tier2 confirmation instructions: session host is gfx1151, not RX7900XTX. Historical 54272 is observed pass, not current maximum. Evidence: worklog/entries/20261029T151035.839639Z-cleanup-refactor-r0406-xtx-capacity-d69914.md."
+      ],
       "subitems": [
         {
           "line": 9410,
           "text": "- Recorded 2026-09-09. `configure_engine_loop`",
-          "status": "pending"
+          "status": "old-full-context-reservation-repaired"
         },
         {
           "line": 9420,
           "text": "- The lease is **not** simply over-reserved: although the packed verifier is",
-          "status": "pending"
+          "status": "ownership-regressions-preserved-and-passing"
         },
         {
           "line": 9427,
           "text": "- Removal trigger: the CONCURRENCY2 task-5 follow-up already recorded in",
-          "status": "pending"
+          "status": "xtx-server-capacity-refresh-deferred-to-requested-hardware"
         }
       ]
     },

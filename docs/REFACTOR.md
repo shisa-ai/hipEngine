@@ -3425,20 +3425,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Packed execution workspace doubles the declared-context page budget
-
-- The old eager full-context reservation is removed. `configure_engine_loop`
-  uses `packed_verify_workspace_lease_pages()`, which reserves only the packed
-  context floor per slot; longer contexts and wider layouts charge private KV
-  against the same pool budget. The helper deliberately ignores max_positions.
-- Keep the lease ownership and rebind regressions: reducing reservation must
-  not reintroduce copies into undersized packed planes or discard live page maps.
-- Remaining validation: refresh the XTX single-request server context ceiling
-  using the server-faithful allocation probe, then confirm the selected point
-  with the requested workload. The earlier 54,272-token result is an observed
-  historical pass, not a current maximum. Do not close this row on the sizing
-  helper alone; record the server-route result.
-
 ## `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` — promoted, remove after soak
 
 - Promoted to default ON 2026-09-10 (see the capacity campaign doc and
@@ -11227,3 +11213,29 @@ and
 `../benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json`.
 Repair and current validation:
 `../worklog/entries/20261029T143522.416005Z-cleanup-refactor-r0404-direct-int8-dtypes-9a1059.md`.
+
+### R0406 — RX 7900 XTX server capacity refresh
+
+The eager full-context packed reservation is removed. The remaining eager
+workspace lease uses only the packed context floor per slot; C1 with MTP and
+prefix cache off omits that lease entirely. Longer or wider private KV is
+charged against the shared pool budget. Keep lease, rebind and page-map
+regressions; no additional reservation change is required by this entry.
+
+**Deferred hardware validation:** refresh the RX 7900 XTX single-request server
+context bound. This session has gfx1151 hardware, not the requested XTX;
+substituting its result would not establish that bound. On the XTX host, start
+with a short, multi-slab allocation probe, for example:
+
+```bash
+python scripts/gguf_server_allocation_probe.py --model "$GGUF_MODEL" --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --speculative-mtp-serving off --prefix-cache off --max-active-requests 1 --max-context-tokens 54272 --prompt-rows 2048 --decode-tokens 8 --json /tmp/xtx-server-capacity-54272.json
+```
+
+Select the XTX with the host's device selector and run in its ROCm environment.
+Record resolved server policy, raw readiness/capability/response documents,
+allocation owners and teardown. Bracket with short probes only, then confirm
+the selected context with the requested full-depth workload. The historical
+54,272-token pass is not a current maximum. Preserve the original evidence in
+`../benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json` and
+`../benchmarks/results/2026-09-09-rx7900xtx-server-int8-route-census.json`.
+No fresh capacity result is claimed here.
