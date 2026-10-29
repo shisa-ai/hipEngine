@@ -3427,18 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## `scripts/execution_profile_gguf_c1_pack8_wide_gate.py` (superseded harness)
-
-- Added 2026-09-30 (`e5f43ce21`) to measure this lever's KL envelope, and
-  superseded the same day by `scripts/qwen4exp_layer2_profile_gate.py`.
-- The adapted gate drove the Qwen3.6-35B-A3B model, whose decode never dispatches
-  the `pack8_gemv_*` family at all. Its run therefore produced bit-identical
-  arms (`strict_and_candidate_bytes_equal` on all 18 prompts) and a vacuously
-  green quality status. See `scripts/qwen4exp_de3_route_probe.py` for the
-  measurement that established this.
-- Removal condition: delete the file once no other worker is using it as a
-  generic c1 threads gate; the Qwen4Exp gate covers this lever's requirement.
-
 ## Route-engagement recorder coverage (`wmma_prefill_dispatch_recorder`)
 
 - Found 2026-09-30 while re-gating the live default at 16-47
@@ -10792,7 +10780,7 @@ the dispatch-cache lookup. The strict/candidate gate still changes this
 control per arm; a release cycle does not make that caller disappear.
 
 **Deferred interface decision:** keep the comparison control or migrate
-`scripts/execution_profile_gguf_c1_pack8_wide_gate.py`, the layer2 gate and
+`scripts/qwen4exp_layer2_profile_gate.py` and
 `scripts/qwen4exp_de3_route_probe.py` to an explicit launch policy before
 removing its environment reader. Preserve per-launch selection, caller
 geometry precedence, narrow/wide boundaries and default behavior. Validate

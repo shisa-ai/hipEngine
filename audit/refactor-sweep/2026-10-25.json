@@ -12624,23 +12624,23 @@
       "start_line": 10346,
       "end_line": 10357,
       "sha256": "f24cfcd26f7d04066d1903488b93e1b966f356ef6a71e983b555b0d8c5ad15f7",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed-superseded-harness",
+      "evidence": ["No code import/call consumers or running harness found; replacement layer2 candidate remains. Deleted obsolete executable and ledger entry; corrected R0434 caller list, runtime flag unchanged. Worklog: worklog/entries/20261029T193352.190619Z-cleanup-refactor-r0436-6e025c.md."],
       "subitems": [
         {
           "line": 10348,
           "text": "- Added 2026-09-30 (`e5f43ce21`) to measure this lever's KL envelope, and",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10350,
           "text": "- The adapted gate drove the Qwen3.6-35B-A3B model, whose decode never dispatches",
-          "status": "pending"
+          "status": "resolved-obsolete-harness-removed"
         },
         {
           "line": 10355,
           "text": "- Removal condition: delete the file once no other worker is using it as a",
-          "status": "pending"
+          "status": "resolved-no-consumers-removed"
         }
       ]
     },
