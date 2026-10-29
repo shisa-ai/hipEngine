@@ -3427,22 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp Q8 wave-scale rollback
-
-- Separate registered `coltile8_rowbatch4_wave_scale_f32_f32_out` is retained
-  after exact F32/CPU gates and actual attention-gate/shared-down wins.
-  These wins are conditioned on symmetric256MiB device-fill preconditioning.
-  Unconditioned attention-gate timings reverse by order; that adverse evidence
-  remains. Normal-model full72-trajectory admission now passes exactly, with
-  all12 prefill and request-wall results positive.
-- Preserve original coltile as strict fallback. Remove candidate-only
-  dispatch experimentation once admitted or rejected; do not claim SGPR
-  instruction counts without inspecting generated code.
-- Model-admission flag `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE=1` selects a
-  scoped prefill geometry with registry-checked fallback. Production1/strict0;
-  MMQ/WMMA and decode stay unchanged. Remove the flag after admission/rollback
-  needs end, or remove the candidate if the actual-model gate loses.
-
 ## Qwen4Exp GR wave-scale production rollback
 
 - Separate registered GR up wave-scale composite is promoted after exact

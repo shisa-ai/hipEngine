@@ -5414,6 +5414,17 @@ def q4_pair_prefill(runner: Any, enabled: bool):
         runner.q4_pair_prefill = prior
 
 
+@contextlib.contextmanager
+def q8_wave_scale_prefill(runner: Any, enabled: bool):
+    """Select the raw Q8 prefill geometry on the diagnostic runner."""
+    prior = getattr(runner, "q8_wave_scale_prefill", False)
+    runner.q8_wave_scale_prefill = bool(enabled)
+    try:
+        yield
+    finally:
+        runner.q8_wave_scale_prefill = prior
+
+
 def qwen4_exp_q4_pair_prefill_selected(
     backend: str, quant: str, *, rows: int, in_features: int,
     published: bool = False,
@@ -9263,6 +9274,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q4_out4: bool = True
     q4_bundle_prefill: bool = False
     q4_pair_prefill: bool = False
+    q8_wave_scale_prefill: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder for every plan and ``None`` (the dispatch heuristic) on an
     # unbound runner: M is 64 from 512 rows up and 16 below, N is 16. The pair
@@ -11163,9 +11175,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         selected_raw_variant = os.environ.get(
             "HIPENGINE_QWEN4_EXP_RAW_VARIANT", "coltile8"
         )
-        if selected_raw_variant == "coltile8" and os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE", "0"
-        ) not in {"", "0", "false", "False"}:
+        if selected_raw_variant == "coltile8" and self.q8_wave_scale_prefill:
             selected_raw_variant = "coltile8_wave_scale"
         q8_wmma_layers_raw = os.environ.get(
             "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", ""

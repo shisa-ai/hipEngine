@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_pair_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_pair_prefill, q8_wave_scale_prefill
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -184,8 +184,16 @@ def pair_arm_enabled(arm, published):
     return published
 
 
+def wave_arm_enabled(arm, published):
+    """Preserve the former strict Q8 process-key overrides."""
+    if arm in {"all_flags_strict", "base_plus_q8_gr_flags"} or arm.startswith("strict_plus_"):
+        return False
+    return published
+
+
 def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
-                     *, h256_mode=None, register_prefill=None, pair_prefill=None):
+                     *, h256_mode=None, register_prefill=None, pair_prefill=None,
+                     wave_prefill=None):
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
@@ -193,7 +201,9 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
-                if pair_prefill is None else pair_prefill):
+                if pair_prefill is None else pair_prefill), q8_wave_scale_prefill(
+                    runner, getattr(runner, "q8_wave_scale_prefill", False)
+                    if wave_prefill is None else wave_prefill):
         runner.reset()
         result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
@@ -299,6 +309,9 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(q8_wave_scale_prefill(
+                    generator.runner, wave_arm_enabled(
+                        arm, generator.runner.q8_wave_scale_prefill)))
                 arm_scope.enter_context(q4_pair_prefill(
                     generator.runner, pair_arm_enabled(
                         arm, generator.runner.q4_pair_prefill)))
@@ -323,6 +336,7 @@ def main():
                                 generator.runner, tokens[key], forced, pre, dec,
                                 register_prefill=arm != "strict_prefill_production_decode",
                                 pair_prefill=arm != "strict_prefill_production_decode",
+                                wave_prefill=arm != "strict_prefill_production_decode",
                                 h256_mode=("parent" if arm == "strict_prefill_production_decode"
                                            else None)))
                         else:

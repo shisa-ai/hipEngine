@@ -1230,7 +1230,6 @@ def _bind(
         # Historical GR-down intent; UD recovery below disables this independent
         # depth-gate failure. Its projection repair condition remains open.
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         # Exact ordered DPP replacement for the wave-scale GR-up owner. The
         # registered wave-scale owner remains the strict fallback through the
@@ -1419,6 +1418,7 @@ def _bind(
     generator.q4_out4 = True
     generator.q4_bundle_prefill = production
     generator.q4_pair_prefill = production
+    generator.q8_wave_scale_prefill = production
     # The compact F16 Q4_K dual gate/up tile pair: every plan publishes 16/16,
     # which is what the retired process keys were pinned to. ``None`` on either
     # side is the unbound heuristic, so a runner built without this bind keeps
@@ -1465,6 +1465,7 @@ def _bind(
         runner.q4_out4 = True
         runner.q4_bundle_prefill = production
         runner.q4_pair_prefill = production
+        runner.q8_wave_scale_prefill = production
         runner.q4_tile_m = 16
         runner.q4_tile_n = 16
         runner.q8_wmma_tiles = (64, 32)

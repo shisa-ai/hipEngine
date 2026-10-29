@@ -222,7 +222,7 @@ def main():
     if args.route_package == "q8-wmma-down":
         flag = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
     if args.route_package == "q8-wave-scale":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
+        flag = ""  # route_scope binds the owning runner.
     if args.route_package == "q8-dpp-reduction":
         flag = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
     if args.route_package == "router-dpp":
@@ -551,7 +551,11 @@ def main():
             from scripts.qwen4exp_halo_box_campaign_ab import q4_pair_control_record
             assert generator.runner.q4_pair_prefill is True
             report["selection_control"] = q4_pair_control_record(generator.runner)
-        if args.route_package in {"q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+        if args.route_package == "q8-wave-scale":
+            from scripts.qwen4exp_halo_box_campaign_ab import q8_wave_control_record
+            assert generator.runner.q8_wave_scale_prefill is True
+            report["selection_control"] = q8_wave_control_record(generator.runner)
+        if args.route_package in {"gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.

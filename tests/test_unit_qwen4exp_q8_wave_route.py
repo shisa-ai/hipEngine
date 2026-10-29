@@ -19,11 +19,11 @@ def test_wave_route_is_registry_checked_and_preserves_other_variants(monkeypatch
     assert select(base, enabled=True) is base
 
 
-@pytest.mark.parametrize("mode,value", [("before", "0"), ("after", "1")])
-def test_ab_changes_only_wave_flag(mode, value):
+@pytest.mark.parametrize("mode", ["before", "after"])
+def test_ab_does_not_publish_wave_process_key(mode):
     env = {"other": "unchanged"}
     _apply_mode(mode, environment=env, route_package="q8-wave-scale")
-    assert env == {"other": "unchanged", "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": value}
+    assert env == {"other": "unchanged"}
 
 
 def test_pipelined_upgrade_is_registry_checked_and_leaf_only(monkeypatch):

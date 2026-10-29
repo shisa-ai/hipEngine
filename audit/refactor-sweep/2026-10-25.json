@@ -12141,23 +12141,27 @@
       "start_line": 9577,
       "end_line": 9592,
       "sha256": "71a0a9b7dce96a2c5473eb53cf01140c5112604e84219fa24efd89b97ef3a6f3",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "worklog/entries/20261029T174436.165335Z-cleanup-refactor-r0418-q8-wave-scale-28756c.md",
+        "tests/test_unit_qwen4exp_q8_wave_scope.py",
+        "tests/test_gpu_qwen4exp_q8_wave_scale.py"
+      ],
       "subitems": [
         {
           "line": 9579,
           "text": "- Separate registered `coltile8_rowbatch4_wave_scale_f32_f32_out` is retained",
-          "status": "pending"
+          "status": "fixed-kernels-unchanged-historical-order-caveat-preserved-in-worklog"
         },
         {
           "line": 9585,
           "text": "- Preserve original coltile as strict fallback. Remove candidate-only",
-          "status": "pending"
+          "status": "fixed-registry-fallback-preserved-scoped-diagnostic-counts-current-leaf-no-instruction-claim"
         },
         {
           "line": 9588,
           "text": "- Model-admission flag `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE=1` selects a",
-          "status": "pending"
+          "status": "fixed-profile-owned-prefill-selection-and-late-clone-inheritance-public-routing-passed"
         }
       ]
     },

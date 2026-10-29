@@ -866,7 +866,8 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_IU8` | `0` | iu8 WMM prefill remap for the raw-Q rows>256 route. |
 | `HIPENGINE_QWEN4_EXP_GR_IU8_DOWN` | `0` | iu8 WMM prefill remap for the down projection of the rows>256 route. |
 | `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` | unset | Comma-separated layer list admitting the Q8 WMMA dense prefill. |
-| `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE` / `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE` | production profile | Wave-scaled variants of the Q8 coltile prefill and the raw-Q route. |
+| `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE` | retired; ignored | The profile publishes `q8_wave_scale_prefill` on its runner: production on, strict off. `q8_wave_scale_prefill(runner, False)` keeps the raw coltile parent for diagnostic comparisons. Selection remains scoped to chunked prefill; registry fallback, other raw geometries, MMQ/WMMA precedence and decode are unchanged. |
+| `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE` | production profile | Wave-scaled variant of the raw-Q route. |
 | `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64` | retired | No longer read. The profile publishes token64 selection to the owning runner; scoped diagnostics retain explicit A/B control. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` | production profile | Admits the MMQ prefill session for Q8_0 dense projections. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES` | unset (`2` or `3`) | F32-output raw Q8 MMQ activation-plane override (`f32_planes`). BF16-output MMQ always uses its guarded three-plane chain; this control does not change it. |

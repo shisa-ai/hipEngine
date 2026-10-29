@@ -17,6 +17,7 @@ class _TargetHarness(SimpleNamespace):
 def _target(monkeypatch):
     module = "hipengine.runtime.qwen4_exp_runner"
     runner = _TargetHarness()
+    runner.q8_wave_scale_prefill = False
     runner.max_sequence_length = 8
     runner.prefill_chunk_size = 2
     runner.position = 0

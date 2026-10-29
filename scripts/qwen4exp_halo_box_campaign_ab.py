@@ -55,6 +55,43 @@ Q4_PAIR_ENV = {
 }
 
 
+Q8_WAVE_ENV = {
+    "HIPENGINE_QWEN4_EXP_RAW_VARIANT": "coltile8",
+    "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH": "32",
+    "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
+    "HIPENGINE_GGUF_WMMA_PREFILL": "0",
+}
+
+
+def q8_wave_control_record(runner):
+    return {
+        "runner_field": "q8_wave_scale_prefill", "before": False, "after": True,
+        "published_value": runner.q8_wave_scale_prefill,
+        "scope": "per measured run; restored on exit",
+        "forced_environment": dict(Q8_WAVE_ENV),
+        "counted_variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
+    }
+
+
+@contextlib.contextmanager
+def q8_wave_scope(runner, enabled, *, environment=os.environ):
+    """Compare the raw parent and pipelined wave-scale leaf without DPP."""
+    from hipengine.runtime.qwen4_exp_runner import q8_wave_scale_prefill
+    prior = {key: environment.get(key) for key in Q8_WAVE_ENV}
+    try:
+        environment.update(Q8_WAVE_ENV)
+        with q8_wave_scale_prefill(runner, enabled):
+            yield
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
+
 def q4_pair_control_record(runner):
     return {
         "runner_field": "q4_pair_prefill", "before": False, "after": True,
@@ -1694,6 +1731,13 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError("q4-pair needs the owning runner")
         return q4_pair_scope(runner, mode == "after", environment=environment)
 
+    if route_package == "q8-wave-scale":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("q8-wave-scale needs the owning runner")
+        return q8_wave_scope(runner, mode == "after", environment=environment)
+
     if route_package == "q51-pair":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -2068,7 +2112,7 @@ def _apply_mode(
         if route_package == "q8-wmma-down":
             flag = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
         if route_package == "q8-wave-scale":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
+            return  # route_scope binds the owning runner.
         if route_package == "gr-wave-scale":
             flag = "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"
         if route_package == "q8-mmq-prepack":
@@ -2531,7 +2575,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.route_package == "q8-wave-scale":
             row4_key = KernelKey(
                 "hip_gfx1151", "linear", "gguf_q8_0",
-                "coltile8_rowbatch4_wave_scale_f32_f32_out")
+                "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out")
         if args.route_package == "gr-wave-scale":
             row4_key = KernelKey(
                 "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
@@ -2717,6 +2761,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "scope": "per measured run; restored on exit",
             "isolation": "tiled and peer prefill off; wave-norm variant unset",
         }
+    if args.route_package == "q8-wave-scale":
+        artifact["selection_control"] = q8_wave_control_record(generator.runner)
     if args.route_package == "q4-pair":
         artifact["selection_control"] = q4_pair_control_record(generator.runner)
     if args.route_package == "q51-pair":

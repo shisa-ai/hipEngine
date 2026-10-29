@@ -332,6 +332,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.q4_out4 = True
         self.q4_bundle_prefill = False
         self.q4_pair_prefill = False
+        self.q8_wave_scale_prefill = False
         self.q51_down_m1 = False
         self.q51_pair_prefill = False
         self.q51_fold128_prefill = False
@@ -1124,6 +1125,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q4_out4 = bool(getattr(generator, "q4_out4", True))
     runner.q4_bundle_prefill = bool(getattr(generator, "q4_bundle_prefill", False))
     runner.q4_pair_prefill = bool(getattr(generator, "q4_pair_prefill", False))
+    runner.q8_wave_scale_prefill = bool(getattr(generator, "q8_wave_scale_prefill", False))
     runner.q4_tile_m = getattr(generator, "q4_tile_m", None)
     runner.q4_tile_n = getattr(generator, "q4_tile_n", None)
     runner.q8_wmma_tiles = getattr(generator, "q8_wmma_tiles", None)
