@@ -3456,17 +3456,13 @@ cover both direct and shared-runner streaming, fallback scopes and pool reuse.
 The dense speculative `mtp_target_dense` route retains its explicit True:
 its prefill policy is not part of this diagnostic seam.
 
-Measured 2026-08-30, the GEMV decode half is worse than pooling-inert: it is inert **at the
-consumer**. `qwen35_gguf_runner.py:13292` resolves the preference into
-`Qwen35GGUFFastPathSafety(requested_gemv_decode=...)` and its only two consumers, `disabled_wmma` and
-`disabled_gemv`, are gated on `is_qwen35moe`, so on the dense GGUF path the value moves one field of a
-safety record. Flipping it at the resolver - the only place a flip can land, since precedence is
-explicit kwarg > session > env - changed C1/C2 by 0.4%/0.7% (22.170 vs 22.250, 31.087 vs 31.290
-tok/s), with the resolver logging 3 calls per run, all incoming=True resolved=False. Delete the 11
-literal `use_gemv_decode=True` sites on the dense path, or make the MoE safety check query a real
-capability instead of a caller-supplied preference. Instrument notes for the next person: this flip is
-not reachable by environment variable, and patching `hipengine/runtime/gguf_linear.py` alone does
-nothing because `qwen35_gguf_runner.py` imports `gguf_gemv_decode_enabled` into its own namespace.
+Every public session construction/acquisition now passes the existing
+`_GGUF_PUBLIC_USE_GEMV_DECODE` owner instead of repeating literal True.
+Do not delete this preference merely because dense T16 dispatch is row/layout
+owned: low-level raw/pack8 dispatch and `resolve_qwen35moe_fastpath_safety`
+still consume it. The public default remains True, explicit low-level/session
+controls remain available, and the observed raw-MoE safety guard is unchanged.
+Dense T16 diagnostic toggles do not prove a GEMV-versus-WMMA engine comparison.
 
 
 ### Pending 2026-08-30: the packed prefill row is an A/B question, not a missing capability

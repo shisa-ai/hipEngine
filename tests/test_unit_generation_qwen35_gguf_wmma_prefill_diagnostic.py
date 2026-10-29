@@ -93,6 +93,24 @@ def test_resident_sessions_no_longer_pass_a_literal_route_flag():
     assert resolved == 10, f"expected 10 resolved sites, found {resolved}"
 
 
+def test_public_session_decode_preferences_have_one_owner():
+    import ast
+
+    tree = ast.parse(SOURCE.read_text())
+    choices = [
+        keyword.value
+        for node in ast.walk(tree) if isinstance(node, ast.Call)
+        for keyword in node.keywords if keyword.arg == "use_gemv_decode"
+    ]
+    assert choices
+    for choice in choices:
+        assert isinstance(choice, ast.Name) and choice.id in {
+            "_GGUF_PUBLIC_USE_GEMV_DECODE", "use_gemv_decode",
+        }, ast.unparse(choice)
+    module = _module()
+    assert module._GGUF_PUBLIC_USE_GEMV_DECODE is True
+
+
 def test_out_of_scope_literals_are_still_named():
     """Exactly one literal remains, on the dense speculative MTP route."""
     import re

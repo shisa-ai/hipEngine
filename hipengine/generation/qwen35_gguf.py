@@ -1903,7 +1903,7 @@ class Qwen35GGUFBringupGenerator:
                                 shared_runner,
                                 pool_name="ar_batch",
                                 use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                                use_gemv_decode=True,
+                                use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                             )
                             sessions.append(session)
                             keys.append(key)
@@ -1973,7 +1973,7 @@ class Qwen35GGUFBringupGenerator:
                                 shared_runner,
                                 pool_name="mtp_target",
                                 use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                                use_gemv_decode=True,
+                                use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                             )
                             sessions.append(session)
                             session_keys.append(session_key)
@@ -4195,7 +4195,7 @@ class Qwen35GGUFBringupGenerator:
                     shared_runner,
                     pool_name="ar_batch",
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                    use_gemv_decode=True,
+                    use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                 )
                 _timing_set(timing, "session_open_ms", session_open_start)
                 slot = _GGUFARServingSlot(
@@ -4638,7 +4638,7 @@ class Qwen35GGUFBringupGenerator:
             shared_runner=shared_runner,
             pool_name="mtp_target_dense",
             use_wmma_prefill=True,
-            use_gemv_decode=True,
+            use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
         ) as (target, _session_reused):
             max_positions = max(
                 requested_max_positions,
@@ -4803,7 +4803,7 @@ class Qwen35GGUFBringupGenerator:
                     shared_runner=shared_runner,
                     pool_name="mtp_target",
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                    use_gemv_decode=True,
+                    use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                 ) as (session, _session_reused):
                     session_open_ms = _timing_ms_since(session_open_start)
                     runtime = session.runtime
@@ -5137,14 +5137,14 @@ class Qwen35GGUFBringupGenerator:
                     shared_runner,
                     pool_name="mtp_target",
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                    use_gemv_decode=True,
+                    use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                 ) if pool_sessions else (
                     Qwen35GGUFResidentSession(
                         self.model_path,
                         runtime=shared_runner.runtime,
                         shared_runner=shared_runner,
                         use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                        use_gemv_decode=True,
+                        use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                     ),
                     None,
                     False,
@@ -5346,14 +5346,14 @@ class Qwen35GGUFBringupGenerator:
                 shared_runner,
                 pool_name="mtp_target",
                 use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                use_gemv_decode=True,
+                use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
             ) if pool_sessions else (
                 Qwen35GGUFResidentSession(
                     self.model_path,
                     runtime=shared_runner.runtime,
                     shared_runner=shared_runner,
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                    use_gemv_decode=True,
+                    use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                 ),
                 None,
                 False,
@@ -10454,7 +10454,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 self._shared_runner,
                 pool_name="continuous_ar_dynamic_kv",
                 use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                use_gemv_decode=True,
+                use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                 defer_kv_allocation=True,
                 max_batch_size=self.capacity,
                 max_sequence_length=max_sequence_length,
@@ -10493,7 +10493,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     self._shared_runner,
                     pool_name="continuous_ar_dynamic_kv",
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                    use_gemv_decode=True,
+                    use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                     defer_kv_allocation=True,
                     max_sequence_length=max_sequence_length,
                 )
