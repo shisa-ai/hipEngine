@@ -18,6 +18,7 @@ from hipengine.runtime.laguna_moe import (
     ("mmq64x32_d4_f32_rowvec", resolve_laguna_selected_down_mode),
     ("mmq128x32_d8_f32_wavecols", resolve_laguna_selected_gate_up_mode),
     ("mmq64x32_d4_f32_wavecols_q4", resolve_laguna_selected_down_mode),
+    ("mmq64x32_d4_f32_wavecols_direct_q4", resolve_laguna_selected_down_mode),
 ])
 def test_legacy_mmq_comparison_modes_remain_explicit_not_defaults(backend, mode, resolver):
     assert resolver(backend, mode) == mode
@@ -42,7 +43,8 @@ def test_row_vector_primitives_remain_separate_from_session_mode_retirement():
 
 @pytest.mark.parametrize("rows", [3, 6, 17])
 @pytest.mark.parametrize("direct", [False, True])
-def test_pair_decode_and_direct_modes_preserve_staging_and_launch_ownership(monkeypatch, rows, direct):
+@pytest.mark.parametrize("q6_rows", [32, 64])
+def test_pair_decode_and_direct_modes_preserve_staging_and_launch_ownership(monkeypatch, rows, direct, q6_rows):
     calls = []
     plan = SimpleNamespace(
         hidden_size=8, expert_count=11, top_k=3, routed_scaling_factor=2.5,
@@ -66,7 +68,10 @@ def test_pair_decode_and_direct_modes_preserve_staging_and_launch_ownership(monk
     ):
         monkeypatch.setattr(laguna_moe, name, lambda *a, _label=label, **kw: calls.append((_label, a, kw)) or True)
     gate = "mmq128x32_d8_f32_wavecols" + ("_direct" if direct else "")
-    down = "mmq64x32_d4_f32_wavecols" + ("_direct_q4" if direct else "_q4")
+    down = (
+        "mmq64x64_d4_f32_q6_wavecols_direct_q4" if q6_rows == 64
+        else "mmq64x32_d4_f32_wavecols" + ("_direct_q4" if direct else "_q4")
+    )
     runtime = object()
     result = laguna_moe.run_laguna_moe_rows(
         0x9000, layer, scratch, rows=rows, selected_gate_up_mode=gate, selected_down_mode=down,
@@ -77,10 +82,11 @@ def test_pair_decode_and_direct_modes_preserve_staging_and_launch_ownership(monk
     gate_kw, down_kw = calls[0][2], calls[1][2]
     assert gate_kw["rowvec"] is down_kw["rowvec"] is True
     assert gate_kw["wave_cols"] is down_kw["wave_cols_q4"] is True
-    assert gate_kw["direct_wave_decode"] is down_kw["direct_wave_decode_q4"] is direct
+    assert gate_kw["direct_wave_decode"] is direct
+    assert down_kw["direct_wave_decode_q4"] is (direct or q6_rows == 64)
     assert gate_kw["lanes"] == down_kw["lanes"] == rows * plan.top_k
     assert gate_kw["residual_passes"] == down_kw["residual_passes"] == 1
-    assert down_kw["q6_tile_rows"] == 32
+    assert down_kw["q6_tile_rows"] == q6_rows
     assert all(kwargs["stream"] == 7 and kwargs["runtime"] is runtime for _, _, kwargs in calls)
     assert calls[-1][1][0] == scratch.expert_down.ptr
     assert calls[-1][1][5] == scratch.output.ptr

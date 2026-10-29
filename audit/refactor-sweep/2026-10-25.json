@@ -9418,18 +9418,18 @@
       "start_line": 7137,
       "end_line": 7152,
       "sha256": "8e51f613af9b9d5573b299f705f37773e319a70dcf89d0a201b4a124a673338d",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-consolidated-laguna-legacy-mmq-migration",
+      "evidence": ["Q6 row32 remains explicit/nondefault and owns the GPU fixture's separately packed interleaved-qmicro reference against planar row64. Expanded real MoE host caller tests at 3/6/17 rows bind row32/64 configuration, common lane/stream/runtime and fused output ownership. Consolidated into existing bottom legacy-MMQ fixture/public-model-resource blocker. 139 focused checks and docs/audit/tier/compile/whitespace gates pass; production and historical results unchanged. Worklog: worklog/entries/20261029T022357.296878Z-cleanup-refactor-r0318-r0319-laguna-04169f.md."],
       "subitems": [
         {
           "line": 7139,
           "text": "- Added 2026-07-26 when the exact 64-row/local128 Q6 selected-down body became",
-          "status": "pending"
+          "status": "resolved-row32-row64-caller-and-resident-layout-contracts"
         },
         {
           "line": 7146,
           "text": "- Clean publication is complete at **489.110 -> 492.640 tok/s (+0.722%)**",
-          "status": "pending"
+          "status": "deferred-bottom-laguna-legacy-mmq-fixture-and-public-resource"
         }
       ]
     },
@@ -9439,23 +9439,23 @@
       "start_line": 7153,
       "end_line": 7166,
       "sha256": "7250ad72d30198b5159350269debb1b89fc350a84ec8cfbea8d1c05154b0adf6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-bottom-laguna-compaction-comparison-migration",
+      "evidence": ["Both gfx11 packages default parallel, not an unmeasured-backend serial policy. Serial is a live A/B harness and GPU numerical peer. Added real gate/up helper host-stub checks at 32/55/128 rows for source compaction selection, metadata pointers/dimensions, stream/runtime and subsequent stage ordering; harness child closes on success/failure. Bottom entry names coordinated harness/fixture/setter migration and shares local public-model resource blocker. 139 focused checks and gates pass; no runtime or kernel change. Worklog: worklog/entries/20261029T022357.296878Z-cleanup-refactor-r0318-r0319-laguna-04169f.md."],
       "subitems": [
         {
           "line": 7155,
           "text": "- Added 2026-07-26 when gfx1151 changed from one-workgroup serial",
-          "status": "pending"
+          "status": "resolved-current-both-backend-parallel-defaults"
         },
         {
           "line": 7158,
           "text": "- The session-level `serial` selector and registered one-pass kernels remain",
-          "status": "pending"
+          "status": "resolved-live-comparison-and-reference-ownership"
         },
         {
           "line": 7163,
           "text": "- Remove the explicit gfx1151 serial session selector after the next retained",
-          "status": "pending"
+          "status": "deferred-bottom-compaction-harness-fixture-public-migration"
         }
       ]
     },

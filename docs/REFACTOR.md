@@ -3430,36 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q6 selected-down 32-row rollback
-
-- Added 2026-07-26 when the exact 64-row/local128 Q6 selected-down body became
-  the gfx1151 candidate default. The older
-  `mmq64x32_d4_f32_wavecols_direct_q4` session mode retains Q4 direct
-  wave-column decode and Q6 32-row row-vector consumption as an explicit
-  rollback. The actual runtime-bound Q6 leaf improves **5.260 -> 5.161 ms**,
-  dirty pp512 improves **490.105 -> 491.335 tok/s**, and outputs are BF16-bit
-  exact.
-- Clean publication is complete at **489.110 -> 492.640 tok/s (+0.722%)**
-  with all seven paired wins and cached attribution at **493.509 tok/s**.
-  Remove the explicit 32-row Q6 session selector after one subsequent retained
-  selected-expert checkpoint. Keep the underlying 32-row template if it
-  remains the fallback for non-gfx1151 backends or shapes below the 64-row
-  admission threshold.
-
-## Laguna serial stable MoE compaction rollback
-
-- Added 2026-07-26 when gfx1151 changed from one-workgroup serial
-  expert-major compaction to the byte-identical per-expert parallel
-  count/prefix/ballot-scatter path.
-- The session-level `serial` selector and registered one-pass kernels remain
-  for rollback and unmeasured backends. The production-shape leaf improves
-  **0.348880 -> 0.058969 ms (-83.10%)**, and clean publication improves
-  **490.824 -> 497.408 tok/s (+1.341%)** with all seven paired wins. Cached
-  attribution independently reaches **500.325 tok/s**.
-- Remove the explicit gfx1151 serial session selector after the next retained
-  exact MoE metadata checkpoint. Keep the serial registry primitive if another
-  backend still requires it as an unfused/reference fallback.
-
 ## Laguna Q4 gate/up activation-double-buffer candidate selector
 
 - Added 2026-07-26 for the exact
@@ -10643,23 +10613,27 @@ contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
 
-### R0313 / R0314 / R0315 / R0316 — Laguna legacy MMQ selector migration
+### R0313 / R0314 / R0315 / R0316 / R0318 — Laguna legacy MMQ selector migration
 
 `mmq128x32_d8_f32_rowvec`, `mmq64x32_d4_f32_rowvec`,
-`mmq128x32_d8_f32_wavecols` and `mmq64x32_d4_f32_wavecols_q4` are explicit
+`mmq128x32_d8_f32_wavecols`, `mmq64x32_d4_f32_wavecols_q4` and
+`mmq64x32_d4_f32_wavecols_direct_q4` are explicit
 comparison modes, not defaults. Current package defaults select later
 wave-column modes; the low-level `rowvec` staging primitives also serve those
 later modes and Q6 comparisons, so they are not removable with the old names.
 The pair-decode and direct peers share row-vector/wave-column staging and one
 residual pass; their direct-consume flag differs. The real host caller preserves
 lane count, stream/runtime and fused shared-combine output ownership for both.
+The Q6 row32/row64 comparison preserves those same caller contracts. Its GPU
+fixture separately packs interleaved qmicro bytes for row32; the current
+planar-qmicro resident is not interchangeable with that reference.
 
 `tests/test_live_laguna_moe_gpu.py` still uses the gate/up mode across the full
 Q4/Q6 comparison chain and directly compares row-vector/pair-decode down
 against their peers. `scripts/laguna_prefill_production_publication.py`
 recognizes the old gate/up and down names when normalizing historical quality
-metadata. Preserve that
-historical reader even after runtime retirement. Original July timing/quality
+metadata. Preserve that historical reader even after runtime retirement.
+Original July timing/quality
 results remain in the pinned sweep source and immutable worklogs; they are not
 new measurements from this pass.
 
@@ -10677,6 +10651,30 @@ publication and grouped-prefill contracts plus the full MoE quant-oracle nodes;
 then exercise `LLM.generate()` at short, boundary-neighbor and unrelated prompt
 sizes, recording selected defaults, output parity and cleanup. Keep historical
 publication normalization and the separate Q6 row-vector implementation.
+
+### R0319 — Laguna serial compaction comparison ownership
+
+Both gfx11 packages default to parallel stable MoE compaction. Explicit
+`serial` remains a live comparison in
+`scripts/laguna_group_compact_parallel_ab.py` and the Q4/Q6 GPU fixture;
+registered serial primitives also remain the reference path. This is not an
+unmeasured-backend default. The host gate/up caller selects serial or parallel
+source-row compaction while preserving metadata pointers, lane dimensions,
+stream/runtime and subsequent tile-map/quant/gate/SiLU ordering. The A/B harness
+closes its child session after success or a prefill exception.
+
+**Remaining work:** migrate session-level comparisons to explicit primitive
+ownership before removing the `serial` override. Keep registered reference
+primitives and historical result readers. Original July promotion evidence is
+in the pinned sweep source and immutable worklogs, not a new result here.
+The local Laguna model-resource blocker and public-route validation described
+in R0313–R0318 also apply to this migration.
+
+**Clearing action:** migrate the A/B harness, numerical fixtures and session
+setter together; run compaction comparison, source-default, runner and full
+MoE numerical contracts, then public `LLM.generate()` with default selection,
+metadata/output equality and cleanup checks. Do not silently route a requested
+serial comparison through parallel after retiring the selector.
 
 ### R0312 — Head-major K/V resource-budget integration
 
