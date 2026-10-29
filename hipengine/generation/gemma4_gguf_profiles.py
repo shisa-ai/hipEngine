@@ -198,24 +198,28 @@ def _register_attention_variants() -> None:
         PREFILL_ATTENTION_PLAIN as _PLAIN,
         PREFILL_ATTENTION_QUANTS,
         gemma4_attention_prefill_bf16,
-        register_gemma4_attention_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import (
+        gemma4_attention_prefill_tiled,
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma import (
         gemma4_attention_prefill_wmma_bf16,
-        register_gemma4_attention_prefill_wmma_kernels,
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_prefill_wmma_full import (
         gemma4_attention_prefill_wmma_full_bf16,
-        register_gemma4_attention_prefill_wmma_full_kernels,
     )
 
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
         gemma4_attention_staged_bf16,
     )
 
-    register_gemma4_attention_kernels()
-    register_gemma4_attention_prefill_wmma_kernels()
-    register_gemma4_attention_prefill_wmma_full_kernels()
+    # Profile registries can be reset independently of kernel registrations.
+    # Fill missing keys without replacing implementations already selected.
+    for quant in PREFILL_ATTENTION_QUANTS:
+        key = KernelKey(GEMMA4_GGUF_SOURCE_BACKEND, PREFILL_ATTENTION_LAYER,
+                        quant, "gemma4_tiled")
+        if not is_registered(key):
+            register(key, gemma4_attention_prefill_tiled)
 
     for backend in (GEMMA4_GGUF_SOURCE_BACKEND, GEMMA4_GGUF_BACKEND):
         for quant in PREFILL_ATTENTION_QUANTS:

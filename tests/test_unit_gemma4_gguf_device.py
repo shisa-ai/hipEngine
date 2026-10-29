@@ -308,7 +308,7 @@ def test_device_bytes_match_the_artifact_bytes(reader: GGUFReader) -> None:
 
             host = np.empty(nbytes, dtype=np.uint8)
             from hipengine.core.memory import DeviceBuffer, copy_device_to_host
-            from hipengine.loading.materialize import host_array_ptr
+            from hipengine.core.memory import host_array_ptr
 
             copy_device_to_host(
                 host_array_ptr(host),
@@ -336,8 +336,7 @@ def _read_bf16_rows(buffer, rows: int, columns: int) -> np.ndarray:
     how a broken readback survives review.
     """
 
-    from hipengine.core.memory import DeviceBuffer, copy_device_to_host
-    from hipengine.loading.materialize import host_array_ptr
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
 
     raw = np.empty(rows * columns, dtype=np.uint16)
     copy_device_to_host(
@@ -456,9 +455,9 @@ def test_selected_expert_dispatch_matches_the_bf16_offset_path(reader: GGUFReade
         gemma4_project_experts_by_offset,
         gemma4_project_experts_selected,
     )
+    from hipengine.core.memory import host_array_ptr
     from hipengine.loading.materialize import (
         float_array_to_bf16_bits,
-        host_array_ptr,
         load_host_array_to_device_as_dtype,
     )
 
@@ -652,9 +651,8 @@ def test_fused_blocks_are_the_members_bytes_in_order(reader: GGUFReader) -> None
     that described anything other than the concatenation would fail it.
     """
 
-    from hipengine.core.memory import DeviceBuffer, copy_device_to_host
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
     from hipengine.loading.gemma4_gguf_device import materialize_fused_gguf_device_weight
-    from hipengine.loading.materialize import host_array_ptr
 
     gate, up = _gate_up_specs(reader)
     weight = materialize_fused_gguf_device_weight(reader, [gate, up])

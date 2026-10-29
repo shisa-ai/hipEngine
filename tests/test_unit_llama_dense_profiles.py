@@ -148,6 +148,27 @@ def test_strict_resolution_selects_the_exact_kernel(backend: str) -> None:
     assert again.manifest_sha256 == resolved.manifest_sha256
 
 
+def test_attention_registration_preserves_existing_kernels() -> None:
+    from hipengine.generation.gemma4_gguf_profiles import _register_attention_variants
+    from hipengine.kernels.registry import register, resolve, unregister
+
+    key = KernelKey("hip_gfx1100", "prefill_attention", "gguf_q4_k_m", "gemma4_plain")
+    previous = resolve(backend=key.backend, layer=key.layer, quant=key.quant,
+                       variant=key.variant, missing="none") if is_registered(key) else None
+    sentinel = lambda *args, **kwargs: None
+    register(key, sentinel, replace=True)
+    try:
+        _register_attention_variants()
+        _register_attention_variants()
+        assert resolve(backend=key.backend, layer=key.layer, quant=key.quant,
+                       variant=key.variant) is sentinel
+    finally:
+        if previous is None:
+            unregister(key)
+        else:
+            register(key, previous, replace=True)
+
+
 def test_omitted_profile_keeps_the_tiled_default() -> None:
     _register()
     for backend in LLAMA_DENSE_BACKENDS:
