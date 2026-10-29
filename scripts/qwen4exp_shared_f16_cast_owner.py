@@ -5,7 +5,7 @@ The default prebound primitive replay excludes dispatch and native ownership.
 With --native-owner, the real runner pair helper charges scope admission,
 both normal dispatches, casts/GEMMs, scope exit, events and final device sync.
 Both modes validate native outputs and immutable inputs outside timing. Both
-arms run with ``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0``: the GR read's F16 mirror
+arms run with an execution-local disabled mirror scope: the GR read's F16 mirror
 would otherwise serve both consumers, so the replay would measure the producer's
 conversion instead of the pair's staging ownership. Neither mode changes
 production defaults or introduces a persistent activation cache.
@@ -130,8 +130,7 @@ def main():
     from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
     from scripts.qwen4exp_pair_harness_controls import (
         producer_mirror_record,
-        restore_producer_mirror,
-        rollback_producer_mirror,
+        pair_staging_without_producer_mirror,
     )
 
     check_host()
@@ -356,7 +355,9 @@ def main():
                 replay(pending.pop(), info)
             return result
 
-        prior_mirror = rollback_producer_mirror()
+        from contextlib import ExitStack
+        mirror_scope = ExitStack()
+        prior_mirror = mirror_scope.enter_context(pair_staging_without_producer_mirror())
         try:
             report["controls"] = {"producer_mirror": producer_mirror_record(prior_mirror)}
             linear._launch_dense_wide_f16_staged = hooked
@@ -376,7 +377,7 @@ def main():
             raise
         finally:
             linear._launch_dense_wide_f16_staged = original
-            restore_producer_mirror(prior_mirror)
+            mirror_scope.close()
             runtime.event_destroy(start); runtime.event_destroy(stop)
             generator.close()
             report["memory_after_close"] = memory_stats()

@@ -13045,8 +13045,8 @@
       "end_line": 10852,
       "sha256": "cdd5b4654cf602863d90f7dd48e4e45b7ea9ff36c87679b2020d41a09b4d4d16",
       "status": "in-progress",
-      "evidence": ["Exact GR norm/inject opt-out retired; separate kernels remain parity oracles and fallback implementations. Unit stale-key coverage, existing GPU parity and public production fused-route observation passed. Worklog: worklog/entries/20261029T225950.109817Z-cleanup-cleanup-refactor-r0455-inject-25e8a6.md. Scale-only opt-out retired with capability guards unchanged; worklog: worklog/entries/20261029T230445.619114Z-cleanup-cleanup-refactor-r0455-scale-df87c4.md. Direct launch, mirror, shared scratch and publication/tail ownership remain open."],
-      "subitems": [{"text": "GR_NORM_INJECT opt-out", "status": "removed-opt-out"}, {"text": "GR_SCALE_ONLY opt-out", "status": "removed-opt-out"}]
+      "evidence": ["Exact GR norm/inject opt-out retired; separate kernels remain parity oracles and fallback implementations. Unit stale-key coverage, existing GPU parity and public production fused-route observation passed. Worklog: worklog/entries/20261029T225950.109817Z-cleanup-cleanup-refactor-r0455-inject-25e8a6.md. Scale-only opt-out retired with capability guards unchanged; worklog: worklog/entries/20261029T230445.619114Z-cleanup-cleanup-refactor-r0455-scale-df87c4.md. Mirror environment override replaced with an execution-local diagnostic scope; worklog: worklog/entries/20261029T231035.260502Z-cleanup-cleanup-refactor-r0455-mirror-7fb57f.md. Direct launch, shared scratch and publication/tail ownership remain open."],
+      "subitems": [{"text": "GR_NORM_INJECT opt-out", "status": "removed-opt-out"}, {"text": "GR_SCALE_ONLY opt-out", "status": "removed-opt-out"}, {"text": "GR_F16_MIRROR diagnostic ownership", "status": "execution-local"}]
     },
     {
       "id": "R0456",

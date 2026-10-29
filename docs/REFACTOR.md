@@ -3518,16 +3518,16 @@ output tokens. Scratch resizing remains open: the FP32 fallback still needs
 The scale-only read also writes `half(mixed)` into the otherwise unwritten
 `scratch.normalized` and declares it through
 `hipengine/kernels/hip_gfx1100/linear/f16_mirror.py`
-(`HIPENGINE_QWEN4_EXP_GR_F16_MIRROR`, default on, `0` keeps the
-per-projection conversions). The F16 wide dispatch and the small-matrix F16
+(`HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` is retired; pair diagnostics use the
+execution-local `gr_f16_mirror(False)` scope for per-projection conversions). The F16 wide dispatch and the small-matrix F16
 GEMM look the image up by exact pointer and extent and read it instead of
 converting `mixed` again; every read and every prefill chunk invalidates the
 declaration first. Bit-identical; `code-p4096` 1390.8 -> 1440.1 and
 `code-p512` 912.2 -> 951.4 prefill tok/s, same process, identical output
 tokens. The image makes the pair loan (`HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR`)
 redundant for projections that read `mixed`. Remaining work: give the image
-its own buffer in the scratch planner and replace the mirror flag's diagnostic
-callers with explicit controls before deleting it.
+its own buffer in the scratch planner. All pair harnesses use the scoped
+mirror control, which restores nested state and leaves peer contexts alone.
 
 The scale-only norm also computes the four inject logits in the same launch
 when the read has an inject projection
@@ -3630,8 +3630,9 @@ scalar global loads.
 
 The row-split owner also writes `half(core)` from its norm/gate epilogue
 into the wide F16 stage and the runner declares it as the image of `core`,
-so the output projection skips its conversion (same
-`HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` switch as the hyper-connection image;
+so the output projection skips its conversion (the same execution-local
+`gr_f16_mirror` scope as the hyper-connection image; the environment switch
+is retired;
 bit-identical; `code-p4096` 1535.1 -> 1554.6 prefill tok/s). The runner
 retires the declaration right after the output projection because the stage
 is shared with later conversions.

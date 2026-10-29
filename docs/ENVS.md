@@ -759,7 +759,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` | retired | Ignored. Supported one-row hyper-connection reads use the exact three-launch fusion; unsupported geometry or weight layout uses the strict chain. |
 | `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
 | `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` | unset (F16 route sets `1`) | Hyper-connection read projections launched directly on F16 activations (bit-identical). |
-| `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | `1` | Scale-only GR read also publishes half(mixed); `0` keeps per-projection conversions. |
+| `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | retired | Ignored. Scale-only GR reads publish half(mixed) by default. Pair diagnostics use the execution-local `gr_f16_mirror` scope without changing environment state. |
 | `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | retired | Ignored. The supported scale-only norm computes inject logits when an inject projection is present. The separate kernel remains available to parity tests and fallback paths. |
 | `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | retired | Ignored. Supported direct-F16 GR reads use the scale-only norm; incompatible geometry or projection layouts retain the FP32 plane fallback. |
 | `HIPENGINE_QWEN4_EXP_GR_WIDE` | unset (F16 route sets `1`) | Hyper-connection up projection on the F16 wide route. |

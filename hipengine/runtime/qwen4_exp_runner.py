@@ -5185,15 +5185,23 @@ def _qwen4_exp_gr_decode_fused_enabled(
     )
 
 
-def _qwen4_exp_gr_f16_mirror_enabled() -> bool:
-    """Whether the scale-only read also publishes half(mixed).
+_GR_F16_MIRROR = contextvars.ContextVar("qwen4_exp_gr_f16_mirror", default=True)
 
-    ``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0`` keeps the per-projection
-    conversions for bisection; see docs/REFACTOR.md.
-    """
-    return os.environ.get("HIPENGINE_QWEN4_EXP_GR_F16_MIRROR", "1") not in {
-        "", "0", "false", "False",
-    }
+
+@contextlib.contextmanager
+def gr_f16_mirror(enabled: bool):
+    """Select mirror publication for a diagnostic execution context."""
+    prior = _GR_F16_MIRROR.get()
+    token = _GR_F16_MIRROR.set(bool(enabled))
+    try:
+        yield prior
+    finally:
+        _GR_F16_MIRROR.reset(token)
+
+
+def _qwen4_exp_gr_f16_mirror_enabled() -> bool:
+    """Whether this execution publishes half(mixed) on the scale-only path."""
+    return _GR_F16_MIRROR.get()
 
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:

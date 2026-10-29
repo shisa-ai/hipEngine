@@ -4,7 +4,7 @@
 Heldouts are uniformly repeated/truncated to 1024/4096 rows for ownership and
 state coverage, not scored as task-quality inputs. Counters wrap native scopes;
 no diagnostic GEMM replaces a runtime consumer. Both arms run with
-``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0``: the GR read's F16 mirror would serve
+an execution-local disabled mirror scope: the GR read's F16 mirror would serve
 both consumers, so the pair would stage nothing and the candidate would count no
 engagement.
 """
@@ -24,17 +24,14 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.qwen4exp_pair_harness_controls import (  # noqa: E402
     producer_mirror_record,
-    restore_producer_mirror,
-    rollback_producer_mirror,
+    pair_staging_without_producer_mirror,
 )
 
 
 def expected_pairs(tokens: int, chunk: int = 4096) -> int:
-    if tokens <= 0 or chunk <= 0:
-        raise ValueError("positive tokens and chunk required")
-    full, tail = divmod(tokens, chunk)
-    # layers13..47: 35 shared pairs and 26 GDN pairs.
-    return 61 * (full * (chunk in {1024, 4096}) + int(tail in {1024, 4096}))
+    from scripts.qwen4exp_f16_pair_engine_ab import _expected_pairs
+
+    return _expected_pairs(tokens, chunk)
 
 
 def main():
@@ -112,7 +109,8 @@ def main():
 
     with open("/tmp/hipengine-gfx1151-benchmark.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        prior_mirror = rollback_producer_mirror()
+        mirror_scope = contextlib.ExitStack()
+        prior_mirror = mirror_scope.enter_context(pair_staging_without_producer_mirror())
         try:
             report["controls"] = {"producer_mirror": producer_mirror_record(prior_mirror)}
             index = gate.load_gguf_index(gate.discover_gguf_files(args.model_root)[0])
@@ -194,7 +192,7 @@ def main():
         finally:
             runner.wide_f16_activation_pair = original_scope
             wide.f32_to_f16 = original_cast
-            restore_producer_mirror(prior_mirror)
+            mirror_scope.close()
             if generator is not None:
                 generator.close()
             report["memory_after_close"] = memory_stats()

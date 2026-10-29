@@ -4,7 +4,7 @@
 The parent arm binds ``wide_f16_pair_diagnostic(False)`` and the candidate arm
 binds ``wide_f16_pair_diagnostic(True)``; the profile's own request-local
 decision is the default when neither arm is bound.  Both arms also run with
-``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0``: the GR read's F16 mirror would serve
+an execution-local disabled mirror scope: the GR read's F16 mirror would serve
 both consumers, so the pair would stage nothing and every arm would measure the
 parent route.  Both arms run in one Python process and one resident model, with
 one warmup per arm and three counterbalanced measured samples for the canonical
@@ -31,8 +31,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.qwen4exp_pair_harness_controls import (  # noqa: E402
     producer_mirror_record,
-    restore_producer_mirror,
-    rollback_producer_mirror,
+    pair_staging_without_producer_mirror,
 )
 from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     DEFAULT_FIXTURE,
@@ -386,7 +385,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         row.update({"mode": mode, "engagement": delta, "source": case.get("source", "canonical")})
         return row
 
-    prior_mirror = rollback_producer_mirror()
+    mirror_scope = contextlib.ExitStack()
+    prior_mirror = mirror_scope.enter_context(pair_staging_without_producer_mirror())
     try:
         report["controls"] = {"producer_mirror": producer_mirror_record(prior_mirror)}
         _write_json(args.output, report)
@@ -445,7 +445,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         runner_module.wide_f16_activation_pair = original_scope
         wide.f32_to_f16 = original_cast
-        restore_producer_mirror(prior_mirror)
+        mirror_scope.close()
         if generator is not None:
             generator.close()
         report["memory_after_close"] = memory_stats()
