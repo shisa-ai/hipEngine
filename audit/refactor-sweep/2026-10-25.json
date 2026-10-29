@@ -12511,28 +12511,28 @@
       "start_line": 10236,
       "end_line": 10268,
       "sha256": "df49ebfef7f231eeb6b9f385e28d39d8c7da879e2003036e846bde93c4de2e07",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-fixed-regression-history",
+      "evidence": ["Scope/layer keys and actual-key regressions present; reciprocal gate clearing fixes the historical WMMA false pass. Corrected withdrawn cache-cause attribution in source/test prose and removed closed ledger history.23 tests pass; no executable changes. Worklog: worklog/entries/20261029T191843.232168Z-cleanup-refactor-r0433-ee0371.md."],
       "subitems": [
         {
           "line": 10244,
           "text": "- **staged-f32** (`_staged_f32_key`, fixed). A gate's two arms are the same",
-          "status": "pending"
+          "status": "resolved-regression-covered"
         },
         {
           "line": 10247,
           "text": "- **f16 WMMA** (`_wmma_scope_key`, fixed). `use_wmma` is in the key as a boolean",
-          "status": "pending"
+          "status": "resolved-regression-covered-attribution-corrected"
         },
         {
           "line": 10259,
           "text": "- A test that observes cache *misses* cannot detect the omission. The registry",
-          "status": "pending"
+          "status": "resolved-preserved-in-key-tests"
         },
         {
           "line": 10264,
           "text": "- **A gate's green status does not prove its route ran.** `measurement_valid`",
-          "status": "pending"
+          "status": "resolved-engagement-not-output-inequality"
         }
       ]
     },

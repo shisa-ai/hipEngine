@@ -1,22 +1,14 @@
 """The f16 WMMA route's layer scope must participate in the dispatch cache key.
 
-The WMMA route is **already promoted**, and at HEAD its gate could not be re-run
-to reproduce its certification. Running the certified configuration
-(``--route wmma --layers 16-47``) returned bit-identical candidate/teacher
-logits, a KL of exactly ``0.0``, and ``status: complete`` with
-``measurement_valid: true`` - a green result covering a route that never ran.
-The 2026-09-16 certification of the same route had a genuine exact-chain teacher
-and mean KL 3.796e-4, so this was a regression.
+The cache key includes the layer scope as well as ``use_wmma``. These tests
+pin that contract by recording keys, so lazy registry-generation changes cannot
+hide an omitted scope behind unrelated cache misses.
 
-The cause is the one these tests pin: ``use_wmma`` is in the memoization key as a
-boolean, but the route's *layer scope* is not. The runner turns
-``HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`` into a context-local weight filter, and
-``launch_gguf_linear`` only reaches the dispatch chain inside
-``if cached is None:``. A numerical gate clears the scope for its teacher arm, so
-both arms produced the same key and the teacher replayed the candidate's WMMA
-dispatch.
-
-Evidence: ``benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/WMMA-ROUTE-FALSE-PASS.md``.
+The missing scope was a latent defect discovered during a gate investigation,
+not the cause of that gate's false pass. The actual cause was dense-wide
+claiming both comparison arms; reciprocal route-clearing tests cover that fix.
+The corrected diagnosis is recorded in
+``benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/WMMA-ROUTE-FALSE-PASS.md``.
 """
 
 import os

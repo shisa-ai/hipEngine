@@ -5079,24 +5079,12 @@ def launch_gguf_linear(
         _staged_f32_scope,
         _weight_layer_index(weight) if _staged_f32_scope is not None else None,
     )
-    # The f16 WMMA route has the same silent-failure exposure as the staged
-    # route, and it is worse here because the route is already promoted.
-    #
-    # ``use_wmma`` is in the key as a boolean, but the route's *layer scope* is
-    # not: the runner turns ``HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`` into a
-    # context-local weight filter (``wmma_prefill_weight_filter_session``),
-    # which the key cannot see. So a numerical gate that clears the scope for
-    # its teacher arm produces the same key in both arms, and
-    # ``launch_gguf_linear`` only reaches the dispatch chain inside
-    # ``if cached is None:`` - the teacher arm replays the candidate arm's
-    # WMMA dispatch and the gate reports bit-identical logits, a KL of exactly
-    # zero and ``measurement_valid: true``.
-    #
-    # Measured, not hypothetical: the certified 16-47 configuration run at HEAD
-    # returned identical candidate/teacher hashes with ``status: complete``,
-    # while the 2026-09-16 certification of the same route had a genuine
-    # exact-chain teacher. See
-    # ``benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/WMMA-ROUTE-FALSE-PASS.md``.
+    # WMMA's layer filter is a separate decision input from use_wmma. Include
+    # its scope and owning layer so a cached dispatch cannot cross scopes.
+    # This omission was a latent defect, not the cause of the historical WMMA
+    # false pass: dense-wide overrode both comparison arms. The gate now clears
+    # the competing route separately. See WMMA-ROUTE-FALSE-PASS.md under
+    # benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/.
     _wmma_scope = _q8_wmma_layers_scope()
     _wmma_scope_key = (
         _wmma_scope,
