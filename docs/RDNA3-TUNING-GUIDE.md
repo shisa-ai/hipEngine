@@ -603,22 +603,16 @@ CPU-reference outer floor (KL around 46) because the activation bytes are
 interpreted in the wrong layout. Any leaf A/B against a raw owner must use
 the non-kmajor producer.
 
-**Marker tracing needs a ROCTX shim that the default probe cannot find.** The
-self-contained wrappers call `_prepare_roctx_override`, which requires a pip
-ROCm SDK `librocprofiler-sdk-roctx.so.1`. The default probe checks
-`sys.prefix`, but the SDK copies live under mambaforge env site-packages
-(`_rocm_sdk_{core,devel}/lib`) while the wrappers run under `.venv` — and
-`rocprofv3` itself comes from the mamba env that has the matching library.
-Four wrappers (`gguf_mtp_verifier_rocprof.py`,
-`gguf_continuous_owner_rocprof.py`, `gguf_decode_rocprof.py`,
-`gguf_packed_ar_rocprof.py`) now probe those locations plus the prefix of
-`which("rocprofv3")`, falling back to legacy `libroctx64`; the remaining four
-(`gguf_mtp_draft_rocprof.py`, `gguf_sh_c0_profile.py`,
-`qwen35_rocprof_audit.py`, `mtp_verifier_rocprof.py`) still need
-`--roctx-sdk` under `.venv`. `docs/REFACTOR.md` tracks extraction into a
-shared module. When markers are not needed, sidestep the shim entirely:
-kernel tracing needs no ROCTX, so drive the wrapper's own `--child` mode
-under a direct `rocprofv3 --kernel-trace` and roll up with
+**Marker tracing needs a ROCTX library and its loader dependencies.**
+`scripts/roctx_discovery.py` supplies the shared discovery and symlink setup.
+Defaults probe `sys.prefix`, `sys.base_prefix` and `/opt/rocm` for the SDK.
+The packed-AR wrapper additionally prefers the environment providing
+`rocprofv3` and permits a legacy `libroctx64` fallback. Explicit `--roctx-sdk`
+overrides discovery. Wrapper adapters preserve their own override directory
+and existing loader paths, adding bundled `rocm_sysdeps/lib` when present.
+A missing library raises rather than silently changing trace scope.
+When markers are not needed, drive the wrapper's own `--child` mode under a
+direct `rocprofv3 --kernel-trace` and roll up with
 `scripts/gguf_kernel_trace_rollup.py`.
 
 **The server benchmark produces clean-looking packets from the wrong model.**

@@ -14,6 +14,12 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from scripts.roctx_discovery import (
+    default_sdk as _default_roctx_sdk,
+    prepare_override,
+    sdk_dependency_paths,
+)
+
 _COMPILER_PROCESS_RE = re.compile(r"(?:^|/)(?:hipcc|amdclang\+\+|amdclang|clang\+\+|clang)(?:\s|$)")
 
 
@@ -206,38 +212,13 @@ def _run_monitored(
         }
 
 
-def _default_roctx_sdk() -> Path:
-    python_dir = f"python{sys.version_info.major}.{sys.version_info.minor}"
-    names = ("librocprofiler-sdk-roctx.so.1", "librocprofiler-sdk-roctx.so")
-    # sys.prefix alone is wrong for a venv built on a ROCm conda env: the venv has no _rocm_sdk_*
-    # packages of its own, so the search can never succeed. See worklog entry
-    # 20260830T043105 (diagnosis) and 8c59be6d8 (first implementation).
-    candidates = [
-        Path(root) / "lib" / python_dir / "site-packages" / pkg / "lib" / name
-        for root in dict.fromkeys((sys.prefix, sys.base_prefix))
-        for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel")
-        for name in names
-    ]
-    candidates += [Path("/opt/rocm/lib") / name for name in names]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
-
-
 def _prepare_roctx_override(sdk_path: Path, run_root: Path) -> tuple[Path, tuple[Path, ...]]:
     sdk_path = sdk_path.expanduser().resolve()
-    if not sdk_path.is_file():
-        raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")
-    override = run_root / "roctx-override"
-    override.mkdir(parents=True, exist_ok=True)
-    symlink = override / "libroctx64.so"
-    if symlink.exists() or symlink.is_symlink():
-        symlink.unlink()
-    symlink.symlink_to(sdk_path)
-    dependencies = tuple(
-        path for path in (sdk_path.parent, Path(sys.prefix) / "lib") if path.exists()
-    )
+    override = prepare_override(sdk_path, run_root / "roctx-override", require_file=True)
+    dependencies = tuple(dict.fromkeys((
+        *(path for path in (sdk_path.parent, Path(sys.prefix) / "lib") if path.exists()),
+        *sdk_dependency_paths(sdk_path),
+    )))
     return override, dependencies
 
 

@@ -35,10 +35,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from hipengine.benchmark.provenance import collect_artifact_provenance
-
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine.benchmark.provenance import collect_artifact_provenance
+from scripts.roctx_discovery import default_sdk, prepare_override, sdk_dependency_paths
+
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _NATIVE_C8_PHASE_BY_TARGET = {
     "gfx1100": "e2",
@@ -1043,74 +1046,16 @@ def _run_child(args: argparse.Namespace) -> int:
     return 0
 
 
-def _roctx_candidates_for_prefix(prefix: Path) -> list[Path]:
-    """SDK ROCTX libraries installed under a python prefix, whatever python3.x it uses.
-
-    Marker tracing needs the real SDK shim, not legacy libroctx64. The matching copy usually lives in
-    the environment that provides the profiler, which on multi-env hosts is not the venv running the
-    traced process (docs/KERNELS.md "MTP verify profiling traps", trap 1). Globbed so versioned
-    sonames (`.so.1.3.2`) are found too.
-    """
-    found: list[Path] = []
-    for package in ("_rocm_sdk_core", "_rocm_sdk_devel"):
-        found.extend(
-            sorted(
-                (prefix / "lib").glob(
-                    f"python3*/site-packages/{package}/lib/librocprofiler-sdk-roctx.so*"
-                ),
-                reverse=True,  # newest python3.x first when an env carries several
-            )
-        )
-    return found
-
-
-def _profiler_prefix() -> Path | None:
-    """Prefix of the rocprofv3 that will actually run, or None when it is not on PATH."""
-    executable = shutil.which("rocprofv3")
-    if not executable:
-        return None
-    resolved = Path(executable).resolve()
-    # bin/rocprofv3 -> <prefix>/bin/rocprofv3; keep the parent only when the layout looks like one.
-    return resolved.parents[1] if resolved.parent.name == "bin" else None
-
-
 def _default_roctx_sdk() -> Path:
-    python_dir = f"python{sys.version_info.major}.{sys.version_info.minor}"
-    names = ("librocprofiler-sdk-roctx.so.1", "librocprofiler-sdk-roctx.so")
-    preferred = [
-        Path(root) / "lib" / python_dir / "site-packages" / pkg / "lib" / name
-        for root in dict.fromkeys((sys.prefix, sys.base_prefix))
-        for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel")
-        for name in names
-    ]
-    profiler_prefix = _profiler_prefix()
-    candidates = (
-        _roctx_candidates_for_prefix(profiler_prefix)
-        if profiler_prefix is not None
-        else []
-    )
-    candidates += preferred
-    candidates += [Path("/opt/rocm/lib") / name for name in names]
-    candidates += [
-        Path("/opt/rocm/lib/libroctx64.so.4"),
-        Path("/opt/rocm/lib/libroctx64.so"),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return preferred[0]
+    return default_sdk(profiler_first=True, legacy_fallback=True)
 
 
 def _prepare_roctx_override(sdk_path: Path, raw_root: Path) -> tuple[Path, tuple[Path, ...]]:
-    if not sdk_path.exists():
-        raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")
-    override = raw_root / "roctx-override"
-    override.mkdir(parents=True, exist_ok=True)
-    symlink = override / "libroctx64.so"
-    if symlink.exists() or symlink.is_symlink():
-        symlink.unlink()
-    symlink.symlink_to(sdk_path)
-    dependencies = tuple(path for path in (sdk_path.parent, Path(sys.prefix) / "lib") if path.exists())
+    override = prepare_override(sdk_path, raw_root / "roctx-override")
+    dependencies = tuple(dict.fromkeys((
+        *(path for path in (sdk_path.parent, Path(sys.prefix) / "lib") if path.exists()),
+        *sdk_dependency_paths(sdk_path),
+    )))
     return override, dependencies
 
 

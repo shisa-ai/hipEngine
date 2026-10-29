@@ -43,6 +43,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.roctx_discovery import (
+    default_sdk as _default_roctx_sdk,
+    prepare_override,
+    sdk_candidates as _roctx_candidates,
+    sdk_dependency_paths as _roctx_sdk_dep_paths,
+)
 from hipengine.loading.qwen35_gguf_materialize import gguf_selected_gate_up_x8_enabled
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -99,41 +105,6 @@ def _sum_stage_timings(rows: list[dict[str, float]]) -> dict[str, float]:
         for key, value in row.items():
             totals[key] = totals.get(key, 0.0) + float(value)
     return dict(sorted(totals.items()))
-
-
-def _roctx_candidates() -> list[Path]:
-    """Every place the ROCTX SDK could live, in priority order.
-
-    Searching only `sys.prefix` broke every profiling arm run through `.venv/bin/python`: the venv
-    has no `_rocm_sdk_*` packages at all, because the ROCm SDK comes from the conda env the venv is
-    built on, which is `sys.base_prefix`. Both prefixes must be tried, and the list must be
-    reportable, or the failure names one path while several were possible.
-    """
-
-    packages = ("_rocm_sdk_core", "_rocm_sdk_devel")
-    names = ("librocprofiler-sdk-roctx.so.1", "librocprofiler-sdk-roctx.so")
-    candidates: list[Path] = []
-    for root in dict.fromkeys((sys.prefix, sys.base_prefix)):
-        site = (
-            Path(root)
-            / "lib"
-            / f"python{sys.version_info.major}.{sys.version_info.minor}"
-            / "site-packages"
-        )
-        for package in packages:
-            for name in names:
-                candidates.append(site / package / "lib" / name)
-    candidates.append(Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so.1"))
-    candidates.append(Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so"))
-    return candidates
-
-
-def _default_roctx_sdk() -> Path:
-    candidates = _roctx_candidates()
-    for path in candidates:
-        if path.exists():
-            return path
-    return candidates[0]
 
 
 class _Roctx:
@@ -578,24 +549,7 @@ def _prepare_roctx_override(sdk_path: Path) -> Path:
             f"rocprofiler SDK ROCTX library not found: {sdk_path}\n  searched:\n  {searched}\n"
             "  pass --roctx-sdk <path> to override"
         )
-    override = Path("/tmp/hipengine-roctx-sdk-override-gguf-mtp")
-    override.mkdir(parents=True, exist_ok=True)
-    symlink = override / "libroctx64.so"
-    if symlink.exists() or symlink.is_symlink():
-        symlink.unlink()
-    symlink.symlink_to(sdk_path)
-    return override
-
-
-def _roctx_sdk_dep_paths(sdk_path: Path) -> tuple[Path, ...]:
-    sdk_core_lib = sdk_path.parent
-    paths: list[Path] = []
-    if sdk_core_lib.is_dir():
-        paths.append(sdk_core_lib)
-        sysdeps = sdk_core_lib / "rocm_sysdeps" / "lib"
-        if sysdeps.is_dir():
-            paths.append(sysdeps)
-    return tuple(paths)
+    return prepare_override(sdk_path, Path("/tmp/hipengine-roctx-sdk-override-gguf-mtp"))
 
 
 def _single_file(root: Path, pattern: str) -> Path:

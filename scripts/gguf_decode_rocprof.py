@@ -39,6 +39,10 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.roctx_discovery import default_sdk as _default_roctx_sdk, prepare_override
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_G1_ARTIFACT = (
     REPO_ROOT
@@ -978,32 +982,8 @@ def _single_file(root: Path, pattern: str) -> Path:
     return matches[0]
 
 
-def _default_roctx_sdk() -> Path:
-    python_dir = f"python{sys.version_info.major}.{sys.version_info.minor}"
-    names = ("librocprofiler-sdk-roctx.so.1", "librocprofiler-sdk-roctx.so")
-    # sys.prefix alone is wrong for a venv built on a ROCm conda env: the venv has no _rocm_sdk_*
-    # packages of its own, so the search can never succeed. See worklog entry
-    # 20260830T043105 (diagnosis) and 8c59be6d8 (first implementation).
-    candidates = [
-        Path(root) / "lib" / python_dir / "site-packages" / pkg / "lib" / name
-        for root in dict.fromkeys((sys.prefix, sys.base_prefix))
-        for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel")
-        for name in names
-    ]
-    candidates += [Path("/opt/rocm/lib") / name for name in names]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
 def _prepare_roctx_override(sdk_path: Path) -> tuple[Path, tuple[Path, ...]]:
-    if not sdk_path.exists():
-        raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")
-    override = Path("/tmp/hipengine-roctx-sdk-override-gguf-eager")
-    override.mkdir(parents=True, exist_ok=True)
-    symlink = override / "libroctx64.so"
-    if symlink.exists() or symlink.is_symlink():
-        symlink.unlink()
-    symlink.symlink_to(sdk_path)
+    override = prepare_override(sdk_path, Path("/tmp/hipengine-roctx-sdk-override-gguf-eager"))
     dependency_paths: list[Path] = [sdk_path.parent]
     sysdeps = sdk_path.parent / "rocm_sysdeps" / "lib"
     if sysdeps.is_dir():

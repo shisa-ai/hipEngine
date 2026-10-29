@@ -3541,41 +3541,6 @@ AR route, so there is nothing to remove - this line exists so the next agent doe
 `HIPENGINE_GGUF_*PACKED*` default-on flag from the 2026-08-29 grouped-prefill evidence without the
 engine-side A/B.
 
-### `_default_roctx_sdk` is duplicated across the profiler wrappers (2026-08-30)
-
-`gguf_packed_ar_rocprof.py`, `gguf_mtp_verifier_rocprof.py`, `gguf_decode_rocprof.py`,
-`gguf_mtp_draft_rocprof.py`, `gguf_continuous_owner_rocprof.py`, `gguf_sh_c0_profile.py`,
-`qwen35_rocprof_audit.py` and `mtp_verifier_rocprof.py` each carry their own copy of
-`_default_roctx_sdk` + `_prepare_roctx_override`. Today's fix (probe the prefix of
-`which("rocprofv3")`, then fall back to legacy `libroctx64`) landed in `gguf_packed_ar_rocprof.py`
-only, because that is the one with a measured end-to-end verification and a test. The others still
-fail with "rocprofiler SDK ROCTX library not found" under `.venv` unless `--roctx-sdk` is passed.
-Adopt it by extracting `scripts/roctx_discovery.py` and importing it from all eight the next time any
-of them is touched for another reason - do not sweep them blind, since wrapper behaviour changes
-invalidate profile comparisons other lanes may be mid-run on.
-
-Status update (later 2026-08-30). Four of the eight now resolve: `gguf_mtp_verifier_rocprof.py` via
-8c59be6d8, and `gguf_continuous_owner_rocprof.py` / `gguf_decode_rocprof.py` / `gguf_packed_ar_rocprof.py`
-by this unit, each carrying an inline candidate list over `{sys.prefix, sys.base_prefix} x
-{_rocm_sdk_core, _rocm_sdk_devel}` plus `/opt/rocm`. `tests/test_unit_scripts_roctx_sdk_discovery.py` pins
-all four against the installed SDK, so a regression to a prefix-only list fails a test rather than a
-profiling arm. This touched only discovery, not what any wrapper measures, and lanes that pass
-`--roctx-sdk` explicitly are unaffected - so no profile comparison is invalidated. One correction to
-the paragraph above: `gguf_packed_ar_rocprof.py` did carry the `which("rocprofv3")` helper (still at
-line 988), but `_default_roctx_sdk` in that file was still `sys.prefix`-only, so its `--roctx-sdk`
-default was broken like the others; "the one with the fix" was true of the helper, not of the default.
-Extraction into a shared module is still open, and the remaining four (`gguf_mtp_draft_rocprof.py`,
-`gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py`, `mtp_verifier_rocprof.py`) discover the SDK by
-other means and were not touched.
-
-The owner and gfx1151 prefill profilers now import their existing discovery and
-override implementation from `hipengine/benchmark/rocprof_cache.py`. That module
-also owns their shared cache snapshots, compiler guard, process monitoring and
-cache-only environment. Their workload orchestration and trace options stay
-separate. Finish discovery consolidation for the other wrappers when they are
-touched, preserving their dependency-path and override contracts; do not replace
-those contracts merely because the owner helper has the same function name.
-
 ### All-GEMV small-row prefill A/B - measured verdict: GEMV is worse
 
 - Measured with `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL=0` against the shipping WMMA route, same protocol, widths

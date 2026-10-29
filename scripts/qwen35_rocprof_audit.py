@@ -20,13 +20,17 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.roctx_discovery import (
+    default_sdk as _default_roctx_sdk,
+    prepare_override,
+    sdk_dependency_paths,
+)
 DEFAULT_MODEL = (
     "/models/huggingface/hub/models--z-lab--Qwen3.5-35B-A3B-PARO/"
     "snapshots/dca2736e88e9f70855128fc81a8e918043a163cd"
-)
-DEFAULT_ROCTX_SDK = Path(
-    "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/"
-    "_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1"
 )
 REGIONS = ("prefill", "measured_decode_graph")
 COMMON_FLAGS = (
@@ -54,7 +58,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=None, help="Compact JSON output path")
     parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-rocprof-qwen35-audit"))
     parser.add_argument("--rocprofv3", default=shutil.which("rocprofv3") or "rocprofv3")
-    parser.add_argument("--roctx-sdk", type=Path, default=DEFAULT_ROCTX_SDK)
+    parser.add_argument("--roctx-sdk", type=Path, default=_default_roctx_sdk())
     parser.add_argument("--top", type=int, default=30)
     parser.add_argument(
         "--profile-decode-tokens",
@@ -79,7 +83,8 @@ def main() -> int:
 
     roctx_override = _prepare_roctx_override(args.roctx_sdk)
     base_env = os.environ.copy()
-    base_env["LD_LIBRARY_PATH"] = f"{roctx_override}:{base_env.get('LD_LIBRARY_PATH', '')}"
+    prefix = os.pathsep.join([str(roctx_override), *(str(path) for path in sdk_dependency_paths(args.roctx_sdk))])
+    base_env["LD_LIBRARY_PATH"] = f"{prefix}:{base_env.get('LD_LIBRARY_PATH', '')}"
 
     result: dict[str, Any] = {
         "schema": 1,
@@ -289,15 +294,7 @@ def _workload_label(prompt_len: int, decode_tokens: int) -> str:
 
 
 def _prepare_roctx_override(sdk_path: Path) -> Path:
-    if not sdk_path.exists():
-        raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")
-    override = Path("/tmp/hipengine-roctx-sdk-override")
-    override.mkdir(parents=True, exist_ok=True)
-    symlink = override / "libroctx64.so"
-    if symlink.exists() or symlink.is_symlink():
-        symlink.unlink()
-    symlink.symlink_to(sdk_path)
-    return override
+    return prepare_override(sdk_path, Path("/tmp/hipengine-roctx-sdk-override"))
 
 
 def _single_file(root: Path, pattern: str) -> Path:

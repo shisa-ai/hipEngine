@@ -1,12 +1,4 @@
-"""ROCTX discovery is duplicated across the profiling wrappers; pin them all at once.
-
-Four scripts carry their own `_default_roctx_sdk()`. All four built every candidate from
-`sys.prefix`, so all four fail identically when run as `.venv/bin/python`: the venv has no
-`_rocm_sdk_*` packages, because the ROCm SDK ships in the conda env the venv is built on
-(`sys.base_prefix`). The 04:31 worklog entry diagnosed this and left the one-line fix unclaimed;
-8c59be6d8 implemented it for one wrapper and this unit covers the rest. The duplication itself is
-tracked in docs/REFACTOR.md.
-"""
+"""Profiler wrappers share SDK discovery without changing their trace contracts."""
 
 from __future__ import annotations
 

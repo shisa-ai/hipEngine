@@ -37,11 +37,16 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
-DEFAULT_ROCTX_SDK = Path(
-    "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/"
-    "_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.roctx_discovery import (
+    default_sdk as _default_roctx_sdk,
+    prepare_override,
+    sdk_dependency_paths as _roctx_sdk_dep_paths,
 )
+
+DEFAULT_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
 DEFAULT_PROMPT_TOKENS = "151646"
 REGION_MARKER_PREFIXES = {
     "verify_pass": ("mtp_verify_pass_",),
@@ -104,7 +109,7 @@ def main() -> int:
         default=Path("/tmp/hipengine-rocprof-mtp-verifier-baseline"),
     )
     parser.add_argument("--rocprofv3", default=shutil.which("rocprofv3") or "rocprofv3")
-    parser.add_argument("--roctx-sdk", type=Path, default=DEFAULT_ROCTX_SDK)
+    parser.add_argument("--roctx-sdk", type=Path, default=_default_roctx_sdk())
     parser.add_argument(
         "--steady-state-skip",
         type=int,
@@ -339,35 +344,7 @@ def _rocprof_command(args: argparse.Namespace, smoke_cmd: list[str]) -> list[str
 
 
 def _prepare_roctx_override(sdk_path: Path) -> Path:
-    if not sdk_path.exists():
-        raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")
-    override = Path("/tmp/hipengine-roctx-sdk-override-mtp")
-    override.mkdir(parents=True, exist_ok=True)
-    symlink = override / "libroctx64.so"
-    if symlink.exists() or symlink.is_symlink():
-        symlink.unlink()
-    symlink.symlink_to(sdk_path)
-    return override
-
-
-def _roctx_sdk_dep_paths(sdk_path: Path) -> tuple[Path, ...]:
-    """Find the directories the SDK ROCTX library implicitly depends on.
-
-    The therock SDK ships ``librocprofiler-sdk-roctx.so.1`` with NEEDED entries
-    like ``librocm_sysdeps_dw.so.1`` that live under
-    ``<sdk_core>/lib`` and ``<sdk_core>/lib/rocm_sysdeps/lib``.  Without these
-    on ``LD_LIBRARY_PATH`` ``ctypes.CDLL('libroctx64.so')`` fails with
-    ``cannot open shared object file: librocm_sysdeps_dw.so.1``.
-    """
-
-    sdk_core_lib = sdk_path.parent
-    paths: list[Path] = []
-    if sdk_core_lib.is_dir():
-        paths.append(sdk_core_lib)
-        sysdeps = sdk_core_lib / "rocm_sysdeps" / "lib"
-        if sysdeps.is_dir():
-            paths.append(sysdeps)
-    return tuple(paths)
+    return prepare_override(sdk_path, Path("/tmp/hipengine-roctx-sdk-override-mtp"))
 
 
 def _single_file(root: Path, pattern: str) -> Path:
