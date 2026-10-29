@@ -92,6 +92,42 @@ def test_verifier_child_forwards_timing_controls_and_preserves_commit(
     assert payload["stage_timing_totals_ms"] == (Session.last_verify_stage_timings_ms if record else None)
 
 
+@pytest.mark.parametrize("block_rows", (4, 7, 32))
+def test_block_profiler_fills_every_row_with_valid_current_tokens(monkeypatch, tmp_path, block_rows) -> None:
+    from hipengine.runtime import qwen35_gguf_runner as target
+
+    inputs_seen = []
+
+    class Session:
+        position = 2
+        runtime = SimpleNamespace(device_synchronize=lambda: None)
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def prefill(self, *args, **kwargs):
+            return SimpleNamespace(token_id=11)
+        def verify_target_block(self, inputs, **kwargs):
+            assert len(inputs) == block_rows
+            assert all(0 <= token < 100 for token in inputs)
+            inputs_seen.append(tuple(inputs))
+            self.position += len(inputs)
+            return SimpleNamespace(token_ids=[21] * len(inputs), linear_state_rows_captured=False)
+
+    monkeypatch.setattr(target, "Qwen35GGUFResidentSession", Session)
+    monkeypatch.setattr(profiler, "_apply_route_env", lambda args: None)
+    monkeypatch.setattr(profiler, "_Roctx", lambda: SimpleNamespace(push=lambda name: None, pop=lambda: None))
+    monkeypatch.setattr(sys, "argv", [
+        "gguf_mtp_verifier_rocprof.py", "--child", "--mode", "block-verify",
+        "--steps", "2", "--warmup", "1", "--block-rows", str(block_rows),
+        "--no-direct-state-commit", "--child-json", str(tmp_path / "child.json"),
+    ])
+    assert profiler.main() == 0
+    assert inputs_seen == [(11,) * block_rows, (21,) * block_rows, (21,) * block_rows]
+
+
 def test_native_profiler_rejects_synchronized_timings_before_loading(monkeypatch) -> None:
     monkeypatch.setattr(profiler, "_run_child", lambda args: pytest.fail("must reject before model loading"))
     monkeypatch.setattr(sys, "argv", [

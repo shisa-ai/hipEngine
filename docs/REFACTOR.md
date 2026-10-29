@@ -3430,136 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1100 grouped multi-request prefill is unreachable by construction (2026-08-30)
-
-`ResidentBatchScheduler.next_prefill_batch_work` ("emit one stable multi-request
-prefill quantum") exists and `engine_loop` will select it only when
-`runner.packed_prefill_max_rows > 1`. On gfx1100 that attribute comes from
-`backend_package_capability(backend, "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1)` and
-**no backend package declares it**, so the branch is dead today.
-
-Declaring the capability would still not batch a realistic wave, because
-`_try_prefill_native_work_batch` (`hipengine/generation/qwen35_gguf.py:6401`)
-additionally requires: every selected chunk to be the request's **entire prompt**
-(`chunk == row.prompt_ids`, first chunk only, no prefix reuse, no decode slot) and
-**all chunk lengths equal** (`len({len(chunk)}) == 1`). It therefore implements
-only the same-length "common boundary" case, and the standard suite's prompt
-lengths (35, 36, 36, 39, 39, 43, 46, 48, 60, 67 tokens) contain no 8-wide
-equal-length group. Lowering `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` cannot help:
-a partial chunk fails `chunk == row.prompt_ids`.
-
-Measurable cost of the dead path: hipEngine admission is flat at ~305 ms/lane and
-grows 304 ms per added lane, while llama.cpp's falls 223 -> 106 ms/lane
-(1.41x behind at C1, 2.88x at C8). Shipping-route prefill measures
-167.6 tok/s at 45 rows versus 877.0 tok/s at 512 rows, so a grouped 360-row wave
-is worth roughly 2441 -> ~855 ms of C8 admission (predicted 69.97 tok/s versus
-the current 58.74).
-
-Removal/enabling trigger: either (a) extend the grouped native prefill to accept
-unequal-length rows via padding plus attention/KV write masking and partial
-chunks, qualify it against the strict unfused per-request chain, and then declare
-`GGUF_C2_PACKED_PREFILL_MAX_ROWS` for gfx1100; or (b) if padded grouping is not
-pursued, delete `next_prefill_batch_work` plus its `engine_loop` branch so the
-dead route stops advertising a capability the backend does not have. Measured
-evidence: `benchmarks/results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json`.
-
-Correction while the section above is still fresh: the equal-length rule was a
-policy of the **resident AR route only**, not a runner limit. The serving route
-reaches the very same `prefill_batch_native` entry point with arbitrary prompt
-lengths today (`hipengine/generation/qwen35_gguf.py:3025`, chunked only by
-`_MTP_SERVING_TARGET_BATCH_MAX_SLOTS`), and the AR call site already forwarded
-`full_prompt_lengths` per row. So no padded/masked kernel work is implied.
-
-**Landed:** that equal-chunk-length early-return has been removed from
-`_try_prefill_native_work_batch`, so the AR route groups mixed-length waves like
-the serving route, and a wave no longer loses grouping because one lane is over the
-chunk cap (the compatible subset groups; the odd lane stays on the chunked serial
-path). Two tests pin the contract
-(`test_resident_ar_packed_prefill_groups_mixed_prompt_lengths` for the AR route via
-`__new__`-stubbed rows, and
-`test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths` for the serving route).
-
-**Promoted:** `GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8` is now declared for gfx1100, so
-`engine_loop` reaches the batch route by default. The old tripwire
-(`test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default`) was inverted
-into `test_gguf_gfx1100_packed_prefill_capability_is_declared`, which keeps the
-protective half (the lookup still defaults to 1, so an unqualified package stays
-lane-by-lane). Qualifying evidence: canonical-suite packet with byte-identical
-protocol, 432 cross-packet per-row id comparisons and 0 mismatches, 80/80
-correctness cells, width 1 unchanged, C8 AR 45.68 -> 78.67 tok/s, and acceptance
-flattened to 0.789 at every width. Remove the declaration (back to 1) only if a
-long-prompt or multi-session workload shows a regression the canonical suite cannot
-see - the remaining known limit is `chunk == row.prompt_ids`, so prompts longer than
-the chunk cap still prefill serially and gain nothing.
-
-`worklog.py new` can mint an entry that `worklog.py check` then rejects. `new`
-derives the filename from `slugify(topic)`, but `slugify` truncates at ~48
-characters and can leave a trailing `-`, while `check` (a) requires
-`slugify(topic) == topic` and (b) requires the filename to start with the
-verbatim `topic`. Note also that `new` writes the **title** text into the `## Topic`
-body, so a title containing `>=` or `;` fails `check` even when `--topic` is a clean
-slug - keep both flat. A long or bracketed title therefore produces a filename whose
-embedded slug can never validate - `20260830T025142...guard--0609f8.md` needed a
-manual topic shortening plus `git mv` inside an amend of an unpushed commit, and
-`check` blocks every later commit until that is done. Fix in `new`: after
-slugifying, strip trailing/Repeated `-`, hard-truncate to the round-trip length,
-and assert `slugify(topic) == topic` and the filename prefix before writing the
-file. Remove this entry when `new` refuses to emit an invalid pair.
-
-Wave-grouped AR prefill also needs **compatibility-aware selection**, not just the
-equal-length relaxation landed today. `next_prefill_batch_work`
-(`hipengine/generation/batch_scheduler.py:1249`) advances every selected prompt
-cursor *before* publication and states that incompatible rows "must fall back before
-this method is selected" - but nothing enforces that upstream: `_row`-level
-compatibility is only tested afterwards inside
-`_try_prefill_native_work_batch`, whose per-row loop returns `False` for the **whole**
-work item. Two consequences to remove when the capability is declared:
-
-* With `DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256`, any prompt longer than 256 tokens
-  yields `chunk != row.prompt_ids`, so a single long lane refuses every other lane in
-  that item and the wave prefills serially anyway. The standard 10-prompt suite
-  (35-67 tokens) is unaffected, so a measurement on it cannot see this.
-* The refusal happens *after* the scheduler has already consumed the prefill cursors,
-  so the fallback runs on post-advance state instead of never having committed.
-
-**Landed (inert by default):** `_try_prefill_native_work_batch` now partitions
-instead of refusing - it groups the largest compatible subset and returns the handled
-request ids, and `prefill_batch` skips those ids and serially prefills the rest, so an
-over-long lane goes to the chunked path without taxing its neighbours. The requested
-fixture exists and is green
-(`test_resident_ar_packed_prefill_survives_one_over_long_lane`: one 300-token lane plus
-seven short lanes asserts seven grouped rows, one call, and `prefill_tokens_seen == 0`
-for the long lane).
-
-**Cursor ownership:** selection advances every planned chunk, but successful
-`prefill_batch` consumes grouped rows and serially consumes every unhandled
-chunk. Moving that successful path to a separate selection filter is not
-required for cursor correctness. A contained early failure was different:
-unexecuted peers could keep their planned cursor advance. The runner now
-reports `unexecuted_prefill_request_ids`; the loop validates and rewinds only
-those surviving chunks before retry. Completed buffered chunks stay committed,
-and resumable prefill is not rewound twice. Tests cover prompt lengths below,
-at, above and unrelated to the chunk cap, plus failed-row/scope isolation.
-
-`gguf_mtp_c1c8_server_bench.py` keeps process-global cumulative snapshots in
-`resident_observability.routes.counts` and records each arm's independent
-`route_counts_before`, `route_counts_after` and `route_counts_delta`. Use the
-delta for cell/arm attribution; the after snapshot still includes earlier work.
-The benchmark brackets the requests before and after their futures complete,
-including routes first seen in the current arm. The existing
-`native_full_prefill_groups_delta` remains available to older consumers.
-
-`gguf_mtp_verifier_rocprof.py --mode block-verify` cannot sweep `--block-rows`: the child
-raises `ValueError: token_id 2147483647 outside [0, 248320)` from
-`qwen35_gguf_runner.py:19000`, i.e. `verify()` rejects the INT32_MAX padding the harness
-submits for rows past the prompt tail. That sweep - rows 4 -> 32, since K3 is 4 rows per lane
-and C8 is 32 - is the only cheap way to separate launch overhead from real kernel work in the
-MTP verify path, and it is currently impossible, which is why the per-row verify cost stayed
-open on 2026-08-30. Fix: have the harness submit a real prompt long enough to fill the block
-(`--prompt-ids` sized to `block_rows + prompt`), or give `verify()` an explicit padding token
-it accepts. Also consider a `--roctx-sdk auto` that degrades to plain kernel tracing when no
-pip ROCm SDK exists - see the profiling traps section in `docs/RDNA3-TUNING-GUIDE.md`.
-
 ## gfx1100 prefill route booleans are duplicated and inert-by-pooling (2026-08-30)
 
 ### Resolved 2026-08-30: the branch is live, this section's premise is superseded
@@ -11692,3 +11562,26 @@ lengths, first/following proposals, repeat/reset, failed priming, cancellation
 and teardown. Verify the public fixed contract separately. A changed hidden
 convention is a numerical/policy change and needs its applicable task and
 execution-profile gate; this disposition changes neither convention nor API.
+
+### R0392 — Optional marker-free profiler interface
+
+The grouped-prefill dead-route premise is obsolete: gfx1100/gfx1151 declare
+packed prefill, mixed-length compatible rows group, and serial execution
+consumes the other selected chunks. Failed unexecuted peers are explicitly
+rewound; completed buffered chunks are not. The worklog slug/title defects and
+verifier INT32_MAX padding are also closed. The server benchmark now emits
+independent per-arm route-counter snapshots and deltas. Closure evidence lives
+in the R0392 sweep worklogs; these are not reasons to keep this entry open.
+
+**Decision needed:** add a wrapper-level marker-free profiling mode when the
+ROCTX library is absent, or keep the explicit child-mode procedure in
+`RDNA3-TUNING-GUIDE.md`. Kernel tracing itself needs no ROCTX; marker-scoped
+attribution does. Do not silently replace a requested marker-scoped result with
+an unscoped trace. The wrapper's explicit missing-library error is not a
+runtime model capability restriction.
+
+**Clearing action:** either adopt the documented child-mode procedure as the
+interface, or implement an explicit no-marker mode that records its scope and
+uses the matching rollup. Test missing/present libraries, explicit override,
+child forwarding and trace-marker matching. Coordinate shared discovery with
+R0393; preserve each wrapper's dependency-path and measurement contracts.

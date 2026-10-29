@@ -145,6 +145,22 @@ def test_new_check_and_render_keep_root_navigation_tracked(tmp_path: Path) -> No
     assert (repo / "WORKLOG.md").read_bytes() == root_before
 
 
+@pytest.mark.parametrize("title,topic", (
+    ("Port " + "qwen3 " * 12 + "tail", "Port " + "qwen3 " * 12 + "tail"),
+    ("Check [rows >= 8]; keep punctuation", "check [rows >= 8]; keep punctuation"),
+))
+def test_new_cli_long_or_punctuated_title_round_trips(tmp_path: Path, title: str, topic: str) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo, title=title, topic=topic)
+    _git(repo, "add", str(entry.relative_to(repo)))
+    assert _tool(repo, "check").stdout.strip() == "worklog: 1 valid entry"
+    assert f"# {title}" in entry.read_text()
+    frontmatter = entry.read_text().split("---", 2)[1]
+    normalized = next(line.split(": ", 1)[1] for line in frontmatter.splitlines() if line.startswith("topic: "))
+    assert len(normalized) <= 48 and not normalized.endswith("-")
+    assert f"-{normalized}-" in entry.name
+
+
 def test_rapid_new_calls_allocate_unique_paths(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     first = _new_entry(repo, title="First", topic="first")

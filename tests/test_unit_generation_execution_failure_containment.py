@@ -185,6 +185,63 @@ def test_prefill_failure_contained_for_a_packed_group_leaves_other_work_serving(
     ]
 
 
+@pytest.mark.parametrize("prompt_length", (3, 4, 5, 11))
+def test_grouped_and_serial_prefill_consume_every_selected_scheduler_chunk(prompt_length) -> None:
+    from collections import Counter
+    from hipengine.generation.batch_scheduler import ResidentBatchScheduler
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+
+    scheduler = ResidentBatchScheduler(capacity=3)
+    prompts = (tuple(range(10, 10 + prompt_length)), (70, 71), (80, 81, 82))
+    ids = tuple(scheduler.submit(prompt, max_new_tokens=1) for prompt in prompts)
+    scheduler.admit_pending()
+    consumed = {rid: [] for rid in ids}
+    groups = []
+    rows = {
+        rid: SimpleNamespace(
+            request_id=rid, prompt_ids=prompt, request=SimpleNamespace(deadline_at=None),
+            lease=SimpleNamespace(session=SimpleNamespace(request_id=rid)), native_greedy=True,
+            slot=None, prefill_tokens_seen=0, prefix_reused_tokens=0,
+            mtp2_candidate_budget=0, incremental_prefill=None, prefill_ms=0.0,
+            prefill_chunk_count=0,
+        ) for rid, prompt in zip(ids, prompts, strict=True)
+    }
+
+    def grouped(token_rows, *, sessions, **kwargs):
+        assert kwargs["full_prompt_lengths"] == [len(row) for row in token_rows]
+        groups.append(tuple(session.request_id for session in sessions))
+        for session, chunk in zip(sessions, token_rows, strict=True):
+            consumed[session.request_id].extend(chunk)
+        return [SimpleNamespace(token_id=777) for _ in sessions]
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner.generator = SimpleNamespace(target_arch="gfx1100", dms_metadata_path=None)
+    runner.packed_prefill_max_rows = 8
+    runner._route_counts = Counter()
+    runner._execution_stepped_request_ids = set()
+    runner._execution_committed_request_ids = set()
+    runner._row = rows.__getitem__
+    runner._packed_execution_owner = lambda _session: SimpleNamespace(prefill_batch_native=grouped)
+    runner._begin_mtp2_prompt_streaming = lambda eligible: [None] * len(eligible)
+    runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    runner._refresh_prefix_cache = lambda _row: None
+    runner._finish_native_prefill = lambda row, *args, **kwargs: setattr(row, "slot", object())
+    runner._prefill_native_row = lambda row: consumed[row.request_id].extend(row.prompt_ids)
+    runner._prefill_native_chunk = lambda row, chunk, **kwargs: consumed[row.request_id].extend(chunk)
+
+    while scheduler.has_prefill_work():
+        work = scheduler.next_prefill_batch_work(chunk_size=4, max_rows=3)
+        runner.prefill_batch(work, commit=True)
+        for rid in work.request_ids:
+            assert scheduler.active_batch.requests[rid].next_prompt_index == rows[rid].prefill_tokens_seen
+
+    assert groups == [ids if prompt_length <= 4 else ids[1:]]
+    assert runner._route_counts["native_full_prefill_groups"] == 1
+    for rid, prompt in zip(ids, prompts, strict=True):
+        assert tuple(consumed[rid]) == prompt
+        assert rows[rid].prefill_tokens_seen == len(prompt)
+
+
 @pytest.mark.parametrize("resumable", (False, True))
 @pytest.mark.parametrize("prompt_length", (3, 4, 5, 11))
 def test_contained_prefill_replays_only_the_unexecuted_peer_chunks(prompt_length, resumable) -> None:

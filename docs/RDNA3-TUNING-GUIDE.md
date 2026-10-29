@@ -576,11 +576,11 @@ The wrapper is single-backend by construction; do not pass `--backend` from a
 driver script, and treat argparse exit code 2 in a sweep log as "every arm
 in this file failed", never as a null result.
 
-**`block-verify` rejects its own padding.** With `--block-rows` beyond the
-prompt tail the child raises `ValueError: token_id 2147483647 outside
-[0, 248320)` from the runner's `verify()`. A row sweep is the only cheap way
-to separate launch overhead from real kernel work in the MTP verify path, so
-the padding contract must be fixed first — see `docs/REFACTOR.md`.
+**`block-verify` uses valid repeated current tokens, not padding.** The child
+fills every requested block row with the current token, then uses the block's
+last output as the next block's input. A row sweep therefore need not fit inside
+the original prompt tail. This is a verifier-shape diagnostic, not a sampled
+proposal chain or a speculative acceptance measurement.
 
 **`block-verify` on a Q4/Q5 repack needs captured-prefill GDN state.** The
 verify path picks F32 activations unless `use_prefill_gdn_capture` or

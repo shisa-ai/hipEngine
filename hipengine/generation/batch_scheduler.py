@@ -1299,10 +1299,11 @@ class ResidentBatchScheduler:
 
         The scheduler advances every selected prompt cursor atomically before
         publication. Runner capability decides whether those rows execute in one
-        native prefill call; incompatible/native misses must fall back before
-        this method is selected. ``ready`` excludes rows the runner cannot start
-        this tick, so a deferred row is never advanced by a cursor update it
-        did not execute.
+        native prefill call or through per-request chunk execution. A successful
+        runner call must consume every selected chunk; a contained failure names
+        unexecuted surviving rows so the loop can defer their cursor advances.
+        ``ready`` excludes rows the runner cannot start this tick, so a deferred
+        row is never selected or advanced.
 
         ``needs_activation`` marks a row whose first chunk opens the runner's
         single prompt-activation claim. A row that will be prefilled in more
