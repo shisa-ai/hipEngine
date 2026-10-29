@@ -9075,23 +9075,23 @@
       "start_line": 6885,
       "end_line": 6900,
       "sha256": "4c03a9c46acba4190a3e2e380889a04ea4ec1c5316beed1299ba5359c9436122",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-host-embedding-diagnostic-ownership",
+      "evidence": ["Verified actual host seed helper/cache/upload and F32-residual-only block caller; BF16 embedding still runs. Added synthetic Q6 FP32 row-order/duplicate/empty/precision tests, negative token and dequant-width errors, cached-reader exact upload and closed-owner checks. Native attribution refuses combined residual/host-embedding diagnostics. Preserved July traces and later September embedding-precision isolation artifact; no runtime/default/kernel change or new quality/performance claim. Corrected ENVS distinction from host placement and bottom-referred retirement/device-replacement decision to R0305. Worklog: worklog/entries/20261029T011856.387160Z-cleanup-refactor-r0305-f32-embedding-804005.md."],
       "subitems": [
         {
           "line": 6886,
           "text": "- Added 2026-07-03. Default-off verifier diagnostic that seeds the target",
-          "status": "pending"
+          "status": "resolved-host-seed-reader-and-upload-contracts"
         },
         {
           "line": 6890,
           "text": "- Purpose: isolate llama.cpp MTP parity for layer-0 target input construction.",
-          "status": "pending"
+          "status": "resolved-precision-oracle-and-history-preserved"
         },
         {
           "line": 6895,
           "text": "- Remove / promote when: remove once the projection/dequant split is resolved",
-          "status": "pending"
+          "status": "deferred-bottom-R0305-host-or-device-precision-owner"
         }
       ]
     },

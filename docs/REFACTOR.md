@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING`
-- Added 2026-07-03. Default-off verifier diagnostic that seeds the target
-  verifier F32 residual buffer from host-dequantized `token_embd.weight` rows
-  when `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL=1` is enabled. The BF16 token
-  embedding launch still runs and still populates the BF16 mirror path.
-- Purpose: isolate llama.cpp MTP parity for layer-0 target input construction.
-  The first task-9/cycle-3/row-2 run closed `hidden_in` and
-  `attn_norm_f32_scratch` to exact llama.cpp parity, but it did not flip the
-  bonus token; the remaining split moved to F32-input projection/dequant and
-  later residual/LM-head amplification.
-- Remove / promote when: remove once the projection/dequant split is resolved
-  and this host-side diagnostic is no longer needed. Promote only by replacing
-  it with a real device-side F32 embedding path if full-suite llama-compat
-  evidence shows it is required and non-regressive; do not keep host dequant/H2D
-  in a timing route.
-
 ## `--record-draft-stage-stats`
 - Added 2026-07-02. Bench flag that records compact FP32 summaries for resident
   MTP draft sub-stage tensors and dense MTP K/V cache rows in
@@ -10878,6 +10862,35 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0305 — Diagnostic F32 token-embedding seed ownership
+
+`HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING` selects host dequantization of
+requested `token_embd.weight` rows only within enabled F32 residual block
+verification. The BF16 device embedding still runs. A cached GGUF reader feeds
+ordered FP32 rows into `_verify_hidden_f32_a`; duplicate token IDs remain
+duplicate rows, without an intermediate BF16 rounding. This is separate from
+R0239's host/device placement control. Native-state attribution explicitly
+refuses the combined F32-residual/F32-host-embedding diagnostic; it is not a
+GPU timing route.
+
+The pinned sweep source and July layer-0 trace artifacts preserve the original
+parity finding. The later
+`benchmarks/results/2026-09-07-zbook-ud-embedding-precision.json` records another
+precision-isolation use. Neither establishes that all current diagnostic
+callers can be deleted or that host lookup belongs in production timing.
+
+**Decision needed:** retain this explicit host precision oracle or replace it
+with a device-side FP32 embedding implementation before retiring the selector.
+Keep reader/seed ownership distinct from the broader R0287 arithmetic plan.
+
+**Clearing action:** migrate seed construction, F32-residual caller, trace and
+native-attribution contracts together. Run
+`tests/test_unit_qwen35_gguf_verify_f32_token_embedding.py`, token-embedding
+parity and attribution tests. Any replacement must compare requested/duplicate
+rows at FP32 precision, preserve the BF16 mirror and actual block inputs, then
+exercise real verify/commit/reset and cleanup. A changed-arithmetic production
+default needs its execution-profile gates; a host-only trace is not that gate.
 
 ### R0304 — Legacy selected-SiLU/down comparison ownership
 

@@ -451,7 +451,7 @@ F32 flags select per-stage diagnostic arithmetic to localize divergence.
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER` | unset | Replays the post-norm router read in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8` | unset | Replays the selected-Q8 post-norm read in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8` | unset | Replays the shared-Q8 post-norm read in F32. |
-| `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING` | unset | Replays token-embedding lookup in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING` | unset | Host-dequantized F32 verifier embedding seed, only within enabled F32 residual verification. The BF16 device embedding still runs; not a GPU timing route or host-placement selector. |
 | `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` | unset | Replays the attention input norm in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` | unset | Replays linear-attention projections in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` | unset | Replays the SSM alpha/beta gates in F32. |
