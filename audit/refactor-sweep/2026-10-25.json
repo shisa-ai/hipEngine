@@ -11268,23 +11268,23 @@
       "start_line": 8606,
       "end_line": 8622,
       "sha256": "d048356119723da895acd5b637e094359bf5284f668ce814ff7d55128f2ee7fd",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-already-repaired-bounded-global-score-workspace",
+      "evidence": ["Already fixed by572130145: native prefill switches from shared scores to owned global workspace before64KiB LDS overflow, uses bounded query batches and rejects missing/undersized workspace before launch. Existing September worklog records server call-chain RED and repaired kernel/oracle/profile evidence. Current52focusedpass8HIPskip; TheRock gfx1151 complete long-prefill GPU file11pass including shared-parent bit parity, CPU oracle, ragged/permuted rows, repeat/workspace-batch invariance and81920 fixture. Removed stale ledger section; no new code/kernel/default/perf claim and no inference of full-model long-context capacity. Worklog worklog/entries/20261029T070927.955081Z-cleanup-refactor-r0383-prefill-lds-73ddb8.md."],
       "subitems": [
         {
           "line": 8608,
           "text": "- Found 2026-08-22 during RF1 long-context qualification:",
-          "status": "pending"
+          "status": "resolved-existing-repair-572130145-current-gpu-checks-pass"
         },
         {
           "line": 8616,
           "text": "- Fix direction: bound or bucket the dynamic LDS by an actual workgroup-budgeted",
-          "status": "pending"
+          "status": "resolved-existing-repair-572130145-current-gpu-checks-pass"
         },
         {
           "line": 8619,
           "text": "- Removal trigger: once the native long prefill route is either capped to a",
-          "status": "pending"
+          "status": "resolved-existing-repair-572130145-current-gpu-checks-pass"
         }
       ]
     },
