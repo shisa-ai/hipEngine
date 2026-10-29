@@ -3675,7 +3675,7 @@ def run_qwen4_exp_gr_read(
         )
     if decode_rows:
         # Preserve the scalar fallback when the row-independent fused kernels
-        # do not cover the geometry or their rollback switch is selected.
+        # do not cover the geometry or weight layout.
         if pending_write is not None:
             _qwen4_exp_gr_flush_write(pending_write, residual_ptr, rows, branches,
                 hidden, stream=stream, runtime=active_runtime)
@@ -5142,8 +5142,7 @@ def _qwen4_exp_gr_decode_fused_enabled(
     """Three-launch hyper-connection read at one row.
 
     Bit-identical to the six-launch chain at rows == 1, where that chain runs
-    the 256- and 128-thread pack8 GEMVs. ``HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED=0``
-    restores the chain; see docs/REFACTOR.md.
+    the 256- and 128-thread pack8 GEMVs. Other geometries retain the chain.
     """
     return (
         rows == 1
@@ -5152,8 +5151,6 @@ def _qwen4_exp_gr_decode_fused_enabled(
         and (4 * hidden) % 32 == 0
         and low_rank > 0
         and low_rank % 32 == 0
-        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED", "1")
-        not in {"", "0", "false", "False"}
     )
 
 

@@ -15,7 +15,9 @@ pytestmark = pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not
 @pytest.mark.parametrize("rows", [17, 65, 257, 2052])
 def test_bulk_cache_and_final_carry_match_full_scalar(sidecar, rows, mode, monkeypatch):
     if mode == "device_unfused":
-        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED", "0")
+        from hipengine.runtime import qwen4_exp_runner
+        monkeypatch.setattr(qwen4_exp_runner, "_qwen4_exp_gr_decode_fused_enabled",
+                            lambda *args: False)
     if mode == "device_wmma":
         from hipengine.runtime import gguf_linear
         monkeypatch.setattr(gguf_linear, "_wmma_prefill_session_enabled", True)

@@ -13018,8 +13018,8 @@
       "start_line": 10746,
       "end_line": 10791,
       "sha256": "73076d712db0956f184cbe36fec40d0ff571e0cbcb79a4235f9beb37341d8768",
-      "status": "pending",
-      "evidence": [],
+      "status": "in-progress",
+      "evidence": ["GR fused decode opt-out retired with strict chain preserved for unsupported inputs and explicit oracles. Full CPU bundle, four GPU chain parity cases, public fused-route observation with stale key, and migrated live unfused MTP oracle passed. Worklog: worklog/entries/20261029T222540.137763Z-cleanup-cleanup-refactor-r0454-gr-cff751.md. GDN rowsplit and MoE warp selectors remain open."],
       "subitems": [
         {
           "line": 10753,
@@ -13034,7 +13034,7 @@
         {
           "line": 10764,
           "text": "- `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` (default on, `0` restores the chain):",
-          "status": "pending"
+          "status": "removed-opt-out"
         }
       ]
     },

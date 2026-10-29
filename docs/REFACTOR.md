@@ -3445,10 +3445,11 @@ default. All were measured on a Radeon 8060S on the canonical `code-p512` /
   (`selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out`, Q4_K): the
   warp-per-expert routed-expert kernels. Down 124 -> 73 us, gate/up 128 ->
   114 us per layer; decode 21.47 -> 22.65 -> 23.00 tok/s at p512.
-- `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` (default on, `0` restores the chain):
-  the one-row hyper-connection read as three launches instead of six,
-  bit-identical (`tests/test_gpu_qwen4exp_gr_read_decode.py`); decode 22.99
-  -> 23.43 at p512 and 22.58 -> 23.00 at p4096.
+- The one-row hyper-connection read uses three launches instead of six and is
+  bit-identical (`tests/test_gpu_qwen4exp_gr_read_decode.py`). Its environment
+  opt-out is retired; unsupported geometry or weight layout still uses the
+  strict chain. The live MTP test selects that chain with an explicit test
+  override rather than a process-wide control.
 
 The layer2 production gate on the three reduction-order routes together
 (commit `542787507`): mean/p95/p99/max KL 6.36e-4/3.64e-3/8.07e-3/9.88e-3,
@@ -3469,9 +3470,8 @@ decode, but top-1 445/450 against the 0.99 floor, `gate-b.json`; reverted),
 and a two-launch read that rebuilt the norm in every block (bit-identical,
 1.4% slower).
 
-Removal conditions: declare the three selected variants in the plan with
-strict scopes; delete `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` and the
-six-launch one-row branch once a release has shipped on the fused read.
+Removal condition: declare the three selected reduction-order variants in
+the plan with strict scopes.
 
 ## Qwen4Exp direct F16 hyper-connection launches (`HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`)
 
