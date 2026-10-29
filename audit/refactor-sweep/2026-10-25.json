@@ -11814,23 +11814,25 @@
       "start_line": 9347,
       "end_line": 9389,
       "sha256": "46550bdffb713a7d5013f36ce1bcebc9c4605ba284eb6ef8976ed839dd1a6827",
-      "status": "pending",
-      "evidence": [],
+      "status": "repaired-direct-int8-dtype-handoffs-deferred-quality-evaluation",
+      "evidence": [
+        "Real GGUF qgate producer is BF16; sequential/flash/WMMA/Hadamard direct leaves all consume FP16 gates and Hadamard returns FP16 into BF16 projection input. Add in-place boundary casts, no kernel/default/workspace change. 12 numerical RED cases then 15 boundary cases incl BF16 control pass; focused bundle93pass;15 actual GPU leaf/CPU-reference checks pass; public gfx1151 production UD-Q4_K_M no-mirror sequential/flash/tail4 requests repeat IDs and drain allocations. Earlier public attempt used wrong diagnostic token_ids attribute and is not green. CPU bundle/docs/audit evidence in worklog/entries/20261029T143522.416005Z-cleanup-refactor-r0404-direct-int8-dtypes-9a1059.md. Remove obsolete speed/capacity history; preserve old artifacts but stop attributing their entire failure to INT8 arithmetic before repaired evaluator rerun. Move only calibrated post-repair evaluation to bottom."
+      ],
       "subitems": [
         {
           "line": 9359,
           "text": "- **Speed**: the sequential kernel is superseded by the GQA-grouped flash",
-          "status": "pending"
+          "status": "historical-kernel-choices-preserved-no-new-performance-claim"
         },
         {
           "line": 9369,
           "text": "- **Numerics**: the campaign REJECTED the route for default-on. Against",
-          "status": "pending"
+          "status": "dtype-adapters-repaired-calibrated-evaluation-deferred"
         },
         {
           "line": 9377,
           "text": "- **Capacity**: the route remains an opt-in capacity lever with the",
-          "status": "pending"
+          "status": "explicit-direct-execution-preserved-historical-capacity-not-rerun"
         }
       ]
     },

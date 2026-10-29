@@ -3425,49 +3425,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## 2026-09-09 GGUF direct-INT8 prefill attention — speed fixed, numerics rejected, opt-in capacity lever
-
-`HIPENGINE_GGUF_INT8_PREFILL_DIRECT` ports the PARO route's
-`streaming_direct` structure to the GGUF resident INT8 layers: prefill
-attention reads the retained INT8 store directly (BF16-output kernel
-family), the BF16 oracle pair is never allocated, and the lifetime plan
-resolves to `chunk_outer_direct_int8` with chunk-sized hidden planes.
-
-Follow-ups to the original screen (which was speed-blocked at 164.2 tok/s
-and mis-baselined: the 761.6 oracle control requires the
-`--public-ar-profile` WMMA projection path):
-
-- **Speed**: the sequential kernel is superseded by the GQA-grouped flash
-  kernel `qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans`
-  (one block per (kv head, query row), one warp per q head of the
-  six-head group, 32-token K/V tiles cooperatively staged into LDS with
-  16-byte vector loads, online softmax in registers; no score workspace
-  or split-K partials at any context length; 24/4/256 geometry).
-  `HIPENGINE_GGUF_INT8_PREFILL_KERNEL` selects flash (default) or
-  sequential. Harness A/B at 8,192 tokens: oracle 767.4 / direct+flash
-  552.5 tok/s (72%); the remaining 1.39x needs a WMMA score GEMM
-  (bf16 fragments are exact for int8 K and the already-BF16-rounded Q).
-- **Numerics**: the campaign REJECTED the route for default-on. Against
-  the BF16 reference at 4,096 tokens (no-mirror configuration): the
-  oracle route measures 0.003 mean row-KL; the direct route measures
-  0.215 (max 6.4, top-1 to 0.71) — 70x the smoke ceiling — identically
-  for the flash and sequential kernels, so the drift is the INT8-read
-  prefill arithmetic itself, not the kernel. The BF16 oracle pair is
-  what preserves prefill quality on the pure-INT8 route. The gate stays
-  default OFF permanently unless the read precision changes.
-- **Capacity**: the route remains an opt-in capacity lever with the
-  quality cost measured above; the flash kernel makes the ladder
-  practical (163,840 tokens completes; see the gate artifact).
-
-Related latent bug found and documented: the pre-existing
-`direct_hadamard_int8` GGUF branch is dead code whose fp16 output dtype
-also mismatches the BF16 `full_gated` consumer - it shares the fixed out
-type but remains unexercised; do not enable it without its own e2e gate.
-A second latent route bug fixed alongside: dense H5120 Q4_K_M auto
-full-attention chunks (4,096 rows below the 52K threshold) overflowed
-the 1,024-row scratch cap (positions-buffer copy error at 8K/16K
-prompts); both chunk resolutions now clamp to the row cap.
-
 ## Slot-local INT8 oracle prefill AOTriton admission flag
 
 - Added 2026-09-09. `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` (default
@@ -11254,3 +11211,37 @@ isolation, proof configuration and `docs/ENVS.md` together. Run
 then public generation through both affected routes confirming actual plane
 ownership, output agreement and complete teardown. This disposition changes no
 allocation policy and does not reopen completed alias promotion.
+
+### R0404 — Direct INT8 prefill evaluation after dtype repair
+
+`HIPENGINE_GGUF_INT8_PREFILL_DIRECT=1` selects oracle-free retained-INT8
+prefill where no BF16 mirror is present; the default keeps the oracle route.
+The direct lifetime plan uses chunk-sized hidden storage. Per-token/head
+attention selects `flash`, `wmma` or `sequential`; automatic flash selection
+requires its supported geometry and FP32 scales. Hadamard-group32 uses its
+separate direct leaf.
+
+The GGUF gate producer writes BF16, while all these direct leaves consume an
+FP16 gate. The runner now converts that buffer in place before attention and
+converts the Hadamard leaf's FP16 output back to BF16 before the projection.
+CPU numerical boundary tests, GPU CPU-reference comparisons and repeated public
+gfx1151 sequential/flash/tail-four requests pass. The Hadamard branch is not dead
+code. No kernel arithmetic or default is changed by the adapter repair.
+
+**Remaining evaluation:** the historical direct-prefill rejection was measured
+before these adapters. It records an observed failure, not proof that the
+entire discrepancy is inherent INT8 quantization error. Preserve the artifact,
+but rerun the calibrated same-prefix evaluator before making a new quality
+claim or changing the arithmetic default. Start with
+`python scripts/execution_profile_gguf_int8_direct_prefill_gate.py --model "$GGUF_MODEL" --backend hip_gfx1100 --kernel flash --min-prompt-rows 4096 --decode-steps 24 --repeat-runs 3 --use-wmma-prefill --use-gemv-decode --json /tmp/int8-direct-prefill-repaired.json`
+in the ROCm environment. Complete the execution-profile category/heldout,
+shape, repeat/isolation and task gates, including separate tail-four coverage;
+this per-token evaluator does not establish Hadamard quality. Preserve explicit
+direct execution and the oracle path while resolving that numerical choice.
+
+Historical evidence:
+`../benchmarks/results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-gate.json`
+and
+`../benchmarks/results/2026-08-15-qwen38-27b-int8-kv-quality-frontier-runtime-blocked.json`.
+Repair and current validation:
+`../worklog/entries/20261029T143522.416005Z-cleanup-refactor-r0404-direct-int8-dtypes-9a1059.md`.

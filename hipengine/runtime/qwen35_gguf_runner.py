@@ -177,7 +177,13 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
     qwen35_write_paged_kv_mixed_value_bf16_prompt_spans,
     qwen35_write_paged_kv_mixed_value_bf16_spans,
 )
-from hipengine.kernels.hip_gfx1100.convert import bf16_to_f32, build_cast, f32_to_bf16
+from hipengine.kernels.hip_gfx1100.convert import (
+    bf16_to_f32,
+    bf16_to_fp16,
+    build_cast,
+    f32_to_bf16,
+    fp16_to_bf16,
+)
 from hipengine.kernels.hip_gfx1100.fused import (
     gguf_add_rmsnorm_bf16_f32_weight,
     gguf_add_rmsnorm_f32_bf16_f32_weight,
@@ -4733,6 +4739,18 @@ class Qwen35GGUFFullStackRunner:
                 "paged_max_context_len must be positive and within the prefill scratch capacity"
             )
 
+        if direct_int8_prefill:
+            # Direct INT8 leaves consume an FP16 gate; GGUF projections and
+            # qgate splitting produce BF16. This row-local buffer is dead
+            # after attention, so adapt it in place without new workspace.
+            bf16_to_fp16(
+                scratch.full_gate.ptr,
+                scratch.full_gate.ptr,
+                rows * cfg.head_count * cfg.key_length,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
         if direct_hadamard_int8:
             qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans(
                 scratch.full_query.ptr,
@@ -5005,6 +5023,17 @@ class Qwen35GGUFFullStackRunner:
                 split_count=scratch.full_attn_split_count,
                 stream=stream,
                 library=paged_attn_library,
+                runtime=runtime,
+            )
+        if direct_hadamard_int8:
+            # The Hadamard leaf also returns FP16, unlike the per-token
+            # BF16-output leaves and the following GGUF projection consumer.
+            fp16_to_bf16(
+                scratch.full_gated.ptr,
+                scratch.full_gated.ptr,
+                rows * cfg.head_count * cfg.key_length,
+                stream=stream,
+                library=cast_library,
                 runtime=runtime,
             )
         if gpu_stage_recorder is not None:
@@ -30250,12 +30279,13 @@ def _gguf_int8_prefill_direct_enabled() -> bool:
     per-token/head scales) directly instead of a temporary BF16 oracle
     pair, and the INT8 prefill lifetime plan models zero oracle cost so
     the route plans chunk-sized hidden storage instead of full-capacity
-    layer_outer planes. Prefill numerics change (attention reads
-    dequantized INT8 K/V), so the gate is default OFF pending the
-    production-profile numerics campaign; the PARO route treats the
-    direct path as the memory-pressure/long-context option for the same
-    reason (it is also slower than the AOTriton BF16 oracle bridge).
-    Env "1" opts in; env "0" is the explicit rollback if promoted.
+    layer_outer planes. GGUF adapts its BF16 gate to the direct leaves'
+    FP16 gate ABI, and the Hadamard leaf's FP16 output back to the BF16
+    projection consumer. The pre-adapter direct-prefill quality failure
+    remains a reason not to change the arithmetic default in this repair;
+    a new calibrated comparison must separate remaining INT8-read drift
+    from the historical dtype defect. Env "1" selects direct prefill;
+    "0" keeps the oracle route.
     """
 
     return _env_flag(_GGUF_INT8_PREFILL_DIRECT_ENV, False)
