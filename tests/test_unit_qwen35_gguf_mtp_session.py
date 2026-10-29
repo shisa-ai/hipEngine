@@ -161,6 +161,62 @@ def test_ineligible_cached_target_graph_never_launches_device_proposal() -> None
     assert calls == [("ready", 3, 4)]
 
 
+@pytest.mark.parametrize("budget", range(1, 8))
+@pytest.mark.parametrize("context_limit", [95, 1023, 1280, 1793])
+@pytest.mark.parametrize("end_delta", [-1, 0, 1])
+def test_device_handoff_boundary_prevents_proposal_submission(
+    budget: int, context_limit: int, end_delta: int,
+) -> None:
+    """The real readiness check runs before the provider can mutate its state."""
+
+    class Graph:
+        def launch_ineligibility_reason(self, _target, **kwargs):
+            if int(kwargs["position"]) + int(kwargs["rows"]) > self.context_limit:
+                return "target_graph_context_bucket_miss"
+            return None
+
+    graph = Graph()
+    graph.context_limit = context_limit
+    position = context_limit - budget - 1 + end_delta
+    target = SimpleNamespace(position=position)
+    setattr(target, f"_native_spec_b{budget}_target_graph_n2", graph)
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    verifier.closed = False
+    verifier.backend = "hip_gfx1151"
+    verifier.target_verify_mode = "native"
+    verifier.target = target
+    verifier.last_device_proposal_fallback_reason = "stale"
+    context = SimpleNamespace(root_positions=(position,))
+    launched = []
+    result = object()
+
+    class Provider:
+        def launch_device_proposal(self, proposal_context, *, candidate_budget):
+            launched.append((proposal_context, candidate_budget))
+            return result
+
+    proposal = mtp_module._maybe_launch_device_proposal(
+        verifier, Provider(), context,
+        candidate_budget=budget, remaining_decode=budget + 1,
+        return_cycle_logits=False,
+    )
+
+    if end_delta < 0:
+        assert proposal is result
+        assert launched == [(context, budget)]
+        assert verifier.last_device_proposal_fallback_reason is None
+    else:
+        assert proposal is None
+        assert launched == []
+        assert verifier.last_device_proposal_fallback_reason == (
+            "target_graph_proposal_handoff_boundary_miss"
+            if end_delta == 0 else "target_graph_context_bucket_miss"
+        )
+    assert target.position == position
+
+
 def test_native_target_rows_follow_implementation_ladder_and_context_limit(monkeypatch) -> None:
     monkeypatch.setattr(mtp_module, "backend_package_capability", lambda *_a: 95)
     assert mtp_module._effective_target_verify_mode("native", rows=4) == "native"

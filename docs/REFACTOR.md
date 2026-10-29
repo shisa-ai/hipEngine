@@ -3430,22 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF1 1024 target/proposal sentinel blocker
-
-- Reconfirmed during the 2026-08-23 Concurrency2 merge against pristine
-  `origin/main@f5cb6ffe6`: the real dense Q4_K_M MTP crossing test can publish
-  the int32 sentinel `2147483647` at the 1024 target/proposal boundary. This is
-  pre-existing in upstream RF1, not introduced by C2. Running the node also
-  poisons the following physical GPU test, so the crossing node is skipped with
-  automatic long-context MTP remaining fail-closed.
-- The short-context device-proposal readiness path now rejects the final graph-
-  bucket handoff row before launching proposal work
-  (`target_graph_proposal_handoff_boundary_miss`). Ordinary host-proposal target
-  graphs, eager fallback, and qualified short cycles remain available.
-- Removal trigger: repair and independently qualify cross-stream proposal-result
-  publication at the 1024 boundary, rerun the skipped crossing test in a fresh
-  process, then the complete MTP E2E/long-context/lifecycle/API/load bundle.
-
 ## Compact DMS device payloads opt-in (C2-7 U6)
 
 - `DMSCompactBackend(..., device_payloads=True)` or
@@ -11679,3 +11663,44 @@ at split-boundary straddles and unrelated contexts; assert staged/scalar call
 counts, full outputs/state, every acceptance prefix, reset/reuse, failure
 rollback and teardown. Native graph/submission economics remain separate work.
 This disposition changes no route, default, arithmetic or admission behavior.
+
+### R0385 — Observed target/proposal sentinel crossing repair
+
+The original dense Qwen3.6 Q4_K_M crossing test remains unconditionally skipped:
+`test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback` in
+`tests/test_live_qwen35_gguf_mtp_e2e.py`. The August merge reproduced invalid
+INT32_MAX tokens and corruption of the following GPU case on pristine upstream.
+That is an observed failure, not absent benchmark evidence. Keep
+`target_graph_proposal_handoff_boundary_miss`: the readiness check prevents a
+device-only proposal at the final cached bucket row before provider mutation.
+Host-materialized proposals and otherwise supported target routes still run.
+The old assertion that all automatic long-context MTP is disabled is not the
+current routing contract; R0384 describes current target-graph ownership.
+
+September's private FP32 Conv handoff, separate serial journal and by-value
+proposal metadata upload repaired independently exercised Qwen3.8 failures.
+Those results do not independently clear the original Qwen3.6 crossing or
+prove that its cause was exclusively cross-stream publication. Do not delete
+the guard or lift the skip by inference from those fixes.
+
+**Remaining repair:** reproduce the original crossing in an isolated process
+on a compatible, idle device; trace proposal payload publication, stream order,
+Conv/GDN scratch and target/journal ownership. Because the recorded failure can
+corrupt later GPU work, do not unskip it in a shared broad-suite process.
+A failing reproduction must retire before any following health check or reset;
+coordinate recovery if the device remains unhealthy.
+
+**Clearing action:** first migrate the skipped node into a bounded subprocess
+regression that can explicitly execute the original body with its HIP/model
+preconditions intact. Run that isolated regression against the original local
+model and both sides of 1024, plus unrelated contexts and B1–B7, before removing
+the skip or handoff guard. Compare host/device proposals, every acceptance
+prefix, payload validity, Conv/GDN/KV/cursors, next-cycle continuity, reset,
+cancellation and teardown; follow it with a fresh-process health request.
+Then run the complete MTP E2E, long-context, lifecycle/API/load packet and an
+actual `LLM.generate()` request confirming the intended path. The long-context
+harness's host-proposal mode alone cannot certify device handoff. Keep
+`tests/test_unit_qwen35_gguf_mtp_session.py` boundary/submission checks,
+`tests/test_live_gguf_native_spec_cycle.py` launch/binding checks and the delayed
+metadata-upload test in `tests/test_live_qwen35_gguf_nextn_provider.py`.
+This sweep adds host guard coverage only; it does not claim the crossing fixed.

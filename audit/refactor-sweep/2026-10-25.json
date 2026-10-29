@@ -11320,23 +11320,23 @@
       "start_line": 8639,
       "end_line": 8654,
       "sha256": "ece3c9a25cdd2ed4f51de8a7a80a95b0b060e799808da4ba1ecb59659e429ab0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-observed-sentinel-crossing-isolation-repair",
+      "evidence": ["Moved R0385 to bottom with isolated reproduction and clearing work. Original Qwen3.6 crossing node remains skipped after recorded sentinel/next-GPU corruption; later Qwen3.8 scratch/by-value repairs are not an independent rerun. Removed stale blanket automatic-long-context assertion; retained prelaunch handoff guard, no production change. Added real readiness-to-launch host coverage across B1-B7 and short/long/unrelated bucket extents with before/at/after boundary; 84 new cases pass, 414 focused pass1skip28deselected; docs/audit/worklog/whitespace gates pass. No original-crossing GPU or public-model repair claim. Worklog worklog/entries/20261029T073138.453465Z-cleanup-refactor-r0385-handoff-sentinel-e79420.md."],
       "subitems": [
         {
           "line": 8641,
           "text": "- Reconfirmed during the 2026-08-23 Concurrency2 merge against pristine",
-          "status": "pending"
+          "status": "deferred-isolated-original-crossing-reproduction"
         },
         {
           "line": 8647,
           "text": "- The short-context device-proposal readiness path now rejects the final graph-",
-          "status": "pending"
+          "status": "guard-preserved-host-submission-coverage-expanded"
         },
         {
           "line": 8651,
           "text": "- Removal trigger: repair and independently qualify cross-stream proposal-result",
-          "status": "pending"
+          "status": "deferred-cause-localization-and-repair-packet"
         }
       ]
     },
