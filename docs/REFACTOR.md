@@ -3446,15 +3446,15 @@ from this section: the mixed-length case is handled by subsetting, so a wave of 
 lengths still yields many one-row groups - 6-9% of decode steps at each width run below the logical
 width - and that residue is what still has no owner.
 
-`hipengine/generation/qwen35_gguf.py:214-215` defines `_GGUF_PUBLIC_USE_WMMA_PREFILL = True` and
-`_GGUF_PUBLIC_USE_GEMV_DECODE = True` as defaults for `_resident_session_scope`, but 11 call sites
-pass `use_wmma_prefill=True` literally, including the warmup pools that create the sessions the AR
-route later reuses. Measured consequence: flipping the public default changes nothing observable -
-two probe arms gave 0.2950 s vs 0.2956 s at 42 tokens and 0.7115 s vs 0.7121 s at 285 - because the
-measured session is the pooled one, constructed from a literal `True`. Two follow-ups: delete the
-booleans and keep one route owner, or route every call site through the single default. Until then,
-any experiment that toggles prefill route by the public default is silently vacuous, which is how
-this nearly got reported as "GEMV prefill is neutral".
+Resident AR/MTP pools, direct streaming and the fallback AR session now resolve
+prefill through `_resident_session_wmma_prefill_default()` at acquisition time.
+The separate `_GGUF_PUBLIC_USE_WMMA_PREFILL` constant is removed. The diagnostic
+choice is part of the pool key; selecting another route cannot reuse a session
+configured for the first. Empty and unrecognised values raise, while unset
+keeps the shipping WMMA route. An explicit per-call choice still wins. Tests
+cover both direct and shared-runner streaming, fallback scopes and pool reuse.
+The dense speculative `mtp_target_dense` route retains its explicit True:
+its prefill policy is not part of this diagnostic seam.
 
 Measured 2026-08-30, the GEMV decode half is worse than pooling-inert: it is inert **at the
 consumer**. `qwen35_gguf_runner.py:13292` resolves the preference into

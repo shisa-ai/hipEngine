@@ -695,7 +695,6 @@ def _gguf_allocation_failure(exc: BaseException) -> bool:
     message = str(exc).lower()
     return "out of memory" in message or "oom" in message
 
-_GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
 from hipengine.runtime.gguf_linear import (
     mtp_serving_target_use_wmma_prefill as _mtp_serving_target_use_wmma_prefill,
@@ -748,12 +747,9 @@ def _mtp_serving_target_wmma_for(generator: object) -> bool:
         ),
     )
 
-# Diagnostic escape hatch for the resident sessions' prefill route (docs/REFACTOR.md, "All-GEMV
-# small-row prefill A/B"). Both shipping call sites below passed `use_wmma_prefill=True` literally,
-# and `HIPENGINE_GGUF_WMMA_PREFILL` is opt-in-only, so no bench or diagnostic could take the WMMA
-# prefill route away - `setattr` misses it too because the constant is bound as a default argument.
-# This resolver is read at session-acquire time (once per session, not per token) and is a
-# *diagnostic* only: unset means the production route, unchanged.
+# Resolve the resident prefill diagnostic at session acquisition, before pool
+# lookup, so a changed choice cannot reuse a session with the other route.
+# Unset keeps the shipping WMMA route; an explicit malformed value raises.
 _GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV = "HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL"
 _WMMA_PREFILL_FALSY = frozenset({"0", "false", "no", "off"})
 _WMMA_PREFILL_TRUTHY = frozenset({"1", "true", "yes", "on"})
@@ -766,9 +762,10 @@ def _resident_session_wmma_prefill_default() -> bool:
     unchanged" is how a route A/B becomes a null result with no clue why (measured the hard way on
     2026-08-30 with HIPENGINE_GGUF_Q4K_ROWTILE, whose value the server session overrode).
     """
-    raw = (os.environ.get(_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV) or "").strip().lower()
-    if not raw:
+    value = os.environ.get(_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV)
+    if value is None:
         return True
+    raw = value.strip().lower()
     if raw in _WMMA_PREFILL_TRUTHY:
         return True
     if raw in _WMMA_PREFILL_FALSY:
@@ -3328,9 +3325,11 @@ class Qwen35GGUFBringupGenerator:
         *,
         shared_runner: Qwen35GGUFFullStackRunner | None,
         pool_name: str,
-        use_wmma_prefill: bool | None = _GGUF_PUBLIC_USE_WMMA_PREFILL,
+        use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = _GGUF_PUBLIC_USE_GEMV_DECODE,
     ):
+        if use_wmma_prefill is None:
+            use_wmma_prefill = _resident_session_wmma_prefill_default()
         if shared_runner is None:
             session_kwargs: dict[str, Any] = {
                 "backend": self.backend,
@@ -3851,23 +3850,14 @@ class Qwen35GGUFBringupGenerator:
             raise ValueError("GGUF prompt tokenization produced no token IDs")
         plan = _gguf_sampler_plan(request)
         shared_runner = self._prepared_shared_runner()
-        session_kwargs = (
-            {
-                "backend": self.backend,
-                "runtime": shared_runner.runtime,
-                "shared_runner": shared_runner,
-                "use_wmma_prefill": _GGUF_PUBLIC_USE_WMMA_PREFILL,
-                "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
-                **self._prepared_session_kv_kwargs(),
-            }
-            if shared_runner is not None
-            else {
-                "backend": self.backend,
-                "use_wmma_prefill": _GGUF_PUBLIC_USE_WMMA_PREFILL,
-                "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
-                **self._prepared_session_kv_kwargs(),
-            }
-        )
+        session_kwargs = {
+            "backend": self.backend,
+            "use_wmma_prefill": _resident_session_wmma_prefill_default(),
+            "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
+            **self._prepared_session_kv_kwargs(),
+        }
+        if shared_runner is not None:
+            session_kwargs.update(runtime=shared_runner.runtime, shared_runner=shared_runner)
         with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
             self._configure_native_sampler(session)
             if plan.mode is SamplingMode.GREEDY_FAST:

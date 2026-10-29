@@ -411,7 +411,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | retired | No longer read | Private-c1 weight allocation follows backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
 | `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA` | retired | No longer read | Private-c1 decode scratch follows the backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
 | `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | gfx1151: `1024` | Rollback seam | Overrides the short-prompt c1 batch-attention workgroup; the calibrated 1024-thread variant passed the execution-profile c1 threads gate and the exact 256-thread leaf stays the strict fallback. |
-| `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` | unset | Diagnostic | Session-acquire-time diagnostic resolver that forces the WMMA-prefill route without touching the production session default. Unrecognised values raise rather than silently reading as route-unchanged. |
+| `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` | unset | Diagnostic | Session-acquire-time WMMA-prefill selector shared by resident pools, direct streaming and fallback AR. Unset keeps the shipping WMMA route; empty or unrecognised values raise. An explicit per-call route still wins. |
 
 ### Resident MTP draft dense-Q8 diagnostic controls
 

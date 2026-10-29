@@ -39,7 +39,7 @@ def test_falsy_values_take_the_wmma_route_away(monkeypatch, value):
     assert module._resident_session_wmma_prefill_default() is False
 
 
-@pytest.mark.parametrize("value", ["garbage", "2", "none", "onoff"])
+@pytest.mark.parametrize("value", ["", "  ", "garbage", "2", "none", "onoff"])
 def test_unrecognised_values_fail_closed(monkeypatch, value):
     """A typo that reads as "route unchanged" turns a route A/B into an unexplained null."""
     module = _module()
@@ -104,6 +104,87 @@ def test_out_of_scope_literals_are_still_named():
         "the single remaining literal belongs to _generate_dense_speculative_mtp_detailed; if the "
         "count moved, a route was either wired (update the guard) or newly pinned"
     )
+
+
+@pytest.mark.parametrize("shared", (False, True))
+@pytest.mark.parametrize("value,expected", (("0", False), ("1", True)))
+def test_streaming_uses_the_same_prefill_selector_as_pooled_ar(monkeypatch, shared, value, expected):
+    from types import SimpleNamespace
+    from hipengine.generation.registry import GenerationRequest
+
+    module = _module()
+    cls = module.Qwen35GGUFBringupGenerator
+    generator = object.__new__(cls)
+    generator.model_path = "/tmp/fake.gguf"
+    generator.backend = "hip_gfx1100"
+    generator.weight_index = SimpleNamespace()
+    generator.model_plugin = SimpleNamespace()
+    generator.tokenizer = SimpleNamespace(encode=lambda text: [10, 11])
+    generator._prepare_kv_policy = lambda request: None
+    generator._prepared_session_kv_kwargs = lambda: {}
+    runner = SimpleNamespace(runtime=object()) if shared else None
+    generator._prepared_shared_runner = lambda: runner
+    generator._configure_native_sampler = lambda session: None
+    generator._stream_greedy = lambda *args, **kwargs: iter(())
+    seen = []
+
+    class Session:
+        def __init__(self, *args, **kwargs):
+            seen.append(kwargs)
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(module, "Qwen35GGUFResidentSession", Session)
+    monkeypatch.setenv(ENV, value)
+    list(generator.stream_detailed(GenerationRequest(
+        prompts=("hello",), max_tokens=1, temperature=0, top_p=1, ignore_eos=True,
+    )))
+    assert len(seen) == 1
+    assert seen[0]["use_wmma_prefill"] is expected
+    assert seen[0]["use_gemv_decode"] is True
+    assert seen[0].get("shared_runner") is runner
+
+
+@pytest.mark.parametrize("shared", (False, True))
+def test_fallback_session_scope_resolves_prefill_at_call_time(monkeypatch, shared):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    module = _module()
+    cls = module.Qwen35GGUFBringupGenerator
+    generator = object.__new__(cls)
+    generator.model_path = "/tmp/fake.gguf"
+    generator.backend = "hip_gfx1100"
+    generator._prepared_session_kv_kwargs = lambda: {}
+    generator._configure_session = lambda session: None
+    generator._release_shared_session = lambda *args: None
+    seen = []
+
+    @contextmanager
+    def session(*args, **kwargs):
+        seen.append(kwargs)
+        yield object()
+
+    def acquire(runner, **kwargs):
+        seen.append(kwargs)
+        return object(), ("fixture",), False
+
+    monkeypatch.setattr(module, "Qwen35GGUFResidentSession", session)
+    generator._acquire_shared_session = acquire
+    runner = object() if shared else None
+    for value, expected in (("0", False), ("1", True)):
+        monkeypatch.setenv(ENV, value)
+        with generator._resident_session_scope(shared_runner=runner, pool_name="ar"):
+            pass
+        assert seen[-1]["use_wmma_prefill"] is expected
+        assert seen[-1]["use_gemv_decode"] is True
+
+    monkeypatch.setenv(ENV, "invalid")
+    with generator._resident_session_scope(shared_runner=runner, pool_name="ar", use_wmma_prefill=False):
+        pass
+    assert seen[-1]["use_wmma_prefill"] is False
 
 
 @pytest.mark.parametrize("pool_name", ["ar_batch", "continuous_ar_dynamic_kv", "mtp_target", "compact_dms_request"])

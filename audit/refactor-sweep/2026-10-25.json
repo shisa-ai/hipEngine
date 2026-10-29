@@ -11523,8 +11523,8 @@
       "start_line": 8903,
       "end_line": 9152,
       "sha256": "1f2480b65d50febbffcdfa3544c7ec25bf90fb5b2fefaad9867a50facbae63f1",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-prefill-selector-unified",
+      "evidence": ["Fixed remaining prefill owner gap: direct/shared streaming and fallback AR now use call-time resident resolver; remove duplicate public WMMA constant; reject explicit empty diagnostic values. Preserve shippingTrue, explicit per-call overrides, existing pool-key partition and dense speculative policy. RED6cases then190focused pass/1skip, CPU deterministic bundle bg-716, public gfx1151 startup unset/0/1 streaming selects effectiveTrue/False/True with two output tokens and zero live teardown; docs/audit/test-tier/whitespace pass. Live service slots retain startup choice rather than reconfigure on env mutation. Remaining R0393 subitems still open. Worklog worklog/entries/20261029T094616.035151Z-cleanup-refactor-r0393-prefill-selector-b49dd9.md."],
       "subitems": [
         {
           "line": 8905,
