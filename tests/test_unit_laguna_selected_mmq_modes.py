@@ -19,6 +19,7 @@ from hipengine.runtime.laguna_moe import (
     ("mmq128x32_d8_f32_wavecols", resolve_laguna_selected_gate_up_mode),
     ("mmq64x32_d4_f32_wavecols_q4", resolve_laguna_selected_down_mode),
     ("mmq64x32_d4_f32_wavecols_direct_q4", resolve_laguna_selected_down_mode),
+    ("mmq128x32_d8_f32_wavecols_direct_doublebuf", resolve_laguna_selected_gate_up_mode),
 ])
 def test_legacy_mmq_comparison_modes_remain_explicit_not_defaults(backend, mode, resolver):
     assert resolver(backend, mode) == mode
@@ -42,9 +43,10 @@ def test_row_vector_primitives_remain_separate_from_session_mode_retirement():
 
 
 @pytest.mark.parametrize("rows", [3, 6, 17])
-@pytest.mark.parametrize("direct", [False, True])
+@pytest.mark.parametrize("gate_suffix", ["", "_direct", "_direct_doublebuf"])
 @pytest.mark.parametrize("q6_rows", [32, 64])
-def test_pair_decode_and_direct_modes_preserve_staging_and_launch_ownership(monkeypatch, rows, direct, q6_rows):
+def test_gate_comparisons_preserve_staging_and_launch_ownership(monkeypatch, rows, gate_suffix, q6_rows):
+    direct = bool(gate_suffix)
     calls = []
     plan = SimpleNamespace(
         hidden_size=8, expert_count=11, top_k=3, routed_scaling_factor=2.5,
@@ -67,7 +69,7 @@ def test_pair_decode_and_direct_modes_preserve_staging_and_launch_ownership(monk
         ("_launch_laguna_shared_rows", "shared"),
     ):
         monkeypatch.setattr(laguna_moe, name, lambda *a, _label=label, **kw: calls.append((_label, a, kw)) or True)
-    gate = "mmq128x32_d8_f32_wavecols" + ("_direct" if direct else "")
+    gate = "mmq128x32_d8_f32_wavecols" + gate_suffix
     down = (
         "mmq64x64_d4_f32_q6_wavecols_direct_q4" if q6_rows == 64
         else "mmq64x32_d4_f32_wavecols" + ("_direct_q4" if direct else "_q4")
@@ -83,6 +85,7 @@ def test_pair_decode_and_direct_modes_preserve_staging_and_launch_ownership(monk
     assert gate_kw["rowvec"] is down_kw["rowvec"] is True
     assert gate_kw["wave_cols"] is down_kw["wave_cols_q4"] is True
     assert gate_kw["direct_wave_decode"] is direct
+    assert gate_kw["double_buffer_activation"] is gate_suffix.endswith("_doublebuf")
     assert down_kw["direct_wave_decode_q4"] is (direct or q6_rows == 64)
     assert gate_kw["lanes"] == down_kw["lanes"] == rows * plan.top_k
     assert gate_kw["residual_passes"] == down_kw["residual_passes"] == 1

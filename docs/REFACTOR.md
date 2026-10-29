@@ -3430,32 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q4 gate/up activation-double-buffer candidate selector
-
-- Added 2026-07-26 for the exact
-  `mmq128x32_d8_f32_wavecols_direct_doublebuf` session candidate. It
-  ping-pongs the 1.5 KB activation tile, removes one of two barriers per K32,
-  preserves resident bytes and arithmetic order, and is BF16 byte-exact.
-  The actual natural-M512 inclusive leaf improves **6.995 -> 6.907 ms
-  (-1.258%)**.
-- If clean complete-state A/B is positive, make the double-buffer body the
-  gfx1151 package default and remove the redundant positive selector after its
-  clean publication; retain the current direct body only as the explicit
-  synchronization rollback through one later expert-family checkpoint. If the
-  complete-state A/B is negative, remove the double-buffer export, selector,
-  harness mode, and template branch immediately.
-- The first trigger is satisfied: clean pp512 improves **505.970 -> 507.405
-  tok/s (+0.284%)** with **5/7** pair wins and complete-state exactness, and
-  the package default is promoted. Remove the redundant positive selector and
-  A/B harness after clean selector-unset publication; keep the prior direct
-  body as rollback through one subsequent expert-family checkpoint.
-- The publication trigger is now satisfied: selector-unset production is
-  **505.084 tok/s** median / **504.984 tok/s** minimum, matched A/B remains
-  **+0.284%**, and cached tracing cuts gate/up **318.559 -> 314.378 ms**.
-  Remove the redundant positive selector and one-purpose A/B harness in the
-  next cleanup unit; keep the direct synchronization rollback until the next
-  retained expert-family checkpoint.
-
 ## Laguna cached-only attention scheduling rollback
 
 - Added 2026-07-26 with the gfx1151
@@ -10613,12 +10587,13 @@ contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
 
-### R0313 / R0314 / R0315 / R0316 / R0318 — Laguna legacy MMQ selector migration
+### R0313 / R0314 / R0315 / R0316 / R0318 / R0320 — Laguna legacy MMQ selector migration
 
 `mmq128x32_d8_f32_rowvec`, `mmq64x32_d4_f32_rowvec`,
 `mmq128x32_d8_f32_wavecols`, `mmq64x32_d4_f32_wavecols_q4` and
-`mmq64x32_d4_f32_wavecols_direct_q4` are explicit
-comparison modes, not defaults. Current package defaults select later
+`mmq64x32_d4_f32_wavecols_direct_q4` plus gate/up
+`mmq128x32_d8_f32_wavecols_direct_doublebuf` are explicit comparison modes,
+not defaults. Current package defaults select later
 wave-column modes; the low-level `rowvec` staging primitives also serve those
 later modes and Q6 comparisons, so they are not removable with the old names.
 The pair-decode and direct peers share row-vector/wave-column staging and one
@@ -10627,6 +10602,16 @@ lane count, stream/runtime and fused shared-combine output ownership for both.
 The Q6 row32/row64 comparison preserves those same caller contracts. Its GPU
 fixture separately packs interleaved qmicro bytes for row32; the current
 planar-qmicro resident is not interchangeable with that reference.
+The double-buffer gate/up peer changes only the double-buffer flag relative
+to direct consumption in the tested caller; common staging, residual pass,
+lane/stream/runtime and combine destination remain unchanged.
+
+`scripts/laguna_gate_doublebuf_ab.py` is no longer a one-purpose harness.
+Its `--mode LABEL=RUNTIME_MODE` arms also select down modes, Q6 WMMA prefetch
+and Q4/Q6 precomputed sums. Preserve those comparisons, mode ordering,
+complete-state digest capture and child cleanup when migrating its default
+pair. Do not delete the generalized harness or shared double-buffer primitive
+with the old session name.
 
 `tests/test_live_laguna_moe_gpu.py` still uses the gate/up mode across the full
 Q4/Q6 comparison chain and directly compares row-vector/pair-decode down
@@ -10645,8 +10630,9 @@ a local validation-resource blocker, not an admission restriction or a reason
 to disable the existing default.
 
 **Clearing action:** provide an implemented Laguna model artifact, remove the
-legacy names from resolver/fusion/config tables, and preserve the low-level
-row-vector reference in the Q4/Q6 GPU fixture. Run selected-MMQ, runner,
+legacy names from resolver/fusion/config tables, migrate the generalized
+comparison harness's default pair, and preserve the low-level row-vector and
+double-buffer references in the Q4/Q6 GPU fixture. Run selected-MMQ, runner,
 publication and grouped-prefill contracts plus the full MoE quant-oracle nodes;
 then exercise `LLM.generate()` at short, boundary-neighbor and unrelated prompt
 sizes, recording selected defaults, output parity and cleanup. Keep historical

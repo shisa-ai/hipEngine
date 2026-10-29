@@ -9465,28 +9465,28 @@
       "start_line": 7167,
       "end_line": 7192,
       "sha256": "2f50ad608dd88072979aeac654e1d4810528fffcca3a70d90fb16cbc13ae22c4",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-consolidated-laguna-legacy-mmq-migration",
+      "evidence": ["Double-buffer session mode remains an explicit/nondefault numerical peer. Real MoE caller tests bind its double-buffer flag against pair/direct peers with common staging, pass count, lane/stream/runtime and output ownership. The supposed one-purpose A/B script now supports generalized down, Q6 prefetch and Q4/Q6 sum arms; parser, exact control mutations, complete-state capture and child cleanup have host tests. Preserve generalized harness and shared primitive; consolidate coordinated default-pair/fixture migration into existing local-public-artifact blocker. 163 focused checks plus docs/audit/tier/compile/whitespace gates pass; no runtime/default/kernel change. Worklog: worklog/entries/20261029T023252.779032Z-cleanup-refactor-r0320-laguna-doublebuf-7989ea.md."],
       "subitems": [
         {
           "line": 7169,
           "text": "- Added 2026-07-26 for the exact",
-          "status": "pending"
+          "status": "resolved-double-buffer-peer-caller-contracts"
         },
         {
           "line": 7175,
           "text": "- If clean complete-state A/B is positive, make the double-buffer body the",
-          "status": "pending"
+          "status": "resolved-later-package-default-no-policy-change"
         },
         {
           "line": 7181,
           "text": "- The first trigger is satisfied: clean pp512 improves **505.970 -> 507.405",
-          "status": "pending"
+          "status": "resolved-generalized-harness-not-one-purpose"
         },
         {
           "line": 7186,
           "text": "- The publication trigger is now satisfied: selector-unset production is",
-          "status": "pending"
+          "status": "deferred-bottom-legacy-mmq-fixture-harness-public-resource"
         }
       ]
     },
