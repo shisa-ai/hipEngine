@@ -12266,58 +12266,58 @@
       "start_line": 9786,
       "end_line": 10046,
       "sha256": "fac8980d9d29b72cbb709d977d9a113d66ec17440fe8cbd8f4ac71a49c41ae92",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-interfaces-and-diagnostics",
+      "evidence": ["Retired obsolete promotion/window narrative and historical histogram from live ledger; preserve original Git/artifact evidence. Deferred control, census and diagnostic-retention decisions moved to bottom; manifest work deduplicated under R0460; remaining library reader migration explicit. No runtime or kernel changes. Worklog: worklog/entries/20261029T184908.042620Z-cleanup-refactor-r0426-wide-prefill-fcf10e.md."],
       "subitems": [
         {
           "line": 9844,
           "text": "### Precedence over the f16 WMMA family is a decision, not a line number",
-          "status": "pending"
+          "status": "resolved-precedence-deferred-diagnostic-control-retirement"
         },
         {
           "line": 9882,
           "text": "### The default is per lane, and the route cannot see the lane",
-          "status": "pending"
+          "status": "triaged-preserve-profile-owned-arithmetic-defaults"
         },
         {
           "line": 9892,
           "text": "| Pack | Shape-eligible Q8_0 dense | Block layers | Inside 16-47 |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9893,
           "text": "| --- | ---: | --- | ---: |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9894,
           "text": "| Qwen3.6-35B-A3B-UD-Q4_K_M | 259 | 0-40 | **25** |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9895,
           "text": "| Qwen3.8-27B-UD-Q4_K_M | 106 | 0-64 | 26 (10 with >128 outputs) |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9896,
           "text": "| Qwen3.8-27B-UD-Q4_K_S | 99 | 0-64 | 24 (3 with >128 outputs) |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9897,
           "text": "| mtp-Qwen3.8-Flash-Next-Q8_0 | 18 | 48 only | 0 |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9921,
           "text": "### The variant manifest does not name env-scoped post-binder routes",
-          "status": "pending"
+          "status": "deduplicated-under-open-R0460"
         },
         {
           "line": 9938,
           "text": "### The launch census has a per-module coverage boundary",
-          "status": "pending"
+          "status": "deferred-census-interface-decision"
         },
         {
           "line": 9953,
@@ -12363,7 +12363,7 @@
         {
           "line": 9982,
           "text": "### The row-bucketed iu8 repair pair is measurement surface, not a route",
-          "status": "pending"
+          "status": "deferred-diagnostic-retention-decision"
         },
         {
           "line": 9997,
@@ -12373,7 +12373,7 @@
         {
           "line": 10007,
           "text": "### The 32-row MoE M-tile variants are registered but unused",
-          "status": "pending"
+          "status": "deferred-diagnostic-retention-decision"
         }
       ]
     },

@@ -3427,228 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## 2026-09-17 Q8_0 wide-row dense prefill: a route for an unreachable kernel
-
-`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` routes Q8_0 F32/F32 prefill linears with
-`rows > 256` and `in_features % 64 == 0` to `dense_wide256_f32_f32_out`. Before
-this the kernel was registered but nothing in `hipengine/runtime/` or
-`hipengine/dispatch/` referenced it, so no dispatch path could select it: it
-could not be gated end-to-end, benchmarked in the engine, or promoted. That is
-the state to avoid repeating — a registered kernel with no selector is invisible
-to every gate we own.
-
-The route is the shipped default for `gguf_ud_q4_k_xl` on `hip_gfx1151` at
-layers 16-47: a caller that names no profile resolves to `production`, whose
-binder sets this flag, so no user action and no env var is involved. The
-selector's own default stays off, so a process that binds nothing keeps the
-exact chain — the unbound direction is always the exact route, never the f16
-one. Both halves are pinned by
-`test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel`, which
-joins the default resolution, the binder, and the selector's decision, because
-pinning them in three separate tests let a break in the middle go unnoticed.
-
-The reason the default cannot simply live in the selector is that the selector
-cannot see the lane: `gguf_q8_0` is the tensor quant key in every pack that
-stores Q8_0 dense tensors, so a lane-agnostic default-on would claim lanes whose
-envelopes were measured against the exact chain. See "The default is per lane"
-below for the measured set.
-
-The exact coltile parents remain the registered strict fallback and the sole
-owner of the sub-256-row path, so the selector declining is always a fall back
-to an exact route.
-
-`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` narrows it to a layer scope, added
-2026-09-17 after review found the first cut was a plain boolean: with no scope
-the route covers all 48 layers, which is the 0-47 scope the sibling f16 route
-already fails, so the flag could only express a configuration known to fail. A
-weight with no layer index (`token_embd`, `output`, both Q8_0 in this model but
-outside the blocks) is outside any scope and the route declines it.
-
-Removal condition: run the calibrated production envelope in
-`docs/EXECUTION-PROFILES.md` against this route at the deepest admissible layer
-scope. **Met and executed 2026-09-17 at 16-47**: the route passes the 12-case
-envelope with strict/candidate logits digests byte-identical to the certified WMMA
-route's, so the production binder now binds it at that scope for
-`gguf_ud_q4_k_xl`. What is left of this entry is the flag itself: once nothing
-needs to bisect against the wide route, delete `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE`
-and let the layer scope alone decide, keeping the coltile fallback registered. If
-the promotion is ever reverted, delete the selector and the flag rather than
-leaving a dead default-off route - the kernel's measured 6.74x over the
-production dispatch is only worth keeping if it is reachable under a gate.
-
-`_variant_scoped_library` was extracted at the same time. Two launch paths had
-independently resolved caller-supplied libraries, one keyed by quant alone. That
-is a live trap for any variant with its own shared object: `dense_wide256` is
-exported from `gguf_q8_0_dense_wide.so` while the coltile family lives in the
-q8_0 gemv library, so a quant-only lookup hands the wide kernel a library that
-does not export its symbol. Both paths now share the helper. Fold the remaining
-`libraries.get(<key>.quant)` call sites for pair and fused launches into it when
-one of those families next gains a variant with its own object.
-
-### Precedence over the f16 WMMA family is a decision, not a line number
-
-`_wmma_prefill_dispatch` runs earlier in the launch chain than
-`_q8_dense_wide_dispatch` and rewrites a claimable parent to
-`wmma_<parent>`/`wmma_raw`. Until 2026-09-17 the wide selector required the
-exact coltile parent, so on the promoted production default - which binds
-`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` to layers 16-47 for `gguf_ud_q4_k_xl` - it
-declined in its first condition, before its own gates, its layer scope or its
-registration were consulted. Its certified window and the WMMA route's window
-were the same window, so no configuration could run it: 134 eligible dispatches
-in layers 0-15 passed the gates and fell to the scope check, and layers 16-47
-never reached the selector's first print. The route now claims the rewritten
-parent in its own scope, and the layer scope is the authority on where it runs.
-Verified end to end on `code-p512`: layers 16-47 run
-`hipengine_gguf_q8_0_dense_wide256_f32_f32_out` (264 roles) where the named
-default runs `hipengine_gguf_q8_0_wmma_prefill_f32_f32_out` (same 264 roles),
-layers 0-15 keep the exact coltile chain in both, and the two arms produce the
-same `logits_sha256` (`e15dce79…`) - the wide kernel is a retiling of the
-certified f16 arithmetic, not a new arithmetic class. Its end-to-end value at
-that scope is measured too: on the `code` category at 4K it saves 5.43 s against
-the exact chain where the WMMA default saves 4.44 s, and 5.4% against the default
-at both 1K and 4K, with the two routes indistinguishable at 512 (three
-interleaved arms, one process, two processes agreeing within 0.1 pp -
-`benchmarks/results/2026-09-17-q8-dense-route-ab/`).
-
-Removal trigger: once the calibrated envelope passes at the promoted scope,
-make the wide route the default there and retire the f16 WMMA dense route for
-this quant (keeping the registered exact coltile fallback). Do not keep both
-families selectable for the same layers once one is the default: that is the
-contention this fix had to resolve. **Executed 2026-09-17**: the envelope passed
-with a bit-identical candidate digest to this route's
-(`benchmarks/results/2026-09-17-q8-dense-wide-16-47-gate/`), the production
-binder binds the wide route at 16-47 and no longer binds
-`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`, and the promoted default was verified to
-launch `dense_wide256` on the 264 layer-16-47 roles with zero `wmma_prefill`
-launches. What is left is deleting this route's selector and env var once
-nothing needs to bisect against it.
-
-### The default is per lane, and the route cannot see the lane
-
-Promotion means the fast path is the default for the lane it was certified on,
-and for `gguf_ud_q4_k_xl` on `hip_gfx1151` that is now true without any caller
-action. It does not mean a lane-agnostic selector default, and the measured
-reason is worth keeping written down. `_q8_dense_wide_dispatch` sees the tensor
-quant key, and every pack that stores Q8_0 dense tensors reports `gguf_q8_0`, so
-flipping its default on claims all of them. A GGUF header scan of the packs on
-this box (2026-09-17, tensor-type histogram, no model load) gives the set:
-
-| Pack | Shape-eligible Q8_0 dense | Block layers | Inside 16-47 |
-| --- | ---: | --- | ---: |
-| Qwen3.6-35B-A3B-UD-Q4_K_M | 259 | 0-40 | **25** |
-| Qwen3.8-27B-UD-Q4_K_M | 106 | 0-64 | 26 (10 with >128 outputs) |
-| Qwen3.8-27B-UD-Q4_K_S | 99 | 0-64 | 24 (3 with >128 outputs) |
-| mtp-Qwen3.8-Flash-Next-Q8_0 | 18 | 48 only | 0 |
-
-The Qwen3.6 pack is the case that decides it: its Q8_0 dense tensors are
-`attn_qkv` (2048x8192), `attn_gate` (2048x4096) and `ffn_{gate,up,down}_shexp`,
-which is real prefill work on 25 of its 41 layers, and that lane's production
-envelope was certified against the exact coltile parents. The Qwen3.8-27B packs
-are mostly `ssm_alpha`/`ssm_beta` (5120x48) with a handful of `attn_k`/`attn_v`
-(5120x1024), so the exposure there is smaller but not zero. The MTP pack's single
-block is layer 48, outside the window, so the drafter is unaffected either way.
-
-Keep the unbound default on the exact chain. The asymmetry is the argument: a
-lane that binds nothing today gets exact arithmetic, so a missing binding is a
-slow measurement, while a lane-agnostic default-on would make a missing binding a
-silently different arithmetic composition in lanes that believe they are exact -
-the same misattribution class as the census coverage gap below.
-
-Extension trigger: a lane joins the default by running the calibrated envelope
-(`benchmarks/results/2026-09-17-q8-dense-wide-16-47-gate/` is the protocol and
-the template) and then binding the route in that lane's production plan. The next
-candidate is this model's own `gguf_q4_k_m` plan, which still binds `0`; its pack
-is not on this box, so the envelope has not been run and the binding stays off.
-A lane whose envelope fails keeps the exact chain at that scope rather than a
-narrower window nobody measured.
-
-### The variant manifest does not name env-scoped post-binder routes
-
-The Qwen4Exp production manifest's `prefill_exact_q8_f32_coltile` selection still
-names `coltile8_rowbatch4_wave_scale_f32_f32_out` for the Q8 dense prefill role,
-while the binder has routed layers 16-47 to `wmma_prefill_f32_f32_out` since
-2026-09-17 and to `dense_wide256_f32_f32_out` after this promotion. Both gate
-artifacts therefore record the same `profile_manifest_sha256`
-(`35e57360e648bcc8…`) for three different arithmetic compositions, and only their
-`route.surface` distinguishes them. Removal trigger: mirror the layer-windowed
-precedent this package already has (`prefill_rows_ge16_hk16_hv32_48_d128_layers27_47`
-exists in both the strict and production plans) by adding a
-`prefill_rows_gt256_layers16_47_q8_f32_dense_wide` scope to both plans, so the
-manifest hash identifies the composition again. Do it in a unit that re-runs the
-16-47 envelope under the new manifest, since a manifest change after a gate means
-the gate did not cover the new identity. Until then, read the composition from
-`route.surface` in the artifact, never from the manifest hash alone.
-
-### The launch census has a per-module coverage boundary
-
-`launch_census.record_launch` was called only from `gguf_k_gemv`. The f16 WMMA
-prefill family (`gguf_q8_0_prefill`) and the wide kernel
-(`gguf_q8_0_dense_wide`) did not record, so the census reported "2144 coltile
-launches and zero `wmma_prefill` launches" on the promoted default and the
-2026-09-17 promotion entry read that as evidence the Q8 dense linear route was
-not where its +4.542 s came from. The instrument was blind to the family under
-question: the 134 roles it did see were exactly the layers the WMMA route had
-not claimed. Both families now record. Removal trigger: move the record call to
-the registry launch boundary so coverage is a property of the registry rather
-than of which module remembered to call it, and keep the coverage list in the
-census docstring until then. Never read an empty census row as "did not run"
-while coverage is per-module.
-
-### The row-bucketed iu8 repair pair is measurement surface, not a route
-
-`gguf_q4_k_selected_dual_risk_bitmap_kernel` and
-`gguf_q4_k_selected_dual_row_bitmap_repair_bf16_kernel` (with
-`risk_bitmap_words` / `risk_bitmap_bytes` and their registry entries) are
-bit-identical to the shipped per-slot repair and **22% slower** on the admitted
-gate/up shape: 3.5054 ms against 2.8685 ms at the measured 93,342-risk queue,
-despite moving 186 MB instead of 612 MB. The repair is bound by memory-level
-parallelism, so traffic reduction does not buy time
-(`benchmarks/results/2026-09-17-qwen4exp-iu8-repair-cost-structure/`). They stay
-because the packet that records the dead end uses them, and because the bitmap
-pass is the natural input to a pipelined repair. Removal trigger: no packet or
-test refers to them, or a pipelined/async-copy repair lands that supersedes the
-whole family.
-
-### The 32-row MoE M-tile variants are registered but unused
-
-`selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out` for both `gguf_q4_k`
-(gate/up) and `gguf_q5_1` (down) instantiate the routed-MoE main kernels at a
-32-row M tile: an 8-warp block covering 32 rows x 128 columns as two row groups
-x four column groups, so each lane still owns 16 rows and the register footprint
-matches the 16-row owner (VGPR 208, scratch 0). They are bit-identical to the
-16-row owners and cut the *modeled* expert-weight reads 1.67-1.82x, but they are
-**1.3-2.2x slower** because the tile's shared read misses cache: measured DRAM
-read traffic falls 6.3% instead of the modeled 45%
-(`benchmarks/results/2026-09-22-moe-j32-tile/`). Nothing dispatches to them; only
-the cost packet and the RED test call them.
-
-They stay because they are the substrate for the design that would actually bank
-the traffic: stage the K chunk's quantized weights in LDS once per block and
-have all 8 warps read them from shared memory, instead of each lane gathering
-its own column's blocks from global. That removes the redundant read instead of
-hoping for cache reuse, and it is the same change that would let a taller tile
-pay at all.
-
-Size the staging from the quant, not from a round number. A 128-column x 256-K
-chunk is **24 KB** for Q5_1 down (256/32 x 24 B x 128) and **18 KB** for Q4_K
-gate/up (one 144-byte superblock per column x 128), not 32 KB. With the
-activation staging the kernel already holds (32,384 B at `TILE_ROWS=32`:
-`lds_q8a` 26,112 + `lds_da` 3,072 + `lds_sumq8a` 3,072 + `lds_row_atrisk` 128),
-a 256-K Q5_1 chunk totals 56,960 B of the 65,536 B gfx11 workgroup budget - it
-fits with 8.4 KB spare. A 128-K chunk halves the weight tile to 12,288 B for
-20.4 KB of headroom, enough to double-buffer the staging against the MMA loop.
-
-This path is **bit-exact** and does not need an arithmetic change: the staged
-bytes are the same Q5_1 codes read in the same order into the same iu8 WMMA and
-the same Kahan/at-risk repair, and only the address the lane reads from changes.
-The GR family's closure to arithmetic change therefore does not apply to it.
-Do not port MMB's BF16 operands along with it: `LLAMA_MMB_BF16W=1` is the part
-of the comparator's win we deliberately do not gate. See
-`benchmarks/results/2026-09-27-moe-down-lds-weight-staging/`.
-
-Removal trigger: the LDS weight-staging variant lands and passes the same
-bit-identity gate, or no packet or test refers to the 32-row entry points.
-
 ## Full-attention context leaf: superseded fixed256 route
 
 `qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans` and its
@@ -11146,3 +10924,72 @@ This review changes no runtime behavior. The historical variable count and
 script census are not a current inventory; their original text remains in Git
 history. Source review and guard checks:
 `../worklog/entries/20261029T184203.938095Z-cleanup-refactor-r0425-binder-conflicts-b4ac19.md`.
+
+### R0426 — Wide-row prefill controls and diagnostic ownership
+
+The route is implemented and enabled by the composed UD production profile.
+`F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS` covers all block layers; the
+non-composed window is `PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS`. The old
+16–47 description and claim that every short-row request uses the exact
+parent are obsolete. `_q8_dense_wide_dispatch` can admit short rows through
+its separate short-row control, and it accepts the WMMA-rewritten parent
+within the selected layer scope. This review changes neither arithmetic nor
+defaults. Historical promotion results and the pack histogram remain in Git
+history and their original benchmark artifacts.
+
+**Deferred control-interface decision:** retain diagnostic selectors or
+replace them with explicit profile/runner controls. The binder disables
+`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` in the composed production path, but
+`scripts/qwen4exp_dense_route_ab.py` and
+`scripts/qwen4exp_disabled_family_sweep.py` still exercise WMMA and wide-route
+alternatives. Do not delete shared kernels because one profile no longer
+selects them. Migrate those diagnostic callers and the layer-scope gate with
+R0425's owner-field migration before removing
+`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE`, its layer control or the WMMA control.
+Keep the registered exact fallback. Any extension of changed-arithmetic
+production defaults follows `docs/EXECUTION-PROFILES.md`; missing historical
+measurements are not a reason to refuse an explicit evaluation.
+
+**Manifest dependency:** R0460, “Qwen4Exp production routes the manifest does
+not enumerate”, owns the broader dense-wide/GDN/GR scope migration. The
+K10240/N320 tail selection does not describe the whole dense-wide layer window.
+Close that dependency with declared strict/production scopes, binder agreement
+and manifest-identity tests; do not revive the obsolete 16–47-only proposal.
+Until then, an artifact's manifest hash alone does not identify these routes.
+
+**Library-lookup dependency:** ordinary linear launch paths use
+`_variant_scoped_library`; pair and fused paths still contain quant-only
+lookups. Before giving one of those families a separate shared object, route
+its lookup through the helper and test variant-key precedence, quant-key
+fallback and absent overrides through the affected launcher. A common quant
+key does not establish that a library exports every variant's symbol. This
+review does not claim those remaining readers have been migrated.
+
+**Deferred census-interface decision:** keep explicitly bounded per-module
+coverage or define a registry-wide launch record. The three dense families
+listed in `hipengine/kernels/launch_census.py` record launches; routed kernels
+and graph replay are outside that contract. A registry-boundary migration must
+first define role/shape metadata and whether a record counts capture or replay,
+then prevent double counting when removing module-level calls. Preserve
+`tests/test_unit_gguf_launch_census_coverage.py` and add coverage for the newly
+claimed families. An empty row is not evidence that an uncovered family did
+not run.
+
+**Deferred diagnostic-retention decision:** keep or retire the bitmap repair
+and j32 tile experiments together with their callers. Bitmap repair is called
+by `scripts/qwen4exp_repair_cost_structure.py` and
+`tests/test_gpu_qwen4exp_q4_iu8_row_bitmap_repair.py`; the Q4_K/Q5_1 j32
+wrappers are called by `scripts/qwen4exp_moe_main_kernel_cost.py` and
+`tests/test_gpu_qwen4exp_q4_iu8_j32_tile.py`. These are diagnostic consumers,
+not production selection. If retiring them, remove exports, registrations,
+wrappers, kernel instantiations and caller arms together, preserving the
+historical artifacts. If replacing them, first implement and test the
+replacement against the existing exact-repair contract; the proposed LDS
+weight-staging design is not proof of an implemented, exact replacement.
+The historical proposals and measurements remain under
+`benchmarks/results/2026-09-17-qwen4exp-iu8-repair-cost-structure/`,
+`benchmarks/results/2026-09-22-moe-j32-tile/` and
+`benchmarks/results/2026-09-27-moe-down-lds-weight-staging/`.
+
+Source review, individual subitem dispositions and focused checks:
+`../worklog/entries/20261029T184908.042620Z-cleanup-refactor-r0426-wide-prefill-fcf10e.md`.
