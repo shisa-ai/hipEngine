@@ -3430,30 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna packed attention-output rollback
-
-- Added 2026-07-27 as the gfx1151 default candidate behind
-  `LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE`. Qualified
-  dense-initial M128 library PV tiles write directly to head-major context
-  slices; one exact packed-aware softplus gate restores generic BF16 or
-  FP16-via-BF16 output. The old output transpose remains available through
-  the session constructor for clean A/B and rollback.
-- Eleven complete-state pp512 pairs are exact and improve independent medians
-  **645.735 -> 647.920 tok/s (+0.338%)**, but paired-median wall is only
-  **-0.057 ms** with **6/11 wins**. Keep the capability, optional
-  `unpack_output`, generic gate, packed gate, and dedicated A/B harness only
-  through the immediate clean trace. Remove the candidate if the trace does
-  not eliminate all **144** output-transpose launches or if the replacement
-  gate repays the saved sub-window. On admission, preserve the generic route
-  for fallback attention and unmeasured backends, but collapse the dedicated
-  A/B harness after the active 700 campaign.
-- The repaired clean trace satisfies admission: all **144** output transposes
-  are absent, dispatches fall **2,417 -> 2,273**, and transpose plus gate
-  improves **11.240 -> 10.318 ms (-8.20%)**. Keep the generic route because
-  fallback attention and unmeasured backends require generic output; remove
-  only the dedicated A/B harness and constructor override after the active
-  700 campaign no longer needs this bisection point.
-
 ## Laguna gfx1151 head/KV transfer selector
 
 - Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100
@@ -8125,9 +8101,10 @@ packed/wave/block leaf comparisons do not establish this public engagement.
 ### R0274 — Laguna public packed-query producer validation
 
 The producer constructor override and its dedicated comparison arm are removed.
-The separate output-gate diagnostic keeps its original generic-producer control
-through a scoped package override restored on construction success or failure.
-Backend producer selection and generic-row/unsafe-shape fallbacks remain.
+R0336 repairs the separate output-gate diagnostic: both arms now hold the packed
+producer on through a scoped package override restored on construction success
+or failure. Its former generic-producer setting made both output-gate arms
+use generic output. Backend selection and generic-row fallbacks are unchanged.
 
 **Dependency:** the unavailable Laguna checkpoint noted for R0273.
 **Clearing action:** run the R0273 gfx1151 public gate with a dense-initial BLAS
@@ -10310,6 +10287,41 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0336 — Laguna packed-output comparison migration
+
+The enabled gfx1151 output gate consumes contiguous head-major M128 tiles and
+handles generic prefix/suffix rows. Generic output/unpack kernels remain
+required when no packed tiles run. BF16 and FP16-via-BF16 gates are distinct
+output boundaries; neither is retired by removing a comparison control.
+
+The dedicated `scripts/laguna_attention_packed_output_gate_ab.py` still owns
+the resident constructor override. Its former generic-producer setting made
+the candidate a no-op: the runtime only leaves output packed when its query
+is packed. Real `_run_layer_rows()` tests reproduced this for both gate
+precisions and mixed/complete tiles. Both arms now hold the packed-query
+producer on and vary only the output gate. JSON records the changed basis as
+`packed_query_producer_on_output_gate_only`; old generic-producer measurements
+are not evidence for this repaired comparison. R0274's description is corrected.
+
+Host checks cover generic-only rows, packed intervals with generic prefix and
+ragged suffix, pointers/streams, distinct unpack/gate routes, full-state capture,
+child cleanup and package restoration after constructor failure. Production
+runtime, defaults and kernels are unchanged. Historical July publication/trace
+rows remain in the sweep's pinned source and benchmark artifacts.
+
+**Remaining work:** migrate the dedicated comparison to an explicit diagnostic
+owner before retiring the constructor override and script. Preserve generic
+unpack and gate primitives. The local Laguna artifact resource blocker in
+R0273/R0274 prevents actual-weight/public validation here, not execution by a
+user with an available artifact.
+
+**Clearing action:** run packed-output, producer-retirement, runner and long
+context profile host checks; execute the repaired paired comparison with an
+available Laguna artifact and confirm distinct packed/generic gate routes,
+full-state equality and cleanup. Exercise public `LLM.generate()` with varied
+lengths including partial tiles. Then migrate the diagnostic owner and retire
+its redundant public selector without changing backend defaults.
 
 ### R0333–R0335 — Laguna Q4 P8 and sum comparison ownership
 

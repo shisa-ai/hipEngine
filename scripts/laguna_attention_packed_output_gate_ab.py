@@ -31,11 +31,11 @@ _COMPARISONS = {
     "packed_output_gate": {
         "production_rollback": {
             "packed_output_gate": False,
-            "packed_query_producer": False,
+            "packed_query_producer": True,
         },
         "packed_output_gate_candidate": {
             "packed_output_gate": True,
-            "packed_query_producer": False,
+            "packed_query_producer": True,
         },
     },
 }
@@ -68,8 +68,8 @@ def _child(
     settings: dict[str, bool],
 ) -> LagunaGGUFResidentSession:
     assert owner.weights is not None
-    # This process-local diagnostic keeps the historical output-gate comparison
-    # on the generic producer. Restore package policy even if construction fails.
+    # Hold the packed-query producer on so the output-gate arms reach distinct
+    # layouts. Restore package policy even if construction fails.
     from hipengine.kernels import hip_gfx1151 as package
 
     key = "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER"
@@ -210,6 +210,7 @@ def main() -> int:
     rollback = float(result["production_rollback"]["median_tok_s"])
     candidate = float(result[candidate_mode]["median_tok_s"])
     result["comparison"] = {
+        "basis": "packed_query_producer_on_output_gate_only",
         "speedup": candidate / rollback,
         "delta_percent": (candidate / rollback - 1.0) * 100.0,
         "candidate_wins": sum(

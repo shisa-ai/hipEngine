@@ -1,4 +1,4 @@
-"""Retire producer overrides without changing the output-gate comparison basis."""
+"""Retire producer overrides while preserving a distinct output-gate comparison."""
 import inspect
 from types import SimpleNamespace
 
@@ -17,8 +17,10 @@ def test_producer_override_is_removed():
 
 
 @pytest.mark.parametrize("fails", [False, True])
-def test_output_gate_harness_preserves_producer_control_and_restores(monkeypatch, fails):
+@pytest.mark.parametrize("producer_default", [False, True])
+def test_output_gate_harness_preserves_producer_control_and_restores(monkeypatch, fails, producer_default):
     key = "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER"
+    monkeypatch.setattr(hip_gfx1151, key, producer_default)
     original = getattr(hip_gfx1151, key)
     seen = []
     result = object()
@@ -26,6 +28,9 @@ def test_output_gate_harness_preserves_producer_control_and_restores(monkeypatch
     def construct(*args, **kwargs):
         seen.append(getattr(hip_gfx1151, key))
         assert "prefill_attention_hipblaslt_packed_query_producer" not in kwargs
+        assert kwargs["prefill_attention_hipblaslt_packed_output_gate"] is settings["packed_output_gate"]
+        assert kwargs["resident_weights"] is owner.weights
+        assert kwargs["runtime"] is owner.runtime
         if fails:
             raise RuntimeError("construction failed")
         return result
@@ -41,4 +46,4 @@ def test_output_gate_harness_preserves_producer_control_and_restores(monkeypatch
         else:
             assert harness._child(owner, settings) is result
         assert getattr(hip_gfx1151, key) == original
-    assert seen == [False, False]
+    assert seen == [True, True]

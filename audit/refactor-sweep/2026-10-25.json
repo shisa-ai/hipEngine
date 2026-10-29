@@ -9981,23 +9981,23 @@
       "start_line": 7600,
       "end_line": 7623,
       "sha256": "fe5600637c2c4aada600d77f5ee5c16e0820061f6e0bf4f9b3f363f1a7d4a956",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-noop-comparison-repaired-bottom-diagnostic-migration",
+      "evidence": ["Real layer-route RED 8 fail/4 pass exposed generic-producer setting makes both output-gate A/B arms generic. Both arms now hold packed-query producer on, varying only output gate; JSON basis explicitly changed. Real layer host tests bind BF16/FP16 gate routes, generic prefixes/ragged suffixes, packed intervals, pointer/stream ownership; constructor policy restoration and full-state/exception cleanup pass. Focused 136 pass plus one JSON-basis check; final changed file 16 pass (137 combined), CPU deterministic bundle bg-687 exit 0. Corrected bottom R0274, moved remaining diagnostic-owner/constructor retirement to R0336 with local artifact clearing actions. Runtime/defaults/kernels unchanged."],
       "subitems": [
         {
           "line": 7602,
           "text": "- Added 2026-07-27 as the gfx1151 default candidate behind",
-          "status": "pending"
+          "status": "resolved-current-packed-and-generic-boundaries-bound"
         },
         {
           "line": 7608,
           "text": "- Eleven complete-state pp512 pairs are exact and improve independent medians",
-          "status": "pending"
+          "status": "partial-noop-ab-repaired-bottom-diagnostic-owner-migration"
         },
         {
           "line": 7617,
           "text": "- The repaired clean trace satisfies admission: all **144** output transposes",
-          "status": "pending"
+          "status": "deferred-bottom-override-harness-migration-history-preserved"
         }
       ]
     },
