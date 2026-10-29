@@ -30334,7 +30334,8 @@ def _gguf_slot_local_prefill_allow_aotriton(*, transient_direct_oracle: bool) ->
     """Resolve AOTriton admission for one slot-local full-attention prefill layer.
 
     Layers with no transient oracle keep the engine-wide default; oracle-owning
-    layers follow the opt-in gate above. The flag only ever widens admission.
+    layers follow the default-on rollback control above. The control only
+    restricts admission for transient-oracle layers.
     """
 
     if not transient_direct_oracle:

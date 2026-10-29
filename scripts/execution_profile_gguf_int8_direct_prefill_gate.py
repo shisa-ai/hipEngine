@@ -111,10 +111,10 @@ def _candidate(kernel: str) -> Candidate:
 def _slot_local_aotriton_candidate() -> Candidate:
     """AOTriton admission on the slot-local transient-BF16-oracle prefill route.
 
-    Strict is the shipped default: oracle-owning layers fall back to the native
-    split-K paged kernel (16 query rows per batch). The candidate admits AOTriton
-    on those layers, which is what the scalar bulk parent and this gate's own
-    strict INT8 arithmetic already do. Both arms keep the BF16 oracle pair, so
+    The native rollback uses the split-K paged kernel (16 query rows per batch)
+    on oracle-owning layers. The candidate admits AOTriton on those layers,
+    matching the shipped default and the scalar bulk parent's oracle attention.
+    Both arms keep the BF16 oracle pair, so
     the INT8-read arithmetic the ``int8_direct`` candidate changes is untouched;
     only the attention reduction order over the oracle moves.
 

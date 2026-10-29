@@ -11842,18 +11842,20 @@
       "start_line": 9390,
       "end_line": 9407,
       "sha256": "834fd7061f7b5aa7fc5994d899905082491d79661a4ef4b2842c27b94ea960e6",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-obsolete-pre-promotion-admission-history",
+      "evidence": [
+        "Runtime already defaults slot-local transient-oracle AOTriton admission to true; current rollback removal has its own R0407 item. Remove duplicate default-off history, preserve runtime selection and historical artifacts. Correct ENVS/helper/evaluator default wording and route A/B example whose unset off arm now left admission enabled. Execute documented shell with model command replaced: explicit 0/1 under absent/0/1 inherited settings. Evidence: worklog/entries/20261029T150147.004296Z-cleanup-refactor-r0405-slot-local-history-260a8a.md."
+      ],
       "subitems": [
         {
           "line": 9392,
           "text": "- Added 2026-09-09. `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` (default",
-          "status": "pending"
+          "status": "obsolete-default-off-history-removed"
         },
         {
           "line": 9401,
           "text": "- Removal trigger: run the production-profile numerics gate with strict = flag",
-          "status": "pending"
+          "status": "promotion-already-recorded-rollback-removal-tracked-by-r0407"
         }
       ]
     },

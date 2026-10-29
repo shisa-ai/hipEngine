@@ -3425,24 +3425,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Slot-local INT8 oracle prefill AOTriton admission flag
-
-- Added 2026-09-09. `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` (default
-  OFF) admits AOTriton on slot-local full-attention prefill layers that own a
-  transient BF16 oracle. Before the flag, the `int8_direct` route hard-disabled
-  AOTriton for those layers (`allow_aotriton=not transient_direct_oracle`, added
-  by the compact-serial-c4 qualification `c2ca58171` with no recorded rationale),
-  leaving every server INT8 request above the 8,192-position mirror threshold on
-  the native split-K paged kernel at 16 query rows per batch. Measured on the
-  W7900 at 8,192 tokens: 44.31 -> 121.44 tok/s (2.74x), peak -24 MiB, generated
-  IDs unchanged. Default OFF is bit-identical to the pre-flag tree.
-- Removal trigger: run the production-profile numerics gate with strict = flag
-  off and candidate = flag on over the full mtp-bench category suite. On a pass,
-  make admission unconditional, delete the flag and the
-  `_gguf_slot_local_prefill_allow_aotriton` helper, and fold its tests into the
-  route's parity coverage. On a fail, keep the flag OFF and record the binding
-  threshold here.
-
 ## Packed execution workspace doubles the declared-context page budget
 
 - The old eager full-context reservation is removed. `configure_engine_loop`

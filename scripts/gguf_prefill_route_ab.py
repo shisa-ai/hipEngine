@@ -24,7 +24,7 @@ Example - gate the slot-local AOTriton admission flag:
 
     for mode in off on; do
       [ $mode = on ] && export HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON=1 \
-                     || unset HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON
+                     || export HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON=0
       HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
       HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG=1 \
       HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none \
