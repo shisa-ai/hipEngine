@@ -3628,6 +3628,7 @@ def run_qwen4_exp_gr_read(
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
     decode_rows: bool = False,
+    gr_wave_scale: bool = False,
 ) -> Qwen4ExpGRReadDeviceResult:
     """Execute strict grouped GR read using model-neutral resident projections.
 
@@ -3715,6 +3716,7 @@ def run_qwen4_exp_gr_read(
             run_qwen4_exp_gr_read(residual_ptr + row * residual_width * 2,
                 norm_weight_ptr, down_weight, up_weight, inject_weight,
                 Qwen4ExpGRScratch(**views, runtime=active_runtime), rows=1,
+                gr_wave_scale=gr_wave_scale,
                 branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,
                 stream=stream, runtime=active_runtime)
         return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,
@@ -3898,7 +3900,8 @@ def run_qwen4_exp_gr_read(
             runtime=active_runtime,
         )
     elif fused_up:
-        fused_up_key = _qwen4_exp_gr_wave_scale_key(fused_up_key, rows=rows, branches=branches)
+        fused_up_key = _qwen4_exp_gr_wave_scale_key(
+            fused_up_key, rows=rows, branches=branches, published=gr_wave_scale)
         fused_up_key = _qwen4_exp_gr_k320_full_rows_key(
             fused_up_key, rows=rows, branches=branches, low_rank=low_rank,
             hidden=hidden,
@@ -5053,12 +5056,12 @@ def _qwen4_exp_q8_down_row4_key(
     return candidate if is_registered(candidate) else key
 
 
-def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) -> KernelKey:
+def _qwen4_exp_gr_wave_scale_key(
+    key: KernelKey, *, rows: int, branches: int, published: bool = False,
+) -> KernelKey:
     if rows <= 256 or branches != 4:
         return key
-    wave_scale_enabled = os.environ.get(
-        "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "0"
-    ) not in {"", "0", "false", "False"}
+    wave_scale_enabled = published
     dpp_enabled = os.environ.get(
         "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0"
     ) not in {"", "0", "false", "False"}
@@ -5412,6 +5415,17 @@ def q4_pair_prefill(runner: Any, enabled: bool):
         yield prior
     finally:
         runner.q4_pair_prefill = prior
+
+
+@contextlib.contextmanager
+def gr_wave_scale(runner: Any, enabled: bool):
+    """Temporarily select the owning runner's exact GR wave-scale route."""
+    prior = getattr(runner, "gr_wave_scale", False)
+    runner.gr_wave_scale = bool(enabled)
+    try:
+        yield
+    finally:
+        runner.gr_wave_scale = prior
 
 
 @contextlib.contextmanager
@@ -7680,6 +7694,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -7771,6 +7786,7 @@ def run_qwen4_exp_dense_qsa_layer(
         scratch.attention_gr,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=active_runtime,
+        gr_wave_scale=gr_wave_scale,
     )
     mixer = run_qwen4_exp_dense_qsa_token_mixer(
         attention_read.mixed.ptr,
@@ -7808,6 +7824,7 @@ def run_qwen4_exp_dense_qsa_layer(
         weights.ffn_gr.up,
         weights.ffn_gr.inject,
         scratch.ffn_gr,
+        gr_wave_scale=gr_wave_scale,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=active_runtime,
         pending_write=pending_write,
@@ -7853,6 +7870,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -7977,6 +7995,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         weights.attention_gr.up,
         weights.attention_gr.inject,
         scratch.attention_gr,
+        gr_wave_scale=gr_wave_scale,
         rows=rows,
         branches=branches,
         hidden=hidden,
@@ -8032,6 +8051,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         weights.ffn_gr.up,
         weights.ffn_gr.inject,
         scratch.ffn_gr,
+        gr_wave_scale=gr_wave_scale,
         rows=rows,
         branches=branches,
         hidden=hidden,
@@ -8096,6 +8116,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -8230,6 +8251,7 @@ def run_qwen4_exp_gdn_layer(
                 scratch.attention_gr,
                 rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
                 stream=graph_stream, runtime=active_runtime,
+                gr_wave_scale=gr_wave_scale,
             )
 
         layer_graph.run(
@@ -8262,6 +8284,7 @@ def run_qwen4_exp_gdn_layer(
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             stream=stream, runtime=active_runtime,
             pending_write=pending_write,
+            gr_wave_scale=gr_wave_scale,
         )
     mixer_output = run_qwen4_exp_gdn_token_mixer(
         attention_read.mixed.ptr,
@@ -8298,6 +8321,7 @@ def run_qwen4_exp_gdn_layer(
                 scratch.ffn_gr,
                 rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
                 stream=graph_stream, runtime=active_runtime,
+                gr_wave_scale=gr_wave_scale,
             )
 
         layer_graph.run(
@@ -8338,6 +8362,7 @@ def run_qwen4_exp_gdn_layer(
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             stream=stream, runtime=active_runtime,
             pending_write=pending_write,
+            gr_wave_scale=gr_wave_scale,
         )
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
@@ -9275,6 +9300,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q4_bundle_prefill: bool = False
     q4_pair_prefill: bool = False
     q8_wave_scale_prefill: bool = False
+    gr_wave_scale: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder for every plan and ``None`` (the dispatch heuristic) on an
     # unbound runner: M is 64 from 512 rows up and 16 below, N is 16. The pair
@@ -9920,6 +9946,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.resident.weight("root.head_hc_up"),
             None,
             output.head_scratch,
+            gr_wave_scale=self.gr_wave_scale,
             rows=len(tokens),
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -10055,6 +10082,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.resident.weight("root.head_hc_up"),
             None,
             output.head_scratch,
+            gr_wave_scale=self.gr_wave_scale,
             rows=count,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -10586,6 +10614,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_scratch,
+                    gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
@@ -10640,6 +10669,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_dense_qsa_layer(
                     residual_ptr,
                     binding,
+                    gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
@@ -10728,6 +10758,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.resident.weight("root.head_hc_up"),
             None,
             self.head_scratch,
+            gr_wave_scale=self.gr_wave_scale,
             rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
             low_rank=cfg.residual_low_rank, runtime=self.runtime,
         )
@@ -10975,6 +11006,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         + binding.gdn_state_index * gdn_matrix_row_bytes
                     ),
                     scratch=self.gdn_prefill_scratch,
+                    gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=count,
@@ -11022,6 +11054,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_qsa_prefill_layer(
                     residual_ptr,
                     binding,
+                    gr_wave_scale=self.gr_wave_scale,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
@@ -11252,6 +11285,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.resident.weight("root.head_hc_up"),
             None,
             self.head_scratch,
+            gr_wave_scale=self.gr_wave_scale,
             rows=1,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,

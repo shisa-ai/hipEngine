@@ -3427,20 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp GR wave-scale production rollback
-
-- Separate registered GR up wave-scale composite is promoted after exact
-  gate/mixed-output, full logits/state/KV and all72 normal-model trajectories.
-  All12 cases improve prefill and request wall (weighted prefill+0.34-0.44%).
-- Scope model admission to existing rows>256 fused GR use; rows64 microbench
-  has small order reversals and is not a small-row promotion basis.
-- Keep parent composite and unfused chain as strict fallbacks.
-- Production-bound `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE=1` selects the registered
-  candidate only inside existing rows>256/four-branch fused GR use. Parent
-  and unfused fallback selection remain intact; strict binds0. Remove the
-  positive selector after one release window and a defaults-only refresh,
-  retaining explicit rollback only while bisection needs it.
-
 ## 2026-09-10 TimesFM kernel families lack four-axis registry entries — open
 
 Both TimesFM kernel families (`kernels/hip_gfx1100/timesfm/` for 2.5 and

@@ -25,7 +25,8 @@ def test_dpp_route_is_opt_in_and_keeps_scope(monkeypatch):
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0")
     monkeypatch.setattr(runner, "is_registered", lambda key: True)
-    assert runner._qwen4_exp_gr_wave_scale_key(base, rows=512, branches=4).variant == PARENT
+    assert runner._qwen4_exp_gr_wave_scale_key(
+        base, rows=512, branches=4, published=True).variant == PARENT
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "1")
     assert runner._qwen4_exp_gr_wave_scale_key(base, rows=257, branches=4).variant == DPP
     assert runner._qwen4_exp_gr_wave_scale_key(base, rows=256, branches=4) == base

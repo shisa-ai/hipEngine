@@ -322,6 +322,7 @@ class Qwen4ExpMixedTargetPass:
                     residual.ptr, binding.attention_gr.norm_weight_ptr,
                     binding.attention_gr.down, binding.attention_gr.up, binding.attention_gr.inject,
                     scratch.attention_gr, rows=rows, branches=cfg.residual_branch_count,
+                    gr_wave_scale=getattr(batch, "gr_wave_scale", False),
                     hidden=cfg.hidden_size, low_rank=cfg.residual_low_rank, runtime=self.runtime,
                 )
                 if kind == 'gdn':
@@ -367,6 +368,7 @@ class Qwen4ExpMixedTargetPass:
                     mixed = run.output
                 _run_layer_ffn(
                     residual.ptr, mixed.ptr, binding, scratch, rows=rows,
+                    gr_wave_scale=getattr(batch, "gr_wave_scale", False),
                     branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank, ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count, top_k=cfg.expert_used_count, stream=0, runtime=self.runtime,
@@ -403,6 +405,7 @@ class Qwen4ExpMixedTargetPass:
                 residual.ptr, batch.resident.weight('root.head_hc_norm').allocation('raw').tensor.ptr,
                 batch.resident.weight('root.head_hc_down'), batch.resident.weight('root.head_hc_up'),
                 None, self.head, rows=rows, branches=cfg.residual_branch_count,
+                gr_wave_scale=getattr(batch, "gr_wave_scale", False),
                 hidden=cfg.hidden_size, low_rank=cfg.residual_low_rank, runtime=self.runtime,
             )
             launch_gguf_linear(

@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_pair_prefill, q8_wave_scale_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -191,9 +191,18 @@ def wave_arm_enabled(arm, published):
     return published
 
 
+def gr_wave_arm_enabled(arm, published):
+    """Preserve the strict GR-family overrides after selector retirement."""
+    if arm in {"all_flags_strict", "base_plus_q8_gr_flags", "q8down_off_without_dense"}:
+        return False
+    if arm.startswith("strict_plus_"):
+        return published if arm == "strict_plus_dense" else False
+    return published
+
+
 def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
                      *, h256_mode=None, register_prefill=None, pair_prefill=None,
-                     wave_prefill=None):
+                     wave_prefill=None, gr_wave_prefill=None):
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
@@ -203,7 +212,9 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                 runner, getattr(runner, "q4_pair_prefill", False)
                 if pair_prefill is None else pair_prefill), q8_wave_scale_prefill(
                     runner, getattr(runner, "q8_wave_scale_prefill", False)
-                    if wave_prefill is None else wave_prefill):
+                    if wave_prefill is None else wave_prefill), gr_wave_scale(
+                        runner, getattr(runner, "gr_wave_scale", False)
+                        if gr_wave_prefill is None else gr_wave_prefill):
         runner.reset()
         result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
@@ -309,6 +320,9 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(gr_wave_scale(
+                    generator.runner, gr_wave_arm_enabled(
+                        arm, generator.runner.gr_wave_scale)))
                 arm_scope.enter_context(q8_wave_scale_prefill(
                     generator.runner, wave_arm_enabled(
                         arm, generator.runner.q8_wave_scale_prefill)))
@@ -337,6 +351,7 @@ def main():
                                 register_prefill=arm != "strict_prefill_production_decode",
                                 pair_prefill=arm != "strict_prefill_production_decode",
                                 wave_prefill=arm != "strict_prefill_production_decode",
+                                gr_wave_prefill=arm != "strict_prefill_production_decode",
                                 h256_mode=("parent" if arm == "strict_prefill_production_decode"
                                            else None)))
                         else:

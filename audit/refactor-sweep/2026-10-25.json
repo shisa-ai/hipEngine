@@ -12171,28 +12171,32 @@
       "start_line": 9593,
       "end_line": 9606,
       "sha256": "320e4f07c1e122c6d541a8ca8adfa4a14a45c441f5d5f95ecf19a28b51b76f65",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "worklog/entries/20261029T175629.845600Z-cleanup-refactor-r0419-gr-wave-scale-688713.md",
+        "tests/test_unit_qwen4exp_gr_wave_scope.py",
+        "tests/test_gpu_qwen4exp_gr_wave_scale.py"
+      ],
       "subitems": [
         {
           "line": 9595,
           "text": "- Separate registered GR up wave-scale composite is promoted after exact",
-          "status": "pending"
+          "status": "fixed-registered-composite-and-arithmetic-unchanged-parity-passed"
         },
         {
           "line": 9598,
           "text": "- Scope model admission to existing rows>256 fused GR use; rows64 microbench",
-          "status": "pending"
+          "status": "fixed-shape-guards-preserved-public-threshold-and-unrelated-length-tested"
         },
         {
           "line": 9600,
           "text": "- Keep parent composite and unfused chain as strict fallbacks.",
-          "status": "pending"
+          "status": "fixed-parent-unfused-and-independent-dpp-fallback-preserved"
         },
         {
           "line": 9601,
           "text": "- Production-bound `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE=1` selects the registered",
-          "status": "pending"
+          "status": "fixed-runner-owned-profile-and-clone-control-scoped-diagnostic-rollback"
         }
       ]
     },

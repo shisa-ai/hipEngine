@@ -29,10 +29,13 @@ from hipengine.kernels.registry import (
 from scripts import qwen4exp_row4_state_gate as gate
 
 PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4",
-            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale")
+            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale")
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    "gr-wave-scale": KernelKey(
+        "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+        "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
     "q8-wave-scale": KernelKey(
         "hip_gfx1151", "linear", "gguf_q8_0",
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"),
@@ -74,10 +77,10 @@ LEAF_KEYS = {
 
 #: The leaf keys and binder keys of the packages that still own a process key.
 PROCESS_KEYED = {
-    "gr-wave-scale": (
-        KernelKey("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
-                  "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
-        "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"),
+    "q4-iu8-exact": (
+        KernelKey("hip_gfx1151", "moe_linear", "gguf_q4_k",
+                  "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"),
 }
 
 #: The process keys ``main()`` itself sets before any measurement.
@@ -103,6 +106,7 @@ def _runner(**overrides):
         "q4_bundle_prefill": True,
         "q4_pair_prefill": True,
         "q8_wave_scale_prefill": True,
+        "gr_wave_scale": True,
         "qsa_h256_prefill_mode": "page256",
         "q8_down_row4_prefill": True,
         "q8_down_bundle_prefill": True,
@@ -253,6 +257,12 @@ def test_main_records_the_runner_owned_premise(
         assert control["before"] is False and control["after"] is True
         assert control["published_value"] is True
         assert control["forced_environment"] == Q8_WAVE_ENV
+    elif package == "gr-wave-scale":
+        from scripts.qwen4exp_halo_box_campaign_ab import GR_WAVE_ENV
+        assert control["runner_field"] == "gr_wave_scale"
+        assert control["before"] is False and control["after"] is True
+        assert control["published_value"] is True
+        assert control["forced_environment"] == GR_WAVE_ENV
     elif package == "q51-pair":
         assert control["runner_field"] == gate.Q51_PAIR_FIELD
         assert control["before"] is False and control["after"] is True

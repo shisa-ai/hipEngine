@@ -86,7 +86,6 @@ def main(argv=None) -> int:
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     if args.require_cached_build:
         os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] = "1"
     os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1"
 
     fixture, fixture_sha = load_fixture(args.fixture)
@@ -119,6 +118,7 @@ def main(argv=None) -> int:
         prefill_chunk_size=CHUNK_SIZE,
     ))
     runner = generator.runner
+    runner.gr_wave_scale = True
 
     candidate_key = KernelKey(BACKEND, LAYER, QUANT, CANDIDATE)
     candidate = resolve(backend=BACKEND, layer=LAYER, quant=QUANT, variant=CANDIDATE)

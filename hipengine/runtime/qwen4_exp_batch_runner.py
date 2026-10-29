@@ -617,6 +617,7 @@ def _run_layer_ffn(
     weights: object,
     scratch: object,
     *,
+    gr_wave_scale: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -678,6 +679,7 @@ def _run_layer_ffn(
         weights.ffn_gr.up,
         weights.ffn_gr.inject,
         scratch.ffn_gr,
+        gr_wave_scale=gr_wave_scale,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=runtime,
     )
@@ -957,6 +959,7 @@ class Qwen4ExpGGUFBatchRunner:
     q4_out4: bool = True
     q4_bundle_prefill: bool = False
     q4_pair_prefill: bool = False
+    gr_wave_scale: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder and ``None`` (the dispatch heuristic) on an unbound owner.
     # The MoE runs eager inside the captured segment, so a decode capture

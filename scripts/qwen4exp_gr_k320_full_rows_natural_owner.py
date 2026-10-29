@@ -89,7 +89,6 @@ def main() -> int:
     check_host()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] = "1"
     os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1"
 
     gate.register_gfx1151_kernels(replace=True)
@@ -115,6 +114,7 @@ def main() -> int:
         max_sequence_length=4352,
         prefill_chunk_size=CHUNK_SIZE,
     ))
+    generator.runner.gr_wave_scale = True
     runtime = generator.runner.runtime
     key = KernelKey(BACKEND, LAYER, QUANT, PARENT)
     parent = resolve(backend=BACKEND, layer=LAYER, quant=QUANT, variant=PARENT)

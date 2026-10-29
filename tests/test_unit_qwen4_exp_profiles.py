@@ -311,7 +311,8 @@ def test_ud_production_binds_the_promoted_gr_dpp_owner(
     production = _resolve(
         ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl"
     )
-    production.binder(SimpleNamespace(), production)
+    generator = SimpleNamespace()
+    production.binder(generator, production)
     gr_up = _selection_map(production)[
         ("linear+gr_gated_mean", "qwen4exp_rows_gt256_gr_up")
     ]
@@ -324,7 +325,8 @@ def test_ud_production_binds_the_promoted_gr_dpp_owner(
     assert gr_up["evidence_artifact"].endswith(
         "qwen4exp-gr-dpp-reduction/README.md"
     )
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
+    assert generator.gr_wave_scale is True
+    assert "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "1"
 
 
@@ -381,7 +383,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.q8_wave_scale_prefill is True
     assert fake_runner.q8_wave_scale_prefill is True
     assert "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
+    assert production_generator.gr_wave_scale is True
+    assert fake_runner.gr_wave_scale is True
+    assert "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
     # The two vector children are request-local runner state: the production
@@ -574,7 +578,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL" not in os.environ
     assert strict_generator.q8_wave_scale_prefill is False
     assert "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "0"
+    assert strict_generator.gr_wave_scale is False
+    assert "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "0"
     assert strict_generator.q8_down_row4_prefill is False
     assert strict_generator.q8_down_bundle_prefill is False

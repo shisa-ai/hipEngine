@@ -65,6 +65,40 @@ Q8_WAVE_ENV = {
 }
 
 
+GR_WAVE_ENV = {
+    "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION": "0",
+    "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
+    "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
+}
+
+
+def gr_wave_control_record(runner):
+    return {
+        "runner_field": "gr_wave_scale", "before": False, "after": True,
+        "published_value": runner.gr_wave_scale,
+        "scope": "per measured run; restored on exit",
+        "forced_environment": dict(GR_WAVE_ENV),
+        "counted_variant": "coltile2_branch4_rowbatch4_wave_scale_f32_exact",
+    }
+
+
+@contextlib.contextmanager
+def gr_wave_scope(runner, enabled, *, environment=os.environ):
+    """Compare exact GR composites without wide, IU8 or DPP preemption."""
+    from hipengine.runtime.qwen4_exp_runner import gr_wave_scale
+    prior = {key: environment.get(key) for key in GR_WAVE_ENV}
+    try:
+        environment.update(GR_WAVE_ENV)
+        with gr_wave_scale(runner, enabled):
+            yield
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
+
 def q8_wave_control_record(runner):
     return {
         "runner_field": "q8_wave_scale_prefill", "before": False, "after": True,
@@ -1731,6 +1765,13 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError("q4-pair needs the owning runner")
         return q4_pair_scope(runner, mode == "after", environment=environment)
 
+    if route_package == "gr-wave-scale":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("gr-wave-scale needs the owning runner")
+        return gr_wave_scope(runner, mode == "after", environment=environment)
+
     if route_package == "q8-wave-scale":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -2114,7 +2155,7 @@ def _apply_mode(
         if route_package == "q8-wave-scale":
             return  # route_scope binds the owning runner.
         if route_package == "gr-wave-scale":
-            flag = "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"
+            return  # route_scope binds the owning runner.
         if route_package == "q8-mmq-prepack":
             flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
         if route_package in {"q8-down-row4", "q51-fold128", "q8-down-bundle",
@@ -2761,6 +2802,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "scope": "per measured run; restored on exit",
             "isolation": "tiled and peer prefill off; wave-norm variant unset",
         }
+    if args.route_package == "gr-wave-scale":
+        artifact["selection_control"] = gr_wave_control_record(generator.runner)
     if args.route_package == "q8-wave-scale":
         artifact["selection_control"] = q8_wave_control_record(generator.runner)
     if args.route_package == "q4-pair":
