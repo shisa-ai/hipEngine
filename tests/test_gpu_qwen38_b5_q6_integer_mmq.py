@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
-from unittest import mock
 
 import pytest
 
@@ -195,20 +193,13 @@ def test_b5_q6_integer_mmq_resident_context_reuses_session_owned_workspace(
         lambda **kwargs: "candidate-library",
         raising=False,
     )
-    with mock.patch.dict(
-        os.environ,
-        {
-            "HIPENGINE_GGUF_PREFILL_F16_STAGING": "1",
-        },
-        clear=False,
-    ):
-        with session._prefill_f16_staging_context():
-            with session._q6_integer_mmq_context(target_verifier=True):
-                owner = current()
-                assert owner is not None
-                assert owner.ptr == allocation.ptr
-                assert owner.nbytes == allocation.nbytes
-                assert owner.library == "candidate-library"
+    with session._prefill_f16_staging_context():
+        with session._q6_integer_mmq_context(target_verifier=True):
+            owner = current()
+            assert owner is not None
+            assert owner.ptr == allocation.ptr
+            assert owner.nbytes == allocation.nbytes
+            assert owner.library == "candidate-library"
     assert current() is None
     assert session._buffers == (allocation,)
 

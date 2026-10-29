@@ -19,9 +19,7 @@ fallback stays on the BF16 owners.
 from __future__ import annotations
 
 import ctypes
-import os
 from types import SimpleNamespace
-from unittest import mock
 
 import numpy as np
 import pytest
@@ -348,72 +346,69 @@ def test_device_bf16_to_f16_cast_preserves_ieee_half_bits() -> None:
     )
 
 
-def test_prefill_f16_staging_defaults_off() -> None:
+@pytest.mark.parametrize("value", (None, "", "0", "false", "1", "on", "invalid"))
+def test_prefill_f16_staging_ignores_retired_env_and_restores_scope(monkeypatch, value) -> None:
     from hipengine.runtime.gguf_linear import (
-        PREFILL_F16_STAGING_ENV,
         prefill_f16_staging_enabled,
         prefill_f16_staging_session,
     )
 
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(PREFILL_F16_STAGING_ENV, None)
-        assert prefill_f16_staging_enabled() is False
-        with prefill_f16_staging_session(True):
-            assert prefill_f16_staging_enabled() is True
-        assert prefill_f16_staging_enabled() is False
-        with mock.patch.dict(
-            os.environ, {PREFILL_F16_STAGING_ENV: "1"}
-        ):
-            assert prefill_f16_staging_enabled() is True
-        with mock.patch.dict(
-            os.environ, {PREFILL_F16_STAGING_ENV: "0"}
-        ):
-            assert prefill_f16_staging_enabled() is False
+    env = "HIPENGINE_GGUF_PREFILL_F16_STAGING"
+    if value is None:
+        monkeypatch.delenv(env, raising=False)
+    else:
+        monkeypatch.setenv(env, value)
+    assert prefill_f16_staging_enabled() is False
+    assert prefill_f16_staging_enabled(True) is True
+    with prefill_f16_staging_session(True):
+        assert prefill_f16_staging_enabled() is True
+        with prefill_f16_staging_session(False):
+            assert prefill_f16_staging_enabled(True) is False
+        assert prefill_f16_staging_enabled() is True
+    assert prefill_f16_staging_enabled() is False
 
 
-def test_prefill_f16_profile_default_and_env_overrides() -> None:
-    from hipengine.runtime.gguf_linear import (
-        PREFILL_F16_STAGING_ENV,
-        prefill_f16_staging_for,
-    )
+@pytest.mark.parametrize("value", (None, "0", "1", "invalid"))
+def test_prefill_f16_profile_ignores_retired_env(monkeypatch, value) -> None:
+    from hipengine.runtime.gguf_linear import prefill_f16_staging_for
 
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(PREFILL_F16_STAGING_ENV, None)
-        assert prefill_f16_staging_for() is False
-        assert prefill_f16_staging_for("strict") is False
-        assert prefill_f16_staging_for("legacy_exact") is False
-        assert prefill_f16_staging_for("production") is True
-        assert (
-            prefill_f16_staging_for(
-                "production",
-                profile_fell_back_to_strict=True,
-            )
-            is False
-        )
-        with mock.patch.dict(os.environ, {PREFILL_F16_STAGING_ENV: "1"}):
-            assert prefill_f16_staging_for("strict") is True
-        with mock.patch.dict(os.environ, {PREFILL_F16_STAGING_ENV: "0"}):
-            assert prefill_f16_staging_for("production") is False
+    env = "HIPENGINE_GGUF_PREFILL_F16_STAGING"
+    if value is None:
+        monkeypatch.delenv(env, raising=False)
+    else:
+        monkeypatch.setenv(env, value)
+    assert prefill_f16_staging_for() is False
+    assert prefill_f16_staging_for("strict") is False
+    assert prefill_f16_staging_for("legacy_exact") is False
+    assert prefill_f16_staging_for("production") is True
+    assert prefill_f16_staging_for(SimpleNamespace(value="production")) is True
+    assert prefill_f16_staging_for(
+        "production", profile_fell_back_to_strict=True,
+    ) is False
 
 
-def test_generator_configures_profile_scoped_prefill_f16_default() -> None:
+@pytest.mark.parametrize("value", (None, "0", "1", "invalid"))
+def test_generator_configures_profile_scoped_prefill_f16_default(monkeypatch, value) -> None:
     from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 
+    env = "HIPENGINE_GGUF_PREFILL_F16_STAGING"
+    if value is None:
+        monkeypatch.delenv(env, raising=False)
+    else:
+        monkeypatch.setenv(env, value)
     generator = object.__new__(Qwen35GGUFBringupGenerator)
     generator.execution_profile = "production"
     generator.execution_profile_fell_back_to_strict = False
     session = SimpleNamespace()
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop("HIPENGINE_GGUF_PREFILL_F16_STAGING", None)
-        generator._configure_session(session)
-        assert session.use_prefill_f16_staging is True
-        generator.execution_profile = "strict"
-        generator._configure_session(session)
-        assert session.use_prefill_f16_staging is False
-        generator.execution_profile = "production"
-        generator.execution_profile_fell_back_to_strict = True
-        generator._configure_session(session)
-        assert session.use_prefill_f16_staging is False
+    generator._configure_session(session)
+    assert session.use_prefill_f16_staging is True
+    generator.execution_profile = "strict"
+    generator._configure_session(session)
+    assert session.use_prefill_f16_staging is False
+    generator.execution_profile = "production"
+    generator.execution_profile_fell_back_to_strict = True
+    generator._configure_session(session)
+    assert session.use_prefill_f16_staging is False
 
 
 def test_shared_session_acquisition_applies_profile_configuration() -> None:
@@ -472,10 +467,10 @@ def test_resident_sessions_own_distinct_prefill_f16_workspaces(monkeypatch) -> N
         return buffer
 
     monkeypatch.setattr(runner_module, "malloc", fake_malloc)
-    monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_F16_STAGING", "1")
 
-    def make_session() -> Qwen35GGUFResidentSession:
+    def make_session(enabled=True) -> Qwen35GGUFResidentSession:
         session = object.__new__(Qwen35GGUFResidentSession)
+        session.use_prefill_f16_staging = enabled
         session.runtime = "rt"
         session._buffers = ()
         session._prefill_f16_staging_buf = None
@@ -500,10 +495,16 @@ def test_resident_sessions_own_distinct_prefill_f16_workspaces(monkeypatch) -> N
     with second._prefill_f16_staging_context():
         second_owner = prefill_f16_staging_workspace()
         assert second_owner is not None
-    monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_F16_STAGING", "0")
-    disabled = make_session()
-    with disabled._prefill_f16_staging_context():
-        assert prefill_f16_staging_workspace() is None
+    from hipengine.runtime.gguf_linear import prefill_f16_staging_session
+
+    disabled = make_session(False)
+    with first._prefill_f16_staging_context():
+        with disabled._prefill_f16_staging_context():
+            assert prefill_f16_staging_workspace() is None
+        assert prefill_f16_staging_workspace() == first_owner
+    with prefill_f16_staging_session(False):
+        with first._prefill_f16_staging_context():
+            assert prefill_f16_staging_workspace() == first_owner
 
     assert first_owner.ptr != second_owner.ptr
     assert len(allocations) == 2

@@ -2,7 +2,6 @@
 """Localize the public long-C8 prefill failure; not a publication gate."""
 
 import argparse
-from contextlib import ExitStack
 import json
 from pathlib import Path
 import sys
@@ -15,23 +14,19 @@ from scripts import execution_profile_gguf_fp16_state_batch_gate as gate
 from scripts.execution_profile_gguf_batch_route_gate import BatchRouteCapture, build_batch_route_quality
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
-from scripts.qwen38_q4_verifier_numerics import _environment
-from hipengine.runtime.gguf_linear import PREFILL_F16_STAGING_ENV
 
-MODES = {
-    "no_staging": {PREFILL_F16_STAGING_ENV: "0"},
-    "no_mmq": {},
-    "neither": {PREFILL_F16_STAGING_ENV: "0"},
-}
+MODES = ("no_staging", "no_mmq", "neither")
 
 
 def _configure_mode_sessions(sessions, mode):
-    """Apply this diagnostic's Q6 opt-out to its own sessions only."""
+    """Apply this diagnostic's opt-outs to its own sessions only."""
 
     if mode not in MODES:
         raise ValueError(f"unknown prefill composition mode: {mode}")
-    if mode in {"no_mmq", "neither"}:
-        for session in sessions:
+    for session in sessions:
+        if mode in {"no_staging", "neither"}:
+            session.use_prefill_f16_staging = False
+        if mode in {"no_mmq", "neither"}:
             session.use_q6_integer_mmq = False
 
 
@@ -58,33 +53,30 @@ def main():
         strict, _ = gate._run_static_once(sessions, scenario, reference=None)
     results = {}
     for mode in args.modes:
-        with ExitStack() as contexts:
-            for name, value in MODES[mode].items():
-                contexts.enter_context(_environment(name, value))
-            stack, sessions, _, _ = gate._make_public_profile_sessions(
-                args, candidate=True, max_sequence_length=644)
-            with stack:
-                _configure_mode_sessions(sessions, mode)
-                actual_flags = {
-                    "staging": sessions[0].use_prefill_f16_staging,
-                    "mmq": sessions[0].use_q6_integer_mmq,
-                }
-                print(f"{mode}: {actual_flags}", flush=True)
-                runs = []
-                for repeat in range(3):
-                    trajectory, _ = gate._run_static_once(sessions, scenario, reference=strict)
-                    runs.append(trajectory)
-                    print(f"{mode}: repeat {repeat + 1}", flush=True)
-            captures = tuple(BatchRouteCapture(
-                scenario_id=scenario.scenario_id, request_id=row["id"], category=row["category"],
-                strict=strict[index], candidate_runs=tuple(run[index] for run in runs),
-                shapes=("c8_prefill_p512",) + ("c8",) * 128,
-                transitions=("long_prefill_to_c8",) + ("steady",) * 128,
-                teacher_steps=tuple(range(129)),
-            ) for index, row in enumerate(scenario.rows))
-            quality = build_batch_route_quality(captures)
-            results[mode] = {"flags": actual_flags, "quality": quality}
-            print(json.dumps(quality["quality"]["summary"]), flush=True)
+        stack, sessions, _, _ = gate._make_public_profile_sessions(
+            args, candidate=True, max_sequence_length=644)
+        with stack:
+            _configure_mode_sessions(sessions, mode)
+            actual_flags = {
+                "staging": sessions[0].use_prefill_f16_staging,
+                "mmq": sessions[0].use_q6_integer_mmq,
+            }
+            print(f"{mode}: {actual_flags}", flush=True)
+            runs = []
+            for repeat in range(3):
+                trajectory, _ = gate._run_static_once(sessions, scenario, reference=strict)
+                runs.append(trajectory)
+                print(f"{mode}: repeat {repeat + 1}", flush=True)
+        captures = tuple(BatchRouteCapture(
+            scenario_id=scenario.scenario_id, request_id=row["id"], category=row["category"],
+            strict=strict[index], candidate_runs=tuple(run[index] for run in runs),
+            shapes=("c8_prefill_p512",) + ("c8",) * 128,
+            transitions=("long_prefill_to_c8",) + ("steady",) * 128,
+            teacher_steps=tuple(range(129)),
+        ) for index, row in enumerate(scenario.rows))
+        quality = build_batch_route_quality(captures)
+        results[mode] = {"flags": actual_flags, "quality": quality}
+        print(json.dumps(quality["quality"]["summary"]), flush=True)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps({
             "kind": "long_c8_prefill_composition_diagnostic",

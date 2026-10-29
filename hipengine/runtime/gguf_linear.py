@@ -341,17 +341,10 @@ TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
 )
 
-# B2 P1: prefill F16-staging route (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md).
-# Default OFF: the BF16 owners remain the selected strict fallback. When
-# enabled (env or prefill session), Q4/Q5-T16 dense prefill launches stage
-# the activation operand into a bounded session-owned IEEE-half workspace,
-# then dispatch
-# the registered fp16-in siblings (measured 0.69-0.89x their BF16 owners at
-# the kernel level). The cast kernel and siblings are exact-family; outputs
-# are T1 and require the complete B2 item-3 gates before any default flip.
-PREFILL_F16_STAGING_ENV = "HIPENGINE_GGUF_PREFILL_F16_STAGING"
-_prefill_f16_staging_session_enabled: ContextVar[bool] = ContextVar(
-    "gguf_prefill_f16_staging_session_enabled", default=False
+# Profile-selected F16 staging uses a bounded caller-owned activation buffer.
+# Strict keeps the registered BF16 parent; no ambient selector overrides it.
+_prefill_f16_staging_session_enabled: ContextVar[bool | None] = ContextVar(
+    "gguf_prefill_f16_staging_session_enabled", default=None
 )
 _PREFILL_F16_STAGING_MIN_ROWS = 17
 PREFILL_F16_STAGING_MAX_ROWS = 1024
@@ -424,12 +417,8 @@ def prefill_f16_staging_session(
 def prefill_f16_staging_enabled(default: bool = False) -> bool:
     """Whether the prefill F16-staging route is active for this launch."""
 
-    if _prefill_f16_staging_session_enabled.get():
-        return True
-    override = os.environ.get(PREFILL_F16_STAGING_ENV, "").strip().lower()
-    if override:
-        return override in {"1", "true", "yes", "on"}
-    return bool(default)
+    selected = _prefill_f16_staging_session_enabled.get()
+    return bool(default) if selected is None else bool(selected)
 
 
 def prefill_f16_staging_for(
@@ -437,11 +426,8 @@ def prefill_f16_staging_for(
     *,
     profile_fell_back_to_strict: bool = False,
 ) -> bool:
-    """Resolve the profile default while preserving explicit env overrides."""
+    """Select F16 staging for production without strict fallback."""
 
-    override = os.environ.get(PREFILL_F16_STAGING_ENV, "").strip().lower()
-    if override:
-        return override in {"1", "true", "yes", "on"}
     profile_value = getattr(profile, "value", profile)
     if profile_value is None or str(profile_value) == "":
         return False

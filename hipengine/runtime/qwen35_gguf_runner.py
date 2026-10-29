@@ -455,7 +455,6 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
-    prefill_f16_staging_enabled,
     prefill_f16_staging_session,
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
@@ -18600,7 +18599,7 @@ class Qwen35GGUFResidentSession:
     def _prefill_f16_staging_context(self):
         """Bind the B2 F16 cast workspace to this resident session."""
 
-        if not prefill_f16_staging_enabled(self.use_prefill_f16_staging):
+        if not bool(self.use_prefill_f16_staging):
             return prefill_f16_staging_session(False)
         buffer = self._ensure_prefill_f16_staging_buffer()
         return prefill_f16_staging_session(

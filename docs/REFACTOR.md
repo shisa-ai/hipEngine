@@ -3425,16 +3425,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## RF-B2A — prefill F16-staging route switch (2026-09-02)
-
-`HIPENGINE_GGUF_PREFILL_F16_STAGING` remains the rollback/diagnostic override
-for gfx1151 Qwen3.8 production Q4/Q5-T16 prefill rows17-1024. The session casts
-BF16 activation input into a bounded resident-owned F16 workspace and launches
-the registered F16-input/BF16-output siblings; missing or undersized ownership
-fails closed to BF16. Complete C2/C8 wall falls 18.13%/17.35% and profile logits
-are bit-identical. Strict, fallback, no-profile, and env zero keep BF16. Retire
-the override after the normal rollback window; keep registered BF16 fallbacks.
-
 ## 2026-09-06 Qwen3.5-family XML tool-call surface — open follow-ups
 
 The server now prompts for and lifts the Qwen3.5-family XML function envelope

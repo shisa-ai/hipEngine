@@ -354,30 +354,30 @@ def test_prefill_f16_staging_works_after_bf16_dispatch_cache_hit(monkeypatch) ->
         lambda *args, **kwargs: calls.append("f16") or True,
     )
     try:
-        monkeypatch.setenv(gl.PREFILL_F16_STAGING_ENV, "0")
-        launch_gguf_linear(
-            weight,
-            x_ptr=1,
-            out_ptr=2,
-            rows=72,
-            in_features=5_120,
-            out_features=6_144,
-            backend="hip_gfx1151",
-            runtime="rt",
-            use_wmma_prefill=True,
-        )
-        monkeypatch.setenv(gl.PREFILL_F16_STAGING_ENV, "1")
-        launch_gguf_linear(
-            weight,
-            x_ptr=1,
-            out_ptr=2,
-            rows=72,
-            in_features=5_120,
-            out_features=6_144,
-            backend="hip_gfx1151",
-            runtime="rt",
-            use_wmma_prefill=True,
-        )
+        with gl.prefill_f16_staging_session(False):
+            launch_gguf_linear(
+                weight,
+                x_ptr=1,
+                out_ptr=2,
+                rows=72,
+                in_features=5_120,
+                out_features=6_144,
+                backend="hip_gfx1151",
+                runtime="rt",
+                use_wmma_prefill=True,
+            )
+        with gl.prefill_f16_staging_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=1,
+                out_ptr=2,
+                rows=72,
+                in_features=5_120,
+                out_features=6_144,
+                backend="hip_gfx1151",
+                runtime="rt",
+                use_wmma_prefill=True,
+            )
         assert calls == ["bf16", "f16"]
     finally:
         if saved is None:

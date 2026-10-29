@@ -11742,8 +11742,8 @@
       "start_line": 9251,
       "end_line": 9260,
       "sha256": "87cd67cea27bfa1d730d967ef03f73bb255da0363aaf41c4aa7c614eab0d7357",
-      "status": "pending",
-      "evidence": [],
+      "status": "repaired-retired-f16-env-session-nesting-authoritative",
+      "evidence": ["Remove both F16-staging environment readers and constant. Profile selects resident default; session's own flag controls allocation/context without inheriting a peer outer scope. ContextVar distinguishes absent/explicitFalse/True and restores nested selection/workspace. Fourteen RED stale/nested-owner checks then51focused pass/4noHIP skips. Dispatch cache test uses explicit contexts; composition diagnostic applies both staging/MMQ optouts only to owned sessions. Production/strict/workspace/row/quant/kernel arithmetic unchanged; registered BF16 fallback preserved. Public/CPU checks and historical artifact links in worklog/entries/20261029T125207.689379Z-cleanup-refactor-r0399-f16-staging-7ac0f9.md."],
       "subitems": []
     },
     {
