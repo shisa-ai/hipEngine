@@ -12460,8 +12460,8 @@
       "start_line": 10139,
       "end_line": 10161,
       "sha256": "3edbe2d7c051d1ea7240f780224390fb862999562c4820febffbd5d99d2f8a60",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-not-debt-test-oracle",
+      "evidence": ["Intentional direct diagnostic/test support sharing the live parent template, not a runtime-selected alternative. Keep wrapper/export/template/test and remove historical cleanup narrative. GPU tests skip without HIP; no fresh arithmetic claim. Worklog: worklog/entries/20261029T190855.061810Z-cleanup-refactor-r0431-13dd90.md."],
       "subitems": []
     },
     {

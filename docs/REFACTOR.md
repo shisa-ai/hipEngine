@@ -3427,29 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## GR no-gate variant: retained only as a bit-identity oracle
-
-`hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32`
-(the `WRITE_GATE=false` instantiation of
-`q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`) is **not** a
-candidate and must not be adopted as the GR route. It was built to price the dead
-gate write named in ledger HC-3, and it measured **2% slower** than the
-gate-writing production kernel (6.6551 ms against 6.5198 ms at rows=1024, K=320,
-N=10240, non-overlapping samples) while producing a bit-identical `mixed`.
-
-It is kept for one reason: it is the instrument that proves the gate store is
-purely additive, which is what makes that timing comparison a store-cost
-comparison rather than a comparison of two different computations.
-`tests/test_gpu_qwen4exp_gr_no_gate.py` asserts the uint32-view equality of
-`mixed` between the two variants at four shapes.
-
-Removal trigger: delete the `WRITE_GATE` template parameter, the export, the
-Python wrapper, the screen's `fused_no_gate` arm, and the GPU test once either
-(a) something else establishes that the gate store is additive, or (b) the fused
-GR kernel itself is replaced. The staged-f32 GR selector was rejected and
-removed under R0021, so it is not such a replacement. Do not leave a slower variant
-registered as an option; nothing selects it today, and nothing should.
-
 ## Staged-f32 dense Q8_0 route: registered, off by default, owes a gate
 
 `staged_f32_bm128_bn64_bk32` is registered for
