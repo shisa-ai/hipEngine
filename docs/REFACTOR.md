@@ -3430,26 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna source-F16 boundary-fusion rollback
-
-- Added 2026-07-26 with session-local
-  `set_f16_boundary_fusion(...)`. The exact range-direct specialization folds
-  each separate BF16-to-FP16 cast into its RMSNorm or softplus-gate producer
-  while preserving the BF16 rounding boundary bit-for-bit. The registered
-  unfused primitives remain the required fallback.
-- Primitive composition is exact and improves the two production M512
-  boundaries by **1.877x/1.425x**. Seven matched pp512 pairs improve
-  **554.909 -> 559.320 tok/s (+0.795%, 6/7 wins)** with identical token and
-  logit. The gfx1151 package capability now enables the exact path by default;
-  clean selector-unset publication passes at
-  **559.554/523.912/440.809 tok/s**. A second seven-pair gate preserves
-  logits, hidden states, complete KV, token/logit, and cursor exactly.
-  Cached tracing removes all **96** standalone pp512 casts and records
-  **1,696** dispatches.
-- After promotion and one later source-F16 checkpoint, remove the public
-  setter and one-purpose A/B harness while retaining the backend capability,
-  fused registered kernels, and registered unfused numerical fallback.
-
 ## Laguna Q6 selected-down integer-WMMA leaf selector
 
 - Added 2026-07-26 as the optional `integer_wmma` wrapper argument and matching
@@ -10477,6 +10457,33 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0329 — Laguna source-F16 boundary comparison ownership
+
+`set_f16_boundary_fusion(...)` still owns the live separate/fused arms of
+`scripts/laguna_f16_boundary_ab.py`. gfx1151 enables the capability. The runner
+uses the fused RMSNorm/gate producers only in `hipblaslt_range_direct`; scaled
+projection modes keep their scale/cast chain regardless of this setter. The
+fused producer preserves the BF16 rounding boundary before FP16 consumption.
+Registered unfused primitives remain required reference/fallback paths.
+
+Host tests bind real projection/output cast selection, source/destination
+pointers, stream/runtime ownership and the live comparison's state capture and
+cleanup after setter or prefill failure. They exercise short and non-tile
+row counts, not only the historical M512 point. July numerical/trace results
+remain in the pinned sweep source and immutable artifacts; the old later-
+checkpoint wording is not a current removal condition.
+
+**Blocker:** removing the setter also requires explicit primitive/composite
+ownership for the comparison. The local Laguna artifact resource blocker in
+R0313–R0320 prevents public/full-model validation; it does not disable the path.
+
+**Clearing action:** migrate the comparison without collapsing its arms, run
+F16 boundary-comparison, runner and hipBLASLt contracts plus primitive
+BF16-boundary equality/full-model oracles, then public `LLM.generate()` across
+compatible and fallback projection routes. Confirm selected producers/casts,
+state equality and teardown. Keep the enabled capability and strict unfused
+chain when retiring the session setter.
 
 ### R0327 / R0328 — Laguna permute/planar comparison migration
 

@@ -9739,23 +9739,23 @@
       "start_line": 7377,
       "end_line": 7396,
       "sha256": "d1f3ffb07002314ecedaad1812e63f563594ead031f7af6d8a2089820732e162",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-bottom-live-f16-comparison-public-resource",
+      "evidence": ["82 focused checks pass, including real range-direct versus scaled projection/output cast routing at 3/127/129 rows, pointer/stream/runtime ownership and live setter comparison state/cleanup on success or setter/prefill failure. Setter remains live in A/B; bottom R0329 owns explicit primitive/composite caller migration and local model-resource/public validation. Runtime/defaults/kernels unchanged; historical evidence preserved."],
       "subitems": [
         {
           "line": 7379,
           "text": "- Added 2026-07-26 with session-local",
-          "status": "pending"
+          "status": "resolved-current-direct-versus-scaled-route-contracts-bound"
         },
         {
           "line": 7384,
           "text": "- Primitive composition is exact and improves the two production M512",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved-not-current-claim"
         },
         {
           "line": 7393,
           "text": "- After promotion and one later source-F16 checkpoint, remove the public",
-          "status": "pending"
+          "status": "deferred-bottom-live-comparison-ownership-migration"
         }
       ]
     },
