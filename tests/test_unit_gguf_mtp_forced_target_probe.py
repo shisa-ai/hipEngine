@@ -86,6 +86,20 @@ def test_parser_exposes_llama_direct_partial_commit_mode() -> None:
     assert args.target_block_direct_partial_replay_mode == "direct-commit"
 
 
+@pytest.mark.parametrize("partial_mode", ["serial-exact", "serial-state-only", "bulk-state-only", "native-state-only", "direct-commit"])
+def test_both_partial_policy_clis_preserve_explicit_choices(partial_mode):
+    from scripts.gguf_mtp_bench import apply_llama_compat_args, build_arg_parser as bench_parser
+
+    args = build_arg_parser().parse_args(["--trace", "trace.json", "--cycle", "0",
+        "--state-lifecycle-compare", "--target-block-direct-partial-replay-mode", partial_mode])
+    assert args.target_block_direct_partial_replay_mode == partial_mode
+    args = bench_parser().parse_args(["--target-block-direct-partial-replay-mode", partial_mode])
+    assert args.target_block_direct_partial_replay_mode == partial_mode
+    compat = bench_parser().parse_args(["--llama-compat", "--target-block-direct-partial-replay-mode", partial_mode])
+    apply_llama_compat_args(compat)
+    assert compat.target_block_direct_partial_replay_mode == ("direct-commit" if partial_mode == "serial-exact" else partial_mode)
+
+
 @pytest.mark.parametrize(
     "policy,mode,partial_mode,full,expected_source",
     [
@@ -162,6 +176,128 @@ def test_lifecycle_probe_keeps_replay_and_direct_partial_policies(
         assert replay_call[1] == [1, 2]
         if partial_mode.endswith("state-only"):
             assert replay_call[2]["advance_state_only"] is True
+
+
+@pytest.mark.parametrize("start", [10, 1020, 1021, 1025])
+@pytest.mark.parametrize("accepted", [0, 1, 2])
+@pytest.mark.parametrize("partial_mode", ["serial-exact", "serial-state-only", "bulk-state-only", "native-state-only", "direct-commit"])
+def test_lifecycle_bulk_partial_replay_at_position_boundary(start, accepted, partial_mode):
+    from scripts.gguf_mtp_forced_target_probe import _run_lifecycle_cycle
+
+    calls = []
+    sampled = {0: [9, 8, 7], 1: [2, 9, 7], 2: [2, 3, 7]}[accepted]
+    consumed = accepted + 1
+    exact_block = start + 3 < 1024
+    direct = exact_block and (accepted == 2 or partial_mode == "direct-commit")
+    needs_snapshot = not (exact_block and partial_mode == "direct-commit")
+    snapshot = object()
+
+    class Session:
+        position = start
+
+        def _linear_state_snapshot(self):
+            calls.append("snapshot")
+            return snapshot
+
+        def _restore_linear_state_snapshot(self, value, *, position):
+            assert value is snapshot and position == start
+            calls.append("restore")
+
+        def _free_linear_state_snapshot(self, value):
+            assert value is snapshot
+            calls.append("free")
+
+        def verify_target_block(self, tokens, **kwargs):
+            calls.append(("block", list(tokens), kwargs))
+            # State-only replay returns echoed inputs, deliberately not scores.
+            return SimpleNamespace(token_ids=list(tokens) if kwargs.get("advance_state_only") else sampled,
+                                   linear_state_rows_captured=True)
+
+        def verify_target_block_serial_exact(self, tokens, **kwargs):
+            calls.append(("serial", list(tokens), kwargs))
+            return SimpleNamespace(token_ids=list(tokens) if kwargs.get("advance_state_only") else [91] * len(tokens))
+
+        def _commit_verify_linear_state_row(self, row, *, position):
+            assert row == consumed - 1 and position == start + consumed
+            calls.append("commit")
+
+    next_prev, result = _run_lifecycle_cycle(
+        Session(), {"cycle": 0, "cycle_start_seq_position": start, "cycle_prev_token": 1,
+                    "draft_tokens": [2, 3], "target_tokens": sampled,
+                    "output_tokens": sampled[:consumed]},
+        current_prev=1, policy="direct", mode="bulk", use_wmma_prefill=False,
+        direct_partial_replay_mode=partial_mode,
+    )
+    assert next_prev == sampled[consumed - 1]
+    assert result["accepted_draft_tokens"] == accepted
+    assert result["consumed_rows"] == consumed
+    assert result["visible_tokens"] == sampled[:consumed]
+    assert result["direct_commit_exact"] is exact_block
+    assert result["matches_trace_visible"] is True
+    assert ("snapshot" in calls) is needs_snapshot
+    assert ("free" in calls) is needs_snapshot
+    assert ("commit" in calls) is direct
+    if direct:
+        assert "restore" not in calls
+        assert result["replay_sampled_tokens"] is None
+        assert result["state_source"] == ("llama_direct_commit" if partial_mode == "direct-commit" else "direct_commit")
+    else:
+        assert "restore" in calls
+        replay = [c for c in calls if isinstance(c, tuple)][-1]
+        assert replay[1] == [1, 2, 3][:consumed]
+        if partial_mode in {"serial-exact", "serial-state-only"}:
+            assert replay[0] == "serial"
+            assert replay[2]["advance_state_only"] is (partial_mode == "serial-state-only")
+        else:
+            assert replay[0] == "block"
+            assert replay[2]["advance_state_only"] is True
+            assert replay[2]["bulk_attention_mode"] == ("native" if partial_mode == "native-state-only" else "bulk")
+        assert result["replay_sampled_tokens"] != result["visible_tokens"]
+
+
+@pytest.mark.parametrize("phase", ["forward", "restore", "replay", "capture"])
+def test_partial_replay_frees_snapshot_on_failure(phase):
+    from scripts.gguf_mtp_forced_target_probe import ProbeError, _run_lifecycle_cycle
+
+    calls = []
+    snapshot = object()
+
+    def fail():
+        raise RuntimeError("partial replay failure")
+
+    class Session:
+        position = 10
+
+        def _linear_state_snapshot(self):
+            return snapshot
+
+        def _free_linear_state_snapshot(self, value):
+            assert value is snapshot
+            calls.append("free")
+
+        def _restore_linear_state_snapshot(self, value, *, position):
+            assert value is snapshot and position == 10
+            if phase == "restore":
+                fail()
+
+        def verify_target_block(self, tokens, **kwargs):
+            if phase == "forward":
+                fail()
+            return SimpleNamespace(token_ids=[2, 9, 7], linear_state_rows_captured=phase != "capture")
+
+        def verify_target_block_serial_exact(self, tokens, **kwargs):
+            fail()
+
+    error = ProbeError if phase == "capture" else RuntimeError
+    message = "did not capture linear-state rows" if phase == "capture" else "partial replay failure"
+    with pytest.raises(error, match=message):
+        _run_lifecycle_cycle(
+            Session(), {"cycle": 0, "cycle_start_seq_position": 10, "cycle_prev_token": 1,
+                        "draft_tokens": [2, 3], "target_tokens": [2, 9, 7], "output_tokens": [2, 9]},
+            current_prev=1, policy="direct", mode="bulk", use_wmma_prefill=False,
+            direct_partial_replay_mode="serial-state-only",
+        )
+    assert calls == ["free"]
 
 
 @pytest.mark.parametrize(

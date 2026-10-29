@@ -8920,38 +8920,38 @@
       "start_line": 6761,
       "end_line": 6816,
       "sha256": "f670091916d0549e7a9f98265603cbd910514ad93cf306a863fd57adecf90de0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-existing-verifier-policy-ownership",
+      "evidence": ["Both benchmark and forced lifecycle probe still consume all five modes. Consolidated transaction-policy decision into bottom R0281-TARGET-POLICY/R0284/R0299/R0300. Characterized actual lifecycle calls at starts10/1020/1021/1025 and zero/partial/full accepts, distinguishing forced-probe full-block predicate from benchmark partial-direct predicate. Tests retain original visible block IDs despite echoed/state replay outputs and free snapshots on forward/restore/replay/missing-capture failure. Parser tests confirm explicit serial-exact is also rewritten by llama-compat; other modes survive. Runtime/defaults/kernels and historical July evidence unchanged. Worklog: worklog/entries/20261029T003018.369231Z-cleanup-refactor-r0300-partial-replay-efa934.md."],
       "subitems": [
         {
           "line": 6762,
           "text": "- Added 2026-07-02. Bench and forced-target-probe flag with choices",
-          "status": "pending"
+          "status": "deferred-live-transaction-comparison"
         },
         {
           "line": 6776,
           "text": "- Purpose: reduce the semantic-safe `llama-compat` replay/commit bucket while",
-          "status": "pending"
+          "status": "resolved-current-parser-and-lifecycle-contract"
         },
         {
           "line": 6781,
           "text": "- Result: `direct-commit` is retained for the llama-compat replication lane. The",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 6792,
           "text": "- Exact-control result: `serial-state-only` is retained as the semantic-safe",
-          "status": "pending"
+          "status": "resolved-independent-control-and-history-preserved"
         },
         {
           "line": 6801,
           "text": "- Rejected diagnostics: artifact",
-          "status": "pending"
+          "status": "resolved-diagnostic-and-history-preserved"
         },
         {
           "line": 6810,
           "text": "- Remove when: parity closure picks the final compat transaction policy. If",
-          "status": "pending"
+          "status": "deferred-existing-verifier-policy-ownership"
         }
       ]
     },

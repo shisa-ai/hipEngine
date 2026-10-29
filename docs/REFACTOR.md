@@ -3430,62 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--target-block-direct-partial-replay-mode`
-- Added 2026-07-02. Bench and forced-target-probe flag with choices
-  `serial-exact` (default), `serial-state-only`, `direct-commit`,
-  `bulk-state-only`, and `native-state-only`. It only affects direct-state block verification when a
-  bulk verifier block is rejected or partially accepted. The retained
-  `serial-state-only` mode restores the snapshot, advances the accepted prefix
-  through `verify_target_block_serial_exact(..., advance_state_only=True)`, and
-  skips replay LM-head sampling; target tokens still come from the original
-  full-block scoring pass. The active llama-replication `direct-commit` mode
-  commits the captured verifier row on rejected/partial blocks, matching
-  llama.cpp's normal MTP accept lifecycle rather than serial-prefix replay. The
-  rejected bulk/native modes replay the accepted
-  prefix with `verify_target_block(..., advance_state_only=True)`, with
-  `native-state-only` using the native row-serial-attention verifier only for
-  that state replay.
-- Purpose: reduce the semantic-safe `llama-compat` replay/commit bucket while
-  preserving state lifecycle, and provide a separate llama-style replication
-  lane. `--llama-compat` promotes unspecified `serial-exact` replay to
-  `direct-commit`; explicit serial-state, bulk, and native diagnostic modes remain
-  opt-in.
-- Result: `direct-commit` is retained for the llama-compat replication lane. The
-  full-suite row
-  `benchmarks/results/2026-07-02-ar-mtp-llama-compat-directcommit-partial-full.json`
-  moves **51.85 -> 60.56 tok/s**, cycle **19.308 -> 16.534 ms/output**,
-  verifier drain **16.891 -> 14.071 ms/output**, replay/commit
-  **2.489 -> 0.043 ms/output**, and replay rows **38 -> 0** versus the
-  serial-state control. The lifecycle diagnostic
-  `benchmarks/results/2026-07-02-mtp-state-lifecycle-directcommit-partial-compare.json`
-  intentionally diverges from serial replay at cycle 3 with matching visible
-  token `[65342]`; that is expected for llama-replication, not an exact-state
-  claim.
-- Exact-control result: `serial-state-only` is retained as the semantic-safe
-  control.
-  The lifecycle comparator artifact
-  `benchmarks/results/2026-07-02-mtp-state-lifecycle-serial-state-only-partial-replay-compare.json`
-  reports `first_mismatch: null`, and the full-suite row
-  `benchmarks/results/2026-07-02-ar-mtp-llama-compat-serial-state-only-partial-replay-full.json`
-  moves **50.96 -> 51.85 tok/s**, cycle **19.645 -> 19.308 ms/output**,
-  verifier drain **17.222 -> 16.891 ms/output**, and replay/commit
-  **2.775 -> 2.489 ms/output** with unchanged acceptance/economy.
-- Rejected diagnostics: artifact
-  `benchmarks/results/2026-07-02-mtp-state-lifecycle-bulk-state-only-partial-replay-compare.json`
-  reports `first_mismatch` at cycle 3. The visible token still matches
-  `[65342]`, but `bulk_state_only_replay` diverges from
-  `serial_exact_accepted_prefix` in hidden seed plus Conv/GDN state across 61
-  fingerprints. The active-shape native replay artifact
-  `benchmarks/results/2026-07-02-mtp-state-lifecycle-native-state-only-partial-replay-active-compare.json`
-  also fails at cycle 3 with matching visible token `[65342]` but 59
-  hidden/linear-state mismatches.
-- Remove when: parity closure picks the final compat transaction policy. If
-  `direct-commit` remains the llama-replication path, collapse the route/flag
-  surface so only the named compat mode and the exact serial-state control remain.
-  If exact-state semantics become the compat target, delete directcommit as a
-  perf diagnostic. Do not promote bulk/native state-only replay into any retained
-  route.
-
 ## `--verify-lm-head-q6-top1-dp4a` / verifier lm-head X8 sidecar
 - Added 2026-07-01. Bench flag `--verify-lm-head-q6-top1-dp4a` sets
   `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1` before materialization and
@@ -11205,7 +11149,7 @@ seed cycles and verify output, acceptance, hidden/KV/cursor continuity; confirm
 the public NextN provider is unchanged. Do not remove the compatibility cache
 until its replacement implements those same lifetime and commit semantics.
 
-### R0281-TARGET-POLICY / R0284 / R0299 — GGUF verifier controls and native naming
+### R0281-TARGET-POLICY / R0284 / R0299 / R0300 — GGUF verifier controls and native naming
 
 The standalone benchmark leaves block verification and direct state commit
 off, but the AR/MTP suite's default route enables both and llama-compat forces
@@ -11257,6 +11201,29 @@ policy has its own end-position and partial-commit rules; serial-exact/native
 and llama-style bulk direct partial commit are distinct contracts. Keep graph
 invalidation after block execution, absolute positions, hidden-row selection,
 KV/cursor accounting and snapshot cleanup together.
+
+R0300's partial-replay selector remains in both the benchmark and forced
+lifecycle probe. `serial-exact` is the parser default; llama-compat rewrites
+that value to `direct-commit`, even when explicitly supplied. Other explicit
+choices survive. Serial-state-only replay advances through the scalar target
+without sampling; bulk/native state-only modes use their named block schedules.
+Those state-only token IDs are echoed inputs, not new scores. Keep original
+block-selected visible IDs separate from replayed state and metadata.
+
+The forced lifecycle probe also uses the full-block exact-commit predicate:
+for bulk, `start_position + rows < 1024`. At or beyond that boundary, even a
+full accept or `direct-commit` choice restores a snapshot and replays. The
+benchmark's partial-block direct-commit branch uses its separate partial
+support predicate. Preserve this diagnostic distinction rather than claiming
+the two callers always take the same commit path. Cover reject/partial/full
+accepts on both sides of the boundary and release snapshots on forward,
+restore, replay and missing-capture failures.
+
+The original R0300 row and unchanged July lifecycle/full-suite artifacts keep
+the observed state divergences and historical comparisons. They do not make
+captured-row commit exact or authorize deleting the independent serial-state
+control. Preserve these explicit diagnostics or retire their callers as part
+of this same transaction-policy decision.
 
 The dedicated `scripts/gguf_mtp_forced_target_probe.py
 --state-lifecycle-compare` remains an independent diagnostic after removal
