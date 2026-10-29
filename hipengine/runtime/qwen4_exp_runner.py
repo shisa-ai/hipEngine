@@ -5205,8 +5205,8 @@ def _qwen4_exp_q8_mmq_policy(policy):
         minimums[(2560, 6144)] = 64
         policy = replace(policy, min_rows=minimums)
     planes_env = os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", "")
-    if planes_env in {"2", "3"} and int(planes_env) != policy.planes:
-        policy = replace(policy, planes=int(planes_env))
+    if planes_env in {"2", "3"} and int(planes_env) != policy.f32_planes:
+        policy = replace(policy, f32_planes=int(planes_env))
     return policy
 
 

@@ -165,7 +165,7 @@ def _tile_rows_or_bound(
 # Held at 1 because raising it changes the arithmetic of a production default,
 # which needs its execution-profile gate, and this route has no plane policy for
 # that gate to resolve: scripts/execution_profile_q8_mmq_plane_gate.py drives
-# Qwen4Exp's Q8MMQPrefillPolicy.planes, not this constant. Everything the
+# Qwen4Exp's Q8MMQPrefillPolicy.f32_planes, not this constant. Everything the
 # promotion needs is measured and recorded in
 # worklog/entries/20260927T185444.658791Z-lhl-gemma4-mmq-activation-planes-a58366.md:
 # at 64 ids on the first layer against the fp32 grouped arm, one plane is 0.655

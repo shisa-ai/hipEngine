@@ -606,9 +606,9 @@ def test_pf1_selected_q8_0_down_matches_cpu_reference(variant_name: str) -> None
 
 
 def test_pf1_mmq_plane_policy_binding() -> None:
-    """The session policy's plane count binds the dispatch route (pure Python).
+    """The session policy's F32-output plane count binds the dispatch route.
 
-    planes=2 selects the registered d4x2 guarded f32 variant and its
+    f32_planes=2 selects the registered d4x2 guarded f32 variant and its
     ``raw_mmq_d4x2_f32`` route; the default (3) keeps the production d4x3
     route. This is the binding the whole-model gate flips temporarily.
     """
@@ -639,7 +639,7 @@ def test_pf1_mmq_plane_policy_binding() -> None:
             max_rows=base.max_rows,
             risk_threshold=base.risk_threshold,
             max_out_features=base.max_out_features,
-            planes=planes,
+            f32_planes=planes,
         )
         session = _Q8MMQPrefillSession(
             workspace_ptr=1 << 40,

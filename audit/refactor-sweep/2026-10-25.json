@@ -11940,23 +11940,25 @@
       "start_line": 9459,
       "end_line": 9480,
       "sha256": "6061a2267fa7364b908f520c2b5a1c2004d1dd55d8765c993b9a881798d458e0",
-      "status": "pending",
-      "evidence": [],
+      "status": "renamed-plane-policy-to-f32-output-scope",
+      "evidence": [
+        "Keep live two/three-plane F32-output candidates and BF16 fixed-three-plane arithmetic. Rename internal Q8MMQPrefillPolicy.planes to f32_planes, update both env binders, dispatch, evaluator dataclass replacements and parity-test constructor; preserve public env/CLI/artifact spellings and all defaults/kernel bodies. Nine RED boundary cases;134focused CPU dispatch/profile/provenance checks and CPU deterministic bundle pass; BF16 stays d4x3 and both F32 aliases select2/3. Real ROCm policy-binding node passes. Public gfx1151 Flash-Next control/repeat evidence in worklog/entries/20261029T153447.138496Z-cleanup-refactor-r0409-f32-plane-scope-a06145.md. Remove historical inferred-scope/deletion narrative, no new quality/performance verdict."
+      ],
       "subitems": [
         {
           "line": 9461,
           "text": "- `Q8MMQPrefillPolicy.planes` (`gguf_q8_0_mmq_prefill.py:63`) is consulted only",
-          "status": "pending"
+          "status": "f32-only-scope-named-by-field-and-env-doc"
         },
         {
           "line": 9469,
           "text": "- **Not yet traced.** The mechanism above is inferred from dispatch source, not",
-          "status": "pending"
+          "status": "direct-dispatch-boundary-tests-cover-both-dtypes-no-new-historical-attribution"
         },
         {
           "line": 9472,
           "text": "- **Removal trigger:** the d4x3 chain is final for this family (PF-1d closed",
-          "status": "pending"
+          "status": "rename-option-executed-live-f32-candidates-and-bf16-strict-preserved"
         }
       ]
     },

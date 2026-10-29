@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Whole-model execution-profile gate for the Q8 MMQ activation-plane change.
 
-Evaluates the PF-1d MMQ plane candidate (``Q8MMQPrefillPolicy.planes``) against
+Evaluates the F32-output MMQ plane candidate
+(``Q8MMQPrefillPolicy.f32_planes``) against
 the strict teacher on the Qwen4Exp UD-Q4_K_XL canonical exact-token fixture:
 full-vocabulary logits trajectories with the candidate consuming the strict
 generated prefix at every compared transition, evaluated with the calibrated
@@ -256,9 +257,9 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         minimums[(extra_hidden, extra_out)] = 64
         candidate_policy = replace(original_policy, min_rows=minimums)
     else:
-        candidate_policy = replace(original_policy, planes=int(args.planes))
+        candidate_policy = replace(original_policy, f32_planes=int(args.planes))
     context_policy = (
-        replace(original_policy, planes=int(args.context_planes))
+        replace(original_policy, f32_planes=int(args.context_planes))
         if args.context_planes
         else None
     )

@@ -54,17 +54,21 @@ Q8_MMQ_PREFILL_POLICY_KEY = KernelKey(
 
 @dataclass(frozen=True)
 class Q8MMQPrefillPolicy:
-    """Model-plugin admission, correction, and scratch contract for Q8 MMQ."""
+    """Model-plugin admission, correction, and scratch contract for Q8 MMQ.
+
+    ``f32_planes`` chooses the F32-output activation chain only. BF16-output
+    MMQ keeps its three-plane guarded chain regardless of this field.
+    """
 
     min_rows: Mapping[tuple[int, int], int]
     max_rows: int
     risk_threshold: float
     max_out_features: int
-    planes: int = 3
+    f32_planes: int = 3
 
     def __post_init__(self) -> None:
-        if self.planes not in (2, 3):
-            raise ValueError("planes must be 2 or 3 (registered chain surfaces)")
+        if self.f32_planes not in (2, 3):
+            raise ValueError("f32_planes must be 2 or 3 (registered F32-output chains)")
 
     def __call__(self, rows: int, hidden: int, out_features: int) -> bool:
         threshold = self.min_rows.get((int(hidden), int(out_features)))

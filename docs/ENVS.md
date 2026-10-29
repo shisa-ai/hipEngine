@@ -869,7 +869,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE` / `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE` | production profile | Wave-scaled variants of the Q8 coltile prefill and the raw-Q route. |
 | `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64` | retired | No longer read. The profile publishes token64 selection to the owning runner; scoped diagnostics retain explicit A/B control. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` | production profile | Admits the MMQ prefill session for Q8_0 dense projections. |
-| `HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES` | unset (`2` or `3`) | Plane count override for the raw Q8 MMQ policy. |
+| `HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES` | unset (`2` or `3`) | F32-output raw Q8 MMQ activation-plane override (`f32_planes`). BF16-output MMQ always uses its guarded three-plane chain; this control does not change it. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK` | production profile | Uses prepacked weight sidecars in the Q8 MMQ prefill session. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` | retired | No longer read. The owning MMQ session carries prepacked vector selection; explicit scoped diagnostics preserve the scalar comparison. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` | retired | No longer read. The owning MMQ session carries raw vector selection, preserving the rows>=64 parent-variant guard and token64 dependency. |
