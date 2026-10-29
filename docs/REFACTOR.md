@@ -3427,19 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp Q4 shared-activation output-pair admission
-
-- `selected_dual_grouped_pair2_bf16_bf16_out` is retained after exact
-  primitive/actual-weight gates and1.345-1.440x tokens512 gate/up+SiLU wins.
-  Full state/KV/logit and72-trajectory A/B admission now pass.
-- Production selects pair2 for supported rows>=64; retain the registered
-  bundled/serial strict fallback. Do not reopen the rejected independent-team
-  or wider serial-output sweeps: this path shares each activation load.
-- Selector `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` is production1/strict0,
-  guarded by rows>=64, supported K and registry availability.
-  Remove the environment selector when the admitted profile owns dispatch
-  directly and rollback needs expire; retain smaller-row/bundled fallbacks.
-
 ## Qwen4Exp Q8 wave-scale rollback
 
 - Separate registered `coltile8_rowbatch4_wave_scale_f32_f32_out` is retained

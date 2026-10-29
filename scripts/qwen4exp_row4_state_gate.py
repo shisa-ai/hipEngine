@@ -46,7 +46,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
-                   "q4-bundle", "prefill-bundle", "q51-pair"}:
+                   "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -205,7 +205,7 @@ def main():
         # Request-local on the runner; no env key names this leaf.
         flag=""
     if args.route_package == "q4-pair":
-        flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
+        flag = ""  # route_scope binds the owning runner.
     if args.route_package == "q4-iu8-exact":
         flag = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
     if args.route_package == "q51-iu8-exact":
@@ -547,7 +547,11 @@ def main():
                 "scope": "per measured run; restored on exit",
                 "isolation": "tiled and peer prefill off; wave-norm variant unset",
             }
-        if args.route_package in {"q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+        if args.route_package == "q4-pair":
+            from scripts.qwen4exp_halo_box_campaign_ab import q4_pair_control_record
+            assert generator.runner.q4_pair_prefill is True
+            report["selection_control"] = q4_pair_control_record(generator.runner)
+        if args.route_package in {"q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.

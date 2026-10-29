@@ -368,12 +368,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, True, True, True, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
     owner.q4_out4 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, True, True, True, False, False, False,
-        False, False, False)
+        False, False, False, False)
 
 
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:
@@ -582,7 +582,8 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     assert off == "0"
     assert set(envs) == {
         ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV, T16_GATE_UP_ENV,
-        EXPERT_GRID_ENV, PAIR_ENV}
+        EXPERT_GRID_ENV}
+    assert dict(bindings)["q4_pair_prefill"] is False
     assert dict(bindings)["q4_bundle_prefill"] is False
     assert envs == module.Q4_OUT4_PREEMPTING_ENV
     # The chain's own switches are runner state, so the arm records and
@@ -601,7 +602,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
     with _published(monkeypatch) as (published, generator):
         assert published[ROUTED_F16_ENV] == "1"
         assert published[IU8_EXACT_ENV] == "1"
-        assert published[PAIR_ENV] == "1"
+        assert published[PAIR_ENV] is None
+        assert generator.runner.q4_pair_prefill is True
         assert published[BUNDLE_ENV] is None
         assert generator.runner.q4_bundle_prefill is True
         assert published[EXPERT_GRID_ENV] is None   # default 64
@@ -616,8 +618,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         # Even with those out of the way the expert-grid family replaces the
         # rung at its default mode, and the published pair2 preemptor inside it
         # takes the launch - so neither of this rung's owners can run.
-        assert _gate_up_key(q4_out4=True).variant == PAIR2_VARIANT
-        assert _gate_up_key(q4_out4=False).variant == PAIR2_VARIANT
+        assert _gate_up_key(q4_out4=True, q4_pair_prefill=generator.runner.q4_pair_prefill).variant == PAIR2_VARIANT
+        assert _gate_up_key(q4_out4=False, q4_pair_prefill=generator.runner.q4_pair_prefill).variant == PAIR2_VARIANT
 
 
 def test_the_route_closure_makes_the_strict_base_the_owner(
@@ -643,8 +645,10 @@ def test_the_route_closure_makes_the_strict_base_the_owner(
             # is closed.
             monkeypatch.setenv(PAIR_ENV, "1")
             monkeypatch.setenv(BUNDLE_ENV, "1")
-            assert _gate_up_key(q4_out4=False).variant == BASE_VARIANT
-            assert _gate_up_key(q4_out4=True).variant == OUT4_VARIANT
+            assert _gate_up_key(q4_out4=False, q4_pair_prefill=True,
+                                q4_bundle_prefill=True).variant == BASE_VARIANT
+            assert _gate_up_key(q4_out4=True, q4_pair_prefill=True,
+                                q4_bundle_prefill=True).variant == OUT4_VARIANT
             # The gates the arm records are still published on the runner.
             assert generator.runner.q4_exact_grouped_gate is True
             assert generator.runner.q4_exact_grouped_all is True
@@ -665,7 +669,7 @@ def test_the_route_closure_launches_only_the_owner_it_names(
         # The lane's own arm first: the expert-grid family owns the launch (its
         # published pair2 preemptor at 1024 rows), so the rung's owners stay at
         # zero however the field is set.
-        _launch(_gate_up_key(q4_out4=False))
+        _launch(_gate_up_key(q4_out4=False, q4_pair_prefill=_generator.runner.q4_pair_prefill))
         assert counts == {
             GRID64_VARIANT: 0, OUT4_VARIANT: 0, BASE_VARIANT: 0,
             PAIR2_VARIANT: 1, BUNDLE_VARIANT: 0}

@@ -396,6 +396,7 @@ def run_qwen4_exp_batch_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    q4_pair_prefill: bool = False,
     q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -506,6 +507,7 @@ def run_qwen4_exp_batch_gdn_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
@@ -615,6 +617,7 @@ def _run_layer_ffn(
     weights: object,
     scratch: object,
     *,
+    q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
     rows: int,
@@ -681,6 +684,7 @@ def _run_layer_ffn(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
         scratch=scratch.moe,
@@ -719,6 +723,7 @@ def run_qwen4_exp_batch_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    q4_pair_prefill: bool = False,
     q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -837,6 +842,7 @@ def run_qwen4_exp_batch_qsa_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
@@ -950,6 +956,7 @@ class Qwen4ExpGGUFBatchRunner:
     # this belongs in the capture key like the Q5_1 rungs above.
     q4_out4: bool = True
     q4_bundle_prefill: bool = False
+    q4_pair_prefill: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder and ``None`` (the dispatch heuristic) on an unbound owner.
     # The MoE runs eager inside the captured segment, so a decode capture
@@ -1871,6 +1878,7 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.q4_exact_grouped_all),
             bool(self.q4_out4),
             bool(getattr(self, "q4_bundle_prefill", False)),
+            bool(getattr(self, "q4_pair_prefill", False)),
             bool(self.forkb_grouped_down),
             bool(self.q8_down_row4_prefill),
             bool(self.q8_down_bundle_prefill),
@@ -2122,6 +2130,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_gdn_layer(
                     residual_ptr,
                     gdn_binding,
+                    q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     state=self.gdn_states[gdn_binding.gdn_state_index],
@@ -2162,6 +2171,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_qsa_layer(
                     residual_ptr,
                     qsa_binding,
+                    q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     attention_state=attention_states[qsa_binding.qsa_state_index],

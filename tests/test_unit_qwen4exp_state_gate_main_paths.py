@@ -29,10 +29,13 @@ from hipengine.kernels.registry import (
 from scripts import qwen4exp_row4_state_gate as gate
 
 PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4",
-            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register")
+            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair")
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    "q4-pair": KernelKey(
+        "hip_gfx1151", "moe_linear", "gguf_q4_k",
+        "selected_dual_grouped_pair2_bf16_bf16_out"),
     "gdn-register": KernelKey(
         "hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
         "qwen4exp_sigmoid_register_prefill"),
@@ -68,10 +71,6 @@ LEAF_KEYS = {
 
 #: The leaf keys and binder keys of the packages that still own a process key.
 PROCESS_KEYED = {
-    "q4-pair": (
-        KernelKey("hip_gfx1151", "moe_linear", "gguf_q4_k",
-                  "selected_dual_grouped_pair2_bf16_bf16_out"),
-        "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"),
     "q8-wave-scale": (
         KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
                   "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"),
@@ -99,6 +98,7 @@ def _runner(**overrides):
         "q51_row_publish": True,
         "q5k_row4_prefill": True,
         "q4_bundle_prefill": True,
+        "q4_pair_prefill": True,
         "qsa_h256_prefill_mode": "page256",
         "q8_down_row4_prefill": True,
         "q8_down_bundle_prefill": True,
@@ -233,6 +233,16 @@ def test_main_records_the_runner_owned_premise(
         assert control["before"] is False and control["after"] is True
         assert control["published_value"] is True
         assert control["isolation"] == "tiled and peer prefill off; wave-norm variant unset"
+    elif package == "q4-pair":
+        from scripts.qwen4exp_halo_box_campaign_ab import Q4_PAIR_ENV
+        assert control["runner_field"] == "q4_pair_prefill"
+        assert control["before"] is False and control["after"] is True
+        assert control["published_value"] is True
+        assert control["forced_environment"] == Q4_PAIR_ENV
+        assert control["forced_runner_fields"] == {
+            "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
+            "q4_bundle_prefill": True,
+        }
     elif package == "q51-pair":
         assert control["runner_field"] == gate.Q51_PAIR_FIELD
         assert control["before"] is False and control["after"] is True

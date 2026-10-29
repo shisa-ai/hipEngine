@@ -1210,7 +1210,6 @@ def _bind(
             "1" if production else "0"
         ),
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT": "selected_grouped_wmma_prefill_bf16_bf16_out",
-        "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",
         # Exact iu8-risk+repair gate/up: bit-identical to the pair2 owner
         # (state gate + 72 exact trajectories); production-only binding.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1" if production else "0",
@@ -1419,6 +1418,7 @@ def _bind(
     # out4 owner, and a diagnostic arm pins the strict base on its own runner.
     generator.q4_out4 = True
     generator.q4_bundle_prefill = production
+    generator.q4_pair_prefill = production
     # The compact F16 Q4_K dual gate/up tile pair: every plan publishes 16/16,
     # which is what the retired process keys were pinned to. ``None`` on either
     # side is the unbound heuristic, so a runner built without this bind keeps
@@ -1464,6 +1464,7 @@ def _bind(
         runner.q4_exact_grouped_all = True
         runner.q4_out4 = True
         runner.q4_bundle_prefill = production
+        runner.q4_pair_prefill = production
         runner.q4_tile_m = 16
         runner.q4_tile_n = 16
         runner.q8_wmma_tiles = (64, 32)

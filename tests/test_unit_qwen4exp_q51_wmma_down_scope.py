@@ -238,13 +238,13 @@ def test_the_batch_capture_key_carries_the_field() -> None:
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, True, True, True, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
     owner.q51_exact_grouped_down = True
     owner.q51_wmma_down = True
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, True, True, True, True, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
 
 # --- forwarding -------------------------------------------------------------

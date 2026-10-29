@@ -12096,24 +12096,17 @@
       "start_line": 9553,
       "end_line": 9565,
       "sha256": "51318b329a52d3af840ea630e2f6abc6a2d56f327e83dcd1b53d6608c2dbe338",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "worklog/entries/20261029T172959.150738Z-cleanup-refactor-r0416-q4-pair-6f8630.md",
+        "tests/test_unit_qwen4exp_q4_pair_scope.py",
+        "tests/test_gpu_qwen4exp_q4_bundle.py",
+        "Runner-owned profile publication, scalar/batch/mixed forwarding and graph policy; scoped diagnostic parent/pair controls. Public generation verified below/at/above threshold with stale env ignored."
+      ],
       "subitems": [
-        {
-          "line": 9555,
-          "text": "- `selected_dual_grouped_pair2_bf16_bf16_out` is retained after exact",
-          "status": "pending"
-        },
-        {
-          "line": 9558,
-          "text": "- Production selects pair2 for supported rows>=64; retain the registered",
-          "status": "pending"
-        },
-        {
-          "line": 9561,
-          "text": "- Selector `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` is production1/strict0,",
-          "status": "pending"
-        }
+        {"text": "Preserve admitted shared-activation pair2 implementation and arithmetic", "status": "fixed-control-only-kernels-unchanged-GPU-parity-passed"},
+        {"text": "Preserve rows>=64 support, bundled/small-row strict fallbacks and rejected sweep decisions", "status": "fixed-guards-preserved-public-routing-verified-rejections-recorded-in-worklog"},
+        {"text": "Replace production1/strict0 environment transport with profile-owned dispatch and diagnostic rollback", "status": "fixed-profile-clone-forwarding-scopes-and-graph-policy"}
       ]
     },
     {

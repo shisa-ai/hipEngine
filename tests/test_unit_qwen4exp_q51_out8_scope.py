@@ -344,12 +344,12 @@ def test_the_batch_capture_key_carries_the_field() -> None:
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, True, True, True, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
     owner.q51_out8 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, False, True, True, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
 
 def test_the_mixed_pass_reads_the_field_from_the_batch_owner() -> None:

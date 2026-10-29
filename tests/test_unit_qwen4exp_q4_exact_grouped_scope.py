@@ -320,18 +320,18 @@ def test_the_batch_capture_key_carries_both_gates() -> None:
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, True, True, True, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
     owner.q4_exact_grouped_gate = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, True, False, True, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
     owner.q4_exact_grouped_gate = True
     owner.q4_exact_grouped_all = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, True, True, False, True, False, False,
-        False, False, False)
+        False, False, False, False)
 
 
 def test_the_mixed_pass_reads_both_gates_from_the_batch_owner() -> None:

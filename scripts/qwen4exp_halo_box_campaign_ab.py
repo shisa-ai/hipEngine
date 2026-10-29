@@ -47,6 +47,46 @@ PF13_FIELDS = (FORKB_FIELD, Q5_M1_FIELD)
 Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_FIELD = "qsa_h256_prefill_mode"
 Q4_BUNDLE_FIELD = "q4_bundle_prefill"
+Q4_PAIR_ENV = {
+    "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
+    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID": "64",
+}
+
+
+def q4_pair_control_record(runner):
+    return {
+        "runner_field": "q4_pair_prefill", "before": False, "after": True,
+        "published_value": runner.q4_pair_prefill,
+        "scope": "per measured run; restored on exit",
+        "forced_environment": dict(Q4_PAIR_ENV),
+        "forced_runner_fields": {
+            "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
+            "q4_bundle_prefill": True,
+        },
+    }
+
+
+@contextlib.contextmanager
+def q4_pair_scope(runner, enabled, *, environment=os.environ):
+    """Compare bundle and pair2 inside the same exact grouped chain."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q4_pair_prefill, q4_bundle_prefill, q4_exact_grouped_gate,
+        q4_exact_grouped_all,
+    )
+    prior = {key: environment.get(key) for key in Q4_PAIR_ENV}
+    try:
+        environment.update(Q4_PAIR_ENV)
+        with q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
+            yield
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
 Q51_PAIR_FIELD = "q51_pair_prefill"
 MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
 MMQ_PREPACK_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
@@ -1647,6 +1687,13 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             gdn_register_prefill(runner, mode == "after"),
         )
 
+    if route_package == "q4-pair":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("q4-pair needs the owning runner")
+        return q4_pair_scope(runner, mode == "after", environment=environment)
+
     if route_package == "q51-pair":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -2003,7 +2050,7 @@ def _apply_mode(
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
         if route_package == "q4-pair":
-            flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
+            return  # route_scope binds the owning runner.
         if route_package == "q4-iu8-exact":
             flag = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
         if route_package == "q51-iu8-exact":
@@ -2670,6 +2717,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "scope": "per measured run; restored on exit",
             "isolation": "tiled and peer prefill off; wave-norm variant unset",
         }
+    if args.route_package == "q4-pair":
+        artifact["selection_control"] = q4_pair_control_record(generator.runner)
     if args.route_package == "q51-pair":
         artifact["selection_control"] = {
             "runner_field": Q51_PAIR_FIELD, "before": False, "after": True,

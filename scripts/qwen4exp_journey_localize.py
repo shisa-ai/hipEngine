@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_pair_prefill
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -175,14 +175,25 @@ def register_arm_enabled(arm, published):
     return published
 
 
+def pair_arm_enabled(arm, published):
+    """Preserve the strict matrix family's runner-local pair2 choice."""
+    if arm in {"all_flags_strict", "base_plus_moe_flags", "q8down_off_without_matrix"}:
+        return False
+    if arm.startswith("strict_plus_"):
+        return published if arm == "strict_plus_matrix" else False
+    return published
+
+
 def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
-                     *, h256_mode=None, register_prefill=None):
+                     *, h256_mode=None, register_prefill=None, pair_prefill=None):
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
     with phase_peer_scope(runner, prefill_flags), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
-            if register_prefill is None else register_prefill):
+            if register_prefill is None else register_prefill), q4_pair_prefill(
+                runner, getattr(runner, "q4_pair_prefill", False)
+                if pair_prefill is None else pair_prefill):
         runner.reset()
         result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
@@ -288,6 +299,9 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(q4_pair_prefill(
+                    generator.runner, pair_arm_enabled(
+                        arm, generator.runner.q4_pair_prefill)))
                 arm_scope.enter_context(gdn_register_prefill(
                     generator.runner, register_arm_enabled(
                         arm, generator.runner.gdn_register_prefill)))
@@ -308,6 +322,7 @@ def main():
                             candidate.extend(split_trajectory(
                                 generator.runner, tokens[key], forced, pre, dec,
                                 register_prefill=arm != "strict_prefill_production_decode",
+                                pair_prefill=arm != "strict_prefill_production_decode",
                                 h256_mode=("parent" if arm == "strict_prefill_production_decode"
                                            else None)))
                         else:

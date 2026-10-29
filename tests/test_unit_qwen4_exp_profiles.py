@@ -375,7 +375,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.q4_bundle_prefill is True
     assert fake_runner.q4_bundle_prefill is True
     assert "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "1"
+    assert production_generator.q4_pair_prefill is True
+    assert fake_runner.q4_pair_prefill is True
+    assert "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "0"
@@ -566,7 +568,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "stale"
     assert strict_generator.q4_bundle_prefill is False
     assert "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "0"
+    assert strict_generator.q4_pair_prefill is False
+    assert "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "0"

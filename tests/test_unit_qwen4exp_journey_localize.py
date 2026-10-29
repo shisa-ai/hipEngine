@@ -226,3 +226,32 @@ def test_split_trajectory_reconstructs_prefix_then_switches_without_reset(monkey
                      "clear", {"dec": "1"}, ("step", 5), ("step", 6)]
     assert len(rows) == 3
     assert not np.shares_memory(rows[0], result.logits)
+
+
+@pytest.mark.parametrize("arm,expected", [
+    ("bound", True), ("all_flags_strict", False),
+    ("base_plus_moe_flags", False), ("q8down_off_without_matrix", False),
+    ("strict_plus_matrix", True), ("strict_plus_gdn", False),
+    ("strict_plus_qsa", False), ("gdn_flags_strict", True),
+])
+def test_pair_arm_choice_survives_environment_retirement(arm, expected):
+    from scripts.qwen4exp_journey_localize import pair_arm_enabled
+    assert pair_arm_enabled(arm, True) is expected
+    assert pair_arm_enabled(arm, False) is False
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_split_pair_scope_follows_prefill_and_restores(monkeypatch, enabled):
+    import numpy as np
+    from scripts import qwen4exp_journey_localize as module
+
+    seen = []
+    result = SimpleNamespace(logits=np.array([1.0], dtype=np.float32))
+    owner = SimpleNamespace(q4_pair_prefill=True, reset=lambda: None)
+    owner.prefill = lambda ids: (seen.append(owner.q4_pair_prefill) or result)
+    owner.step = lambda token: (seen.append(owner.q4_pair_prefill) or result)
+    monkeypatch.setattr(module, "clear_arm_graphs", lambda runner: None)
+    monkeypatch.setattr(module, "set_flags", lambda flags: None)
+    module.split_trajectory(owner, [3], [5], {}, {}, pair_prefill=enabled)
+    assert seen == [enabled, True]
+    assert owner.q4_pair_prefill is True
