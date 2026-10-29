@@ -3427,25 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## GR-up ordered DPP candidate
-
-- `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` is enabled for the measured
-  `gguf_ud_q4_k_xl` production profile after the tracked-clean canonical
-  twelve-case A/B. It replaces only the existing rows>256, four-branch
-  wave-scale GR-up reduction. Missing registration falls back to the
-  wave-scale parent, then the unscaled fused parent; the unfused primitive
-  chain stays available.
-- The real-weight operation screen is bit-identical and 1.54-1.57x faster
-  on gfx1151 at rows 512/1024/4096. The tracked-clean engine A/B then measured
-  weighted prefill gains of 6.57%, 7.15%, and 6.98% at 512/1024/4096 tokens,
-  with every canonical category winning and all 72 output trajectories exact.
-  Decode was effectively flat and is not claimed. The UD production manifest
-  names the DPP variant and retains the exact fused parent as its fallback.
-- Removal condition: retain `=0` for one campaign checkpoint for bisection,
-  then remove the selector once the DPP leaf is the only qualified gfx1151
-  owner for this tile shape.
-- Evidence: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.
-
 ## Exact-iu8 risk multiplier: pinned at 4.0 in production, and why
 
 - `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is now **explicitly bound to `"4.0"`** in
@@ -10771,3 +10752,27 @@ October4 artifacts; no new performance claim follows from code removal.
 
 Removal validation:
 `../worklog/entries/20261029T201635.969016Z-cleanup-refactor-r0442-e923ef.md`.
+
+### R0443 — GR DPP comparison ownership
+
+The profile still binds `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION`; the selector
+reads it independently of the runner-owned `gr_wave_scale` field. It applies
+only above 256 rows with four branches. Missing DPP registration selects the
+wave-scale parent when available, even if the independent wave setting is off,
+then the original fused parent. The unfused chain remains available.
+
+**Deferred interface decision:** migrate DPP selection to its explicit profile
+owner together with the halo-box campaign, row4 state gate and K320 diagnostics,
+or retain the comparison control. R0419 migrated wave-scale ownership, not
+DPP; R0013 retired the separate K320 override, not this family selector. Do not
+close those controls independently and accidentally compare a preempting wide
+or IU8 route in both arms. Preserve declared scopes, fallback order, selected
+variant reporting and failure restoration; verify the migrated state/campaign
+comparisons and public generation with actual DPP engagement. Run
+`tests/test_unit_qwen4exp_gr_dpp_reduction.py`, GR wave-scope and profile tests,
+plus the affected GPU parent-parity/state tests before retiring the reader.
+
+Historical numerical and timing evidence remains in
+`benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.
+Current ownership review:
+`../worklog/entries/20261029T202553.939702Z-cleanup-refactor-r0443-95c64b.md`.

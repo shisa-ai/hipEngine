@@ -12856,28 +12856,28 @@
       "start_line": 10500,
       "end_line": 10518,
       "sha256": "334ba6c022f870f5a9d3c44263e7946ad627907a2d56e363ce73c0135dff355e",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-dpp-owner-and-diagnostic-migration",
+      "evidence": ["Independent DPP env/profile selection and diagnostic consumers remain live; wave ownership R0419 and K320 override R0013 do not retire it. Bottom names coordinated migration and exact fallback requirements.115 focused tests pass. Worklog: worklog/entries/20261029T202553.939702Z-cleanup-refactor-r0443-95c64b.md."],
       "subitems": [
         {
           "line": 10502,
           "text": "- `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` is enabled for the measured",
-          "status": "pending"
+          "status": "resolved-current-scope-and-fallback-preserved"
         },
         {
           "line": 10508,
           "text": "- The real-weight operation screen is bit-identical and 1.54-1.57x faster",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10514,
           "text": "- Removal condition: retain `=0` for one campaign checkpoint for bisection,",
-          "status": "pending"
+          "status": "deferred-owner-and-caller-migration"
         },
         {
           "line": 10517,
           "text": "- Evidence: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/`.",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         }
       ]
     },
