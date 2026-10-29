@@ -2123,6 +2123,8 @@ class Qwen4ExpMoEDeviceResult:
 
 @dataclass
 class Qwen4ExpGRScratch:
+    """Own full FP32 fallback planes; scale-only reads borrow disjoint lifetimes."""
+
     normalized: DeviceBuffer
     low_rank: DeviceBuffer
     gate: DeviceBuffer
@@ -2159,6 +2161,22 @@ class Qwen4ExpGRScratch:
                 free(buffer, runtime=active_runtime)
             raise
         return cls(*buffers, runtime=active_runtime)
+
+    def _borrow(self, owner: DeviceBuffer, rows: int, width: int, itemsize: int) -> DeviceBuffer:
+        if self.closed:
+            raise RuntimeError("Qwen4Exp GR scratch is closed")
+        nbytes = rows * width * itemsize
+        if rows <= 0 or width <= 0 or nbytes > owner.nbytes:
+            raise ValueError("Qwen4Exp GR view exceeds scratch capacity or has invalid geometry")
+        return DeviceBuffer(owner.ptr, nbytes)
+
+    def inv_rms_view(self, *, rows: int, branches: int) -> DeviceBuffer:
+        """Borrow gate storage for FP32 scales only while the gate is unused."""
+        return self._borrow(self.gate, rows, branches, 4)
+
+    def mixed_f16_view(self, *, rows: int, hidden: int) -> DeviceBuffer:
+        """Borrow the unwritten normalized plane for half(mixed), without ownership."""
+        return self._borrow(self.normalized, rows, hidden, 2)
 
     def close(self) -> None:
         if self.closed:
@@ -3711,11 +3729,12 @@ def run_qwen4_exp_gr_read(
     # scale-only path has an inject projection. The separate kernel remains
     # available to parity tests and the non-fused fallback.
     norm_inject = scale_only and inject_weight is not None
+    scales = scratch.inv_rms_view(rows=rows, branches=branches) if scale_only else None
     scale_only = _run_qwen4_exp_gr_norm_down(
         residual_ptr, norm_weight_ptr, down_weight, scratch,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         eps=eps, stream=stream, runtime=active_runtime,
-        scale_ptr=scratch.gate.ptr if scale_only else 0,
+        scale_ptr=scales.ptr if scales is not None else 0,
         inject_weight_ptr=(
             inject_weight.allocation("raw").tensor.ptr if norm_inject else 0
         ),
@@ -3774,25 +3793,26 @@ def run_qwen4_exp_gr_read(
                 # ``scratch.normalized`` is unwritten on this path; it holds
                 # half(mixed), declared so the F16-operand projections that
                 # read ``mixed`` next skip their own conversion.
-                mirror = _qwen4_exp_gr_f16_mirror_enabled()
+                mirror = (scratch.mixed_f16_view(rows=rows, hidden=hidden)
+                          if _qwen4_exp_gr_f16_mirror_enabled() else None)
                 qwen4_exp_gr_up_mean_residual_f16in_f32_out(
                     workspace.ptr,
                     up_weight.allocation("raw").tensor.ptr,
                     residual_ptr,
-                    scratch.gate.ptr,
+                    scales.ptr,
                     norm_weight_ptr,
                     scratch.mixed.ptr,
                     rows,
                     low_rank,
                     branches,
                     hidden,
-                    out_f16_ptr=scratch.normalized.ptr if mirror else 0,
+                    out_f16_ptr=mirror.ptr if mirror is not None else 0,
                     stream=stream,
                     runtime=active_runtime,
                 )
-                if mirror:
+                if mirror is not None:
                     declare_f16_mirror(
-                        scratch.mixed.ptr, rows * hidden, scratch.normalized.ptr
+                        scratch.mixed.ptr, rows * hidden, mirror.ptr
                     )
             else:
                 qwen4_exp_gr_up_mean_f16in_f32_out(
@@ -3923,7 +3943,7 @@ def run_qwen4_exp_gr_read(
         qwen4_exp_gr_inject_bf16_f32(
             residual_ptr,
             norm_weight_ptr,
-            scratch.gate.ptr,
+            scales.ptr,
             inject_weight.allocation("raw").tensor.ptr,
             scratch.inject_logits.ptr,
             rows,

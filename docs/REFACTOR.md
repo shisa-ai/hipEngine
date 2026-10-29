@@ -3511,9 +3511,12 @@ lives in `scratch.gate`, which that path does not otherwise use, and
 `scratch.normalized` is left unwritten. Bit-identical
 (`tests/test_gpu_qwen4exp_gr_read_residual.py`); `code-p4096` 1320.5 ->
 1382.1 and `code-p512` 850.7 -> 911.4 prefill tok/s, same process, identical
-output tokens. Scratch resizing remains open: the FP32 fallback still needs
-`Qwen4ExpGRScratch.normalized` and `.gate` at prefill width. Dedicated
-`inv_rms` and mirror storage must preserve that fallback's capacity.
+output tokens. Scratch ownership uses bounded, non-owning `inv_rms_view` and
+`mixed_f16_view` slices of the otherwise unused planes. Both FP32 planes stay
+at full prefill capacity for fallback reads. The views allocate nothing and
+are never freed independently; `Qwen4ExpGRScratch.close()` frees each owner
+once. Separate scale/mirror allocations are unnecessary because these uses
+and the FP32 fallback have disjoint lifetimes.
 
 The scale-only read also writes `half(mixed)` into the otherwise unwritten
 `scratch.normalized` and declares it through
@@ -3525,8 +3528,9 @@ converting `mixed` again; every read and every prefill chunk invalidates the
 declaration first. Bit-identical; `code-p4096` 1390.8 -> 1440.1 and
 `code-p512` 912.2 -> 951.4 prefill tok/s, same process, identical output
 tokens. The image makes the pair loan (`HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR`)
-redundant for projections that read `mixed`. Remaining work: give the image
-its own buffer in the scratch planner. All pair harnesses use the scoped
+redundant for projections that read `mixed`. The image uses the bounded
+`mixed_f16_view`, owned by the scratch planner's normalized allocation.
+All pair harnesses use the scoped
 mirror control, which restores nested state and leaves peer contexts alone.
 
 The scale-only norm also computes the four inject logits in the same launch
@@ -3538,8 +3542,8 @@ Bit-identical (`tests/test_gpu_qwen4exp_gr_read_residual.py`); `code-p4096`
 1560.4 -> 1587.1 and `code-p512` 1018.4 -> 1024.5 prefill tok/s, same
 process, identical output tokens. Historical layer2 isolation arms use the execution-local
 `gr_f16_direct(False)` scope; it restores nested state on exit and leaves
-peer contexts and process environment unchanged. Shared scratch ownership
-and the publication/tail consumers below remain open.
+peer contexts and process environment unchanged. The publication/tail
+consumers below remain open.
 
 The direct launch makes three older mechanisms unreachable for this quant at
 prefill row counts: the publication loan and its policy table
@@ -3547,9 +3551,8 @@ prefill row counts: the publication loan and its policy table
 the padded tail leaf (`GGUF_DENSE_WIDE_F16_TAIL_POLICIES`,
 `dense_wide256_padded_f16in_f32_f32_out`) and its manifest scope.
 
-Remaining work: give `inv_rms` and the mirror dedicated scratch without
-underallocating surviving FP32 fallbacks. Resolve the publication loan, both
-policy tables and padded tail variant against all their consumers before
+Remaining work: resolve the publication loan, both policy tables and padded
+tail variant against all their consumers before
 removing them; direct GR launches alone do not prove these shared mechanisms
 are unused.
 
