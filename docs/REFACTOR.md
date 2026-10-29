@@ -3427,23 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Direct `Qwen35GGUFResidentSession` construction is not the shipping AR route (2026-10-03)
-
-- `use_wmma_prefill` and `use_gemv_decode` default to `False` at the session
-  (`_env_wmma_prefill_enabled()` / `_env_gemv_decode_enabled()`), so a direct
-  construction gets a 1.62x slower decode than the shipping route (4K/128:
-  28.831 vs 17.806 ms/step, GPU busy 72.8% vs 99%). The generation path passes
-  `use_gemv_decode=True` at both shipping call sites, so `hipengine.LLM.generate()`
-  is unaffected; the harness warns via `shipping_ar_route_mismatch`.
-- The conservative default is deliberate (`resolve_qwen35moe_fastpath_safety`
-  blocks the P9.E2-rejected raw-GGUF WMMA+GEMV combination), so this is a
-  documentation and diagnosability item, not a defect: any direct-session
-  profiler, benchmark, or downstream caller must pass the two kwargs explicitly
-  or it will measure and ship a non-shipping route.
-- Removal condition: keep the conservative resolution, but make the effective
-  route visible on the session (it already is, via `fastpath_safety`) and state
-  the required kwargs in the resident-session docstring.
-
 ## Selected Q4_K T16 gate+up tile8 owner (2026-10-03)
 
 - Added `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` (default on) in

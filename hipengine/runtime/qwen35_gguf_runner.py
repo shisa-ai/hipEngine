@@ -13345,6 +13345,21 @@ class Qwen35GGUFResidentSession:
     application, lm-head argmax, and full-model bulk prefill stay on GPU for the
     resident path. Backends may additionally admit state-bound decode replay for
     measured long greedy windows.
+
+    Direct construction is a low-level route, not the public generator's policy.
+    ``use_wmma_prefill=None`` and ``use_gemv_decode=None`` resolve through
+    session toggles and environment defaults; they do not request the public
+    selectors. For an explicit public-default comparison, pass
+    ``use_wmma_prefill=True, use_gemv_decode=True`` (the public prefill diagnostic
+    override may instead request False). Prefer ``hipengine.LLM.generate()``
+    when the full shipping policy is required, including backend routes and
+    resource configuration.
+
+    After construction, inspect ``fastpath_safety`` for requested/effective
+    selectors and any refusal reason. The MoE safety resolver may disable raw
+    GGUF GEMV or its WMMA combination without decode repacking; explicit kwargs
+    do not bypass that recorded correctness restriction. Benchmarks must report
+    effective selectors rather than assuming their requested flags ran.
     """
 
     model_path: str | Path

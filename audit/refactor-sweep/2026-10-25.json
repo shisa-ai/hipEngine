@@ -12768,23 +12768,23 @@
       "start_line": 10431,
       "end_line": 10447,
       "sha256": "2b04d20efbf27141f2a3ef908b2aeb750239a986a7914460321e42076d447fc1",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-session-docstring-and-effective-reporting",
+      "evidence": ["Document low-level None resolution, explicit public-default selector kwargs, diagnostic override and fastpath_safety inspection; public generator remains full policy owner. Existing28 safety/profile tests pass. No executable/default changes. Worklog: worklog/entries/20261029T200242.207875Z-cleanup-refactor-r0440-b73bbe.md."],
       "subitems": [
         {
           "line": 10433,
           "text": "- `use_wmma_prefill` and `use_gemv_decode` default to `False` at the session",
-          "status": "pending"
+          "status": "resolved-current-selector-contract-documented"
         },
         {
           "line": 10439,
           "text": "- The conservative default is deliberate (`resolve_qwen35moe_fastpath_safety`",
-          "status": "pending"
+          "status": "resolved-existing-safety-preserved"
         },
         {
           "line": 10444,
           "text": "- Removal condition: keep the conservative resolution, but make the effective",
-          "status": "pending"
+          "status": "resolved-docstring-and-effective-state"
         }
       ]
     },
