@@ -3430,78 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 LC-D3 long-global geometry and context-split prototypes
-
-- Added 2026-08-02 while screening the second through fifth LC-D3 milestones.
-  The HIP source and leaf harness retain internal exact D64/V64, D64/V32, local256
-  D32/V64, direct-qhead D32, GQA6 score-tile4, and context-split/merge
-  variants. Separately registered D32 and D64 4,096-token context owners are
-  not part of that dead set: gfx1151 production selects D64 at admitted layer
-  28 and layers 32/36/40/44, while D32 stays the peer-backend/rollback owner.
-  Exact deferred-normalization D32/V64 is the earlier-layer fallback.
-- Every remaining internal exact geometry alternative is slower at a
-  mandatory depth. The
-  all-layer context-split route is faster but fails the same-state 127-step
-  quality gate at maximum KL **0.687034** versus the **0.05** ceiling; an
-  8,192-token sibling fails at **0.776134**, and exact sparse BF16-boundary
-  repair is **7.25x** slower than the retained GQA6 owner. Kahan compensation
-  still fails all-layer quality at **0.450784**. A compensated layer-28-plus
-  route passes teacher forcing and is faster through 128K, but changes the
-  mandatory recurrent 128K final token/hash and is removed. The narrower
-  compensated-layer-28 symbol is retained: it leaves uncompensated layers
-  32/36/40/44 unchanged, passes at maximum KL **0.007761**, and preserves the
-  128K trajectory while improving it **1.667%**. Both admitted arithmetic
-  variants now use byte-identical D64 PV geometry, improving production
-  16K/64K/128K another **1.705%/2.558%/2.348%**. These five measured layers
-  are admitted; layers 0..24 remain exact. A subsequent isolated compensated
-  layer-24 screen is also removed after teacher70 reaches **0.235600 max KL**
-  despite **69/70 top-1**; no temporary capability or runtime branch remains.
-  A D128/local1024 sibling is likewise fully removed: its isolated active
-  leaves improve **0.93-1.85%**, but d16K is flat and the mandatory 128K
-  recurrent gate aborts on an out-of-vocabulary token rather than preserving
-  the retained trajectory.
-  An exact D64/local1024 retry is removed as well: increasing loader capacity
-  does not repair D64's lost workgroup parallelism and regresses D32 by
-  **12.28-13.12%** across live4K-d128K.
-  Exact D32 V-stage128 is also removed after improving 16K/64K but regressing
-  the required 4K/128K depths; V64 remains the only exact registered owner.
-  Non-temporal exact-D32 V loads are removed after regressing three of four
-  depths; cached cross-workgroup V behavior remains beneficial.
-  Cached 32-byte ext-vector V loads are removed for the same mixed-depth
-  result; native uint4 remains the exact D32 load contract.
-  Exact D32/local1024 is removed after losing to local512 at every depth;
-  further PV local-size permutations are closed.
-  Exact score wave8/local256 and wave4/local128 packing is removed after both
-  regress every 4K-128K leaf; the production score owner remains one local32
-  wave per KV-head/token.
-  Exact PV query-pair ILP is removed after halving output waves regresses every
-  depth by about **21-22%**; one query/output accumulator per wave remains the
-  required D32 ownership.
-  A plain four-token PV source unroll and its volatile repair are also removed.
-  The plain unroll let the compiler form four partial accumulators and failed
-  the mandatory recurrent 128K hash; the volatile scalar restored ordering but
-  made the leaf 3-4x slower. Production retains only four-token operand
-  prefetch followed by explicit ordered `v_fma_f32`, which improves exact
-  leaves **23.13-34.03%** and complete 16K/64K/128K
-  **4.313%/9.400%/12.851%** with the established trajectory.
-  Ordered prefetch8 is removed after improving the exact leaf at all depths and
-  complete 16K/64K **0.188%/0.177%**, but regressing mandatory 128K
-  **0.140%**. Four tokens is the measured prefetch-distance knee.
-  Direct output-wave probability loads are removed after becoming
-  **2.88-3.02x slower** at every leaf depth; loader-wave LDS probability
-  broadcast remains required latency hiding.
-  Tied-accumulator `v_fmac_f32_e32` is removed after mixed leaf direction;
-  production retains the three-source ordered `v_fma_f32` spelling.
-  Score-sentinel visibility is removed after its leaf win reverses to complete
-  4K/16K/64K regressions; the denominator keeps `physical_scratch` checks.
-- Remove rejected geometries, the unused repair kernel/mask calculation, the
-  8,192-token experiment, and non-registered symbols after one clean release
-  plus the next exact/precision LC-D3 iteration. Preserve the registered
-  uncompensated 4,096-token production owner, the isolated compensated-layer
-  owner, their gfx1151 capabilities, compact evidence, and same-state quality
-  harness. The exact normalized/deferred GQA6 siblings and generic
-  complete-`KVLiveSpans` split route remain required rollback/fallback paths.
-
 ## Moonshine exact two-region continuous scheduler — opt-in strict fallback
 
 - The apparent uniform-t256 quality regression was a docs-side three-frame mask
@@ -9940,6 +9868,51 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0368 — LC-D3 global geometry diagnostics and unused repair separation
+
+The global leaf still compares D64/V64, D64/V32, local256 D32/V64,
+direct-qhead D32 and score-tile4 against their named parents. D32/D64
+4,096-token context-split wrappers and registrations are also live; the
+production cache owner composes D64, compensation, score and prefetch policy
+from backend capabilities. Preserve the generic complete-`KVLiveSpans`
+route, exact normalized/deferred routes and compensated/uncompensated
+production paths. The original entry's blanket prototype list is not a
+safe deletion list.
+
+The leaf permits diagnostic drift for D32 context splitting versus the
+chronological exact parent. Its D64 comparison uses the D32 context-split
+parent, not that exact parent, and keeps their equality check. Host tests
+bind these distinct comparison contracts, wrapper symbols and all span
+pointers across several live lengths. The shared leaf now frees partial
+allocations and timing events, including when cache closure raises.
+
+`laguna_global_attention_split_gqa6_ctx4096_pv_repair_kernel` has no launch
+caller. The shared merge kernel still computes and writes its mask, and the
+leaf downloads mask diagnostics for D32 context splitting. Remove that
+unused repair machinery as one scoped kernel change rather than leaving
+stale result fields or removing live production merges. The old 8,192-token
+experiment has no current named wrapper or leaf selector. Historical rejected
+experiments and their results remain in the sweep's pinned source and the
+August LC-D3 artifacts; they do not describe current dispatch.
+
+**Decision needed:** retain the explicit geometry comparisons or move them
+to a diagnostic build before deleting their symbols. Separate dead repair
+code and mask reporting from the shared production merge without changing
+partial-output storage or arithmetic. This host lacks `libamdhip64.so`, so
+this unit does not edit shared GPU code or claim numerical verification.
+
+**Clearing action:** inventory wrapper, registration, leaf and GPU-test
+consumers before deleting geometry symbols. For repair removal, test both
+compensation modes and normalized/deferred merges, then run
+`uv run pytest tests/test_unit_laguna_global_geometry_references.py
+ tests/test_unit_laguna_global_issue_comparison.py
+ tests/test_gpu_laguna_kv_attention.py`. Run the global leaf on both sides
+of the split/policy boundaries and unrelated live lengths, then public
+Laguna generation with route attribution, teacher logits, KV metadata,
+reset/reuse and teardown. Preserve broader production numerical contracts;
+strict-parent equality is not a replacement for the profile gate. No default,
+kernel or arithmetic changes are made by this disposition.
 
 ### R0367 — Selected gate/up halfdot and exact-teacher ownership
 

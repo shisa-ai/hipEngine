@@ -10923,23 +10923,23 @@
       "start_line": 8233,
       "end_line": 8303,
       "sha256": "8aef3f8c782127ba10d842084563d702141d54b02c85d6a11a93f7c50e0ef82f",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-geometry-build-and-repair-separation",
+      "evidence": ["Current geometry wrappers/leaf comparisons live; D32/D64 ctx4096 and exact/deferred/compensated production and fallback ownership preserved. Initial drift-policy suspicion disproved: D64 compares against D32 split parent, retain equality gate. New tests bind9 geometry/reference pairs and actual C-symbol/full-spans forwarding; RED6 partial-allocation/cache-close/event cleanup failures repaired only in leaf. GREEN88 focused/11HIP skips. Unused repair kernel has no launch caller but shared merge writes mask and leaf reports it; no ctx8192 named wrapper/selector. Bottom R0368 scopes diagnostic-build/repair separation and HIP clearing commands, no shared GPU edit on host without libamdhip64.so. Worklog worklog/entries/20261029T052818.119585Z-cleanup-refactor-r0368-global-geometry-2d8a00.md."],
       "subitems": [
         {
           "line": 8235,
           "text": "- Added 2026-08-02 while screening the second through fifth LC-D3 milestones.",
-          "status": "pending"
+          "status": "triaged-live-references-preserved-dead-repair-scoped-bottom"
         },
         {
           "line": 8242,
           "text": "- Every remaining internal exact geometry alternative is slower at a",
-          "status": "pending"
+          "status": "triaged-live-references-preserved-dead-repair-scoped-bottom"
         },
         {
           "line": 8297,
           "text": "- Remove rejected geometries, the unused repair kernel/mask calculation, the",
-          "status": "pending"
+          "status": "triaged-live-references-preserved-dead-repair-scoped-bottom"
         }
       ]
     },
