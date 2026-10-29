@@ -3430,23 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--verify-lm-head-q6-top1-dp4a` / verifier lm-head X8 sidecar
-- Added 2026-07-01. Bench flag `--verify-lm-head-q6-top1-dp4a` sets
-  `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR=1` before materialization and
-  `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A=1` at runtime. Suite routes
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-vlmheadtop1`
-  and `...-allsync` exercise it on top of the active llama-compat lane.
-- Purpose: test whether the verifier-side `target_block_lm_head_sample`
-  bucket can copy the draft-side q8_1/dp4a Q6_K top-1 economy by skipping full
-  verifier logits plus argmax. This is accuracy-traded and default-off; exact
-  verifier lm-head sampling remains the shipped behavior.
-- Remove / promote when: promote only inside the llama-compat replication lane
-  if a full-suite B2 row moves total wall and `target_block_lm_head_sample`
-  toward the llama.cpp verifier target without unacceptable row-economy loss.
-  Delete the route if smoke/full-suite shows the extra X8 sidecar/top-1 path does
-  not move `target_block_verify_total` or if a later fused verifier sampler
-  supersedes it.
-
 ## `HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL`
 - Added 2026-07-02. Bench flag `--resident-mtp-draft-router-row-parallel`,
   draft-profile flag `--router-row-parallel`, and suite route
@@ -10937,6 +10920,41 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0301 — Verifier Q6 top-1 sidecar comparison ownership
+
+`--verify-lm-head-q6-top1-dp4a` still publishes both the load-time
+`HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR` and runtime
+`HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A` switches. Omission and the
+negative CLI option leave inherited settings unchanged. Target materialization
+owns this X8 allocation; the draft's capped X8 upload is independent (R0281-DRAFT-X8).
+Named `vlmheadtop1` suite routes still request the comparison.
+
+The direct helper is singleton-only after the recorded multirow invalid-sentinel
+failure in
+`worklog/entries/20260817T000059.169563Z-lhl-concurrency2-c2-6-global-native-46b0f0.md`.
+The block caller now matches that width boundary: multirow eager and enqueue-only
+verification passes the BF16 mirror to the existing full-logit sampler rather
+than passing FP32 to a fallback that rejects it. Singleton direct sampling still
+uses FP32 hidden seeds, q8_1 quantization and the X8 head; a missing sidecar
+raises. Shared kernels, ordinary logits sampling and default arithmetic are
+unchanged. Historical B2 suite labels do not establish current direct-head
+execution; inspect the actual head/sampler path.
+
+**Decision needed:** retain the explicit singleton comparison or migrate the
+load-time sidecar and runtime choice into one owner-local head policy. Retire or
+rename multirow comparison aliases only with their CLI/result consumers, rather
+than silently presenting fallback measurements as direct-top-1 measurements.
+Do not delete the shared Q6 kernels or couple this allocation to draft layout.
+
+**Clearing action:** migrate materialization, singleton/packed head callers,
+benchmark setup/provenance and suite routes together. Run
+`tests/test_unit_qwen35_gguf_verify_lm_head_top1.py`,
+`tests/test_unit_gguf_mtp_bench_metrics.py`, suite and weight-upload contracts,
+then public MTP requests confirming singleton versus multirow head/sampler paths,
+continuation and cleanup. A proposed multirow direct path must first resolve the
+recorded sentinel failure and pass independent numerical/ownership checks;
+changed-arithmetic promotion still requires its execution-profile gates.
 
 ### R0281-SELECTED-X8 — Selected-expert replacement-layout policy
 

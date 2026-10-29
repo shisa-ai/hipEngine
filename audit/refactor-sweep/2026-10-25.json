@@ -8961,23 +8961,23 @@
       "start_line": 6817,
       "end_line": 6833,
       "sha256": "d0d392336d0d8cbf589d7cca8d01c9f3ba07b5d2fe07af006ffc7f255bb96e94",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-fixed-dtype-deferred-head-policy",
+      "evidence": ["Reproduced eager and enqueue-only multirow FP32-to-BF16 fallback errors in actual block caller/dispatcher tests. Matched caller to the helper's existing singleton width boundary; multirow uses its BF16 mirror and ordinary logits/argmax path. The singleton restriction traces to the recorded invalid-sentinel failure in b428a4390 and its immutable concurrency2 worklog. Preserved singleton diagnostic, missing-sidecar error, CLI/suite comparisons and independent draft X8 uploads. Corrected CLI/reference width and inherited-setting semantics; moved remaining owner-local head-policy decision to bottom R0301. Worklog: worklog/entries/20261029T004649.314018Z-cleanup-refactor-r0301-verifier-lm-head-5e3fc5.md."],
       "subitems": [
         {
           "line": 6818,
           "text": "- Added 2026-07-01. Bench flag `--verify-lm-head-q6-top1-dp4a` sets",
-          "status": "pending"
+          "status": "resolved-current-singleton-cli-and-sidecar-contract"
         },
         {
           "line": 6823,
           "text": "- Purpose: test whether the verifier-side `target_block_lm_head_sample`",
-          "status": "pending"
+          "status": "fixed-multirow-dtype-fallback-history-preserved"
         },
         {
           "line": 6827,
           "text": "- Remove / promote when: promote only inside the llama-compat replication lane",
-          "status": "pending"
+          "status": "deferred-bottom-R0301-owner-local-head-policy"
         }
       ]
     },

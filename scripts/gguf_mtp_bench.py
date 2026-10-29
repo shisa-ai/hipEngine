@@ -1036,8 +1036,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=False,
         help=(
             "OPT-IN accuracy-traded llama-compat diagnostic: materialize an X8 Q6_K "
-            "lm-head sidecar and sample verifier block rows through q8_1/dp4a top-1 "
-            "directly, skipping full verifier logits plus argmax. Default off."
+            "lm-head sidecar and sample singleton verifier rows through q8_1/dp4a top-1 "
+            "directly, skipping full verifier logits plus argmax. Multirow blocks use "
+            "the existing full-logit sampler. Default off; omission and the negative "
+            "option preserve inherited sidecar/runtime settings."
         ),
     )
     parser.add_argument(

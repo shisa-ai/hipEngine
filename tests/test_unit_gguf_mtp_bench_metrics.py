@@ -1328,6 +1328,24 @@ def test_arg_parser_exposes_verify_lm_head_q6_top1_dp4a_diagnostic() -> None:
     assert args.verify_lm_head_q6_top1_dp4a is True
 
 
+@pytest.mark.parametrize("option", [None, "--verify-lm-head-q6-top1-dp4a", "--no-verify-lm-head-q6-top1-dp4a"])
+@pytest.mark.parametrize("ambient", [None, "0", "1"])
+def test_verifier_lm_head_cli_publishes_load_and_runtime_controls(monkeypatch, option, ambient) -> None:
+    monkeypatch.setattr(bench.os, "environ", dict(bench.os.environ))
+    names = ("HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR", "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A")
+    for name in names:
+        if ambient is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, ambient)
+    # Argument validation runs after publishing controls, before materialization/HIP.
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(([option] if option else []) + ["--root-topk-accept", "0"])
+    assert excinfo.value.code == 2
+    expected = "1" if option == "--verify-lm-head-q6-top1-dp4a" else ambient
+    assert [bench.os.environ.get(name) for name in names] == [expected, expected]
+
+
 def test_arg_parser_exposes_selected_down_x8_repack_mode() -> None:
     args = build_arg_parser().parse_args(["--selected-down-x8-repack", "q6"])
 

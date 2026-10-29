@@ -21192,7 +21192,9 @@ class Qwen35GGUFResidentSession:
                 row_lm_head = _gguf_verify_row_lm_head_enabled() or (2 <= rows <= 8)
                 direct_top1 = False
                 if row_lm_head:
-                    direct_top1 = _gguf_verify_lm_head_q6_top1_dp4a_enabled()
+                    # The direct shortcut is c1-only; multirow heads need the
+                    # BF16 mirror consumed by the rowtile/logits fallback.
+                    direct_top1 = rows == 1 and _gguf_verify_lm_head_q6_top1_dp4a_enabled()
                     sample_hidden_ptr = hidden_seed_buf.ptr if direct_top1 else final_scratch.norm.ptr
                     sample_dtype = GGUF_ACTIVATION_F32 if direct_top1 else GGUF_ACTIVATION_BF16
                     if _enqueue_only:
