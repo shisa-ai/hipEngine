@@ -12978,8 +12978,8 @@
       "start_line": 10683,
       "end_line": 10699,
       "sha256": "14154e1be79b6e11f74fa20cd0960df377c23b6493acaa061e7b18bb14dd16be",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-fused-diagnostic-deferred-prerequisite",
+      "evidence": ["Removed selector, fused HIP body/export/wrapper, dedicated A/B/test and campaign/drift override helpers. Preserve registered three-pass v2/v1 fallback. 124 focused tests, 16 rebuilt GPU tests, full CPU bundle and repository gates passed. Ordinary batched public generation succeeded; explicit scalar public diagnostic observed 84 v2 leaf selections. Separate ordered-v1 prerequisite ownership is deferred at the ledger bottom. Worklog: worklog/entries/20261029T211140.396344Z-cleanup-refactor-r0450-99b3a5.md."],
       "subitems": []
     },
     {

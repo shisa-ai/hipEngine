@@ -734,10 +734,6 @@ Q51_FOLD_PAIR_FIELD = "q51_fold_pair_prefill"
 #: state now, but this v1 switch still decides whether any ordered decode runs,
 #: so both arms of the v2 package record it and it must stay on.
 QSA_ORDERED_DECODE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
-#: The fused coefficients+values sibling of the v2 leaf. It is a separate
-#: diagnostic over the same decision, so an arm that claims the three-pass v2
-#: owner holds it off in both arms.
-QSA_ORDERED_V2_FUSED_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED"
 
 
 def q51_pair2_control_record(runner=None, *, environment=os.environ):
@@ -964,16 +960,6 @@ def qsa_ordered_decode_v2_control_record(runner=None, *, environment=os.environ)
         "prerequisite": {
             QSA_ORDERED_DECODE_ENV: environment.get(QSA_ORDERED_DECODE_ENV),
         },
-        "fused_sibling": {
-            "environment": QSA_ORDERED_V2_FUSED_ENV,
-            "effective": "0",
-            "previous": environment.get(QSA_ORDERED_V2_FUSED_ENV),
-            "reason": (
-                "the fused coefficients+values sibling is a separate diagnostic "
-                "over the same decision; an arm that reports the three-pass v2 "
-                "owner holds it off in both arms and restores the caller's "
-                "value on exit"),
-        },
         "published_value": (
             None if runner is None
             else getattr(runner, "qsa_ordered_decode_v2", None)),
@@ -983,27 +969,6 @@ def qsa_ordered_decode_v2_control_record(runner=None, *, environment=os.environ)
             "prerequisite they ride; the before arm keeps the registered v1 "
             "ordered parent and the plan's value comes back on exit"),
     }
-
-
-@contextlib.contextmanager
-def qsa_ordered_v2_fused_off(*, environment=os.environ):
-    """Hold the fused coefficients+values sibling off for a measured arm.
-
-    The fused kernel is a separate, bit-identical diagnostic over the same v2
-    decision. An arm that reports the three-pass v2 owner must not launch it,
-    so both arms close it and the caller's value - including an absent key -
-    comes back on exit.
-    """
-
-    prior = environment.get(QSA_ORDERED_V2_FUSED_ENV)
-    environment[QSA_ORDERED_V2_FUSED_ENV] = "0"
-    try:
-        yield prior
-    finally:
-        if prior is None:
-            environment.pop(QSA_ORDERED_V2_FUSED_ENV, None)
-        else:
-            environment[QSA_ORDERED_V2_FUSED_ENV] = prior
 
 
 @contextlib.contextmanager
@@ -1883,13 +1848,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
                 f"{route_package} needs the ordered v1 route the leaf rides; "
                 f"{QSA_ORDERED_DECODE_ENV} is off, so both arms would measure "
                 "the unordered decode parent")
-        # The fused sibling is a separate diagnostic over the same decision, so
-        # both arms hold it off: otherwise the after arm could launch it while
-        # the artifact reports the three-pass v2 owner.
-        return _combined_scope(
-            qsa_ordered_v2_fused_off(environment=environment),
-            qsa_ordered_decode_v2(runner, mode == "after"),
-        )
+        return qsa_ordered_decode_v2(runner, mode == "after")
     if route_package in {"gdn-narrow", "gdn-wave-norm"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")

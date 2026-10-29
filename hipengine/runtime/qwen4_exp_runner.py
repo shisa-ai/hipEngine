@@ -64,7 +64,6 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_v2_f32,
-    qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
@@ -2536,7 +2535,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
         # process-wide switch: the v1 switch above stays the prerequisite that
         # decides whether any ordered decode runs at all, the H256/count guards
         # stay dispatch-time, and an unbound caller keeps the v1 parent. The
-        # fused sibling below remains a separate diagnostic over this decision.
+        # registered v1 parent remains the fallback for an unavailable v2 leaf.
         if ordered_decode:
             scores, coefficients = scratch.ordered_attention_scratch(
                 query_heads=query_heads, selected_count=selected_count
@@ -2556,9 +2555,6 @@ def run_qwen4_exp_dense_qsa_token_mixer(
                 ordered=ordered_decode, head_dim=head_dim,
                 selected_count=selected_count,
                 published=qsa_ordered_decode_v2,
-                fused=os.environ.get(
-                    "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED", "0"
-                ) not in {"", "0", "false", "False"},
                 resolve_v2=_resolve_ordered_v2,
             )
             attention_fn(
@@ -2781,15 +2777,13 @@ def _qwen4_exp_qsa_ordered_decode_v2(
 
 def _qwen4_exp_qsa_ordered_decode_leaf(
     *, ordered: bool, head_dim: int, selected_count: int, published: bool,
-    fused: bool, resolve_v2=None,
+    resolve_v2=None,
 ):
     """Pick the sparse-decode attention kernel for one ordered decode step.
 
     ``None`` means the ordered route is off, so the caller keeps the
-    non-ordered sparse owner. ``fused`` is the separate coefficients+values
-    diagnostic and only selects its bit-identical sibling on top of an eligible
-    v2 step; an unregistered v2 kernel falls back to the registered v1 ordered
-    parent rather than to the non-ordered owner.
+    non-ordered sparse owner. An unregistered v2 kernel falls back to the
+    registered v1 ordered parent rather than to the non-ordered owner.
     """
 
     if not ordered:
@@ -2799,8 +2793,6 @@ def _qwen4_exp_qsa_ordered_decode_leaf(
         published=published,
     ):
         return qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32
-    if fused:
-        return qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32
     resolved = None if resolve_v2 is None else resolve_v2()
     return resolved or qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32
 

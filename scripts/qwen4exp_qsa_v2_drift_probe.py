@@ -37,9 +37,6 @@ from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
 from hipengine.runtime.qwen4_exp_runner import qsa_ordered_decode_v2
 from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture
-from scripts.qwen4exp_halo_box_campaign_ab import (
-    QSA_ORDERED_V2_FUSED_ENV, qsa_ordered_v2_fused_off,
-)
 
 # The v2 leaf is request-local runner state now: the probe binds the owning
 # runner's ``qsa_ordered_decode_v2`` per measured arm instead of writing a
@@ -52,20 +49,12 @@ PREREQUISITE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
 
 @contextlib.contextmanager
 def decode_arm_scope(runner, arm, *, environment=os.environ):
-    """The measured window for one decode arm.
-
-    The arm binds the owning runner's leaf selection and holds the fused
-    coefficients+values sibling off: the fused kernel is a separate diagnostic
-    over the same decision, so an arm reported as the three-pass v2 owner must
-    not launch it. Both bindings are scoped, so the plan's published value and
-    the caller's fused setting come back on exit.
-    """
+    """Bind the owning runner's three-pass selection for one measured arm."""
 
     if arm not in {"off", "on"}:
         raise ValueError(f"invalid decode arm {arm!r}")
-    with qsa_ordered_v2_fused_off(environment=environment):
-        with qsa_ordered_decode_v2(runner, arm == "on"):
-            yield
+    with qsa_ordered_decode_v2(runner, arm == "on"):
+        yield
 
 
 def telemetry():
@@ -149,15 +138,6 @@ def main():
             "scope": "per measured arm; the plan's value is restored on exit",
             "prerequisite": {
                 PREREQUISITE_ENV: os.environ.get(PREREQUISITE_ENV),
-            },
-            "fused_sibling": {
-                "environment": QSA_ORDERED_V2_FUSED_ENV,
-                "effective": "0",
-                "previous": os.environ.get(QSA_ORDERED_V2_FUSED_ENV),
-                "reason": (
-                    "the fused coefficients+values sibling is a separate "
-                    "diagnostic over the same decision; both arms hold it off "
-                    "and restore the caller's value on exit"),
             },
         },
         "protocol": (

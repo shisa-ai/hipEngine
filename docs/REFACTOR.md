@@ -3427,23 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## The QSA ordered-decode fusion flag
-
-`HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` (default off) selects the
-fused QSA coefficients+values v2 sibling — bit-identical to the unfused
-pair (2/2 cross-mode exact) and measured wall-neutral on the canonical
-decode protocol (0.9997x, inside the same-session AR variance), committed
-at `0ea6d7ae2`. The fusion line's verdict is now complete: both rungs
-(router select+cast at 96 launches/step, QSA at 12) are bit-identical and
-below the decode wall's resolution, so the flag has no measured reason to
-turn on.
-
-Removal condition: delete the flag and the fused sibling at the next
-cleanup pass unless a whole-step graph (the committed bigger-seam build)
-demonstrates the launch-count savings compound at graph scope — in which
-case the fused kernel is the graph's building block and the flag becomes
-its temporary selector until the graph lands.
-
 ## The Qwen4Exp T16 routed-expert routes and tile residency
 
 This unit also owns R0448's down-route selector/sidecar consumers and R0449's
@@ -10650,6 +10633,15 @@ build protocol in `docs/OPTIMIZATION.md`.
 
 Current-source correction and checks:
 `../worklog/entries/20261029T203123.488199Z-cleanup-refactor-r0444-d80e45.md`.
+
+### R0450 — Ordered QSA prerequisite ownership
+
+`HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` remains the profile-bound prerequisite
+for the scalar ordered attention family. The fused-v2 experiment is removed,
+but that does not retire ordered v1 or the runner-owned three-pass v2 choice.
+Removal condition: migrate the prerequisite to explicit profile/runner ownership
+with the campaign and drift callers, preserve non-ordered and v1 fallbacks,
+and verify scalar and batched public routes independently before deleting it.
 
 ### R0446 — Launch-library lifetime and environment observation
 

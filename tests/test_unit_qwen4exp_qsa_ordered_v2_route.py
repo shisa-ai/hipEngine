@@ -30,7 +30,6 @@ FUSED_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED"
 
 V1 = runner.qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32
 V2 = runner.qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_v2_f32
-FUSED = runner.qwen4_exp_qsa_sparse_attention_paged_bf16_fused_v2_f32
 
 
 def _bind(monkeypatch, profile_name, *, runner_handle=None):
@@ -116,7 +115,7 @@ def test_the_retired_switch_cannot_move_the_selection(monkeypatch):
 
 def _leaf(**overrides):
     kwargs = dict(ordered=True, head_dim=256, selected_count=100,
-                  published=True, fused=False, resolve_v2=lambda: V2)
+                  published=True, resolve_v2=lambda: V2)
     kwargs.update(overrides)
     return runner._qwen4_exp_qsa_ordered_decode_leaf(**kwargs)
 
@@ -134,18 +133,13 @@ def test_an_unregistered_v2_kernel_falls_back_to_the_ordered_parent():
     assert _leaf(resolve_v2=None) is V1
 
 
-def test_the_fused_sibling_requires_an_eligible_v2_step(monkeypatch):
-    # Its own switch is unchanged; it only stacks on top of the v2 leaf.
-    assert _leaf(fused=True) is FUSED
-    assert _leaf(fused=True, published=False) is V1
-    assert _leaf(fused=True, head_dim=128) is V1
-    assert _leaf(fused=True, selected_count=4097) is V1
-    assert _leaf(fused=True, ordered=False) is None
-    # The env name is untouched and still a separate diagnostic.
-    assert FUSED_ENV == "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED"
+def test_retired_fused_selector_cannot_change_v2_owner(monkeypatch):
     monkeypatch.setenv(FUSED_ENV, "1")
-    assert not runner._qwen4_exp_qsa_ordered_decode_v2(
-        ordered=True, head_dim=256, selected_count=100, published=False)
+    assert _leaf() is V2
+    assert _leaf(published=False) is V1
+    assert _leaf(head_dim=128) is V1
+    assert _leaf(selected_count=4097) is V1
+    assert _leaf(ordered=False) is None
 
 
 def test_the_gfx1151_backend_registers_the_v2_leaf():
@@ -513,48 +507,40 @@ def test_route_scope_binds_the_runner_selection(mode, expected):
     env = {QSA_ORDERED_DECODE_ENV: "1", RETIRED_V2_ENV: "1"}
     with route_scope("qsa-ordered-v2", mode, owner, environment=env):
         assert owner.qsa_ordered_decode_v2 is expected
-        # The v1 route and the retired switch are recorded, never forced; the
-        # fused sibling is a separate diagnostic and is held off in both arms.
-        assert env == {QSA_ORDERED_DECODE_ENV: "1", RETIRED_V2_ENV: "1",
-                       FUSED_ENV: "0"}
+        # Prerequisite and retired controls are not rewritten by the scope.
+        assert env == {QSA_ORDERED_DECODE_ENV: "1", RETIRED_V2_ENV: "1"}
     assert owner.qsa_ordered_decode_v2 is None
     assert env == {QSA_ORDERED_DECODE_ENV: "1", RETIRED_V2_ENV: "1"}
 
 
 @pytest.mark.parametrize("mode", ["before", "after"])
 @pytest.mark.parametrize("prior", ["1", None])
-def test_the_campaign_arm_holds_the_fused_sibling_off(mode, prior):
+def test_the_campaign_arm_ignores_retired_fused_control(mode, prior):
     owner = SimpleNamespace(qsa_ordered_decode_v2=None)
     env = {QSA_ORDERED_DECODE_ENV: "1"}
     if prior is not None:
         env[FUSED_ENV] = prior
     with route_scope("qsa-ordered-v2", mode, owner, environment=env):
-        # A fused kernel would otherwise launch while the arm reports the
-        # three-pass v2 owner.
-        assert env[FUSED_ENV] == "0"
+        assert env.get(FUSED_ENV) == prior
     # The caller's value, including an absent key, comes back.
     assert env.get(FUSED_ENV) == prior
 
 
-def test_the_control_record_records_the_fused_prior_and_effective():
+def test_control_record_omits_retired_fused_control():
     record = qsa_ordered_decode_v2_control_record(
         environment={QSA_ORDERED_DECODE_ENV: "1", FUSED_ENV: "1"})
-    assert record["fused_sibling"]["environment"] == FUSED_ENV
-    assert record["fused_sibling"]["effective"] == "0"
-    assert record["fused_sibling"]["previous"] == "1"
-    assert qsa_ordered_decode_v2_control_record(
-        environment={})["fused_sibling"]["previous"] is None
+    assert "fused_sibling" not in record
 
 
 @pytest.mark.parametrize("arm,expected", [("off", False), ("on", True)])
-def test_the_drift_probe_arm_closes_the_fused_sibling(arm, expected):
+def test_the_drift_probe_arm_ignores_retired_fused_control(arm, expected):
     from scripts import qwen4exp_qsa_v2_drift_probe as probe
 
     owner = SimpleNamespace(qsa_ordered_decode_v2=True)
     env = {FUSED_ENV: "1"}
     with probe.decode_arm_scope(owner, arm, environment=env):
         assert owner.qsa_ordered_decode_v2 is expected
-        assert env[FUSED_ENV] == "0"
+        assert env[FUSED_ENV] == "1"
     assert owner.qsa_ordered_decode_v2 is True
     assert env[FUSED_ENV] == "1"
 
@@ -568,10 +554,10 @@ def test_the_drift_probe_arm_rejects_an_unknown_arm():
             pass
 
 
-def test_the_drift_probe_records_the_fused_control():
+def test_the_drift_probe_records_only_live_controls():
     from scripts import qwen4exp_qsa_v2_drift_probe as probe
 
-    assert probe.QSA_ORDERED_V2_FUSED_ENV == FUSED_ENV
+    assert not hasattr(probe, "QSA_ORDERED_V2_FUSED_ENV")
     assert probe.CONTROL_FIELD == "qsa_ordered_decode_v2"
     assert probe.PREREQUISITE_ENV == QSA_ORDERED_DECODE_ENV
 

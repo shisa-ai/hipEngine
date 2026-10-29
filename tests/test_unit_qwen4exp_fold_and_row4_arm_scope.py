@@ -25,7 +25,6 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q8_DOWN_PREEMPTING_ENV,
     Q8_DOWN_ROW4_FIELD,
     QSA_ORDERED_DECODE_ENV,
-    QSA_ORDERED_V2_FUSED_ENV,
     ROW4_ENGAGEMENT_EXEMPT,
     _apply_mode,
     q51_fold_control_record,
@@ -559,7 +558,7 @@ def test_the_decode_arm_keeps_its_binding_until_the_block_ends():
     owner = SimpleNamespace(qsa_ordered_decode_v2=False)
     with arm_control("qsa-ordered-v2", "1", owner, environment=env):
         assert owner.qsa_ordered_decode_v2 is True
-        assert env[QSA_ORDERED_V2_FUSED_ENV] == "0"
+        assert env == {QSA_ORDERED_DECODE_ENV: "1", "other": "keep"}
     assert owner.qsa_ordered_decode_v2 is False
     assert env == {QSA_ORDERED_DECODE_ENV: "1", "other": "keep"}
 
