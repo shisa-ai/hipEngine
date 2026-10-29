@@ -3427,48 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## 2026-09-12 GGUF automatic context sizing knobs
-
-`hipengine/generation/qwen35_gguf.py` added `HIPENGINE_GGUF_AUTO_CONTEXT`
-(default on), `HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB`,
-`HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN`,
-`HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB`, and
-`HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` for the automatic resident context
-selection.
-
-`HIPENGINE_GGUF_AUTO_CONTEXT` is the rollback for the behavior change and is
-kept until the automatic selection has a full benchmark cycle on the supported
-target models. Removal condition is that no bisection case remains where the
-fixed 256-token context is wanted. It also disables the allocation backoff, so
-the rollback restores the historical behavior completely rather than half of it.
-
-The other four are calibration overrides. `HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN`
-and `HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB` front measured values (the packed
-slot-local prefill route's live oracle and hidden owners, and its
-context-independent execution workspace, measured 2026-09-11 and documented at
-`_GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT`).
-`HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB` fronts a measured value too: the
-whole-card minus hipEngine-tracked difference on the W7900, 2.66 GiB, which is
-HIP context, JIT kernel modules, AOTriton, and pool pointer tables — all
-allocated after the free-memory reading the model prices against. Removal
-condition for these three: once the reserve and transient terms are expressed as
-named model terms rather than an override, delete the overrides and keep the
-calibrated constants. `HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` stays until the
-backoff has production mileage.
-
-An open accuracy item recorded in the `gguf-auto-context-sizing` worklog entries:
-the transient term is priced at a full-context worst case (4.22 GiB at the 27B's
-auto-selected context) against 0.30 GiB measured with a 43,011-token prompt, so
-the model is roughly 3.9 GiB conservative there. That conservatism is currently
-load-bearing — it is what kept the pre-fix 512 MiB reserve from turning into an
-OOM — so any attempt to tighten the transient term must re-derive the reserve at
-the same time.
-
-The `_auto_resolved_max_sequence_length` / `_auto_resolved_max_sequence_lengths` /
-`_auto_context_estimate` fields on `Qwen35GGUFBringupGenerator` exist only to feed
-the server's KVCache summary and `/ready` payload. If the reporting path ever
-reads the estimate from the session alone, drop the generator-side copies.
-
 ## 2026-09-12 GGUF serving defaults: INT8 KV, fp32 scales, one slot
 
 The dense GGUF serving defaults changed so that a zero-flag `hipengine serve`
@@ -11176,3 +11134,46 @@ contracts, check both consumers, and only then remove the pin. The direct-leaf
 
 Current-source review and focused regression evidence:
 `../worklog/entries/20261029T182650.701375Z-cleanup-refactor-r0421-paro-pin-20d2af.md`.
+
+### R0422 — Automatic context-sizing control policy
+
+`hipengine/generation/qwen35_gguf.py` prices route-specific prefill workspace,
+transient storage and speculative storage from allocator plans. The old
+full-context flat transient accuracy item is no longer the default model.
+The flat model remains the fallback when route terms cannot be derived; the
+reserve covers memory not priced by those plans. R0406 owns the separate XTX
+server capacity refresh, not this control-policy decision.
+
+**Deferred decision:** retain the five environment controls as explicit
+calibration/rollback interfaces, or replace them with an owned sizing policy.
+`HIPENGINE_GGUF_AUTO_CONTEXT` controls both selection and allocation backoff;
+`HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` bounds retries.
+`HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB`,
+`HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN` and
+`HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB` override the reserve and transient
+terms. Route-derived pricing does not eliminate the flat-model fallback or
+the unpriced reserve. A benchmark cycle or unspecified production mileage
+alone does not settle the interface decision.
+
+The generator's `_auto_resolved_max_sequence_lengths` cache selects contexts
+by serving capacity/allocation mode. `_auto_resolved_max_sequence_length`
+feeds resident-context reporting, DMS output limits and prepare-time retry.
+`_auto_context_estimate` carries the pre-allocation estimate into
+`session.kv_capacity_estimate`. These are live ownership roles, not redundant
+server-reporting copies; reading `/ready` from the session is not sufficient
+to remove them.
+
+**Clearing action:** choose the control interface, migrate all readers and
+allocation probes together, and preserve default route pricing, unavailable-
+geometry fallback, explicit context handling, retry bounds and rollback
+semantics. Run `tests/test_unit_qwen35_gguf_capacity.py`,
+`tests/test_unit_qwen35_gguf_capacity_route_terms.py` and
+`tests/test_unit_gguf_server_allocation_probe.py`; exercise the changed policy
+through a real server allocation probe, checking reported versus allocated
+context and teardown. Recalibrate reserve and transient terms together if
+changing their values, following the capacity protocol in
+`benchmarks/HARNESSES.md`. Do not delete the generator cache without assigning
+its selection, DMS and retry responsibilities to another owner.
+
+Source review and focused regression evidence:
+`../worklog/entries/20261029T183255.657751Z-cleanup-refactor-r0422-auto-context-9c4ccd.md`.

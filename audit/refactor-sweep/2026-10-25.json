@@ -12226,8 +12226,8 @@
       "start_line": 9648,
       "end_line": 9689,
       "sha256": "e05030e865728bc0f0ac49c3c3fd668400b1a18052fd2dd5f3efb31a3ed74686",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-sizing-control-policy",
+      "evidence": ["Route-derived allocation pricing supersedes the historical flat-default accuracy item; flat fallback and unpriced reserve remain live. Generator fields own cache, DMS limits, retries and pre-allocation reporting, not reporting-only copies. Correct ENVS fallback defaults; move interface decision to deferred tail. 160 focused tests pass. Worklog: worklog/entries/20261029T183255.657751Z-cleanup-refactor-r0422-auto-context-9c4ccd.md."],
       "subitems": []
     },
     {
