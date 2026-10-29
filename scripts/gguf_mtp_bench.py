@@ -1288,9 +1288,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=False,
         help=(
-            "Diagnostic llama-compat draft-path A/B: route the F32 post-norm router projection "
-            "through the row-parallel router logits kernel instead of the generic one-block "
-            "MTP F32 linear."
+            "Diagnostic llama-compat draft-path A/B: route the F32 post-norm router and "
+            "shared-gate projections through the row-parallel router logits kernel "
+            "instead of generic MTP F32 linear. Captured at draft construction; "
+            "omission and the negative option preserve inherited settings."
         ),
     )
     parser.add_argument(

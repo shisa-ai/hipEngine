@@ -3430,23 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL`
-- Added 2026-07-02. Bench flag `--resident-mtp-draft-router-row-parallel`,
-  draft-profile flag `--router-row-parallel`, and suite route
-  `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow`
-  route the resident MTP draft F32 router projection through the row-parallel
-  `qwen35_router_logits_f32_f32w` kernel instead of the generic one-block
-  `hipengine_mtp_linear_f32` path.
-- Purpose: retained llama.cpp-replication optimization. Full-suite B2 moved
-  **63.63 -> 64.41 tok/s** and cycle **15.735 -> 15.547 ms/output** with
-  unchanged acceptance/economy. Draft-chain sync attribution moved
-  `draft_run_ffn_router_linear` **0.508 -> 0.048 ms/cycle**.
-- Remove / promote when: make this the unconditional resident draft router
-  projection once it is either promoted beyond the llama-compat lane or no
-  longer needs A/B isolation. Delete the env/CLI flag and old generic-router
-  fallback route after the next parity checkpoint no longer needs the direct
-  control.
-
 ## `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A` (diagnostic rejected)
 - Added 2026-07-02. Bench flag `--resident-mtp-draft-dense-q8-dp4a`,
   draft-profile flag `--dense-q8-dp4a`, and suite route
@@ -10920,6 +10903,34 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0302 — Resident draft F32 router and shared-gate comparison ownership
+
+The legacy resident draft captures
+`HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL` at construction. It selects
+`qwen35_router_logits_f32_f32w` for both the 256-expert router and one-output
+shared-gate projection, each from F32 post-norm rows with 256 threads. The
+standalone default uses `mtp_linear_f32` for both. Compatibility generation
+already binds the switch on; benchmark/profiler CLIs and named `routerrow`
+suite routes still compare it. Omitted/negative benchmark options and omitted
+profiler options preserve inherited settings. Normal Generation-2 NextN MTP
+uses a separate provider; do not infer its policy from this legacy toggle.
+
+**Decision needed:** preserve the explicit two-projection comparison or move
+its selection into an owner-local legacy draft plan. The original sweep source
+and unchanged July artifacts preserve the historical timing comparison; it
+is not a fresh claim about either provider. Do not remove generic MTP linear,
+a shared primitive, merely because this caller selects another projection.
+
+**Clearing action:** migrate constructor capture, both projection branches,
+compatibility binding, benchmark/profiler cache/provenance and suite callers
+together. Run `tests/test_unit_mtp_resident_draft_device_moe.py`,
+`tests/test_unit_mtp_weight_upload_ownership.py`, benchmark/parser/profiler and
+suite contracts, then the independent F32 router/shared-gate numerical
+comparisons. A runtime change needs real legacy proposal/commit/reset and
+teardown plus a separate public NextN preservation request. A changed-arithmetic
+default still needs its execution-profile gates; this reconciliation changes
+neither arithmetic nor defaults.
 
 ### R0301 — Verifier Q6 top-1 sidecar comparison ownership
 

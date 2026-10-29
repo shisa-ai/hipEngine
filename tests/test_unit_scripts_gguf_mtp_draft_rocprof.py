@@ -67,6 +67,31 @@ def test_draft_profiler_preserves_explicit_head_comparison(monkeypatch, shape, s
     assert os.environ["HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A"] == "1"
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("ambient", [None, "0", "1"])
+def test_draft_profiler_router_comparison_publishes_only_positive_request(monkeypatch, enabled, ambient):
+    name = "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"
+    if ambient is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, ambient)
+    captured = []
+
+    def child(args):
+        profiler._apply_route_env(args)
+        captured.append(args.router_row_parallel)
+        return 0
+
+    monkeypatch.setattr(profiler, "_run_child", child)
+    argv = ["gguf_mtp_draft_rocprof.py", "--child"]
+    if enabled:
+        argv.append("--router-row-parallel")
+    monkeypatch.setattr(sys, "argv", argv)
+    assert profiler.main() == 0
+    assert captured == [enabled]
+    assert os.environ.get(name) == ("1" if enabled else ambient)
+
+
 @pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])
 @pytest.mark.parametrize("sync,event", [(False, False), (True, False), (False, True), (True, True)])
 def test_draft_profiler_reports_shared_dual_without_retired_env_reader(

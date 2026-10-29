@@ -597,7 +597,8 @@ def main() -> int:
         action="store_true",
         help=(
             "Diagnostic llama-compat draft A/B: use the row-parallel F32 router "
-            "logits kernel instead of generic MTP F32 linear for router logits."
+            "logits kernel instead of generic MTP F32 linear for router and shared-gate "
+            "projections. Omission preserves inherited construction settings."
         ),
     )
     parser.add_argument("--q6-top1-stage1-threads", type=int, default=128)

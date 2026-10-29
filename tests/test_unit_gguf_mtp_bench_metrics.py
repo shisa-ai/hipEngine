@@ -1346,6 +1346,21 @@ def test_verifier_lm_head_cli_publishes_load_and_runtime_controls(monkeypatch, o
     assert [bench.os.environ.get(name) for name in names] == [expected, expected]
 
 
+@pytest.mark.parametrize("option", [None, "--resident-mtp-draft-router-row-parallel", "--no-resident-mtp-draft-router-row-parallel"])
+@pytest.mark.parametrize("ambient", [None, "0", "1"])
+def test_draft_router_cli_preserves_inherited_construction_policy(monkeypatch, option, ambient) -> None:
+    monkeypatch.setattr(bench.os, "environ", dict(bench.os.environ))
+    name = "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"
+    if ambient is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, ambient)
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(([option] if option else []) + ["--root-topk-accept", "0"])
+    assert excinfo.value.code == 2
+    assert bench.os.environ.get(name) == ("1" if option == "--resident-mtp-draft-router-row-parallel" else ambient)
+
+
 def test_arg_parser_exposes_selected_down_x8_repack_mode() -> None:
     args = build_arg_parser().parse_args(["--selected-down-x8-repack", "q6"])
 

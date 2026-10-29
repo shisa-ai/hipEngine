@@ -650,6 +650,34 @@ def test_post_init_draft_x8_layout_has_its_own_vocab_scoped_owner(
     assert sorted(memory_spy.freed_ptrs()) == sorted(memory_spy.allocated_ptrs())
 
 
+@pytest.mark.parametrize("requested", [None, "0", "false", "1", "true"])
+def test_post_init_router_comparison_is_captured_with_no_extra_weight_uploads(
+    memory_spy: _MemorySpy, monkeypatch, requested: str | None,
+) -> None:
+    from hipengine.speculative import mtp_resident_draft as resident
+
+    _fake_post_init_boundaries(monkeypatch)
+    if requested is None:
+        monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", requested)
+    runner = resident.Qwen35GGUFResidentMTPDraftRunner(
+        _resident_mtp_weights(), np.zeros((16, 4), dtype=np.float32),
+        runtime=_FakeRuntime(), vocab_cap=16,
+    )
+    try:
+        expected = requested in {"1", "true"}
+        assert runner._router_row_parallel_enabled is expected
+        before = memory_spy.allocated_ptrs()
+        monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", str(int(not expected)))
+        assert runner._router_row_parallel_enabled is expected
+        assert memory_spy.allocated_ptrs() == before
+        assert len(before) == len(_resident_mtp_weights())
+    finally:
+        runner.close()
+    assert sorted(memory_spy.freed_ptrs()) == sorted(memory_spy.allocated_ptrs())
+
+
 def test_post_init_borrowed_cache_is_used_and_left_open(
     memory_spy: _MemorySpy, monkeypatch
 ) -> None:

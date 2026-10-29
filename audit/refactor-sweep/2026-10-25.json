@@ -8987,23 +8987,23 @@
       "start_line": 6834,
       "end_line": 6850,
       "sha256": "027fea7a98f897492d97dd90faf81127e7e8e3beb8ade193cac103449a83fe23",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-legacy-draft-projection-ownership",
+      "evidence": ["Characterized both 256-expert router and one-output shared-gate branches of _run_one, actual post_init capture independent of later environment changes, no extra upload ownership and CLI/profiler inherited settings. Compatibility generation already sets the comparison on; Generation-2 NextN uses another provider. Corrected CLI/env reference to describe both roles. Preserved shared generic linear and row-parallel primitives, named suite comparisons and unchanged historical source/artifacts; moved remaining owner-local legacy projection-plan decision to bottom R0302. Worklog: worklog/entries/20261029T010105.859511Z-cleanup-refactor-r0302-draft-router-f91149.md."],
       "subitems": [
         {
           "line": 6835,
           "text": "- Added 2026-07-02. Bench flag `--resident-mtp-draft-router-row-parallel`,",
-          "status": "pending"
+          "status": "resolved-both-projection-and-construction-contracts"
         },
         {
           "line": 6841,
           "text": "- Purpose: retained llama.cpp-replication optimization. Full-suite B2 moved",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 6845,
           "text": "- Remove / promote when: make this the unconditional resident draft router",
-          "status": "pending"
+          "status": "deferred-bottom-R0302-two-projection-plan"
         }
       ]
     },

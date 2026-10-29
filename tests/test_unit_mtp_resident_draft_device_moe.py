@@ -43,7 +43,8 @@ def test_draft_allocates_only_live_device_moe_scratch():
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
 @pytest.mark.parametrize("stream", [0, 7])
-def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired, stream):
+@pytest.mark.parametrize("router_parallel", [False, True])
+def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired, stream, router_parallel):
     if retired is None:
         monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", raising=False)
     else:
@@ -55,7 +56,9 @@ def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired
     runner.hidden_size, runner.num_heads, runner.num_kv_heads = 64, 2, 1
     runner.qk_head_dim, runner.experts_used, runner.inter_dim = 32, 2, 32
     runner.sync_stage_timings, runner.eps = False, 1e-6
-    runner._router_row_parallel_enabled = False
+    runner._router_row_parallel_enabled = router_parallel
+    # Execution uses the captured construction choice, not a live environment read.
+    monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", str(int(not router_parallel)))
     for index, name in enumerate((
         "attn_normed", "wq", "wk", "wv", "q_full", "key_cur", "value_cur", "query", "gate",
         "q_norm", "k_norm", "attn", "gated", "wo", "wo_out", "projected", "attended",
@@ -77,6 +80,9 @@ def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired
         "gguf_q8_0_dual_gemv_f32_f32_out", "mtp_silu_mul_f32",
     ):
         monkeypatch.setattr(draft, name, lambda *args, **kwargs: None)
+    router_calls = []
+    for name in ("mtp_linear_f32", "qwen35_router_logits_f32_f32w"):
+        monkeypatch.setattr(draft, name, lambda *args, _name=name, **kwargs: router_calls.append((_name, args, kwargs)))
     monkeypatch.setattr(draft, "copy_device_to_host", _fail)
     calls = []
 
@@ -96,6 +102,17 @@ def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired
     assert calls[0]["ffn_out_f32_ptr"] == runner.ffn_out.ptr
     assert calls[0]["runtime"] is runner.runtime
     assert calls[0]["stream"] == stream
+    symbol = "qwen35_router_logits_f32_f32w" if router_parallel else "mtp_linear_f32"
+    library = runner._router_lib if router_parallel else runner._mtp_lib
+    assert [name for name, args, kwargs in router_calls] == [symbol, symbol]
+    assert [args for name, args, kwargs in router_calls] == [
+        (runner.post_norm.ptr, runner.router_weight_f32.ptr, runner.router_logits.ptr, 1, 64, 256),
+        (runner.post_norm.ptr, runner.shared_gate_vec_f32.ptr, runner.shared_gate_logit.ptr, 1, 64, 1),
+    ]
+    expected_kwargs = {"stream": stream, "library": library, "runtime": runner.runtime}
+    if router_parallel:
+        expected_kwargs["threads"] = 256
+    assert [kwargs for name, args, kwargs in router_calls] == [expected_kwargs, expected_kwargs]
     assert not any(hasattr(runner, name) for name in _LEGACY)
 
 
