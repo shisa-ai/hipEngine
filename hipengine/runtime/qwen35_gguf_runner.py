@@ -337,7 +337,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
-    gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
@@ -9488,9 +9487,6 @@ _GGUF_MOE_TAIL_NEXT_RMS_ENV = "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_T16_SELECTED_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE"
-# Byte-identical tile8 ownership for the selected Q4_K T16 gate+up pair.  Default
-# on; set to 0 to fall back to the 16-column local128 owner.  See REFACTOR.md.
-_GGUF_SELECTED_Q4_GATE_UP_TILE8_ENV = "HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8"
 _GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE"
 _GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE"
 _gguf_t16_selected_pairreuse_min_rows_session: int | None = None
@@ -11093,17 +11089,6 @@ def _gguf_t16_selected_pairreuse_min_rows_scope(min_rows: int | None):
         yield
     finally:
         _gguf_t16_selected_pairreuse_min_rows_session = previous
-
-
-def _gguf_selected_q4_gate_up_tile8_enabled() -> bool:
-    """Selected Q4_K T16 gate+up tile8 ownership (default on).
-
-    The tile8 owner is byte-identical to the 16-column owner; it exists to halve
-    register pressure and double resident workgroups.  ``=0`` restores the
-    16-column local128 path as a rollback/bisection fallback.
-    """
-
-    return _env_flag(_GGUF_SELECTED_Q4_GATE_UP_TILE8_ENV, True)
 
 
 def _gguf_t16_selected_pairreuse_enabled() -> bool:
@@ -34492,14 +34477,8 @@ def _launch_selected_raw_gguf_moe_pair_silu(
         # grid: rocprofv3 measures VGPR 200 -> 88 and LDS 1024 -> 512 at the
         # production 2048x512x8 shape, which raises the isolated leaf from
         # ~57 to ~51 us (21.1 -> 23.6 GB/s) on gfx1151.
-        # HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8=0 restores the 16-column owner.
-        selected_q4_gate_up_fn = (
-            gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out
-            if _gguf_selected_q4_gate_up_tile8_enabled()
-            else gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out
-        )
         selected_abi("dual_silu").call(
-            selected_q4_gate_up_fn,
+            gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out,
             (x_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
              weight_b.allocation("tiles").tensor.ptr, out_ptr), locals(),
             positional_dimensions=True, stream=stream, runtime=runtime,

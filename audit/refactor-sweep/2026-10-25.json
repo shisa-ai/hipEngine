@@ -12794,28 +12794,28 @@
       "start_line": 10448,
       "end_line": 10472,
       "sha256": "b1b5b5ef6636a211caa43e503a4913621cf050da8286089ba7d91f3e25c4b024",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-selector-retired-reference-preserved",
+      "evidence": ["Removed per-call tile8 env selector/helper and unused col16 runtime import; tile8 constant owner. Keep col16 direct numerical reference.51 unit tests and GPU parity pass; public LLM.generate with retired env0 recorded tile8 calls. Worklog: worklog/entries/20261029T200848.373072Z-cleanup-refactor-r0441-5f1760.md."],
       "subitems": [
         {
           "line": 10450,
           "text": "- Added `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` (default on) in",
-          "status": "pending"
+          "status": "resolved-selector-retired"
         },
         {
           "line": 10456,
           "text": "- The two owners are byte-identical: both launch 128 threads, so thread K",
-          "status": "pending"
+          "status": "resolved-gpu-parent-parity"
         },
         {
           "line": 10463,
           "text": "- The selector is read through `_env_flag`, which is not memoized, so the flag",
-          "status": "pending"
+          "status": "resolved-per-call-read-removed"
         },
         {
           "line": 10468,
           "text": "- Removal condition: keep the `=0` rollback through one decode campaign",
-          "status": "pending"
+          "status": "resolved-constant-owner-live-reference-kept"
         }
       ]
     },

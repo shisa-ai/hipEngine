@@ -391,11 +391,10 @@ def test_t16_weights_route_direct_selected_tiles_allocations(monkeypatch: pytest
     assert ("weighted_shared", None) in calls
 
 
-def test_t16_c1_tile8_env_falls_back_to_col16_gate_up_owner(
+def test_t16_c1_retired_tile8_env_keeps_tile8_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The selected Q4 gate+up tile8 owner is the default; ``=0`` restores the
-    16-column local128 owner."""
+    """The retired rollback variable cannot change the selected tile8 owner."""
 
     monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8", "0")
     runner, scratch = _fake_runner_and_scratch()
@@ -415,12 +414,13 @@ def test_t16_c1_tile8_env_falls_back_to_col16_gate_up_owner(
     monkeypatch.setattr(
         qgr,
         "gguf_q4_k_t16_selected_dual_silu_tile8_gemv_bf16_bf16_out",
-        _fail_if_called("t16_pair_silu_tile8"),
+        lambda *args, **kwargs: calls.append(("t16_pair_silu_tile8", args[:10])),
     )
     monkeypatch.setattr(
         qgr,
         "gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out",
-        lambda *args, **kwargs: calls.append(("t16_pair_silu_col16", args[:10])),
+        _fail_if_called("t16_pair_silu_col16"),
+        raising=False,
     )
     monkeypatch.setattr(
         qgr,
@@ -431,7 +431,7 @@ def test_t16_c1_tile8_env_falls_back_to_col16_gate_up_owner(
 
     runner._run_post_attention_moe_c1(0, out_ptr=9000, scratch=scratch, stream=7)
 
-    assert ("t16_pair_silu_col16", (100, 130, 1012, 1013, 160, 1, 2, 4, 256, 256)) in calls
+    assert ("t16_pair_silu_tile8", (100, 130, 1012, 1013, 160, 1, 2, 4, 256, 256)) in calls
 
 
 def test_t16_c1_dp4a_env_keeps_fused_silu_on_float_path(monkeypatch: pytest.MonkeyPatch) -> None:
