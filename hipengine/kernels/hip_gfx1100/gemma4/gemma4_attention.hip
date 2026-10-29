@@ -1164,6 +1164,9 @@ __global__ void gemma4_attention_decode_kernel(
     for (int kb = 0; kb < kTile; ++kb) {
       running_max = fmaxf(running_max, partial[kb]);
     }
+    // Every wave must consume the broadcast before the next tile (or the
+    // denominator reduction) reuses partial as scratch.
+    __syncthreads();
   }
   const float row_max = running_max;
 

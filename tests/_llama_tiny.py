@@ -154,6 +154,9 @@ def write_tiny_llama_tokenizer(directory: Path) -> Path:
                     "{% for message in messages %}"
                     "<|im_start|>{{ message['role'] }}\n{{ message['content'] }}<|im_end|>\n"
                     "{% endfor %}"
+                    "{% if add_generation_prompt %}<|im_start|>assistant\n"
+                    "{% if enable_thinking %}<think>\n{% else %}<think>\n\n</think>\n\n{% endif %}"
+                    "{% endif %}"
                 ),
                 "eos_token": "<|im_end|>",
                 "bos_token": "<|im_start|>",

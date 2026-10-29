@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 from tokenizers import Tokenizer
 
 if TYPE_CHECKING:
@@ -26,6 +28,17 @@ if TYPE_CHECKING:
 
 _CHAT_START = "<|im_start|>"
 _CHAT_END = "<|im_end|>"
+
+
+def _raise_template_error(message: object) -> None:
+    raise ValueError(str(message))
+
+
+@lru_cache(maxsize=8)
+def _compile_chat_template(source: str):
+    environment = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
+    environment.globals["raise_exception"] = _raise_template_error
+    return environment.from_string(source)
 
 
 @dataclass(frozen=True)
@@ -37,6 +50,7 @@ class LlamaDenseTokenizer:
     eos_token_id: int
     bos_token_id: int | None
     chat_style: str
+    chat_template: str | None = None
 
     @classmethod
     def from_model_path(
@@ -64,40 +78,40 @@ class LlamaDenseTokenizer:
             raise ValueError(
                 f"tokenizer {_CHAT_END} id differs from config.eos_token_id {eos_token_id}"
             )
-        chat_style = cls._detect_chat_style(directory)
+        chat_template = cls._load_chat_template(directory)
         return cls(
             encoder=encoder,
             vocab_size=tokenizer_vocab_size,
             eos_token_id=int(eos_token_id),
             bos_token_id=None if bos_token_id is None else int(bos_token_id),
-            chat_style=chat_style,
+            chat_style="chatml",
+            chat_template=chat_template,
         )
 
     @staticmethod
-    def _detect_chat_style(directory: Path) -> str:
-        """Return the chat dialect the checkpoint declares.
-
-        Only the ChatML dialect is implemented. A checkpoint that declares another
-        template is refused rather than rendered with ChatML markers its tokenizer
-        may not carry.
-        """
+    def _load_chat_template(directory: Path) -> str | None:
+        """Load the declared ChatML template without replacing its semantics."""
 
         path = directory / "tokenizer_config.json"
         if not path.is_file():
-            return "chatml"
-        try:
-            config = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return "chatml"
+            return None
+        config = json.loads(path.read_text(encoding="utf-8"))
         template = config.get("chat_template")
         if isinstance(template, list):
-            template = "".join(
-                str(entry.get("template", "")) for entry in template if isinstance(entry, dict)
-            )
-        if not isinstance(template, str) or not template.strip():
-            return "chatml"
+            templates = {entry["name"]: entry["template"] for entry in template}
+            if "default" not in templates:
+                raise ValueError("named chat templates require a default template")
+            template = templates["default"]
+        if isinstance(template, dict):
+            template = template.get("default")
+            if template is None:
+                raise ValueError("named chat templates require a default template")
+        if template is None or template == "":
+            return None
+        if not isinstance(template, str):
+            raise ValueError("chat_template must be a string or named templates")
         if _CHAT_START in template and _CHAT_END in template:
-            return "chatml"
+            return template
         raise NotImplementedError(
             f"dense Llama chat template is not ChatML; {directory / 'tokenizer_config.json'} "
             "declares a different dialect, which this adapter does not render"
@@ -142,14 +156,27 @@ class LlamaDenseTokenizer:
     ) -> str:
         """Render the checkpoint's ChatML prompt up to the assistant prefix."""
 
+        if self.chat_template is not None:
+            messages = [] if system is None else [{"role": "system", "content": str(system)}]
+            messages.append({"role": "user", "content": str(user)})
+            try:
+                return _compile_chat_template(self.chat_template).render(
+                    messages=messages, tools=None, add_generation_prompt=True,
+                    enable_thinking=bool(enable_thinking),
+                    bos_token="" if self.bos_token_id is None else self.encoder.id_to_token(self.bos_token_id),
+                    eos_token=self.encoder.id_to_token(self.eos_token_id),
+                )
+            except Exception as exc:
+                raise ValueError(f"checkpoint chat template could not be rendered: {exc}") from exc
+
+        # A checkpoint without a template gets plain ChatML, not an invented
+        # reasoning dialect. Reasoning markers belong to the artifact template.
         prefix = "" if system is None else f"{_CHAT_START}system\n{system}{_CHAT_END}\n"
         rendered = (
             f"{prefix}{_CHAT_START}user\n{user}{_CHAT_END}\n"
             f"{_CHAT_START}assistant\n"
         )
-        if enable_thinking:
-            return rendered + " thinking\n"
-        return rendered + " thinking\n\n</think>\n\n"
+        return rendered
 
 
 __all__ = ["LlamaDenseTokenizer"]

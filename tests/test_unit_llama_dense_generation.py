@@ -62,18 +62,60 @@ def test_chat_prompt_renders_the_checkpoint_dialect(checkpoint):
     tokenizer = _tokenizer(checkpoint)
     assert tokenizer.chat_style == "chatml"
     assert tokenizer.format_chat_prompt("hello world") == (
-        "<|im_start|>user\nhello world<|im_end|>\n<|im_start|>assistant\n thinking\n"
+        "<|im_start|>user\nhello world<|im_end|>\n<|im_start|>assistant\n<think>\n"
     )
     assert tokenizer.format_chat_prompt("hello world", system="be brief") == (
         "<|im_start|>system\nbe brief<|im_end|>\n"
         "<|im_start|>user\nhello world<|im_end|>\n"
-        "<|im_start|>assistant\n thinking\n"
+        "<|im_start|>assistant\n<think>\n"
     )
     closed = tokenizer.format_chat_prompt("hello world", enable_thinking=False)
-    assert closed.endswith("<|im_start|>assistant\n thinking\n\n</think>\n\n")
+    assert closed.endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
     # The markers survive tokenization as their own ids rather than as unknowns:
     # <|im_start|> user hello world <|im_end|> <|im_start|> assistant <unk>
     assert tokenizer.encode_chat("hello world") == (6, 3, 1, 2, 7, 6, 4, 0)
+
+
+def test_chat_prompt_uses_template_default_system(checkpoint):
+    config_path = checkpoint / "tokenizer_config.json"
+    config = json.loads(config_path.read_text())
+    config["chat_template"] = (
+        "{% if messages[0]['role'] != 'system' %}"
+        "<|im_start|>system\nCheckpoint default.<|im_end|>\n{% endif %}"
+        + config["chat_template"]
+    )
+    config_path.write_text(json.dumps(config))
+    tokenizer = _tokenizer(checkpoint)
+    rendered = tokenizer.format_chat_prompt("hello", enable_thinking=False)
+    assert rendered.startswith("<|im_start|>system\nCheckpoint default.<|im_end|>\n")
+    assert rendered.endswith("<think>\n\n</think>\n\n")
+    assert "Checkpoint default." not in tokenizer.format_chat_prompt("hello", system="custom")
+
+
+@pytest.mark.parametrize("named", [False, True])
+def test_chat_template_selection_and_render_failure(checkpoint, named):
+    config_path = checkpoint / "tokenizer_config.json"
+    config = json.loads(config_path.read_text())
+    template = config["chat_template"]
+    if named:
+        config["chat_template"] = [
+            {"name": "tool_use", "template": "not used"},
+            {"name": "default", "template": template},
+        ]
+        config_path.write_text(json.dumps(config))
+        assert _tokenizer(checkpoint).format_chat_prompt("hello").endswith("<think>\n")
+    else:
+        config["chat_template"] = template + "{{ raise_exception('bad template') }}"
+        config_path.write_text(json.dumps(config))
+        with pytest.raises(ValueError, match="bad template"):
+            _tokenizer(checkpoint).format_chat_prompt("hello")
+
+
+def test_missing_chat_template_uses_plain_chatml(checkpoint):
+    (checkpoint / "tokenizer_config.json").unlink()
+    assert _tokenizer(checkpoint).format_chat_prompt("hello") == (
+        "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n"
+    )
 
 
 def test_tokenizer_refuses_a_vocabulary_wider_than_the_decoder(checkpoint):
