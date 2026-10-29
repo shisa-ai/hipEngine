@@ -12825,28 +12825,28 @@
       "start_line": 10473,
       "end_line": 10499,
       "sha256": "564e9bdfc9d713979e2012b92605f7f6589055d2b85dee8ed016ddf46410a0f4",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-rowfirst-deferred-family-control",
+      "evidence": ["Removed ROW_FIRST template/export/wrapper/registry/screen/tests; preserve DPP and shuffle reference.35 rebuilt GPU tests and59 CPU bounds tests pass. Family flag has live diagnostics; migration decision bottom. Worklog: worklog/entries/20261029T201635.969016Z-cleanup-refactor-r0442-e923ef.md."],
       "subitems": [
         {
           "line": 10475,
           "text": "- `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip` carries two boolean",
-          "status": "pending"
+          "status": "resolved-rowfirst-removed-dpp-preserved"
         },
         {
           "line": 10481,
           "text": "- **`ROW_FIRST` should be deleted rather than kept as an experiment.** It exists",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 10489,
           "text": "- `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` (default on, `=0` restores the pipelined",
-          "status": "pending"
+          "status": "deferred-live-comparison-control"
         },
         {
           "line": 10494,
           "text": "- Removal condition: keep the `=0` rollback through one prefill campaign",
-          "status": "pending"
+          "status": "deferred-explicit-variant-migration"
         }
       ]
     },

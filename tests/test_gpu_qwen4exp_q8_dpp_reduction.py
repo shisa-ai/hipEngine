@@ -40,7 +40,6 @@ from tests.test_gpu_qwen4_exp_pf3_moe_schedules import _alloc, _download, _uploa
 PARENT = "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
 DPP = "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
 WAVE_SCALE = "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out"
-ROWFIRST = "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out"
 
 
 def hip_available() -> bool:
@@ -56,7 +55,7 @@ def test_registry_resolves_the_dpp_leaf() -> None:
     from hipengine.kernels.registry import resolve
 
     register_gfx1151_kernels(replace=True)
-    for name in (PARENT, DPP, ROWFIRST):
+    for name in (PARENT, DPP):
         assert (
             resolve(
                 backend="hip_gfx1151",
@@ -189,35 +188,6 @@ def test_dpp_matches_the_shuffle_tree_bit_exactly(rows: int, k: int, n: int) -> 
             p, q = log_softmax(expected), log_softmax(actual)
             assert np.max(np.sum(np.exp(p) * (p - q), axis=-1)) <= 0.05
             assert np.mean(expected.argmax(-1) == actual.argmax(-1)) >= 0.9
-    finally:
-        for ptr in reversed(allocations):
-            free(ptr, runtime=runtime)
-
-
-@pytest.mark.skipif(not hip_available(), reason="HIP unavailable")
-@pytest.mark.parametrize(
-    "rows,k,n",
-    [(17, 2560, 32), (1023, 2560, 10240)],
-)
-def test_rowfirst_grid_order_matches_the_default_order(
-    rows: int, k: int, n: int
-) -> None:
-    """Swapping the grid axes must not change a single output bit."""
-    runtime = get_hip_runtime()
-    x, raw = _make_operands(rows, k, n, seed=20261005)
-    allocations = []
-    try:
-        dx, dw = [_upload(v, runtime, allocations) for v in (x, raw)]
-        outputs = [_alloc((rows, n), np.float32, runtime, allocations) for _ in range(2)]
-        getattr(q8, PARENT)(dx.ptr, dw.ptr, outputs[0].ptr, rows, k, n, runtime=runtime)
-        getattr(q8, ROWFIRST)(dx.ptr, dw.ptr, outputs[1].ptr, rows, k, n, runtime=runtime)
-        runtime.device_synchronize()
-        for i in (0, 1):
-            got = _download(outputs[i], (rows, n), np.float32, runtime)
-            if i == 0:
-                reference = got
-            else:
-                np.testing.assert_array_equal(got.view(np.uint32), reference.view(np.uint32))
     finally:
         for ptr in reversed(allocations):
             free(ptr, runtime=runtime)

@@ -857,10 +857,6 @@ gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out = _make_w
     "gguf_q8_0",
     _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"),
 )
-gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out = _make_wrapper(
-    "gguf_q8_0",
-    _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out"),
-)
 gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out = _make_wrapper(
     "gguf_q8_0",
     _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_pipelined_f32_f32_out"),
@@ -1970,7 +1966,6 @@ _WRAPPERS = {
         "iu8_wmma_prefill_f32_f32_out": gguf_q8_0_iu8_wmma_prefill_f32_f32_t,
         "coltile8_rowbatch4_wave_scale_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out,
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out,
-        "coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out,
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out,
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out,
         "coltile8_rowbatch4_pipelined_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out,
@@ -2076,7 +2071,6 @@ __all__ = [
     "gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
-    "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_rowfirst_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_pipelined_f32_f32_out",
