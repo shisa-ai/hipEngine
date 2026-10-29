@@ -3430,18 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Moonshine exact two-region continuous scheduler — opt-in strict fallback
-
-- The apparent uniform-t256 quality regression was a docs-side three-frame mask
-  undercount, not scheduler arithmetic. With the corrected installed mask,
-  uniform t256 and exact two-region both match exact custom CUDA on all 266
-  Japanese FLEURS transcripts. Uniform is the production default because it is
-  faster at every matched c=2-512 capacity and uses half the workspace.
-- `MoonshineCudaExactContinuousBatchRuntime` remains an explicit off-by-default
-  t32/t256 arithmetic fallback and bisection route. Reassess removal after one
-  clean release if no deployment requires strict hidden-boundary arithmetic;
-  preserve the static lockstep runtime as the exact comparison route.
-
 ## Moonshine gfx1151 exact wave8 top-1 — temporary rollback selector
 
 - `wave8_top1` is now the G1 FP16 runtime default. It materializes the same
@@ -9868,6 +9856,42 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0370 — Moonshine exact two-region scheduler reference ownership
+
+`MoonshineCudaExactContinuousBatchRuntime` remains an explicit t32/t256
+arithmetic reference. `scripts/benchmark_moonshine_cuda_continuous.py
+ --topology exact-two-region` selects it; omission selects uniform-t256.
+The two-region scheduler owns separate early/mature graph caches and
+transfers a request once at their boundary. Dynamic-arrival tests exercise
+this behavior. Static lockstep is a separate comparison, not an automatic
+replacement for the continuous reference.
+
+The benchmark now owns each decoder immediately after construction and
+closes scheduler graphs before decoder workspaces. This also releases a
+first decoder if the second constructor, kernel preparation or scheduler
+construction fails. Lockstep preparation is inside its cleanup scope.
+Synthetic full-command tests cover both topologies, setup/body/close
+failures and successful reports without CUDA. Scheduler arithmetic, uniform
+defaults and runtime ownership APIs are unchanged.
+
+**Decision needed:** keep the explicitly requested continuous exact reference,
+or retire it after confirming no caller needs its hidden-boundary arithmetic
+and migrating its benchmark/GPU-test consumers. Do not silently substitute
+uniform-t256 for `--topology exact-two-region`. Historical corpus and timing
+results remain in the original sweep source and Moonshine artifacts; no fresh
+quality or performance claim is made.
+
+**Clearing action:** audit the class, benchmark selector and dynamic-arrival
+GPU tests together. Run `uv run pytest
+ tests/test_unit_moonshine_continuous_setup_cleanup.py
+ tests/test_unit_benchmark_moonshine_cuda_continuous.py
+ tests/test_gpu_moonshine_cuda_sm120a_continuous_batch.py`, then both explicit
+benchmark topologies on a CUDA host with the same fixtures and static lockstep
+comparison. Check admission, one-time transfer, cancellation, compaction,
+bounded graph cache, EOS, reset/reuse and teardown before deleting the route.
+Public Moonshine admission is a separate architecture decision, not part of
+this benchmark cleanup.
 
 ### R0368 — LC-D3 global geometry diagnostics and unused repair separation
 

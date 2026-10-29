@@ -9,6 +9,7 @@ import platform
 import statistics
 import subprocess
 import time
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -408,6 +409,48 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+@contextmanager
+def _continuous_runtime(args, *, batch, frames, loaded):
+    from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
+    from hipengine.runtime.moonshine_cuda_continuous import (
+        MoonshineCudaContinuousBatchRuntime,
+        MoonshineCudaExactContinuousBatchRuntime,
+    )
+
+    with ExitStack() as owners:
+        decoders = []
+
+        def create(name):
+            decoder = MoonshineCudaBatchRuntime(
+                max_batch=batch,
+                encoder_frames=frames,
+                loaded_model=loaded,
+                owns_weights=False,
+            )
+            owners.callback(decoder.close)
+            decoders.append((name, decoder))
+            return decoder
+
+        if args.topology == "exact-two-region":
+            early = create("early")
+            mature = create("mature")
+            early.prepare_decoder_kernels()
+            mature.prepare_decoder_kernels()
+            continuous = MoonshineCudaExactContinuousBatchRuntime(
+                early, mature, owns_decoders=False,
+                max_pending=args.requests, max_graphs=args.max_graphs,
+            )
+        else:
+            decoder = create("uniform")
+            decoder.prepare_decoder_kernels()
+            continuous = MoonshineCudaContinuousBatchRuntime(
+                decoder, owns_decoder=False,
+                max_pending=args.requests, max_graphs=args.max_graphs,
+            )
+        owners.callback(continuous.close)
+        yield continuous, decoders
+
+
 def main() -> int:
     args = parse_args()
     if args.requests <= 0 or args.warmup < 0 or args.iterations <= 0:
@@ -430,11 +473,6 @@ def main() -> int:
     from hipengine.core.device import Device
     from hipengine.loading.moonshine import load_moonshine_model
     from hipengine.runtime.moonshine_cuda_batch import MoonshineCudaBatchRuntime
-    from hipengine.runtime.moonshine_cuda_continuous import (
-        MoonshineCudaContinuousBatchRuntime,
-        MoonshineCudaExactContinuousBatchRuntime,
-    )
-
     runtime = get_cuda_runtime()
     runtime.set_device(args.gpu_index)
     fixtures, frames = load_fixtures(args.fixture_dir, _DEFAULT_FIXTURES)
@@ -447,48 +485,9 @@ def main() -> int:
     results: dict[str, Any] = {}
     try:
         for batch in args.batches:
-            continuous_decoders: list[tuple[str, MoonshineCudaBatchRuntime]] = []
-            if args.topology == "exact-two-region":
-                early_decoder = MoonshineCudaBatchRuntime(
-                    max_batch=batch,
-                    encoder_frames=frames,
-                    loaded_model=loaded,
-                    owns_weights=False,
-                )
-                mature_decoder = MoonshineCudaBatchRuntime(
-                    max_batch=batch,
-                    encoder_frames=frames,
-                    loaded_model=loaded,
-                    owns_weights=False,
-                )
-                early_decoder.prepare_decoder_kernels()
-                mature_decoder.prepare_decoder_kernels()
-                continuous = MoonshineCudaExactContinuousBatchRuntime(
-                    early_decoder,
-                    mature_decoder,
-                    owns_decoders=True,
-                    max_pending=args.requests,
-                    max_graphs=args.max_graphs,
-                )
-                continuous_decoders.extend(
-                    (("early", early_decoder), ("mature", mature_decoder))
-                )
-            else:
-                decoder = MoonshineCudaBatchRuntime(
-                    max_batch=batch,
-                    encoder_frames=frames,
-                    loaded_model=loaded,
-                    owns_weights=False,
-                )
-                decoder.prepare_decoder_kernels()
-                continuous = MoonshineCudaContinuousBatchRuntime(
-                    decoder,
-                    owns_decoder=True,
-                    max_pending=args.requests,
-                    max_graphs=args.max_graphs,
-                )
-                continuous_decoders.append(("uniform", decoder))
-            try:
+            with _continuous_runtime(
+                args, batch=batch, frames=frames, loaded=loaded,
+            ) as (continuous, continuous_decoders):
                 continuous_samples = benchmark_route(
                     lambda index: run_continuous_workload(
                         continuous, workload, index
@@ -512,8 +511,6 @@ def main() -> int:
                     decoder.allocation_contract()["workspace_nbytes"]
                     for _name, decoder in continuous_decoders
                 )
-            finally:
-                continuous.close()
             for name, decoder in continuous_decoders:
                 if not decoder.teardown_returned_to_baseline:
                     raise RuntimeError(
@@ -526,8 +523,8 @@ def main() -> int:
                 loaded_model=loaded,
                 owns_weights=False,
             )
-            lockstep_decoder.prepare_decoder_kernels()
             try:
+                lockstep_decoder.prepare_decoder_kernels()
                 lockstep_samples = benchmark_route(
                     lambda index: run_lockstep_workload(
                         lockstep_decoder, workload, index

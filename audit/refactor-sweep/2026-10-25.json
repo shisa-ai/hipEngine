@@ -10970,18 +10970,18 @@
       "start_line": 8318,
       "end_line": 8329,
       "sha256": "9ce31bf3e545eb3883f377e36dfc64a4ba3fd836b3bf2300e9baca2990731068",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-deferred-continuous-exact-reference-retirement",
+      "evidence": ["Exact two-region scheduler still explicitly selected by benchmark CLI and dynamic-arrival GPU tests; uniform default and static lockstep preserved. Bottom R0370 records fallback-retirement decision/clearing commands. RED8 benchmark setup leak cases fixed: ExitStack immediately owns successful decoder constructions, scheduler borrows them, graphs close first, lockstep preparation guarded; closure failures still release remaining decoders/weights.23 focused pass/2CUDA skips including successful synthetic command reports for both topologies. No scheduler/kernel/arithmetic/default change. Worklog worklog/entries/20261029T053656.048862Z-cleanup-refactor-r0370-moonshine-scheduler-450f11.md."],
       "subitems": [
         {
           "line": 8320,
           "text": "- The apparent uniform-t256 quality regression was a docs-side three-frame mask",
-          "status": "pending"
+          "status": "triaged-live-reference-preserved-decision-bottom-setup-cleanup-fixed"
         },
         {
           "line": 8325,
           "text": "- `MoonshineCudaExactContinuousBatchRuntime` remains an explicit off-by-default",
-          "status": "pending"
+          "status": "triaged-live-reference-preserved-decision-bottom-setup-cleanup-fixed"
         }
       ]
     },
