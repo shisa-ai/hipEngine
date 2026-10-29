@@ -3430,76 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q4 raw-nibble P8 prefetch rollback
-
-- Added 2026-07-27 as gfx1151 mode
-  `mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512` and P8
-  wrapper export. It carries only the next K32 interval's eight raw T16
-  nibble words, preserves the existing D8 activation double buffer, and
-  selects P8 only at producer chunks of at least 512 rows.
-- The exact actual M512 leaf improves **6.8727 -> 6.7389 ms (-1.948%)**;
-  seven complete-state pp512 pairs improve
-  **636.367 -> 640.003 tok/s (+0.571%, 7/7 wins)**. M256 regresses
-  **0.211%**, so the non-prefetch specialization remains required below the
-  threshold rather than serving only as historical rollback.
-- After clean selector-unset publication and one refreshed trace, collapse
-  the user-visible positive mode into the gfx1151 shape capability. Keep one
-  tested non-prefetch specialization for sub-512/unmeasured geometries, and
-  remove the one-purpose leaf/complete-state comparison modes when they no
-  longer serve campaign bisection.
-- The clean publication trigger is satisfied at
-  **643.554/573.066/466.290 tok/s**, improving all required lengths with
-  exact lifecycle. The refreshed trace trigger is also satisfied: selected
-  Q4 gate/up falls **337.395 -> 333.701 ms** and the P8 resource tuple is
-  confirmed. Keep the explicit old/new symbols only through the immediately
-  following compact-metadata-prefetch A/B; then collapse the winning >=512
-  shape policy as described above.
-- Compact metadata prefetch is rejected and fully removed at
-  **6.7265 -> 7.0330 ms (+4.556%)**, so that bisection dependency is closed.
-  Collapse the retained P8/non-P8 shape capability in the next cleanup unit;
-  preserve the non-P8 specialization below 512 because it is measured faster.
-
-## Laguna Q4 selected-down raw-nibble P8 rollback
-
-- Added 2026-07-27 as the gfx1151 shape mode
-  `mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512`. It reuses the
-  exact gate/up P8 mechanism in the single-output 64x32/local64 Q4-down body,
-  adds no resident bytes/LDS/scratch, and preserves the previous body below
-  512 producer rows.
-- The M512 trace cuts 72 Q4-down launches
-  **217.416 -> 212.090 ms (-2.450%)**. Seven complete-state pp512 pairs
-  improve **639.574 -> 643.166 tok/s (+0.562%, 7/7 wins)** with every output
-  and state digest exact. Clean selector-unset publication is
-  **643.141/573.717/466.913 tok/s**, with pp512 flat within run variance.
-- The clean publication trigger is satisfied. After a refreshed all-family
-  trace, collapse the explicit positive selector into the gfx1151 shape
-  capability. Preserve the
-  non-prefetch symbol for sub-512 rows and rollback/bisection because the
-  admitted route is deliberately shape-qualified.
-
-## Laguna Q4 precomputed activation-sum rollback
-
-- Added 2026-07-27 as an exact gfx1151 M512+ default behind
-  `LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS`. The D8 producer writes exact K16
-  integer sums to a bounded activation-only `int16` sidecar, and the retained
-  P8 consumer loads them instead of rebuilding them in 16 output-column
-  workgroups.
-- The actual leaf improves **0.434%/0.933%** at M256/M512. Eleven
-  complete-state pp512 pairs save **2.491 ms** at the paired median with
-  **9/11 wins** and exact state. The maximum scratch plan grows by
-  **786,432 bytes**; resident weights do not grow.
-- Keep the capability, setter, old consumer, and two-symbol pack/consumer
-  split through the active 700 campaign for rollback and attribution. After
-  clean cached trace plus selector-unset 512/1K/4K publication, collapse the
-  positive path into the gfx1151 M512 shape policy. Remove the sidecar and
-  candidate symbols if clean publication regresses any required length or the
-  traced gate/up family does not improve.
-- The clean trace/publication trigger is satisfied: selected gate/up falls
-  **334.229 -> 330.720 ms (-1.050%)**, pp512 reaches **649.791 tok/s**, and
-  the aggregate-flat 1K result is positive in same-process paired wall by
-  **4.428 ms (7/11 wins)**. Keep rollback through the 700 campaign, then
-  collapse the positive path as described above.
-
 ## Laguna packed attention-output rollback
 
 - Added 2026-07-27 as the gfx1151 default candidate behind
@@ -10380,6 +10310,40 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0333–R0335 — Laguna Q4 P8 and sum comparison ownership
+
+The gfx1151 defaults select Q4 P8 gate/up and down at producer chunks of at
+least 512 rows. Smaller chunks keep non-prefetch bodies. The enabled Q4 sum
+policy writes a bounded K16 `int16` sidecar only for P8 gate/up; its consumer
+receives that same pointer. Down uses no Q4 sum sidecar. R0313–R0320 own the
+shared gate/down mode migration.
+
+The P8/non-P8 primitives, mode strings and sum setter have live owners:
+`scripts/laguna_q4_k_mmq_leaf_bench.py`, the generalized runtime comparison,
+and `tests/test_live_laguna_moe_gpu.py`. These are not one-purpose harnesses.
+Host tests in `tests/test_unit_laguna_q4_p8_policy.py` bind dispatch below,
+at and above the threshold plus unrelated row counts, real caller/wrapper
+sidecar pointers and symbols, fused/unfused down packing, and sum setter
+isolation from Q6. Production defaults, scratch, arithmetic and kernels are
+unchanged. The July leaf, publication and trace evidence remains recoverable
+from the sweep's pinned source and benchmark artifacts; its campaign-name
+conditions do not describe the remaining migration.
+
+**Remaining work:** separate production shape policy from explicit primitive
+references across resident constructor/setters, generalized comparison,
+leaf tooling and live numerical fixtures. Retain non-P8 bodies for sub-512
+chunks, and keep sidecar allocation/producer/consumer ownership together.
+Actual-weight and public validation share the local Laguna artifact resource
+blocker recorded in R0313–R0320; no runtime admission rule is added.
+
+**Clearing action:** run Q4 P8 policy, selected-MMQ-mode, generalized-comparison,
+runner and full MoE numerical contracts after the coordinated migration. Run
+the generalized P8/non-P8 and sums-off/on comparisons with an available Laguna
+artifact, then public `LLM.generate()` across varied producer chunk sizes.
+Confirm intended shape/default selection, exact full state and cleanup before
+retiring positive mode strings or the public sum setter. Do not delete the
+shared leaf harness or silently map an explicit reference request to P8.
 
 ### R0331 — Laguna Q6 prefetch/sum comparison ownership
 

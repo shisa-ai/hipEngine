@@ -9888,33 +9888,33 @@
       "start_line": 7530,
       "end_line": 7558,
       "sha256": "d9d00d97c90b6e6b29f0e2d1fe785459b11ea2d4f3a8a6749e58ea114206a84e",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-p8-shape-contracts-bound-bottom-reference-migration",
+      "evidence": ["Q4 P8 host contracts bind below/at/above 512 plus unrelated producer rows, real gate caller/wrapper sidecar ABI and deferred-SiLU target; current generalized/leaf/live numerical comparisons still own P8/non-P8 peers. Shared bottom R0333–R0335 replaces stale campaign triggers with coordinated production/reference migration and local Laguna artifact resource for full-model/public validation. Production defaults/runtime/kernels unchanged. Focused run 152 pass plus repaired fixture/new-file 34 pass covers 156 cases."],
       "subitems": [
         {
           "line": 7532,
           "text": "- Added 2026-07-27 as gfx1151 mode",
-          "status": "pending"
+          "status": "resolved-current-threshold-and-pointer-contracts-bound"
         },
         {
           "line": 7537,
           "text": "- The exact actual M512 leaf improves **6.8727 -> 6.7389 ms (-1.948%)**;",
-          "status": "pending"
+          "status": "resolved-history-preserved-sub512-body-still-required"
         },
         {
           "line": 7542,
           "text": "- After clean selector-unset publication and one refreshed trace, collapse",
-          "status": "pending"
+          "status": "deferred-bottom-live-comparison-owner-migration"
         },
         {
           "line": 7547,
           "text": "- The clean publication trigger is satisfied at",
-          "status": "pending"
+          "status": "resolved-history-preserved-current-migration-replaces-trigger"
         },
         {
           "line": 7554,
           "text": "- Compact metadata prefetch is rejected and fully removed at",
-          "status": "pending"
+          "status": "resolved-rejected-path-closed-nonp8-coverage-preserved"
         }
       ]
     },
@@ -9924,23 +9924,23 @@
       "start_line": 7559,
       "end_line": 7576,
       "sha256": "e182fa7df312405378251b2f38ce7c4611d74b978aa65bdc0a46b2aba7ad88ef",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-down-p8-contracts-bound-bottom-reference-migration",
+      "evidence": ["Real MoE dispatch binds producer-row P8 threshold independently of routed-lane count; actual Q4 down caller/wrapper preserves P8/non-P8 symbols, raw pointers, stream and fused/unfused pack source, with no Q6 sum leakage. Shared bottom R0333–R0335 owns current generalized/leaf/live fixture migration and actual-weight/public resource. No runtime/default/kernel changes. Combined focused coverage 156 cases."],
       "subitems": [
         {
           "line": 7561,
           "text": "- Added 2026-07-27 as the gfx1151 shape mode",
-          "status": "pending"
+          "status": "resolved-current-down-threshold-and-pack-ownership-bound"
         },
         {
           "line": 7566,
           "text": "- The M512 trace cuts 72 Q4-down launches",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7571,
           "text": "- The clean publication trigger is satisfied. After a refreshed all-family",
-          "status": "pending"
+          "status": "deferred-bottom-mode-owner-migration-sub512-body-preserved"
         }
       ]
     },
@@ -9950,28 +9950,28 @@
       "start_line": 7577,
       "end_line": 7599,
       "sha256": "7cc5964ba572d924c7056209422747c2d8449ea1da782f2796dfe0f55733494b",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-sum-sidecar-contracts-bound-bottom-setter-migration",
+      "evidence": ["Real gate caller/wrapper binds optional sum producer sidecar to same consumer pointer and distinct symbol with plain/deferred-SiLU outputs; threshold tests ensure sums apply only on P8 gate/up and real comparison setters isolate Q4 from Q6. Shared bottom R0333–R0335 owns live generalized/leaf/fixture migration, allocation ownership and full-model/public validation resource. Existing scratch/default/runtime/kernels unchanged. Combined focused coverage 156 cases."],
       "subitems": [
         {
           "line": 7579,
           "text": "- Added 2026-07-27 as an exact gfx1151 M512+ default behind",
-          "status": "pending"
+          "status": "resolved-current-sidecar-producer-consumer-contracts-bound"
         },
         {
           "line": 7584,
           "text": "- The actual leaf improves **0.434%/0.933%** at M256/M512. Eleven",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7588,
           "text": "- Keep the capability, setter, old consumer, and two-symbol pack/consumer",
-          "status": "pending"
+          "status": "deferred-bottom-coordinated-sidecar-setter-reference-migration"
         },
         {
           "line": 7594,
           "text": "- The clean trace/publication trigger is satisfied: selected gate/up falls",
-          "status": "pending"
+          "status": "resolved-history-preserved-current-migration-replaces-trigger"
         }
       ]
     },
