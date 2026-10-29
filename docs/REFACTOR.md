@@ -3427,26 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## PF-4 lever 2 fused combine is opt-in pending valid A/B (2026-09-04)
-
-- `hipengine/runtime/qwen4_exp_runner.py` keeps the fused
-  `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` grouped-prefill
-  path reachable only via `HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1`; the default
-  is the unfused `weighted_lanes_sum` + `shared_gate_combine` chain. The flag
-  was originally the inverse (`HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE=1` gating a
-  fused default) before a process-separated diagnostic measured pp −1.69%
-  (all 12 cases negative). That run cannot close the lever under the required
-  one-residency protocol.
-- The fused kernel and its registry entry
-  (`KernelKey("hip_gfx1100", "weighted_lanes_sum+shared_gate_combine", <quant>, "out")`)
-  stay bit-exact and pinned by `tests/test_gpu_qwen4_exp_pf4_lever2_fused_combine.py`.
-- **Removal trigger:** repeat the whole-model comparison in one process and
-  one model residency. Promote only if that run is exact and non-regressive;
-  otherwise delete the fused kernel, its wrapper/registry entry, the
-  `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` gate, and the lever-2 tests once PF-4 is
-  formally closed and no follow-up candidate reuses the fused chain. Keep the bit-exact-parity test file if the unfused chain ever changes
-  arithmetic.
-
 ## Qwen4Exp Q5_K grouped row4 candidate (2026-09-05)
 
 `selected_grouped_row4_gemv_bf16_bf16_out` is now selected by the production
@@ -11218,3 +11198,37 @@ real public generation confirming selection, repeatability and teardown.
 Changing the flag alone would erase a working comparison arm, not finish cleanup.
 Implementation and focused evidence:
 `../worklog/entries/20261029T151518.411951Z-cleanup-refactor-r0407-aotriton-evaluator-4f9845.md`.
+
+### R0410 — Fused grouped-prefill combine adjudication
+
+`HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1` selects the implemented grouped-prefill
+routed-sum/shared-gate fusion in `qwen4_exp_runner.py`. The default keeps
+`weighted_lanes_sum_out_bf16_f32w` followed by
+`shared_gate_combine_f32_shared_out_bf16`; the latter incorporates the shared
+output's BF16 conversion. The candidate instead converts shared output first,
+then launches `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w`.
+Preserve both supported routes and their registered strict primitives.
+
+**Deferred decision:** retain the candidate and its explicit interface, promote
+it after a current comparison, or retire the complete route. The corrected
+historical artifact records four Python processes and four model residencies,
+not one residency. It does not establish a binding loss; do not delete the
+candidate or describe the old timing as a promotion/rejection gate.
+
+**Clearing action:** if evaluating promotion, add an engagement-verified
+fused-combine package to `scripts/qwen4exp_halo_box_campaign_ab.py` or an
+equivalent same-process harness. The existing harness does not expose this
+comparison. Measure both settings in one model residency across the complete
+category/shape suite and heldouts, charging the separate cast and comparing
+against today's cast-folded default. Verify exact outputs/state/KV,
+repeatability, graph recapture where applicable and public `LLM.generate()`
+selection/teardown. Run
+`uv run pytest -o addopts='' -q tests/test_gpu_qwen4_exp_pf4_lever2_fused_combine.py`
+in the ROCm environment before the model comparison. If retiring by product
+decision, remove the runtime branch, wrapper, registry entry, selector and
+candidate-only tests together, preserving strict primitives and history.
+
+Historical diagnostic:
+`../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-whole-model-ab.json`.
+This triage changes no execution behavior and claims no fresh performance or
+numerical result.

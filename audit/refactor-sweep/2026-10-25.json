@@ -11968,23 +11968,25 @@
       "start_line": 9481,
       "end_line": 9500,
       "sha256": "29839839e3c20a00e55284850f1af1fc362c7b09ba8bba5fa5197a0f6c874ae3",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-fused-combine-adjudication",
+      "evidence": [
+        "Move live retain/promote/retire choice to bottom R0410. Correct artifact explicitly records four processes/residencies and invalidates binding loss; correct runtime comments and ENVS claim, preserve execution/defaults/registry/tests. Current default folds shared-output cast while candidate casts separately; future same-residency comparison must charge both. Existing campaign A/B has no fused-combine package. No new performance/numerical claim. worklog/entries/20261029T155108.910534Z-cleanup-refactor-r0410-fused-combine-e366e4.md."
+      ],
       "subitems": [
         {
           "line": 9483,
           "text": "- `hipengine/runtime/qwen4_exp_runner.py` keeps the fused",
-          "status": "pending"
+          "status": "preserved-explicit-route-and-unfused-default"
         },
         {
           "line": 9491,
           "text": "- The fused kernel and its registry entry",
-          "status": "pending"
+          "status": "preserved-supported-primitive-registry-and-parity-tests"
         },
         {
           "line": 9494,
           "text": "- **Removal trigger:** repeat the whole-model comparison in one process and",
-          "status": "pending"
+          "status": "deferred-current-one-residency-comparison-or-product-retirement"
         }
       ]
     },
