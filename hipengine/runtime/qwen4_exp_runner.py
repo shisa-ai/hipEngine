@@ -3481,6 +3481,24 @@ def _run_qwen4_exp_gr_norm_down(
         and width % 32 == 0
     )
     workspace = wide_f16_activation_workspace()
+    unsafe_workspace = False
+    if workspace is not None and workspace.nbytes >= count * 2 and not iu8_down:
+        try:
+            # Admission safety belongs to staging, not to the legacy loan.
+            # Check before either the direct producer or the fallback can write.
+            _check_norm_publication(residual_ptr, norm_weight_ptr,
+                scratch.normalized.ptr, workspace.ptr, rows, branches, hidden)
+            raw = down_weight.allocation("raw")
+            ranges = ((scratch.low_rank.ptr, rows * low_rank * 4),
+                      (raw.tensor.ptr, raw.buffer.nbytes))
+            if any(ptr <= 0 or size <= 0 or ptr + size > (1 << 64) - 1
+                   or workspace.ptr < ptr + size and ptr < workspace.ptr + count * 2
+                   for ptr, size in ranges):
+                unsafe_workspace = True
+        except ValueError:
+            unsafe_workspace = True
+        if unsafe_workspace:
+            workspace = None
     if (_qwen4_exp_gr_f16_direct_enabled(rows, low_rank) and not iu8_down
             and workspace is not None and workspace.nbytes >= count * 2
             and down_weight.spec.quant_key == "gguf_q8_0"):
@@ -3540,29 +3558,12 @@ def _run_qwen4_exp_gr_norm_down(
             pending_write, residual_ptr, rows, branches, hidden,
             stream=stream, runtime=runtime)
     keys = None
-    unsafe_workspace = False
     if (workspace is not None and workspace.nbytes >= count * 2
             and (rows, branches, hidden, low_rank) == (4096, 4, 2560, 320)
             and not iu8_down):
         keys = wide_f16_publication_keys(
             down_weight, rows=rows, in_features=width, out_features=low_rank,
         )
-    if keys is not None:
-        try:
-            # Validate every producer range before a write; refused admission
-            # uses the ordinary parent operation, not a partial publication.
-            _check_norm_publication(residual_ptr, norm_weight_ptr,
-                scratch.normalized.ptr, workspace.ptr, rows, branches, hidden)
-            raw = down_weight.allocation("raw")
-            ranges = ((scratch.low_rank.ptr, rows * low_rank * 4),
-                      (raw.tensor.ptr, raw.buffer.nbytes))
-            if any(workspace.ptr < ptr + size and ptr < workspace.ptr + count * 2
-                   for ptr, size in ranges):
-                keys = None
-                unsafe_workspace = True
-        except ValueError:
-            keys = None
-            unsafe_workspace = True
     if keys is not None:
         producer, consumer = keys
         # Enter before publication so nesting invalidates an earlier loan
