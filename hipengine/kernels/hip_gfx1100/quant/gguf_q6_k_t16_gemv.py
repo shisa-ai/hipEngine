@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
-import os
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Mapping
@@ -95,12 +94,9 @@ _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out"
 )
 
-# C8-P4 reduced-dequantization owner context: when the runner exposes a
-# q8_1 workspace through ``q6_dp4a_grouped_target_session`` and the env
-# opt-in is set, the planar decode wrapper routes rows 8-64 to the grouped
-# integer-dp4a sibling (x quantized to q8_1 in the caller's workspace).
-# The BF16 grouped owner stays the exact default and strict fallback.
-_Q6_DP4A_GROUPED_TARGET_ENV = "HIPENGINE_C8_Q6_DP4A_GROUPED"
+# The runner resolves profile/rollback policy before binding this q8_1
+# workspace. The scope is authoritative; primitive calls without a scope keep
+# their strict BF16 route even when the process environment requests DP4A.
 
 
 class _Q6DP4AGroupedTargetSession:
@@ -142,16 +138,6 @@ def q6_dp4a_grouped_target_session(
         _Q6_DP4A_GROUPED_SESSION.reset(token)
 
 
-def _q6_dp4a_grouped_target_env_enabled() -> bool:
-    raw = os.environ.get(_Q6_DP4A_GROUPED_TARGET_ENV, "1").strip().lower()
-    if raw in {"", "1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"{_Q6_DP4A_GROUPED_TARGET_ENV} must be a boolean value")
-_Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16 = (
-    "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out"
-)
 _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_BF16_RESIDUAL_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_"
     "gemv_bf16_residual_bf16_out"
@@ -345,7 +331,6 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     session = _Q6_DP4A_GROUPED_SESSION.get()
     if (
         session is not None
-        and _q6_dp4a_grouped_target_env_enabled()
         and 8 <= int(rows) <= 64
         and int(rows) % 8 == 0
         and int(in_features) % 256 == 0

@@ -3440,18 +3440,21 @@ category and control/ownership gates before closing this entry.
   The L4 gate and fresh final-stack composition gate passed; production
   Qwen3.8 `Q4_K_M` physical C8/K3 now defaults on at `c1bb38d49`. Artifact:
   `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
-- The runner still carries the temporary `q6_dp4a_grouped_target_session`
-  ContextVar and `HIPENGINE_C8_Q6_DP4A_GROUPED` env. The production profile
-  binds one; strict and explicit zero bind zero. Runtime admission is fail
-  closed to gfx1100 + request count 8 + `Qwen3.8` model metadata +
-  `MOSTLY_Q4_K_M`, so C1-C7, Qwen3.6, Q4_K_S, and peer backends keep grouped
-  BF16.
-- **Removal condition:** after one release/bake interval without a production
-  regression, replace the env/ContextVar experiment plumbing with a packaged
-  model/profile-qualified dispatch policy and remove the rollback variable.
-  Keep the registered DP4A kernel and strict BF16 fallback. If the default is
-  rolled back during that interval, revert the production binding and retain
-  this entry with the concrete failure artifact.
+- The runner resolves `HIPENGINE_C8_Q6_DP4A_GROUPED` before binding
+  `q6_dp4a_grouped_target_session`. This ContextVar lends scratch ownership;
+  it is not a second policy selector. An enabled scope owns its workspace
+  until exit, including nested/exception cleanup, and the kernel adapter
+  no longer re-reads the process environment. Unscoped calls retain BF16.
+  The production profile binds one; strict and explicit zero bind zero.
+  The remaining runner policy matches gfx1100 + request count 8 +
+  `Qwen3.8` model metadata + `MOSTLY_Q4_K_M`; other configurations keep BF16.
+- **Remaining cleanup:** replace the ambient rollback binding and model-name
+  match with a plugin-owned variant policy expressed in kernel capabilities
+  and geometry. Preserve the current arithmetic-selection envelope until
+  that migration's profile gate passes; do not delete workspace ownership or
+  the registered BF16 primitive merely to remove a ContextVar. Validate
+  simultaneous strict/production owners, explicit controls, supported/missed
+  geometry, bounded workspace and public packed-C8 selection on gfx1100.
 
 ### C8-P2 Q5 planar-dp4a grouped route (default-off; added 2026-09-04, iter40)
 

@@ -1,0 +1,118 @@
+"""Q6 workspace scopes own selection after the runner resolves its policy."""
+from __future__ import annotations
+
+import importlib
+
+import pytest
+
+q6 = importlib.import_module("hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv")
+q4 = importlib.import_module("hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv")
+ENV = "HIPENGINE_C8_Q6_DP4A_GROUPED"
+
+
+@pytest.fixture
+def launches(monkeypatch):
+    seen = []
+    monkeypatch.setattr(q6, "_launch", lambda symbol, *args, **kwargs: seen.append((symbol, args, kwargs)))
+    monkeypatch.setattr(q4, "gguf_q4_k_quantize_bf16_q8_1",
+                        lambda *args, **kwargs: seen.append(("quantize", args, kwargs)))
+    # The primitive fallback, not a profile-specific mixed-row policy, is under test.
+    monkeypatch.setattr(q6, "q6_t16_physical_rowtile_enabled", lambda: False)
+    return seen
+
+
+def launch(rows=24, in_features=512):
+    q6.gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+        11, 22, 33, rows, in_features, 256, stream=9, library="library", runtime="runtime",
+    )
+
+
+@pytest.mark.parametrize("value", (None, "0", "1", "invalid"))
+def test_explicit_workspace_scope_is_not_reselected_by_environment(monkeypatch, launches, value):
+    if value is None:
+        monkeypatch.delenv(ENV, raising=False)
+    else:
+        monkeypatch.setenv(ENV, value)
+    with q6.q6_dp4a_grouped_target_session(workspace_ptr=44, workspace_nbytes=100_000):
+        launch()
+    assert [item[0] for item in launches] == [
+        "quantize", q6._Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16,
+    ]
+    assert launches[0][1] == (11, 44, 24, 512)
+    assert launches[1][1] == (44, 22, 33, 24, 512, 256)
+    for _, _, kwargs in launches:
+        assert kwargs["stream"] == 9 and kwargs["runtime"] == "runtime"
+    assert launches[1][2]["library"] == "library"
+    assert q6._Q6_DP4A_GROUPED_SESSION.get() is None
+
+
+@pytest.mark.parametrize("rows,eligible", ((7, False), (8, True), (16, True),
+                                           (24, True), (40, True), (64, True), (72, False)))
+def test_scope_preserves_kernel_row_capability(launches, rows, eligible):
+    with q6.q6_dp4a_grouped_target_session(workspace_ptr=44, workspace_nbytes=100_000):
+        launch(rows=rows)
+    assert (launches[0][0] == "quantize") is eligible
+    if not eligible:
+        assert all("dp4a" not in item[0] for item in launches)
+
+
+def test_unsupported_input_width_uses_strict_primitive(launches):
+    with q6.q6_dp4a_grouped_target_session(workspace_ptr=44, workspace_nbytes=100_000):
+        launch(in_features=384)
+    assert launches[0][0] != "quantize"
+    assert all("dp4a" not in item[0] for item in launches)
+
+
+def test_disabled_nested_scope_and_exception_restore_workspace_owner(launches):
+    with q6.q6_dp4a_grouped_target_session(workspace_ptr=44, workspace_nbytes=100_000):
+        outer = q6._Q6_DP4A_GROUPED_SESSION.get()
+        with q6.q6_dp4a_grouped_target_session(enabled=False):
+            assert q6._Q6_DP4A_GROUPED_SESSION.get() is None
+            launch()
+        assert q6._Q6_DP4A_GROUPED_SESSION.get() is outer
+        with pytest.raises(RuntimeError, match="fixture failure"):
+            with q6.q6_dp4a_grouped_target_session(workspace_ptr=55, workspace_nbytes=100_000):
+                assert q6._Q6_DP4A_GROUPED_SESSION.get().workspace_ptr == 55
+                raise RuntimeError("fixture failure")
+        assert q6._Q6_DP4A_GROUPED_SESSION.get() is outer
+    assert q6._Q6_DP4A_GROUPED_SESSION.get() is None
+    assert all("dp4a" not in item[0] for item in launches)
+
+
+def test_workspace_capacity_error_happens_before_any_launch(launches):
+    required = 24 * (512 // 32) * 36
+    with q6.q6_dp4a_grouped_target_session(workspace_ptr=44, workspace_nbytes=required - 1):
+        with pytest.raises(ValueError, match="workspace is too small"):
+            launch()
+    assert launches == []
+    assert q6._Q6_DP4A_GROUPED_SESSION.get() is None
+
+
+@pytest.mark.parametrize("ptr,nbytes", ((0, 1), (1, 0), (-1, 1)))
+def test_invalid_workspace_cannot_bind(ptr, nbytes):
+    with pytest.raises(ValueError, match="requires a device workspace"):
+        with q6.q6_dp4a_grouped_target_session(workspace_ptr=ptr, workspace_nbytes=nbytes):
+            pytest.fail("invalid workspace entered")
+    assert q6._Q6_DP4A_GROUPED_SESSION.get() is None
+
+
+@pytest.mark.parametrize("value,enabled", ((None, False), ("0", False), ("1", True)))
+def test_runner_policy_resolves_rollback_before_workspace_binding(monkeypatch, value, enabled):
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_c8_q6_dp4a_grouped_enabled
+
+    if value is None:
+        monkeypatch.delenv(ENV, raising=False)
+    else:
+        monkeypatch.setenv(ENV, value)
+    kwargs = dict(request_count=8, model_name="Qwen3.8-27B", file_type_name="MOSTLY_Q4_K_M")
+    assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", **kwargs) is enabled
+    assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1151", **kwargs) is False
+    for change in (dict(request_count=7), dict(model_name="Qwen3.6-27B"),
+                   dict(file_type_name="MOSTLY_Q4_K_S")):
+        assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", **(kwargs | change)) is False
+
+
+def test_without_scope_ambient_true_cannot_select_changed_arithmetic(monkeypatch, launches):
+    monkeypatch.setenv(ENV, "1")
+    launch()
+    assert launches and all("dp4a" not in item[0] for item in launches)
