@@ -9220,28 +9220,28 @@
       "start_line": 6987,
       "end_line": 7004,
       "sha256": "9e1f98679f9e1275fa54aaae05230c1b652bdabab115cdd09d769676c23ebe81",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-paro-rowchunk-comparison-ownership",
+      "evidence": ["Verified executed command compares explicit-zero versus requested full-layer rowchunk batched peers and labels c1 field as repair peer, not singleton oracle. Added host-only real orchestration/summary tests at widths 3/6/7 and chunk sizes 2/3 plus invalid native/chunk/context combinations. Existing default c6 selected-layer and forwarding tests confirm policy still present; suffix route remains removed. Preserved historical July combined summary and pinned source. Bottom R0310 owns diagnostic replacement and separate c6 optimization decision; no runtime/default/kernel edits or new numerical/performance claim. Worklog: worklog/entries/20261029T014323.217118Z-cleanup-refactor-r0310-rowchunk-c80c0f.md."],
       "subitems": [
         {
           "line": 6988,
           "text": "- Added 2026-07-09 as a default-off PARO c>N diagnostic mode. It compares two",
-          "status": "pending"
+          "status": "resolved-executed-two-batch-peers-and-label-contracts"
         },
         {
           "line": 6993,
           "text": "- Purpose: isolate whether the remaining c6 full-attention rowchunk tax comes",
-          "status": "pending"
+          "status": "resolved-diagnostic-scope-and-current-policy-identified"
         },
         {
           "line": 6996,
           "text": "- Result: the L8 trace showed layer 3 full-layer rowchunk output drift still",
-          "status": "pending"
+          "status": "resolved-history-and-removed-suffix-route-preserved"
         },
         {
           "line": 7001,
           "text": "- Remove when: the c6 full-layer rowchunk tax is either fixed or the scheduler",
-          "status": "pending"
+          "status": "deferred-bottom-R0310-diagnostic-and-c6-optimization-ownership"
         }
       ]
     },

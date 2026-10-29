@@ -3430,24 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `scripts/qwen35_batch_hidden_bisect.py --compare-full-attn-rowchunk-boundary`
-- Added 2026-07-09 as a default-off PARO c>N diagnostic mode. It compares two
-  native rows=6 batch variants directly: no-rowchunk full attention versus the
-  selected full-layer rowchunk repair, using the existing hidden-bisect summary
-  machinery but labelling the rowchunk repair as the comparison peer instead of
-  an independent c1 oracle.
-- Purpose: isolate whether the remaining c6 full-attention rowchunk tax comes
-  from KV append/page placement, context-only work, or from a whole-layer
-  numerical boundary introduced by rowchunking.
-- Result: the L8 trace showed layer 3 full-layer rowchunk output drift still
-  under tolerance (`0.000122 max_abs`), layer 4 `attn_input` first over
-  tolerance (`0.001953`), and layer 7 `attn_input_pre_qkv` at `0.0078125`.
-  Lower-level hidden/KV tracing remains the active diagnostic; rejected suffix
-  rowchunk composition has been removed.
-- Remove when: the c6 full-layer rowchunk tax is either fixed or the scheduler
-  avoids live c6 groups in retained/default operation. Do not use this
-  comparison mode for throughput claims.
-
 ## `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM`
 
 - Added 2026-07-12 as a default-on PARO prefill rollback/bisection control.
@@ -10782,6 +10764,37 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0310 — PARO rowchunk-boundary diagnostic ownership
+
+`scripts/qwen35_batch_hidden_bisect.py --compare-full-attn-rowchunk-boundary`
+compares two native batched runs per layer limit: explicit rowchunk size zero,
+then the requested rowchunk size/layers. Its `c1` summary field labels the
+second batched peer as `native_full_attention_rowchunk_repair`, not an
+independent singleton oracle. The mode requires native batch attention and
+`0 < chunk size < batch size`, and rejects simultaneous context-rowchunk
+comparison. It records `performance_claim: false`.
+
+The command works at other widths too; host-only orchestration tests exercise
+3/6/7 rows and distinct chunk sizes, using the real summary path. PARO still
+has automatic c6 rowchunk policy with selected layers. The rejected suffix
+rowchunk route is removed, but that does not remove this full-layer comparison.
+The historical investigation remains in
+`benchmarks/results/2026-07-09-hipengine-qwen35-c6-rowchunk-boundary-combined-summary.json`
+and the pinned sweep source; no new numerical or timing result is asserted.
+
+**Decision needed:** retain this named comparison diagnostic or replace it
+with another trace that preserves the two-peer distinction. Solving the c6
+rowchunk cost is separate kernel/performance work; do not claim it closed from
+host fixtures or delete reachable c6 execution to avoid the question.
+
+**Clearing action:** migrate parser, dry-run and executed comparison metadata
+with the replacement, and run
+`tests/test_unit_qwen35_rowchunk_comparison.py`, hidden-bisect command tests and
+PARO rowchunk policy/forwarding tests. A c6 implementation change also needs
+independent hidden/state/KV numerical checks, public requests at neighboring
+and unrelated widths, selected paths and cleanup; any speed claim needs the
+full benchmark protocol rather than this diagnostic's wall time.
 
 ### R0307 — Target score and hidden trace ownership
 
