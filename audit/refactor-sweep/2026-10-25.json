@@ -11012,18 +11012,18 @@
       "start_line": 8347,
       "end_line": 8359,
       "sha256": "9b5c1ebc44974638d48d883ff3333131b822f5c8d828904cb9a166ffd7c3abf6",
-      "status": "pending",
-      "evidence": [],
+      "status": "closed-grouped-prefill-rollback-retired",
+      "evidence": ["Removed obsolete prefill env selector, conditional metadata builds, native gather branches and inert benchmark metadata; grouped default arithmetic unchanged. Gather primitives remain batch-decode consumers and registered numerical oracles. Five RED host routing/loader cases pass after removal; focused host bundle31pass/11HIP skips. Isolated TheRock gfx1151 validation6pass includes real checkpoint serial/native and multichunk continuation plus grouped leaf parity; public LLM.generate instrumented all three grouped operations and released all allocations. Docs/audit/tier/whitespace and full CPU deterministic bg-699 pass. Worklog worklog/entries/20261029T055116.686953Z-cleanup-refactor-r0372-maple-prefill-3068eb.md."],
       "subitems": [
         {
           "line": 8349,
           "text": "- `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` defaults to `1`; `=0` restores the",
-          "status": "pending"
+          "status": "closed-production-optout-removed-primitives-preserved"
         },
         {
           "line": 8353,
           "text": "- Keep the opt-out through clean 128/320/512 recertification and one downstream",
-          "status": "pending"
+          "status": "closed-stale-campaign-condition-removed"
         }
       ]
     },

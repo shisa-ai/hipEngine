@@ -118,12 +118,6 @@ def _maple_batch_affine4_head(rows: int):
     return maple_affine4_gemv_batched_f32
 
 
-def _maple_prefill_grouped_moe() -> bool:
-    # P1 exact expert-major prefill is the default. Preserve the original
-    # row/route-gather chain as HIPENGINE_MAPLE_PREFILL_GROUPED_MOE=0 rollback.
-    return os.environ.get("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", "1") != "0"
-
-
 def _maple_graph_enabled() -> bool:
     # Default off: a controlled c1 review measured whole-step graph replay at
     # only 1.0047x (+0.47%, 0.033 ms), bit-exact and within noise. Keep eager as
@@ -681,11 +675,7 @@ class MapleRunner:
                 moe=build_maple_moe(load=True),
                 norm=build_qwen35_rmsnorm(load=True),
                 lm_head=build_lm_head(load=True),
-                group_scatter=(
-                    build_qwen35_moe_group_scatter(load=True)
-                    if _maple_prefill_grouped_moe()
-                    else None
-                ),
+                group_scatter=build_qwen35_moe_group_scatter(load=True),
             )
         weights: MapleDeviceWeights | None = None
         owner = _BufferOwner(runtime)
@@ -1099,7 +1089,6 @@ class MapleRunner:
         kv_size = spec.kv_size
         top_k = spec.num_experts_per_tok
         intermediate = spec.moe_intermediate_size
-        grouped_moe = _maple_prefill_grouped_moe()
         gqa4_attention = (
             spec.num_attention_heads == spec.num_key_value_heads * 4
             and spec.head_dim == 128
@@ -1291,61 +1280,42 @@ class MapleRunner:
                     library=libs.moe,
                     runtime=self.runtime,
                 )
-                if grouped_moe:
-                    if libs.group_scatter is None:
-                        raise RuntimeError(
-                            "Maple grouped-MoE metadata library is unavailable"
-                        )
-                    qwen35_moe_group_compact_active_i32_parallel(
-                        pf.selected_ids.ptr,
-                        pf.routing_weights.ptr,
-                        pf.expert_start.ptr,
-                        pf.active_experts.ptr,
-                        pf.active_count.ptr,
-                        pf.sorted_lanes.ptr,
-                        pf.sorted_experts.ptr,
-                        pf.sorted_weights.ptr,
-                        rows * top_k,
-                        spec.num_experts,
-                        library=libs.group_scatter,
-                        runtime=self.runtime,
+                if libs.group_scatter is None:
+                    raise RuntimeError(
+                        "Maple grouped-MoE metadata library is unavailable"
                     )
-                    maple_selected_ternary_dual_grouped_bf16(
-                        pf.normalized.ptr,
-                        layer_weights.expert_gate_proj.weight.ptr,
-                        layer_weights.expert_gate_proj.row_alpha.ptr,
-                        layer_weights.expert_up_proj.weight.ptr,
-                        layer_weights.expert_up_proj.row_alpha.ptr,
-                        pf.expert_start.ptr,
-                        pf.sorted_lanes.ptr,
-                        pf.expert_gate.ptr,
-                        pf.expert_up.ptr,
-                        rows,
-                        spec.num_experts,
-                        top_k,
-                        h,
-                        intermediate,
-                        library=libs.ternary,
-                        runtime=self.runtime,
-                    )
-                else:
-                    maple_selected_ternary_dual_gemv_batched_bf16(
-                        pf.normalized.ptr,
-                        layer_weights.expert_gate_proj.weight.ptr,
-                        layer_weights.expert_gate_proj.row_alpha.ptr,
-                        layer_weights.expert_up_proj.weight.ptr,
-                        layer_weights.expert_up_proj.row_alpha.ptr,
-                        pf.selected_ids.ptr,
-                        pf.expert_gate.ptr,
-                        pf.expert_up.ptr,
-                        rows,
-                        spec.num_experts,
-                        top_k,
-                        h,
-                        intermediate,
-                        library=libs.ternary,
-                        runtime=self.runtime,
-                    )
+                qwen35_moe_group_compact_active_i32_parallel(
+                    pf.selected_ids.ptr,
+                    pf.routing_weights.ptr,
+                    pf.expert_start.ptr,
+                    pf.active_experts.ptr,
+                    pf.active_count.ptr,
+                    pf.sorted_lanes.ptr,
+                    pf.sorted_experts.ptr,
+                    pf.sorted_weights.ptr,
+                    rows * top_k,
+                    spec.num_experts,
+                    library=libs.group_scatter,
+                    runtime=self.runtime,
+                )
+                maple_selected_ternary_dual_grouped_bf16(
+                    pf.normalized.ptr,
+                    layer_weights.expert_gate_proj.weight.ptr,
+                    layer_weights.expert_gate_proj.row_alpha.ptr,
+                    layer_weights.expert_up_proj.weight.ptr,
+                    layer_weights.expert_up_proj.row_alpha.ptr,
+                    pf.expert_start.ptr,
+                    pf.sorted_lanes.ptr,
+                    pf.expert_gate.ptr,
+                    pf.expert_up.ptr,
+                    rows,
+                    spec.num_experts,
+                    top_k,
+                    h,
+                    intermediate,
+                    library=libs.ternary,
+                    runtime=self.runtime,
+                )
                 maple_clamped_swiglu_bf16(
                     pf.expert_gate.ptr,
                     pf.expert_up.ptr,
@@ -1355,37 +1325,21 @@ class MapleRunner:
                     library=libs.moe,
                     runtime=self.runtime,
                 )
-                if grouped_moe:
-                    maple_selected_ternary_grouped_bf16(
-                        pf.expert_intermediate.ptr,
-                        layer_weights.expert_down_proj.weight.ptr,
-                        layer_weights.expert_down_proj.row_alpha.ptr,
-                        pf.expert_start.ptr,
-                        pf.sorted_lanes.ptr,
-                        pf.expert_down.ptr,
-                        rows,
-                        spec.num_experts,
-                        top_k,
-                        intermediate,
-                        h,
-                        library=libs.ternary,
-                        runtime=self.runtime,
-                    )
-                else:
-                    maple_selected_ternary_gemv_batched_bf16(
-                        pf.expert_intermediate.ptr,
-                        layer_weights.expert_down_proj.weight.ptr,
-                        layer_weights.expert_down_proj.row_alpha.ptr,
-                        pf.selected_ids.ptr,
-                        pf.expert_down.ptr,
-                        rows,
-                        spec.num_experts,
-                        top_k,
-                        intermediate,
-                        h,
-                        library=libs.ternary,
-                        runtime=self.runtime,
-                    )
+                maple_selected_ternary_grouped_bf16(
+                    pf.expert_intermediate.ptr,
+                    layer_weights.expert_down_proj.weight.ptr,
+                    layer_weights.expert_down_proj.row_alpha.ptr,
+                    pf.expert_start.ptr,
+                    pf.sorted_lanes.ptr,
+                    pf.expert_down.ptr,
+                    rows,
+                    spec.num_experts,
+                    top_k,
+                    intermediate,
+                    h,
+                    library=libs.ternary,
+                    runtime=self.runtime,
+                )
                 maple_weighted_residual_batched_bf16(
                     pf.residual.ptr,
                     pf.expert_down.ptr,
@@ -1600,11 +1554,7 @@ class MapleBatchRunner:
                 moe=build_maple_moe(load=True),
                 norm=build_qwen35_rmsnorm(load=True),
                 lm_head=build_lm_head(load=True),
-                group_scatter=(
-                    build_qwen35_moe_group_scatter(load=True)
-                    if _maple_prefill_grouped_moe()
-                    else None
-                ),
+                group_scatter=build_qwen35_moe_group_scatter(load=True),
             )
         weights: MapleDeviceWeights | None = None
         owner = _BufferOwner(runtime)

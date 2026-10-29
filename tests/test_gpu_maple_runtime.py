@@ -202,18 +202,10 @@ def test_maple_prefill_buffers_exclude_all_row_sampling_scratch() -> None:
     assert batch_buffers.argmax_value.nbytes == 3 * 4
 
 
-def test_maple_prefill_grouped_moe_is_default_with_explicit_gather_rollback(
-    monkeypatch,
-) -> None:
-    monkeypatch.delenv("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", raising=False)
-    assert maple_runtime._maple_prefill_grouped_moe() is True
-    monkeypatch.setenv("HIPENGINE_MAPLE_PREFILL_GROUPED_MOE", "0")
-    assert maple_runtime._maple_prefill_grouped_moe() is False
-
-
 def test_maple_retained_paths_have_no_environment_rollback_seams() -> None:
     source = inspect.getsource(maple_runtime)
     for selector in (
+        "HIPENGINE_MAPLE_PREFILL_GROUPED_MOE",
         "HIPENGINE_MAPLE_PREFILL_GQA4",
         "HIPENGINE_MAPLE_ROUTER_SINGLE_DISPATCH",
         "HIPENGINE_MAPLE_AFFINE4_WAVE32_EXACT",

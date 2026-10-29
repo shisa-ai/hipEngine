@@ -447,7 +447,6 @@ def main() -> int:
                     "HIPENGINE_HIP_ARCH",
                     "HIPENGINE_COMPILER_VERSION_FILE",
                     "HIPENGINE_REQUIRE_CACHED_BUILD",
-                    "HIPENGINE_MAPLE_PREFILL_GROUPED_MOE",
                 )
             },
             "suite": str(args.suite),

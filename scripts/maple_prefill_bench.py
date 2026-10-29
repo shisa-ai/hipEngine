@@ -624,9 +624,6 @@ def main() -> int:
                 "HIPENGINE_REQUIRE_CACHED_BUILD": os.environ.get(
                     "HIPENGINE_REQUIRE_CACHED_BUILD"
                 ),
-                "HIPENGINE_MAPLE_PREFILL_GROUPED_MOE": os.environ.get(
-                    "HIPENGINE_MAPLE_PREFILL_GROUPED_MOE"
-                ),
                 "HIPENGINE_NVCC_VERSION_FILE": os.environ.get(
                     "HIPENGINE_NVCC_VERSION_FILE"
                 ),
