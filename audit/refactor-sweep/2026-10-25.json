@@ -11112,13 +11112,13 @@
       "start_line": 8419,
       "end_line": 8426,
       "sha256": "04bec0d7e90eb105b1465b4e3541499a66c3e64cf00e1a8c698314bd89120df9",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-consolidated-existing-r0281-gdn-decision",
+      "evidence": ["Closed parity campaign and existing bottom R0281-GDN already own Q8 cluster8 automatic selection, explicit exact rollback, frozen session scratch and comparison callers. Removed duplicated standalone release-age note and linked R0377 in existing decision without adding another deferred section. No code/kernel/default/arithmetic change; session/routing/comparison/calibration155pass. Worklog worklog/entries/20261029T062242.710835Z-cleanup-refactor-r0377-gdn-cluster8-6bb03a.md."],
       "subitems": [
         {
           "line": 8421,
           "text": "- `GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE` now routes",
-          "status": "pending"
+          "status": "triaged-duplicate-note-consolidated-strict-reference-preserved"
         }
       ]
     },

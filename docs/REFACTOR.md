@@ -3430,14 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 Q8_0 GDN cluster8 route
-
-- `GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE` now routes
-  `("MOSTLY_Q8_0", 16, 16, 128, 128)` to `chain_peer_cluster8` (D08-X2-K2,
-  2026-08-15). Rollback: `HIPENGINE_GGUF_GDN_PREFILL_MODE=
-  chain_lds32_direct_nonvolatile`. Remove the rollback note after the parity
-  campaign closes and no A/B still needs the exact route.
-
 ## gfx1151 dense-BF16 WMMA bulk prefill
 
 - `HIPENGINE_GGUF_DENSE_WMMA_BULK=0` (default `1`) rolls gfx1151 dense-BF16
@@ -11334,7 +11326,7 @@ without treating a recorded host stack or one completed pass as root-cause
 proof. This disposition changes no runtime default, kernel or arithmetic;
 original outcomes remain in the sweep inventory and benchmark artifacts.
 
-### R0281-GDN — Prefill selectors and session-owned scratch
+### R0281-GDN / R0377 — Prefill selectors and session-owned scratch
 
 `HIPENGINE_GGUF_GDN_PREFILL_MODE` combines automatic/explicit exact selection,
 production recurrence routes and live comparison controls. The proposed
@@ -11368,8 +11360,9 @@ or move to a scoped diagnostic plan, separately from production defaults and
 arithmetic promotion. `chain_k2`, register-tree, tiled/LDS and noncompact peer
 routes have comparison callers; they are not unused merely because another
 route is automatic. Preserve the strict unfused fallback and named capability
-errors. The Q8 cluster8 rollback note and FP16-state entry elsewhere in this
-ledger overlap this decision but have not been disposed by moving this row.
+errors. R0377's standalone Q8 cluster8 release-age note is consolidated here:
+its automatic route and explicit exact control already share this ownership
+decision. The FP16-state entry elsewhere in the ledger remains separate.
 
 **Clearing action:** migrate selector parsing, backend metadata, registered
 prepare/recurrent/segmented siblings, session scratch planning, typed writers
