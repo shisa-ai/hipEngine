@@ -3427,46 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## The per-launch `build_X(load=True)` call
-
-Every kernel-launch helper resolves its library per launch - `library = library or
-build_gguf_k_gemv(load=True)` and its siblings - which is **957 calls in one
-`code-p4096` decode step**, measured by the canonical bench's `--host-profile`.
-Each call re-derives a resolution identity from **eight** environment variables
-(2.281 us micro-benchmarked), so the term is ~2.49 ms/step even after the memo in
-`d0f...` removed the key derivation.
-
-**Identity component, attempted 2026-10-08, reverted:** reading the identity from
-the live raw environment mapping measured 173 ns/call against 2,292 ns for the
-str path (13x cheaper in isolation, ~1.95 ms/step projected at the 980
-resolutions/step decode rate) with live-change observation preserved, but the
-same-residency decode A/B showed only +0.12% at p512 and an unexplained -2.7%
-at p4096 on a heat-soaked host (tight, order-balanced samples; zero memo
-misses, identical libraries and launch counts - no mechanism identified).
-Reverted pending a cooled paired re-measurement; evidence in
-`benchmarks/results/2026-10-08-qwen4exp-build-identity-fast-read/`. The
-resolution-key construction and the library-handle path remain; the library
-threading below is still open. **Cooled re-measurement (2026-10-08, later):** a
-fresh-process single-case p4096 A/B on a fully cooled host tied the arms
-(+0.019%) - the hot-host inversion was thermal non-stationarity, and the 13x
-isolated saving moves nothing at engine level. The per-launch Python enqueue
-cost is NOT the decode-depth remainder; the micro-cut is closed as an
-engine-level lever and the remainder work must target launch-queue gaps,
-per-step transfers, or step-boundary synchronization instead.
-
-**Do not expect wall movement from removing it.** Two ablations of ~2 ms/step of
-host work at p4096 measured +2.53% and -0.45% against base spreads of 0.73% and
-0.15%, and the host CPU is flat with context (70.816 -> 71.478 us/step for a
-fixed workload while the wall grows 37.5%). The wall's growth is device-side.
-
-Removal condition: thread the resolved library through the launch sites (the
-`library` / `libraries` parameters already exist) so the launch path resolves
-once per process rather than once per launch, then delete the per-launch
-`build_X(load=True)` fallback. The build-affecting environment contract lives in
-`build_hip` and is unchanged by that; decide explicitly whether the *launch*
-path must also observe a mid-process environment change, since that is the only
-reason the per-launch call exists.
-
 ## The checked full-rows DPP opt-out flag
 
 `HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS` (default on) is the dedicated
@@ -10738,3 +10698,25 @@ build protocol in `docs/OPTIMIZATION.md`.
 
 Current-source correction and checks:
 `../worklog/entries/20261029T203123.488199Z-cleanup-refactor-r0444-d80e45.md`.
+
+### R0446 — Launch-library lifetime and environment observation
+
+Wrappers accept explicit library handles and otherwise resolve through the
+build caches. `build_hip` checks fast-path, resolution and loaded-library caches;
+the keys observe build-affecting arguments and environment. Explicit invalidation
+now clears all three handle caches, including the formerly omitted fast path.
+
+**Deferred lifetime decision:** pin resolved handles to a runner/execution owner
+or continue observing build-environment changes on implicit launches. Define
+owner lifetime, invalidation and mixed-backend/variant behavior before removing
+wrapper fallbacks. A single process-wide handle cannot stand in for distinct
+build identities; quant-only maps also cannot identify separate variant objects
+(see R0426). Preserve explicit-handle overrides and direct diagnostic callers.
+Test warm hits, environment changes, explicit invalidation, missing cached
+artifacts and variant precedence, then exercise public generation with the
+intended handles and teardown. Do not infer an engine speedup from fewer Python
+lookups; historical identity experiments remain under
+`benchmarks/results/2026-10-08-qwen4exp-build-identity-fast-read/`.
+
+Invalidation repair and validation:
+`../worklog/entries/20261029T204623.968297Z-cleanup-refactor-r0446-9e2320.md`.

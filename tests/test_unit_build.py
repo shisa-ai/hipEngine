@@ -491,6 +491,32 @@ def test_invalidate_build_resolution_drops_memoized_libraries(
     assert not build_module._RESOLUTION_CACHE
     assert not build_module._LOADED_LIB_CACHE
 
+
+def test_invalidation_forces_reload_after_fast_cache_hit(tmp_path, monkeypatch):
+    source = write_source(tmp_path / "fast.hip", 'extern "C" void smoke_host() {}\n')
+    version = "hipcc cached test version"
+    _stub_cached_artifact(tmp_path, source, version=version, arch="gfx1100")
+    for name in ("_FAST_PATH_CACHE", "_RESOLUTION_CACHE", "_LOADED_LIB_CACHE"):
+        monkeypatch.setattr(build_module, name, {})
+    loads = []
+    def load(path):
+        value = object()
+        loads.append(value)
+        return value
+    monkeypatch.setattr(build_module.ctypes, "CDLL", load)
+    kwargs = dict(sources=[source], family="smoke", profile="baseline",
+                  cache_root=tmp_path / "cache", compiler="definitely-not-a-real-hipcc",
+                  compiler_version=version, target_arch="gfx1100", load=True,
+                  require_cached=True)
+    first = build_hip(**kwargs)
+    assert build_module._FAST_PATH_CACHE
+    assert build_hip(**kwargs) is first
+    build_module.invalidate_build_resolution()
+    second = build_hip(**kwargs)
+    assert second is not first
+    assert len(loads) == 2
+
+
 def _write_fake_cached_artifact(
     tmp_path: Path, source: Path, *, target_arch: str | None = None, cache_root: Path | None = None
 ) -> Path:
@@ -680,6 +706,18 @@ def test_build_fast_key_lists_every_environment_knob_the_build_path_reads() -> N
         "these environment knobs are read by hipengine/core/build.py but are not in "
         f"_BUILD_ENV_KEYS, so _build_fast_key would treat them as constant: {sorted(unlisted)}"
     )
+
+
+def test_invalidate_clears_fast_path_before_next_build(monkeypatch):
+    import hipengine.core.build as build
+    stale = object()
+    monkeypatch.setattr(build, "_FAST_PATH_CACHE", {("sentinel",): stale})
+    monkeypatch.setattr(build, "_RESOLUTION_CACHE", {("sentinel",): stale})
+    monkeypatch.setattr(build, "_LOADED_LIB_CACHE", {("sentinel",): stale})
+    build.invalidate_build_resolution()
+    assert not build._FAST_PATH_CACHE
+    assert not build._RESOLUTION_CACHE
+    assert not build._LOADED_LIB_CACHE
 
 
 def test_env_get_falls_back_when_environ_is_replaced(

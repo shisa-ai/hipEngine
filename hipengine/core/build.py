@@ -621,6 +621,7 @@ def invalidate_build_resolution() -> None:
     ``os.environ``, or to release loaded libraries in a long-lived process.
     """
 
+    _FAST_PATH_CACHE.clear()
     _RESOLUTION_CACHE.clear()
     _LOADED_LIB_CACHE.clear()
 

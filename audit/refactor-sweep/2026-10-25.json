@@ -12938,8 +12938,8 @@
       "start_line": 10587,
       "end_line": 10626,
       "sha256": "5bf6731a1565e1ee9809efaad675e35a98b251b47b808a67851165483ddeffb3",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-invalidation-deferred-library-lifetime",
+      "evidence": ["Invalidation now clears fast-path cache as well as resolution/loaded handles; RED/GREEN and actual build reload regression.22 build tests and real HIP library warm-hit/invalidate/reload pass. Lifetime/env observation decision bottom. Worklog: worklog/entries/20261029T204623.968297Z-cleanup-refactor-r0446-9e2320.md."],
       "subitems": []
     },
     {
