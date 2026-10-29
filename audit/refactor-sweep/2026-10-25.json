@@ -10479,28 +10479,28 @@
       "start_line": 7947,
       "end_line": 7974,
       "sha256": "c3057ea15bdb3244ff5ce0b770a94923061bb813e6360834d897c5256cee38f2",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-paired-owner-bound-mixed-source-report-fixed-bottom-cache-migration",
+      "evidence": ["Default materializer already replaces both expert gate/up tiles with one tiles_dual owner and empty up allocations. Real npy cache/raw/all mixed-source combinations preserve uploaded bytes/residency and release ownership on allocation/upload/either profile failure. RED2 exposed mixed cached/raw profile labelled gguf-only; now reports repacked_cache+gguf_dual_interleaved. Focused86 pass; changed file8 pass with actual cache payload reader. Bottom R0354 owns versioned paired-cache writer/open/direct-manifest leaf consumer migration, natural-tile8 ordinary reference dependency and missing local ROCm/Laguna numerical/public checks. No layout/default/kernel change."],
       "subitems": [
         {
           "line": 7949,
           "text": "- Originated 2026-07-30 as an unregistered exact leaf primitive and",
-          "status": "pending"
+          "status": "resolved-default-paired-owner-no-duplicate-expert-allocations"
         },
         {
           "line": 7953,
           "text": "- The exact byte-neutral D8 MMQ128x32 prefill consumer now wins M128/M256/M512",
-          "status": "pending"
+          "status": "resolved-historical-evidence-preserved"
         },
         {
           "line": 7960,
           "text": "- Resident integration is now default and byte-neutral. The temporary rollback",
-          "status": "pending"
+          "status": "resolved-raw-cache-ownership-and-mixed-source-reporting-bound"
         },
         {
           "line": 7967,
           "text": "- The existing repacked cache still stores ordinary gate and up T16 payloads,",
-          "status": "pending"
+          "status": "deferred-bottom-versioned-paired-cache-and-caller-migration"
         }
       ]
     },

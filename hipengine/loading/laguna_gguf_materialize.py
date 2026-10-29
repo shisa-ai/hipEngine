@@ -1158,7 +1158,11 @@ def _materialize_q4_t16_dual_pair(
         source_kind = (
             "repacked_cache_dual_interleaved"
             if gate_cache_hit and up_cache_hit
-            else "gguf_dual_interleaved"
+            else (
+                "repacked_cache+gguf_dual_interleaved"
+                if gate_cache_hit or up_cache_hit
+                else "gguf_dual_interleaved"
+            )
         )
         gate_profile = LagunaGGUFMaterializationProfile(
             slot_path=gate_spec.slot_path,

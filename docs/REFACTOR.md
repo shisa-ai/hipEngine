@@ -3430,34 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 Q4T16 dual-interleaved expert production rollback
-
-- Originated 2026-07-30 as an unregistered exact leaf primitive and
-  actual-weight harness mode. It is now registered and production-owned. It is
-  byte-neutral only when it replaces both resident gate/up T16 matrices;
-  keeping it as a sidecar would add about **43.76 GB** across 47 routed layers.
-- The exact byte-neutral D8 MMQ128x32 prefill consumer now wins M128/M256/M512
-  **2.460%/2.034%/1.187%**, so keep the dual-layout host helpers, decode and
-  prefill symbols/wrappers, leaf modes, and focused fixtures through resident
-  integration. Remove the two ordinary expert gate/up allocations when the
-  paired allocation becomes canonical; never add a decode-only production
-  sidecar. Remove the temporary comparison selectors and legacy cache
-  acceptance after tracked-clean decode plus the prefill sweep publish.
-- Resident integration is now default and byte-neutral. The temporary rollback
-  is `scripts/laguna_long_context_profile.py --ordinary-q4-expert-t16` plus
-  `LagunaGGUFResidentSession(...,
-  use_q4_expert_t16_dual_interleaved=False)`. Same-revision production improves
-  **22.130173 -> 22.260802 tok/s** with exact state and unchanged
-  **79,022,522,196-byte** residency. Tracked-clean publication reaches
-  **22.262504 tok/s** decode and **656.990 tok/s** pp512.
-- The existing repacked cache still stores ordinary gate and up T16 payloads,
-  so default load interleaves them on the host and rises
-  **92.084 -> 142.902 seconds**. Retain the rollback until a versioned paired
-  cache payload can be written without duplicating the roughly **43.76 GB**
-  resident expert pair. After that cache migration and one clean decode/prefill
-  recertification, remove the ordinary CLI/session seam and ordinary paired
-  materializer fallback.
-
 ## Laguna gfx1151 dense/shared dual-interleaved T16 selector
 
 - Added 2026-07-30 as
@@ -10035,6 +10007,39 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0354 — Paired expert cache and ordinary-layout migration
+
+The default expert materializer already replaces two Q4 T16 gate/up allocations
+with one `tiles_dual` owner on the gate weight and an empty up-weight allocation
+map. It does not retain ordinary expert allocations beside the pair. Host tests
+bind exact uploaded bytes, one upload, combined residency and teardown across
+raw, fully cached and either mixed-source combination, including allocation,
+upload and either profile-callback failure.
+
+The profile previously labelled a mixed cached/raw pair entirely
+`gguf_dual_interleaved`. It now reports
+`repacked_cache+gguf_dual_interleaved`; fully cached/raw labels stay unchanged.
+This reporting fix changes neither resident layout nor numerical execution.
+
+**Remaining work:** the `laguna-repacked-v1` writer still persists independent
+`tiles` payloads. `_materialize_q4_t16_dual_pair` must read and interleave those
+at load time. Add a versioned paired cache payload that replaces both stored
+matrices, with no duplicate pair, while retaining raw/partial cache loading.
+Migrate the leaf scripts that directly read manifest `entries` and ordinary
+`tiles` before retiring legacy cache acceptance or the public
+`use_q4_expert_t16_dual_interleaved=False` / `--ordinary-q4-expert-t16` controls.
+The natural-tile8 comparison also intentionally requests ordinary residents;
+its replacement must preserve that distinct reference route (R0341).
+
+**Clearing action:** bind writer/open/reload and direct-manifest consumers to
+paired ownership, validate both cache versions and raw/partial-source loads,
+then run paired/ordinary primitive oracles and public `LLM.generate()` decode
+and prefill with byte/state/resource checks. Remove the ordinary seam only
+after its callers migrate. Local ROCm/Laguna resources for the real numerical
+and public runs remain unavailable as recorded by R0340/R0273. Historical
+July measurements remain in the sweep's pinned source and artifacts, not
+fresh validation of the cache migration.
 
 ### R0353 — SWA value-tail reference ownership
 
