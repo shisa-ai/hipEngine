@@ -11128,13 +11128,13 @@
       "start_line": 8427,
       "end_line": 8435,
       "sha256": "d461fcbcf854bd4527f1e6eafbd21a7172b0a410a98365e23cc231023fa9e027",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-consolidated-cumulative-control-migration-tests-bound",
+      "evidence": ["Live cumulative and threshold consumers use dense bulk opt-out; both ordinary and residual composite honor it. Expanded registered host dispatch tests across unset/zero/one, both WMMA shapes, 511/512/513 and unrelated rows; focused bundle323pass. Consolidated stale standalone release-age note into existing bottom R0214/R0215 decision with R0378 and threshold migration, preserving scalar/add references, backend shape policy and all defaults. Required 0.8B checkpoints absent locally; no fresh GPU/performance claim. Worklog worklog/entries/20261029T063009.044590Z-cleanup-refactor-r0378-dense-wmma-35a284.md."],
       "subitems": [
         {
           "line": 8429,
           "text": "- `HIPENGINE_GGUF_DENSE_WMMA_BULK=0` (default `1`) rolls gfx1151 dense-BF16",
-          "status": "pending"
+          "status": "triaged-live-control-consolidated-tests-bound"
         }
       ]
     },

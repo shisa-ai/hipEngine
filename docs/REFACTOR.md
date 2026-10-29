@@ -3430,15 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 dense-BF16 WMMA bulk prefill
-
-- `HIPENGINE_GGUF_DENSE_WMMA_BULK=0` (default `1`) rolls gfx1151 dense-BF16
-  bulk prefill back to the naive 32x8 scalar tile (D08-X2-K5, 2026-08-15).
-  The backend default is limited to the two Qwen3.5-0.8B p512 shapes exercised
-  by the complete-model campaign A/B; other shapes fail closed. Remove the env
-  branch when the parity campaign closes and no A/B still needs the naive
-  control; expand the shape policy only with matched evidence.
-
 ## Qwen3.6 shared-prefill SiLU/rotate rollback env
 
 - `HIPENGINE_SHARED_PREFILL_SILU_ROTATE_FUSED=0` rolls packed-PARO shared
@@ -7887,32 +7878,39 @@ Run `tests/test_unit_qwen38_int8_kv_capability.py`,
 measurements do not disable the implemented direct path, and this disposition
 makes no new GPU, capacity or performance claim.
 
-### R0214/R0215 — Cumulative-semantic rollback-control migration
+### R0214/R0215 / R0378 — Cumulative-semantic rollback-control migration
 
-`HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL` and
-`HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL` default on. Their off values still select
+`HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL`,
+`HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL` and
+`HIPENGINE_GGUF_DENSE_WMMA_BULK` default on. Their off values still select
 real control arms in `scripts/qwen35_08b_cumulative_semantic.py`: strict and
 X8 rollback use separate Q8T16 projections; X6 rollback uses projection plus
-standalone BF16 add. Removing the environment reads without migrating those
-arms would silently compare the candidate with itself. Registered singleton
-projections and addition also handle shape/backend/registry misses and must
-remain regardless of selector retirement.
+standalone BF16 add; strict/pre-X2 use scalar dense-BF16 prefill. The threshold
+sweep also uses the dense bulk opt-out. That opt-out suppresses both ordinary
+and residual-fused dense WMMA dispatch. Removing the environment reads without
+migrating those arms would silently compare the candidate with itself.
+Registered singleton projections and addition also handle shape/backend/registry
+misses and must remain regardless of selector retirement.
 
 **Dependency:** move these diagnostic controls out of production environment
 selection and validate the actual Qwen3.5-0.8B Q4_K_M and Q8_0 callers. Neither
 checkpoint is present in the local `/models/gguf` catalogue used for this sweep;
 other available Qwen models do not establish engagement of the narrow
 rows512/K1024/N16+N16 pair.
-**Clearing action:** replace the harness's X6/X8 environment controls with
-scoped diagnostic overrides that restore on success and exception, remove the
-production readers and Q8 pair-cache environment dimension, and update ENVS.
-Run `tests/test_unit_qwen35_08b_cumulative_semantic.py` and
+**Clearing action:** replace the harness's bulk/X6/X8 environment controls with
+scoped diagnostic overrides that restore on success and exception, migrate the
+threshold children, remove the production readers and Q8 pair-cache environment
+dimension, and update ENVS. Run
+`tests/test_unit_qwen35_08b_cumulative_semantic.py`,
+`tests/test_unit_qwen35_08b_threshold_environment.py` and
 `tests/test_unit_gguf_linear_dispatch.py`; with those checkpoints available,
 exercise public p512 generation and eager/graph decode, trace pair/residual
-selection, compare against the registered singleton/add controls, and verify
-cleanup. Keep backend/shape policy and primitive fallbacks. These are concrete
-harness and input dependencies, not a release-window or missing-qualification
-restriction; both fused defaults remain enabled.
+selection, compare against the registered scalar/singleton/add controls, and
+verify cleanup. Check bulk dispatch at 511/512/513 and unrelated lengths. Keep
+backend/shape policy and primitive fallbacks. These are concrete harness and
+input dependencies, not a release-window or missing-qualification restriction;
+the fused defaults remain enabled. R0378's standalone release-age note is
+consolidated here rather than creating a separate retirement decision.
 
 ### R0217 — PM4 diagnostic controls and transport rollback
 

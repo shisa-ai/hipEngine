@@ -1532,14 +1532,20 @@ def test_launch_gguf_linear_residual_routes_registered_c1_t16_abi() -> None:
     ]
 
 
+@pytest.mark.parametrize("bulk", [None, "0", "1"])
 def test_launch_gguf_linear_residual_routes_dense_wmma_bulk_owner(
     monkeypatch: pytest.MonkeyPatch,
+    bulk: str | None,
 ) -> None:
     from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
         register_dense_gemv_kernels,
     )
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
+    if bulk is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", bulk)
     register_dense_gemv_kernels()
     register_gfx1151_kernels(replace=True)
     key = KernelKey(
@@ -1613,16 +1619,17 @@ def test_launch_gguf_linear_residual_routes_dense_wmma_bulk_owner(
                 backend="hip_gfx1151",
                 stream=9,
                 runtime="runtime-sentinel",
-            )
+            ) == (bulk != "0")
     finally:
         register(key, original, replace=True)
 
-    assert calls == [
+    expected_calls = [
         (
             (101, 10, 301, 401, 512, 3_584, 1_024),
             {"stream": 9, "runtime": "runtime-sentinel"},
         )
     ]
+    assert calls == ([] if bulk == "0" else expected_calls)
     assert len(resolve_calls) == 1
 
 
@@ -2003,18 +2010,28 @@ def test_gfx1100_q4_pack8_bulk_prefill_keeps_exact_tile8x8() -> None:
         (512, 2_048, 1_024, "fallback"),
         (512, 1_024, 512, "wmma"),
         (512, 3_584, 1_024, "wmma"),
+        (17, 1_024, 512, "fallback"),
+        (511, 1_024, 512, "fallback"),
+        (513, 1_024, 512, "fallback"),
     ],
 )
+@pytest.mark.parametrize("bulk", [None, "0", "1"])
 def test_gfx1151_dense_bf16_bulk_prefill_honors_qualified_shapes(
+    monkeypatch: pytest.MonkeyPatch,
     rows: int,
     in_features: int,
     out_features: int,
     expected: str,
+    bulk: str | None,
 ) -> None:
-    """The WMMA leaf owns only safe campaign-qualified p512 shapes."""
+    """Bind the current shape policy and live scalar comparison control."""
 
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
+    if bulk is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", bulk)
     register_gfx1151_kernels(replace=True)
     weight = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
     fallback_key = KernelKey("hip_gfx1151", "dense_gemv", "bf16", "prefill_out")
@@ -2058,7 +2075,7 @@ def test_gfx1151_dense_bf16_bulk_prefill_honors_qualified_shapes(
             register(key, original, replace=True)
         gguf_linear_module.clear_gguf_linear_dispatch_cache()
 
-    assert calls == [expected]
+    assert calls == ["fallback" if bulk == "0" else expected]
 
 
 def test_gfx1151_bulk_wmma_policy_matches_qwen35_08b_campaign_shapes() -> None:
