@@ -12701,23 +12701,23 @@
       "start_line": 10396,
       "end_line": 10414,
       "sha256": "b74fbafa32eff4030b65e4d62ddc7038bff9134fe1ebba5ad0d2cf998ab2d508",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-diagnostic-retention",
+      "evidence": ["Unregistered WY wrapper remains direct recurrence-screen consumer; preserve runtime defaults. Replace impossible historical-reference disappearance trigger with explicit retention/retirement decision and coordinated shared-source cleanup at bottom. CLI help passes. Worklog: worklog/entries/20261029T195224.685777Z-cleanup-refactor-r0438-1c85f6.md."],
       "subitems": [
         {
           "line": 10398,
           "text": "- `qwen4_exp_gdn_prefill_wy_f32_kernel` / `hipengine_qwen4_exp_gdn_prefill_wy_f32`",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 10406,
           "text": "- The kernel is **not registered** and no profile selects it; it is retained",
-          "status": "pending"
+          "status": "deferred-live-screen-retention"
         },
         {
           "line": 10409,
           "text": "- Removal condition: delete the kernel, its `extern \"C\"` wrapper, the host",
-          "status": "pending"
+          "status": "deferred-explicit-retirement-decision"
         }
       ]
     },

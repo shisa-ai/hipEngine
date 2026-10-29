@@ -3427,25 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Qwen4Exp chunked WY GDN prefill screen arm (GD-4)
-
-- `qwen4_exp_gdn_prefill_wy_f32_kernel` / `hipengine_qwen4_exp_gdn_prefill_wy_f32`
-  and the screen's `wy_chunked` arm are the FP32 chunked triangular /
-  Woodbury-Young candidate GD-4 proposed. The row is closed: the build is
-  parent-parity correct but 1.15-1.26x slower than the `wave_norm` route the
-  UD-Q4_K_XL lane dispatches at 1K/2K, and 1.75-2.26x slower than the registered
-  `tiled16_multi` route (85 VGPR) that already escapes the 256-VGPR register
-  bound the row cited. Evidence:
-  `benchmarks/results/2026-10-01-qwen4exp-gd4-wy-kernel-built/`.
-- The kernel is **not registered** and no profile selects it; it is retained
-  only so `scripts/qwen4exp_gd3_recurrence_screen.py` can reproduce the
-  comparison.
-- Removal condition: delete the kernel, its `extern "C"` wrapper, the host
-  wrapper and the `wy_chunked` screen arm once no ledger row or artifact
-  references the screen. The open follow-up from this row - admitting
-  `tiled16_multi` on the UD lane - is a profile/gate task and does not need
-  this arm.
-
 ## The gfx1151 arch chunk profile is geometry-blind (2026-10-03)
 
 - The H2048-MoE chunk *value* is settled: the geometry policy is now
@@ -10809,3 +10790,23 @@ The original limitation is recorded in
 `benchmarks/results/2026-09-30-qwen4exp-rt1-chunk4096-gate/DENSE-WIDE-REGATE-AT-HEAD.md`.
 Implementation and validation:
 `../worklog/entries/20261029T194103.398080Z-cleanup-refactor-r0437-a865f5.md`.
+
+### R0438 — Chunked WY diagnostic retention
+
+The unregistered `qwen4_exp_gdn_prefill_wy_f32` wrapper and HIP body remain
+reachable through the `wy_chunked` arm of
+`scripts/qwen4exp_gd3_recurrence_screen.py`, not through production dispatch.
+The historical rejection stays in
+`benchmarks/results/2026-10-01-qwen4exp-gd4-wy-kernel-built/`.
+
+**Deferred decision:** keep that comparison reproducible from the working tree,
+or retire its executable arm while preserving the historical artifact and Git
+source. Waiting for historical references to disappear is not a useful removal
+condition. If retiring it, remove the screen entry, host wrapper, HIP export,
+WY kernel and its private constants together; preserve the other recurrence
+implementations in the shared source. Run screen CLI/consumer checks, rebuild
+the affected GDN library and run its surviving recurrence tests. Production
+profile selection is independent and must not change as a side effect.
+
+Source review and CLI validation:
+`../worklog/entries/20261029T195224.685777Z-cleanup-refactor-r0438-1c85f6.md`.
