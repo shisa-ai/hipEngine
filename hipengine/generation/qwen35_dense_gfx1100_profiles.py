@@ -61,26 +61,30 @@ def _explicit_profile_env(name: str) -> str | None:
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-    del generator, resolved
+    del resolved
+    generator.use_q6_dp4a_grouped = False
     _bind_profile_env(FP16_RECURRENT_STATE_ENV, "0")
     _bind_profile_env(VERIFY_CAPTURE_PREFILL_GDN_ENV, "1")
     _bind_profile_env(VERIFY_F32_RESIDUAL_ENV, "0")
     _bind_profile_env(VERIFY_F32_POST_NORM_ENV, "0")
     _bind_profile_env(Q4_FUSED_R28_ENV, "0")
-    _bind_profile_env(Q6_DP4A_GROUPED_ENV, "0")
 
 
 def _dense_production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     explicit_r28 = _explicit_profile_env(Q4_FUSED_R28_ENV)
-    explicit_q6_dp4a = _explicit_profile_env(Q6_DP4A_GROUPED_ENV)
+    explicit_q6_dp4a = os.environ.get(Q6_DP4A_GROUPED_ENV)
     _strict_binder(generator, resolved)
     _bind_profile_env(
         Q4_FUSED_R28_ENV,
         "1" if explicit_r28 is None else explicit_r28,
     )
-    _bind_profile_env(
-        Q6_DP4A_GROUPED_ENV,
-        "1" if explicit_q6_dp4a is None else explicit_q6_dp4a,
+    # Snapshot the user's override on this owner; constructing another profile
+    # must not change a live generator's arithmetic selection.
+    generator.use_q6_dp4a_grouped = (
+        True if explicit_q6_dp4a is None else bool(
+            explicit_q6_dp4a.strip()
+            and explicit_q6_dp4a.strip().lower() not in {"0", "false", "off", "no"}
+        )
     )
 
 

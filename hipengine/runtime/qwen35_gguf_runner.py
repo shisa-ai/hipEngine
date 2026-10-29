@@ -11709,6 +11709,7 @@ def _gguf_c8_q6_dp4a_grouped_enabled(
     request_count: int,
     model_name: str | None = None,
     file_type_name: str | None = None,
+    enabled: bool | None = None,
 ) -> bool:
     """Resolve the retained Qwen3.8 Q4_K_M physical-C8 Q6 owner."""
 
@@ -11717,7 +11718,8 @@ def _gguf_c8_q6_dp4a_grouped_enabled(
         and int(request_count) == 8
         and "qwen3.8" in str(model_name or "").casefold()
         and str(file_type_name or "").upper() == "MOSTLY_Q4_K_M"
-        and _env_flag(_GGUF_C8_Q6_DP4A_GROUPED_ENV, False)
+        and (_env_flag(_GGUF_C8_Q6_DP4A_GROUPED_ENV, False)
+             if enabled is None else bool(enabled))
     )
 
 
@@ -13335,6 +13337,7 @@ class Qwen35GGUFResidentSession:
     use_prefill_f16_staging: bool = False
     use_wide_f16_activation: bool = False
     use_q6_integer_mmq: bool = False
+    use_q6_dp4a_grouped: bool | None = None
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
     prefill_flight_recorder_path: str | Path | None = None
@@ -18933,6 +18936,7 @@ class Qwen35GGUFResidentSession:
             request_count=request_count,
             model_name=getattr(self.runner.weights, "model_name", None),
             file_type_name=getattr(self.runner.weights, "file_type_name", None),
+            enabled=self.use_q6_dp4a_grouped,
         )
         if not enabled:
             return q6_dp4a_grouped_target_session(enabled=False)

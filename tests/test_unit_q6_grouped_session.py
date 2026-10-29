@@ -112,6 +112,46 @@ def test_runner_policy_resolves_rollback_before_workspace_binding(monkeypatch, v
         assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", **(kwargs | change)) is False
 
 
+@pytest.mark.parametrize("selected", (True, False))
+def test_profile_session_choice_is_not_reselected_by_other_owner_env(monkeypatch, selected):
+    from types import SimpleNamespace
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.use_q6_dp4a_grouped = selected
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        weights=SimpleNamespace(model_name="Qwen3.8-27B", file_type_name="MOSTLY_Q4_K_M"),
+    )
+    scratch = SimpleNamespace(moe_q8_1=SimpleNamespace(ptr=44, nbytes=100_000))
+    monkeypatch.setenv(ENV, "0" if selected else "1")
+    with session._q6_dp4a_grouped_target_context(scratch, request_count=8):
+        state = q6._Q6_DP4A_GROUPED_SESSION.get()
+        assert (state is not None) is selected
+    assert q6._Q6_DP4A_GROUPED_SESSION.get() is None
+
+
+@pytest.mark.parametrize("selected", (None, False, True))
+def test_generator_configuration_carries_owner_choice_to_each_session(monkeypatch, selected):
+    from types import SimpleNamespace
+    from hipengine.generation import qwen35_gguf as generation
+
+    cls = generation.Qwen35GGUFBringupGenerator
+    generator = object.__new__(cls)
+    generator.use_q6_dp4a_grouped = selected
+    generator._configure_native_sampler = lambda session: None
+    for name in ("_prefill_f16_staging_for", "_wide_f16_activation_for", "_q6_integer_mmq_for"):
+        monkeypatch.setattr(generation, name, lambda owner: False)
+    sessions = [SimpleNamespace(), SimpleNamespace()]
+    for session in sessions:
+        generator._configure_session(session)
+        assert session.use_q6_dp4a_grouped is selected
+    # Reacquisition restores this generator's choice, not another owner's env.
+    sessions[0].use_q6_dp4a_grouped = not bool(selected)
+    generator._configure_session(sessions[0])
+    assert sessions[0].use_q6_dp4a_grouped is selected
+
+
 def test_without_scope_ambient_true_cannot_select_changed_arithmetic(monkeypatch, launches):
     monkeypatch.setenv(ENV, "1")
     launch()

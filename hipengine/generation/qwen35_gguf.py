@@ -3558,6 +3558,7 @@ class Qwen35GGUFBringupGenerator:
         session.use_prefill_f16_staging = _prefill_f16_staging_for(self)
         session.use_wide_f16_activation = _wide_f16_activation_for(self)
         session.use_q6_integer_mmq = _q6_integer_mmq_for(self)
+        session.use_q6_dp4a_grouped = getattr(self, "use_q6_dp4a_grouped", None)
         prefill_quant = getattr(self, "prefill_quant", None)
         if prefill_quant is not None:
             session.select_prefill_quant(prefill_quant)

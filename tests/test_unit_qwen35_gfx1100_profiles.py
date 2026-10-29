@@ -79,7 +79,8 @@ def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
     assert __import__("os").environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
     assert __import__("os").environ[VERIFY_F32_RESIDUAL_ENV] == "0"
     assert __import__("os").environ[VERIFY_F32_POST_NORM_ENV] == "0"
-    assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "0"
+    assert generator.use_q6_dp4a_grouped is False
+    assert Q6_DP4A_GROUPED_ENV not in __import__("os").environ
 
 
 def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate(
@@ -137,7 +138,7 @@ def test_qwen36_dense_gfx1100_production_resolves_periodic_strict_r28_and_c8_q6(
     assert resolved.manifest["graph_policy"] == (
         "specdec2_eager_c1_exact_qwen38_c8_q6_dp4a"
     )
-    resolved.construct_generator(lambda: SimpleNamespace())
+    generator = resolved.construct_generator(lambda: SimpleNamespace())
     selections = resolved.manifest["selections"]
     assert selections[0]["selected_variant"] == "bf16_c1_exact_state_rows_tloop"
     r28 = next(row for row in selections if "c7_k3_r28" in row["scope"])
@@ -149,7 +150,8 @@ def test_qwen36_dense_gfx1100_production_resolves_periodic_strict_r28_and_c8_q6(
     )
     assert "periodic_strict_mod8_0" in r28["scope"]
     assert __import__("os").environ[Q4_FUSED_R28_ENV] == "1"
-    assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "1"
+    assert generator.use_q6_dp4a_grouped is True
+    assert Q6_DP4A_GROUPED_ENV not in __import__("os").environ
 
 
 def test_profile_owned_strict_values_do_not_mask_dense_production_defaults() -> None:
@@ -167,12 +169,38 @@ def test_profile_owned_strict_values_do_not_mask_dense_production_defaults() -> 
         profile="production",
     )
 
-    strict.construct_generator(lambda: SimpleNamespace())
+    strict_generator = strict.construct_generator(lambda: SimpleNamespace())
     assert __import__("os").environ[Q4_FUSED_R28_ENV] == "0"
-    assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "0"
-    production.construct_generator(lambda: SimpleNamespace())
+    assert strict_generator.use_q6_dp4a_grouped is False
+    production_generator = production.construct_generator(lambda: SimpleNamespace())
     assert __import__("os").environ[Q4_FUSED_R28_ENV] == "1"
-    assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "1"
+    assert production_generator.use_q6_dp4a_grouped is True
+    strict.construct_generator(lambda: SimpleNamespace())
+    assert production_generator.use_q6_dp4a_grouped is True
+    assert strict_generator.use_q6_dp4a_grouped is False
+    assert Q6_DP4A_GROUPED_ENV not in __import__("os").environ
+
+
+@pytest.mark.parametrize("value,expected", (("0", False), ("1", True), ("", False),
+                                            (" off ", False), ("yes", True)))
+def test_q6_profile_snapshots_override_without_mutating_environment(monkeypatch, value, expected):
+    import os
+
+    monkeypatch.setenv(Q6_DP4A_GROUPED_ENV, value)
+    register_qwen36_dense_gguf_gfx1100_profiles()
+    def profile(name):
+        return resolve_runtime_profile(
+            model=QWEN36_DENSE_GGUF_MODEL, backend=QWEN36_DENSE_GGUF_BACKEND,
+            quant=QWEN36_DENSE_GGUF_QUANT, profile=name,
+        ).construct_generator(lambda: SimpleNamespace())
+
+    production = profile("production")
+    strict = profile("strict")
+    assert production.use_q6_dp4a_grouped is expected
+    assert strict.use_q6_dp4a_grouped is False
+    assert os.environ[Q6_DP4A_GROUPED_ENV] == value
+    monkeypatch.setenv(Q6_DP4A_GROUPED_ENV, "1" if not expected else "0")
+    assert production.use_q6_dp4a_grouped is expected
 
 
 def test_qwen36_dense_gfx1100_production_honors_explicit_rollbacks(
@@ -187,6 +215,7 @@ def test_qwen36_dense_gfx1100_production_honors_explicit_rollbacks(
         quant=QWEN36_DENSE_GGUF_QUANT,
         profile="production",
     )
-    resolved.construct_generator(lambda: SimpleNamespace())
+    generator = resolved.construct_generator(lambda: SimpleNamespace())
     assert __import__("os").environ[Q4_FUSED_R28_ENV] == "0"
+    assert generator.use_q6_dp4a_grouped is False
     assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "0"
