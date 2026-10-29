@@ -3695,11 +3695,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
     if replace or not is_registered(publish_key):
         register(publish_key, qwen4_exp_grouped_rmsnorm_bf16_f32_f16, replace=replace)
 
+    from hipengine.kernels.hip_gfx1100.timesfm.registered import (
+        register_timesfm_kernels as register_timesfm_shared,
+    )
+    timesfm_keys = register_timesfm_shared(BACKEND, replace=replace)
     source_keys = [key for key in registered_keys() if key.backend == _SOURCE_BACKEND]
     for key in source_keys:
         if (key.layer, key.quant, key.variant) in _GFX1151_ALIAS_EXCLUSIONS:
             continue
         target_key = KernelKey(BACKEND, key.layer, key.quant, key.variant)
+        # TimesFM launchers bind an architecture; do not alias gfx1100 closures.
+        if target_key in timesfm_keys:
+            continue
         if not replace and is_registered(target_key):
             continue
         source_fn = resolve(
@@ -4120,4 +4127,10 @@ def register_vibevoice_q4_kernels():
     register_q4('hip_gfx1151')
 
 
+def register_timesfm_kernels():
+    from hipengine.kernels.hip_gfx1100.timesfm.registered import register_timesfm_kernels as register_shared
+    register_shared("hip_gfx1151")
+
+
+register_timesfm_kernels()
 register_vibevoice_kernels()

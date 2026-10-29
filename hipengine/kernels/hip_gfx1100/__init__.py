@@ -1633,4 +1633,10 @@ def register_vibevoice_q4_kernels():
     register_q4('hip_gfx1100')
 
 
+def register_timesfm_kernels():
+    from hipengine.kernels.hip_gfx1100.timesfm.registered import register_timesfm_kernels as register_shared
+    register_shared("hip_gfx1100")
+
+
+register_timesfm_kernels()
 register_vibevoice_kernels()

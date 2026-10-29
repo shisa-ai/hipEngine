@@ -336,6 +336,15 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `timesfm/timesfm.hip` | TimesFM normalization, rotary transforms, attention, and layout operations. |
 | `timesfm3/timesfm3.hip` | TimesFM 3.0 variate attention, query/key normalization, and ReLU. |
 
+TimesFM registrations live in `timesfm/registered.py` for both `hip_gfx1100`
+and `hip_gfx1151`. Layer keys are wrapper names without `_f16`/`_f32` suffixes,
+with `fp16` or `fp32` quant and the empty variant. Both decoders bind exact
+keys through `dispatch/timesfm.py`; dtype or CPU fallback is not valid for
+resident device buffers. FP16 uses fused QKV normalization/scatter and flash
+attention. The registered FP32 RoPE, head normalization, scaling, scatter and
+scalar attention primitives form the strict unfused chain; TimesFM 3.0 also
+uses separate variate Q/K normalization and `timesfm3_sgemm_f64acc` in FP32.
+
 ### YuE2 music generation
 
 | Source / shared family | Purpose |

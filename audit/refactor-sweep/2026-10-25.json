@@ -12206,8 +12206,8 @@
       "start_line": 9607,
       "end_line": 9618,
       "sha256": "d44f3875746f50a11f945f23736e33b80cd450a8c3579713ef8de2505515e29c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Both TimesFM decoders now bind exact precision-specific four-axis registry callables on peer HIP backends; registered strict primitive chains and fused routes retain arithmetic. CPU deterministic bundle, 31 GPU parity/reuse/poison tests, and real public forecasts for both versions/precisions pass. Registry spies prove native gfx1151 dispatch; close frees all tracked allocations. Worklog: worklog/entries/20261029T181414.804294Z-cleanup-refactor-r0420-timesfm-registry-7ae5dd.md."],
       "subitems": []
     },
     {

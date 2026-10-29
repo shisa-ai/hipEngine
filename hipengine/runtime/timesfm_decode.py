@@ -51,26 +51,7 @@ def _patch_running_stats(
     running_var = sum_v2 / n_safe - running_mu**2
     running_var = np.where(total_n == 0, 0.0, np.clip(running_var, 0.0, None))
     return running_mu.astype(np.float32), np.sqrt(running_var).astype(np.float32)
-from hipengine.kernels.hip_gfx1100.timesfm.timesfm import (
-    timesfm_add_f32,
-    timesfm_qkv_norm_scatter_f16,
-    timesfm_rope_norm_scatter_f16,
-    timesfm_k_norm_scatter_f16,
-    timesfm_flash_attention_f16,
-    timesfm_q_norm_transpose_f16,
-    timesfm_transpose_heads_f16,
-    timesfm_v_scatter_f16,
-    timesfm_attention_f32,
-    timesfm_bias_f32,
-    timesfm_bias_swish_f32,
-    timesfm_head_perdim_scale_f32,
-    timesfm_head_rmsnorm_f32,
-    timesfm_norm_add_f32,
-    timesfm_rmsnorm_f32,
-    timesfm_rope_f32,
-    timesfm_scatter_kv_f32,
-    timesfm_swish_f32,
-)
+from hipengine.dispatch.timesfm import bind_timesfm_kernels
 from hipengine.loading.timesfm import TimesFMLoadedModel
 
 
@@ -151,9 +132,11 @@ class TimesFMGPUDecoder:
         rocblas: Rocblas | None = None,
         precision: str = "fp16",
         autotune_gemm: bool = True,
+        backend: str = "auto",
     ):
         if precision not in ("fp16", "fp32"):
             raise ValueError("precision must be 'fp16' or 'fp32'")
+        self.backend, self._kernels = bind_timesfm_kernels(backend, precision)
         self.precision = precision
         self.spec = loaded.spec
         self.rocblas = rocblas or Rocblas.load()
@@ -321,6 +304,23 @@ class TimesFMGPUDecoder:
         With ``skip_quantile`` the quantile ResidualBlock head is omitted
         (AR feedback only consumes the point head).
         """
+
+        kernels = self._kernels
+        timesfm_add_f32 = kernels.timesfm_add_f32
+        timesfm_attention_f32 = kernels.timesfm_attention_f32
+        timesfm_bias_f32 = kernels.timesfm_bias_f32
+        timesfm_bias_swish_f32 = kernels.timesfm_bias_swish_f32
+        timesfm_head_perdim_scale_f32 = kernels.timesfm_head_perdim_scale_f32
+        timesfm_head_rmsnorm_f32 = kernels.timesfm_head_rmsnorm_f32
+        timesfm_norm_add_f32 = kernels.timesfm_norm_add_f32
+        timesfm_rmsnorm_f32 = kernels.timesfm_rmsnorm_f32
+        timesfm_rope_f32 = kernels.timesfm_rope_f32
+        timesfm_scatter_kv_f32 = kernels.timesfm_scatter_kv_f32
+        timesfm_swish_f32 = kernels.timesfm_swish_f32
+        if self.precision == "fp16":
+            timesfm_qkv_norm_scatter_f16 = kernels.timesfm_qkv_norm_scatter_f16
+            timesfm_flash_attention_f16 = kernels.timesfm_flash_attention_f16
+            timesfm_transpose_heads_f16 = kernels.timesfm_transpose_heads_f16
 
         h = self.spec.hidden_size
         heads = self.spec.num_attention_heads

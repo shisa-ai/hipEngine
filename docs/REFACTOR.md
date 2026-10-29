@@ -3427,18 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## 2026-09-10 TimesFM kernel families lack four-axis registry entries — open
-
-Both TimesFM kernel families (`kernels/hip_gfx1100/timesfm/` for 2.5 and
-`kernels/hip_gfx1100/timesfm3/` for 3.0) are direct-launched through their
-Python wrapper modules with no `(backend, layer, quant, variant)` registry
-registrations. The fused composites carry their strict fallbacks at the
-runtime level instead (2.5: fp32 unfused path; 3.0: fp32 routes through the
-separate var-q/k normalization chain). Register both families under the
-four-axis registry with their strict fallback chains when a second consumer
-of the kernels appears; until then the runtime-level fallback is the
-contract of record (see docs/model-cards/MODEL-TIMESFM3.md).
-
 ## 2026-09-12 PARO paged-attention backend pin - removal rejected
 
 `hipengine/runtime/qwen35_paro.py` sets
