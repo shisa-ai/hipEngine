@@ -311,7 +311,11 @@ class ExecutionFailure:
     ``"committed"`` (a canonical commit happened and was restored), or
     ``"unknown"`` (the runner could not narrow the window).  Naming a narrower
     ``request_ids`` than the failed work item asserts that every unnamed row of
-    that item still holds canonical state.
+    that item still holds canonical state. ``unexecuted_prefill_request_ids``
+    additionally identifies rows whose planned prompt chunks never ran; the
+    scheduler must rewind only those chunks before selecting their next work.
+    Completed prompt chunks must not appear in that set, even if they only
+    buffered tokens without entering device execution.
     """
 
     request_ids: tuple[int, ...]
@@ -320,6 +324,7 @@ class ExecutionFailure:
     mutation: str
     reason: str
     error: BaseException | None = field(default=None, compare=False, repr=False)
+    unexecuted_prefill_request_ids: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.request_ids:
@@ -2720,6 +2725,7 @@ class ResidentEngineLoop:
         *,
         phase: str,
         work: WorkItem,
+        prefill_deferred: bool = False,
     ) -> tuple[EngineLoopEvent, ...] | None:
         """Fail exactly the rows one recoverable execution failure affected.
 
@@ -2759,6 +2765,17 @@ class ResidentEngineLoop:
                 "contained execution failure named rows outside the failed work: "
                 f"{list(outside)}"
             )
+        unexecuted = tuple(int(rid) for rid in failure.unexecuted_prefill_request_ids)
+        if unexecuted:
+            if (
+                phase != "prefill"
+                or work.kind is not WorkKind.PREFILL
+                or len(set(unexecuted)) != len(unexecuted)
+                or not set(unexecuted) <= set(request_ids) - set(affected)
+            ):
+                raise ValueError("unexecuted prefill rows must be unique surviving work rows")
+            if not prefill_deferred:
+                self.scheduler.defer_prefill_work(work, unexecuted)
         cause = failure.error if failure.error is not None else error
         if isinstance(cause, (GenerationCancelled, GenerationDeadlineExceeded)):
             # A cancellation the step observed before touching device state is a
@@ -2981,7 +2998,10 @@ class ResidentEngineLoop:
                 # state may still be partial; containment below, not this cursor
                 # rewind, decides whether the engine can continue.
                 self.scheduler.defer_prefill_work(work, work.request_ids)
-            contained = self._contain_execution_failure(exc, phase="prefill", work=work)
+            contained = self._contain_execution_failure(
+                exc, phase="prefill", work=work,
+                prefill_deferred=bool(resumable and callable(resume)),
+            )
             if contained is None:
                 raise self._fatal_execution_failure(
                     exc, phase="prefill", work=work

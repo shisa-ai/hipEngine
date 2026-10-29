@@ -11502,8 +11502,8 @@
       "start_line": 8773,
       "end_line": 8902,
       "sha256": "0f21f73cff6d4a1adda96b7973877ad0296201639f3fa102ddf6df5dca1350ed",
-      "status": "partial-route-attribution-fixed-cursor-handoff-under-review",
-      "evidence": ["Route-counter subitem fixed: each benchmark arm emits independent route_counts_before/after/delta maps while preserving cumulative observability and legacy group delta. RED synthetic consecutive-arm case then26benchmark tests/86benchmark-profiler-worklog bundle, help/docs/audit/test-tier/whitespace pass. Remaining embedded grouped-prefill/cursor/worklog/profiler subitems still under review. Worklog worklog/entries/20261029T090259.462888Z-cleanup-refactor-r0392-route-attribution-e5264a.md."],
+      "status": "partial-route-attribution-and-failed-prefill-replay-fixed",
+      "evidence": ["Route-counter subitem fixed: each benchmark arm emits independent route_counts_before/after/delta maps while preserving cumulative observability and legacy group delta. RED synthetic consecutive-arm case then26benchmark tests/86benchmark-profiler-worklog bundle, help/docs/audit/test-tier/whitespace pass. Worklog worklog/entries/20261029T090259.462888Z-cleanup-refactor-r0392-route-attribution-e5264a.md.", "Fixed actual cursor failure: explicit unexecuted-prefill survivor scope validated and rewound; resumable work is not rewound twice and completed buffered chunks stay committed. RED then229focused pass/1skip, CPU deterministic bundle, public strict gfx1151 fault-injected grouped-prefill child failure with surviving peer exact to clean same-schedule request, later request and zero live teardown; docs/audit/test-tier/worklog/whitespace pass. Ancillary stale worklog/profiler and successful mixed-wave dispositions remain open. Worklog worklog/entries/20261029T092341.784588Z-cleanup-refactor-r0392-prefill-replay-4f157c.md."],
       "subitems": [
         {
           "line": 8858,
@@ -11513,7 +11513,7 @@
         {
           "line": 8862,
           "text": "* The refusal happens *after* the scheduler has already consumed the prefill cursors,",
-          "status": "pending"
+          "status": "resolved-rewind-only-unexecuted-peers-after-contained-prefill-failure"
         }
       ]
     },

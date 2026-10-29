@@ -7323,6 +7323,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         # the failure.
         self._execution_stepped_request_ids: set[int] = set()
         self._execution_committed_request_ids: set[int] = set()
+        # Buffered chunks may complete without device work; never replay them.
+        self._execution_completed_prefill_request_ids: set[int] = set()
         # The plan of the speculative cycle currently executing, so a failed
         # cycle can name the rows it owned.
         self._execution_speculative_plan: Any | None = None
@@ -9920,6 +9922,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             mutation=mutation,
             reason=f"{type(error).__name__}: {error}",
             error=error,
+            unexecuted_prefill_request_ids=(
+                tuple(
+                    request_id for request_id in rows
+                    if request_id not in affected
+                    and request_id not in getattr(self, "_execution_completed_prefill_request_ids", ())
+                )
+                if str(phase) == "prefill" else ()
+            ),
         )
 
     def _contain_speculative_execution_failure(
@@ -9974,6 +9984,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         self._execution_step_request_id = None
         self._execution_stepped_request_ids.clear()
         self._execution_committed_request_ids.clear()
+        self._execution_completed_prefill_request_ids = set()
         self._execution_device_phase_empty = False
 
     def _begin_speculative_cycle(self, plan) -> None:
@@ -10063,6 +10074,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 # advance their normal accounting; compute runs at the last one.
                 for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
                     row = self._row(request_id)
+                    self._execution_step_request_id = int(request_id)
                     start = row.prefill_tokens_seen
                     chunk = tuple(int(token) for token in token_row)
                     if chunk != row.prompt_ids[start:start + len(chunk)]:
@@ -10071,8 +10083,10 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     if row.prefill_tokens_seen == len(row.prompt_ids):
                         self._mark_execution_stepped((request_id,))
                         self._prefill_dms_row(row)
+                    self._execution_completed_prefill_request_ids.add(int(request_id))
                 return
             handled = self._try_prefill_native_work_batch(work)
+            self._execution_completed_prefill_request_ids.update(handled)
             self._execution_mutation_window = "unknown"
             for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
                 if int(request_id) in handled:
@@ -10145,6 +10159,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     else:
                         self._run_resident_fallback(row)
                     raise_if_generation_deadline_expired(row.request)
+                self._execution_completed_prefill_request_ids.add(int(request_id))
 
     def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
         self._begin_execution_step()

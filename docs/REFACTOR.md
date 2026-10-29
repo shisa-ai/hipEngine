@@ -3531,11 +3531,15 @@ fixture exists and is green
 seven short lanes asserts seven grouped rows, one call, and `prefill_tokens_seen == 0`
 for the long lane).
 
-**Still open:** the partition happens *after* `next_prefill_batch_work` has already
-advanced every selected cursor, so the scheduler still over-commits on rows it knows
-cannot group - move the compatibility test to selection time, and declare
-`GGUF_C2_PACKED_PREFILL_MAX_ROWS` once a mixed wave with a >256-token lane is measured
-end to end (the standard 35-67-token suite cannot exercise it).
+**Cursor ownership:** selection advances every planned chunk, but successful
+`prefill_batch` consumes grouped rows and serially consumes every unhandled
+chunk. Moving that successful path to a separate selection filter is not
+required for cursor correctness. A contained early failure was different:
+unexecuted peers could keep their planned cursor advance. The runner now
+reports `unexecuted_prefill_request_ids`; the loop validates and rewinds only
+those surviving chunks before retry. Completed buffered chunks stay committed,
+and resumable prefill is not rewound twice. Tests cover prompt lengths below,
+at, above and unrelated to the chunk cap, plus failed-row/scope isolation.
 
 `gguf_mtp_c1c8_server_bench.py` keeps process-global cumulative snapshots in
 `resident_observability.routes.counts` and records each arm's independent

@@ -965,7 +965,13 @@ affected runtimes.
   claim names exactly the rows whose device state may have advanced, plus the
   row whose step raised so its failure is reported; rows the step never reached
   stay canonical and are left unnamed. The loop retires the named rows through
-  the same request-owned release path a single-row claim uses.
+  the same request-owned release path a single-row claim uses. For prefill,
+  canonical device state does not imply that a planned prompt chunk ran:
+  `unexecuted_prefill_request_ids` names surviving rows whose selected chunks
+  never executed. The loop rewinds only those scheduler cursors before retry,
+  validates that they are distinct in-scope survivors, and does not rewind them
+  twice when resumable prefill already deferred the work. Completed buffered
+  chunks are not replayed, even when they made no device call.
 - A speculative cycle asks its resolved adapter for the mutation class and the
   rows it cannot prove canonical. A cycle whose adapter recorded a canonical
   commit before the failure (the eager commit path publishes the row's visible

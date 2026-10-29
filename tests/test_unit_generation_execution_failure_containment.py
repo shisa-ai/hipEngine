@@ -185,6 +185,107 @@ def test_prefill_failure_contained_for_a_packed_group_leaves_other_work_serving(
     ]
 
 
+@pytest.mark.parametrize("resumable", (False, True))
+@pytest.mark.parametrize("prompt_length", (3, 4, 5, 11))
+def test_contained_prefill_replays_only_the_unexecuted_peer_chunks(prompt_length, resumable) -> None:
+    class Runner(_ContainingLoopRunner):
+        def __init__(self):
+            super().__init__()
+            self.chunks = []
+            self.fail_once = True
+
+        def prefill_batch(self, work, *, commit):
+            assert commit
+            if self.fail_once:
+                self.fail_once = False
+                raise RuntimeError("failed before peer prefill")
+            self.chunks.extend(zip(work.request_ids, work.token_rows, strict=True))
+
+        def prefill_batch_resumable(self, work, *, commit):
+            self.prefill_batch(work, commit=commit)
+            return ()
+
+        def contain_execution_failure(self, error, **kwargs):
+            return ExecutionFailure(
+                request_ids=(0,), phase=kwargs["phase"], work_kind=kwargs["work_kind"],
+                mutation="none", reason=str(error), error=error,
+                unexecuted_prefill_request_ids=tuple(kwargs["request_ids"][1:]),
+            )
+
+    runner = Runner()
+    loop = ResidentEngineLoop(runner, capacity=3, prefill_chunk_size=4)
+    failed = loop.submit([99], max_new_tokens=1)
+    prompts = (tuple(range(10, 10 + prompt_length)), (70, 71))
+    peers = tuple(loop.submit(prompt, max_new_tokens=1) for prompt in prompts)
+
+    if resumable:
+        assert loop.scheduler.admit_pending() == (failed, *peers)
+        work = loop.scheduler.next_prefill_batch_work(chunk_size=4, max_rows=3)
+        first_events = loop._run_prefill(work, resumable=True)
+    else:
+        first_events = loop.poll(max_ticks=1)
+
+    assert [event.request_id for event in _failed_events(first_events)] == [failed]
+    assert all(loop.scheduler.active_batch.requests[rid].next_prompt_index == 0 for rid in peers)
+    events = _drive_until_idle(loop)
+    assert {event.request_id for event in events if event.kind == "completed"} == set(peers)
+    for rid, prompt in zip(peers, prompts, strict=True):
+        consumed = tuple(token for row_id, chunk in runner.chunks if row_id == rid for token in chunk)
+        assert consumed == prompt
+    assert not any(row_id == failed for row_id, _ in runner.chunks)
+
+
+def test_real_runner_reports_unexecuted_prefill_peers_not_decode_retries() -> None:
+    runner, _owner, request_id = _resident_runner_with_row()
+    runner._execution_stepped_request_ids = {request_id}
+    runner._execution_step_request_id = request_id
+    for phase, kind in (("prefill", "prefill"), ("decode", "decode")):
+        failure = runner.contain_execution_failure(
+            RuntimeError("first row failed"), phase=phase,
+            request_ids=(request_id, 99), work_kind=kind,
+        )
+        assert failure.request_ids == (request_id,)
+        assert failure.unexecuted_prefill_request_ids == ((99,) if phase == "prefill" else ())
+
+
+def test_completed_buffered_prefill_peer_is_not_replayed_after_a_later_failure() -> None:
+    runner, _owner, request_id = _resident_runner_with_row()
+    first = runner._row(request_id)
+    first.prompt_ids = (11, 12, 13, 14)
+    second = request_id + 1
+    runner.register_batch(
+        (second,), GenerationRequest(prompts=((21, 22),), max_tokens=1,
+                                    temperature=0.0, top_p=1.0, ignore_eos=True),
+        prompt_rows=((21, 22),),
+    )
+    runner.generator.dms_metadata_path = "synthetic-sidecar"
+    work = WorkItem(kind=WorkKind.PREFILL, request_ids=(request_id, second),
+                    row_to_request=(request_id, second), token_rows=((11, 12), (999,)))
+    with pytest.raises(RuntimeError, match="DMS prefill chunk") as raised:
+        runner.prefill_batch(work, commit=True)
+    assert first.prefill_tokens_seen == 2
+    failure = runner.contain_execution_failure(
+        raised.value, phase="prefill", request_ids=work.request_ids, work_kind="prefill",
+    )
+    assert failure.request_ids == (second,)
+    assert failure.unexecuted_prefill_request_ids == ()
+
+
+@pytest.mark.parametrize("retry_ids", ((99,), (0,), (1, 1)))
+def test_prefill_replay_scope_cannot_name_outside_or_failed_rows(retry_ids) -> None:
+    runner = _ContainingLoopRunner()
+    runner.fail_prefill = {0}
+    runner.contain_execution_failure = lambda error, **kwargs: ExecutionFailure(
+        request_ids=(0,), phase="prefill", work_kind="prefill", mutation="none",
+        reason=str(error), unexecuted_prefill_request_ids=retry_ids,
+    )
+    loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=4)
+    loop.submit([10], max_new_tokens=1)
+    loop.submit([20], max_new_tokens=1)
+    with pytest.raises(ValueError, match="unexecuted prefill"):
+        loop.poll(max_ticks=1)
+
+
 def test_unclassified_execution_failure_stays_fatal() -> None:
     runner = _ContainingLoopRunner()
     runner.contain = False
