@@ -39,7 +39,9 @@ def setup(monkeypatch):
             consumer_key=linear.KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PADDED)) == HALF
         calls.append(("down", a, k))
     monkeypatch.setattr(runner, "launch_gguf_linear", launch)
-    with linear.dense_wide_tail_session(PADDED), linear.norm_f16_publication_session(True):
+    # Exercise the publication-loan fallback, not the default direct launch.
+    with (runner.gr_f16_direct(False), linear.dense_wide_tail_session(PADDED),
+          linear.norm_f16_publication_session(True)):
         yield calls
 
 

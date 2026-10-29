@@ -102,9 +102,6 @@ _F16_ROUTE_BINDER_ENV = {
 _F16_ROUTE_SELECTORS = {
     # Hyper-connection up projection on the F16 wide route.
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
-    # Hyper-connection read projections launched directly on F16 activations:
-    # bit-identical to the dispatch they replace under the windows above.
-    "HIPENGINE_QWEN4_EXP_GR_F16_DIRECT": "1",
     # Multi-row FP32 projections over uncompressed weights (the indexer
     # projections) on the small-matrix F16 WMMA GEMM.
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",

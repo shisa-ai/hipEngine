@@ -5103,19 +5103,22 @@ def _qwen4_exp_gr_wide_enabled(rows: int, low_rank: int) -> bool:
     )
 
 
-def _qwen4_exp_gr_f16_direct_enabled(rows: int, low_rank: int) -> bool:
-    """Direct F16 launches for the hyper-connection read projections.
+_GR_F16_DIRECT = contextvars.ContextVar("qwen4_exp_gr_f16_direct", default=True)
 
-    Bit-identical to the routes it replaces wherever those already run the F16
-    wide tile. Set ``HIPENGINE_QWEN4_EXP_GR_F16_DIRECT=0`` to return to the
-    ordinary dispatch for bisection; see docs/REFACTOR.md.
-    """
-    return (
-        rows > 256
-        and low_rank % 64 == 0
-        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_F16_DIRECT", "0")
-        not in {"", "0", "false", "False"}
-    )
+
+@contextlib.contextmanager
+def gr_f16_direct(enabled: bool):
+    """Select direct launches inside a diagnostic execution context."""
+    token = _GR_F16_DIRECT.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _GR_F16_DIRECT.reset(token)
+
+
+def _qwen4_exp_gr_f16_direct_enabled(rows: int, low_rank: int) -> bool:
+    """Exact direct launches, subject to each caller's workspace/consumer guards."""
+    return rows > 256 and low_rank % 64 == 0 and _GR_F16_DIRECT.get()
 
 
 @contextlib.contextmanager

@@ -3488,9 +3488,9 @@ remains for this unit; strict fallbacks and the separate DP4A prerequisite remai
 
 ## Qwen4Exp direct F16 hyper-connection launches (`HIPENGINE_QWEN4_EXP_GR_F16_DIRECT`)
 
-The `gguf_ud_q4_k_xl` production binder sets
-`HIPENGINE_QWEN4_EXP_GR_F16_DIRECT=1`. With it, a hyper-connection read of
-more than 256 rows launches its two Q8_0 projections directly instead of
+The `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` process selector is retired. A
+hyper-connection read of more than 256 rows launches its two Q8_0 projections
+directly when the existing geometry, workspace and consumer guards pass, instead of
 through the generic linear dispatch: the grouped norm publishes its F16 plane
 at every layer and row count, the K10240/N320 down projection runs on the
 128x128 F16 tile, and the K320/N10240 up projection reads an F16 activation
@@ -3536,8 +3536,10 @@ The `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` opt-out is retired; the separate
 launch remains an explicit parity oracle and fallback, not a process control.
 Bit-identical (`tests/test_gpu_qwen4exp_gr_read_residual.py`); `code-p4096`
 1560.4 -> 1587.1 and `code-p512` 1018.4 -> 1024.5 prefill tok/s, same
-process, identical output tokens. The remaining flags and shared scratch
-ownership in this section are still open.
+process, identical output tokens. Historical layer2 isolation arms use the execution-local
+`gr_f16_direct(False)` scope; it restores nested state on exit and leaves
+peer contexts and process environment unchanged. Shared scratch ownership
+and the publication/tail consumers below remain open.
 
 The direct launch makes three older mechanisms unreachable for this quant at
 prefill row counts: the publication loan and its policy table
@@ -3545,10 +3547,11 @@ prefill row counts: the publication loan and its policy table
 the padded tail leaf (`GGUF_DENSE_WIDE_F16_TAIL_POLICIES`,
 `dense_wide256_padded_f16in_f32_f32_out`) and its manifest scope.
 
-Removal condition: once a `gguf_ud_q4_k_xl` release has shipped with the
-direct launch, delete the flag, make the direct launch the only path for the
-F16 wide down projection, and delete the loan, both policy tables and the
-padded tail variant with their tests.
+Remaining work: give `inv_rms` and the mirror dedicated scratch without
+underallocating surviving FP32 fallbacks. Resolve the publication loan, both
+policy tables and padded tail variant against all their consumers before
+removing them; direct GR launches alone do not prove these shared mechanisms
+are unused.
 
 ## Qwen4Exp routed gate/up without a grouped activation copy (`HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED`)
 

@@ -47,7 +47,7 @@ if str(ROOT) not in sys.path:
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
     gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill, gdn_decode_rowsplit,
-    moe_decode_warp,
+    moe_decode_warp, gr_f16_direct,
     q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     routed_f16_enabled as routed_f16,
@@ -111,6 +111,7 @@ class CandidateSpec:
     gdn_prefill_variant: str | None = None
     gdn_register_prefill: bool | None = None
     gdn_decode_rowsplit: bool | None = None
+    gr_f16_direct: bool | None = None
     moe_decode_warp: frozenset[str] | None = None
     # Explicit QSA ordered-v2 sparse decode selection for this arm, same
     # protocol. ``None`` keeps the base profile's published decision (on for a
@@ -182,7 +183,6 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
-    "HIPENGINE_QWEN4_EXP_GR_F16_DIRECT": "0",
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
     "HIPENGINE_QWEN4_EXP_QSA_WMMA": "0",
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
@@ -228,6 +228,7 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
             ),
             environment={**_F16_ROUTES_OFF, **extra},
             routed_f16_enabled=name == "recovery_plus_routed_f16",
+            gr_f16_direct=False,
             gdn_decode_rowsplit=False,
             moe_decode_warp=frozenset(),
             base_profile="production",
@@ -1643,6 +1644,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # the profile's own decision comes back when the stack unwinds.
         dispatch_stack.enter_context(qsa_prefill_head_mode(
             candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
+    if candidate_spec.gr_f16_direct is not None:
+        dispatch_stack.enter_context(gr_f16_direct(candidate_spec.gr_f16_direct))
     if candidate_spec.moe_decode_warp is not None:
         dispatch_stack.enter_context(moe_decode_warp(
             candidate_generator.runner, candidate_spec.moe_decode_warp))
