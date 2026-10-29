@@ -365,12 +365,16 @@ def _install_native_prefill_probe(llm: LLM) -> _NativePrefillProbe:
     )
 
 
-def _native_full_prefill_group_count(snapshot: Mapping[str, Any]) -> int:
+def _route_counts(snapshot: Mapping[str, Any]) -> dict[str, int]:
     routes = snapshot.get("routes")
     routes = routes if isinstance(routes, Mapping) else {}
     counts = routes.get("counts")
     counts = counts if isinstance(counts, Mapping) else {}
-    return int(counts.get("native_full_prefill_groups", 0) or 0)
+    return {str(key): int(value or 0) for key, value in counts.items()}
+
+
+def _native_full_prefill_group_count(snapshot: Mapping[str, Any]) -> int:
+    return _route_counts(snapshot).get("native_full_prefill_groups", 0)
 
 
 def _memory_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, int]:
@@ -559,6 +563,7 @@ def _run_arm(
     memory_before = memory_stats()
     probe_cursor = prefill_probe.cursor() if prefill_probe is not None else 0
     resident_before = _resident_observability(llm, recent=int(width))
+    counts_before = _route_counts(resident_before)
     groups_before = _native_full_prefill_group_count(resident_before)
     barrier = threading.Barrier(int(width) + 1)
     with concurrent.futures.ThreadPoolExecutor(max_workers=int(width)) as executor:
@@ -581,6 +586,7 @@ def _run_arm(
     generated = sum(len(row["generated_ids"]) for row in rows)
     backend_telemetry = _backend_mtp_telemetry(llm)
     resident_observability = _resident_observability(llm, recent=int(width))
+    counts_after = _route_counts(resident_observability)
     groups_after = _native_full_prefill_group_count(resident_observability)
     memory_after = memory_stats()
     return {
@@ -592,6 +598,12 @@ def _run_arm(
         "rows": rows,
         "backend_telemetry": backend_telemetry,
         "resident_observability": resident_observability,
+        "route_counts_before": counts_before,
+        "route_counts_after": counts_after,
+        "route_counts_delta": {
+            key: counts_after.get(key, 0) - counts_before.get(key, 0)
+            for key in sorted(counts_before.keys() | counts_after.keys())
+        },
         "native_full_prefill_groups_delta": groups_after - groups_before,
         "native_prefill_groups": (
             prefill_probe.since(probe_cursor) if prefill_probe is not None else []

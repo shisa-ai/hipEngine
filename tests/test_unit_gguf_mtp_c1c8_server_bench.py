@@ -407,6 +407,39 @@ def test_mtp_c1c8_backend_telemetry_proves_legacy_engagement() -> None:
     )
 
 
+def test_arm_snapshots_attribute_every_route_counter_without_cross_arm_work(monkeypatch) -> None:
+    from collections import Counter
+
+    counts = Counter(native_full_prefill_groups=9, native_full_prefill_rows=18,
+                     native_decode_rows=101, previous_arm_only=4)
+    owner = SimpleNamespace(observability_snapshot=lambda: {"routes": {"counts": counts}})
+    llm = SimpleNamespace(_get_text_generator=lambda: owner)
+    monkeypatch.setattr(server_bench, "memory_stats", lambda: {})
+    monkeypatch.setattr(server_bench, "_backend_mtp_telemetry", lambda _llm: {})
+
+    def request(_client, **kwargs):
+        kwargs["barrier"].wait(timeout=5)
+        counts.update(native_full_prefill_groups=1, native_full_prefill_rows=2,
+                      native_decode_rows=3, new_route=1)
+        return {"started": 1.0, "completed": 2.0, "generated_ids": [7]}
+
+    monkeypatch.setattr(server_bench, "_request", request)
+    outputs = [server_bench._run_arm(
+        object(), llm=llm, model="synthetic", prompt="input", width=1,
+        max_tokens=1, arm=arm, mtp_request_mode="explicit",
+    ) for arm in ("ar", "mtp")]
+
+    expected = {"native_full_prefill_groups": 1, "native_full_prefill_rows": 2,
+                "native_decode_rows": 3, "previous_arm_only": 0, "new_route": 1}
+    for payload in outputs:
+        assert payload["route_counts_delta"] == expected
+        assert payload["native_full_prefill_groups_delta"] == 1
+        assert payload["resident_observability"]["routes"]["counts"] == payload["route_counts_after"]
+    assert outputs[0]["route_counts_before"]["native_decode_rows"] == 101
+    assert outputs[1]["route_counts_before"] == outputs[0]["route_counts_after"]
+    assert outputs[0]["route_counts_after"]["native_decode_rows"] == 104
+
+
 def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     base = {
         "realized_group_rows": 4,

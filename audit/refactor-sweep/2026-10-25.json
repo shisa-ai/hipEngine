@@ -11502,8 +11502,8 @@
       "start_line": 8773,
       "end_line": 8902,
       "sha256": "0f21f73cff6d4a1adda96b7973877ad0296201639f3fa102ddf6df5dca1350ed",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-route-attribution-fixed-cursor-handoff-under-review",
+      "evidence": ["Route-counter subitem fixed: each benchmark arm emits independent route_counts_before/after/delta maps while preserving cumulative observability and legacy group delta. RED synthetic consecutive-arm case then26benchmark tests/86benchmark-profiler-worklog bundle, help/docs/audit/test-tier/whitespace pass. Remaining embedded grouped-prefill/cursor/worklog/profiler subitems still under review. Worklog worklog/entries/20261029T090259.462888Z-cleanup-refactor-r0392-route-attribution-e5264a.md."],
       "subitems": [
         {
           "line": 8858,
