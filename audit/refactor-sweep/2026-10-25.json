@@ -11752,23 +11752,23 @@
       "start_line": 9261,
       "end_line": 9285,
       "sha256": "d9fb606a7bee7a2dc9336809fa3f1b004aba79abe369e97b1753356107311bd9",
-      "status": "pending",
-      "evidence": [],
+      "status": "repaired-xml-tool-manifest-and-grouped-results",
+      "evidence": ["Required/specific XML prefix and structural boundary-close support already landed in e84c2686a with real serving evidence: worklog/entries/20260925T053754.966144Z-lhl-mlperf-edge-integration-repair-187aa6.md. Correct stale capability/replay/API JSON-prefix/schema-anchor/close-stop descriptions; preserve legacy JSON compatibility helper rather than repurpose it. Merge consecutive tool responses into one Qwen user block; preserve validation, individual envelopes, empty/multiline values and separated groups. Six RED cases then9GREEN;698server API checks and105XML/stream/sampling checks pass. Current public and CPU follow-through: worklog/entries/20261029T131425.760548Z-cleanup-refactor-r0400-xml-tool-contract-bcdcea.md."],
       "subitems": [
         {
           "line": 9269,
           "text": "- `_tool_call_name_prefix_text` still forces the atomic JSON prefix",
-          "status": "pending"
+          "status": "resolved-required-prefix-is-xml-legacy-helper-is-parser-compatibility"
         },
         {
           "line": 9276,
           "text": "- `_tool_call_close_repair_token_sequences` has no",
-          "status": "pending"
+          "status": "resolved-structural-parameter-boundary-close-no-generic-outer-tag-repair"
         },
         {
           "line": 9281,
           "text": "- `render_chat_prompt` wraps each `tool` message in its own",
-          "status": "pending"
+          "status": "repaired-consecutive-results-share-one-user-turn"
         }
       ]
     },

@@ -2004,7 +2004,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert body["features"]["tools"] == {
         "enabled": True,
         "strict_decoding": True,
-        "strict_decoding_scope": "tokenizer_aware_canonical_envelope_and_root_json_syntax",
+        "strict_decoding_scope": "tokenizer_aware_xml_function_envelope",
         "strict_result_validation": True,
         "result_validation_failure_reasons": [
             "invalid_tool_call",
@@ -2094,11 +2094,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "required_tool_start_forcing": True,
         "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
         "specific_tool_name_prefix_forcing": True,
-        "specific_tool_name_prefix_forcing_scope": "atomic_tool_call_name_and_arguments_key",
-        "strict_tool_schema_prefix_anchor": True,
-        "strict_tool_schema_prefix_anchor_scope": "selected_closed_object_first_required_string_key",
+        "specific_tool_name_prefix_forcing_scope": "atomic_xml_function_header",
+        "strict_tool_schema_prefix_anchor": False,
+        "strict_tool_schema_prefix_anchor_scope": "none",
         "tool_call_close_repair": True,
-        "tool_call_close_repair_scope": "tokenizer_safe_marker_or_object_envelope_then_stop",
+        "tool_call_close_repair_scope": "xml_parameter_boundary_suffix_exact_remaining_budget",
     }
     assert body["features"]["reasoning_controls"] == {
         "enabled": True,
@@ -18301,6 +18301,57 @@ def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:
     assert "<tool_response>\nfile text\n</tool_response>" in prompt
 
 
+@pytest.mark.parametrize("result_count", [1, 2, 3])
+@pytest.mark.parametrize("typed_messages", [False, True])
+def test_render_chat_prompt_groups_consecutive_tool_results(result_count, typed_messages) -> None:
+    from hipengine.server.api import ChatMessage
+
+    contents = ["first result", "", "line one\nline two"][:result_count]
+    calls = [
+        {
+            "id": f"call_{index}",
+            "type": "function",
+            "function": {"name": "read", "arguments": "{}"},
+        }
+        for index in range(result_count)
+    ]
+    messages = [{"role": "assistant", "content": None, "tool_calls": calls}]
+    messages.extend(
+        {"role": "tool", "tool_call_id": call["id"], "content": content}
+        for call, content in zip(calls, contents)
+    )
+    if typed_messages:
+        messages = [ChatMessage(**message) for message in messages]
+
+    prompt = render_chat_prompt(messages)
+    block = "\n".join(f"<tool_response>\n{content}\n</tool_response>" for content in contents)
+    assert f"<|im_start|>user\n{block}<|im_end|>\n<|im_start|>assistant\n" in prompt
+    assert prompt.count("<|im_start|>user\n") == 1
+
+
+def test_render_chat_prompt_keeps_separate_tool_result_groups() -> None:
+    messages = []
+    for index in range(2):
+        messages.extend([
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": f"call_{index}",
+                    "type": "function",
+                    "function": {"name": "read", "arguments": "{}"},
+                }],
+            },
+            {"role": "tool", "tool_call_id": f"call_{index}", "content": f"result {index}"},
+        ])
+    messages.append({"role": "user", "content": "Summarize both results."})
+    prompt = render_chat_prompt(messages)
+    assert prompt.count("<|im_start|>user\n") == 3
+    for index in range(2):
+        assert f"<|im_start|>user\n<tool_response>\nresult {index}\n</tool_response><|im_end|>" in prompt
+    assert "<|im_start|>user\nSummarize both results.<|im_end|>" in prompt
+
+
 def test_chat_completion_returns_openai_tool_calls() -> None:
     fake = FakeLLM(outputs=['<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'])
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -19417,7 +19468,11 @@ def test_chat_completion_tool_constraint_requires_tokenize_and_detokenize() -> N
 
     capabilities = client.get("/v1/hipengine/capabilities")
     assert capabilities.status_code == 200
-    assert capabilities.json()["features"]["tools"]["strict_decoding"] is False
+    tools_capability = capabilities.json()["features"]["tools"]
+    assert tools_capability["strict_decoding"] is False
+    assert tools_capability["tool_call_close_repair"] is False
+    assert tools_capability["tool_call_close_repair_scope"] == "none"
+    assert tools_capability["strict_tool_schema_prefix_anchor"] is False
     assert capabilities.json()["features"]["structured_outputs"]["strict_decoding"] is False
 
     response = client.post(
@@ -23447,15 +23502,13 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     )
     assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing"] is True
     assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing_scope"] == (
-        "atomic_tool_call_name_and_arguments_key"
+        "atomic_xml_function_header"
     )
-    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor"] is True
-    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor_scope"] == (
-        "selected_closed_object_first_required_string_key"
-    )
+    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor"] is False
+    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor_scope"] == "none"
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair_scope"] == (
-        "tokenizer_safe_marker_or_object_envelope_then_stop"
+        "xml_parameter_boundary_suffix_exact_remaining_budget"
     )
     assert artifact["capabilities"]["features"]["tools"]["compatibility_parser_repairs"] == [
         "qwen35_family_xml_function_envelope",

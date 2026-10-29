@@ -53,6 +53,39 @@ def test_xml_tool_constraint_safe_close_and_parallel_policy():
     assert parallel.complete
 
 
+def test_xml_tool_constraint_queues_only_a_complete_parameter_boundary():
+    import numpy as np
+
+    from hipengine import SamplingParams
+    from hipengine.generation.sampling import RowSamplingState, select_token
+
+    spec = ToolCallConstraintSpec(tool_names=('bash',), envelope='xml', mode='required')
+    state = RowSamplingState(tool_call_constraint=spec)
+    prefix = CALL.removesuffix('</function>\n</tool_call>')
+    state.observe_selected_token_text(prefix, remaining_tokens=2, encode_text=lambda _text: (1, 2))
+    assert state.forced_tokens == (1, 2)
+    assert state.forced_token_reason == 'tool_call_close_forcing'
+    decoder = {1: '</function>\n', 2: '</tool_call>'}.__getitem__
+    params = SamplingParams(temperature=0, tool_call_constraint=spec)
+    for token_id, remaining in ((1, 1), (2, 0)):
+        sample = select_token(np.zeros(3, dtype=np.float32), params, state, token_text_for_id=decoder)
+        assert sample.token_id == token_id and sample.forced
+        state.observe_selected_token_text(decoder(token_id), remaining_tokens=remaining,
+                                          encode_text=lambda _text: ())
+    assert state.tool_call_constraint_state.complete
+
+    for remaining in (1, 3):
+        other = RowSamplingState(tool_call_constraint=spec)
+        other.observe_selected_token_text(prefix, remaining_tokens=remaining,
+                                         encode_text=lambda _text: (1, 2))
+        assert not other.forced_tokens
+    unfinished = RowSamplingState(tool_call_constraint=spec)
+    unfinished.observe_selected_token_text(CALL.split('pwd')[0] + 'unfinished',
+                                           remaining_tokens=2, encode_text=lambda _text: (1, 2))
+    assert not unfinished.forced_tokens
+    assert not unfinished.tool_call_constraint_state.allows_eos
+
+
 def test_xml_tool_constraint_preserves_parameter_text():
     text = CALL.replace('pwd', 'echo "a < b"\ncat file.py')
     state = ToolCallConstraintState(ToolCallConstraintSpec(tool_names=('bash',), envelope='xml'))

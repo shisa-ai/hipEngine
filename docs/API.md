@@ -1459,7 +1459,8 @@ After an assistant message with tool calls, subsequent transcript messages must
 be `role: "tool"` results until the pending ids are consumed; a transcript may
 still end with pending tool calls so clients can send results in the next
 session-backed request. The capabilities manifest reports these rules under
-`features.tools.transcript_validation`.
+`features.tools.transcript_validation`. Consecutive tool results share one
+Qwen user turn, with a separate `<tool_response>` block for each result.
 Inconsistent request shapes fail before generation: `tool_choice="required"`
 or a specific function choice requires at least one `tools` entry, and a
 specific function choice must use a valid object shape and name a declared
@@ -1532,26 +1533,20 @@ the first token of the Qwen `<tool_call>` start marker. When
 available, the sampler forces a tool prefix before ordinary token selection.
 Specific function choices, plus `required` mode with exactly one function tool,
 atomically queue the independently tokenized
-`<tool_call>{"name":"...","arguments":` prefix from its first token. This does
-not assume that separately tokenized `<tool_call>` IDs compose with the JSON
-suffix (Qwen tokenizers may merge the `>{` boundary). For a selected strict
-object schema with `additionalProperties: false` whose first `required` property
-has `type: "string"`, the atomic prefix extends through the encoded property key
-and opening value quote. The value and all remaining properties stay
-model-generated and strict-result-validated. Other schema shapes fall back to
-the name-and-arguments prefix. Multi-tool `required` mode queues only
-`<tool_call>` and leaves tool-name selection to the model. If a tokenized
-thinking budget is active, the applicable whole prefix is held until the
-`</think>` close sequence has moved the row into answer phase.
+`<tool_call>\n<function=NAME>\n` header from its first token. Parameter names and
+values remain model-generated; strict schemas do not extend the forced prefix.
+Multi-tool `required` mode queues only `<tool_call>` and leaves tool-name
+selection to the model. If a tokenized thinking budget is active, the applicable
+whole prefix is held until the `</think>` close sequence has moved the row into
+answer phase.
 
-Auto, required, and specific function modes also tokenize `</tool_call>` when
-possible. Strict-schema first-string-key anchoring additionally enables the
-structural `}}</tool_call>` envelope tail. Once an enabled tail begins, the host
-sampler forces its remaining tokens and stops at the completed sequence. When a
-unique deterministic envelope/structural suffix exactly fits the remaining
-budget, that suffix is queued through the same forced-token path. Every forced
-token is revalidated against the grammar; token decode failures, empty token
-text, and an empty constrained candidate set fail closed. Tool constraints block
+The XML structural constraint can queue a deterministic closing suffix at a
+parameter boundary, including `</function>\n</tool_call>`, only when its tokenized
+length exactly matches the remaining budget. It does not invent or close an
+unfinished parameter value, and it preserves the outer closing tag for parsing
+rather than stopping on it. Every forced token is revalidated against the
+grammar; token decode failures, empty token text, and an empty constrained
+candidate set fail closed. Tool constraints block
 native GPU sampling and raw-target MTP. They use host processed logits, and can
 use MTP when the model plugin implements processed acceptance for the request's
 constraint contract. This is not native-sampler parity. Full JSON Schema argument

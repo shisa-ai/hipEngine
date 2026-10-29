@@ -1361,7 +1361,7 @@ def _tools_capability(
         "enabled": True,
         "strict_decoding": strict_backed,
         "strict_decoding_scope": (
-            "tokenizer_aware_canonical_envelope_and_root_json_syntax"
+            "tokenizer_aware_xml_function_envelope"
             if strict_backed
             else "none"
         ),
@@ -1405,15 +1405,13 @@ def _tools_capability(
         ),
         "specific_tool_name_prefix_forcing": tokenizer_backed,
         "specific_tool_name_prefix_forcing_scope": (
-            "atomic_tool_call_name_and_arguments_key" if tokenizer_backed else "none"
+            "atomic_xml_function_header" if tokenizer_backed else "none"
         ),
-        "strict_tool_schema_prefix_anchor": tokenizer_backed,
-        "strict_tool_schema_prefix_anchor_scope": (
-            "selected_closed_object_first_required_string_key" if tokenizer_backed else "none"
-        ),
-        "tool_call_close_repair": tokenizer_backed,
+        "strict_tool_schema_prefix_anchor": False,
+        "strict_tool_schema_prefix_anchor_scope": "none",
+        "tool_call_close_repair": strict_backed,
         "tool_call_close_repair_scope": (
-            "tokenizer_safe_marker_or_object_envelope_then_stop" if tokenizer_backed else "none"
+            "xml_parameter_boundary_suffix_exact_remaining_budget" if strict_backed else "none"
         ),
     }
     parser_capability = getattr(tool_parser, "capabilities", None)
@@ -12707,6 +12705,7 @@ def render_chat_prompt(
         rendered.append(f"<|im_start|>system\n{control_block}<|im_end|>")
     pending_tool_call_ids: set[str] = set()
     seen_tool_call_ids: set[str] = set()
+    previous_role: str | None = None
     for index, message in enumerate(messages):
         if isinstance(message, Mapping):
             role_value = message.get("role", "")
@@ -12746,8 +12745,14 @@ def render_chat_prompt(
         if role == "developer":
             role = "system"
         if role == "tool":
-            rendered.append(f"<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>")
+            response = f"<tool_response>\n{content}\n</tool_response>"
+            if previous_role == "tool":
+                rendered[-1] = f"{rendered[-1].removesuffix('<|im_end|>')}\n{response}<|im_end|>"
+            else:
+                rendered.append(f"<|im_start|>user\n{response}<|im_end|>")
+            previous_role = role
             continue
+        previous_role = role
         if role == "assistant" and normalized_tool_calls:
             tool_call_text = "\n".join(
                 _render_tool_call_for_prompt(item) for item in normalized_tool_calls
