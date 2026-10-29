@@ -3430,40 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna gfx1151 head/KV transfer selector
-
-- Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100
-  current-P4 head-RMSNorm + partial-RoPE + BF16 KV-write composites. The
-  registry aliases and `--head-kv-fusion` profiler selector exist only to run
-  the architecture-local p512/d128 and trace gates.
-- If the candidate is exact and improves the complete decode median, promote
-  `LAGUNA_HEAD_KV_FUSION` and keep explicit False as the unfused rollback
-  through the next decode campaign. If it is neutral or negative, restore the
-  gfx1151 alias exclusions and remove the profiler selector and candidate
-  tests instead of carrying a dead backend path.
-- The promotion trigger is satisfied: clean p512/d128 improves
-  **11.466687 -> 11.483587 tok/s (+0.147%)**, and all three candidate samples
-  beat all three controls with identical trajectory/state. Keep explicit
-  False through the next split-attention transfer screen, then collapse the
-  positive CLI selector if it is no longer needed for attribution.
-
-## Laguna gfx1151 split-attention transfer selector
-
-- Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100
-  exact global/SWA split-attention bundle. `--decode-split-attention` requests
-  global/SWA/tile16 thresholds **127/65/257**, gated reducers, and the
-  wave-local SWA reducer together; package defaults remain unsplit.
-- If the clean p512/d128 candidate is exact and faster, promote the complete
-  threshold/capability bundle and retain `--no-decode-split-attention` through
-  one follow-up context crossover check. If the full-model gate is neutral or
-  negative, restore all ten gfx1151 alias exclusions and remove the profiler
-  selector/test rather than carrying partial split registrations.
-- The promotion trigger is satisfied: clean p512/d128 improves
-  **11.485885 -> 14.533955 tok/s (+26.538%)**, saves **2.318892 seconds** over
-  127 calls, and preserves the complete trajectory/lifecycle. Keep the
-  explicit serial rollback until a short context-crossover check confirms the
-  inherited **127/65/257** thresholds on gfx1151.
-
 ## Laguna source-F16 decode fixed-K selector
 
 - Added 2026-07-28 as
@@ -9092,6 +9058,11 @@ and independent verifier tiles. No mode, kernel or default changes here.
 
 ### R0281-SPLIT — Split-attention and tile16 comparison controls
 
+R0339's historical gfx1151 transfer entry is consolidated here; its promotion
+is already reflected in package defaults. The profiler's explicit bundle
+still sets global/SWA/tile16 thresholds together, while unset selection
+preserves backend resolution.
+
 Both gfx11 packages now define global/SWA split and SWA tile16 thresholds.
 The session and KV allocator expose `use_split_attention`,
 `use_swa_split_tile16` and explicit crossover values. Target-AR and the
@@ -9114,6 +9085,10 @@ then R0249/R0250's public generation and allocation-cleanup gate. No control,
 threshold, allocation or attention implementation changes here.
 
 ### R0281-FUSION — Attention fusion and reducer comparison controls
+
+R0338's historical gfx1151 head/KV transfer entry is consolidated here; the
+transfer is already enabled. Host CLI-to-constructor tests preserve unset,
+true and false requests independently of the split-attention bundle.
 
 Both gfx11 packages enable head/KV fusion, split-gate fusion and wave-local
 SWA reduction. Target-AR still exposes the separate disable controls; the

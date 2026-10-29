@@ -10033,23 +10033,23 @@
       "start_line": 7640,
       "end_line": 7656,
       "sha256": "1078d01b99ff57b13870864a8c13a0ad8b1b628bd77d7d61623f947df019da5f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-consolidated-r0281-fusion",
+      "evidence": ["Head/KV transfer is already gfx1151 package default; existing runner plan tests bind registered fused and unfused chains. Added CLI-to-constructor cross-product tests preserve explicit/unset head selection independently of split bundle. 147 focused checks pass. Removed duplicate historical transfer row; remaining public comparison migration/validation belongs to existing bottom R0281-FUSION, explicitly cross-referenced. No runtime/default/kernel change or new performance claim."],
       "subitems": [
         {
           "line": 7642,
           "text": "- Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100",
-          "status": "pending"
+          "status": "resolved-package-transfer-already-enabled"
         },
         {
           "line": 7646,
           "text": "- If the candidate is exact and improves the complete decode median, promote",
-          "status": "pending"
+          "status": "resolved-consolidated-current-control-migration-r0281-fusion"
         },
         {
           "line": 7651,
           "text": "- The promotion trigger is satisfied: clean p512/d128 improves",
-          "status": "pending"
+          "status": "resolved-history-preserved-remaining-owner-r0281-fusion"
         }
       ]
     },
@@ -10059,23 +10059,23 @@
       "start_line": 7657,
       "end_line": 7673,
       "sha256": "3e0d17b8f69d25c4e9dd95f08e0a67a0085f682959627a37027f0fe10beb6150",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-consolidated-r0281-split-fusion",
+      "evidence": ["gfx1151 already enables inherited 127/65/257 split thresholds plus gated/wave-local reducers. Ten new host cases bind defaults and real CLI run forwarding across independent head/split unset/on/off requests. 147 focused checks pass. Removed duplicate historical transfer row; resource/threshold migration and full/public validation remain existing bottom R0281-SPLIT/FUSION with explicit R0339 cross-reference. No runtime/default/allocation/kernel change or new measured claim."],
       "subitems": [
         {
           "line": 7659,
           "text": "- Added 2026-07-28 as a default-off gfx1151 screen for the retained gfx1100",
-          "status": "pending"
+          "status": "resolved-package-split-transfer-already-enabled"
         },
         {
           "line": 7663,
           "text": "- If the clean p512/d128 candidate is exact and faster, promote the complete",
-          "status": "pending"
+          "status": "resolved-consolidated-control-migration-r0281-split-fusion"
         },
         {
           "line": 7668,
           "text": "- The promotion trigger is satisfied: clean p512/d128 improves",
-          "status": "pending"
+          "status": "resolved-history-preserved-crossover-validation-owner-r0281-split"
         }
       ]
     },
