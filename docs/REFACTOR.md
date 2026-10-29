@@ -3427,24 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## Full-attention context leaf: superseded fixed256 route
-
-`qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans` and its
-`..._fixed256_threads_spans` sibling predate the promoted route
-(`..._fixed256_promoted_spans`) that `qwen4_exp_runner` now calls for the dense
-full-attention chunk. The promoted route differs by two byte-identical levers -
-an int32 per-token offset table when the KV capacity proves the range fits, and a
-two-token QK unroll - and by taking the KV capacity as an explicit argument.
-
-The superseded symbols stay until nothing needs them: the microbench uses
-`..._fixed256_spans` as the bit-exactness reference for the promoted route, and
-`..._fixed256_threads_spans` still carries the runtime thread-width sweep. The
-generic `..._batch_spans` route remains the default for the non-fixed256 case.
-
-Removal trigger: the promoted route has held as the default across a full
-category suite and the runtime thread-width sweep is retired, at which point the
-fixed256 pair, its `__init__` exports, and the microbench reference path go away.
-
 ## Full-attention context leaf: QK unroll depth selector
 
 `hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans`
@@ -10330,8 +10312,8 @@ performance result.
 
 **Decision needed:** retain the thread-width comparison interface or migrate it
 to an explicit caller-owned diagnostic plan before retiring the environment
-reader/runtime-width entry point. Coordinate this with the full-attention
-fixed256 reference cleanup elsewhere in the ledger. Do not collapse the body
+reader/runtime-width entry point. R0427 records the other live fixed256
+consumers. Do not collapse the body
 to a single constexpr while the numerical gate still selects both widths.
 
 **Clearing action:** migrate resolver, leaf-cache boundaries, gate provenance,
@@ -10993,3 +10975,28 @@ The historical proposals and measurements remain under
 
 Source review, individual subitem dispositions and focused checks:
 `../worklog/entries/20261029T184908.042620Z-cleanup-refactor-r0426-wide-prefill-fcf10e.md`.
+
+### R0427 — Fixed256 reference and legacy comparison control
+
+The fixed256 implementations are not globally superseded.
+`qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans` backs the
+gfx1151 `w4_paro/bf16_context_batch_c1_exact_spans` registration, the
+Qwen4Exp legacy comparison and numerical reference tests. Its
+`..._fixed256_threads_spans` sibling serves the GGUF short-context
+thread-width path, including the gfx1151 package default, as well as diagnostic
+sweeps. Retire the old instruction to delete these shared symbols after a
+Qwen4Exp category run; that run does not replace their other contracts.
+R0381 owns the thread-width comparison interface.
+
+**Deferred decision:** retain or retire
+`HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY`, which selects the older body
+inside the Qwen4Exp dense attention path. If retiring that comparison, remove
+its reader and diagnostic overrides together, check the promoted route through
+public generation and its exact-reference tests, and remove only the now-unused
+Qwen4Exp import. Do not remove the shared body, exports or registry entries
+while their independent consumers remain. Review
+`scripts/qwen4exp_fullattn_prefill_microbench.py` separately from this switch:
+it calls the reference directly and is not made obsolete by removing the switch.
+
+Current-source consumer review and CPU route checks:
+`../worklog/entries/20261029T185354.280363Z-cleanup-refactor-r0427-fixed256-f9d7e7.md`.

@@ -12383,8 +12383,8 @@
       "start_line": 10047,
       "end_line": 10064,
       "sha256": "deef445c2e4a5c47e23fdbe585111adf45cf828cbf0a3963a886021b24175230",
-      "status": "pending",
-      "evidence": [],
+      "status": "triaged-live-shared-leaves-deferred-legacy-control",
+      "evidence": ["fixed256_spans still backs gfx1151 exact context-batch registry route; threads_spans serves the GGUF short-context default/override path. Remove obsolete global deletion instruction; R0381 owns thread-control migration, and bottom R0427 retains legacy comparison decision.53 CPU route/control tests pass. Worklog: worklog/entries/20261029T185354.280363Z-cleanup-refactor-r0427-fixed256-f9d7e7.md."],
       "subitems": []
     },
     {
