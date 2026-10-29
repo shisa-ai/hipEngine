@@ -9127,23 +9127,23 @@
       "start_line": 6917,
       "end_line": 6937,
       "sha256": "4d36f22cbc5b4f57851888c037de84c0a25ce685154dec27ba44ea2ff7e620ac",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-target-score-trace-ownership",
+      "evidence": ["Verified real block capture and both benchmark callers, compact candidate/hidden summaries and attribution consumer. Expanded real block caller tests for capture on/off, singleton missing-logit behavior, exact FP32 vocab byte counts/runtime, no normal-path copy and enqueue-only refusal before work. Added compact missing/rank/bounded-row/near-tie/dedup/invalid-candidate and CLI dependency tests. Preserved original July capture/hidden-score artifacts. No runtime/default/kernel edits or new numerical/performance claim. Bottom R0307 owns trace retirement/replacement. Worklog: worklog/entries/20261029T013315.625516Z-cleanup-refactor-r0307-target-scores-55eb41.md."],
       "subitems": [
         {
           "line": 6918,
           "text": "- Added 2026-07-03. Bench flag that asks `verify_target_block()` to copy the",
-          "status": "pending"
+          "status": "resolved-live-capture-readback-and-compact-row-contracts"
         },
         {
           "line": 6926,
           "text": "- Purpose: diagnose the active llama.cpp parity miss on target verifier",
-          "status": "pending"
+          "status": "resolved-score-hidden-alignment-and-history-preserved"
         },
         {
           "line": 6934,
           "text": "- Remove when: target hidden-to-logit parity is closed or replaced by a broader",
-          "status": "pending"
+          "status": "deferred-bottom-R0307-cross-engine-trace-replacement"
         }
       ]
     },

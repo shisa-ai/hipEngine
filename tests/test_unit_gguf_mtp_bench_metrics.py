@@ -169,6 +169,57 @@ def test_target_lm_head_score_rows_are_compact_and_candidate_driven() -> None:
     ]
 
 
+@pytest.mark.parametrize("logits", [None, np.empty((0, 4), dtype=np.float32)])
+def test_target_score_rows_without_available_logits_are_empty(logits) -> None:
+    assert _target_lm_head_score_rows(
+        logits, input_tokens=[3], target_tokens=[1], draft_tokens=[2],
+    ) == []
+
+
+@pytest.mark.parametrize("shape", [(4,), (1, 2, 3)])
+def test_target_score_rows_require_rank_two_logits(shape) -> None:
+    with pytest.raises(ValueError, match="rank-2"):
+        _target_lm_head_score_rows(
+            np.zeros(shape, dtype=np.float32), input_tokens=[3], target_tokens=[1], draft_tokens=[2],
+        )
+
+
+@pytest.mark.parametrize("input_tokens,target_tokens", [([8], [1, 2]), ([8, 9], [1])])
+def test_target_score_rows_bound_metadata_and_preserve_near_tie_candidates(input_tokens, target_tokens) -> None:
+    second = np.nextafter(np.float32(1), np.float32(0))
+    logits = np.asarray([[0, 1, second], [2, 0, 1]], dtype=np.float32)
+    rows = _target_lm_head_score_rows(
+        logits, input_tokens=input_tokens, target_tokens=target_tokens, draft_tokens=[2, 2],
+        extra_candidate_tokens=(-1, 99, 2), top_k=99,
+    )
+    assert len(rows) == 1
+    assert rows[0]["row"] == rows[0]["position_offset"] == 0
+    assert rows[0]["input_token"] == 8 and rows[0]["target_token"] == 1
+    assert [item["token"] for item in rows[0]["top_k"]] == [1, 2, 0]
+    candidates = rows[0]["candidate_scores"]
+    assert [item["token"] for item in candidates] == list(dict.fromkeys([2, *target_tokens, -1, 99]))
+    assert candidates[0] == {"token": 2, "score": float(second), "delta_vs_top1": float(second) - 1.0}
+    assert candidates[-2:] == [
+        {"token": -1, "score": None, "delta_vs_top1": None},
+        {"token": 99, "score": None, "delta_vs_top1": None},
+    ]
+
+
+@pytest.mark.parametrize("argv,error", [
+    (["--record-target-topk-scores"], "--record-target-topk-scores requires --target-block-verify"),
+    (["--target-block-verify", "--native-spec-target-cycle", "--record-target-topk-scores"],
+     "--native-spec-target-cycle does not support target logits readback"),
+    (["--target-topk-score-count", "0"], "--target-topk-score-count must be positive"),
+])
+def test_target_score_cli_dependencies_fail_before_loading(monkeypatch, capsys, argv, error) -> None:
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+    monkeypatch.setattr(bench.os, "environ", dict(bench.os.environ))
+    with pytest.raises(SystemExit) as excinfo:
+        bench.main(argv)
+    assert excinfo.value.code == 2
+    assert error in capsys.readouterr().err
+
+
 def test_target_hidden_seed_summary_rows_align_to_score_rows() -> None:
     hidden_rows = [
         np.asarray([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),

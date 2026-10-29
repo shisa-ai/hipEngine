@@ -3430,27 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `--record-target-topk-scores`
-- Added 2026-07-03. Bench flag that asks `verify_target_block()` to copy the
-  already-materialized full target lm-head logits back to host for block-verifier
-  rows and serialize compact `target_lm_head_score_rows` with top-k plus
-  candidate-token scores. `--target-score-candidate-tokens` adds explicit
-  llama.cpp near-tie tokens to the candidate list. When score rows are present,
-  the same diagnostic also emits compact `target_hidden_seed_rows` summaries so
-  the scored verifier hidden row can be lined up with llama.cpp `verify_h`
-  traces without dumping full hidden vectors in the normal artifact.
-- Purpose: diagnose the active llama.cpp parity miss on target verifier
-  near-ties without relying on forced-target replay. The first smoke artifact
-  `benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json` populated
-  three live target verifier rows on the active `llama-compat` direct-commit
-  shape. The hidden-seed follow-up artifact
-  `benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-hidden-scores-live.json`
-  captures the live task-9/cycle-3/row-2 hidden summary for the `8940` vs `668`
-  rank flip.
-- Remove when: target hidden-to-logit parity is closed or replaced by a broader
-  cross-engine tensor trace. Keep it default-off; the extra full-logit D2H copy
-  makes it invalid for retained timing claims.
-
 ## `HIPENGINE_GGUF_AR_PACKED_DECODE` (default-on packed decode)
 - Added 2026-07-05 as a packed-verifier AR diagnostic, then replaced by the
   retained decode-shaped packed AR path. The current default-on route calls
@@ -10846,6 +10825,36 @@ oracles, staged/combined gather routing, raw-head fallback and parser/suite
 contracts. Any changed route needs real compatibility proposal/commit/reset
 and teardown checks plus separate public NextN preservation; changed arithmetic
 needs the execution-profile numerical/task gate, not the old timing row.
+
+### R0307 — Target score and hidden trace ownership
+
+`--record-target-topk-scores` requests full-logit host capture from block
+verification, then emits compact `target_lm_head_score_rows` and aligned
+`target_hidden_seed_rows`. It requires block verification; native target-cycle
+and enqueue-only graph verification refuse the host output. Capture does not
+force a logits-producing head: a singleton direct top-1 head still returns no
+logits. Only materialized row-head logits produce score rows, with one FP32
+vocabulary-sized copy per verifier row. This diagnostic is not a timing route.
+
+Compact rows preserve available input/target alignment, ordered unique draft,
+target and extra candidates, FP32 near-tie scores and deltas. Missing logits
+produce no score rows; invalid candidate IDs have null scores. Hidden summaries
+mark unavailable rows rather than substituting another seed. The original
+capture and hidden-score evidence remains in
+`benchmarks/results/2026-07-03-mtp-target-score-capture-smoke.json` and
+`benchmarks/results/2026-07-03-mtp-mixed-ja-en-translate-target-hidden-scores-live.json`.
+These are historical diagnostics, not a new parity or performance result.
+
+**Decision needed:** keep the compact cross-engine score diagnostic or replace
+it with a tensor trace before retiring the CLI and result fields. Keep this
+trace ownership separate from R0301's singleton top-1 arithmetic selector.
+
+**Clearing action:** migrate verifier capture, benchmark callers/serialization
+and attribution consumers together. Run benchmark metrics, verifier LM-head,
+native-state attribution and forced-target probe tests. A replacement must
+preserve exact row/position/candidate alignment, near-tie precision, explicit
+missing-row behavior and graph readback refusal, then exercise real
+verify/commit/reset plus a separate public NextN preservation request.
 
 ### R0306 — Legacy draft stage-trace replacement
 

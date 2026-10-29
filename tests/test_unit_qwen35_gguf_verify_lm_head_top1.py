@@ -352,8 +352,10 @@ def test_verify_lm_head_q6_top1_dp4a_requires_sidecar(monkeypatch: pytest.Monkey
 
 @pytest.mark.parametrize("rows,enqueue_only", [(1, False), (2, False), (3, False), (7, False), (9, False), (2, True), (3, True), (7, True)])
 @pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("capture_logits", [False, True])
 def test_block_verifier_lm_head_dtype_matches_singleton_shortcut(
     monkeypatch: pytest.MonkeyPatch, rows: int, enqueue_only: bool, enabled: bool,
+    capture_logits: bool,
 ) -> None:
     """Run the real block caller and head dispatcher with host-only device stubs."""
     session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
@@ -410,10 +412,13 @@ def test_block_verifier_lm_head_dtype_matches_singleton_shortcut(
         "set_decode_position_i64", "set_i64_scalar", "copy_i32_to_i64",
     ):
         monkeypatch.setattr(runner_mod, name, lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        runner_mod, "copy_device_to_host",
-        lambda ptr, buf, nbytes, **kwargs: ctypes.memset(ptr, 0, nbytes),
-    )
+    readbacks = []
+
+    def readback(ptr, buf, nbytes, **kwargs):
+        readbacks.append((buf.ptr, nbytes, kwargs))
+        ctypes.memset(ptr, 0, nbytes)
+
+    monkeypatch.setattr(runner_mod, "copy_device_to_host", readback)
     for name, label in (
         ("gguf_q4_k_quantize_f32_q8_1", "quant_f32"),
         ("gguf_q4_k_quantize_bf16_q8_1", "quant_bf16"),
@@ -422,9 +427,20 @@ def test_block_verifier_lm_head_dtype_matches_singleton_shortcut(
     ):
         monkeypatch.setattr(runner_mod, name, lambda *args, _label=label, **kwargs: calls.append((_label, args)))
 
+    if enqueue_only and capture_logits:
+        with pytest.raises(ValueError, match="does not support host diagnostic outputs"):
+            session.verify_target_block(
+                [1] * rows, stream=7, capture_lm_head_logits=True,
+                _enqueue_only=True, _pre_staged_token_ids_ptr=0xC000, _target_top1_i32_ptr=0xD000,
+            )
+        assert calls == []
+        assert readbacks == []
+        assert session.position == 0
+        return
+
     result = session.verify_target_block(
         [1] * rows, stream=7 if enqueue_only else 0,
-        capture_lm_head_logits=not enqueue_only,
+        capture_lm_head_logits=capture_logits,
         _enqueue_only=enqueue_only,
         _pre_staged_token_ids_ptr=0xC000 if enqueue_only else None,
         _target_top1_i32_ptr=0xD000 if enqueue_only else None,
@@ -438,13 +454,18 @@ def test_block_verifier_lm_head_dtype_matches_singleton_shortcut(
     if enqueue_only:
         assert result is None
         assert session.position == 0
+        assert readbacks == []
     else:
         assert result.token_ids == [0] * rows
         np.testing.assert_array_equal(result.hidden_seeds, np.zeros((rows, 64), dtype=np.float32))
-        if direct:
+        logits_readbacks = [item for item in readbacks if item[0] == 0x9000]
+        if direct or not capture_logits:
             assert result.lm_head_logits_f32 is None
+            assert logits_readbacks == []
         else:
             np.testing.assert_array_equal(result.lm_head_logits_f32, np.zeros((rows, 128), dtype=np.float32))
+            assert result.lm_head_logits_f32.flags.c_contiguous
+            assert logits_readbacks == [(0x9000, rows * 128 * 4, {"runtime": session.runtime})]
         assert session.position == rows
 
 
