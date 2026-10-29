@@ -3427,27 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## The T16 residency flags
-
-`HIPENGINE_QWEN4_EXP_T16_RESIDENT` and
-`HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS` (both default off/empty) drive
-the binding-owned tile-residency populate at generator construction (the
-docs/QWEN4EXP-T16-RESIDENCY.md mechanism: read -> repack -> upload -> attach
-as the weight's `t16` allocation stage, raw kept). They exist so the
-X-7-admitted full-window phase has its mechanism ready and so the
-transition off the module sidecar caches is testable without a model load
-of the full tile set.
-
-Removal condition: fold the populate into the load path unconditionally (no
-flag) once the X-7 decision lands and either (a) the T16 routes are
-promoted — then the binding stage is the production residency and the
-sidecar caches themselves move to this same removal list — or (b) the
-routes are rejected — then delete the populate, the `t16` stage helpers'
-generator call site, and keep the loading-layer primitives only if another
-consumer names them. The `MAX_LAYERS` bound exists solely because the
-transient dual residency (tiles + raw) may not fit; it dies with the
-free_raw phase that makes residency net-zero.
-
 ## The QSA ordered-decode fusion flag
 
 `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` (default off) selects the
@@ -3467,8 +3446,11 @@ its temporary selector until the graph lands.
 
 ## The Qwen4Exp T16 routed-expert routes and tile residency
 
-This unit also owns R0448's down-route selector and sidecar consumers. The
-older entry's pending X-7 decision is superseded by the decision below.
+This unit also owns R0448's down-route selector/sidecar consumers and R0449's
+construction-time residency controls, slot/layer filtering and explicit populate
+method. Their older pending X-7 decisions are superseded by the decision below.
+Audit the shared materializer before deleting loading primitives; preserve
+`rebind_resident_weights` for non-T16 weight replacement.
 Retire the down A/B and layer2 candidate arms together with runtime selection;
 do not leave diagnostic controls that silently select the fallback.
 

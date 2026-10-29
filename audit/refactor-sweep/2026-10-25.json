@@ -12968,8 +12968,8 @@
       "start_line": 10662,
       "end_line": 10682,
       "sha256": "09f0d4b04ea19e394d8354de025823da6c6650f4511731cee6067e209d04ee50",
-      "status": "pending",
-      "evidence": [],
+      "status": "consolidated-under-open-R0451",
+      "evidence": ["Construction populate, slot/layer controls and explicit method still live; pendingX7 framing superseded. Assign coordinated retirement and materializer consumer audit to R0451; no implementation removal claimed. Worklog: worklog/entries/20261029T210534.002095Z-cleanup-refactor-r0449-e4b788.md."],
       "subitems": []
     },
     {
