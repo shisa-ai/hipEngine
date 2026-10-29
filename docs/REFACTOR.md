@@ -3427,32 +3427,6 @@ category and control/ownership gates before closing this entry.
 
 
 
-## 2026-09-16 Qwen4Exp binder: pre-binder env conflicts are reported
-
-The Qwen4Exp profile binder owns 66 env variables and overwrites all of them
-during its pass, so a value set before generator construction is silently
-discarded: the caller's route never runs and the experiment reports a clean null
-that reads like a real negative result. That hazard is now surfaced rather than
-documented. `_apply_profile_env` records every caller-set value the bind
-discards, `last_prebinder_conflicts()` exposes them, and
-`_report_prebinder_conflicts` warns — or raises when
-`HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT=error`. The module tracks its own writes
-separately so strict-then-production binding in one process is not a conflict.
-`scripts/execution_profile_q8_wmma_prefill_layers_gate.py` raises on a non-empty
-conflict map rather than measuring the wrong route.
-
-An audit of all 31 scripts that mention a binder-owned variable found **no**
-script that sets one before constructing a generator, so no prior null result is
-attributable to this hazard. The established convention is
-`qwen4exp_profile_gap.py`'s `_apply_post_binder_overrides`, which is correct.
-The layer-scope gate's bespoke setup was the only site at risk and it already
-flips post-binder.
-
-Removal condition: when Qwen4Exp profile state becomes request-local (tracked in
-the 2026-08-29 entry above), the env transport disappears and this conflict
-reporting goes with it. Until then the warning is the guard; do not downgrade it
-to a comment.
-
 ## 2026-09-17 Q8_0 wide-row dense prefill: a route for an unreachable kernel
 
 `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` routes Q8_0 F32/F32 prefill linears with
@@ -11140,3 +11114,35 @@ its selection, DMS and retry responsibilities to another owner.
 
 Source review and focused regression evidence:
 `../worklog/entries/20261029T183255.657751Z-cleanup-refactor-r0422-auto-context-9c4ccd.md`.
+
+### R0425 — Qwen4Exp pre-binder conflict guard
+
+`hipengine/generation/qwen4_exp_profiles.py` still publishes route settings
+through `_apply_profile_env`. It records differing caller values in
+`last_prebinder_conflicts()` and warns, or raises when
+`HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT=error`. Binder-owned previous writes
+are not caller conflicts. Runner-owned selector migrations have reduced this
+transport but have not eliminated it; keep the guard while writes remain.
+`scripts/execution_profile_q8_wmma_prefill_layers_gate.py` checks the conflict
+map after construction and applies its experimental route overrides afterward.
+
+**Deferred dependency:** finish the explicit owner-field migration described
+in the 2026-08-29 Qwen4Exp late-layer production prefill entry. Do not replace
+it with implicit per-method profile context or a transaction framework.
+**Clearing action:** migrate the remaining binder writes and their dispatch,
+resource and diagnostic readers together, provide an explicit selected-route
+getter, and update the layer gate to use it rather than environment ordering.
+Only then remove the conflict map, binder-write tracking, warning/error control
+and their documentation. Preserve caller-override observability and strict/
+production isolation. Run `tests/test_unit_qwen4_exp_profiles.py`, the affected
+runner ownership tests and a real generation request confirming selected routes
+and isolation before closing the migration. The focused guard regression is:
+
+```bash
+uv run pytest tests/test_unit_qwen4_exp_profiles.py -k 'pre_binder or previous_bind'
+```
+
+This review changes no runtime behavior. The historical variable count and
+script census are not a current inventory; their original text remains in Git
+history. Source review and guard checks:
+`../worklog/entries/20261029T184203.938095Z-cleanup-refactor-r0425-binder-conflicts-b4ac19.md`.

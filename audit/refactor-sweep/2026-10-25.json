@@ -12256,8 +12256,8 @@
       "start_line": 9760,
       "end_line": 9785,
       "sha256": "e960ecb6cae0649657fb29fc8f891d6011996daedc24e30461695b1c1cf60f2f",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-profile-transport-migration",
+      "evidence": ["Live binder env writes and layer-gate conflict consumer verified; preserve warning/error and own-write filtering. Move guard removal dependency to deferred section with explicit reader/owner migration and route-verification steps; stale count/census retired. Three guard regressions and docs/audit gates pass. Worklog: worklog/entries/20261029T184203.938095Z-cleanup-refactor-r0425-binder-conflicts-b4ac19.md."],
       "subitems": []
     },
     {
