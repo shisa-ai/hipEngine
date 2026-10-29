@@ -11893,18 +11893,20 @@
       "start_line": 9434,
       "end_line": 9448,
       "sha256": "9e971de5c2c7434806cef15d3d0080703889373f0c29f3f191c926feac8e3217",
-      "status": "pending",
-      "evidence": [],
+      "status": "aotriton-evaluator-repaired-interface-deferred-timesfm-subitem-open",
+      "evidence": [
+        "Admission is already default-on. Current full-logit evaluator unsets strict-arm control, making slot-local comparison on/on; repair per-candidate explicit strict/candidate manifests at capture and artifact provenance. Six RED/GREEN real capture-driver synthetic cases across inherited unset/0/1, focused bundle53pass. Preserve runtime defaults and rollback; move interface removal decision to bottom rather than delete live comparison arm. Independent TimesFM scores note split into its own active heading and remains open for next unit. Evidence: worklog/entries/20261029T151518.411951Z-cleanup-refactor-r0407-aotriton-evaluator-4f9845.md."
+      ],
       "subitems": [
         {
           "line": 9436,
           "text": "- Promoted to default ON 2026-09-10 (see the capacity campaign doc and",
-          "status": "pending"
+          "status": "completed-promotion-history-removed"
         },
         {
           "line": 9441,
           "text": "- Removal trigger: once the parity roadmap P1/P2 follow-ups (server-faithful",
-          "status": "pending"
+          "status": "comparison-arm-repaired-rollback-interface-decision-deferred"
         },
         {
           "line": 9448,

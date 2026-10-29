@@ -3425,19 +3425,7 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` — promoted, remove after soak
-
-- Promoted to default ON 2026-09-10 (see the capacity campaign doc and
-  `benchmarks/results/2026-09-10-w7900-int8-slot-local-aotriton-gate-corrected.json`):
-  the slot-local transient-oracle AOTriton admission now matches the engine-wide
-  AOTriton default that the direct arm already runs. `=0` is the explicit
-  rollback to the native split-K paged kernel.
-- Removal trigger: once the parity roadmap P1/P2 follow-ups (server-faithful
-  allocation probe, R0-R4 matched walls) confirm the route with the default on
-  and no rollback demand is recorded, delete the flag and the
-  `transient_direct_oracle` gate term so slot-local admission is unconditional,
-  keeping the native kernel only as the sub-512-row crossover and the
-  AOTriton-wrap failure fallback.
+## TimesFM unused attention score buffer
 
 - [2026-09-09] TimesFM `_Buffers.scores` is no longer read by the FP16 attention path (WMMA flash kernel replaced the scores GEMM + softmax chain; 2026-09-09 flash-attn unit). Remove the allocation and its `f16()` sizing once the FP32 strict path also stops using it or a strict-path replacement is registered.
 ## PF-1d MMQ tile template (2026-09-02)
@@ -11239,3 +11227,27 @@ the selected context with the requested full-depth workload. The historical
 `../benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json` and
 `../benchmarks/results/2026-09-09-rx7900xtx-server-int8-route-census.json`.
 No fresh capacity result is claimed here.
+
+### R0407 — Slot-local AOTriton rollback interface
+
+`HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` defaults to `1`; `0`
+selects native attention only for slot-local transient-BF16-oracle layers.
+Backend capability, row crossover and wrapper-failure behavior remain separate.
+The route's admission history is complete; do not reopen promotion to decide
+whether this rollback interface is still useful.
+
+The full-logit evaluator and route A/B example use the native arm. Their old
+unset controls stopped selecting that arm after the runtime default changed.
+Both now bind explicit off/on values, and the evaluator records its actual
+strict and candidate environments. Its synthetic contract tests verify distinct
+arm policy through the real capture driver; they do not establish GPU kernel
+identity or a new quality verdict. Historical artifacts are unchanged.
+
+**Deferred interface decision:** keep this layer-scoped rollback, or replace its
+native-comparison capability before deleting the environment reader and helper.
+A replacement must update both evaluator manifests/capture and the route A/B
+example, preserve strict native fallback and backend/row constraints, and run
+real public generation confirming selection, repeatability and teardown.
+Changing the flag alone would erase a working comparison arm, not finish cleanup.
+Implementation and focused evidence:
+`../worklog/entries/20261029T151518.411951Z-cleanup-refactor-r0407-aotriton-evaluator-4f9845.md`.

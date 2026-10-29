@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Gate the oracle-free direct INT8 prefill attention against the strict route.
 
-The pure-INT8 route's strict prefill arithmetic is the oracle-bridge path
-(``HIPENGINE_GGUF_INT8_PREFILL_DIRECT`` unset): full-attention prefill
-reads the write-through BF16 oracle pair via AOTriton while the retained
-INT8 store is written. The candidate (default ``twopass`` kernel) reads
-the retained INT8 store directly through the two-pass tiled kernel, so
-this gate isolates exactly the INT8-read prefill arithmetic drift.
+The pure-INT8 route's strict prefill arithmetic is the oracle-bridge path:
+full-attention prefill reads the write-through BF16 oracle pair via AOTriton
+while the retained INT8 store is written. The direct candidate reads the
+retained INT8 store through the selected flash or sequential kernel.
+The slot-local AOTriton candidate instead compares explicit native rollback
+against explicit AOTriton admission over the same BF16 oracle. Both arm
+manifests bind their route controls rather than inheriting runtime defaults.
 
 The adapter keeps strict and candidate in one resident session with the
 pure-INT8 KV policy, teacher-forces every candidate onto the strict token
@@ -83,6 +84,7 @@ class Candidate:
     classification: str
     mechanism: str
     strict_fallback: str
+    strict_environment: Mapping[str, str]
     environment: Mapping[str, str]
 
 
@@ -90,6 +92,7 @@ def _candidate(kernel: str) -> Candidate:
     base = dict(PURE_INT8_ENV)
     base[DIRECT_ENV] = "1"
     base[KERNEL_ENV] = kernel
+    base[SLOT_LOCAL_AOTRITON_ENV] = "1"
     kernel_desc = (
         "the GQA-grouped flash kernel (LDS tile staging, online softmax in registers)"
         if kernel == "flash"
@@ -104,6 +107,7 @@ def _candidate(kernel: str) -> Candidate:
             "BF16 oracle pair and the AOTriton bridge"
         ),
         strict_fallback="pure-INT8 oracle-bridge prefill (BF16 oracle + AOTriton)",
+        strict_environment={**PURE_INT8_ENV, DIRECT_ENV: "0", SLOT_LOCAL_AOTRITON_ENV: "1"},
         environment=base,
     )
 
@@ -122,8 +126,7 @@ def _slot_local_aotriton_candidate() -> Candidate:
     packed_slot_local``: the flag has no effect on ``session.prefill``.
     """
 
-    base = dict(PURE_INT8_ENV)
-    base[SLOT_LOCAL_AOTRITON_ENV] = "1"
+    base = {**PURE_INT8_ENV, DIRECT_ENV: "0", SLOT_LOCAL_AOTRITON_ENV: "1"}
     return Candidate(
         name="int8_slot_local_aotriton",
         classification="T2",
@@ -136,6 +139,7 @@ def _slot_local_aotriton_candidate() -> Candidate:
             "native split-K paged attention over the same BF16 oracle "
             f"({SLOT_LOCAL_AOTRITON_ENV}=0)"
         ),
+        strict_environment={**base, SLOT_LOCAL_AOTRITON_ENV: "0"},
         environment=base,
     )
 
@@ -419,7 +423,7 @@ def _capture(
         for index, row in enumerate(prompt_rows):
             prompt_id = str(row["id"])
             tokens = prompt_tokens[prompt_id]
-            with route_environment(PURE_INT8_ENV):
+            with route_environment(candidate.strict_environment):
                 _rearm_bulk_workspace(session)
                 strict = tuple(
                     _packed_trajectory(
@@ -555,7 +559,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
             "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
             "HIPENGINE_GGUF_DECODE_REPACK": os.environ.get("HIPENGINE_GGUF_DECODE_REPACK"),
-            "strict_route_environment": dict(PURE_INT8_ENV),
+            "strict_route_environment": dict(candidate.strict_environment),
             "candidate_route_environment": dict(candidate.environment),
         },
         build_profile="execution_profile_gguf_int8_direct_prefill_gate",
@@ -583,7 +587,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "classification": candidate.classification,
             "mechanism": candidate.mechanism,
             "strict_fallback": candidate.strict_fallback,
-            "strict_environment": dict(PURE_INT8_ENV),
+            "strict_environment": dict(candidate.strict_environment),
             "candidate_environment": dict(candidate.environment),
         },
         "protocol": {
