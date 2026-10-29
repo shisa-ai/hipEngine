@@ -3430,41 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## Laguna Q6 qmicro-permute rollback
-
-- Added 2026-07-26 with gfx1151 `LAGUNA_Q6_QMICRO_PERMUTE` and optional
-  `q6_qmicro_permute=False` session/profile rollback. It is constrained to
-  the exact qmicro/compact/half-row/skip-padded/64-row Q6 body and changes
-  neither resident bytes nor arithmetic order.
-- The actual layer-1 leaf is BF16-byte exact and improves
-  **4.872 -> 4.741 ms (-2.67%)**. Seven complete-state pp512 pairs improve
-  **567.998 -> 569.563 tok/s (+0.276%, 5/7 wins)**. Cached tracing observes
-  all **115** intended calls with scratch 0 and reduces their total
-  **1,138.893 -> 1,124.852 ms (-1.23%)** across 512/1K/4K.
-- Keep the rollback through clean selector-unset publication and one later
-  selected-down checkpoint. Then remove the constructor/profile override
-  while retaining the backend capability and scalar-unpack fallback for
-  unmeasured backends and non-production template shapes.
-
-## Laguna Q6 planar-qmicro candidate rollback
-
-- Added 2026-07-26 with gfx1151
-  `LAGUNA_Q6_QMICRO_PLANAR` plus the temporary
-  `q6_qmicro_planar=True` session/profile selector. It changes only the
-  byte order inside each existing 12-byte qmicro record and selects matching
-  prefill, direct-decode, and grouped-small-M consumers.
-- The exact actual-weight leaf is positive. Two opposite owner-order
-  complete-state blocks are aggregate-neutral (+0.013% combined mean,
-  +0.139% combined median) with exact logits/hidden/KV/token/cursor, so the
-  repo's verified-subwindow rule retains and enables the capability. Keep
-  `q6_qmicro_planar=False` only through clean selector-unset publication and
-  one later selected-down checkpoint, then remove the constructor/profile
-  override and obsolete production permute selector. Preserve legacy and
-  interleaved qmicro fallbacks for unmeasured backends and rollback caches.
-- Clean selector-unset publication is satisfied at
-  **573.354/530.351/446.189 tok/s**, improving every preceding production
-  length. The one-later-selected-down checkpoint remains open.
-
 ## Laguna source-F16 boundary-fusion rollback
 
 - Added 2026-07-26 with session-local
@@ -10512,6 +10477,36 @@ setter together; run compaction comparison, source-default, runner and full
 MoE numerical contracts, then public `LLM.generate()` with default selection,
 metadata/output equality and cleanup checks. Do not silently route a requested
 serial comparison through parallel after retiring the selector.
+
+### R0327 / R0328 — Laguna permute/planar comparison migration
+
+`q6_qmicro_permute` remains an interleaved-record consumer, not the gfx1151
+default: gfx1151 enables planar qmicro and leaves permute off. Both selectors
+still serve the live planar A/B and long-context profiler, and the numerical
+fixture explicitly compares separately packed interleaved/planar residents.
+Preserve matching resident bytes and consumers across prefill/direct decode/
+grouped-small-M; R0322 owns the common layout/cache boundary.
+
+The planar A/B now holds later WMMA-prefetch and precomputed sums off for both
+arms and records `comparison_policy`. Previously its interleaved arm failed
+construction under inherited planar-only prefetch settings. The profiler now
+maps an explicit permute request to interleaved layout when layout is unset,
+and disables planar-only prefetch for explicit interleaved requests. Unset
+requests still use package defaults; explicitly conflicting planar+permute
+requests still fail rather than silently downgrade. Profile results record the
+layout overrides. Historical mode labels and July evidence remain unchanged.
+
+**Remaining work:** retire the session/profile selectors only with these live
+comparison callers and their explicit primitive/resident ownership. The local
+Laguna model-resource blocker in R0313–R0320 prevents actual full-model/public
+validation; missing measurements are not a reason to disable existing paths.
+
+**Clearing action:** run planar-comparison, activation-comparison,
+resident-layout, profiler and runner contracts plus full Q6 numerical oracles;
+then run both owner orders of the A/B and a public `LLM.generate()` check with
+an available Laguna artifact. Record layout/consumer/default selection, exact
+state and cleanup. Keep legacy/interleaved consumers and cache conversion where
+required, and preserve historical result readers when removing old labels.
 
 ### R0324 / R0325 / R0326 — Laguna Q6 activation comparison migration
 

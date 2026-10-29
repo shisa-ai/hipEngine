@@ -480,6 +480,25 @@ def _summarize_samples(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def _q6_layout_overrides(args: argparse.Namespace) -> dict[str, bool | None]:
+    """Keep interleaved layout requests compatible with later planar prefetch."""
+
+    planar = args.q6_qmicro_planar
+    if args.q6_qmicro_permute is True and planar is None:
+        planar = False
+    overrides = {
+        "q6_qmicro_permute": args.q6_qmicro_permute,
+        "q6_qmicro_planar": planar,
+    }
+    if planar is False:
+        overrides.update(
+            q6_wmma_prefetch_weight=False,
+            q6_wmma_prefetch_activation=False,
+            q6_precomputed_activation_sums=False,
+        )
+    return overrides
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     lengths = tuple(int(value) for value in args.lengths)
     if lengths not in PROFILE_LENGTH_SETS:
@@ -718,8 +737,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
             prefill_global_attention_chunk_size=args.attention_rows,
-            q6_qmicro_permute=args.q6_qmicro_permute,
-            q6_qmicro_planar=args.q6_qmicro_planar,
+            **_q6_layout_overrides(args),
             moe_branch_concurrency=args.moe_branch_concurrency,
             moe_shared_after_router=args.moe_shared_after_router,
             moe_shared_low_priority=args.moe_shared_low_priority,
@@ -1348,6 +1366,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "warmup_rows": args.warmup_rows,
             "q6_qmicro_permute": active_q6_qmicro_permute,
             "q6_qmicro_planar": active_q6_qmicro_planar,
+            "q6_layout_overrides": _q6_layout_overrides(args),
             "moe_branch_concurrency": active_moe_branch_concurrency,
             "moe_shared_after_router": active_moe_shared_after_router,
             "moe_shared_low_priority": active_moe_shared_low_priority,

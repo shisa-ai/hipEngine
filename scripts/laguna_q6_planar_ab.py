@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare production interleaved Q6 qmicro with byte-neutral planar Q6."""
+"""Compare interleaved-permute and planar Q6 layouts without later prefetch."""
 
 from __future__ import annotations
 
@@ -27,6 +27,13 @@ from scripts.laguna_target_ar_bench import (
     _load_prompts,
     _progress,
 )
+
+# Hold later planar-only prefetch features fixed in the layout comparison.
+_COMPARISON_POLICY = {
+    "q6_wmma_prefetch_weight": False,
+    "q6_wmma_prefetch_activation": False,
+    "q6_precomputed_activation_sums": False,
+}
 
 _MODES = ("current_permute", "planar_candidate")
 
@@ -113,6 +120,7 @@ def _run_mode(
         q6_qmicro=True,
         q6_qmicro_planar=planar,
         q6_qmicro_permute=not planar,
+        **_COMPARISON_POLICY,
     )
     load_seconds = time.perf_counter() - load_started
     try:
@@ -136,6 +144,7 @@ def _run_mode(
     return {
         "q6_qmicro_planar": planar,
         "q6_qmicro_permute": not planar,
+        "comparison_policy": dict(_COMPARISON_POLICY),
         "load_seconds_excluded": load_seconds,
         "samples_tok_s": samples,
         "median_tok_s": statistics.median(samples),
