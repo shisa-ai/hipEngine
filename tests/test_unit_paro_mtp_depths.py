@@ -944,7 +944,6 @@ def test_following_cycle_chains_from_the_reseeded_candidate() -> None:
 
 
 def test_cancellation_before_verify_restores_both_owners_and_publishes_nothing() -> None:
-    drafted = _drafted_tokens(4)
     proposer = _ChainProposer()
     adapter = _adapter(depth=3, proposer=proposer)
     row = adapter.owner._row(_REQUEST_ID)

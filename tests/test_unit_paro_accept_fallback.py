@@ -100,8 +100,9 @@ def test_bulk_commit_uses_authoritative_accept_row(
         "not_checked" if accept_mode == "on" else "top1_values"
     )
     assert state["row"] == expected, "canonical Conv/GDN must match selected hidden and metadata"
-    cursor_owner = "host" if (accept_mode == "on" or gpu_matches) else "device"
-    assert positions == [(cursor_owner, 7 + expected)]
+    # The refactored non-graph route always publishes the authoritative cursor
+    # to the device; only a graph-owned commit can use a host-only mirror.
+    assert positions == [("device", 7 + expected)]
     if mode == "verify_chain":
         assert result.selected_target_hidden_ptr == 0x1000 + expected * 4
     if accept_mode != "on" and not gpu_matches:
