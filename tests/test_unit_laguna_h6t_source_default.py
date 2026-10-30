@@ -8,6 +8,7 @@ import pytest
 
 import hipengine.runtime.laguna_moe as laguna_moe_module
 from hipengine.kernels import hip_gfx1100, hip_gfx1151
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.runtime.laguna_gguf_runner import (
     LagunaPrefillChunkPolicy,
@@ -122,8 +123,8 @@ def test_h6t_source_default_promotes_only_iq3_selected_down(
     live_abis = getattr(hip_gfx1100, _ABI_CAPABILITY)
     assert live_variants == candidate_variants
     assert live_abis == qualified_abis
-    assert getattr(hip_gfx1151, _CAPABILITY) == {}
-    assert getattr(hip_gfx1151, _ABI_CAPABILITY) == {}
+    assert backend_package_capability("hip_gfx1151", _CAPABILITY) == {}
+    assert backend_package_capability("hip_gfx1151", _ABI_CAPABILITY) == {}
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6T_IQ3

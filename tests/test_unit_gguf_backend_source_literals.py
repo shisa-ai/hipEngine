@@ -9,12 +9,13 @@ re-exports, ordered local literal aliases, and fail-closed rejection of
 import cycles, external imports, path escapes, missing modules, and arbitrary
 calls.
 
-The gfx1151 package now re-exports its policy data from ``policy_capability``
-/ ``policy_gguf`` / ``policy_laguna`` as explicit ``NAME = _policy_x.NAME``
-assignments. A literal-only reader reports those names as nonliteral and an
-empty ``GGUF_CONSUMER_LAYERS``, which makes public GGUF construction refuse
-the backend. The live-declaration tests below are the regression guard; the
-exact certified layer set stays owned by the consumer-surface parity test.
+The gfx1151 package declares its policy owners in ``POLICY_MODULE_NAMES``;
+the root read merges those owners' literal declarations, so a name the
+initializer no longer re-binds still reads as its owner's value. A literal-only
+reader that ignored the owner declaration would report an empty
+``GGUF_CONSUMER_LAYERS`` and make public GGUF construction refuse the backend.
+The live-declaration tests below are the regression guard; the exact certified
+layer set stays owned by the consumer-surface parity test.
 """
 
 from __future__ import annotations

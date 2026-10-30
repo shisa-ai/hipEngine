@@ -1,13 +1,14 @@
 """Move-only boundary contract for the gfx1151 Laguna policy declarations.
 
 ``policy_laguna`` owns the immutable Laguna capability/policy values; the
-backend package keeps explicit compatibility exports. Registration stays in
+backend package resolves them from that declared owner. Registration stays in
 ``hipengine.kernels.hip_gfx1151`` and is not touched by this module.
 """
 
 from __future__ import annotations
 
 import hipengine.kernels.hip_gfx1151 as backend
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1151 import policy_laguna
 from hipengine.kernels.registry import registered_keys, resolve
 
@@ -58,25 +59,24 @@ def test_policy_module_owns_only_laguna_declarations() -> None:
     assert not hasattr(policy_laguna, "import_module")
 
 
-def test_package_reexports_every_policy_declaration_explicitly() -> None:
+def test_package_resolves_every_policy_declaration_from_its_owner() -> None:
+    sentinel = object()
     for name in policy_laguna.__all__:
-        assert getattr(backend, name) is getattr(policy_laguna, name)
+        assert (
+            backend_package_capability("hip_gfx1151", name, sentinel)
+            is getattr(policy_laguna, name)
+        ), name
+        assert not hasattr(backend, name), name
 
-    # The package keeps its historical star-import surface: every Laguna name
-    # it already listed still resolves from the owning module, and the moved
-    # block did not add names to ``__all__``.
-    listed_laguna = {name for name in backend.__all__ if name.startswith("LAGUNA_")}
-    assert listed_laguna <= set(policy_laguna.__all__)
-
-    from hipengine.kernels.hip_gfx1151 import LAGUNA_F16_PREFILL_STRATEGY
-
-    assert LAGUNA_F16_PREFILL_STRATEGY is policy_laguna.LAGUNA_F16_PREFILL_STRATEGY
-    assert "LAGUNA_F16_PREFILL_STRATEGY" in backend.__all__
+    # The retired compatibility aliases no longer appear in the package's
+    # star-import surface.
+    assert not {name for name in backend.__all__ if name.startswith("LAGUNA_")}
 
 
 def test_registration_snapshot_is_stable_across_replacement() -> None:
-    # A pytest session may not have aliased every lazily imported peer module
-    # yet; establish the complete alias state before comparing replacements.
+    # A pytest session may not have registered every lazily imported peer
+    # module yet; establish the complete registration state before comparing
+    # replacements.
     backend.register_gfx1151_kernels(replace=True)
     before = _registry_snapshot("hip_gfx1151")
 

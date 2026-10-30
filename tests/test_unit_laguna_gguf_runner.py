@@ -2027,6 +2027,7 @@ def test_laguna_packed_query_attention_layout_follows_package_capability(
         package,
         "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES",
         False,
+        raising=False,
     )
     assert not runner_module._resolve_laguna_attention_packed_queries(
         "hip_gfx1151"

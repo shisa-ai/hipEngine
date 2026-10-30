@@ -8,6 +8,7 @@ import pytest
 
 import hipengine.runtime.laguna_moe as laguna_moe_module
 from hipengine.kernels import hip_gfx1100, hip_gfx1151
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.runtime.laguna_gguf_runner import (
     LagunaPrefillChunkPolicy,
@@ -120,8 +121,8 @@ def test_h6q_runtime_capability_is_retained_as_h6r_rollback_and_fail_closed(
 
     assert getattr(hip_gfx1100, _CAPABILITY) == source_variants
     assert getattr(hip_gfx1100, _ABI_CAPABILITY) == qualified_abis
-    assert getattr(hip_gfx1151, _CAPABILITY) == {}
-    assert getattr(hip_gfx1151, _ABI_CAPABILITY) == {}
+    assert backend_package_capability("hip_gfx1151", _CAPABILITY) == {}
+    assert backend_package_capability("hip_gfx1151", _ABI_CAPABILITY) == {}
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys[_QUANT].variant == _H6T_IQ3

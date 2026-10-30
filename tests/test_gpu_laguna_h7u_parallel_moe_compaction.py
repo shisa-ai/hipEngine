@@ -22,6 +22,7 @@ from hipengine.core.memory import (
     memory_stats,
 )
 from hipengine.kernels import hip_gfx1100, hip_gfx1151
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.moe import (
     build_qwen35_moe_group_scatter,
     qwen35_moe_gather_packed_hidden_lowp,
@@ -556,7 +557,9 @@ def test_h7u_package_mode_keeps_serial_rollback_and_gfx1151_isolation() -> None:
     assert resolve_laguna_group_compact_mode("hip_gfx1100") == expected_default
     assert resolve_laguna_group_compact_mode("hip_gfx1100", "serial") == "serial"
     assert _parallel_mode() == "parallel"
-    assert getattr(hip_gfx1151, _SOURCE_CAPABILITY) == "parallel"
+    assert (
+        backend_package_capability("hip_gfx1151", _SOURCE_CAPABILITY) == "parallel"
+    )
     assert not hasattr(hip_gfx1151, _H7U_CAPABILITY)
 
 

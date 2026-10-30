@@ -4214,31 +4214,23 @@ startup failure, shutdown and model reuse. Verify readiness and service-health a
 report the same engine. A real `hipengine serve` request must confirm the intended service path, not
 only mocked route tests.
 
-### RF-8 / R0187 — Separate backend policy manifests from registration
+### RF-8 / R0187 — Verify Laguna dispatch after policy-owner migration
 
 Owner: `hipengine/kernels/policy.py`.
 
-Scope: `hipengine/kernels/policy.py`, `hipengine/kernels/hip_gfx1151/__init__.py`,
-`hipengine/kernels/backends.py`, `hipengine/loading/backend_source_literals.py`.
+Scope: `hipengine/kernels/hip_gfx1151/policy_laguna.py`,
+`hipengine/runtime/laguna_gguf_runner.py`.
 
-**Remaining compatibility migration:** migrate package consumers and source checks to the explicit
-policy owners before removing the package aliases. Runtime capability lookup and the cold source
-reader follow the backend's declared ordered owner modules when a package binding is absent.
-The backend's own wrappers use the same reader at each reached operand, preserving lazy
-branches; package aliases still serve external test and script consumers.
-Preserve package override precedence, including explicit `None`/`False`; do not create a
-second registry or move backend/quant conditionals into engine dispatch.
+**Remaining model-backed check:** obtain a local Laguna checkpoint (absent; see R0273)
+and compare public prefill/decode/MoE routes, outputs and teardown against the
+alias-bound control. Policy declarations, package consumers, source readers and backend
+wrapper reads now use the declared ordered owners; package policy aliases are removed.
+Explicit package overrides, including `None`/`False`, still take precedence.
 
-GGUF public AR/MTP generation on gfx1151 matches the alias-bound control with all policy
-bindings absent and wrapper reads attributed to their declared owners. Laguna public
-prefill/decode/MoE still needs a local checkpoint (absent; see R0273). Static registry
-identity does not replace those model-backed checks.
-
-Done when: compare the exact `(backend, layer, quant, variant)` key set, implementations,
-declared fallbacks and capability values before and after each move. Cover cold import, repeated
-registration, replacement semantics and peer backend isolation. Keep source-lineage mapping and
-alias ownership readable; generate repetitive registrations only when those checks remain explicit.
-Verify public dispatch for affected families before declaring a migration done.
+Done when: exercise Laguna through its public generation surface and confirm the named
+attention and MoE implementations ran with unchanged outputs and resource ownership.
+Static registry identity and the completed GGUF AR/MTP checks do not replace this
+model-backed check. Do not add an admission gate while the checkpoint is unavailable.
 
 ### RF-9 / R0187 — Partition Laguna attention with explicit build ownership
 

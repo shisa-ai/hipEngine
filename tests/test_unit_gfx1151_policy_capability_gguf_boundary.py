@@ -2,8 +2,10 @@
 
 ``policy_gguf`` owns the GGUF quant/layout/prefill/decode policy declarations
 and ``policy_capability`` owns backend identity/capability data. The backend
-package keeps explicit compatibility exports; registration, wrapper functions,
-and kernel bodies stay in ``hipengine.kernels.hip_gfx1151``.
+package resolves these declarations from their declared owners; only
+``TARGET_ARCH`` stays on the package as architecture identity. Registration,
+wrapper functions, and kernel bodies stay in
+``hipengine.kernels.hip_gfx1151``.
 
 The package import is deferred to a fixture. Importing the backend package
 before ``hipengine.runtime.gguf_linear`` exposes a pre-existing dispatch
@@ -152,35 +154,34 @@ def test_policy_gguf_owns_only_gguf_policy_data(policy) -> None:
     assert not hasattr(policy_gguf, "import_module")
 
 
-def test_package_reexports_every_policy_declaration_explicitly(policy) -> None:
+def test_package_resolves_every_policy_declaration_from_its_owner(policy) -> None:
     backend, policy_capability, policy_gguf = policy
-    for name in policy_capability.__all__:
-        assert getattr(backend, name) is getattr(policy_capability, name)
-    for name in set(policy_gguf.__all__) | GGUF_PRIVATE_NAMES:
-        assert getattr(backend, name) is getattr(policy_gguf, name)
+    sentinel = object()
+    moved = set(policy_capability.__all__) | set(policy_gguf.__all__) | GGUF_PRIVATE_NAMES
 
-    from hipengine.kernels.hip_gfx1151 import (
-        BACKEND,
-        GGUF_IQ_DENSE_DECODE_POLICY,
-        PARO_RETAINED_BATCH_DEFAULTS,
-        _GGUF_Q5_T16_ROWTILE_COL8_SHAPES,
-    )
+    for name in moved:
+        declaring = next(
+            module for module in backend._POLICY_MODULES if hasattr(module, name)
+        )
+        # The ordered owner lookup returns the first declaring module's object,
+        # not a copy, wrapper, or second value.
+        assert (
+            backend_package_capability("hip_gfx1151", name, sentinel)
+            is getattr(declaring, name)
+        ), name
+        if name != "TARGET_ARCH":
+            # The retired compatibility aliases no longer exist on the package;
+            # TARGET_ARCH stays as architecture identity.
+            assert not hasattr(backend, name), name
 
-    assert BACKEND is policy_capability.BACKEND
-    assert PARO_RETAINED_BATCH_DEFAULTS is policy_capability.PARO_RETAINED_BATCH_DEFAULTS
-    assert GGUF_IQ_DENSE_DECODE_POLICY is policy_gguf.GGUF_IQ_DENSE_DECODE_POLICY
-    assert _GGUF_Q5_T16_ROWTILE_COL8_SHAPES is policy_gguf._GGUF_Q5_T16_ROWTILE_COL8_SHAPES
-
-    # The historical star-import surface is unchanged: moved names already in
-    # ``__all__`` still resolve, and the move added no new star-import names.
-    listed = {name for name in backend.__all__ if name.startswith("GGUF_")}
-    assert listed <= set(policy_capability.__all__) | set(policy_gguf.__all__)
-    assert "BACKEND" in backend.__all__
+    assert backend.TARGET_ARCH is policy_capability.TARGET_ARCH
     assert "TARGET_ARCH" in backend.__all__
+    assert "BACKEND" not in backend.__all__
+    assert not {name for name in backend.__all__ if name.startswith("GGUF_")}
     assert len(backend.__all__) == len(set(backend.__all__))
 
 
-def test_package_capability_lookup_reads_the_package_aliases(policy, monkeypatch) -> None:
+def test_package_capability_lookup_reads_the_declared_owners(policy, monkeypatch) -> None:
     backend, policy_capability, policy_gguf = policy
     assert (
         backend_package_capability("hip_gfx1151", "BACKEND")
@@ -202,7 +203,7 @@ def test_package_capability_lookup_reads_the_package_aliases(policy, monkeypatch
     # Reassignment through the package is the supported read path. The owning
     # module is not mutated, so a later replacement still restores the default.
     sentinel = {"gguf_iq4_xs": {"variant": "sentinel"}}
-    monkeypatch.setattr(backend, "GGUF_IQ_DENSE_DECODE_POLICY", sentinel)
+    monkeypatch.setattr(backend, "GGUF_IQ_DENSE_DECODE_POLICY", sentinel, raising=False)
     assert (
         backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_DECODE_POLICY")
         is sentinel
@@ -248,10 +249,14 @@ def test_declared_policy_owners_are_collision_free(policy) -> None:
             owner[name] = module
 
     assert owner
-    # Every declared name is still reachable through the package today, and it
-    # is the owner's own object -- not a copy, wrapper, or second value.
+    sentinel = object()
+    # The ordered owner lookup returns the first declaring module's object --
+    # not a copy, wrapper, or second value.
     for name, module in owner.items():
-        assert getattr(backend, name) is getattr(module, name), name
+        assert (
+            backend_package_capability("hip_gfx1151", name, sentinel)
+            is getattr(module, name)
+        ), name
 
 
 def test_every_owner_declaration_resolves_without_the_package_binding(
@@ -285,7 +290,7 @@ def test_package_binding_wins_even_when_falsy_or_none(policy, monkeypatch) -> No
 
     for override in (False, None):
         with monkeypatch.context() as scoped:
-            scoped.setattr(backend, "GGUF_IQ_DENSE_DECODE_POLICY", override)
+            scoped.setattr(backend, "GGUF_IQ_DENSE_DECODE_POLICY", override, raising=False)
             assert (
                 backend_package_capability(
                     "hip_gfx1151", "GGUF_IQ_DENSE_DECODE_POLICY", "default"
@@ -350,21 +355,20 @@ def test_unknown_names_and_peer_backends_keep_caller_defaults(policy) -> None:
     )
 
 
-def test_initializer_keeps_source_assignments_for_capability_ledger(policy) -> None:
+def test_initializer_no_longer_assigns_retired_policy_names(policy) -> None:
     backend, policy_capability, policy_gguf = policy
     assigned = _initializer_assignments(backend)
     moved = set(policy_capability.__all__) | set(policy_gguf.__all__) | GGUF_PRIVATE_NAMES
 
     # The gfx1100/gfx1151 capability-ledger check unions the package's declared
-    # policy owners, so it no longer depends on these aliases; the aliases stay
-    # because the compatibility surface is frozen for RF-8.1.
-    assert moved <= set(assigned)
-    for name in moved:
-        value = assigned[name]
-        assert isinstance(value, ast.Attribute)
-        assert isinstance(value.value, ast.Name)
-        assert value.value.id in {"_policy_capability", "_policy_gguf"}
-        assert value.attr == name
+    # policy owners, so the initializer no longer re-binds them. TARGET_ARCH
+    # stays as architecture identity.
+    assert set(assigned) & moved == {"TARGET_ARCH"}
+    value = assigned["TARGET_ARCH"]
+    assert isinstance(value, ast.Attribute)
+    assert isinstance(value.value, ast.Name)
+    assert value.value.id == "_policy_capability"
+    assert value.attr == "TARGET_ARCH"
 
 
 def test_registration_snapshot_is_stable_across_replacement(policy) -> None:
@@ -491,7 +495,7 @@ def test_capability_helper_reads_package_then_owner(policy, monkeypatch) -> None
 
     assert backend._capability(capability_name) is getattr(policy_gguf, capability_name)
     with monkeypatch.context() as scoped:
-        scoped.setattr(backend, capability_name, False)
+        scoped.setattr(backend, capability_name, False, raising=False)
         assert backend._capability(capability_name) is False
         scoped.delattr(backend, capability_name, raising=False)
         assert backend._capability(capability_name) is getattr(policy_gguf, capability_name)
@@ -513,10 +517,10 @@ def test_from_module_reader_matches_package_reader(policy, monkeypatch) -> None:
         ) == backend_package_capability("hip_gfx1151", name)
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(backend, "BACKEND", None)
+        scoped.setattr(backend, "BACKEND", None, raising=False)
         assert backend_package_capability_from_module(backend, "BACKEND", "d") is None
         assert backend_package_capability("hip_gfx1151", "BACKEND", "d") is None
-        scoped.delattr(backend, "BACKEND")
+        scoped.delattr(backend, "BACKEND", raising=False)
         assert (
             backend_package_capability_from_module(backend, "BACKEND", "d")
             == backend_package_capability("hip_gfx1151", "BACKEND", "d")
@@ -538,13 +542,13 @@ def test_wrapper_reads_package_false_none_and_shape_replacements(
     # False is a real package value: the band it bounds is disabled, and the
     # owner keeps its own integer.
     with monkeypatch.context() as scoped:
-        scoped.setattr(backend, "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS", False)
+        scoped.setattr(backend, "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS", False, raising=False)
         assert _wrapper_routes(backend, monkeypatch, wrapper, [(rows, shape)]) != baseline
         assert policy_gguf.GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS is not False
 
     # None is read as None, not replaced by the owner's value.
     with monkeypatch.context() as scoped:
-        scoped.setattr(backend, "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS", None)
+        scoped.setattr(backend, "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS", None, raising=False)
         with pytest.raises(TypeError):
             _wrapper_routes(backend, monkeypatch, wrapper, [(rows, shape)])
 
@@ -557,6 +561,7 @@ def test_wrapper_reads_package_false_none_and_shape_replacements(
             backend,
             "GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES",
             frozenset({(999, 999)}),
+            raising=False,
         )
         replaced = _wrapper_routes(backend, monkeypatch, wrapper, points)
     assert [route[0][0] for route in replaced] == [
@@ -585,28 +590,58 @@ def test_wrapper_owner_mutation_is_visible_with_package_binding_absent(
         assert changed[0]
 
 
-def test_all_backend_wrappers_dispatch_identically_with_package_aliases_removed(
+def test_all_backend_wrappers_dispatch_from_the_declared_owners(
     policy, monkeypatch
 ) -> None:
     backend, _policy_capability, policy_gguf = policy
     points = _policy_points(policy_gguf)
-    aliases = _module_alias_names(backend)
-    assert aliases
+    # Retirement is complete: TARGET_ARCH is the only remaining package
+    # assignment from a policy owner; every other value is read from its owner.
+    assert _module_alias_names(backend) == ["TARGET_ARCH"]
 
+    # Build the alias-bound control from the owners' actual declarations,
+    # including private names. This is the pre-retirement package state.
+    declared = {
+        name: getattr(module, name)
+        for module in backend._POLICY_MODULES
+        for name in vars(module)
+        if name.isupper()
+    }
+    present_before = {
+        name: getattr(backend, name)
+        for name in declared
+        if hasattr(backend, name)
+    }
+    absent_before = set(declared) - set(present_before)
+    assert absent_before  # the retired aliases are genuinely absent
+
+    # Owner-only baseline: no package re-export binding for the retired names.
     baseline = {
         name: _wrapper_routes(backend, monkeypatch, name, points)
         for name in WRAPPER_FUNCTIONS
     }
+    for name, wrapper_routes in baseline.items():
+        assert wrapper_routes, name
+
+    # Recreate the full alias-bound package state and prove every wrapper
+    # trace is identical to the owner-only baseline.
     with monkeypatch.context() as scoped:
-        for alias in aliases:
-            scoped.delattr(backend, alias, raising=False)
+        for name, value in declared.items():
+            scoped.setattr(backend, name, value, raising=False)
         for name in WRAPPER_FUNCTIONS:
             assert (
                 _wrapper_routes(backend, monkeypatch, name, points) == baseline[name]
             ), name
 
+    # Scoped overrides restore exactly: the retired names are absent again and
+    # the already-present ordinary imports / TARGET_ARCH keep their objects.
+    for name, value in present_before.items():
+        assert getattr(backend, name) is value, name
+    for name in absent_before:
+        assert not hasattr(backend, name), name
 
-def test_registrar_snapshot_is_identical_with_capability_aliases_removed(
+
+def test_registrar_snapshot_is_stable_without_package_capability_bindings(
     policy, monkeypatch
 ) -> None:
     backend, _policy_capability, _policy_gguf = policy
@@ -615,6 +650,8 @@ def test_registrar_snapshot_is_identical_with_capability_aliases_removed(
     assert baseline
 
     with monkeypatch.context() as scoped:
+        # These bindings are already absent after retirement; the registrar
+        # reads the declared owners, so re-registration stays stable.
         scoped.delattr(backend, "BACKEND", raising=False)
         scoped.delattr(backend, "STAGED_F32_VARIANT", raising=False)
         backend.register_gfx1151_kernels(replace=True)

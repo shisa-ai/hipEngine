@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from hipengine.kernels import hip_gfx1100, hip_gfx1151
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.moe import (
     qwen35_moe_group_compact_active_parallel,
     qwen35_moe_group_compact_active_source_rows_parallel,
@@ -125,7 +126,9 @@ def test_h7u_source_red_preserves_registered_parallel_leaf_and_serial_rollback(
     assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"
 
     # gfx1151 keeps its independently qualified source and no H7U seam.
-    assert getattr(hip_gfx1151, _SOURCE_CAPABILITY) == "parallel"
+    assert (
+        backend_package_capability("hip_gfx1151", _SOURCE_CAPABILITY) == "parallel"
+    )
     assert not hasattr(hip_gfx1151, _CANDIDATE_CAPABILITY)
 
 

@@ -3561,7 +3561,9 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
     )
     admitted = {"GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS"}
     assert ledger_names == expected | admitted
-    assert hipengine.kernels.hip_gfx1151.GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS == 48
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS"
+    ) == 48
 
 
 def test_gguf_runtime_has_no_literal_gfx1100_resolver_backend() -> None:

@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 from hipengine.core.hip import get_hip_runtime
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
@@ -73,12 +74,16 @@ def _child(
     from hipengine.kernels import hip_gfx1151 as package
 
     key = "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER"
-    previous = getattr(package, key)
+    previous = backend_package_capability("hip_gfx1151", key)
+    had_binding = hasattr(package, key)
     setattr(package, key, settings["packed_query_producer"])
     try:
         return _construct_child(owner, settings)
     finally:
-        setattr(package, key, previous)
+        if had_binding:
+            setattr(package, key, previous)
+        else:
+            delattr(package, key)
 
 
 def _construct_child(
