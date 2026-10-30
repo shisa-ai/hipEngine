@@ -492,6 +492,7 @@ from hipengine.runtime.prefill_flight_recorder import (
 )
 from hipengine.runtime import qwen35_gguf_layer_attn as _layer_attn
 from hipengine.runtime import qwen35_gguf_full_attention_bulk as _bulk_attn
+from hipengine.runtime import qwen35_gguf_full_attention_decode_batch as _decode_batch_attn
 from hipengine.runtime import qwen35_gguf_layer_ffn as _layer_ffn
 
 # ---------------------------------------------------------------------------
@@ -759,6 +760,127 @@ def _bulk_full_attention_policy() -> _bulk_attn.BulkFullAttentionPolicy:
         aotriton_prefill_allowed=_gguf_aotriton_prefill_allowed,
         aotriton_prefill_mode=_gguf_aotriton_prefill_mode,
         int8_prefill_kernel=_gguf_int8_prefill_kernel,
+    )
+
+
+def _decode_batch_attention_views(scratch) -> _decode_batch_attn.DecodeBatchAttentionViews:
+    """Attention-half buffers and KV planes for one decode-batch layer."""
+
+    return _decode_batch_attn.DecodeBatchAttentionViews(
+        norm=scratch.norm,
+        post_norm_f32=getattr(scratch, "post_norm_f32", None),
+        full_q=scratch.full_q,
+        full_k=scratch.full_k,
+        full_v=scratch.full_v,
+        full_query_raw=scratch.full_query_raw,
+        full_key_raw=scratch.full_key_raw,
+        full_query=scratch.full_query,
+        full_key=scratch.full_key,
+        full_gate=scratch.full_gate,
+        full_gated=scratch.full_gated,
+        positions_tensor=scratch.positions_tensor,
+        cos_table=scratch.cos_table,
+        sin_table=scratch.sin_table,
+        key_cache=scratch.key_cache,
+        value_cache=scratch.value_cache,
+        append_spans=scratch.append_spans,
+        prefill_spans=scratch.prefill_spans,
+        retained_key_cache=getattr(scratch, "retained_key_cache", None),
+        retained_value_cache=getattr(scratch, "retained_value_cache", None),
+        retained_append_spans=getattr(scratch, "retained_append_spans", None),
+        retained_decode_spans=getattr(scratch, "retained_decode_spans", None),
+        retained_decode_kernel=getattr(scratch, "retained_decode_kernel", None),
+        int8_kv_value_bf16=bool(getattr(scratch, "int8_kv_value_bf16", False)),
+        block_size=scratch.block_size,
+        max_positions=scratch.max_positions,
+    )
+
+
+def _decode_batch_attention_selectors(
+    runner,
+    scratch,
+    split_workspace,
+) -> _decode_batch_attn.DecodeBatchAttentionSelectors:
+    """Lazy selected operations for one decode-batch attention call."""
+
+    def split_workspace_view(
+        _required_rows: int,
+        _required_splits: int,
+    ) -> _decode_batch_attn.DecodeBatchSplitWorkspace | None:
+        workspace = split_workspace
+        if workspace is None:
+            return None
+        return _decode_batch_attn.DecodeBatchSplitWorkspace(
+            rows=int(workspace.rows),
+            num_splits=int(workspace.num_splits),
+            partial_out=workspace.partial_out,
+            partial_m=workspace.partial_m,
+            partial_l=workspace.partial_l,
+        )
+
+    def q8_f32(
+        weight_a,
+        weight_b,
+        weight_c,
+        x_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        **kwargs,
+    ) -> bool:
+        return _try_launch_dense_q8_triple_dp4a_f32(
+            weight_a,
+            weight_b,
+            weight_c,
+            x_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            out_c_ptr,
+            scratch,
+            **kwargs,
+        )
+
+    def q8_bf16(
+        weight_a,
+        weight_b,
+        weight_c,
+        x_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        **kwargs,
+    ) -> bool:
+        return _try_launch_dense_q8_triple_dp4a(
+            weight_a,
+            weight_b,
+            weight_c,
+            x_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            out_c_ptr,
+            scratch,
+            **kwargs,
+        )
+
+    return _decode_batch_attn.DecodeBatchAttentionSelectors(
+        cast_library=partial(_layer_runner_method, runner, "_cast_library"),
+        paged_kv_write_library=partial(
+            _layer_runner_method, runner, "_paged_kv_write_library"
+        ),
+        paged_attn_decode_library=partial(
+            _layer_runner_method, runner, "_paged_attn_decode_library"
+        ),
+        run_attention_norm_rows=partial(
+            _layer_runner_method, runner, "_run_attention_norm_rows"
+        ),
+        try_launch_dense_q8_triple_dp4a_f32=q8_f32,
+        try_launch_dense_q8_triple_dp4a=q8_bf16,
+        int8_kv_prompt_write_fn=_gguf_int8_kv_prompt_write_fn,
+        paged_attn_context_batch=lambda: runner._paged_attn_context_batch,
+        packed_ar_attention_batch_kernel=partial(
+            _layer_runner_method, runner, "_packed_ar_attention_batch_kernel"
+        ),
+        split_workspace=split_workspace_view,
     )
 
 
@@ -4787,397 +4909,31 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("rows must be positive")
         if scratch.key_cache is None or scratch.value_cache is None:
             raise RuntimeError("GGUF full-attention decode batch requires cache-backed key/value buffers")
-        end = int(scratch.start) + rows
-        max_context_len = int(getattr(scratch.prefill_spans, "max_live_count", end))
-        cast_library = self._cast_library()
-        kv_write_library = self._paged_kv_write_library()
-        paged_attn_library = self._paged_attn_decode_library()
-        sync_stages = bool(sync_stage_timings and stage_timings is not None)
-        t_stage = time.perf_counter() if sync_stages else 0.0
-        attn_norm_f32_ptr = self._run_attention_norm_rows(
-            hidden_ptr=hidden_ptr,
+        result = _decode_batch_attn.run_full_attention_decode_batch_attn_rows(
+            layer,
+            hidden_ptr,
+            _decode_batch_attention_views(scratch),
+            cfg=cfg,
+            geometry=_layer_attn.AttentionGeometry(
+                hidden_size=self.hidden_size,
+                q_width=self.q_width,
+                kv_width=self.kv_width,
+            ),
+            runtime=runtime,
+            rows=rows,
+            start=int(scratch.start),
+            selectors=_decode_batch_attention_selectors(
+                self, scratch, split_workspace
+            ),
+            stream=stream,
             hidden_f32_ptr=hidden_f32_ptr,
-            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
-            out_ptr=scratch.norm.ptr,
-            out_f32_ptr=(scratch.post_norm_f32.ptr if hasattr(scratch, "post_norm_f32") else None),
-            rows=rows,
-            eps=cfg.rms_norm_eps,
-            stream=stream,
-            runtime=runtime,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=stage_prefix,
+            kv_write_only=kv_write_only,
         )
-        if not (
-            attn_norm_f32_ptr is not None
-            and _try_launch_dense_q8_triple_dp4a_f32(
-                layer.weight("attn_q"),
-                layer.weight("attn_k"),
-                layer.weight("attn_v"),
-                int(attn_norm_f32_ptr),
-                scratch.full_q.ptr,
-                scratch.full_k.ptr,
-                scratch.full_v.ptr,
-                scratch,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features_a=2 * self.q_width,
-                out_features_b=self.kv_width,
-                out_features_c=self.kv_width,
-                stream=stream,
-                runtime=runtime,
-            )
-        ) and not _try_launch_dense_q8_triple_dp4a(
-            layer.weight("attn_q"),
-            layer.weight("attn_k"),
-            layer.weight("attn_v"),
-            scratch.norm.ptr,
-            scratch.full_q.ptr,
-            scratch.full_k.ptr,
-            scratch.full_v.ptr,
-            scratch,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features_a=2 * self.q_width,
-            out_features_b=self.kv_width,
-            out_features_c=self.kv_width,
-            stream=stream,
-            runtime=runtime,
-        ) and not launch_gguf_linear_triple(
-            layer.weight("attn_q"),
-            layer.weight("attn_k"),
-            layer.weight("attn_v"),
-            scratch.norm.ptr,
-            scratch.full_q.ptr,
-            scratch.full_k.ptr,
-            scratch.full_v.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=2 * self.q_width,
-            out_features_b=self.kv_width,
-            out_features_c=self.kv_width,
-            stream=stream,
-            runtime=runtime,
-        ):
-            launch_gguf_linear(
-                layer.weight("attn_q"),
-                scratch.norm.ptr,
-                scratch.full_q.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=2 * self.q_width,
-                stream=stream,
-                runtime=runtime,
-            )
-            if not launch_gguf_linear_pair(
-                layer.weight("attn_k"),
-                layer.weight("attn_v"),
-                scratch.norm.ptr,
-                scratch.full_k.ptr,
-                scratch.full_v.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=self.kv_width,
-                stream=stream,
-                runtime=runtime,
-            ):
-                launch_gguf_linear(
-                    layer.weight("attn_k"),
-                    scratch.norm.ptr,
-                    scratch.full_k.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=self.kv_width,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("attn_v"),
-                    scratch.norm.ptr,
-                    scratch.full_v.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=self.kv_width,
-                    stream=stream,
-                    runtime=runtime,
-                )
-        qwen35_split_qgate_bf16(
-            scratch.full_q.ptr,
-            scratch.full_query_raw.ptr,
-            scratch.full_gate.ptr,
-            rows,
-            cfg.head_count,
-            cfg.key_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        bf16_to_f32(
-            scratch.full_k.ptr,
-            scratch.full_key_raw.ptr,
-            rows * self.kv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=runtime,
-        )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_norm_qkv_split",
-            t_stage,
-        )
-        gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
-            scratch.full_query_raw.ptr,
-            scratch.full_key_raw.ptr,
-            layer.weight("attn_q_norm").allocation().tensor.ptr,
-            layer.weight("attn_k_norm").allocation().tensor.ptr,
-            scratch.cos_table.ptr,
-            scratch.sin_table.ptr,
-            scratch.positions_tensor.ptr,
-            scratch.full_query.ptr,
-            scratch.full_key.ptr,
-            cfg.rms_norm_eps,
-            rows,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.rope_dimension_count,
-            scratch.max_positions,
-            stream=stream,
-            runtime=runtime,
-        )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_head_norm_rope",
-            t_stage,
-        )
-        retained_spans = getattr(scratch, "retained_append_spans", None)
-        retained_decode_spans = getattr(scratch, "retained_decode_spans", None)
-        retained_decode_kernel = getattr(scratch, "retained_decode_kernel", None)
-        direct_retained_batch = bool(
-            rows > 1
-            and retained_spans is not None
-            and retained_decode_spans is not None
-            and callable(retained_decode_kernel)
-        )
-        if retained_spans is None:
-            qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
-                scratch.full_key.ptr,
-                scratch.full_v.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                scratch.append_spans,
-                rows,
-                scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
-        else:
-            metadata = retained_spans.scale_metadata
-            retained_key_cache = getattr(scratch, "retained_key_cache", None)
-            retained_value_cache = getattr(scratch, "retained_value_cache", None)
-            if metadata is None or retained_key_cache is None or retained_value_cache is None:
-                raise RuntimeError("packed INT8 KV write requires retained payload and scale metadata")
-            bf16_to_f32(
-                scratch.full_v.ptr,
-                scratch.full_key_raw.ptr,
-                rows * self.kv_width,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
-            if bool(getattr(scratch, "int8_kv_value_bf16", False)):
-                qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
-                    scratch.full_key.ptr,
-                    scratch.full_key_raw.ptr,
-                    retained_key_cache.ptr,
-                    retained_value_cache.ptr,
-                    metadata.k_scale.ptr,
-                    retained_spans,
-                    rows,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    stream=stream,
-                    library=kv_write_library,
-                    runtime=runtime,
-                )
-            else:
-                _gguf_int8_kv_prompt_write_fn(metadata)(
-                    scratch.full_key.ptr,
-                    scratch.full_key_raw.ptr,
-                    retained_key_cache.ptr,
-                    retained_value_cache.ptr,
-                    metadata.k_scale.ptr,
-                    metadata.v_scale.ptr,
-                    retained_spans,
-                    rows,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    stream=stream,
-                    library=kv_write_library,
-                    runtime=runtime,
-                )
-            if not direct_retained_batch:
-                qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
-                    scratch.full_key.ptr,
-                    scratch.full_v.ptr,
-                    scratch.key_cache.ptr,
-                    scratch.value_cache.ptr,
-                    scratch.append_spans,
-                    rows,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    stream=stream,
-                    library=kv_write_library,
-                    runtime=runtime,
-                )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_kv_write",
-            t_stage,
-        )
-        if kv_write_only:
+        if result.kv_write_only:
             return "kv_write_only"
-        attention_route = "kv_live_spans_batch"
-        if direct_retained_batch:
-            assert retained_decode_spans is not None
-            metadata = retained_decode_spans.scale_metadata
-            retained_key_cache = getattr(scratch, "retained_key_cache", None)
-            retained_value_cache = getattr(scratch, "retained_value_cache", None)
-            num_splits = (max_context_len + int(scratch.block_size) - 1) // int(
-                scratch.block_size
-            )
-            if (
-                metadata is None
-                or retained_key_cache is None
-                or retained_value_cache is None
-            ):
-                raise RuntimeError("direct INT8 batch attention requires payload and scale planes")
-            if (
-                split_workspace is None
-                or int(split_workspace.rows) < rows
-                or int(split_workspace.num_splits) < num_splits
-            ):
-                raise NotImplementedError(
-                    "direct INT8 batch attention requires a row-sized split-K workspace"
-                )
-            retained_decode_kernel(
-                scratch.full_query.ptr,
-                retained_key_cache.ptr,
-                retained_value_cache.ptr,
-                metadata.k_scale.ptr,
-                metadata.v_scale.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                split_workspace.partial_out.ptr,
-                split_workspace.partial_m.ptr,
-                split_workspace.partial_l.ptr,
-                retained_decode_spans,
-                rows,
-                int(scratch.block_size),
-                num_splits,
-                int(scratch.block_size),
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                self.q_width,
-                self.q_width,
-                cfg.key_length,
-                1,
-                self.q_width,
-                cfg.key_length,
-                1,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
-            attention_route = "kv_live_spans_int8_batch"
-        elif max_context_len < 1024:
-            context_batch = self._paged_attn_context_batch
-            if not callable(context_batch):  # pragma: no cover - registry resolve is fail-closed
-                raise RuntimeError("paged context-batch attention kernel is unavailable")
-            context_batch(
-                scratch.full_query.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                scratch.full_query_raw.ptr,
-                scratch.prefill_spans,
-                rows,
-                max_context_len,
-                scratch.block_size,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
-            qwen35_full_attn_gate_mul_bf16(
-                scratch.full_query_raw.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                rows * self.q_width,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
-        else:
-            num_splits = (max_context_len + int(scratch.block_size) - 1) // int(
-                scratch.block_size
-            )
-            if (
-                split_workspace is None
-                or int(split_workspace.rows) < rows
-                or int(split_workspace.num_splits) < num_splits
-            ):
-                raise NotImplementedError(
-                    "long-context packed AR decode requires a row-sized split-K workspace"
-                )
-            split_batch = self._packed_ar_attention_batch_kernel()
-            if not callable(split_batch):
-                raise NotImplementedError(
-                    "long-context packed AR BF16 batch attention kernel is unavailable"
-                )
-            split_batch(
-                scratch.full_query.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                split_workspace.partial_out.ptr,
-                split_workspace.partial_m.ptr,
-                split_workspace.partial_l.ptr,
-                scratch.prefill_spans,
-                rows,
-                int(scratch.block_size),
-                num_splits,
-                int(scratch.block_size),
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length,
-                1,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_paged_attn",
-            t_stage,
-        )
         attn_out_f32_ptr = self._run_full_attention_output_rows(
             layer,
             scratch.full_gated.ptr,
@@ -5189,12 +4945,12 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        t_stage = _mark_sync_stage(
+        _mark_sync_stage(
             runtime,
             stage_timings,
-            sync_stages,
+            bool(sync_stage_timings and stage_timings is not None),
             f"{stage_prefix}_gate_output",
-            t_stage,
+            result.t_stage,
         )
         self._run_post_attention_ffn_rows(
             layer_id,
@@ -5212,7 +4968,7 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
         )
-        return attention_route
+        return result.attention_route
 
     def _run_linear_attention_layer(
         self,

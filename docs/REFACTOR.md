@@ -4210,9 +4210,10 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `qwen35_gguf_*`.
 
-**Remaining boundary work:** split decode-batch attention orchestration and full-stack
-verification with explicit inputs and one session/transaction owner. Bulk prefill attention has an
-explicit-view owner in `qwen35_gguf_full_attention_bulk.py`; do not duplicate it. Decide which GGUF
+**Remaining boundary work:** split full-stack verification with explicit inputs and one
+session/transaction owner. Bulk prefill and decode-batch attention have explicit-view owners in
+`qwen35_gguf_full_attention_bulk.py` and `qwen35_gguf_full_attention_decode_batch.py`;
+do not duplicate them. Decide which GGUF
 boundaries are reusable by PARO before decomposing `qwen35_paro.py`;
 a whole-runner proxy or implicit-session mixin is not an ownership split. Give each compatibility
 export a concrete removal condition.

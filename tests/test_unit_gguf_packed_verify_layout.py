@@ -10,6 +10,7 @@ import pytest
 
 from hipengine.runtime import qwen35_gguf_kv as gguf_kv
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+from hipengine.runtime import qwen35_gguf_full_attention_decode_batch as decode_batch
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime.qwen35_gguf_runner import (
@@ -1692,7 +1693,7 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
 
 def test_gguf_direct_int8_batch_uses_decode_counts_and_skips_bf16_oracle_write() -> None:
     source = inspect.getsource(
-        gguf_runner.Qwen35GGUFFullStackRunner._run_full_attention_decode_batch_layer_rows
+        decode_batch.run_full_attention_decode_batch_attn_rows
     )
     direct_call = source.split("retained_decode_kernel(", 1)[1].split(")\n", 1)[0]
 

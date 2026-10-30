@@ -20,6 +20,8 @@ Paths in this document are repository-relative.
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph capture/synchronization | Physical KV plane allocation formulas or graph pin bookkeeping |
 | `hipengine/runtime/qwen35_gguf_graph_lifetime.py` | Decode-handle registry, KV pin accounting and retained submission-context closure over explicit resources | Session mutation, capture policy, kernel selection or synchronization |
 | `hipengine/runtime/qwen35_gguf_layer_attn.py` | Scalar linear/full attention and shared norm/alpha-beta leaves over explicit weights, geometry, views and selected operations | Request admission, registry policy, graph lifetime or bulk attention orchestration |
+| `hipengine/runtime/qwen35_gguf_full_attention_bulk.py` | Bulk prefill attention through output projection over explicit views and selected operations | Feed-forward execution, session mutation or split-buffer allocation |
+| `hipengine/runtime/qwen35_gguf_full_attention_decode_batch.py` | Decode-batch attention through KV write and gated attention over explicit views and selected operations | Output projection, F32 composition, feed-forward execution or workspace allocation |
 | `hipengine/runtime/qwen35_gguf_layer_ffn.py` | Dense and MoE feed-forward execution for scalar and bulk rows over explicit weights, scratch and selected operations | Session state, speculative acceptance or kernel-selection policy |
 | `hipengine/runtime/qwen35_gguf_capture.py` | Host diagnostic snapshots, summary schemas and selected-buffer readback | Token setup, layer execution, session mutation or synchronization |
 | `hipengine/runtime/qwen35_gguf_timing.py` | Stage timing accumulation, event handles and wall-clock marker storage | Choosing interval boundaries or scheduling production work |
@@ -168,6 +170,9 @@ speculative journal interfaces are unchanged.
 shared attention-norm and alpha/beta projection leaves.
 `qwen35_gguf_full_attention_bulk.py` owns the attention half of bulk full-attention
 prefill, from norm/QKV through KV write, attention, gate and output projection.
+`qwen35_gguf_full_attention_decode_batch.py` owns decode-batch attention through
+KV write and gated attention; its runner adapter retains output projection,
+F32 composition and the feed-forward handoff.
 `qwen35_gguf_layer_ffn.py` owns the feed-forward schedule used by scalar decode,
 bulk prefill and verifier rows. Dense, scalar MoE and multi-row MoE keep their
 separate execution schedules.
@@ -187,7 +192,9 @@ explicit views and lazy operations, then calls the feed-forward owner. Split gro
 returns current buffers and counts after allocation; the attention owner neither
 keeps stale pointer snapshots nor frees the caller's growth buffers. DMS capture and
 AOTriton stream-bridge callbacks preserve their launch order without transferring
-ownership. Decode-batch attention and layer composition remain in the runner.
+ownership. The decode-batch workspace callback reads the caller's current buffers
+and capacity on each call. KV-write-only returns before attention, output projection
+and feed-forward execution. Layer composition remains in the runner.
 
 Profiler markers for nested MoE calls wrap the execution module's functions.
 The runner's outer attention methods remain the scalar attention marker boundary.
@@ -241,8 +248,8 @@ source audit raises an error if that required source is missing.
 
 ## Scope of the remaining runner
 
-Decode-batch attention orchestration and full-stack composition remain in the runner;
-their distinct schedules are not folded into scalar or bulk-prefill attention. Session mutation,
+Full-stack composition remains in the runner; scalar, bulk-prefill and decode-batch
+attention keep distinct explicit-input schedules. Session mutation,
 graph capture/replay, production hidden-seed sinks and diagnostic execution setup
 remain beside the state they control. These are not replaced with a diagnostic
 proxy or mixins that share implicit session attributes.
