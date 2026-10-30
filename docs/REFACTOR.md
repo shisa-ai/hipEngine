@@ -701,29 +701,6 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`, and worklog
   `20260930T031044` (the measured scope table).
 
-## Q8 Block-Scale Restoration
-
-- UD-Q4_K_XL now selects guarded block-scale WMMA through the profile-owned
-  `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`. Raw integer codes avoid FP16-rounded
-  weights; an empirical screen queues sparse strict-order corrections.
-  Full short/depth gates and the shared-graph model comparison qualify the
-  restoration. QSA-prefill grouping and ordered decode are restored too.
-- The unguarded entry is not diagnostic-only. `selected_grouped_wmma_prefill_bf16_bf16_out`
-  is the registered generic owner, the profile binder's
-  `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` default and the launcher's fallback when
-  that variable is unset. UD-Q4_K_XL's restored flags override it with the
-  guarded variant, so no plan binds the unguarded one for UD production today;
-  `gguf_q4_k_m` production is recorded as numerically unqualified and resolves
-  to strict, which keeps `Q8_0_SELECTED_WMMA_DOWN` off and runs the per-expert
-  selected GEMV. Remove the environment selector when profile plans supply
-  variant keys directly; retain the registered strict fallback and other-quant
-  legacy path.
-- Dense MMQ and dense/GR iu8 restoration attempts fail canonical numerical
-  gates and remain disabled: UD-Q4_K_XL's arithmetic-recovery sweep zeroes
-  `Q8_MMQ_PREFILL`, `GR_IU8` and `GR_IU8_DOWN` and the restored flags do not
-  re-enable them. Do not infer their admission from the corrected
-  selected-down kernel or from short-prompt gates.
-
 ## UD-Q4_K_XL Arithmetic Recovery (2026-09-14)
 
 Cleanup status (2026-10-26, R0036): the actionable request in this section is
@@ -1008,6 +985,27 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0035 — Supply selected-down variant keys through profile ownership
+
+Guarded block-scale selected-down restoration is separate from the generic
+`selected_grouped_wmma_prefill_bf16_bf16_out` owner. The generic owner is not
+diagnostic-only: it remains registered and is the unset-selector fallback.
+UD recovery selects guarded correction; other-quant legacy and strict selected
+GEMV paths retain their own contracts.
+
+**Deferred transport migration:** replace `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`
+with direct profile-owned variant keys across construction and launch callers.
+Preserve guarded/unguarded capability distinctions, registered strict fallback
+and other-quant compatibility. Verify selected symbols and full numerical/state
+behavior for each affected profile rather than assuming one restored path
+qualifies its neighbors.
+
+Dense MMQ and dense/GR IU8 restoration failed their canonical gates; the recovery
+composition does not re-enable them. Keep those observed failures and their
+repair gates separate from selected-down, QSA grouping and ordered decode.
+No numerical promotion, variant selection or runtime behavior changes here.
+
 
 ### R0034 — Decide retention of unregistered GR row-reuse comparisons
 
