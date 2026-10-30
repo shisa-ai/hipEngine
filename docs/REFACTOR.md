@@ -3544,73 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Gemma 4 fused MMQ gate/up prefill is the default; the flag is a rollback lever (open 2026-09-27)
-
-`HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` selects a fused int8-dp4a MMQ32 route for
-Gemma 4's `Q4_K` expert gate/up prefill. It replaces two fp32 grouped launches
-plus a fused-stride read with one pack, one tile map, and one MMQ launch that
-reads Gemma 4's per-expert `gate | up` row block directly, and it measures
-**4.23 s -> 3.33 s on the 512/128 prefill (1.27x)** with path parity intact.
-
-**The route is now the default path.** The lead made that call on 2026-09-27
-after the teacher-forced check passed on the gfx1100 branch at worst-case KL
-0.0013 and 0.00077 against the 0.05 bar with no top-1 changes, and this branch
-reaches the same conclusion by measurement: on realistic prose (2004 ids) the
-route matches the fp32 arm for ten consecutive tokens with the first divergence
-being llama.cpp alone, and on a truncated Python snippet - the exact class this
-flag cited as its cause - it matches for all 23. The variable is now the rollback
-lever: `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` restores the fp32 grouped route, and
-unset means on. `tests/test_unit_gemma4_expert_route.py` pins both halves, because
-the campaign's harnesses select their arms through the same function and an
-inversion would have had them compare the route with itself while reporting
-agreement. The reason this flag was originally raised was a recorded observed failure, and
-that failure did not reproduce. The flag's text cited a Python snippet that
-agrees for two tokens and then collapses into a fourteen-token repetition;
-against llama.cpp on a comparable prompt, cut mid-comparison so the continuation
-is genuinely ambiguous, all three arms agree on all 23 first tokens with no
-repetition. What does reproduce is a divergence at low-margin positions, and it
-is a property of out-of-distribution input rather than of the route. The route's
-raw-logit perturbation is three times smaller in distribution than out (3.46 max
-absolute difference on prose against 9.76 on random ids), which is the mechanism
-that was previously recorded as unidentified: the int8 activation-quantisation
-step is small enough not to move a decision on input the model was trained for,
-and random ids leave the logits flat enough that it is. The route replaces only
-the prefill's expert gate/up projection, so one forward of N ids under each arm
-reproduces what a longer teacher-forced chain shows, and
-`scripts/gemma4_mmq_prefill_length_probe.py` sweeps that. Measured on the frozen
-campaign chain, deterministically: the route is over the binding 0.05 `kl_max`
-bar at **7 of the 13 prefill lengths from 16 to 1024 ids** where it runs - `kl`
-0.305 at 16, 1.007 at 24, 0.109 at 32, 0.135 at 48, **2.036 at 64** - with greedy
-decision flips at 24 and 64 ids. At 1024 ids it is 7.3e-07.
-
-The earlier recorded reason for this flag was wrong in a way that argued for
-promotion. It read the breach as a near-certain-row tail effect: `kl_max` 0.0651
-on 2 of 1022 rows, top-1 100% with zero flips, and the already-shipped attention
-split breaching the same bar at the same rows. That measurement was taken at a
-1024-id prefill, which is this route's **best case** rather than a representative
-one, and the current default path is bit-identical to the strict arm on both
-chains (KL exactly 0.0 over 1023 rows, including all 77 close-margin rows, with
-30690 split launches engaged), so the split does not breach that bar today. The
-applicability question that text raised was not the operative one.
-
-The mechanism is input-distribution-dependent rather than a per-row
-activation-quantization bound: that bound is per row and does not vary by six
-orders of magnitude with the row count, and what varies is how often the model's
-margin is smaller than the bound. The leaf's only unit coverage was once 4
-experts over 10 rows in `tests/test_unit_gemma4_expert_route.py`, which does not
-reach the real geometry of 128 experts;
-`tests/test_gpu_gemma4_expert_route_true_geometry.py` now covers the real geometry
-including an expert spanning more than one MMQ tile.
-
-Remove it once a teacher-forced gate against the campaign's frozen evaluator
-has been recorded for the new default and its verdict is on file. Note
-that `capture` must run with `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` to freeze the
-incumbent fp32 path, since capture otherwise freezes the new default and the gate
-would compare the route with itself. The implementation, its registered launch
-path, and its correctness tests stay in place. Evidence:
-`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
-`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
-
 ## Gemma 4 expert down MMQ: exact automatic default after continuation failure (open 2026-10-03)
 
 Automatic selection does not use the MMQ down; since 2026-10-10 it runs the
@@ -9827,3 +9760,23 @@ Remove the refusal only after the forced-token gate compares output tokens and
 queue positions against the host path while telemetry confirms captured-graph
 accept. Exercise forced sequences spanning cycle boundaries and ordinary rows
 sharing a batch. Host-path test success does not establish device support.
+
+### R0515 — Decide retirement of the Gemma 4 gate/up MMQ rollback
+
+The fused Q4_K gate/up MMQ route remains enabled by the lead's decision.
+`HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` selects the fp32 grouped reference; unset
+selects MMQ. Keep the implementation, registry path and correctness tests.
+
+**Deferred rollback decision:** record the teacher-forced verdict against the
+campaign's frozen evaluator before retiring the switch. Capture the reference
+with `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0`, then confirm distinct selected routes
+for reference and candidate. Include short and long prefills, natural inputs and
+low-margin cases; a single long-prefill comparison does not cover the recorded
+length sensitivity. Preserve real expert geometry and multi-tile coverage.
+This is switch retirement, not reconsideration of the default-on decision.
+
+Historical attribution and short-prefill results remain in
+`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json` and
+`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
+The original narrative is preserved in ledger history at `4b08b80fd`; do not
+substitute that history or unit routing tests for the frozen-evaluator verdict.

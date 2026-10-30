@@ -13842,8 +13842,8 @@
       "start_line": 12229,
       "end_line": 12295,
       "sha256": "08773bbd7255825dadbde16331c946853a1237e59f8634c2482f31b2417e3c97",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Preserved lead default-on decision and reference capture with explicit fp32 rollback; deferred switch retirement/frozen-evaluator verdict, moved historical narrative out of active ledger. worklog/entries/20261030T055013.430897Z-cleanup-cleanup-r0515-0a2771.md."],
       "subitems": []
     },
     {
