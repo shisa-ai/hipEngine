@@ -13302,8 +13302,8 @@
       "start_line": 11199,
       "end_line": 11221,
       "sha256": "2091d8afeaa0a6f2fcc3854c016672b608d58b5e854ed2a3f3c1f3b7336c0177",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Live eager/graph device checker requires the suite eager branch; unit coverage verifies wiring/comparison only. Move decision to ledger bottom with checker-migration clearing checks. 55 focused tests pass. worklog/entries/20261030T031407.532336Z-cleanup-cleanup-r0475-49b2bc.md."],
       "subitems": []
     },
     {

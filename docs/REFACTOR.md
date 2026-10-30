@@ -3544,29 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-12 `--ar-decode-mode eager` retained as a diagnostic control
-
-**State.** `scripts/qwen36_dense_gguf_suite.py` gained `--ar-decode-mode
-{graph,eager}`, defaulting to `graph`, so the true-AR performance denominator
-runs the production decode-graph replay path instead of synchronous scalar
-`step()` submission. `eager` is retained as a synchronous diagnostic control.
-
-**Why it is retained.** It is the only way to re-derive the eager/graph
-comparison that localized the original denominator defect (same device work,
-28.77 vs 28.88 ms/transition at about 860 launches; wall 65-69 ms eager against
-31 ms graph). `scripts/gguf_ar_eager_graph_equivalence.py` uses it.
-
-**Removal trigger.** Remove `--ar-decode-mode`, the `eager` branch in `_run_ar`,
-and the `autoregressive_step` stage key once no open question needs the eager
-path — concretely, after the eager/graph equivalence check is either folded into
-a routinely run gate or the eager route is retired. Until then the flag must not
-be used to produce a paired or campaign denominator: `scripts/ud_mtp_paired.py`
-pins `graph` in `PAIRED_PROTOCOL` and rejects a payload whose
-`workload.ar_decode_mode` disagrees.
-
-**Do not promote `eager` to a default or a second supported denominator.** It is
-a diagnostic control; every published rate uses `graph`.
-
 ## 2026-09-12 `--mtp-scope-grant` on the c1-c8 server bench
 
 **State.** `scripts/gguf_mtp_c1c8_server_bench.py` gained `--mtp-scope-grant`,
@@ -10346,3 +10323,20 @@ actual recurrent-state dtype; cold declarations remain required for standalone
 preflight, not runtime setters. F5 caller-binding regression tests cover the
 existing policy callers. Baseline GDN FP16/F32 state separation remains a
 correctness contract, not cleanup debt.
+
+### R0475 — Eager AR diagnostic retirement
+
+`scripts/gguf_ar_eager_graph_equivalence.py` still invokes the eager branch of
+`scripts/qwen36_dense_gguf_suite.py` as an independent reference for graph token
+sequences. Unit tests cover comparison failures and runner wiring, not actual
+device equivalence. Removing the flag alone breaks that live checker.
+
+**Deferred decision:** keep this operator diagnostic or move its eager runner
+into a routinely exercised device gate before retiring the suite option.
+If migrating, remove `--ar-decode-mode`, its eager `_run_ar` branch and
+`autoregressive_step` stage only after updating the checker and its callers.
+Run the three unit modules `test_unit_gguf_ar_eager_graph_equivalence.py`,
+`test_unit_qwen36_dense_gguf_suite.py` and `test_unit_ud_mtp_paired.py`, then
+exercise the replacement device comparison with matching settings on both
+paths. Keep graph mode as the paired denominator; the paired validator must
+continue rejecting eager payloads. No product admission depends on this choice.
