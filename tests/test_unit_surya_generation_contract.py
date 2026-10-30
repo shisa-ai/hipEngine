@@ -959,31 +959,29 @@ def test_vision_patch_ceiling_inverts_the_time_budget() -> None:
     # an unbounded budget has no ceiling; a millisecond admits one tiny tile
     assert _admission_runner(max_vision_seconds=None).vision_patch_ceiling() is None
     assert runner.vision_patch_ceiling(seconds=0.0) == 0
+    assert runner.vision_patch_ceiling(seconds=1e-12) == 0
     tiny = _admission_runner(max_vision_seconds=0.001).vision_patch_ceiling()
     assert tiny is not None and 0 < tiny < 64
 
-    # Below the shape envelope's crossing the tile is envelope-chosen, the
-    # estimate dips by under 2% at each tile-count step, and the bisection can
-    # stop slightly short of the true maximum -- but it is never unsound, and
-    # never short by more than the documented band.
-    small = _admission_runner(max_vision_seconds=1.0)
-    short = small.vision_patch_ceiling()
-    assert short is not None and estimate(short) <= 1.0
-    exact = max(n for n in range(1, 20001) if estimate(n) <= 1.0)
-    assert 0.98 * exact <= short <= exact
+    # Check additional budgets independently of the wavefront-boundary cases.
+    for limit in (1.0, 1.20):
+        exact = max(n for n in range(1, 20001) if estimate(n) <= limit)
+        assert runner.vision_patch_ceiling(seconds=limit) == exact
 
-    # The cap's crossing is the one non-monotone step in the estimate: at the
-    # default budget it stops applying at 4730 patches, where the plan drops
-    # from 37 tiles of 128 rows to 3 of 2336 and the estimate falls 8.3%
-    # (1270.91 -> 1165.67 ms) as the grid grows. A budget inside that window can
-    # make the bisection stop short -- 1.20 s returns 4565 where a brute-force
-    # scan finds 4815 -- but the returned count is still sound, which is what
-    # admission depends on (``check_vision_capacity`` estimates the grid it was
-    # given rather than inverting the ceiling).
-    dip = _admission_runner(max_vision_seconds=1.20)
-    inside = dip.vision_patch_ceiling()
-    assert inside is not None and estimate(inside) <= 1.20
-    assert 4000 < inside < 4815, inside
+
+@pytest.mark.parametrize(
+    "budget,patches",
+    [
+        (512 * _MIB, patches)
+        for patches in (1, 5088, 5089, 5090, 6112, 6113, 6114)
+    ] + [(64 * _MIB, 1000), (None, 500)],
+)
+def test_vision_patch_ceiling_finds_the_largest_count_across_dips(budget, patches) -> None:
+    runner = _admission_runner(max_vision_scratch_bytes=budget)
+    limit = runner._vision_plan_seconds(patches)[0]
+    exact = max(n for n in range(1, 7000) if runner._vision_plan_seconds(n)[0] <= limit)
+    assert exact < 6999
+    assert runner.vision_patch_ceiling(seconds=limit) == exact
 
 
 def test_llm_forwards_the_vision_time_budget() -> None:

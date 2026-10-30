@@ -13489,7 +13489,7 @@
       "end_line": 11615,
       "sha256": "cffbc7a6aa831ed6228592e31f02cdd058d47ed19ce08cd8e22936a26f4e70c8",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["CPU ceiling repaired across non-monotone tile-plan boundaries; GPU shape investigations remain open. worklog/entries/20261030T042919.370998Z-cleanup-cleanup-r0491-ceiling-318e82.md."],
       "subitems": [
         {
           "line": 11570,
@@ -13499,7 +13499,7 @@
         {
           "line": 11579,
           "text": "- **Open: the reported time ceiling.** The estimate has small non-monotone steps",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11590,

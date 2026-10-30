@@ -1508,18 +1508,13 @@ class SuryaGpuRunner:
         """Largest patch count whose estimated vision forward fits ``seconds``.
 
         ``seconds=None`` uses ``max_vision_seconds``, and an unbounded budget
-        has no ceiling (``None``). Bisection over the estimate, re-planning the
-        tile at every candidate so the answer accounts for the tile count the
-        byte budget would pick. The returned count is always sound: its own
-        estimate fits, because the search only raises ``low`` on a candidate
-        that fits. Under the vision envelope the tile count never falls as the
-        grid grows, but the fitted model still dips by under 2% at the 32-row
-        wavefront boundaries (14 steps in 1..20000 patches, the largest -1.8%
-        at 5089), so the bisection is not *guaranteed* to find the very largest
-        count that fits; it matches a brute-force scan at every budget tried
-        from 0.5 s to 200 s, including the 120 s default (56856 patches).
-        Admission does not depend on the inversion: ``check_vision_capacity``
-        estimates the grid it was given.
+        has no ceiling (``None``). First bisect the monotone one-tile estimate,
+        a lower bound on every plan, to find an upper bound on the answer.
+        Search downward from that bound for the first plan that fits. This
+        preserves dips at tile-count transitions instead of assuming that
+        the planned estimate is monotone. The search is bounded at 2**24
+        patches, as before. Admission itself estimates the requested grid
+        directly in ``check_vision_capacity``.
         """
 
         limit = self.max_vision_seconds if seconds is None else float(seconds)
@@ -1528,18 +1523,19 @@ class SuryaGpuRunner:
         if not limit > 0:
             return 0
         high = 1
-        while self._vision_plan_seconds(high)[0] <= limit:
-            if high >= 1 << 24:  # unreachable at any real budget; keeps it total
-                return high
+        while high < 1 << 24 and vision_forward_seconds(self.spec, high, 1) <= limit:
             high *= 2
-        low = high // 2
+        low = 0
         while low < high:
             mid = (low + high + 1) // 2
-            if self._vision_plan_seconds(mid)[0] <= limit:
+            if vision_forward_seconds(self.spec, mid, 1) <= limit:
                 low = mid
             else:
                 high = mid - 1
-        return low
+        for patches in range(low, 0, -1):
+            if self._vision_plan_seconds(patches)[0] <= limit:
+                return patches
+        return 0
 
     def check_vision_capacity(self, grid_thw) -> None:
         """Admit a vision grid before any device work or allocation runs.

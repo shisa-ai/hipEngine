@@ -3570,17 +3570,11 @@ the divisor near 64 *and* the floor below 128, which costs 2.7% at 1024 patches
 (96 rows 139.65 ms against 136.00 ms at 128). Revisit when a sweep over more
 mid-size grids shows what makes this one different; special-casing one grid
 would be overfitting.
-- **Open: the reported time ceiling.** The estimate has small non-monotone steps
-at the 32-row wavefront boundaries: 14 descending steps in 1..20000 patches,
-the largest -1.8% at 5089 (1435.97 -> 1409.67 ms), as the envelope's
-`ceil(rows / 32)` jumps a row and the block rounds back down to the multiple.
-`vision_patch_ceiling` bisects that estimate, so in principle a time budget
-inside a step can report a count short of the true maximum; it matches a
-brute-force scan at every budget tried from 0.5 s to 200 s, including the 120 s
-default (56856 patches). It is sound — the reported count's own estimate fits —
-and admission uses `check_vision_capacity` on the requested grid rather than the
-ceiling, so nothing is admitted unsafely. A monotone bound would remove the
-caveat if the reported ceiling ever needs to be exact.
+- **Reported time ceiling — fixed.** `vision_patch_ceiling` now bisects the
+monotone one-tile lower bound, then checks plans downward from that upper
+bound. It returns the largest fitting patch count within its bounded search,
+including across wavefront-boundary dips. Admission still estimates the
+requested grid directly; the GPU tile policy is unchanged.
 - **Open: the A4 page.** Its time optimum is a plateau at 2048-8192 rows (40076-40618 ms,
 3217.5-12870.0 MiB) and the 320-row default is 7.4% above it, but the byte
 budget is what stops there (512 MiB admits 325 rows), not the envelope — the cap
