@@ -22,6 +22,21 @@ def qwen4_exp_wide_f16_activation_nbytes(config, *, context_tokens: int, prefill
     return 2 * rows * width
 
 
+def qwen4_exp_qsa_wmma_nbytes(config, *, context_tokens: int, prefill_chunk_size: int):
+    """Reserve the shared lazy F16 K/V pair and four-token-block mask.
+
+    QSA layers reuse one prefill scratch owner, not one pair per layer.
+    Reserve independently of profile selection, as for activation staging.
+    """
+    context, chunk = int(context_tokens), int(prefill_chunk_size)
+    if context <= 0 or chunk <= 0:
+        raise ValueError("QSA WMMA scratch capacity must be positive")
+    rows = min(context, chunk)
+    kv_width = config.attention_kv_head_count * config.attention_key_length
+    mask_words = (context + 127) // 128
+    return 4 * context * kv_width + 4 * rows * mask_words
+
+
 def qwen4_exp_scratch_breakdown(config, *, context_tokens: int, prefill_chunk_size: int):
     context, chunk = int(context_tokens), int(prefill_chunk_size)
     if not config.qsa_compression_ratio <= context <= config.context_length or chunk <= 0:

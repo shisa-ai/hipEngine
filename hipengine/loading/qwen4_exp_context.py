@@ -7,6 +7,7 @@ from hipengine.loading.qwen4_exp_materialize import (
     plan_qwen4_exp_memory_admission,
 )
 from hipengine.loading.qwen4_exp_scratch import (
+    qwen4_exp_qsa_wmma_nbytes,
     qwen4_exp_scratch_breakdown,
     qwen4_exp_wide_f16_activation_nbytes,
 )
@@ -39,7 +40,10 @@ def resolve_qwen4_exp_context(
             staging = qwen4_exp_wide_f16_activation_nbytes(
                 residency.config, context_tokens=context,
                 prefill_chunk_size=prefill_chunk_size)
-            scratch = max(scratch, mandatory + staging)
+            qsa = qwen4_exp_qsa_wmma_nbytes(
+                residency.config, context_tokens=context,
+                prefill_chunk_size=prefill_chunk_size)
+            scratch = max(scratch, mandatory + staging + qsa)
         plan = plan_qwen4_exp_memory_admission(
             residency,available_device_bytes=available_device_bytes,
             context_tokens=context,resident_capacity=resident_capacity,

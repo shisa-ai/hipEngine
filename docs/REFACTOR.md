@@ -3498,13 +3498,13 @@ selected-position lists the existing top-k expand kernel writes.
 
 The gather wrapper takes a `KVLiveSpans` and rejects anything but uniform
 BF16 spans; the kernel reads the page table those spans carry. The three
-scratch buffers are allocated on first use and are not in the capacity
-planner (`loading/qwen4_exp_scratch.py`): about 2 KiB per context token for
-the two F16 buffers.
+scratch buffers are allocated on first use. Context admission reserves the
+shared F16 K/V pair and per-query mask alongside activation staging, once per
+runner; the base-allocation census excludes these lazy buffers.
 
 Removal conditions: (0) a variable-span gather (`live_counts`,
 `token_positions`, `evict_mask`) before the route is offered to any
-non-dense KV policy, and the scratch counted by the capacity planner;
+non-dense KV policy; scratch accounting is implemented;
 (1) gather only the positions a chunk appended and keep
 the F16 rows per layer once multi-chunk prefill at long context makes the
 full regather measurable; (2) have the block selection write the bitmask
