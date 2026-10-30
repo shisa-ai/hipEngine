@@ -4,38 +4,6 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## Flash-Next staged MTP physical width and controls
-
-- `Qwen4ExpServingMTP` uses exclusive target/draft pool owners and reversible
-  device snapshots for one scheduler-selected cycle at a time. The Python
-  iterator cannot restore a surviving peer's internal state, so physical
-  speculative width is one; the existing scheduler partitions logical C2 work.
-  Replace this limit only with a snapshotable multi-request frontier and
-  cancellation/isolation evidence. Do not label candidate rows as request width.
-- Sampling, stops, grammar, tool and thinking processors now have request-owned
-  MTP commit/rollback tests and provider-scoped HTTP admission. Resident session
-  reuse is still rejected before work; remove that guard only with a session
-  ownership/rollback gate, not by silently using K0.
-- Committed-token streaming is implemented. Provider declarations use
-  `committed_tokens`; stream/terminal token and text parity, stops, structured
-  controls, slow-consumer cancellation and recovery have targeted tests.
-  Preserve the generic buffered-provider contract for other providers.
-- Control HTTP evidence: `tests/test_integration_server_controlled_speculation.py`
-  and `worklog/entries/20261017T220002.030487Z-lhl-mtp-http-controls-e305ba.md`.
-  These are current control/ownership tests, not a new performance claim.
-- Evidence: `tests/test_unit_qwen4exp_mtp_submission.py` and
-  `worklog/entries/20261017T192055.400855Z-lhl-qwen4exp-staged-mtp-serving-0ed770.md`.
-- **Shared MTP/AR target pass is opt-in**
-  (`HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET`, default `0`). Cause: on gfx1151
-  the eager shared pass is slower than separate execution. Measured
-  same-session HTTP economics, 64 tokens per request: one explicit MTP request
-  30.3 -> 21.0 tok/s; one MTP request beside seven AR peers 48.9 -> 44.0 tok/s.
-  The shared pass dispatches every layer from Python, copies GDN state per row
-  per depth wave, and moves AR peers off the graph-replayed batch step.
-  Clearing command: `scripts/qwen38fn_mixed_economics.py --widths 1,2,4,8
-  --arms ar,mixed` against `hipengine serve` with the variable set and unset;
-  flip the default (and delete the variable) once the shared arm meets or beats
-  the separate arm at every width.
 
 
 
@@ -9875,3 +9843,31 @@ layout, reset, capacity/isolation, MTP exclusion, two imports/two-row steps,
 per-row forced-token identity and c1-chain agreement. Exercise public serving
 and teardown, and keep repeatability distinct from batch-composition invariance.
 Neither remaining design is implemented by this triage.
+
+### R0010 — Flash-Next physical MTP ownership and shared-target regression
+
+Committed-token streaming and request-owned sampling, stop, grammar, tool and
+thinking control tests are implemented. Keep stream/terminal token/text parity,
+slow-consumer cancellation/recovery and the generic buffered-provider contract.
+Evidence remains in `tests/test_integration_server_controlled_speculation.py`,
+`tests/test_unit_qwen4exp_mtp_submission.py` and the October 17 staged-serving
+and HTTP-control worklog entries; this is not a fresh performance result.
+
+**Deferred ownership design:** replace single-cycle exclusive target/draft
+ownership only with a snapshotable multi-request frontier that can restore
+surviving peers independently. Logical concurrency and candidate rows are not
+physical request width. Resident-session reuse separately requires explicit
+session ownership and rollback; explicit unsupported requests must fail before
+work, not silently switch to K0. Verify cancellation, isolation and recovery
+through public requests before changing either contract.
+
+**Observed regression, deferred optimization:**
+`HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET` remains opt-in because the measured
+gfx1151 eager shared pass was slower than separate execution. Python layer
+submission, per-row/depth GDN copying and loss of AR graph replay are the
+recorded costs, not proof that shared execution is unimplemented. Historical
+measurements remain in this ledger at `06d6b33dd`. Clearing command:
+`scripts/qwen38fn_mixed_economics.py --widths 1,2,4,8 --arms ar,mixed` against
+`hipengine serve` with the variable set and unset. Retire the rollback and enable
+the shared default once it meets or beats separate execution at every width,
+with control/ownership gates intact. No runtime default changes in this triage.

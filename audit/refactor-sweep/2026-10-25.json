@@ -194,18 +194,19 @@
       "start_line": 217,
       "end_line": 250,
       "sha256": "edcfa4d84bde6a7c61f0a611ef9a375f91902a4a3acaa72bae9c9e75b750c873",
-      "status": "partial-streaming-reconciled",
-      "evidence": ["Provider now declares committed_tokens streaming. Current MTP streaming/submission unit suites and controlled-speculation HTTP integration suite pass, including stop-safe output, terminal parity and slow-consumer cancellation/recovery. Removed obsolete buffered_public/PS7-pending premise. Resident session reuse, physical ownership and shared-target regression requirements remain open."],
+      "status": "triaged-deferred-physical-ownership-shared-target",
+      "evidence": [
+        "Remaining frontier/session ownership and observed shared-target regression moved to bottom with clearing command;199 tests/docs/audit pass. worklog/entries/20261030T084842.872301Z-cleanup-cleanup-r0010-final-f38986.md.","Provider now declares committed_tokens streaming. Current MTP streaming/submission unit suites and controlled-speculation HTTP integration suite pass, including stop-safe output, terminal parity and slow-consumer cancellation/recovery. Removed obsolete buffered_public/PS7-pending premise. Resident session reuse, physical ownership and shared-target regression requirements remain open."],
       "subitems": [
         {
           "line": 219,
           "text": "- `Qwen4ExpServingMTP` uses exclusive target/draft pool owners and reversible",
-          "status": "pending"
+          "status": "deferred-multi-request-frontier"
         },
         {
           "line": 225,
           "text": "- Sampling, stops, grammar, tool and thinking processors now have request-owned",
-          "status": "pending"
+          "status": "deferred-resident-session-ownership-controls-preserved"
         },
         {
           "line": 229,
@@ -225,7 +226,7 @@
         {
           "line": 239,
           "text": "- **Shared MTP/AR target pass is opt-in**",
-          "status": "pending"
+          "status": "deferred-observed-shared-target-regression"
         }
       ]
     },
