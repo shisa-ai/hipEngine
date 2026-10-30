@@ -3544,61 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Gemma 4's pack8 expert layout is deleted (settled and removed 2026-09-28)
-
-**RESOLVED 2026-09-28: the layout was measured never ahead, and the flag and its
-unreached code have been deleted.** Nothing here is outstanding.
-
-The clearing condition this entry set was measured at 512 prefill rows against 128
-experts, the one regime the ladder does not give to `grouped_prefill`: prefill
-343.2 against 340.0 tok/s (a 0.9 percent difference, inside run-to-run variation)
-and decode 21.24 against 7.78 tok/s, reproducing the documented 2.73x regression on
-a fresh run. Evidence:
-`benchmarks/results/2026-09-28-gemma4-gfx1151-expert-pack8-layout-settlement.json`.
-
-### What was removed
-
-The flag `HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT` and the unreached code behind it,
-as this entry's second bullet specified: `LAYOUT_Q4_K_PACK8`, `pack8_arrays`,
-`_materialize_pack8`, `_pack8_shapes`, `_pack8_nbytes`, `pack8_layout_enabled`, and
-`gemma4_project_experts_pack8`, along with `_PACK8_ALLOCATION_NAMES`, the
-`pack8_selected` rung of the expert route ladder, the planning branch in
-`hipengine/loading/gemma4_gguf_device.py`, the pack8 branch in `resident_bytes`,
-the `gemma4_project_experts_pack8` leaf in `scripts/gemma4_prefill_kernel_census.py`,
-the env-var row in `docs/ENVS.md`, and the six tests in
-`tests/test_unit_gemma4_gguf_device.py` that existed to exercise or pin the layout.
-`_product` and `import os` became unused in the loading module and went with them.
-
-The removal takes a flag, a 19.2 GB raw/packed duplication path, and 116.6 s of
-load-time repacking off the path of anyone who had set the variable.
-
-### What deliberately remains
-
-**`_SELECTED_PACK8_VARIANT` and the `pack8_selected` GEMV kernels are a different
-thing and were left in place.** That family is the 8-output-columns-per-block form
-of the per-lane selected GEMV over the *raw* blocks; it is preferred where it is
-registered by `gemma4_project_experts_selected`, a live route, and it is pinned
-bit-exact against its single-output owner by
-`tests/test_unit_gemma4_expert_route.py`. It shares the name and nothing else. The
-dense `require_pack8` GEMV path in `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py`
-is likewise unrelated.
-
-### Why the default-off was legitimate while it lasted
-
-It was one of the real default-off cases: a **measured cause**, not a missing
-qualification. Decode measured 21.03 tok/s without the layout and 7.64 tok/s with
-it, with `pack8_selected` confirmed as the route that ran. The layout was
-arithmetically correct, so every correctness test passed either way -- which is why
-the default was pinned by its own test, because a silent flip back would have
-reintroduced a 2.75x decode regression with nothing else noticing. That pinning
-test is gone with the flag, which is the correct end state rather than a coverage
-loss: there is no longer a default that can flip.
-
-The duplication the flag enabled was 19.2 GB on the 26B artifact: 60 rank-3 expert
-tensors at 14.4 GB raw expanding by 1.33x. It was affordable against the measured
-124 GiB device ceiling, which was never the reason the flag was off. Evidence:
-`benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json`.
-
 ## The 128-wide MMQ32 K pass is implemented, correct and unwired (open 2026-09-28)
 
 `gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel` stages four Q4_K

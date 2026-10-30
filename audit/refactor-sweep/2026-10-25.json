@@ -13862,8 +13862,8 @@
       "start_line": 12372,
       "end_line": 12426,
       "sha256": "10a481a3a44a3d74075bd738bcb6064e149e76cf4eb7ef3d470494f8a75098d5",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-resolved-history",
+      "evidence": ["Retired layout flag/helpers absent; unrelated selected-pack8 raw GEMV remains live. Removed completed history, preserved both evidence artifacts. worklog/entries/20261030T055626.094892Z-cleanup-cleanup-r0517-9ca6cd.md."],
       "subitems": [
         {
           "line": 12384,
