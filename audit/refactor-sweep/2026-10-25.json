@@ -13134,8 +13134,8 @@
       "start_line": 11020,
       "end_line": 11029,
       "sha256": "36b2ab99ea6e8d64b7ef48ec4d9d3eca950ba1de5ffaf6036f1ba02f8c139c6a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Retired strided-gate rollback and copied-gate prefill branch; scalar decode oracle and optional F16 mirror unchanged. RED1/GREEN28, GPU exact gate parity, public48 strided/F16 calls with stale key0 and unchanged IDs, full CPU bg876, docs/audit pass. worklog/entries/20261030T013318.183882Z-cleanup-cleanup-r0464-b4097a.md."],
       "subitems": []
     },
     {

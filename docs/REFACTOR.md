@@ -3497,14 +3497,11 @@ oracles in `tests/test_gpu_qwen4exp_qsa_select_mask.py`.
 
 ## Qwen4Exp QSA prefill gate read in place (`HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE`)
 
-Default on. The prefill gate multiply reads the gate half of each query head
-from the q projection instead of a copy the split norm/RoPE kernel wrote,
-and writes the gated context's F16 image into the wide-route workspace
-(declared as the F16 mirror) so the output projection skips its conversion.
-Bit-identical (`tests/test_gpu_qwen4exp_qsa_select_mask.py`); same-process
-`code-p4096` 1631.4 -> 1634.5 prefill tok/s. `=0` restores the copy and the
-separate multiply. Remove the strided-gate rollback after its route validation;
-the direct-selection rollback is retired.
+Resolved: the process rollback and copied-gate prefill branch are removed.
+Prefill reads the projected gate in place and publishes an F16 mirror when the
+existing workspace capacity permits. The separate gate kernel remains used by
+scalar decode and as the strict oracle in
+`tests/test_gpu_qwen4exp_qsa_select_mask.py`.
 
 ## Qwen4Exp residual write fused into the next norm (`HIPENGINE_QWEN4_EXP_GR_WRITE_NORM`)
 

@@ -744,7 +744,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_PLE_OVERLAP` | `1` | Overlaps the pinned PLE staging upload with layer-0 work; `0` serializes it. |
 | `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS` | `random` (production UD), else `normal` | `madvise` access hint for the host-mapped PLE table; `normal` restores sequential access. |
 | `HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT` | retired; ignored | H4/D128 batched prefill uses causal scoring and direct WMMA masks. Other geometries and per-row selection keep their fallbacks. |
-| `HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE` | `1` | QSA gate reads the strided projection in place; `0` is the rollback. |
+| `HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE` | retired; ignored | Prefill reads the projected gate in place and publishes an F16 mirror when workspace permits. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` | retired | Ignored. Ordered v2 uses the registered three-pass route; the fused experiment is removed. |
 | `HIPENGINE_QWEN4_EXP_QSA_WMMA` | retired; ignored | The manifest publishes `runner.qsa_wmma_enabled`; diagnostic arms use `qsa_wmma_attention(runner, enabled)`. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16` | retired | Ignored. The manifest publishes `runner.routed_f16_enabled`; diagnostic tools bind that runner field temporarily. Routed gate/up and down keep their two-row Q4_K and 64-row Q5_K windows, including multi-row decode batches. |
