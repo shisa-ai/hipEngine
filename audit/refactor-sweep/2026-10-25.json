@@ -13174,8 +13174,8 @@
       "start_line": 11066,
       "end_line": 11074,
       "sha256": "5ff9f489f9d8eb2dda6d799c22cf5375298a1dea9116392500aa9e19426ace0e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed pack8 rowtile rollback; kept functional non-aligned output fallback and both arithmetic bodies. RED1 GREEN1 GPU55 CPU889 docs/audit pass. Public890 observed1985 Q8 rowtile calls at widths2/3/8 and matched R0467 IDs. worklog/entries/20261030T020207.348922Z-cleanup-cleanup-r0468-bf51b3.md."],
       "subitems": []
     },
     {

@@ -3,15 +3,6 @@
 
 #include <hip/hip_runtime.h>
 
-#include <cstdlib>
-
-// Row-tile launches with eight-column outputs run the eight-column pack8
-// kernel (bit-identical). HIPENGINE_GGUF_K_PACK8_ROWS=0 keeps the
-// one-column row-tile kernel (rollback; docs/REFACTOR.md).
-static inline bool gguf_k_pack8_rows_enabled() {
-  const char* value = std::getenv("HIPENGINE_GGUF_K_PACK8_ROWS");
-  return value == nullptr || value[0] != '0';
-}
 #include <stdint.h>
 #include <type_traits>
 
@@ -5051,7 +5042,7 @@ int launch_gguf_k_gemv_rowtile_out(
   const int r = static_cast<int>(rows);
   const int infe = static_cast<int>(in_features);
   const int outf = static_cast<int>(out_features);
-  if ((out_features % 8) == 0 && gguf_k_pack8_rows_enabled()) {
+  if ((out_features % 8) == 0) {
     // Eight columns per block, same bits (see gguf_k_pack8_rows_out_kernel).
     const dim3 pack_grid(static_cast<unsigned int>(out_features >> 3));
     const int packed = static_cast<int>(out_features >> 3);

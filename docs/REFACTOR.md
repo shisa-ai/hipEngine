@@ -3530,12 +3530,10 @@ code and must not be removed with the switch.
 
 ## Eight-column pack8 kernel behind the row-tile launcher (`HIPENGINE_GGUF_K_PACK8_ROWS`)
 
-Default on. `launch_gguf_k_gemv_rowtile_out` runs
-`gguf_k_pack8_rows_out_kernel` (eight output columns per block) when the
-output width is a multiple of eight. Bit-identical to the one-column
-row-tile kernel. `=0` (read at each launch) keeps the row-tile kernel.
-Remove the flag and the one-column body once no caller needs widths that
-are not multiples of eight.
+Resolved: the process rollback is removed. The row-tile launcher selects
+pack8 when the output width is a multiple of eight. The one-column kernel
+remains the functional fallback for all other positive output widths; removing
+it would narrow the supported shapes. Both kernel bodies are unchanged.
 
 ## Batch manifest legacy substring binding
 

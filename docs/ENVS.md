@@ -737,6 +737,7 @@ use.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
+| `HIPENGINE_GGUF_K_PACK8_ROWS` | retired; ignored | Q8_0/Q5_K/Q6_K row-tile launches use pack8 for output widths divisible by eight and the one-column kernel otherwise. |
 | `HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY` | retired; ignored | MTP uses batched target verification when the runner implements it. Single-token tails and external runners without that interface use serial steps. |
 | `HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL` | retired | No longer read. Text MTP proposals return token IDs through device-resident chaining, as mixed serving already does. The runner's explicit full-output interface remains available for diagnostics. |
 | `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` | `1` | Runner reset clears only the K/V a request wrote; `0` restores the full-capacity clear. |

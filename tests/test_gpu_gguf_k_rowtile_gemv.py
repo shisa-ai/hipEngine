@@ -1027,7 +1027,7 @@ def test_launch_gguf_linear_honors_raw_k_prefill_coltile_session() -> None:
     ]
 
 
-_SHAPES = [(256, 16), (512, 48), (1024, 64)]
+_SHAPES = [(256, 7), (256, 8), (256, 9), (256, 16), (512, 48), (1024, 64)]
 _ROWS = [2, 3, 4, 8]
 
 
@@ -1053,10 +1053,11 @@ def test_q8_0_rowtile_bit_exact_and_oracle(rows, in_f, out_f) -> None:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("rows", [2, 4, 8])
-def test_q5k_q6k_rowtile_bit_exact_vs_per_row(rows) -> None:
+@pytest.mark.parametrize("out_f", [7, 8, 9, 32])
+def test_q5k_q6k_rowtile_bit_exact_vs_per_row(rows, out_f) -> None:
     # Random raw bytes are valid Q5_K/Q6_K superblocks; only kernel equivalence
     # is asserted here (the Q8_0 case covers the CPU oracle).
-    in_f, out_f = 512, 32
+    in_f = 512
     rng = np.random.default_rng(100 + rows)
     qw5 = rng.integers(0, 256, size=(out_f, (in_f // QK_K) * 176), dtype=np.uint8)  # Q5_K block = 176 B
     qw6 = rng.integers(0, 256, size=(out_f, (in_f // QK_K) * 210), dtype=np.uint8)  # Q6_K block = 210 B
