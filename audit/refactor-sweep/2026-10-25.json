@@ -4850,7 +4850,8 @@
         {
           "line": 4148,
           "text": "| RF-5 | P0 | Compact benchmark decisions and raw captures share one 225.7-MiB directory. | Define a size-bounded decision-artifact schema (default ceiling 256 KiB); keep only current/linked compact decisions in `benchmarks/results/`. Raw tensor traces/logs go to ignored local storage or external/LFS storage with SHA-256 plus retrieval metadata. Inventory references before deleting any existing evidence. |",
-          "status": "pending"
+          "status": "deferred-decision-schema-and-storage",
+          "evidence": ["Current large JSON inventory includes accepted results; no size gate exists. Deferred destination/schema with consumer inventory, durable retrieval and validator replay. 52 tests/docs/audit pass. worklog/entries/20261030T080336.511934Z-cleanup-cleanup-r0187-rf5-5d66d3.md."]
         },
         {
           "line": 4149,

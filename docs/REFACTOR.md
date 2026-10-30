@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-5 | P0 | Compact benchmark decisions and raw captures share one 225.7-MiB directory. | Define a size-bounded decision-artifact schema (default ceiling 256 KiB); keep only current/linked compact decisions in `benchmarks/results/`. Raw tensor traces/logs go to ignored local storage or external/LFS storage with SHA-256 plus retrieval metadata. Inventory references before deleting any existing evidence. |
 | RF-6 | P1 | GGUF/PARO runners combine policy, allocation, all layer families, verification, graph capture, and session lifecycle in giant classes. | Extract pure policy/shape planning first, then scratch/state ownership, full attention, linear attention, MoE, verification, and session façade modules. Preserve public imports through thin compatibility façades during migration. No numerical or dispatch change may share a move-only commit. |
 | RF-7 | P1 | `server/api.py` combines unrelated protocol and execution concerns; `create_app()` is a 4K-line closure tree. | Split OpenAI request/response schemas, tool/structured validation, SSE/stream accounting, metrics, model lifecycle, and route handlers. `create_app()` should compose routers/services rather than define the implementation. The server must call one typed generation service; it must not become a second scheduler. |
 | RF-8 | P1 | Backend package `__init__.py` files are capability databases, alias registrars, and implementation code. | Split backend policy by model/quant/subsystem into immutable manifest modules, with one package aggregator and validation. Keep the four-axis registry; do not replace it with backend conditionals. Generate or declaratively register repetitive aliases only when source-lineage and exact-key tests remain readable. |
@@ -9794,3 +9793,26 @@ table, required fields and dangling detail links; wire it into
 existing documentation gates validate indexes, environment coverage, benchmark
 exports and published commands, not this ledger schema. No such checker or
 format migration is claimed by this triage.
+
+### RF-5 / R0187 — Choose compact decision schema and durable capture storage
+
+**Deferred storage/schema decision:** choose a retrievable destination for large
+captures and define which fields belong in compact decisions versus referenced
+payloads. The proposed default decision ceiling is 256 KiB, not an existing
+validation rule. Large accepted JSON results cannot be treated as disposable
+logs merely because they exceed it. The provenance and published-command gates
+do not impose that size limit.
+
+Before migration, inventory paths, consumers, references, hashes and verdicts;
+separate raw tensors/traces from summaries that existing validators consume.
+Keep current and linked decisions available. External or LFS payloads need a
+SHA-256, retrieval metadata and an exercised retrieval command. Ignored local
+storage alone is not a durable replacement for published evidence.
+
+Clearing checks: version the compact schema, test size enforcement and malformed
+references, replay representative accepted/rejected decision validators after
+retrieval, and verify all existing evidence links or explicit archival redirects.
+Only then remove duplicated captures from tracked storage. Preserve historical
+bytes and decisions; do not rewrite measured results to fit a size target.
+This triage removes the stale directory-size claim, not artifacts, and does not
+claim the schema or storage migration is implemented.
