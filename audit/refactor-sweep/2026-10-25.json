@@ -13822,8 +13822,8 @@
       "start_line": 12191,
       "end_line": 12208,
       "sha256": "0e19c0667ba694a6eb5c98e6df44d0211ddde0dbae3a160ef86384e234386052",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Captured-graph metadata interface remains missing; deferred complete selected-token/top-logprobs output including corrections, bonus rows and truncation. Eager fallback preserved. worklog/entries/20261030T054428.090722Z-cleanup-cleanup-r0513-d4c6af.md."],
       "subitems": []
     },
     {

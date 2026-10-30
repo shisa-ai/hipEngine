@@ -3544,24 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Logprobs requests skip the captured-graph sampled accept (open 2026-09-23)
-
-`_device_sampled_accept_plan` in `hipengine/generation/qwen35_gguf_mtp2.py`
-declines a request that asked for logprobs. The captured graph samples and
-accepts on the device and returns no logits row to the host, so the route has
-nothing to report a published token's logprob from; the request falls to the
-eager host accept, which scores each published token against the verified row
-that predicted it. Serving the metadata is what the logprobs path requires, and
-the fallback is exact -- the gate compares it against the autoregressive route
-token for token at zero delta -- so the decline costs the graph's speed on those
-requests, not their correctness.
-
-Remove this once the graph accept can return the per-row values it selected
-from -- the top-1 candidate and its processed logprob, plus the
-retained top-k the request asked for -- for the rows it accepted. The evidence
-that would justify it is the same gate at zero delta with the decline removed
-and the execution path reporting the captured-graph accept.
-
 ## Forced-token requests skip the captured-graph sampled accept (open 2026-09-23)
 
 A request with a pending forced token cannot use the captured-graph sampled
@@ -9827,3 +9809,22 @@ The historical screen rejected that dual; preserve its evidence in the original
 ledger history at `ad2c28ff3`. If pursuing it, select a Q5-specific registered key,
 verify the intended decode owner and run the applicable numerical and public
 route gates. Do not change the working prefill route as part of this decision.
+
+### R0513 — Define captured-accept logprob outputs for every published token
+
+`_device_sampled_accept_plan` still declines logprobs because the captured graph
+returns no host logits rows or equivalent token metadata. The eager path supplies
+that metadata. Keep this capability fallback until the graph has an output
+contract that can satisfy the request.
+
+**Deferred graph interface:** emit the selected token's processed logprob and
+requested top-logprobs for accepted draft tokens, rejection corrections and the
+bonus token. The selected token need not be top-1. Bind each result to the target
+row that predicted it, and discard metadata beyond stop/EOS or cancellation.
+Define buffer ownership, graph replay updates and streaming publication together.
+
+Then remove the decline and run the existing logprobs parity gate with zero delta
+against the autoregressive route, confirming the captured accept actually ran.
+Exercise partial acceptance, full acceptance, rejection, stop truncation and
+blocking/streaming output. Existing eager-path tests are not evidence that the
+graph metadata interface is implemented.
