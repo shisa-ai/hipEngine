@@ -13332,8 +13332,8 @@
       "start_line": 11260,
       "end_line": 11279,
       "sha256": "d5bbd5fdcddd0cf68423e81a4599112df9f83efa1b038cb4ad8a45cc0264c0b4",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Moved singleton shape choice into both HIP backend package policies and existing registered variant; removed runtime shape set and env reader. 323 dispatch tests, CPU bundle, public repeated MTP registry engagement and documentation/audit checks pass. worklog/entries/20261030T033945.181240Z-cleanup-cleanup-r0478-0f21f2.md."],
       "subitems": []
     },
     {

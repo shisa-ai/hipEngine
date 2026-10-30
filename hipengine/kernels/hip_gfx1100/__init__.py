@@ -227,6 +227,10 @@ GGUF_GDN_INDEXED_SINGLETON_DECODE = True
 # Exact Q8T16 row-amortized decode remains explicit on gfx1100 until an
 # independent native-AR width gate passes on W7900.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+# BF16 singleton projections use the registered row-amortized owner at rows >1.
+GGUF_Q8_T16_SINGLE_ROWTILE_VARIANTS_BY_SHAPE = {
+    (5120, 1024): "t16_gemv_decode_rowtile4_bf16_bf16_out",
+}
 # Zero keeps the width-scoped all-projection policy disabled on gfx1100.
 GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 0
 # The exact 128-thread c8 pair schedule is admitted only on independently

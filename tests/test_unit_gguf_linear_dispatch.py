@@ -4522,6 +4522,41 @@ def test_t16_broad_package_policy_selects_single_and_triple_launch(monkeypatch, 
     assert calls == [package, "exact", "rowtile4" if rows > 1 else "exact"]
 
 
+@pytest.mark.parametrize("backend", ("hip_gfx1100", "hip_gfx1151"))
+@pytest.mark.parametrize("rows", (1, 2, 5, 8, 17))
+def test_q8_shape_rowtile_uses_package_variant(monkeypatch, backend, rows):
+    if backend == "hip_gfx1151":
+        from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+        register_gfx1151_kernels(replace=True)
+    gl = gguf_linear_module
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES", "0")
+    variant = gl._q8_t16_shape_rowtile_variant(
+        backend, rows=rows, in_features=5120, out_features=1024, threads=0,
+    )
+    if rows == 1:
+        assert variant is None
+        return
+    assert variant == "t16_gemv_decode_rowtile4_bf16_bf16_out"
+    key = KernelKey(backend, "linear", "gguf_q8_0_t16_v1", variant)
+    original = resolve(backend=backend, layer=key.layer, quant=key.quant, variant=variant)
+    calls = []
+    register(key, lambda *args, **kwargs: calls.append((args, kwargs)), replace=True)
+    try:
+        weight = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key=key.quant)
+        launch_gguf_linear(
+            weight, x_ptr=100, out_ptr=200, rows=rows, in_features=5120,
+            out_features=1024, backend=backend, runtime="runtime-sentinel",
+        )
+        assert calls == [((100, 14, 200, rows, 5120, 1024),
+                          {"threads": 128, "stream": 0, "runtime": "runtime-sentinel"})]
+    finally:
+        register(key, original, replace=True)
+    for width, threads in ((2048, 0), (1024, 64)):
+        assert gl._q8_t16_shape_rowtile_variant(
+            backend, rows=rows, in_features=5120, out_features=width, threads=threads,
+        ) is None
+
+
 @pytest.mark.parametrize("fail", [False, True])
 def test_t16_broad_policy_restores_scopes_without_gating_shape_policy(monkeypatch, fail) -> None:
     gl = gguf_linear_module
@@ -4540,7 +4575,10 @@ def test_t16_broad_policy_restores_scopes_without_gating_shape_policy(monkeypatc
     assert gl._q8_t16_rowtile_all_session_enabled is None
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "0")
     assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=2048, out_features=4096)
-    assert gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=1024)
+    assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=1024)
+    assert gl._q8_t16_shape_rowtile_variant(
+        "hip_gfx1100", rows=5, in_features=5120, out_features=1024, threads=0,
+    ) == "t16_gemv_decode_rowtile4_bf16_bf16_out"
     assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=2048)
     assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120)
     assert not gl._use_q8_t16_all_rowtile(rows=1, in_features=5120, out_features=1024)

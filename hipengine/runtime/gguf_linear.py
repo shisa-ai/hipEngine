@@ -1236,14 +1236,6 @@ _Q8_T16_ROWTILE_THREADS = 128
 _Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
 _Q8_T16_PAIR_COL8_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
 _Q8_T16_ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
-# Shape-explicit Q8T16 rowtile admission for the UD verifier. `(in_features,
-# out_features)`. Measured on the RX 7900 XTX (gfx1100, physical GPU1)
-# UD-Q4_K_M verifier at rows 3: the attn_k/attn_v projections at (5120, 1024)
-# ran the 32-thread WMMA prefill owner (one wave32 per block, 32 blocks) for
-# 84 calls/step at 122.6 us each, and the 128-thread rowtile GEMV owner runs
-# the same 84 calls at ~52 us each.
-_Q8_T16_ALL_ROWTILE_SHAPES = frozenset({(5_120, 1_024)})
-_Q8_T16_ALL_ROWTILE_SHAPES_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES"
 _q8_t16_pair_rowtile_min_rows_session: int | None = None
 _q8_t16_rowtile_all_session_enabled: bool | None = None
 _Q8_T16_QWEN35_ATTN_QKV_OUT = 8192
@@ -2499,20 +2491,18 @@ def _use_q8_t16_all_rowtile(
         return False
     if in_features == _Q8_T16_QWEN35_ATTN_IN:
         return _resolve_use_q8_t16_all_rowtile()
-    # UD-Q4_K_M reaches a shape the gfx1100 decode-width audit packet C1 did
-    # not cover. C1 rejected the *broad* all-projection rowtile route on
-    # Qwen3.6-35B-A3B at c2/c4 with in_features 2048, and the broad boolean
-    # stays off. This set is a separate, shape-explicit policy: it admits only
-    # shapes measured to win, and only when an explicit out_features is known.
-    if (
-        out_features is not None
-        and (in_features, out_features) in _Q8_T16_ALL_ROWTILE_SHAPES
-    ):
-        raw = os.environ.get(_Q8_T16_ALL_ROWTILE_SHAPES_ENV, "").strip().lower()
-        if raw:
-            return raw in {"1", "true", "yes", "on"}
-        return True
     return False
+
+
+def _q8_t16_shape_rowtile_variant(
+    backend: str, *, rows: int, in_features: int, out_features: int, threads: int,
+) -> str | None:
+    if rows <= 1 or _q8_t16_threads_override_active(threads):
+        return None
+    policies = backend_package_capability(
+        backend, "GGUF_Q8_T16_SINGLE_ROWTILE_VARIANTS_BY_SHAPE", {},
+    )
+    return policies.get((in_features, out_features))
 
 
 def _use_q8_t16_pair_rowtile(
@@ -5234,6 +5224,34 @@ def launch_gguf_linear(
             kwargs["threads"] = wide_threads
     if library is not None:
         kwargs["library"] = library
+    shape_rowtile_variant = (
+        _q8_t16_shape_rowtile_variant(
+            resolved_backend, rows=rows, in_features=in_features,
+            out_features=out_features, threads=threads,
+        )
+        if abi == "t16" and quant == "gguf_q8_0_t16_v1"
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        else None
+    )
+    if shape_rowtile_variant is not None:
+        shape_key = KernelKey(resolved_backend, "linear", quant, shape_rowtile_variant)
+        _ensure_linear_kernel_registered(shape_key)
+        shape_fn = resolve(
+            backend=shape_key.backend, layer=shape_key.layer,
+            quant=shape_key.quant, variant=shape_key.variant,
+        )
+        if libraries is not None:
+            shape_library = _variant_scoped_library(libraries, shape_key)
+            kwargs.pop("library", None)
+            if shape_library is not None:
+                kwargs["library"] = shape_library
+        shape_fn(
+            x_ptr, weight.allocation("tiles").tensor.ptr, out_ptr,
+            rows, in_features, out_features,
+            threads=_Q8_T16_ROWTILE_THREADS, **kwargs,
+        )
+        return
     if (
         abi == "t16"
         and quant == "gguf_q8_0_t16_v1"

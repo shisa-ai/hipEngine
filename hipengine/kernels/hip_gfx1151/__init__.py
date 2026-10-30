@@ -1689,6 +1689,10 @@ GGUF_GDN_INDEXED_SINGLETON_DECODE = True
 # diagnostic, not binding; the complete strict-teacher gate admits exact c4/c8
 # logits, and width-scoped timing wins both shapes. Keep c2 on the direct owner.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+# Preserve the shared singleton shape policy independently of the broad floor.
+GGUF_Q8_T16_SINGLE_ROWTILE_VARIANTS_BY_SHAPE = {
+    (5120, 1024): "t16_gemv_decode_rowtile4_bf16_bf16_out",
+}
 GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 4
 # The repaired 128-thread pair-only route preserves production reduction order.
 # Its independent fallback floor remains physical c8; the all-projection c4

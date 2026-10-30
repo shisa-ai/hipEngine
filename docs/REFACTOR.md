@@ -3544,26 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 Q8T16 shape-explicit rowtile admission — env kill switch
-
-**State.** `_Q8_T16_ALL_ROWTILE_SHAPES` (`{(5120, 1024)}`) admits the Q8_0
-`attn_k`/`attn_v` projections at rows 2-8 to the 128-thread
-`q8_0_t16_rowtile_gemv` owner instead of the 32-thread
-`gguf_q8_0_t16_prefill_wmma` owner. `HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES`
-overrides the set on/off for bisection.
-
-**Why it is retained.** The set is measured, not broad: the broad
-`HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` boolean stays off because audit packet C1
-rejected that route on gfx1100 for the decode widths, and because the broad
-boolean also reaches the `ssm_alpha`/`ssm_beta` projections and changes their
-arithmetic.
-
-**Removal trigger.** Once the `(5120, 1024)` Q8_0 shape is covered by a
-registered variant policy rather than an admission helper — or once no UD
-artifact carries Q8_0 attention K/V projections — fold the set into the
-registry and delete both the set and the env override, leaving
-`_Q8_T16_QWEN35_ATTN_IN` as the only in-feature admission.
-
 ## 2026-09-13 Q5T16 single-wave verifier rowtile — env kill switch
 
 **State.** `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT` in
