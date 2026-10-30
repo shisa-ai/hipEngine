@@ -967,31 +967,6 @@ multi-column engagement evidence, so it stays.
 
 
 
-## Three qwen36-dense serving rows carry no execution identity (found 2026-09-20)
-
-The three `qwen36-dense-q4km-gfx1100-*` rows in
-`hipengine/models/qwen35.py` describe Qwen3.6-27B-Q4_K_M
-(`/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`, sha256 `a7cbd3ec…`, 17,106,773,120
-bytes) and record its measured gfx1100 scope. Their
-`artifact_execution_fingerprint` fields are still empty, so the rows cannot
-supply matching evidence for a resident file. They do not control runnability:
-automatic and explicit requests both resolve through the implementation
-capability declaration when no evidence row matches.
-
-**Clearing command.** `python3 scripts/gguf_execution_identity.py <artifact.gguf>`
-prints an execution fingerprint if the historical artifact is available. Record
-it only after verifying that it belongs to the measured artifact; do not invent
-an identity or substitute a newer file. The regression
-`tests/test_unit_speculative_mtp_serving_capability.py::test_qwen36_dense_rows_without_identity_still_run_on_capability`
-pins both request modes running with `admission_basis="implementation"`.
-Recording a verified identity can improve evidence attribution without changing
-which implementation executes.
-
-Both request modes resolve through the dense BF16 implementation declaration,
-which does not require evidence rows. The
-`qwen36-dense` and `qwen38` rows cannot be conflated by a byte-digest match
-because the artifact axis is the execution identity, not the SHA-256.
-
 ## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
 
 Resolved in three steps. (1) The `(8, 3)` cell left
@@ -1238,6 +1213,24 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0060 — Bind historical dense serving evidence when its artifact is available
+
+The three `qwen36-dense-q4km-gfx1100-*` evidence rows in
+`hipengine/models/qwen35.py` still lack `artifact_execution_fingerprint`.
+Automatic and explicit requests run through the dense BF16 implementation
+capability when no evidence row matches; these missing identities do not block
+execution. The original measured artifact identity is recorded in this ledger
+at `f19f318d3`; do not substitute a newer file.
+
+**Deferred artifact dependency:** obtain and verify the historical measured
+artifact, then run `python3 scripts/gguf_execution_identity.py <artifact.gguf>`
+and record its fingerprint for evidence attribution only. Preserve
+`tests/test_unit_speculative_mtp_serving_capability.py::test_qwen36_dense_rows_without_identity_still_run_on_capability`
+and `admission_basis="implementation"` in both modes. Never invent a fingerprint
+or use a byte-digest match to conflate qwen36-dense and qwen38 execution identity.
+No model admission or runtime changes accompany this relocation.
+
 
 ### R0059 — Prefix-cache rollback interface
 
