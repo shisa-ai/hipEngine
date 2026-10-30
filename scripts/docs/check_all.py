@@ -8,6 +8,7 @@ is the single entry point that runs them together and reports one summary.
 
     check_docs.py                    front-matter + index freshness (docs/)
     check_envs_docs.py               every env var read in the tree is in ENVS.md
+    check_refactor.py                active IDs, ownership, completion and links
     sync_benchmark_readme.py --check exported benchmark prose matches the source
     check_published_command_drift.py published artifact commands match their script
 
@@ -28,6 +29,7 @@ GATES: tuple[tuple[str, list[str], list[str]], ...] = (
     # (label, argv, extra argv when --write)
     ("docs front-matter and indexes", ["scripts/docs/check_docs.py"], ["--write"]),
     ("ENVS.md env-var coverage", ["scripts/check_envs_docs.py"], []),
+    ("refactor backlog contracts", ["scripts/docs/check_refactor.py"], []),
     ("benchmark README export sync", ["scripts/sync_benchmark_readme.py", "--check"], []),
     ("published command drift", ["scripts/check_published_command_drift.py", "--quiet"], []),
 )
