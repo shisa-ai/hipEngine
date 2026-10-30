@@ -4,23 +4,11 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+The remaining entries are deferred decisions, repairs or validation work from
+the refactor sweep. Completed changes and rejected deletion proposals are
+recorded in immutable worklogs. The original-item dispositions are tracked in
+`audit/refactor-sweep/2026-10-25.json`; a triaged entry is not a claim that its
+deferred implementation or validation is complete.
 
 This file tracks cleanup work that should happen after the fast/correct path is
 proven. During optimization, temporary flags and fallback paths are useful for
@@ -39,26 +27,6 @@ should be removed or collapsed.
 - Do not remove registered strict unfused fallbacks required by `AGENTS.md` and
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ## Deferred decisions from the refactor sweep
 
