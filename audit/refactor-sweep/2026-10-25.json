@@ -5091,18 +5091,19 @@
       "start_line": 4291,
       "end_line": 4302,
       "sha256": "a0b705a4ec39d32b38e01209de37cd2495e30cb2de98c1d5eb805f1cdacb84b9",
-      "status": "partial",
+      "status": "triaged-deferred-numerical-scope-transport",
       "evidence": ["Live arithmetic scope preserved. Added nested-disable/error-restoration/independent-context tests; full adapter/C2 scope tests and docs/audit pass. Profile transport migration remains open. Worklog: worklog/entries/20261027T154759.095312Z-cleanup-refactor-r0193-r0194-8b5f45.md."],
       "subitems": [
         {
           "line": 4293,
           "text": "- Added 2026-08-27 for the gfx1100 35B MoE physical-C2 campaign. The request-",
-          "status": "pending"
+          "status": "preserved-live-arithmetic-contract"
         },
         {
           "line": 4299,
           "text": "- Removal trigger: replace the temporary ContextVar with a profile-resolved",
-          "status": "pending"
+          "status": "deferred-numerical-scope-transport",
+          "evidence": "Bottom R0193 preserves arithmetic and context isolation;60 tests/docs/audit pass. worklog/entries/20261030T090759.067669Z-cleanup-cleanup-r0193-final-4adb6f.md."
         }
       ]
     },

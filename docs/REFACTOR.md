@@ -2228,23 +2228,6 @@ should be removed or collapsed.
   restoration before retiring the variable; do not substitute a process-global
   boolean or infer this arithmetic choice from the backend alone.
 
-## SPECDEC2 MoE physical-C2 numerical scope
-
-- Added 2026-08-27 for the gfx1100 35B MoE physical-C2 campaign. The request-
-  local `moe_physical_c2_numerics_session(...)` disables the C1 production
-  F32-residual diagnostic only while the packed C2 target executes; the packed
-  owner cannot represent that diagnostic and fails closed without the scope.
-  C1 production and strict retain their existing arithmetic. The gfx1100
-  production BF16 C2/K2/D24 row is already automatic-eligible in the model
-  policy, backed by
-  `benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`.
-- Remaining cleanup: replace the temporary ContextVar with a profile-resolved
-  physical-C2 target manifest, preserving the C1 production and strict
-  fallbacks plus the focused scope test. Qualification is not the remaining
-  prerequisite for that transport cleanup. Preserve nested disabled scopes,
-  exception restoration and independent execution-context isolation when moving
-  the selection to a profile-owned plan; these are existing ownership contracts.
-
 ## SPECDEC2 MoE physical-C2 exact-linear fallback
 
 - Added 2026-08-27 after the packed rows6 linear-attention composite failed the
@@ -9885,3 +9868,20 @@ request reuse and balanced teardown. Preserve explicit direct-call refusals on
 the old adapter and its working C1 path. Do not count factory or mocked lifecycle
 tests as the missing public result. The prototype deletion is complete; this
 validation is not, and no new public result is claimed by moving the entry.
+
+### R0193 — Replace MoE numerical-scope transport without changing arithmetic
+
+`moe_physical_c2_numerics_session(...)` disables the C1 F32-residual diagnostic
+while the packed C2 target runs, because that owner cannot represent the
+diagnostic. C1 production and strict keep their existing arithmetic. The
+historical automatic-promotion record is
+`benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`;
+missing promotion evidence is not the remaining cleanup prerequisite.
+
+**Deferred profile transport:** replace the ContextVar with the physical-target
+manifest while preserving C1/strict fallbacks, nested disabled scopes, exception
+restoration and independent execution-context isolation. Reuse RF-1's owner
+boundary and keep this migration separate from numerical tuning. Run
+`tests/test_unit_moe_target_arithmetic_scopes.py` and affected adapter tests;
+verify public C1/C2 selected arithmetic and rollback state before retiring the
+scope. No arithmetic, capability or default change is made by this triage.
