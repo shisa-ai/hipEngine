@@ -2239,64 +2239,6 @@ Resolved: the reduction-order choices have explicit manifest scopes and
 runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
-## Qwen4Exp direct QSA prefill selection (`HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT`)
-
-Resolved: the process rollback is retired. H4/D128 batched prefill always uses
-causal scoring and, with WMMA attention, direct mask publication. Other
-geometries retain the generic scorer, and per-row selection retains its mask
-conversion. Only the final sparse row expands positions on the direct-mask
-route to publish decode state. The generic kernels remain strict comparison
-oracles in `tests/test_gpu_qwen4exp_qsa_select_mask.py`.
-
-## Qwen4Exp QSA prefill gate read in place (`HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE`)
-
-Resolved: the process rollback and copied-gate prefill branch are removed.
-Prefill reads the projected gate in place and publishes an F16 mirror when the
-existing workspace capacity permits. The separate gate kernel remains used by
-scalar decode and as the strict oracle in
-`tests/test_gpu_qwen4exp_qsa_select_mask.py`.
-
-## Qwen4Exp residual write fused into the next norm (`HIPENGINE_QWEN4_EXP_GR_WRITE_NORM`)
-
-Resolved: the process rollback is removed. The existing 1024-row floor,
-pending-write handoff and separate-write fallbacks are unchanged. The token
-mixer's residual write can fuse into the FFN norm, and the MoE write into the
-next layer's attention norm. PLE boundaries, the final layer and incompatible
-consumers still flush the write separately. Exact fused/separate parity is
-covered by `tests/test_gpu_qwen4exp_gr_write_norm.py`.
-
-## Qwen4Exp decode PLE staging overlapped with layer 0 (`HIPENGINE_QWEN4_EXP_PLE_OVERLAP`)
-
-Resolved: the process rollback is removed. Pinned staging overlaps preceding
-layers when the first PLE consumer is after layer 0. Unpinned staging and a
-layer-0 consumer keep the blocking copy. Host gathering and same-stream copy
-ordering are unchanged; device-side gathering is a separate implementation
-change, not a prerequisite for retiring the switch.
-
-## Qwen4Exp MTP batched verify (`HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY`)
-
-Resolved: the environment rollback is removed. Runners implementing
-`verify_target_block_state_rows` use batched verification and commit accepted
-state rows without replay. Serial verification remains functional for a
-single-token tail and external runners without that interface; it is not dead
-code and must not be removed with the switch.
-
-## Eight-column pack8 kernel behind the row-tile launcher (`HIPENGINE_GGUF_K_PACK8_ROWS`)
-
-Resolved: the process rollback is removed. The row-tile launcher selects
-pack8 when the output width is a multiple of eight. The one-column kernel
-remains the functional fallback for all other positive output widths; removing
-it would narrow the supported shapes. Both kernel bodies are unchanged.
-
-## Batch manifest legacy substring binding
-
-Resolved: removed the substring helper, static identity table and legacy
-fake-scope tests. Adapter evidence reports no path identities until the
-structured manifest is built. The layer-2 gate continues to validate live
-identities, registry and dispatch keys, step widths, and profile/source binding
-through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
-and identity-tampering tests remain.
-
 ## Deferred decisions from the refactor sweep
 
 ### R0081 — Finish legacy provider telemetry migration
