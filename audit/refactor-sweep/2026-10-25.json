@@ -4466,18 +4466,18 @@
       "start_line": 3939,
       "end_line": 3949,
       "sha256": "c15be93551e983960dc34d13137f760fabd074e0ebac3fc8019a2b61a20b40ec",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-rollback-ownership",
+      "evidence": ["Live profile rollback and periodic strict schedule verified; shared cache also serves other policies. Deferred scoped retirement preserving strict/omitted behavior.10 tests/docs/audit pass. worklog/entries/20261030T072846.566163Z-cleanup-cleanup-r0173-21d107.md."],
       "subitems": [
         {
           "line": 3941,
           "text": "- Explicit `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28=0` restores exact",
-          "status": "pending"
+          "status": "deferred-rollback-ownership"
         },
         {
           "line": 3945,
           "text": "- The fixed schedule is correctness- and performance-qualified. Remove the",
-          "status": "pending"
+          "status": "deferred-rollback-ownership"
         }
       ]
     },

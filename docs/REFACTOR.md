@@ -2342,16 +2342,6 @@ should be removed or collapsed.
 
 
 
-## 2026-09-02 gfx1100 periodic-strict fused Q4 R28 rollback — open
-
-- Explicit `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28=0` restores exact
-  R28 on every layer; explicit production otherwise fuses layers whose ID is
-  not divisible by 8 while layers 0/8/…/56 remain exact. Omitted-profile
-  behavior stays unchanged.
-- The fixed schedule is correctness- and performance-qualified. Remove the
-  environment override and its cache/test after the next stable milestone;
-  keep the backend policy, production manifest selection, and registered exact
-  fallback.
 
 ## 2026-09-01 W1 wide-Q6 shared-weight candidate context — open
 
@@ -9744,3 +9734,26 @@ and singleton/refill behavior; test every affected cache lifecycle before removi
 fields. Exercise public generation with target attribution and all acceptance
 prefixes. Historical claims remain in the ledger at `b2f30e52c`; this triage
 changes no runtime and adds no packed-target measurement.
+
+### R0173 — Retire the R28 rollback without removing shared rowtile machinery
+
+`HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` still controls the periodic
+fused R28 policy. The dense gfx1100 profile binder writes zero for strict and
+preserves an explicit production rollback. The backend schedule keeps layers
+0/8/…/56 exact while allowing the other applicable layers to use the fused owner.
+Historical evidence is
+`benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json`.
+
+**Deferred rollback decision:** retain the explicit comparison or replace its
+process-global transport with owner-bound policy after the release review.
+Preserve strict-profile selection, omitted-profile behavior, periodic exact
+layers and registered strict fallback. R0137 owns broader profile migration.
+The `_rowtile_variant_policy_env_cache` in `gguf_linear.py` serves multiple
+policies; do not delete it or unrelated tests as though it belonged only to R28.
+Remove only obsolete switch-specific entries and coverage after callers migrate.
+
+Clearing checks: run gfx1100 profile tests, exercise strict/production/rollback
+in both owner construction orders, then verify exact-layer schedule and public
+R28 dispatch with full-output/state and lifecycle checks. Any changed arithmetic
+selection requires its profile gate. This triage changes no runtime or default
+and does not renew the historical performance claim.
