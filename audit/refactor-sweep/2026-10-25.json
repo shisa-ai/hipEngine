@@ -13292,8 +13292,8 @@
       "start_line": 11181,
       "end_line": 11198,
       "sha256": "525fbc7a7ca98aab07c4be127c31f5dc65640cfe966e1ad247724816200ccaec",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["History cleanup already published and verified in CLEANUP-HISTORY.md/MANIFEST.json. All eight listed September11 CSVs absent; six final-decode plus two q5-local32 censuses parse; protected replay inputs preserved. Removed stale ledger narrative only; no artifact deletion or history rewrite. worklog/entries/20261030T030910.768251Z-cleanup-cleanup-r0474-f79f2c.md."],
       "subitems": []
     },
     {

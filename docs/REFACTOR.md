@@ -3544,24 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`
-
-**State: resolved for raw profiler output.** The one-time history cleanup removes
-all eight September 11 profiler CSVs. Six existing compact censuses remain; the
-two q5-local32 study censuses preserve every kernel's dispatch count and total
-duration, with source SHA-256 hashes. Their values were checked against every
-source CSV row before removal.
-
-The earlier recommendation to delete oversized window captures was too broad.
-Nine named replay inputs remain because scripts or published comparisons consume
-them. Twenty-nine other captures retain their metadata and tensor summaries but
-omit raw boundary arrays. New raw-vector comparisons require recapture or the
-offline recovery archive.
-
-The exact exclusions, removal list and migration checks are in
-`docs/campaigns/CLEANUP-HISTORY.md` and its companion manifest. Generated audit
-caches are removed from history, but durable triage decisions remain unchanged.
-
 ## 2026-09-12 `--ar-decode-mode eager` retained as a diagnostic control
 
 **State.** `scripts/qwen36_dense_gguf_suite.py` gained `--ar-decode-mode
