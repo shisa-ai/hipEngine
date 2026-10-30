@@ -3414,16 +3414,12 @@ def _qwen4_exp_gr_pending_write(
 ) -> tuple[int, int, int, bool] | None:
     """Defer a prefill residual write into the next read's norm launch.
 
-    Bit-identical (`tests/test_gpu_qwen4exp_gr_write_norm.py`). Chunks of at
-    least 1024 rows only: the fused launch has one workgroup per row, and at
-    512 rows the separate per-branch write fills the GPU better (code-p512
-    1027.9 against 1021.7 tok/s). HIPENGINE_QWEN4_EXP_GR_WRITE_NORM=0 rolls
-    back (docs/REFACTOR.md).
+    Preserve the established 1024-row floor; smaller chunks use the separate
+    per-branch write. Exact parity is covered by
+    `tests/test_gpu_qwen4exp_gr_write_norm.py`.
     """
 
-    if rows < 1024 or os.environ.get(
-        "HIPENGINE_QWEN4_EXP_GR_WRITE_NORM", "1"
-    ) in {"", "0", "false", "False"}:
+    if rows < 1024:
         return None
     return (int(source_ptr), int(block_ptr), int(logits_ptr), False)
 

@@ -763,7 +763,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | retired | Ignored. The supported scale-only norm computes inject logits when an inject projection is present. The separate kernel remains available to parity tests and fallback paths. |
 | `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | retired | Ignored. Supported direct-F16 GR reads use the scale-only norm; incompatible geometry or projection layouts retain the FP32 plane fallback. |
 | `HIPENGINE_QWEN4_EXP_GR_WIDE` | unset (F16 route sets `1`) | Hyper-connection up projection on the F16 wide route. |
-| `HIPENGINE_QWEN4_EXP_GR_WRITE_NORM` | `1` | Fused GR write plus next norm for chunks of at least 1,024 rows (bit-identical); `0` rolls back. |
+| `HIPENGINE_QWEN4_EXP_GR_WRITE_NORM` | retired; ignored | Residual writes defer into the next norm for chunks of at least 1,024 rows. Short chunks and incompatible consumers keep separate writes. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` | profile-selected | Q8_0 dense-wide prefill route master switch. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` | profile-selected | Comma-separated layers whose Q8_0 dense projections take the dense-wide prefill route. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS` | profile-selected | Admits rows 9-256 to the dense-wide owner under the short-prompt gate. |

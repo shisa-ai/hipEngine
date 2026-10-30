@@ -13144,8 +13144,8 @@
       "start_line": 11030,
       "end_line": 11045,
       "sha256": "e3d3a658e251fbed688f950be8eb570ac11e1d70972c03c19afedac27ccf046f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed process rollback; existing row floor and pending-write/flush ownership unchanged. RED6 GREEN88 GPU4 public282 fused calls both payload dtypes unchangedIDs CPU bg878 docs/audit pass. worklog/entries/20261030T013740.330043Z-cleanup-cleanup-r0465-61d244.md."],
       "subitems": []
     },
     {
