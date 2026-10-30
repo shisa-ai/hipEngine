@@ -2850,9 +2850,9 @@ decided.
 
 ### R0389 — Standalone draft-hidden diagnostic ownership
 
-Owner: `hipengine/speculative/mtp_resident_draft.py`.
+Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
 
-Scope: `tests/test_unit_qwen35_gguf_mtp_session.py`; `tests/test_unit_qwen35_gguf_hidden_seed_contract.py`; `tests/test_unit_qwen35_gguf_mtp2_seam.py`.
+Scope: `Qwen35GGUFMTPDecodeSession`, `scripts/qwen36_dense_gguf_suite.py --draft-hidden-variant`; `tests/test_unit_qwen35_gguf_mtp_session.py`; `tests/test_unit_qwen35_gguf_hidden_seed_contract.py`; `tests/test_unit_qwen35_gguf_mtp2_seam.py`.
 
 **Decision needed:** retain this supported diagnostic constructor/CLI interface or migrate the
 post-norm transform into a benchmark-owned adapter. No second model campaign is required to run an

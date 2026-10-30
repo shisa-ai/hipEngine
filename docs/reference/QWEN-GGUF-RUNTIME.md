@@ -157,8 +157,8 @@ Session code still owns kernel launches, cursor-device updates, KV bind/unbind
 publication and graph capture/synchronization. `qwen35_gguf_graph_lifetime.py`
 owns graph handles, KV pins and retained submission contexts. Pin/unpin receive
 current allocation and pool explicitly; slot views have independent bookkeeping.
-Session compatibility properties expose the same mutable containers until capture
-sites migrate to owner methods. Prefix clone publishes its cursor only after
+Capture, close and enumeration call the lifetime owner's methods; the session exposes
+no mutable compatibility containers. Prefix clone publishes its cursor only after
 required deferred-state flushing succeeds. The numerical copy order and existing
 speculative journal interfaces are unchanged.
 
