@@ -3544,19 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-11 Surya HIP runtime: direct backend imports — open
-
-`hipengine/runtime/surya.py` imports its JIT libraries directly from
-`hipengine.kernels.hip_gfx1100` (`evie_ops`, `linear_attn.conv`,
-`linear_attn.gdn`, `surya.surya_ops`) and resolves kernels by symbol name from
-the built `.so`. This is the same pattern the committed EVIE runtime
-(`hipengine/runtime/evie.py`) already uses, so the deviation is repo-wide, not
-Surya-specific: the four-axis registry currently governs engine/dispatch
-kernels, while hand-written runtime runners own their JIT libraries. Migrate
-EVIE and Surya together onto a backend-keyed kernel-library resolver when the
-runtime runners become a second consumer of shared linear-attention kernels;
-until then the direct import is the contract of record.
-
 ## 2026-09-11 Surya KV write and decode: dense offset scheme — closed 2026-09-13
 
 `surya_scatter_kv_f32(k, cache, tokens, base_pos, nk, hd, max_seq, row)` wrote
@@ -10219,3 +10206,28 @@ replacement reference on device, followed by the applicable execution-profile
 gates for any changed arithmetic default. Dispatch tests alone cannot establish
 that equality. The capability table continues to distinguish the production
 owner from the reference; it is not an admission gate.
+
+### R0483 — EVIE/Surya runtime library ownership
+
+`hipengine/runtime/evie.py` and `hipengine/runtime/surya.py` import builders
+and callable wrappers from `hipengine.kernels.hip_gfx1100`. Their constructors
+build the EVIE, conv and GDN libraries; Surya additionally builds its own
+library. Both runners already consume shared linear-attention kernels, so
+waiting for a second consumer is not a useful removal condition.
+
+**Deferred architecture decision:** preserve explicit library ownership in
+these specialized runners, or migrate both to backend-provided runtime
+operations. The latter needs a declared boundary between the four-axis kernel
+registry and whole-library construction; a second library registry must not
+silently become a fifth kernel axis. Resolve builders and wrappers together,
+keep injected test libraries and their lifetime semantics, and preserve the
+existing arithmetic and supported HIP targets. Merely changing imports would
+leave symbol dispatch and ownership duplicated.
+
+If migrating, document the boundary in `docs/PLAN.md`, test backend selection
+without loading HIP, and run EVIE/Surya live runtime and public API checks,
+including `tests/test_live_evie_gpu_runtime.py`,
+`tests/test_live_surya_gpu.py`, `tests/test_live_surya_public_api.py`, and
+`tests/test_integration_surya_server_multimodal.py`. If explicit ownership is
+chosen, document that exception and remove this entry. No runtime gate or
+fallback is added while the decision is open.

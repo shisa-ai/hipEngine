@@ -13382,8 +13382,8 @@
       "start_line": 11360,
       "end_line": 11372,
       "sha256": "faa32571fbd2c73f5a10d95bcbc795e607dcbf62b716a4fcc0b2788bda3c7026",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Live EVIE/Surya builder and wrapper ownership requires an architecture choice; moved to bottom deferred R0483 with migration scope and clearing checks. No runtime changes. worklog/entries/20261030T040737.911861Z-cleanup-cleanup-r0483-621ed7.md."],
       "subitems": []
     },
     {
