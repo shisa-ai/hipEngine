@@ -33,6 +33,14 @@ from scripts.gguf_mtp_c1c8_server_bench import (
 )
 
 
+def test_mtp_c1c8_rejects_retired_scope_grant() -> None:
+    parser = build_parser()
+    default = parser.parse_args(("--output", "/tmp/out.json"))
+    assert not hasattr(default, "mtp_scope_grant")
+    with pytest.raises(SystemExit):
+        parser.parse_args(("--output", "/tmp/out.json", "--mtp-scope-grant"))
+
+
 def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     parser = build_parser()
     default = parser.parse_args(("--output", "/tmp/out.json"))

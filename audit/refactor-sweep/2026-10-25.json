@@ -13312,8 +13312,8 @@
       "start_line": 11222,
       "end_line": 11239,
       "sha256": "26934a7c78dee78f8b8e615a18e301d842bd429d324b52a3b684e575a0f4d8c9",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed obsolete server --mtp-scope-grant and preset mutation lifecycle after R0473 capability admission. RED/GREEN parser regression and 89 focused tests pass. Shared paired/certification helper callers tracked as immediate follow-up. worklog/entries/20261030T031748.713530Z-cleanup-cleanup-r0476-6a09e5.md."],
       "subitems": []
     },
     {
