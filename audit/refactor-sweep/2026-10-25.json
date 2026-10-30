@@ -13372,8 +13372,8 @@
       "start_line": 11337,
       "end_line": 11359,
       "sha256": "e3eefb07e93cf51b07a9d45b55e16d882d0db5e05dc78fd09897a5f4bc2a2f03",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed rejected T16 layout and isolated experimental launcher/HIP/test chain. Raw IQ and production dispatch unchanged. 61 focused and 81 GPU tests passed; public repeat generation and CPU/docs/audit gates passed. worklog/entries/20261030T040037.167265Z-cleanup-cleanup-r0482-8d20f3.md."],
       "subitems": []
     },
     {
