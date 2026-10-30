@@ -256,12 +256,11 @@ def test_prefill_gdn_caller_publishes_bf16_composite_output():
     assert norm.consumer.operands[-1] == ("out_ptr", "bf16", "write")
 
 
-def test_q8_fp16_legacy_selector_does_not_claim_bf16_operand():
+def test_q8_fp16_selector_requires_fp16_operand():
     from hipengine.loading.qwen35_gguf_consumer_surface import gguf_linear_dispatch_row, linear_consumer_contract
-    row = gguf_linear_dispatch_row("gguf_q8_0_t16_v1", "bf16", "fp16")
-    # Preserve the historical selector key, but the C instantiation is
-    # launch_single<half_t, half_t>, not BF16 input or an executed cast.
-    assert row.activation == "bf16"
+    assert gguf_linear_dispatch_row("gguf_q8_0_t16_v1", "bf16", "fp16") is None
+    row = gguf_linear_dispatch_row("gguf_q8_0_t16_v1", "fp16", "fp16")
+    assert row.activation == "fp16"
     assert linear_consumer_contract(row).operands[0][1] == "fp16"
 
 

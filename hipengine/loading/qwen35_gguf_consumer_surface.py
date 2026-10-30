@@ -519,8 +519,7 @@ def _row(
     )
 
 
-# Production owner. runtime/gguf_linear._DISPATCH_TABLE is a compatibility
-# view generated from these rows; runtime and admission resolve here.
+# Production owner shared by runtime resolution and admission.
 GGUF_LINEAR_DISPATCH_SURFACE: tuple[GgufLinearDispatchSurfaceRow, ...] = (
     _row(LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "linear", "gguf_q4_k", "pack8_bf16_bf16_out", "pack8"),
     _row(LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16, "linear", "gguf_q4_k", "pack8_bf16_fp16_out", "pack8"),
@@ -542,10 +541,8 @@ GGUF_LINEAR_DISPATCH_SURFACE: tuple[GgufLinearDispatchSurfaceRow, ...] = (
     _row(LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "linear", "gguf_q6_k_t16_qmicro_planar_v1", "t16_gemv_decode_bf16_bf16_out", "t16"),
     _row(LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32, "linear", "gguf_q6_k_t16_qmicro_planar_v1", "t16_gemv_decode_bf16_f32_out", "t16"),
     _row(LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16, "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out", "t16"),
-    # Historical selector token, but the actual C ABI is half_t input/output.
-    # No BF16->FP16 conversion is performed here; admission must not certify
-    # a supplied BF16 pointer against this row.
-    _row(LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16, "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out", "t16", pointer_activation="fp16"),
+    # The C ABI is half_t input/output; no BF16->FP16 conversion is performed.
+    _row(LAYOUT_GGUF_Q8_0_T16, "fp16", GGUF_OUTPUT_FP16, "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out", "t16"),
     _row(LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_F32, GGUF_OUTPUT_BF16, "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_f32_bf16_out", "t16"),
 )
 

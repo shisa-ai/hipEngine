@@ -2218,20 +2218,12 @@ def resolve_q8_mmq_prefill_policy(
     return policy
 
 
-# Compatibility view; resolution below uses the shared CPU-safe owner.
+# Resolution uses the shared CPU-safe owner.
 from hipengine.loading.qwen35_gguf_consumer_surface import (
-    GGUF_LINEAR_DISPATCH_SURFACE,
     resolve_linear_consumer_contract,
     linear_variant_for_rows,
     linear_weight_pointers,
 )
-
-_DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
-    (row.layout, row.activation, row.output): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", row.layer, row.quant, row.variant), row.abi,
-    )
-    for row in GGUF_LINEAR_DISPATCH_SURFACE
-}
 
 def _weight_backend(
     *weights: GGUFDeviceWeight,

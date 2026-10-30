@@ -3544,36 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## UD-U1 invocation ownership follow-up
-
-- The linear-table mirror and admission-side selected variant-substring ABI
-  inference are removed. `qwen35_gguf_consumer_surface` owns production rows,
-  named auxiliary contracts and marshalling; `gguf_selected_contract` owns
-  selected call kinds, ordered partner bindings and default caller topology.
-  Keep the generated `_DISPATCH_TABLE` compatibility view only while tests or
-  callers inspect it; remove that view once those users query the resolver.
-- The old Q8T16 `(bf16 selector, fp16 output)` key actually launches an FP16
-  input kernel. Its key/runtime behavior is preserved, but the descriptor
-  exposes the real pointer dtype and admission does not certify BF16 input
-  against it. Remove the selector alias after its FP16 callers migrate to an
-  explicit typed input contract; do not insert an unqualified conversion.
-- `f32_input_operations`, `gdn_force_bf16`, and `recurrent_state_dtype` are
-  cold caller declarations, not setters for runtime numerical behavior.
-  Replace redundant manual declarations when F1 wires actual entry intents
-  into certificate consumption. Native head input must remain the actual
-  BF16 scratch owner unless a real caller adapter is implemented separately.
-- Optional raw/T16 selected DP4A adapter flags remain runtime diagnostics,
-  but admission refuses the affected unrepresented adapter contracts before
-  allocation. Mandatory X8 adapters are explicit and qualified as interfaces.
-  Remove this refusal only with a shared explicit adapter intent, actual
-  caller/operand tests and the applicable existing numerical/profile gate;
-  never treat a nearby BF16 record as that proof. Likewise baseline GDN
-  prefill cannot certify FP16 state by borrowing its F32-state contract.
-- Direct caller boundaries and registered primitive availability are distinct.
-  The ordered dual helper owns its two-single fallback. F1 entry/dependency
-  enforcement and F5 profile-binder authorization remain open, not implicit
-  benefits of the new immutable metadata.
-
 ## 2026-09-11 MTP verify-journal allocation cost on gfx1100
 
 - `Qwen35GGUFTransactionalVerifier` now allocates a row-capable rollback
@@ -10410,3 +10380,29 @@ artifact-identity or benchmark-admission gate.
 
 Disposition and public ownership diagnostic:
 `../worklog/entries/20261030T012436.140169Z-cleanup-cleanup-r0462-disposition-92a3ce.md`.
+
+### R0471 — Optional selected DP4A adapter intent
+
+`bind_selected_call` still refuses optional raw/T16 selected DP4A adapters:
+its intent describes BF16/F32 inputs but not the optional Q8_1 workspace and
+quantization operation executed by those routes. Mandatory X8 adapter intents
+already exist. A BF16 primitive record does not describe these additional
+operands or their lifetime.
+
+**Deferred contract extension:** encode optional quantization/workspace
+ownership in the shared selected-call intent, bind the actual caller operands,
+and only then remove that specific refusal. Preserve row limits, ordered dual
+partners, workspace lifetime and the strict fallback. The clearing checks are
+`tests/test_integration_gguf_invocation_contract.py`,
+`tests/test_integration_gguf_selected_call_intents.py`,
+`tests/test_integration_gguf_execution_authorization.py`, and public
+native-row generation with the optional adapter engaged. Any changed arithmetic
+default additionally follows the execution-profile gate. This is a missing
+invocation representation, not missing benchmark evidence.
+
+The compatibility dispatch table and misleading Q8T16 BF16 selector are
+removed. Native entry consumption already binds resident dependencies and the
+actual recurrent-state dtype; cold declarations remain required for standalone
+preflight, not runtime setters. F5 caller-binding regression tests cover the
+existing policy callers. Baseline GDN FP16/F32 state separation remains a
+correctness contract, not cleanup debt.

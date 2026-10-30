@@ -5,13 +5,10 @@ mirrored linear dispatch surface.  Both are metadata (the admission preflight
 must not import GPU backend packages), so their truth is bound by explicit
 parity against the production registration surface here:
 
-- the mirrored ``GGUF_LINEAR_DISPATCH_SURFACE`` equals the production
-  ``runtime/gguf_linear._DISPATCH_TABLE`` exactly (every layout/activation/
-  output row, layer, quant token, variant, and ABI), including the
-  rows>1 variant mapping the dispatcher applies;
+- every row in ``GGUF_LINEAR_DISPATCH_SURFACE`` matches the production
+  resolver's layer, quant, variant and ABI at single and multiple rows;
 - every concrete consumer key named by the certified coverage records is
-  actually registered (or, for the one direct-wrapper consumer, the module
-  symbol exists) on every backend that declares GGUF consumer layers;
+  registered on every backend that declares GGUF consumer layers;
 - every declared GGUF consumer layer has at least one registered ``gguf_*``
   consumer on each declaring backend (declarations are never stale);
 - ``cuda_sm120a`` declares no GGUF consumer layers and admission therefore
@@ -137,36 +134,30 @@ def production_registry():
     return is_registered, registered_keys
 
 
-def test_dispatch_surface_mirror_equals_production_table():
+def test_dispatch_surface_matches_production_resolver():
+    from types import SimpleNamespace
+
     import hipengine.runtime.gguf_linear as production
-    from hipengine.runtime.gguf_linear import _variant_for_rows
-
     from hipengine.loading.qwen35_gguf_consumer_surface import (
-        GGUF_LINEAR_DISPATCH_SURFACE,
+        GGUF_LINEAR_DISPATCH_SURFACE, FROM_WEIGHT_QUANT_TOKEN,
     )
 
-    surface_keys = {
-        (row.layout, row.activation, row.output): row for row in GGUF_LINEAR_DISPATCH_SURFACE
-    }
-    table_keys = dict(production._DISPATCH_TABLE)
-    assert set(surface_keys) == set(table_keys), (
-        "mirrored dispatch surface drifted from the production table: "
-        f"mirror-only={sorted(set(surface_keys) - set(table_keys))} "
-        f"table-only={sorted(set(table_keys) - set(surface_keys))}"
-    )
-    for key, dispatch in table_keys.items():
-        row = surface_keys[key]
-        assert row.layer == dispatch.key.layer, (key, row, dispatch.key)
-        assert row.quant == dispatch.key.quant, (key, row, dispatch.key)
-        assert row.variant == dispatch.key.variant, (key, row, dispatch.key)
-        assert row.abi == dispatch.abi, (key, row, dispatch.abi)
-        # The rows>1 variant must be exactly what the production dispatcher
-        # resolves for multirow launches (including the Q4 T16 rewrite).
+    assert not hasattr(production, "_DISPATCH_TABLE")
+    for row in GGUF_LINEAR_DISPATCH_SURFACE:
+        quant = "gguf_q4_k" if row.quant == FROM_WEIGHT_QUANT_TOKEN else row.quant
+        weight = SimpleNamespace(
+            backend="hip_gfx1100",
+            spec=SimpleNamespace(layout=row.layout, quant_key=quant),
+        )
         for rows in (1, 2, 8):
-            expected = _variant_for_rows(dispatch.key.variant, rows=rows)
-            if key[0] in {"gguf_q4_k_t16_v1", "gguf_q4_k_qmicro_t16_v1"} and rows > 1:
-                expected = "t16_wmma_prefill_bf16_bf16_out"
-            assert row.variant_for_rows(rows) == expected, (key, rows)
+            dispatch = production.resolve_gguf_linear_dispatch(
+                weight, activation_dtype=row.activation,
+                output_dtype=row.output, rows=rows,
+            )
+            assert dispatch.key.layer == row.layer
+            assert dispatch.key.quant == quant
+            assert dispatch.key.variant == row.variant_for_rows(rows)
+            assert dispatch.abi == row.abi
 
 
 def test_backend_declarations_are_literally_readable():

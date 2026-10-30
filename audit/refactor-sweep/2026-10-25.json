@@ -13204,33 +13204,33 @@
       "start_line": 11108,
       "end_line": 11138,
       "sha256": "421eb4d7c5bb6054dd941af18a874b27c904e558824e76a0a80375b193e47eb6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Removed dispatch view and misleading Q8 FP16 input alias; native entry and F5 binding already implemented. Optional DP4A workspace/quantization intent extension remains at ledger bottom. Focused363, selected20, live89/12skip, CPU896, public897, docs/audit pass. worklog/entries/20261030T023252.345528Z-cleanup-cleanup-r0471-d2154d.md."],
       "subitems": [
         {
           "line": 11110,
           "text": "- The linear-table mirror and admission-side selected variant-substring ABI",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11116,
           "text": "- The old Q8T16 `(bf16 selector, fp16 output)` key actually launches an FP16",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11121,
           "text": "- `f32_input_operations`, `gdn_force_bf16`, and `recurrent_state_dtype` are",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11126,
           "text": "- Optional raw/T16 selected DP4A adapter flags remain runtime diagnostics,",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 11133,
           "text": "- Direct caller boundaries and registered primitive availability are distinct.",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

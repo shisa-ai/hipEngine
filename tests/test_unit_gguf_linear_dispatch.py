@@ -190,7 +190,9 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     assert resolve_gguf_linear_dispatch(q8_t16).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"
     )
-    assert resolve_gguf_linear_dispatch(q8_t16, output_dtype=GGUF_OUTPUT_FP16).key == KernelKey(
+    with pytest.raises(ValueError):
+        resolve_gguf_linear_dispatch(q8_t16, output_dtype=GGUF_OUTPUT_FP16)
+    assert resolve_gguf_linear_dispatch(q8_t16, activation_dtype="fp16", output_dtype=GGUF_OUTPUT_FP16).key == KernelKey(
         "hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out"
     )
     assert resolve_gguf_linear_dispatch(q8_t16, activation_dtype=GGUF_ACTIVATION_F32).key == KernelKey(
