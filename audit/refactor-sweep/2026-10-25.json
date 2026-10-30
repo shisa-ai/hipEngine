@@ -13154,8 +13154,8 @@
       "start_line": 11046,
       "end_line": 11056,
       "sha256": "23384a034663120057b347e87cbb2e2d964a9a6e8031c6fee080c67f7f9449fa",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Retired PLE overlap rollback; pinned/first-consumer checks and blocking fallback preserved. RED1 GREEN8 CPU880 docs/audit pass; normal public repeat confirmed, explicit scalar public diagnostic884 observed6 stream0 transfers and repeated IDs. worklog/entries/20261030T014427.086399Z-cleanup-cleanup-r0466-2d7f62.md."],
       "subitems": []
     },
     {

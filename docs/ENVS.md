@@ -741,7 +741,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL` | retired | No longer read. Text MTP proposals return token IDs through device-resident chaining, as mixed serving already does. The runner's explicit full-output interface remains available for diagnostics. |
 | `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` | `1` | Runner reset clears only the K/V a request wrote; `0` restores the full-capacity clear. |
 | `HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY` | `0` | `1` measures the pre-promotion fixed-256 full-attention context route against the promoted one (A/B only). |
-| `HIPENGINE_QWEN4_EXP_PLE_OVERLAP` | `1` | Overlaps the pinned PLE staging upload with layer-0 work; `0` serializes it. |
+| `HIPENGINE_QWEN4_EXP_PLE_OVERLAP` | retired; ignored | Pinned PLE staging overlaps preceding layers when the first PLE layer is not layer 0; other configurations use blocking staging. |
 | `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS` | `random` (production UD), else `normal` | `madvise` access hint for the host-mapped PLE table; `normal` restores sequential access. |
 | `HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT` | retired; ignored | H4/D128 batched prefill uses causal scoring and direct WMMA masks. Other geometries and per-row selection keep their fallbacks. |
 | `HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE` | retired; ignored | Prefill reads the projected gate in place and publishes an F16 mirror when workspace permits. |

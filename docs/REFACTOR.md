@@ -3514,14 +3514,11 @@ covered by `tests/test_gpu_qwen4exp_gr_write_norm.py`.
 
 ## Qwen4Exp decode PLE staging overlapped with layer 0 (`HIPENGINE_QWEN4_EXP_PLE_OVERLAP`)
 
-Default on when the PLE staging ring is pinned and the first PLE layer is
-not layer 0. A decode step's host PLE hash, row gather and dequantization
-run after the layers before the first PLE layer are enqueued, and the copy
-is a stream-ordered `hipMemcpyAsync` from the pinned ring instead of a
-blocking copy, so about 0.5 ms of host work per step overlaps GPU work.
-Bit-identical; same-process decode after `code-p512` 23.52 -> 23.67 tok/s
-(warm PLE page cache). `=0` restores the inline blocking copy. Remove the
-flag once a device-side PLE gather (planned) replaces the host staging.
+Resolved: the process rollback is removed. Pinned staging overlaps preceding
+layers when the first PLE consumer is after layer 0. Unpinned staging and a
+layer-0 consumer keep the blocking copy. Host gathering and same-stream copy
+ordering are unchanged; device-side gathering is a separate implementation
+change, not a prerequisite for retiring the switch.
 
 ## Qwen4Exp MTP batched verify (`HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY`)
 

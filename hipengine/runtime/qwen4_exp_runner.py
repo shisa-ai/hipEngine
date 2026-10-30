@@ -10315,8 +10315,6 @@ class Qwen4ExpGGUFResidentModelRunner:
         overlap_ple = (
             self.resident.ple_staging.pinned
             and min(cfg.ple_layers, default=0) > 0
-            and os.environ.get("HIPENGINE_QWEN4_EXP_PLE_OVERLAP", "1")
-            not in {"", "0", "false", "False"}
         )
 
         def stage_ple() -> None:
