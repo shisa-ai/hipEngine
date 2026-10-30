@@ -748,26 +748,6 @@ path: no numerical or performance gate rejected it.
   of worse expected quality. Do not rerun the unchanged composition or promote
   it merely because its numerical envelope passes.
 
-## Journey GDN DPP Experiment
-
-Cleanup status (2026-10-26, R0040): the DPP key is registered and unselected,
-and no runtime cleanup remains. The active `gguf_ud_q4_k_xl` production GDN
-owner is `qwen4exp_gdn_rowsplit_prefill`;
-`qwen4exp_gdn_tiled16_dpp_prefill` is in the recovery pass's inactive set and
-stays registered (`hipengine/kernels/hip_gfx1151/__init__.py`) as the layer2
-gate's `gdn_isolated` arm and a bisection incumbent. The only interception left
-is the diagnostic `scripts/qwen4exp_gdn_multicolumn_route_probe.py`, which
-wraps the selection predicate to count dispatches and reproduces the
-multi-column engagement evidence, so it stays.
-`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` is profile-owned; diagnostics use
-`gdn_tile16_prefill(runner, False)` to compare the columnwarp parent.
-
-- The `qwen4_exp_gdn_dpp` build family and gfx1151
-  `qwen4exp_gdn_tiled16_dpp_prefill` key passed the previous
-  UD-Q4_K_XL suffix full 72-sample exact A/B. The suffix is inactive without
-  rejecting DPP itself. Ordinary tile16 and serial strict keys remain
-  registered; keep them for strict/bisection.
-
 
 
 
