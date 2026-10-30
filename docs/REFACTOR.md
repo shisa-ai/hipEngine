@@ -4239,12 +4239,15 @@ Scope: `hipengine/kernels/policy.py`, `hipengine/kernels/hip_gfx1151/__init__.py
 **Remaining compatibility migration:** migrate package consumers and source checks to the explicit
 policy owners before removing the package aliases. Runtime capability lookup and the cold source
 reader follow the backend's declared ordered owner modules when a package binding is absent.
+The backend's own wrappers use the same reader at each reached operand, preserving lazy
+branches; package aliases still serve external test and script consumers.
 Preserve package override precedence, including explicit `None`/`False`; do not create a
 second registry or move backend/quant conditionals into engine dispatch.
 
-Public generation/serving still needs selected-route attribution for the extracted GGUF and
-capability defaults on gfx1151, plus Laguna prefill/decode/MoE (the local Laguna checkpoint is absent;
-see R0273). Static registry identity does not replace these model-backed checks.
+GGUF public AR/MTP generation on gfx1151 matches the alias-bound control with all policy
+bindings absent and wrapper reads attributed to their declared owners. Laguna public
+prefill/decode/MoE still needs a local checkpoint (absent; see R0273). Static registry
+identity does not replace those model-backed checks.
 
 Done when: compare the exact `(backend, layer, quant, variant)` key set, implementations,
 declared fallbacks and capability values before and after each move. Cover cold import, repeated

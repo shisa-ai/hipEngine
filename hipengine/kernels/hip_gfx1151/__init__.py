@@ -9,9 +9,14 @@ source-lineage port.
 
 from __future__ import annotations
 
+import sys
+
 from importlib import import_module
 
-from hipengine.kernels.backends import hip_target_arch_for_backend
+from hipengine.kernels.backends import (
+    backend_package_capability_from_module,
+    hip_target_arch_for_backend,
+)
 from hipengine.kernels.policy import (
     QWEN35_DENSE_H1024_GEOMETRY,
     QWEN35_DENSE_H5120_GEOMETRY,
@@ -115,6 +120,21 @@ POLICY_MODULE_NAMES = ("policy_capability", "policy_gguf", "policy_laguna")
 _POLICY_MODULES = tuple(
     import_module(f"{__name__}.{_owner}") for _owner in POLICY_MODULE_NAMES
 )
+
+# The live package module object (not a snapshot or proxy). Backend functions
+# resolve policy settings at each reached operand, so a package reassignment is
+# honored and the declared owner is consulted only while the binding is absent.
+_SELF = sys.modules[__name__]
+
+
+def _capability(name):
+    """Read one policy setting: package binding first, then its declared owner."""
+
+    missing = object()
+    value = backend_package_capability_from_module(_SELF, name, missing)
+    if value is missing:
+        raise NameError(name)
+    return value
 
 # Compatibility exports for the Laguna capability/policy declarations that
 # now live in ``policy_laguna``. Each name is re-bound explicitly; this is
@@ -545,8 +565,8 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
-        row_count <= GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS
-        and shape in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
+        row_count <= _capability("GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES")
     ):
         # Scaling-campaign M2j (2026-08-31 rows2-20 sibling screens, all six
         # physical shapes, bit-exact vs shared-B): the 16-column low-VGPR
@@ -562,127 +582,127 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
             else gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
         )
     elif (
-        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        17 <= row_count <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_PLAIN128_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_PLAIN128_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS
+        _capability("GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS")
         <= row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
     else:
@@ -720,77 +740,77 @@ def gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
-        GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS <= row_count
-        <= GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES
+        _capability("GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
     elif (
-        17 <= row_count <= GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        17 <= row_count <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     else:
@@ -824,8 +844,8 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
-        row_count <= GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS
-        and shape in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
+        row_count <= _capability("GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES")
     ):
         fn = (
             gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
@@ -833,127 +853,127 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out(
             else gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
         )
     elif (
-        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        17 <= row_count <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_PLAIN128_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_PLAIN128_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS
+        _capability("GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS")
         <= row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES")
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
     else:
@@ -983,77 +1003,77 @@ def gguf_q5_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
-        GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS <= row_count
-        <= GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES
+        _capability("GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out
     elif (
-        17 <= row_count <= GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        17 <= row_count <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     elif (
-        GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS")
         < row_count
-        <= GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS
-        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS")
+        and shape in _capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
     else:
@@ -1084,24 +1104,24 @@ def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     shape = (int(in_features), int(out_features))
     fn = (
         gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out
-        if GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
-        <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
-        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES
+        if _capability("GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES")
         else gguf_q6_k_t16_wmma_prefill_shared6r1_bf16_bf16_out
-        if GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS <= row_count
-        <= GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS
-        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES
+        if _capability("GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES")
         else gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
-        if GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS <= row_count
-        <= GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS
-        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        if _capability("GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES")
         else gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
-        if GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MIN_ROWS <= row_count
-        <= GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MAX_ROWS
-        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        if _capability("GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES")
         else gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out
-        if row_count >= GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS
-        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        if row_count >= _capability("GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS")
+        and shape in _capability("GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES")
         else gguf_q6_k_t16_wmma_prefill_bf16_bf16_out
     )
     return fn(
@@ -1136,134 +1156,134 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
-        row_count == GGUF_Q6_PLANAR_PREFILL_SHARED4R9_ROWS
-        and shape == GGUF_Q6_PLANAR_PREFILL_SHARED4R9_SHAPE
+        row_count == _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R9_ROWS")
+        and shape == _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R9_SHAPE")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out
     elif (
-        GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MIN_ROWS <= row_count
-        <= GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE.get(shape, -1)
+        _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE").get(shape, -1)
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out
     elif (
-        GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MIN_ROWS <= row_count
-        <= GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES
+        _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R4_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out
     elif (
-        row_count >= GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_MIN_ROWS
-        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_SHAPES
+        row_count >= _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_MIN_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4_GFX1100_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out
     elif (
-        GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
-        <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES
+        _capability("GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS") <= row_count
+        <= _capability("GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out
     elif (
-        row_count == GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS
-        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES
+        row_count == _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out
     elif (
-        row_count == GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS
-        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4R3_SHAPES
+        row_count == _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4R3_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out
     elif (
-        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        17 <= row_count <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
         and shape == (5_120, 17_408)
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_LOWVGPR80_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_LOWVGPR80_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS")
         < row_count
-        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
         < row_count
-        <= GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_LOWVGPR96_SHAPES
+        <= _capability("GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_LOWVGPR96_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        _capability("GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS")
         < row_count
-        <= GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
-        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        <= _capability("GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS")
+        and shape in _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_LOWVGPR128_SHAPES
+        <= _capability("GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_LOWVGPR128_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
     elif (
-        GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_LOWVGPR48_128_SHAPES
+        <= _capability("GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_LOWVGPR48_128_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        _capability("GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS")
         < row_count
-        <= GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_SHARED4_128_SHAPES
+        <= _capability("GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_SHARED4_128_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
     elif (
-        GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
+        _capability("GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS")
         < row_count
-        <= GGUF_Q6_PLANAR_LOWVGPR144_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_LOWVGPR48_144_SHAPES
+        <= _capability("GGUF_Q6_PLANAR_LOWVGPR144_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_LOWVGPR48_144_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
     elif (
-        GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
+        _capability("GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS")
         < row_count
-        <= GGUF_Q6_PLANAR_LOWVGPR144_MAX_ROWS
-        and shape in GGUF_Q6_PLANAR_SHARED4_144_SHAPES
+        <= _capability("GGUF_Q6_PLANAR_LOWVGPR144_MAX_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_SHARED4_144_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
     elif (
-        row_count >= GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS
-        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
+        row_count >= _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS")
+        and shape in _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES")
     ):
         fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
     else:
@@ -1293,7 +1313,7 @@ def _gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out(
     fn = (
         gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out
         if (int(in_features), int(out_features))
-        in _GGUF_Q5_T16_ROWTILE_COL8_SHAPES
+        in _capability("_GGUF_Q5_T16_ROWTILE_COL8_SHAPES")
         else gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out
     )
     fn(
@@ -2221,7 +2241,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         gr_staged_f32_up,
     )
 
-    staged_key = KernelKey(BACKEND, "linear", "gguf_q8_0", STAGED_F32_VARIANT)
+    staged_key = KernelKey(_capability("BACKEND"), "linear", "gguf_q8_0", _capability("STAGED_F32_VARIANT"))
     if replace or not is_registered(staged_key):
         register(staged_key, gr_staged_f32_up, replace=replace)
 
@@ -2230,14 +2250,14 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         gguf_q8_0_selected_grouped_blockscale_guarded_prefill_bf16_bf16_out,
     )
     blockscale_key = KernelKey(
-        BACKEND, "linear", "gguf_q8_0",
+        _capability("BACKEND"), "linear", "gguf_q8_0",
         "selected_grouped_blockscale_prefill_bf16_bf16_out",
     )
     if replace or not is_registered(blockscale_key):
         register(blockscale_key, gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out,
                  replace=replace)
     guarded_key = KernelKey(
-        BACKEND, "linear", "gguf_q8_0",
+        _capability("BACKEND"), "linear", "gguf_q8_0",
         "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
     )
     if replace or not is_registered(guarded_key):
@@ -2256,23 +2276,23 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out,
     )
     for warp_key, warp_fn in (
-        (KernelKey(BACKEND, "linear", "gguf_q4_k",
+        (KernelKey(_capability("BACKEND"), "linear", "gguf_q4_k",
                    "selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out"),
          gguf_q4_k_selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out),
-        (KernelKey(BACKEND, "linear", "gguf_q5_1",
+        (KernelKey(_capability("BACKEND"), "linear", "gguf_q5_1",
                    "selected_weighted_sum_warp256_fast_bf16_bf16_out"),
          qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out),
     ):
         if replace or not is_registered(warp_key):
             register(warp_key, warp_fn, replace=replace)
     rowsplit_key = KernelKey(
-        BACKEND, "gdn_recurrence_norm_gate", "f32_state",
+        _capability("BACKEND"), "gdn_recurrence_norm_gate", "f32_state",
         "qwen4exp_gdn_rowsplit_prefill",
     )
     if replace or not is_registered(rowsplit_key):
         register(rowsplit_key, qwen4_exp_gdn_prefill_rowsplit_f32, replace=replace)
     rowsplit_decode_key = KernelKey(
-        BACKEND, "gdn_recurrence_norm_gate", "f32_state",
+        _capability("BACKEND"), "gdn_recurrence_norm_gate", "f32_state",
         "qwen4exp_gdn_rowsplit_decode",
     )
     if replace or not is_registered(rowsplit_decode_key):
@@ -2280,13 +2300,13 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             rowsplit_decode_key, qwen4_exp_gdn_decode_rowsplit_f32, replace=replace
         )
     dpp_key = KernelKey(
-        BACKEND, "gdn_recurrence_norm_gate", "f32_state",
+        _capability("BACKEND"), "gdn_recurrence_norm_gate", "f32_state",
         "qwen4exp_gdn_tiled16_dpp_prefill",
     )
     if replace or not is_registered(dpp_key):
         register(dpp_key, qwen4_exp_gdn_prefill_tiled16_dpp_f32, replace=replace)
     multi_key = KernelKey(
-        BACKEND, "gdn_recurrence_norm_gate", "f32_state",
+        _capability("BACKEND"), "gdn_recurrence_norm_gate", "f32_state",
         "qwen4exp_gdn_tiled16_multi_prefill",
     )
     if replace or not is_registered(multi_key):
@@ -2295,7 +2315,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         qwen4_exp_grouped_rmsnorm_bf16_f32_f16,
     )
     publish_key = KernelKey(
-        BACKEND, "gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish",
+        _capability("BACKEND"), "gr_grouped_rmsnorm", "bf16_f32", "f32_f16_publish",
     )
     if replace or not is_registered(publish_key):
         register(publish_key, qwen4_exp_grouped_rmsnorm_bf16_f32_f16, replace=replace)
@@ -2303,12 +2323,12 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
     from hipengine.kernels.hip_gfx1100.timesfm.registered import (
         register_timesfm_kernels as register_timesfm_shared,
     )
-    timesfm_keys = register_timesfm_shared(BACKEND, replace=replace)
+    timesfm_keys = register_timesfm_shared(_capability("BACKEND"), replace=replace)
     source_keys = [key for key in registered_keys() if key.backend == _SOURCE_BACKEND]
     for key in source_keys:
         if (key.layer, key.quant, key.variant) in _GFX1151_ALIAS_EXCLUSIONS:
             continue
-        target_key = KernelKey(BACKEND, key.layer, key.quant, key.variant)
+        target_key = KernelKey(_capability("BACKEND"), key.layer, key.quant, key.variant)
         # TimesFM launchers bind an architecture; do not alias gfx1100 closures.
         if target_key in timesfm_keys:
             continue
@@ -2326,7 +2346,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             replace=replace,
         )
     q6_integer_mmq_key = KernelKey(
-        BACKEND,
+        _capability("BACKEND"),
         "linear",
         "gguf_q6_k_t16_qmicro_planar_v1",
         "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
@@ -2355,11 +2375,11 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
         ),
     ):
-        key = KernelKey(BACKEND, "linear", "gguf_q4_k_t16_v1", variant)
+        key = KernelKey(_capability("BACKEND"), "linear", "gguf_q4_k_t16_v1", variant)
         if replace or not is_registered(key):
             register(key, fn, replace=replace)
     q4_pack8_decode_pair_key = KernelKey(
-        BACKEND,
+        _capability("BACKEND"),
         "linear_pair",
         "gguf_q4_k",
         "pack8_dual_decode_bf16_bf16_out",
@@ -2371,7 +2391,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             replace=replace,
         )
     q4_pack8_decode_pair_silu_key = KernelKey(
-        BACKEND,
+        _capability("BACKEND"),
         "linear_pair_silu",
         "gguf_q4_k",
         "pack8_dual_decode_bf16_bf16_out",
@@ -2383,7 +2403,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             replace=replace,
         )
     q4_pack8_decode_pair_silu_t128_key = KernelKey(
-        BACKEND,
+        _capability("BACKEND"),
         "linear_pair_silu",
         "gguf_q4_k",
         "pack8_dual_decode_t128_bf16_bf16_out",
@@ -2395,7 +2415,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             replace=replace,
         )
     q4_t16_sidecar_pair_silu_key = KernelKey(
-        BACKEND,
+        _capability("BACKEND"),
         "linear_pair_silu",
         "gguf_q4_k",
         "t16_sidecar_dual_decode_bf16_bf16_out",
@@ -2407,7 +2427,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             replace=replace,
         )
     q4_t16_dual_interleaved_pair_silu_key = KernelKey(
-        BACKEND,
+        _capability("BACKEND"),
         "linear_pair_silu",
         "gguf_q4_k",
         "t16_dual_interleaved_sidecar_decode_bf16_bf16_out",

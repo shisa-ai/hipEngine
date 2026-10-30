@@ -162,6 +162,20 @@ def backend_package_capability(backend: str, name: str, default=None):
         valid = ", ".join(sorted((*HIP_BACKEND_TARGET_ARCH, *CUDA_BACKEND_TARGET_ARCH)))
         raise ValueError(f"unsupported hardware backend {backend!r}; expected one of: {valid}")
     module = import_module(f"hipengine.kernels.{backend}")
+    return backend_package_capability_from_module(module, name, default)
+
+
+def backend_package_capability_from_module(
+    module: ModuleType, name: str, default=None
+):
+    """Read one capability from an already imported backend package.
+
+    Same read path as :func:`backend_package_capability` without the import:
+    the package binding wins (including an explicit ``None``/``False``), then
+    the package's declared policy owners in declaration order, then
+    ``default``. Nothing is cached.
+    """
+
     key = str(name)
     missing = object()
     value = getattr(module, key, missing)

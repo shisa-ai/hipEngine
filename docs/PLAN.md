@@ -1262,8 +1262,10 @@ boundaries and the orchestration that remains in the runner.
 The gfx1151 backend owns data-only declarations in `policy_laguna.py`,
 `policy_gguf.py` and `policy_capability.py` under
 `hipengine/kernels/hip_gfx1151/`. They share the geometry types in
-`hipengine/kernels/policy.py`. The backend package keeps explicit compatibility
-exports and owns registration and architecture overrides.
+`hipengine/kernels/policy.py`. Runtime readers and backend wrappers resolve each
+setting from the package override first, then its declared ordered owner modules;
+wrapper reads preserve branch short-circuiting. The backend package keeps explicit
+compatibility exports and owns registration and architecture overrides.
 
 ```python
 # hipengine/kernels/registry.py
