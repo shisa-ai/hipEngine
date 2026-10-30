@@ -5047,7 +5047,7 @@
       "start_line": 4270,
       "end_line": 4278,
       "sha256": "509f571390d868c978b96dcbcb3894bb4e978d90b15a2ad0c8ebd326c8cb830a",
-      "status": "partial",
+      "status": "triaged-deferred-pair-reuse-profile-owner",
       "evidence": ["Verified multi-slot MoE factory enables live request-local pair reuse. Added row-bound/interior/mismatch/geometry and nested-disable/error-restoration coverage. Full routing/adapter/C2 scope tests and docs/audit pass. No arithmetic change; resolved-profile integration and public state/acceptance validation remain open. Worklog: worklog/entries/20261027T152230.570879Z-cleanup-refactor-r0191-cd7286.md."],
       "subitems": [
         {
@@ -5058,7 +5058,8 @@
         {
           "line": 4276,
           "text": "- Removal trigger: fold the route into a profile-resolved MoE physical-target",
-          "status": "pending"
+          "status": "deferred-pair-reuse-profile-owner",
+          "evidence": "Live selection preserved; bottom R0191 retains geometry/restoration/public state gates. 51 tests/docs/audit pass. worklog/entries/20261030T090233.914272Z-cleanup-cleanup-r0191-final-70fc2c.md."
         }
       ]
     },
