@@ -13689,8 +13689,8 @@
       "start_line": 11838,
       "end_line": 11869,
       "sha256": "a129e8a6b895146bfcfcda0902d95baa4dc75ac5d8fc78b5fb83ba831c5bb353",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Historical performance context retired; original profiler correction preserved. worklog/entries/20261030T050523.203458Z-cleanup-cleanup-r0501-6eb66e.md."],
       "subitems": []
     },
     {

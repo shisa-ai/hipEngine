@@ -3544,38 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## VibeVoice-TTS: the model is bandwidth bound, and that bounds the remaining work
-
-Not a refactor item so much as the frame for every other one. The diffusion head
-holds **246.5 MB** of weights and is invoked once per generated frame with a
-20-step solver, so it streams **123.3 GB per request** -- a **~0.59 s floor** at
-the ~209 GB/s this host sustains.
-
-> **Corrected by direct device measurement.** `worklog/entries/20260915T205121.492340Z`
-> traced the diffusion region under `rocprofv3` and measured **28.18 ms/frame of GEMV
-> device time** (89.6% of the head's 31.44 ms of device time), i.e. **~175 GB/s**, or
-> **~84% of sustained bandwidth** -- not the 45% this section previously claimed. The
-> remaining head time is 2.78 ms/frame of `vv_diff_rmsnorm_modulate` and ~0.5 ms of
-> everything else. The head is also invoked with `_GEMV_THREADS = 64` already
-> (`vibevoice_tts_diffusion.py` line 36).
-
-Frames cannot be batched to fix this: each frame's diffusion condition is the LM
-hidden state for that frame, which depends on the previous frame's semantic
-feedback, so the frames are sequentially dependent. The weights cannot be cached
-either -- 246.5 MB against a much smaller L2, re-read on all 20 steps of every
-frame. The CFG branches are already batched into rows=2, so the weights are read
-once for both.
-
-The practical consequence: the diffusion GEMV is already at ~84% of sustained
-bandwidth, so it has no large win left. Closing the residual means changing the
-summation order, which this model's generated audio rejects. The accepted semantic
-win worked because it changed the column tile and not the accumulation order.
-
-Anyone looking for more speed should start from the bandwidth number rather than
-from a kernel profile, and should expect the answer to be a work-partitioning
-change that preserves the reduction tree, or a quality candidate (fewer solver
-steps, lower precision) that the generated-audio suite has to justify.
-
 ## VibeVoice-TTS: per-step diffusion D2H readback (resolved 2026-09-16)
 
 The default diffusion loop keeps CFG and DPM-Solver++ state on device. The fused
