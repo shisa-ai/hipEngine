@@ -43,12 +43,15 @@ production through plain ValueError/TypeError and are diagnosed the same way.
 Refused files are never marked format-valid or loadable.
 
 Backend capabilities are read from kernel package source with a bounded AST
-literal reader (never an import, never expression evaluation); missing or
-nonliteral constants are reported per capability and resolve to the same
-defaults the runtime reader returns. Flag resolution itself goes through the
-shared pure policy API ``hipengine.loading.qwen35_gguf_policy`` -- the same
-function the runtime loader calls with ``backend_package_capability`` -- so the
-audit cannot drift from runtime policy. Per-scope allocation sections report
+literal reader (never an import, never expression evaluation). It follows
+explicit same-package import aliases and re-exports and ordered local literal
+aliases, so a declaration moved into an owning policy module still resolves;
+missing, cyclic, external, or nonliteral constants are reported per capability
+and resolve to the same defaults the runtime reader returns. Flag resolution
+itself goes through the shared pure policy API
+``hipengine.loading.qwen35_gguf_policy`` -- the same function the runtime
+loader calls with ``backend_package_capability`` -- so the audit cannot drift
+from runtime policy. Per-scope allocation sections report
 requested weight bytes from the production allocation formula
 (``planned_qwen35_gguf_weight_allocation_nbytes``), sidecar allocations with
 reasons, and both hypothetical refusal treatments (compressed-source lower
@@ -61,7 +64,6 @@ resolution status, and ``f32_contracted_slots``.
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
 import struct
@@ -73,6 +75,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from hipengine.loading.backend_source_literals import (  # noqa: E402
+    read_backend_assignments,
+)
 from hipengine.loading.gguf import (  # noqa: E402
     GGUF_DEFAULT_ALIGNMENT,
     GGUF_MAGIC,
@@ -134,70 +139,35 @@ from hipengine.quant.gguf import (  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# hipengine.kernels.<backend> holds these as plain module constants. Importing
-# the package runs kernel registration, which needs the HIP runtime, so the
-# values are read from source with a bounded AST literal reader. A constant
-# that is absent or defined by a nonliteral expression is never guessed: it is
-# reported with its resolution status and resolves to the same default the
-# runtime reader returns for a missing attribute. Flag resolution itself goes
-# through the shared pure policy API, so the audit carries no policy mirror.
+# hipengine.kernels.<backend> holds these as module constants (some of them
+# re-exported from an owning policy module through an explicit import alias).
+# Importing the package runs kernel registration, which needs the HIP runtime,
+# so the values are read from source with the shared bounded reader: literals,
+# safe container wrappers, explicit same-package import aliases and re-exports,
+# and ordered local aliases. A constant that is absent or defined by any other
+# expression is never guessed: it is reported with its resolution status and
+# resolves to the same default the runtime reader returns for a missing
+# attribute. Flag resolution itself goes through the shared pure policy API, so
+# the audit carries no policy mirror.
 _CAPABILITY_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
-_LITERAL_CALL_WRAPPERS = {
-    "frozenset": frozenset,
-    "set": set,
-    "tuple": tuple,
-    "list": list,
-}
-
-
-def _literal_value(node: ast.expr) -> tuple[object, str]:
-    """Resolve a module-level assignment expression, bounded to literals.
-
-    Accepts ``ast.literal_eval`` forms plus the container-wrapper calls the
-    backend packages actually use (``frozenset({...})``, ``set(...)``,
-    ``tuple(...)``, ``list(...)``) around a single literal argument. Anything
-    else is "nonliteral": the value is never guessed and never evaluated.
-    """
-
-    try:
-        return ast.literal_eval(node), "literal"
-    except (ValueError, TypeError):
-        pass
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in _LITERAL_CALL_WRAPPERS
-        and len(node.args) == 1
-        and not node.keywords
-    ):
-        try:
-            inner = ast.literal_eval(node.args[0])
-        except (ValueError, TypeError):
-            return None, "nonliteral"
-        return _LITERAL_CALL_WRAPPERS[node.func.id](inner), "literal"
-    return None, "nonliteral"
-
 
 def backend_source_assignments(root: Path, backend: str) -> dict[str, tuple[object, str]]:
-    """Map module-level assignments of one backend ``__init__.py`` to values.
+    """Map module-level assignments of one backend package to values.
 
     Returns ``{constant name: (value, status)}`` where status is ``"literal"``
-    when the assigned expression resolved through :func:`_literal_value`, and
+    when the assigned expression resolved through the bounded source reader, and
     ``"nonliteral"`` when it did not (the value is then unusable, never
-    guessed). Absent names are simply not in the mapping. The reader never
-    imports the package and never evaluates expressions.
+    guessed). Absent names are simply not in the mapping. Literal declarations
+    are read from the package initializer, from the modules it imports inside
+    the same backend package, and through ordered local aliases; the reader
+    never imports the package, never follows an external import, and never
+    evaluates expressions. A missing or unreadable package reads as ``{}``.
     """
 
-    source = (root / "hipengine" / "kernels" / backend / "__init__.py").read_text()
-    assignments: dict[str, tuple[object, str]] = {}
-    for node in ast.parse(source).body:
-        if not isinstance(node, ast.Assign):
-            continue
-        value, status = _literal_value(node.value)
-        for target in node.targets:
-            if isinstance(target, ast.Name):
-                assignments[target.id] = (value, status)
-    return assignments
+    assignments = read_backend_assignments(backend, root=root)
+    return {
+        name: (entry.value, entry.status) for name, entry in assignments.items()
+    }
 
 
 def source_capability_reader(root: Path | None = None):

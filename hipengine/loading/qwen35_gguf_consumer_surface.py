@@ -20,7 +20,6 @@ permission to reinterpret pointers. Native head scratch.norm remains BF16.
 
 from __future__ import annotations
 
-import ast
 from dataclasses import asdict, dataclass, replace
 import ctypes
 import json
@@ -29,6 +28,7 @@ from pathlib import Path
 from typing import Mapping
 from types import MappingProxyType
 
+from hipengine.loading.backend_source_literals import read_backend_assignments
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
@@ -608,99 +608,46 @@ def source_linear_dispatch_row(
 
 GGUF_CONSUMER_LAYER_DECLARATION_NAME = "GGUF_CONSUMER_LAYERS"
 
-# Bounded literal wrappers the backend packages use for module constants.
-_LITERAL_CALL_WRAPPERS = {
-    "frozenset": frozenset,
-    "set": set,
-    "tuple": tuple,
-    "list": list,
-}
+# <pkg>/hipengine/loading/this.py -> <pkg>, the root the backend sources
+# live under.
+_SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _literal_value(node: ast.expr) -> object | None:
-    """Resolve a module-level assignment expression, bounded to literals.
-
-    Same convention as the quant-route audit's capability reader: literal
-    forms plus the container-wrapper calls around a single literal argument.
-    Anything else is unreadable and resolves to ``None`` — never guessed,
-    never evaluated.
-    """
-
-    try:
-        return ast.literal_eval(node)
-    except (ValueError, TypeError):
-        pass
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in _LITERAL_CALL_WRAPPERS
-        and len(node.args) == 1
-        and not node.keywords
-    ):
-        try:
-            inner = ast.literal_eval(node.args[0])
-        except (ValueError, TypeError):
-            return None
-        return _LITERAL_CALL_WRAPPERS[node.func.id](inner)
-    return None
-
-
-def _backend_source_path(backend: str) -> Path:
-    # <pkg>/hipengine/loading/this.py -> <pkg>/hipengine/kernels/<backend>/
-    return Path(__file__).resolve().parents[1] / "kernels" / str(backend) / "__init__.py"
-
-
-def _iter_module_assignments(tree: ast.Module):
-    """Yield ``(target name, value node)`` for module-level assignments.
-
-    Covers both plain ``NAME = ...`` and annotated ``NAME: frozenset[str] = ...``
-    forms (the backend packages use the annotated form for declarations).
-    """
-
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    yield target.id, node.value
-        elif isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name) and node.value is not None:
-                yield node.target.id, node.value
-
-
-def _read_declared_consumer_layers(backend: str) -> frozenset[str]:
+def _read_declared_consumer_layers(
+    backend: str, *, root: Path | None = None
+) -> frozenset[str]:
     """Read one backend's ``GGUF_CONSUMER_LAYERS`` declaration from source.
 
     Never imports the backend package (kernel registration needs a GPU build
     toolchain at launch time and the audit/startup-isolation contract forbids
-    GPU package imports on cold paths).  A missing file, missing constant, or
-    nonliteral value reads as "declares none" — admission then fails closed
-    for that backend instead of certifying unverifiable paths.
+    GPU package imports on cold paths). The declaration may be a local literal
+    or an explicit same-package re-export from an owning policy module, so it
+    is read through the shared bounded source reader. A missing package,
+    missing constant, unreadable (cyclic/external) alias chain, or non-frozenset
+    value reads as "declares none" — admission then fails closed for that
+    backend instead of certifying unverifiable paths.
     """
 
-    path = _backend_source_path(backend)
-    try:
-        source = path.read_text()
-    except OSError:
+    assignments = read_backend_assignments(
+        backend, root=_SOURCE_ROOT if root is None else root
+    )
+    entry = assignments.get(GGUF_CONSUMER_LAYER_DECLARATION_NAME)
+    if entry is None or not entry.is_literal:
         return frozenset()
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return frozenset()
-    for name, value_node in _iter_module_assignments(tree):
-        if name != GGUF_CONSUMER_LAYER_DECLARATION_NAME:
-            continue
-        value = _literal_value(value_node)
-        if isinstance(value, frozenset) and all(isinstance(item, str) for item in value):
-            return frozenset(value)
-        return frozenset()
+    value = entry.value
+    if isinstance(value, frozenset) and all(isinstance(item, str) for item in value):
+        return frozenset(value)
     return frozenset()
 
 
-def read_backend_gguf_consumer_layers() -> dict[str, frozenset[str]]:
+def read_backend_gguf_consumer_layers(
+    *, root: Path | None = None
+) -> dict[str, frozenset[str]]:
     """GGUF consumer-layer declarations for every hardware backend key.
 
     Backends without a source-declared ``GGUF_CONSUMER_LAYERS`` literal
-    (scaffolds, future peers) read as declaring none.
+    (scaffolds, future peers) read as declaring none. ``root`` overrides the
+    checkout root for fixture-backed tests only.
     """
 
     from hipengine.kernels.backends import (
@@ -709,12 +656,20 @@ def read_backend_gguf_consumer_layers() -> dict[str, frozenset[str]]:
     )
 
     return {
-        backend: _read_declared_consumer_layers(backend)
+        backend: _read_declared_consumer_layers(backend, root=root)
         for backend in (*HIP_BACKEND_TARGET_ARCH, *CUDA_BACKEND_TARGET_ARCH)
     }
 
 
-def backend_gguf_consumer_layers(backend: str) -> frozenset[str]:
-    """One backend's declared GGUF consumer layers (empty = none declared)."""
+def backend_gguf_consumer_layers(
+    backend: str, *, root: Path | None = None
+) -> frozenset[str]:
+    """One backend's declared GGUF consumer layers (empty = none declared).
 
-    return read_backend_gguf_consumer_layers().get(str(backend), frozenset())
+    The requested package is read directly, so a backend key the architecture
+    inventory does not list still answers from its own source declaration
+    instead of being assumed empty. A package with no declaration (or no
+    package) reads as declaring none.
+    """
+
+    return _read_declared_consumer_layers(str(backend), root=root)

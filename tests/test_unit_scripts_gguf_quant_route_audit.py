@@ -106,6 +106,38 @@ def test_source_capability_reader_reads_literal_assignments(tmp_path: pathlib.Pa
     assert statuses["hip_gfx1151"]["GGUF_C8_Q5_RAW_MMQ_SSM_OUT"] == "missing"
 
 
+def test_source_capability_reader_follows_same_package_alias_chain(tmp_path: pathlib.Path):
+    # gfx1151 re-exports its capability declarations from the owning policy
+    # modules as explicit import aliases. The audit reader must resolve that
+    # chain instead of reporting the initializer assignment as "nonliteral".
+    root = tmp_path
+    package = root / "hipengine" / "kernels" / "hip_gfx1151"
+    package.mkdir(parents=True)
+    (package / "policy_capability.py").write_text(
+        "GGUF_DENSE_Q4_T16 = True\n"
+        "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS: tuple = (\"attn_qkv\",)\n"
+    )
+    (package / "__init__.py").write_text(
+        "from hipengine.kernels.hip_gfx1151 import policy_capability as _policy_capability\n"
+        "GGUF_DENSE_Q4_T16 = _policy_capability.GGUF_DENSE_Q4_T16\n"
+        "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = "
+        "_policy_capability.GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS\n"
+    )
+
+    reader = audit.source_capability_reader(root=root)
+    assert reader("hip_gfx1151", "GGUF_DENSE_Q4_T16", False) is True
+    assert reader(
+        "hip_gfx1151", "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS", ()
+    ) == ("attn_qkv",)
+
+    statuses = audit.capability_status(root=root)
+    assert statuses["hip_gfx1151"]["GGUF_DENSE_Q4_T16"] == "literal"
+    assert (
+        statuses["hip_gfx1151"]["GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS"]
+        == "literal"
+    )
+
+
 def test_source_capability_reader_resolves_frozenset_wrapper_literals():
     # gfx1151 declares the FP16-recurrent-state default as frozenset({...});
     # the bounded wrapper form must resolve as a literal, not "nonliteral".
