@@ -10205,7 +10205,7 @@
       "start_line": 7738,
       "end_line": 7757,
       "sha256": "aefa272f4dc01172e879ebc8965eeb819ac929da8d1bf8ec32142bffb8d70f2d",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10231,7 +10231,7 @@
       "start_line": 7758,
       "end_line": 7775,
       "sha256": "aa5102c3374486b36f94b940933cf6fdf8b2a451081be08fbf4dd92eeaa1aca9",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10257,7 +10257,7 @@
       "start_line": 7776,
       "end_line": 7792,
       "sha256": "9883a9a00eb51431d6a2b157256f5d7c4f7ef4a6f577f26a68aad8fe372968a5",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10283,7 +10283,7 @@
       "start_line": 7793,
       "end_line": 7810,
       "sha256": "75d6ff74efc3e195c3dece10d03801e487aaaab4005272e1de46f9c6fb35de20",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10309,7 +10309,7 @@
       "start_line": 7811,
       "end_line": 7829,
       "sha256": "a3a65b2b1e4b50d288d680582e64c157777d3eb33148e7e224b0540ad89caa4d",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10335,7 +10335,7 @@
       "start_line": 7830,
       "end_line": 7846,
       "sha256": "2364f370db5735634dc686542d98ad21d1a03d100d52d947355d7db6650bba3e",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all six individual setter pairs hit same current mixed40 successor. Scoped profiler diagnostic now holds prerequisites on/successors off, restores nested/failed policies before close and records changed comparison basis. 158 focused pass/11 HIP skips plus one profiler lifecycle test (159 combined), final changed file26 pass. Historical source/artifacts preserved; bottom R0343\u2013R0348 owns setter/cache ladder migration and unavailable local ROCm/Laguna real validation. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10361,7 +10361,7 @@
       "start_line": 7847,
       "end_line": 7865,
       "sha256": "7414a77fc253f9d7f4672653fcdb63f7ff66001e654e183caea0826f5cfe6438",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all three setter pairs selected current mixed40/local1024 in both arms. Scoped diagnostic holds predecessors on/successors off and restores nested/failed policies before owner close; profiler records comparison basis. Final changed file33 pass; prior focused bundle181 pass/11 HIP skips plus repaired split-return tests and new capacity/peer cases gives192 combined. Bottom R0349\u2013R0351 owns setter/cache/reference migration and missing ROCm/Laguna real numerical/public validation. Historical source/artifacts preserved; rejected ordinary-grid/split-launch paths already removed. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10387,7 +10387,7 @@
       "start_line": 7866,
       "end_line": 7881,
       "sha256": "7e3c18b1aa65e70c403da4d66d3f987fd8ad114309331ce27567278bf5e07f44",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all three setter pairs selected current mixed40/local1024 in both arms. Scoped diagnostic holds predecessors on/successors off and restores nested/failed policies before owner close; profiler records comparison basis. Final changed file33 pass; prior focused bundle181 pass/11 HIP skips plus repaired split-return tests and new capacity/peer cases gives192 combined. Bottom R0349\u2013R0351 owns setter/cache/reference migration and missing ROCm/Laguna real numerical/public validation. Historical source/artifacts preserved; rejected ordinary-grid/split-launch paths already removed. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10418,7 +10418,7 @@
       "start_line": 7882,
       "end_line": 7903,
       "sha256": "bdc8140834723609a2655b40820675cd89429f08751bb4f4bca650b443c22dbd",
-      "status": "partial-shadowed-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real KV route RED: all three setter pairs selected current mixed40/local1024 in both arms. Scoped diagnostic holds predecessors on/successors off and restores nested/failed policies before owner close; profiler records comparison basis. Final changed file33 pass; prior focused bundle181 pass/11 HIP skips plus repaired split-return tests and new capacity/peer cases gives192 combined. Bottom R0349\u2013R0351 owns setter/cache/reference migration and missing ROCm/Laguna real numerical/public validation. Historical source/artifacts preserved; rejected ordinary-grid/split-launch paths already removed. Production runtime/defaults/kernels unchanged."],
       "subitems": [
         {
@@ -10490,7 +10490,7 @@
       "start_line": 7933,
       "end_line": 7946,
       "sha256": "b19fccfe0adb06641d1b42f90d2c75ee86f288cfa88072dabdd8273c491f43c9",
-      "status": "partial-live-reference-preserved-leaf-cleanup-fixed-bottom-build-migration",
+      "status": "triaged-leaf-cleanup-fixed-build-migration-deferred",
       "evidence": ["Four standalone/local512/V-stage128/dual-tail leaf pairs and wrapper/registry/span contracts are live. RED4 exposed partial allocation and second timing event creation leaks; leaf-only cleanup repaired, no production/kernel change. Focused150 pass/11 HIP skips. Bottom R0353 owns diagnostic-only build separation and missing local ROCm/Laguna real numerical/public checks. Historical rejection preserved in pinned sweep source/artifacts; conditional no-compound-user removal is stale."],
       "subitems": [
         {
@@ -10516,7 +10516,7 @@
       "start_line": 7947,
       "end_line": 7974,
       "sha256": "c3057ea15bdb3244ff5ce0b770a94923061bb813e6360834d897c5256cee38f2",
-      "status": "partial-paired-owner-bound-mixed-source-report-fixed-bottom-cache-migration",
+      "status": "triaged-paired-report-fixed-cache-migration-deferred",
       "evidence": ["Default materializer already replaces both expert gate/up tiles with one tiles_dual owner and empty up allocations. Real npy cache/raw/all mixed-source combinations preserve uploaded bytes/residency and release ownership on allocation/upload/either profile failure. RED2 exposed mixed cached/raw profile labelled gguf-only; now reports repacked_cache+gguf_dual_interleaved. Focused86 pass; changed file8 pass with actual cache payload reader. Bottom R0354 owns versioned paired-cache writer/open/direct-manifest leaf consumer migration, natural-tile8 ordinary reference dependency and missing local ROCm/Laguna numerical/public checks. No layout/default/kernel change."],
       "subitems": [
         {
