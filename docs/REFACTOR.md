@@ -2291,23 +2291,6 @@ category and control/ownership gates before closing this entry.
   the refactor contract but do not establish public GPU execution.
 
 
-## Packed workspace page table and identity-table device kernels
-
-- Added 2026-08-18 (task #5 stages S1b/S1c). `_GGUFPackedTargetState` carries
-  slot-major `page_ids` + `copy_segments()`, and
-  `_rebind_packed_verify_layout_pages` fills layout block tables from them.
-  Production includes pool-leased, non-identity page IDs. Eager metadata
-  preparation uploads those tables rather than rebuilding identity mappings.
-  Packed decode graphs now preserve the staged authoritative table and redirect
-  the identity-writing refresh output to graph-owned discard storage; positions
-  and counts still update on device. Identity layouts keep the original path.
-- Pool growth/shrink invalidates captured graphs for both self-owning sessions
-  and borrowed views before pointer tables can move. Discard storage is released
-  on failed capture and graph close.
-- Remaining cleanup: delete private-chunk allocation from
-  `_GGUFPackedTargetState` only once lease-backed allocation supports every
-  current producer and fallback case. Arbitrary-page graph execution is no
-  longer blocked on a future metadata-kernel extension.
 
 
 
@@ -9865,3 +9848,23 @@ Clearing checks: `uv run pytest tests/test_unit_gguf_packed_workspace_stability.
 and public cancellation/reuse, retry/rebind and close with balanced ownership.
 Historical allocation-churn numbers remain at `b5409cb8a`; no new measurement
 or runtime change is claimed by this relocation.
+
+### R0210 — Consolidate private packed allocation after page-map repair
+
+`_GGUFPackedTargetState.page_ids` and `copy_segments()` drive layout rebinding.
+Eager preparation uploads authoritative pool-leased page maps; non-identity
+packed graphs preserve those maps using graph-owned discard storage for the
+identity-writing refresh output. Positions/counts still update on device and
+identity layouts retain their original path. This repair is complete.
+
+**Deferred allocation consolidation:** inventory every private-chunk producer
+and fallback, migrate them to lease-backed allocation, then remove private
+allocation from `_GGUFPackedTargetState`. Do not treat arbitrary-page graph
+execution as blocked on a future metadata kernel. Preserve invalidation on
+pool growth/shrink for self-owning and borrowed sessions before pointers move,
+and discard-storage release on failed capture and close.
+
+Verify non-identity masked graph replay/commit, identity controls, allocation
+failure, pool growth/shrink, public packed generation and balanced teardown
+before deleting the fallback. Keep authoritative map ownership separate from
+allocation policy; no graph or storage implementation changes in this triage.

@@ -5508,7 +5508,7 @@
       "start_line": 4620,
       "end_line": 4636,
       "sha256": "287da3e5aa0008630e2825deb71f6c62a07b00af2c914b1bd1518ea377e8f3dd",
-      "status": "partial-private-fallback-consolidation",
+      "status": "triaged-deferred-private-allocation-consolidation",
       "evidence": ["Repaired graph metadata overwriting leased page maps using graph-owned discard target, preserved host-staged table, and fixed own-pool growth/shrink invalidation. CPU capture/lifetime tests, GPU312 real masked replay/commit controls, CPU314 plus focused repair, public315 packed identity capture/replay and gates pass. Private workspace fallback consolidation remains open. Worklog: worklog/entries/20261027T005813.069045Z-cleanup-refactor-r0210-packed-map-c7e7be.md."],
       "subitems": [
         {
@@ -5519,7 +5519,8 @@
         {
           "line": 4631,
           "text": "- Removal trigger: with S1d (pool-leased workspace pages), either extend the",
-          "status": "pending"
+          "status": "deferred-private-allocation-consolidation",
+          "evidence": "Bottom R0210 preserves completed graph repair and remaining allocation/lifetime gates. Docs/audit pass. worklog/entries/20261030T093459.888159Z-cleanup-cleanup-r0210-final-a79dd4.md."
         }
       ]
     },
