@@ -377,6 +377,10 @@ The gfx1151 dense GGUF binder carries its Q4 verifier rowtile decision on the
 generator; all resident and NextN session constructors receive that owner value.
 Unbound/direct sessions still parse the explicit diagnostic environment input at
 construction. The existing verifier ContextVar scopes the frozen session choice.
+Recurrent-state storage is also owner-bound across generator, runner, session and
+NextN construction. The runner resolves it once before native preflight and scratch
+allocation; a reused/shared allocation must already have the requested ABI. Unbound
+runners retain environment/backend defaults without inheriting another binder's writes.
 
 Missing benchmark coverage is not an implementation failure. Within declared
 input, resource and execution contracts, run implemented paths, measure real

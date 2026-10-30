@@ -31,6 +31,9 @@ from hipengine.execution_profiles import (
     register_runtime_profile_plan,
     resolve_runtime_profile,
 )
+from hipengine.generation.qwen35_dense_gfx1151_profiles import (
+    FP16_RECURRENT_STATE_ENV,
+)
 from hipengine.generation.qwen35_moe_gfx1151_profiles import (
     QWEN36_GGUF_BACKEND,
     QWEN36_GGUF_MODEL,
@@ -255,6 +258,22 @@ def test_strict_binder_applies_exact_policy() -> None:
         generator.execution_profile_manifest_sha256
     )
     assert generator.execution_profile == "strict"
+
+
+def test_binder_leaves_fp16_unbound_for_backend_default(monkeypatch) -> None:
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
+
+    monkeypatch.setenv(FP16_RECURRENT_STATE_ENV, "1")
+    _register()
+    for profile in (ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION):
+        generator = _resolution(profile).construct_generator(
+            lambda **kwargs: object.__new__(Qwen35GGUFBringupGenerator),
+            model_path="/tmp/fake.gguf",
+            weight_index=None,
+            model_plugin=None,
+        )
+        assert generator.target_fp16_recurrent_state is None
+        assert os.environ[FP16_RECURRENT_STATE_ENV] == "1"
 
 
 @pytest.mark.parametrize("profile", [ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION])

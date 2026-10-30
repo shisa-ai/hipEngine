@@ -3128,6 +3128,9 @@ class Qwen35GGUFFullStackRunner:
     selective_weight_max_allocation_bytes: int = (
         GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
     )
+    # Profile-owned recurrent-state allocation decision. ``None`` keeps the
+    # unbound/direct diagnostic environment and backend-package default.
+    target_fp16_recurrent_state: bool | None = None
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
@@ -3145,6 +3148,27 @@ class Qwen35GGUFFullStackRunner:
         default=None, init=False, repr=False
     )
     fp16_recurrent_state: bool = field(default=False, init=False)
+    _fp16_recurrent_state_frozen: bool = field(default=False, init=False, repr=False)
+
+    def _freeze_fp16_recurrent_state(
+        self,
+        *,
+        file_type_name: str | None,
+        artifact_preset_key: str | None,
+    ) -> bool:
+        """Resolve the allocation ABI once, before any session/scratch owner."""
+
+        if getattr(self, "_fp16_recurrent_state_frozen", False):
+            return bool(self.fp16_recurrent_state)
+        resolved = _resolve_fp16_recurrent_state(
+            getattr(self, "target_fp16_recurrent_state", None),
+            backend=self.backend,
+            file_type_name=file_type_name,
+            artifact_preset_key=artifact_preset_key,
+        )
+        self.fp16_recurrent_state = bool(resolved)
+        self._fp16_recurrent_state_frozen = True
+        return self.fp16_recurrent_state
 
     def __post_init__(self) -> None:
         self.backend = resolve_backend(self.backend)
@@ -3181,8 +3205,8 @@ class Qwen35GGUFFullStackRunner:
             }
             if "ar_decode_native_rows" in materialize_kwargs["requested_operations"]:
                 info = GGUFReader(self.model_path).info
-                native_fp16 = _gguf_fp16_recurrent_state_enabled(
-                    backend=self.backend, file_type_name=info.file_type_name,
+                native_fp16 = self._freeze_fp16_recurrent_state(
+                    file_type_name=info.file_type_name,
                     artifact_preset_key=_gguf_model_info_artifact_preset_key(info),
                 )
                 materialize_kwargs["recurrent_state_dtype"] = "fp16" if native_fp16 else "f32"
@@ -3213,8 +3237,7 @@ class Qwen35GGUFFullStackRunner:
         # qualified plain control (artifact_preset_key=None from admission)
         # may inherit the stamp-certified backend default; preset-bound and
         # unknown-manifest artifacts resolve the generic strict FP32 storage.
-        self.fp16_recurrent_state = _gguf_fp16_recurrent_state_enabled(
-            backend=self.backend,
+        self._freeze_fp16_recurrent_state(
             file_type_name=getattr(self.weights, "file_type_name", None),
             artifact_preset_key=getattr(self.weights, "artifact_preset_key", None),
         )
@@ -10646,8 +10669,9 @@ def _gguf_fp16_recurrent_state_enabled(
 ) -> bool:
     """Resolve the frozen recurrent-state storage dtype.
 
-    An explicit environment value always wins and remains the rollback seam
-    (a supported developer opt-out for every artifact identity). Otherwise the
+    This resolver is for unbound/direct runners. An explicit environment value
+    wins there; profile-bound runners use their owner decision before reaching
+    this helper. Otherwise the
     backend package admits only model file types with complete correctness and
     same-scope performance evidence, and only for artifacts the admission
     pipeline bound as qualified plain controls: ``artifact_preset_key=None``
@@ -10676,6 +10700,24 @@ def _gguf_fp16_recurrent_state_enabled(
         if str(value).strip()
     }
     return str(file_type_name).strip().lower() in normalized_defaults
+
+
+def _resolve_fp16_recurrent_state(
+    requested: bool | None,
+    *,
+    backend: str | None,
+    file_type_name: str | None,
+    artifact_preset_key: str | None,
+) -> bool:
+    """Carry an owner-bound decision; otherwise resolve the direct default once."""
+
+    if requested is not None:
+        return bool(requested)
+    return _gguf_fp16_recurrent_state_enabled(
+        backend=backend,
+        file_type_name=file_type_name,
+        artifact_preset_key=artifact_preset_key,
+    )
 
 
 def _resolve_fp16_recurrent_state_flag(use_fp16_state: bool | None) -> bool:
@@ -12733,6 +12775,9 @@ class Qwen35GGUFResidentSession:
     # Profile-owned production verifier-Q4 rowtile decision. ``None`` keeps the
     # unbound/direct diagnostic environment input at construction.
     target_verifier_production_q4_rowtile: bool | None = None
+    # Profile-owned recurrent-state allocation decision. ``None`` keeps the
+    # unbound/direct diagnostic environment and backend-package default.
+    target_fp16_recurrent_state: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch = resident_state_field("canonical", "scratch")
     _target_scratch_owner = resident_state_field("canonical", "scratch_owner")
@@ -13203,6 +13248,7 @@ class Qwen35GGUFResidentSession:
                 selective_weight_max_allocation_bytes=(
                     self.small_weight_arena_max_allocation_bytes
                 ),
+                target_fp16_recurrent_state=self.target_fp16_recurrent_state,
             )
             self._owns_runner = True
         else:
@@ -13213,6 +13259,14 @@ class Qwen35GGUFResidentSession:
         # The full-stack runner has already resolved it against the detected
         # device, so keep the resident session on that concrete identity too.
         self.backend = self.runner.backend
+        requested_fp16 = self.target_fp16_recurrent_state
+        if requested_fp16 is not None:
+            live_fp16 = getattr(self.runner, "fp16_recurrent_state", None)
+            if live_fp16 is not None and bool(live_fp16) is not bool(requested_fp16):
+                raise RuntimeError(
+                    "shared runner recurrent-state allocation does not match "
+                    "the owner request"
+                )
         # Freeze this experimental T2 axis at session construction so strict
         # and candidate owners can coexist in one numerical evaluator process.
         self.target_verifier_production_q4_rowtile = (

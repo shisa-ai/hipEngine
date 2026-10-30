@@ -1441,6 +1441,9 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned production verifier-Q4 rowtile decision. ``None`` keeps the
     # unbound/direct diagnostic environment input at session construction.
     target_verifier_production_q4_rowtile: bool | None = None
+    # Profile-owned recurrent-state allocation decision. ``None`` keeps the
+    # unbound/direct diagnostic environment and backend-package default.
+    target_fp16_recurrent_state: bool | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -1755,6 +1758,14 @@ class Qwen35GGUFBringupGenerator:
         if requested is None:
             return {}
         return {"target_verifier_production_q4_rowtile": bool(requested)}
+
+    def _target_fp16_recurrent_state_session_kwargs(self) -> dict[str, Any]:
+        """Carry the owner-bound recurrent-state ABI into every session."""
+
+        requested = getattr(self, "target_fp16_recurrent_state", None)
+        if requested is None:
+            return {}
+        return {"target_fp16_recurrent_state": bool(requested)}
 
     def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
         signature = getattr(self, "_prepared_kv_signature", None)
@@ -2136,6 +2147,11 @@ class Qwen35GGUFBringupGenerator:
                         getattr(self, "_serving_capacity_bound", None)
                     ),
                     token_embedding_placement="auto",
+                    target_fp16_recurrent_state=getattr(
+                        self,
+                        "target_fp16_recurrent_state",
+                        None,
+                    ),
                 )
                 self._shared_runner = runner
             return runner
@@ -3155,6 +3171,7 @@ class Qwen35GGUFBringupGenerator:
                     max_batch_size=int(max_batch_size),
                     **self._prepared_session_kv_kwargs(),
                     **self._target_verifier_rowtile_session_kwargs(),
+                    **self._target_fp16_recurrent_state_session_kwargs(),
                     **session_kwargs,
                 )
             except (HipError, MemoryError) as exc:
@@ -3352,6 +3369,7 @@ class Qwen35GGUFBringupGenerator:
                 "backend": self.backend,
                 **self._prepared_session_kv_kwargs(),
                 **self._target_verifier_rowtile_session_kwargs(),
+                **self._target_fp16_recurrent_state_session_kwargs(),
             }
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
@@ -3449,6 +3467,11 @@ class Qwen35GGUFBringupGenerator:
             target_verifier_production_q4_rowtile=getattr(
                 self,
                 "target_verifier_production_q4_rowtile",
+                None,
+            ),
+            target_fp16_recurrent_state=getattr(
+                self,
+                "target_fp16_recurrent_state",
                 None,
             ),
         )
@@ -3570,6 +3593,13 @@ class Qwen35GGUFBringupGenerator:
         session.native_sampler_algorithm = provenance["full_vocab_algorithm"]
 
     def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
+        requested_fp16 = getattr(self, "target_fp16_recurrent_state", None)
+        if requested_fp16 is not None:
+            live_fp16 = getattr(getattr(session, "runner", None), "fp16_recurrent_state", None)
+            if live_fp16 is not None and bool(live_fp16) is not bool(requested_fp16):
+                raise RuntimeError(
+                    "cannot change live recurrent-state allocation"
+                )
         self._configure_native_sampler(session)
         requested_rowtile = getattr(
             self,
@@ -3887,6 +3917,7 @@ class Qwen35GGUFBringupGenerator:
             "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
             **self._prepared_session_kv_kwargs(),
             **self._target_verifier_rowtile_session_kwargs(),
+            **self._target_fp16_recurrent_state_session_kwargs(),
         }
         if shared_runner is not None:
             session_kwargs.update(runtime=shared_runner.runtime, shared_runner=shared_runner)
@@ -3992,6 +4023,7 @@ class Qwen35GGUFBringupGenerator:
                 backend=self.backend,
                 execution_routes=("eager", "native_rows", "native_graph"),
                 **self._target_verifier_rowtile_session_kwargs(),
+                **self._target_fp16_recurrent_state_session_kwargs(),
             ) as session:
                 self._configure_session(session)
                 native_run = self._generate_greedy_batch(
@@ -4894,7 +4926,14 @@ class Qwen35GGUFBringupGenerator:
             else:
                 shared_runner = self._prepared_shared_runner()
                 if shared_runner is None:
-                    with Qwen35GGUFFullStackRunner(self.model_path) as local_runner:
+                    with Qwen35GGUFFullStackRunner(
+                        self.model_path,
+                        target_fp16_recurrent_state=getattr(
+                            self,
+                            "target_fp16_recurrent_state",
+                            None,
+                        ),
+                    ) as local_runner:
                         resident_slot_count, target_verify_batching = self._generate_prepared_mtp_serving_slots(
                             local_runner,
                             assets,
@@ -5179,6 +5218,7 @@ class Qwen35GGUFBringupGenerator:
                         use_wmma_prefill=_resident_session_wmma_prefill_default(),
                         use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                         **self._target_verifier_rowtile_session_kwargs(),
+                        **self._target_fp16_recurrent_state_session_kwargs(),
                     ),
                     None,
                     False,
@@ -5389,6 +5429,7 @@ class Qwen35GGUFBringupGenerator:
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                     **self._target_verifier_rowtile_session_kwargs(),
+                    **self._target_fp16_recurrent_state_session_kwargs(),
                 ),
                 None,
                 False,

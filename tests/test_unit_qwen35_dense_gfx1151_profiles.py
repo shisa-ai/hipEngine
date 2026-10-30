@@ -53,7 +53,10 @@ def _selection_map(resolved):
     }
 
 
-def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
+def test_qwen38_strict_profile_resolves_and_disables_fp16_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(FP16_RECURRENT_STATE_ENV, "1")
     register_gfx1151_kernels(replace=True)
     register_qwen38_gguf_gfx1151_profiles()
     assert qwen38_gguf_gfx1151_plans_registered()
@@ -63,7 +66,8 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
     assert resolved.binder is not None
     resolved.binder(generator, resolved)
 
-    assert os.environ[FP16_RECURRENT_STATE_ENV] == "0"
+    assert os.environ[FP16_RECURRENT_STATE_ENV] == "1"
+    assert generator.target_fp16_recurrent_state is False
     assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
     assert generator.target_verifier_production_q4_rowtile is False
     assert PRODUCTION_Q4_VERIFIER_ROWTILE_ENV not in os.environ
@@ -87,7 +91,10 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
         ]["selected_variant"] == "dense_dual_wmma_prefill_bf16_bf16_out"
 
 
-def test_qwen38_production_profile_keeps_fp32_state_and_q4_rowtiles() -> None:
+def test_qwen38_production_profile_keeps_fp32_state_and_q4_rowtiles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(FP16_RECURRENT_STATE_ENV, "1")
     register_gfx1151_kernels(replace=True)
     register_qwen38_gguf_gfx1151_profiles()
     resolved = _resolve(ExecutionProfile.PRODUCTION)
@@ -98,7 +105,8 @@ def test_qwen38_production_profile_keeps_fp32_state_and_q4_rowtiles() -> None:
     assert resolved.profile is ExecutionProfile.PRODUCTION
     assert not resolved.fell_back_to_strict
     assert resolved.manifest_sha256 != resolved.strict_manifest_sha256
-    assert os.environ[FP16_RECURRENT_STATE_ENV] == "0"
+    assert os.environ[FP16_RECURRENT_STATE_ENV] == "1"
+    assert generator.target_fp16_recurrent_state is False
     assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
     assert generator.target_verifier_production_q4_rowtile is True
     assert PRODUCTION_Q4_VERIFIER_ROWTILE_ENV not in os.environ
@@ -166,11 +174,19 @@ def test_qwen38_construction_order_keeps_per_owner_rowtile(order) -> None:
     production = generators[ExecutionProfile.PRODUCTION]
     assert strict.target_verifier_production_q4_rowtile is False
     assert production.target_verifier_production_q4_rowtile is True
+    assert strict.target_fp16_recurrent_state is False
+    assert production.target_fp16_recurrent_state is False
     assert strict._target_verifier_rowtile_session_kwargs() == {
         "target_verifier_production_q4_rowtile": False
     }
     assert production._target_verifier_rowtile_session_kwargs() == {
         "target_verifier_production_q4_rowtile": True
+    }
+    assert strict._target_fp16_recurrent_state_session_kwargs() == {
+        "target_fp16_recurrent_state": False
+    }
+    assert production._target_fp16_recurrent_state_session_kwargs() == {
+        "target_fp16_recurrent_state": False
     }
 
 

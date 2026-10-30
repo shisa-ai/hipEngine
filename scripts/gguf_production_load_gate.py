@@ -1975,6 +1975,33 @@ def _tracked_source_dirty(repo_root: Path) -> bool:
     return False
 
 
+def _capture_live_runner_state(runner: Any) -> tuple[str, str, bool]:
+    """Capture runner identity while ``llm.close()`` has not cleared it."""
+
+    shared = runner._shared_runner
+    return (
+        str(runner.generator.backend),
+        str(shared.target_arch),
+        bool(shared.fp16_recurrent_state),
+    )
+
+
+def _gate_provenance_environment(
+    env: Mapping[str, str | None],
+    *,
+    resolved_fp16_recurrent_state: bool,
+) -> dict[str, str | None]:
+    """Record the captured resolved state without inventing an environment input."""
+
+    return {
+        **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
+        **env,
+        "resolved_fp16_recurrent_state": (
+            "1" if resolved_fp16_recurrent_state else "0"
+        ),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model).expanduser().resolve()
     if not model.is_file():
@@ -2381,8 +2408,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 final_metrics = _metrics_snapshot("127.0.0.1", server.port)
             final_memory = _memory_snapshot("final", runner)
-            resolved_backend = str(runner.generator.backend)
-            target_arch = str(runner._shared_runner.target_arch)
+            (
+                resolved_backend,
+                target_arch,
+                resolved_fp16_recurrent_state,
+            ) = _capture_live_runner_state(runner)
         finally:
             llm.close()
     memory_recovery = _memory_recovery_gate(
@@ -2434,10 +2464,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant=str(args.quant),
         kv_dtype="bf16",
         command=command,
-        environment={
-            **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
-            **env,
-        },
+        environment=_gate_provenance_environment(
+            env,
+            resolved_fp16_recurrent_state=resolved_fp16_recurrent_state,
+        ),
         build_profile=f"{scope}_gguf_production_openai_load_slo",
         timing_protocol=(
             "one prepared model; real localhost Uvicorn SSE; independent c1 generated-ID oracle; "

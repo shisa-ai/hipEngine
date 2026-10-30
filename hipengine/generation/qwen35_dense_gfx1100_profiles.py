@@ -63,7 +63,7 @@ def _explicit_profile_env(name: str) -> str | None:
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     del resolved
     generator.use_q6_dp4a_grouped = False
-    _bind_profile_env(FP16_RECURRENT_STATE_ENV, "0")
+    generator.target_fp16_recurrent_state = False
     _bind_profile_env(VERIFY_CAPTURE_PREFILL_GDN_ENV, "1")
     _bind_profile_env(VERIFY_F32_RESIDUAL_ENV, "0")
     _bind_profile_env(VERIFY_F32_POST_NORM_ENV, "0")

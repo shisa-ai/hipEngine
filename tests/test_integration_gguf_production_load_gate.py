@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 
+from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.generation import EngineLoopConfig
 
 from scripts.gguf_production_load_gate import (
@@ -16,10 +17,12 @@ from scripts.gguf_production_load_gate import (
     _PROVENANCE_ENV_KEYS,
     _aggregate_tuning_runs,
     _build_workload_specs,
+    _capture_live_runner_state,
     build_parser,
     _distribution,
     _evaluate_workload,
     _force_disconnect,
+    _gate_provenance_environment,
     _http_json,
     _LocalUvicorn,
     _openai_error_fields,
@@ -457,6 +460,45 @@ def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
     assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in _PROVENANCE_ENV_KEYS
     assert "HIPENGINE_EXECUTION_PROFILE" in _PROVENANCE_ENV_KEYS
     assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in _PROVENANCE_ENV_KEYS
+
+
+@pytest.mark.parametrize(("resolved", "expected"), ((True, "1"), (False, "0")))
+def test_gate_captures_resolved_fp16_state_before_close(
+    resolved: bool,
+    expected: str,
+) -> None:
+    class FakeSharedRunner:
+        target_arch = "gfx1151"
+        fp16_recurrent_state = resolved
+
+    class FakeRunner:
+        generator = SimpleNamespace(backend="hip_gfx1151")
+        _shared_runner = FakeSharedRunner()
+
+    runner = FakeRunner()
+    resolved_backend, target_arch, captured = _capture_live_runner_state(runner)
+    runner._shared_runner = None
+    assert runner._shared_runner is None
+    assert resolved_backend == "hip_gfx1151"
+    assert target_arch == "gfx1151"
+    assert captured is resolved
+
+    provenance = collect_artifact_provenance(
+        repo_root=Path("."),
+        configured_backend="hip_gfx1151",
+        resolved_backend=resolved_backend,
+        detected_arches=("gfx1151",),
+        target_arch=target_arch,
+        device_name="fake-device",
+        command=("python3", "scripts/gguf_production_load_gate.py"),
+        environment=_gate_provenance_environment(
+            {},
+            resolved_fp16_recurrent_state=captured,
+        ),
+        rocm_version=None,
+        hipcc_version=None,
+    )
+    assert provenance["environment"]["resolved_fp16_recurrent_state"] == expected
 
 
 def test_force_disconnect_shutdowns_socket_before_closing_http_wrappers() -> None:

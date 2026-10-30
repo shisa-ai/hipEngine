@@ -55,6 +55,7 @@ def _isolate_profile_environment(monkeypatch):
 def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
     monkeypatch,
 ) -> None:
+    monkeypatch.setenv(FP16_RECURRENT_STATE_ENV, "1")
     register_qwen36_dense_gguf_gfx1100_profiles()
     assert qwen36_dense_gguf_gfx1100_strict_registered()
 
@@ -75,7 +76,8 @@ def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
     assert selection["scope"] == "specdec2_mtp2_c1"
     assert selection["selected_variant"] == "bf16_c1_exact_state_rows_tloop"
     assert selection["strict_fallback_variant"] == selection["selected_variant"]
-    assert __import__("os").environ[FP16_RECURRENT_STATE_ENV] == "0"
+    assert __import__("os").environ[FP16_RECURRENT_STATE_ENV] == "1"
+    assert generator.target_fp16_recurrent_state is False
     assert __import__("os").environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
     assert __import__("os").environ[VERIFY_F32_RESIDUAL_ENV] == "0"
     assert __import__("os").environ[VERIFY_F32_POST_NORM_ENV] == "0"
@@ -86,6 +88,7 @@ def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
 def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate(
     monkeypatch,
 ) -> None:
+    monkeypatch.setenv(FP16_RECURRENT_STATE_ENV, "1")
     monkeypatch.setenv(VERIFY_F32_RESIDUAL_ENV, "0")
     monkeypatch.setenv(VERIFY_F32_POST_NORM_ENV, "0")
     register_qwen36_moe_gguf_gfx1100_profiles()
@@ -107,11 +110,15 @@ def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate(
     assert strict.fell_back_to_strict is False
     assert production.fell_back_to_strict is False
     assert production.source_profile.value == "production"
+    strict_generator = strict.construct_generator(lambda: SimpleNamespace())
     generator = production.construct_generator(lambda: SimpleNamespace())
     assert production.manifest["graph_policy"] == (
         "specdec2_moe_bulk_f32_k2_strict_k1_candidate"
     )
     assert generator.execution_profile == "production"
+    assert strict_generator.target_fp16_recurrent_state is False
+    assert generator.target_fp16_recurrent_state is False
+    assert __import__("os").environ[FP16_RECURRENT_STATE_ENV] == "1"
     assert __import__("os").environ[VERIFY_F32_RESIDUAL_ENV] == "1"
     assert __import__("os").environ[VERIFY_F32_POST_NORM_ENV] == "1"
     assert strict.manifest["selections"][0]["strict_fallback_variant"] == (
