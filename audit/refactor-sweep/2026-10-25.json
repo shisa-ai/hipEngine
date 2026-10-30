@@ -233,23 +233,23 @@
       "start_line": 251,
       "end_line": 264,
       "sha256": "a2d80bbb050fac0c3db2d94be0a7dc5a021fa644bdb37430c8832ec165a51957",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-interface-decision",
+      "evidence": ["Verified missing bounded generic-only child lifecycle; moved interface choice and clearing checks to bottom. 13 ownership integration tests pass. worklog/entries/20261030T061714.750608Z-cleanup-cleanup-r0011-6f9c51.md."],
       "subitems": [
         {
           "line": 253,
           "text": "- `EngineService` admits the generic spelling through existing speculative",
-          "status": "pending"
+          "status": "deferred-interface-decision"
         },
         {
           "line": 258,
           "text": "- Replace the MTP compatibility gate with explicit generic child admission once",
-          "status": "pending"
+          "status": "deferred-interface-decision"
         },
         {
           "line": 262,
           "text": "- Evidence: `tests/test_integration_engine_service_speculative_ownership.py` and",
-          "status": "pending"
+          "status": "resolved-reference-preserved"
         }
       ]
     },

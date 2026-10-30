@@ -119,19 +119,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   flip the default (and delete the variable) once the shared arm meets or beats
   the separate arm at every width.
 
-## Generic speculative service lifecycle
-
-- `EngineService` admits the generic spelling through existing speculative
-  child submission only when the driver declares both generic and model-attached
-  MTP support. Generic-only whole-request providers (Laguna DFlash) fail closed;
-  they no longer execute on a frontend thread. This is a serving restriction,
-  not completion of generic-provider lifecycle support.
-- Replace the MTP compatibility gate with explicit generic child admission once
-  generic-only providers expose bounded request-owned work. Do not restore
-  frontend execution or put whole generation inside an administrative command.
-  Keep generic and model-attached provider semantics separate in that SPI.
-- Evidence: `tests/test_integration_engine_service_speculative_ownership.py` and
-  `worklog/entries/20261017T190456.513027Z-lhl-speculative-service-ownership-3d661c.md`.
 
 
 
@@ -9613,3 +9600,29 @@ an append-cost improvement. Keep the existing race-safe staging until its data
 movement is replaced safely. The original race repair and timings are preserved
 in `worklog/entries/20261018T120817.976900Z-lhl-dms-append-compaction-race-6fa3d4.md`;
 this triage does not change kernels or claim a speedup.
+
+### R0011 — Define bounded generic-provider child ownership
+
+`EngineService` still admits the generic spelling through speculative child
+submission only when the driver also declares model-attached MTP support.
+Laguna's generic provider attachment requires whole-request `generate_detailed`
+and `stream_detailed` methods, not bounded child work. Its service restriction
+therefore remains an unimplemented lifecycle capability, not missing benchmark
+coverage. Direct provider implementation is not equivalent to service ownership.
+
+**Deferred interface decision:** define generic child admission, bounded work
+advancement, cancellation and retirement separately from the model-attached MTP
+contract. Migrate Laguna DFlash and the submit/poll adapter to that interface,
+then replace the compatibility gate with the actual generic-child capability.
+Do not execute model work on frontend threads or hide a whole generation in an
+administrative command; preserve the service's sole-driver ownership.
+
+Clearing checks: extend `tests/test_integration_engine_service_speculative_ownership.py`
+with an actual generic-only child adapter and test blocking/stream agreement,
+slow work beside another request, cancellation, deadlines, provider errors,
+shutdown and subsequent recovery. Then exercise generic-only generation through
+`LLM.generate()` or the server and confirm the intended provider and driver
+ownership. Existing tests of rejection and MTP compatibility are containment
+coverage, not proof that the missing generic lifecycle is implemented.
+Original repair evidence remains in
+`worklog/entries/20261017T190456.513027Z-lhl-speculative-service-ownership-3d661c.md`.
