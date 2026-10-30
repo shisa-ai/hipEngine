@@ -5485,13 +5485,14 @@
       "start_line": 4605,
       "end_line": 4619,
       "sha256": "7394f1d6a4b768800be63fe592a34b578656ed6bccb4c8781dd162b0e79f3e11",
-      "status": "partial-active-teardown-owner",
+      "status": "triaged-deferred-packed-resource-owner",
       "evidence": ["Guarded API is actively called by KV-pool teardown; it rejects dirty packed state and live graphs. State/private KV charges already reserve and release through the pool ledger. Remaining work is resource-reference and teardown ownership extraction, not missing accounting or an unused API. Focused workspace/layout/global growth/VMM and sampling files pass; docs/audit pass. Worklog: worklog/entries/20261027T172435.748577Z-cleanup-refactor-r0209-r0210-9e664a.md."],
       "subitems": [
         {
           "line": 4607,
           "text": "- Added 2026-08-18. Row reclaim no longer frees the owner-shared packed",
-          "status": "pending"
+          "status": "preserved-live-teardown-resource-owner-deferred",
+          "evidence": "Bottom R0209 preserves accounting/quiescence/release ordering and public gates. Docs/audit pass. worklog/entries/20261030T093219.416520Z-cleanup-cleanup-r0209-final-d400da.md."
         },
         {
           "line": 4615,

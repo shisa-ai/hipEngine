@@ -2291,29 +2291,6 @@ category and control/ownership gates before closing this entry.
   the refactor contract but do not establish public GPU execution.
 
 
-## C2-6 guarded idle packed-workspace release API
-
-- Added 2026-08-18. Row reclaim no longer frees the owner-shared packed
-  workspace: the slab is union-geometry and shared by every resident view, so
-  per-reclaim release forced a same-size hot-path reallocation on the next
-  packed step (the accepted C2-6 canonical packet recorded 246 releases /
-  242.39 GiB cumulative churn). The guarded
-  `Qwen35GGUFResidentSession.release_idle_packed_workspace()` is now used by
-  production KV-pool teardown during rebind, auto-context retry and close.
-  It fails closed on unflushed state or live graphs and releases workspace
-  ownership before the pool closes; it is not an unused API.
-- Packed state scratch and private KV already reserve named byte charges in
-  the global pool before allocation and release those charges on failure or
-  teardown. The remaining ownership cleanup is to move the session-held
-  workspace references and teardown orchestration into a dedicated resource
-  owner, not to add accounting a second time.
-- Keep the guarded session API until every teardown caller uses that replacement
-  owner. Preserve scatter/graph quiescence, release scratch and its pool charges
-  before pool close, and do not restore per-row reclaim releases. Validate with
-  `uv run pytest tests/test_unit_gguf_packed_workspace_stability.py
-  tests/test_unit_gguf_packed_verify_layout.py
-  tests/test_unit_gguf_global_pool_growth.py -q` and public cancellation/reuse.
-
 ## Packed workspace page table and identity-table device kernels
 
 - Added 2026-08-18 (task #5 stages S1b/S1c). `_GGUFPackedTargetState` carries
@@ -9868,3 +9845,23 @@ ownership checks; run `uv run pytest tests/test_integration_gguf_production_load
  tests/test_unit_concurrency2_production_load.py -q` and the selected real
 `scripts/gguf_production_load_gate.py` packet. The old device fault is not a
 current runtime blocker. No protocol is deleted or newly validated here.
+
+### R0209 — Extract packed-workspace ownership without breaking teardown
+
+`Qwen35GGUFResidentSession.release_idle_packed_workspace()` is used by KV-pool
+teardown during rebind, auto-context retry and close. It rejects unflushed
+state/live graphs and releases workspace before pool close. Row reclaim does
+not free the shared union-geometry slab; preserve that hot-path behavior.
+Packed scratch/private KV already reserve named pool charges before allocation
+and release them on failure or teardown; do not duplicate accounting.
+
+**Deferred resource-owner design:** move session-held workspace references and
+teardown orchestration into one owner, keeping the guarded API until every
+caller migrates. Preserve scatter/graph quiescence and release scratch plus
+charges before pool close. Do not restore per-row reclaim releases.
+
+Clearing checks: `uv run pytest tests/test_unit_gguf_packed_workspace_stability.py
+ tests/test_unit_gguf_packed_verify_layout.py tests/test_unit_gguf_global_pool_growth.py -q`
+and public cancellation/reuse, retry/rebind and close with balanced ownership.
+Historical allocation-churn numbers remain at `b5409cb8a`; no new measurement
+or runtime change is claimed by this relocation.
