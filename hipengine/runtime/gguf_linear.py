@@ -8233,10 +8233,10 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
-    # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
-    # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
-    # registered variant defaults to the bit-exact dense dual SiLU GEMV.
-    # Mixed-quant pairs and every other row count decline unchanged.
+    # Q5 T16 gate/up decode dual: requires the direct-GEMV singles at rows == 1.
+    # Tile8 singles do not enter this route. The inherited policy variant must
+    # also be registered under Q5; a Q4 policy variant does not satisfy that key.
+    # See R0512 in docs/REFACTOR.md before changing this dispatch condition.
     q5_t16_decode = KernelKey(
         resolved_backend,
         "linear",

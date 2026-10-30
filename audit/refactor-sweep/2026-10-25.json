@@ -13812,8 +13812,8 @@
       "start_line": 12164,
       "end_line": 12190,
       "sha256": "a050cc6e07ab9a5e60355f0955bacb4bd5bd8d241e3678c079d1e288047e244e",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Q5 prefill branch is reachable and preserved; attempted deletion failed existing tests and was restored. Corrected decode comment; separate rows==1 dual selection deferred. 323 dispatch tests pass. worklog/entries/20261030T054131.120473Z-cleanup-cleanup-r0512-fc0317.md."],
       "subitems": []
     },
     {

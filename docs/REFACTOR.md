@@ -3544,33 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Dormant Q5_T16 rows==1 dual block with poisoned variant inheritance (open 2026-09-25)
-
-`launch_gguf_linear_pair_silu`'s Q5 block (`hipengine/runtime/gguf_linear.py`, the
-`q5_t16_pair_variant = registered_decode_variant or "q5_dense_dual_silu..."` path) is
-dormant on `hip_gfx1151` for three stacked reasons found in E6a (UD-GFX1151-OPTIMIZE2
-iteration 11): the identity policy row hands back the **Q4** variant name
-`dense_dual_local32_bf16_bf16_out` (the row mirrors plain by design; the IQ4 branch
-selects its own key and ignores the value, the Q5 block inherits it blindly, and the
-resulting key is unregistered under `gguf_q5_k_t16_v1`); post-E4a both sides dispatch
-`t16_gemv_decode_tile8_bf16_bf16_out` while the rule demands the direct key; and the
-earlier `_q5_t16_dense_pair_silu_variant(rows)` branch at the `dense_pair_quant ==
-"gguf_q5_k_t16_v1"` test is dead code (`dense_pair_quant` only ever holds quants in
-`_Q4_T16_DENSE_QUANTS`, which excludes Q5).
-
-E6a's gate says leave it dormant: at the production shape (5120, 17408) rows=1 the
-dual is bit-exact against the 2× tile8 + `silu_mul_separate_out_bf16` chain but
-**loses** it — 705.6 vs 653.6 µs/layer (0.93×, allocate-once timing, 200 launches,
-`~/ud-e1-census/e6a_screen.py`) — because the dual kernel mirrors the direct
-owner's schedule while the singles now run on the faster tile8 owner.
-
-Clearing command: re-screen `dual vs 2×tile8 chain` at rows=1 before any change
-here; only if the dual wins at the current dispatched singles does it make sense to
-fix the variant selection (Q5 branch selects its own key, mirroring the IQ4
-precedent), extend the dispatch predicate to the tile8 key, and update the block's
-stale comment (it still describes the direct-only rows==1 condition). Until that
-screen passes, the dormancy is load-bearing and the dead branch plus the stale
-comment should be cleaned up instead.
 ## Logprobs requests skip the captured-graph sampled accept (open 2026-09-23)
 
 `_device_sampled_accept_plan` in `hipengine/generation/qwen35_gguf_mtp2.py`
@@ -9836,3 +9809,21 @@ full-context session and subsequent public chat request still allocate in the
 same process, with allocation/free accounting around each attempt. Keep this
 item open until that recovery check passes; do not weaken the probe or treat a
 successful narrow retry as equivalent evidence.
+
+### R0512 — Revisit Q5 decode-dual dispatch separately from working prefill
+
+The Q5 prefill pair branch is reachable: `dense_pair_quant` explicitly includes
+`gguf_q5_k_t16_v1` alongside the Q4 formats. Dispatch tests exercise its registered
+owner at multiple prefill row counts. Do not remove it as dead code.
+
+The separate rows==1 Q5 dual block still requires direct-GEMV singles, not tile8,
+and inherits a policy variant that must be registered under Q5. A Q4 variant
+name does not satisfy that registration. The source comment now states these
+conditions rather than implying that the inherited variant always selects Q5.
+
+**Deferred tuning decision:** re-screen the Q5 dual against the currently selected
+two-single-kernel plus SiLU chain on gfx1151 before changing decode selection.
+The historical screen rejected that dual; preserve its evidence in the original
+ledger history at `ad2c28ff3`. If pursuing it, select a Q5-specific registered key,
+verify the intended decode owner and run the applicable numerical and public
+route gates. Do not change the working prefill route as part of this decision.
