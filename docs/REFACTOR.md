@@ -1586,26 +1586,6 @@ separately, recording which route actually runs, repeat output, shrinking groups
 deadline/cancellation/failure, drained futures and zero leaked streams/allocations. Do not label a
 compatibility-only worker change as a resident scheduler improvement.
 
-### R0281-TARGET-ORACLE — Scalar row oracle versus native verification
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `Qwen35GGUFResidentSession.step_rows()`, `verify_rows()`.
-
-**Remaining decision:** designate the scalar oracle as supported diagnostic infrastructure and
-remove this retirement item, or migrate its full-logit and layer-boundary consumers before deleting
-it. Strict unfused and independent scalar comparison paths are not duplicate production execution.
-Do not replace them with a faster candidate that is also the object being checked. Branched oracle
-execution would require actual parent-state snapshots; it is not enabled by relabelling
-`verify_chain` metadata.
-
-Done when: run `tests/test_unit_gguf_target_rows_oracle.py`, target-row nodes in
-`tests/test_live_qwen35_gguf_target_rows.py`, and native/serial accepted- row/cursor tests in
-`tests/test_unit_qwen35_gguf_mtp2_seam.py` and the MoE MTP2 bundle. An oracle migration needs real
-scalar/native boundary and full-logit comparisons plus unsupported topology refusal with no
-mutation. Production request parity/cleanup validates wiring separately; it does not substitute for
-the independent arithmetic oracle.
-
 ### R0281-TAIL-RMS — Chained norms and MoE graph diagnostic migration
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
@@ -2950,23 +2930,6 @@ and `tests/test_unit_qwen36_dense_gguf_suite.py`; exercise both explicit taps in
 prompt chunks on both sides of the chunk bound and unrelated lengths, first/following proposals,
 repeat/reset, failed priming, cancellation and teardown. Verify the public fixed contract
 separately.
-
-### R0392 — Optional marker-free profiler interface
-
-Owner: `scripts/roctx_discovery.py`.
-
-Scope: `RDNA3-TUNING-GUIDE.md`.
-
-**Decision needed:** add a wrapper-level marker-free profiling mode when the ROCTX library is
-absent, or keep the explicit child-mode procedure in `RDNA3-TUNING-GUIDE.md`. Kernel tracing itself
-needs no ROCTX; marker-scoped attribution does. Do not silently replace a requested marker-scoped
-result with an unscoped trace. The wrapper's explicit missing-library error is not a runtime model
-capability restriction.
-
-Done when: either adopt the documented child-mode procedure as the interface, or implement
-an explicit no-marker mode that records its scope and uses the matching rollup. Test missing/present
-libraries, explicit override, child forwarding and trace-marker matching. Coordinate shared
-discovery with R0393; preserve each wrapper's dependency-path and measurement contracts.
 
 ### R0393-Q6 — Grouped-Q6 rollback interface and gfx1100 public engagement
 
