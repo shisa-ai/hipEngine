@@ -5716,7 +5716,7 @@
         {
           "line": 4766,
           "text": "- Remove comparison-only `pm4_stateful*`/`pm4_timestamps` benchmark aliases and",
-          "status": "partial-redundant-alias-removed"
+          "status": "triaged-alias-removed-diagnostic-policy-deferred"
         },
         {
           "line": 4771,
@@ -5762,12 +5762,12 @@
         {
           "line": 4791,
           "text": "- Added Q6-only constructor/context names with the 2026-08-13 bounded planar-Q6",
-          "status": "partial-naming-migrated"
+          "status": "naming-migrated-integration-deferred"
         },
         {
           "line": 4807,
           "text": "- Removal trigger: after one release window with the complete category gate and",
-          "status": "partial-naming-migrated"
+          "status": "naming-migrated-integration-deferred"
         }
       ]
     },
@@ -7204,7 +7204,7 @@
         {
           "line": 5953,
           "text": "- Added 2026-07-25 as explicit session-local LAP-3/LAP-4 candidates. The",
-          "status": "partial-removed-deferred-diagnostics"
+          "status": "triaged-selector-removed-diagnostics-deferred"
         },
         {
           "line": 5961,
@@ -7418,7 +7418,7 @@
         {
           "line": 6134,
           "text": "- The correctness-first external decision bridge snapshots only the active",
-          "status": "partial-implemented-bounded-append-undo"
+          "status": "bounded-append-implemented-general-undo-deferred"
         },
         {
           "line": 6139,
@@ -7699,7 +7699,7 @@
         {
           "line": 6189,
           "text": "| PARO width-plan execution and rollback flags | The greedy generator and `scripts/qwen35_batch_retained_bench.py` each execute `BatchWidthPartitionPlan` groups and collect similar telemetry; `_generate_batch_sampled()` remains diagnostic. `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` and the legacy-named `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` remain explicit rollback opt-outs. | G3 retains an identity-matched schema-2 gfx1151 c2/c4/c8 profile. G4/G5 attach it to the shared stable-slot owner; blocking F1, native/serial SSE, live admission, c8 repeatability, and a no-flag OpenAI c4 confirmation are exact. gfx1151 backend capabilities now enable the hash/sync-checked packaged profile by default even outside a repository CWD; explicit `=0` still selects the serial fallback. gfx1100 remains package-default off pending owner c4/c8 symmetry. | After one release window and a defaults-only gfx1151 refresh, remove the two positive opt-in semantics and rename/collapse them to one clear rollback selector; consolidate duplicate generator/benchmark plan execution after gfx1100 owner c4/c8 is independently retained. Keep profile identity checks, unsupported-shape partitions, and exact serial fallback permanently. |",
-          "status": "partial-shared-executor-deferred-policy-R0281-PARO-WIDTH"
+          "status": "shared-executor-implemented-policy-deferred-R0281-PARO-WIDTH"
         },
         {
           "line": 6190,
@@ -9087,7 +9087,7 @@
         {
           "line": 6869,
           "text": "- Added 2026-07-02. Bench flag",
-          "status": "partial-presets-removed-explicit-comparisons-preserved"
+          "status": "presets-removed-explicit-comparison-migration-deferred"
         },
         {
           "line": 6873,
@@ -9869,7 +9869,7 @@
         {
           "line": 7461,
           "text": "- The published exact successor adds",
-          "status": "partial-comparison-sums-repaired-bottom-producer-consumer-migration"
+          "status": "sums-repaired-producer-consumer-migration-deferred"
         }
       ]
     },
@@ -10029,7 +10029,7 @@
         {
           "line": 7608,
           "text": "- Eleven complete-state pp512 pairs are exact and improve independent medians",
-          "status": "partial-noop-ab-repaired-bottom-diagnostic-owner-migration"
+          "status": "noop-ab-repaired-diagnostic-owner-migration-deferred"
         },
         {
           "line": 7617,
@@ -10128,7 +10128,7 @@
         {
           "line": 7676,
           "text": "- Added 2026-07-28 as",
-          "status": "partial-auto-input-capability-repaired-live-selector-documented"
+          "status": "input-capability-repaired-selector-migration-deferred"
         },
         {
           "line": 7681,
@@ -10143,7 +10143,7 @@
         {
           "line": 7694,
           "text": "- The fixed-K successor also satisfies promotion: the six-role family moves",
-          "status": "partial-shape-policy-repaired-bottom-gpu-public-validation"
+          "status": "shape-policy-repaired-gpu-public-validation-deferred"
         }
       ]
     },
@@ -10159,7 +10159,7 @@
         {
           "line": 7704,
           "text": "- Added 2026-07-28 as",
-          "status": "partial-live-comparison-prerequisites-repaired"
+          "status": "comparison-prerequisites-repaired-migration-deferred"
         },
         {
           "line": 7710,
