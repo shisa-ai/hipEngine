@@ -6,10 +6,14 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 
 Only unfinished work belongs here. Remove an entry when its action or decision
 is complete; keep implementation history and measurements in worklogs and Git.
+An entry is not necessarily blocked: local design and implementation can start
+before model-backed or hardware-specific completion checks. The
+[per-entry prerequisite audit](../audit/refactor-sweep/2026-10-31-classification.md)
+separates the next work from those completion dependencies.
 Preserve supported fallback paths and apply the verification rules in
 [AGENTS.md](../AGENTS.md) and [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md).
 
-## Deferred decisions from the refactor sweep
+## Outstanding work
 
 ### R0023 — Preserve recovery precedence and decide held-off family repairs
 
@@ -342,10 +346,11 @@ outputs. The removed H7Y route must not be selected or allocate mirrors.
 ### R0276 — Public Q4/Q6 tile-policy validation
 
 **Dependency:** the unavailable Laguna checkpoint. **Clearing action:** run the R0273 gfx1151 public
-gate with `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` set and trace Q6 WMMA launches. Confirm the
-backend's default tile still runs, outputs match the unset control, and teardown is clean. Repeat
-with `HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` and confirm shape-selected Q4 tiles are unchanged.
-Explicit primitive tile arguments remain supported.
+gate with the retired `HIPENGINE_GGUF_Q6_K_DENSE_WMMA_TILE=64x16` input deliberately set; it must
+be inert. Trace Q6 WMMA launches and confirm the backend's default tile still runs, outputs match
+the unset control, and teardown is clean. Repeat with the retired
+`HIPENGINE_GGUF_Q4_K_DENSE_WMMA_TILE=64x16` input and confirm shape-selected Q4 tiles are unchanged.
+Explicit primitive tile arguments remain supported and are not the subject of this negative control.
 
 ### R0271 — Scaled F16 comparison retention and public validation
 
@@ -531,7 +536,7 @@ allocation/copy/dispatch code. Run `tests/test_unit_qwen38_int8_kv_capability.py
 ### R0214/R0215 / R0378 — Cumulative-semantic rollback-control migration
 
 Scope: `scripts/qwen35_08b_cumulative_semantic.py`; `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL`,
-`HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL`,; `HIPENGINE_GGUF_DENSE_WMMA_BULK`.
+`HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL`; `HIPENGINE_GGUF_DENSE_WMMA_BULK`.
 
 **Dependency:** move these diagnostic controls out of production environment selection and validate
 the actual Qwen3.5-0.8B Q4_K_M and Q8_0 callers. Neither checkpoint is present in the local
@@ -1654,15 +1659,15 @@ and its parser/result readers until replacement comparisons select the same symb
 **Clearing action:** run value-tail reference, SWA issue and KV attention host contracts. On ROCm,
 execute standalone/local512/V-stage128/dual-tail leaf pairs and primitive oracles, including
 allocation/event failure cleanup, then public `LLM.generate()` confirming the default compound route
-and full state/resource parity. Local ROCm/Laguna resources remain unavailable as recorded by
-R0340/R0273; these real numerical/public checks remain open.
+and full state/resource parity. Use the configured ROCm environment; the Laguna checkpoint
+remains a dependency for the model-backed checks in R0340/R0273.
 
 ### R0349–R0351 — Global exp/mixed32 diagnostic migration
 
 **Remaining work:** move the public setters/cache policy ladder and profiler mode/result readers
 into the diagnostic owner, preserving generic and peer-backend routes. Remove the scoped field
 policy when reference variant selection no longer mutates production flags. Real numerical/public
-validation shares R0340/R0273's missing local ROCm runtime and Laguna artifact.
+validation needs R0340/R0273's Laguna artifact and the configured ROCm environment.
 
 **Clearing action:** run global issue, profiler, runner and KV attention contracts; on ROCm,
 exercise each pair against its registered primitive oracle on both sides of split/live4000 and
@@ -1675,8 +1680,8 @@ reference primitives out of production builds.
 **Remaining work:** consolidate the public setters/cache ladder and profiler mode/result readers
 into the diagnostic owner, preserving generic shape and peer-backend routes. Remove the temporary
 scoped field policy once reference variant selection no longer depends on mutating production cache
-flags. Actual-weight/GPU/public validation shares R0340/R0273's missing local ROCm runtime and
-Laguna artifact.
+flags. Actual-weight/GPU/public validation needs R0340/R0273's Laguna artifact and the
+configured ROCm environment.
 
 **Clearing action:** run SWA issue-scope, KV attention, runner and profiler contracts. On ROCm,
 execute each repaired pair against its registered primitive oracle, including
@@ -2609,8 +2614,8 @@ routes confirming actual plane ownership, output agreement and complete teardown
 
 Scope: `HIPENGINE_GGUF_INT8_PREFILL_DIRECT`.
 
-**Remaining evaluation:** the historical direct-prefill rejection was measured before these
-adapters. It records an observed failure, not proof that the entire discrepancy is inherent INT8
+**Remaining evaluation:** the historical direct-prefill rejection was measured before the
+dtype-adapter repair. It records an observed failure, not proof that the entire discrepancy is inherent INT8
 quantization error. Preserve the artifact, but rerun the calibrated same-prefix evaluator before
 making a new quality claim or changing the arithmetic default. Start with `python
 scripts/execution_profile_gguf_int8_direct_prefill_gate.py --model "$GGUF_MODEL" --backend
@@ -2773,12 +2778,6 @@ and the layer-scope gate with R0425's owner-field migration before removing
 exact fallback. Any extension of changed-arithmetic production defaults follows
 `docs/EXECUTION-PROFILES.md`; missing historical measurements are not a reason to refuse an explicit
 evaluation.
-
-**Manifest dependency:** R0460, “Qwen4Exp production routes the manifest does not enumerate”, owns
-the broader dense-wide/GDN/GR scope migration. The K10240/N320 tail selection does not describe the
-whole dense-wide layer window. Close that dependency with declared strict/production scopes, binder
-agreement and manifest-identity tests; do not revive the obsolete 16–47-only proposal. Until then,
-an artifact's manifest hash alone does not identify these routes.
 
 **Library-lookup dependency:** ordinary linear launch paths use `_variant_scoped_library`; pair and
 fused paths still contain quant-only lookups. Before giving one of those families a separate shared
@@ -2952,7 +2951,7 @@ then exercise public generation with the intended handles and teardown.
 
 ### R0459 — Row-split GDN recurrence removal decision
 
-**Deferred removal decision:** after R0460, decide whether UD still needs an explicit multi-column
+**Deferred removal decision:** decide whether UD still needs an explicit multi-column
 comparison route and whether the Q4_K_M recovery plan still needs the shared implementation. Verify
 both quant bindings and user-facing execution before removing any UD-specific route.
 
@@ -3060,8 +3059,8 @@ longer needs it.
 
 Scope: `SHAPE_TILE_*`.
 
-**Deferred profiling:** make the Surya checkpoint available and provide `rocprofv3` in the HIP
-environment (it is absent from the current shell's PATH). Compare kernel traces for the 128-row and
+**Deferred profiling:** make the Surya checkpoint available and use `rocprofv3` from the configured
+ROCm environment. Compare kernel traces for the 128-row and
 512-row shapes at 4096 patches, using `rocprofv3 --kernel-trace -- python3
 scripts/surya_vision_tiling_cost.py --pages page_ja.png --blocks 128,512 --reps 3 --out
 /tmp/surya-4096-shapes.json`. Attribute any shape-dependent latency to the actual kernels before
@@ -3085,8 +3084,8 @@ parity. Any policy change needs the applicable numerical gate and public Surya v
 
 Scope: `SuryaGpuRunner._attention_packed`.
 
-**Deferred optimization:** the local Surya checkpoint is missing and `rocprofv3` is absent from
-PATH. After restoring both, profile with `rocprofv3 --kernel-trace -- python3
+**Deferred optimization:** make the Surya checkpoint available, then use the configured ROCm
+environment to profile with `rocprofv3 --kernel-trace -- python3
 scripts/surya_gpu_rocprof_driver.py --phase prefill --repeat 3`. Use the driver phase markers to
 exclude vision/load work. If score computation is worth optimizing, implement the bounded-key path
 and compare against the current chain on dense, partial-tail and multi-tile prompts, then run the
@@ -3655,7 +3654,7 @@ restrictions whose replacement semantics actually run.
 ### R0153 — Retire raw-Q8 and expert-grid transport without deleting live ladders
 
 Scope: `coltile8_wave_scale`; `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH`,
-`HIPENGINE_QWEN4_EXP_RAW_VARIANT`,; `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`.
+`HIPENGINE_QWEN4_EXP_RAW_VARIANT`; `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`.
 
 **Deferred ownership/retirement decision:** resolve these settings into explicit owner state or
 retain a scoped diagnostic comparison. Remove environment reads only after migrating callers and
@@ -3681,7 +3680,6 @@ recorded failing scope rather than treating all FP16 routes as failed.
 Clearing checks: run dense gfx1151 profile unit tests, then compare complete recurrent state,
 logits, continuation and accepted-prefix rollback across short and long histories for any
 replacement. Exercise public AR and packed MTP with storage attribution and lifecycle checks.
-Neither is reopened here.
 
 ### R0164 — Separate packed-target provenance from graph-cache consolidation
 
@@ -3742,7 +3740,7 @@ Clearing checks: a path-by-path disposition inventory, replacement command help 
 tests, published-command drift checks, and verification that each retained evidence reference is
 still reproducible or explicitly archived. Do not delete an unnamed batch based on the old count.
 
-### RF-4 / R0187 — Migrate the ledger after coverage reconciliation
+### RF-4 / R0187 — Add semantic ledger validation
 
 Add a semantic ledger checker for duplicate active IDs, closed entries, required
 scope/owner/clearing fields and dangling links. Wire it into `scripts/docs/check_all.py` and test
@@ -3842,7 +3840,11 @@ and public commit/rollback lifecycle.
 
 ### RF-11 / R0187 — Replace remaining broad live-source pins with scoped contracts
 
-Scope: `tests/_laguna_policy_pin.py`, `_POST_MERGE_SOURCE_SHA256`.
+Scope: `_POST_MERGE_SOURCE_SHA256` in `tests/test_unit_laguna_h8a_source_default.py`,
+`tests/test_unit_laguna_h8b_source_default.py` and
+`tests/test_gpu_laguna_h7u_parallel_moe_compaction.py`.
+Use the scoped policy assertions in `tests/_laguna_policy_pin.py` as an existing
+replacement pattern, not as a whole-file hash to retire.
 
 **Deferred contract decision:** identify the semantic owner or frozen block each remaining broad
 live-source pin protects, then replace it with assertions over capabilities, exact registry keys,
@@ -4056,7 +4058,7 @@ Scope: `moe_physical_c2_pairreuse_session(...)`, `x_rows*8`.
 losing nested disabled-scope restoration or geometry checks. Preserve row-bound/interior,
 selected-row mismatch and incompatible-geometry tests. Verify public exact state, acceptance,
 cancellation/reuse and selected kernel attribution before retiring the context. The original final
-three-repeat performance gate still governs a claimed promotion or rejection A losing candidate may
+three-repeat performance gate still governs a claimed promotion or rejection. A losing candidate may
 be removed only after checking live consumers and preserving strict fallbacks.
 
 ### R0192 — Public validation after obsolete MoE C2 prototype removal
