@@ -2504,20 +2504,6 @@ D1/D24 workloads, confirming physical grouping, deterministic/isolation behavior
 allocation-failure cleanup and cancellation. Preserve the original complete
 category and control/ownership gates before closing this entry.
 
-## Qwen3.8 NextN selected-vocabulary proposal head
-
-- Added 2026-08-31 as a screen sourced from exllamav3 PR #303 and promoted
-  2026-09-01 for Qwen3.8-27B `Q4_K_M` production. The packaged model/tokenizer-bound
-  131,072-row CJK-aware map repacks selected Q6 rows into a compact planar-T16
-  head; singleton and physical-batch reducers map winners to full token IDs on
-  device. The full target remains authoritative. Strict and
-  `HIPENGINE_GGUF_MTP_HOT_VOCAB=0` retain the exact full-vocabulary proposal
-  owner; an explicit path selects another validated map.
-- Removal trigger: after one release checkpoint, remove the environment path
-  override and retain a simple on/off rollback while preserving the packaged
-  model-plugin artifact, exact identity validation, and full-head registered
-  fallback.
-
 ## Server default-AR ready-cohort rollback
 
 - Added 2026-08-31 with task #29. Default-route HTTP items already inside the
@@ -9889,3 +9875,26 @@ C3/C4 and wider supported groups, including shape misses and strict profiles;
 public generation must attribute the selected rows and fallback reason. Compare
 matched full-request category/heldout performance when claiming a benefit.
 No flag, arithmetic selection or model admission changes in this triage.
+
+### R0197 — Give hot-vocabulary selection an explicit owner-bound interface
+
+The dense GGUF NextN head still accepts `HIPENGINE_GGUF_MTP_HOT_VOCAB` choices,
+including an explicit map path. `Qwen35GGUFGenerator._mtp_hot_vocab_path()`
+returns the generator's capacity-resolved choice when available. Automatic
+capacity sizing can release the optional compact head to retain requested
+context; explicit choices must not be silently downgraded. This path is distinct
+from Flash-Next's request-local subset head.
+
+**Deferred interface decision:** replace ambient path selection with an explicit
+model/generator option before retiring the environment transport. Preserve
+packaged automatic selection, off/full-head control and explicit validated maps;
+reducing the interface to on/off alone would remove a live capability. Keep map
+integrity and tokenizer/token-ID compatibility checks separate from model
+admission. The target remains authoritative and full-head fallback remains.
+
+Clearing checks: automatic/off/explicit choices, invalid map failures, per-owner
+isolation, capacity-driven automatic release without changing explicit intent,
+full-token-ID remapping for singleton and physical batches, and public MTP
+selection/teardown. Preserve strict-profile arithmetic behavior and distinguish
+proposal changes from target correctness. No selector or runtime behavior changes
+in this triage; the interface migration remains unimplemented.

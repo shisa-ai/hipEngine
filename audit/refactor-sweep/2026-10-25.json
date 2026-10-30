@@ -5176,18 +5176,18 @@
       "start_line": 4378,
       "end_line": 4391,
       "sha256": "9d55309236721ecea0946c8d63311df10be3a5ddb2abbfa1a55a187ea1820543",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-explicit-hot-vocab-interface",
+      "evidence": ["Explicit map paths remain live; replace environment transport with owner option, preserve automatic capacity release vs explicit intent and full-head fallback. 7 tests/docs/audit pass. worklog/entries/20261030T083854.616070Z-cleanup-cleanup-r0197-68c84d.md."],
       "subitems": [
         {
           "line": 4380,
           "text": "- Added 2026-08-31 as a screen sourced from exllamav3 PR #303 and promoted",
-          "status": "pending"
+          "status": "reconciled-live-dense-hot-vocab-capability"
         },
         {
           "line": 4387,
           "text": "- Removal trigger: after one release checkpoint, remove the environment path",
-          "status": "pending"
+          "status": "deferred-explicit-hot-vocab-interface"
         }
       ]
     },
