@@ -4019,18 +4019,18 @@
       "start_line": 3634,
       "end_line": 3647,
       "sha256": "b61b1050702ee5b7ff86b0ed4b8df1b7c26142b222c0ead1f2074b4048e25250",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-selector-ownership",
+      "evidence": ["Verified live raw selectors with owned wave-scale substitution and shared expert-grid family ladders. Scoped migration/retirement deferred; blanket geometry deletion removed.88 tests/docs/audit pass. worklog/entries/20261030T071716.081488Z-cleanup-cleanup-r0153-8f1ad4.md."],
       "subitems": [
         {
           "line": 3636,
           "text": "- `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` defaults to `32` and",
-          "status": "pending"
+          "status": "deferred-selector-ownership"
         },
         {
           "line": 3642,
           "text": "- `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` defaults to `64`, selecting exact",
-          "status": "pending"
+          "status": "deferred-selector-ownership"
         }
       ]
     },
