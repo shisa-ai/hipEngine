@@ -313,17 +313,6 @@ confirming physical grouping, deterministic/isolation behavior, allocation-failu
 cancellation. Preserve the original complete category and control/ownership gates before closing
 this entry.
 
-### R0198 — Server default-AR ready-cohort rollback
-
-Owner: `hipengine/generation/engine_service.py`.
-
-Scope: `EngineService.submit_request_batches`.
-
-Done when: Validate public ready-cohort serving at repeated C1-C3 widths: confirm full native-prefill groups,
-exact outputs, independent early completion/failure/cancellation and no C1 regression. Preserve
-`EngineService.submit_request_batches`, per-child collector/backpressure/reclaim ownership and
-independent submission for generators without the cohort API.
-
 ### R0199 — gfx1100 fused Q4-T16 prefill row-retile bisection
 
 Owner: `hipengine/runtime/gguf_linear.py`.
