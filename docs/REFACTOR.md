@@ -965,20 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## gfx1151 compact attention wave producer — NUMERICAL CONTROL FAILURE
-
-The gfx1151 BF16 compact attention build selects the existing generic grouped
-producer. The wave-group6 producer failed the unchanged four-category G0
-no-evict control; replacing only attention with dense arithmetic eliminated the
-mixed-category mismatch. Evidence and exact commands are in
-`worklog/entries/20260926T140616.347941Z-main-dms-producer-control-183661.md`.
-No feature is disabled and no model identity is used for admission. gfx1100
-selection is unchanged; this finding was measured on gfx1151 only.
-
-Removal condition: repair the wave producer and pass the same G0 command from
-that worklog, the matched-input attention GPU test, public DMS lifecycle tests,
-and applicable execution-profile numerical gates before restoring gfx1151 wave
-selection. Primitive tolerances alone did not catch this full-model failure.
 
 
 ## Dormant (Q3_K gate, IQ4_XS up), (IQ4_XS gate, Q3_K up), (IQ3_S gate, IQ4_XS up), and (Q5_K gate, Q6_K planar up) fused pair registrations (2026-09-25) — AWAITING A CLEARING SCREEN
@@ -1430,6 +1416,23 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0057 — Repair gfx1151 compact attention wave producer
+
+The gfx1151 BF16 compact attention build selects the existing generic grouped
+producer. The wave-group6 producer failed the unchanged four-category G0
+no-evict control; replacing only attention with dense arithmetic eliminated the
+mixed-category mismatch. Evidence and exact commands are in
+`worklog/entries/20260926T140616.347941Z-main-dms-producer-control-183661.md`.
+No feature is disabled and no model identity is used for admission. gfx1100
+selection is unchanged; this finding was measured on gfx1151 only.
+
+**Deferred numerical repair:** repair the wave producer and pass the same G0
+command from that worklog, the matched-input attention GPU test, public DMS
+lifecycle tests and applicable execution-profile numerical gates before restoring
+gfx1151 wave selection. Primitive tolerances alone did not catch this full-model
+failure. Moving this requirement does not repair or re-evaluate the candidate.
+
 
 ### R0051 — Review backend decode and strict attention scope ownership
 

@@ -1525,7 +1525,7 @@
       "start_line": 1663,
       "end_line": 1678,
       "sha256": "8b8c2d91b92523a9bb2c94fa09d3f15a7828f166b47f03cddc64be0bb503cfe7",
-      "status": "not-debt-retained",
+      "status": "triaged-generic-preserved-wave-repair-deferred",
       "evidence": [
         "Existing shipping DMS repair verified; dormant pairs retained under unmet structural-redesign removal condition. Prefix packed-reference default verified; separate INT8 suffix-prefix concern remains open. Worklog:worklog/entries/20261026T070747.633871Z-cleanup-refactor-r0057-r0059-010c30.md."
       ],
