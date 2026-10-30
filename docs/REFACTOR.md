@@ -10470,3 +10470,18 @@ lookups; historical identity experiments remain under
 
 Invalidation repair and validation:
 `../worklog/entries/20261029T204623.968297Z-cleanup-refactor-r0446-9e2320.md`.
+
+### R0459 — Row-split GDN recurrence removal decision
+
+The UD production composition binder selects row-split after the generic
+binder selects multi-column. The manifest does not reflect that override;
+R0460 owns correcting the manifest and binding. The Q4_K_M production plan
+still names multi-column but resolves to strict due to its recorded numerical
+failure; it is not evidence of a live default multi-column execution.
+
+**Deferred removal decision:** after R0460, decide whether UD still needs an
+explicit multi-column comparison route and whether the Q4_K_M recovery plan
+still needs the shared implementation. Verify both quant bindings and
+user-facing execution before removing any UD-specific route. The earlier closure in
+`../worklog/entries/20261030T002539.121609Z-cleanup-cleanup-refactor-r0459-e3bbfd.md`
+missed the final composition override and is corrected by this entry.

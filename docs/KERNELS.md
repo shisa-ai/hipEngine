@@ -728,9 +728,10 @@ skip the conversion when an image is declared.
 `linear_attn/qwen4_exp_gdn.hip`
 `qwen4_exp_gdn_prefill_rowsplit_f32_kernel<4, 4>`, registered for
 `hip_gfx1151` as `gdn_recurrence_norm_gate / f32_state /
-qwen4exp_gdn_rowsplit_prefill` as a callable alternative. The production
-manifest selects `qwen4exp_gdn_tiled16_multi_prefill` for its GDN layer
-window. Ported from gufo `GdnRowSplitKernel` (commit 9cad139,
+qwen4exp_gdn_rowsplit_prefill` and selected by the `gguf_ud_q4_k_xl`
+production composition binder. The separate Q4_K_M production plan names
+`qwen4exp_gdn_tiled16_multi_prefill`, but has a recorded numerical qualification
+failure and resolves to strict. Ported from gufo `GdnRowSplitKernel` (commit 9cad139,
 MIT); the file header records the hipEngine changes (state layout, in-block
 norms, decay and beta). Four lanes own one value column of the 128x128
 state, blocks are 128 threads, tokens are staged four at a time through LDS

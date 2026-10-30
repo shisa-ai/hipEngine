@@ -13084,8 +13084,8 @@
       "start_line": 10907,
       "end_line": 10944,
       "sha256": "d33039830e45b861fd59a4646c7e1e25a443c9861419c05f46e041e1d378f128",
-      "status": "resolved",
-      "evidence": ["Stale deletion proposal: production manifest and binder select tiled16_multi with strict fallback; rowsplit remains registered alternative. Corrected KERNELS selection text and removed ledger history. Profile/route/journey70, docs/audit pass. worklog/entries/20261030T002539.121609Z-cleanup-cleanup-refactor-r0459-e3bbfd.md."],
+      "status": "deferred",
+      "evidence": ["Correction: final UD composition overrides multi-column with rowsplit; Q4_K_M plan has numerical failure and resolves strict. Restore removal decision at ledger bottom, manifest repair under R0460. Prior closure was incorrect. worklog/entries/20261030T002911.260285Z-cleanup-cleanup-r0459-correction-f8285d.md."],
       "subitems": []
     },
     {
