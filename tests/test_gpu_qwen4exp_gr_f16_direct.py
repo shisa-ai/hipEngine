@@ -102,8 +102,8 @@ def test_short_chunk_build_selection_keeps_the_bits(rows, monkeypatch):
     x = rng.normal(0, 0.1, (rows, k)).astype(np.float16)
     w = make_q8_0_weight(n, k)
     fn = dw._WRAPPERS["dense_wide256_f16in_f32_f32_out"]
+    cu = _run(fn, x, w, rows, k, n, runtime,
+              dw.build_gguf_q8_0_dense_wide(load=True, profile="decode"))
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "0")
-    cu = _run(fn, x, w, rows, k, n, runtime, None)
-    monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS")
     default = _run(fn, x, w, rows, k, n, runtime, None)
     np.testing.assert_array_equal(default.view(np.uint32), cu.view(np.uint32))

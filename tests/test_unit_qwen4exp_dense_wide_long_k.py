@@ -52,16 +52,33 @@ def test_long_k_rule_keeps_parent_when_sibling_is_unavailable(monkeypatch):
     assert attempted == [_key(LONG_K)]
 
 
-def test_short_chunk_build_bound_is_overridable(monkeypatch):
+@pytest.mark.parametrize("value", [None, "0", "2048", "invalid"])
+@pytest.mark.parametrize("rows,expected", [
+    (256, "decode"), (257, "prefill"), (513, "prefill"),
+    (1024, "prefill"), (1025, "decode"), (1536, "decode"),
+])
+def test_short_chunk_build_selection_ignores_retired_override(monkeypatch, value, rows, expected):
+    from types import SimpleNamespace
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as dw
 
-    monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", raising=False)
-    assert dw._wgp_build_max_rows() == 1024
-    assert dw._WGP_BUILD_MIN_ROWS == 257
-    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "0")
-    assert dw._wgp_build_max_rows() == 0
-    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS", "2048")
-    assert dw._wgp_build_max_rows() == 2048
+    name = "HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS"
+    if value is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, value)
+    profiles = []
+    library = SimpleNamespace(launch=lambda *args: 0)
+    def build(**kwargs):
+        profiles.append(kwargs["profile"])
+        return library
+    monkeypatch.setattr(dw, "build_gguf_q8_0_dense_wide", build)
+    dw._launch("launch", 1, 2, 3, rows, 640, 384, runtime=object())
+    assert profiles == [expected]
+    profiles.clear()
+    dw._launch("launch", 1, 2, 3, rows, 640, 384, runtime=object(), library=library)
+    assert profiles == []
+    dw._launch("launch", 1, 2, 3, rows, 640, 384, runtime=object(), build_profile="prefill")
+    assert profiles == ["prefill"]
 
 
 @pytest.mark.parametrize(

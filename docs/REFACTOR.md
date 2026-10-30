@@ -3486,24 +3486,6 @@ Resolved: the reduction-order choices have explicit manifest scopes and
 runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
-## Dense wide build without CU mode for short chunks (`HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS`)
-
-Q8_0 dense wide launches of 257 to 1024 rows load a build of the same source
-without `-mcumode`; larger launches keep the CU-mode build. Bit-identical.
-Same-process A/B on a Radeon 8060S (Qwen3.8-Flash-Next UD-Q4_K_XL prefill):
-`code-p512` 981.2 -> 1020.5 and `code-p1024` 1256.0 -> 1270.1 tok/s,
-`code-p4096` unchanged; with the bound raised to 4096 rows `code-p4096`
-drops (1542.6 -> 1504.2). The same switch measured no effect for the
-`qwen4_exp_gr` and `qwen35_linear_attn_conv` families and a loss for the
-prefill-profile families with CU mode added (`HIPENGINE_PREFILL_MCUMODE=1`:
-`code-p4096` 1535 -> 1509), so only this family and row window changed.
-`HIPENGINE_NO_MCUMODE_FAMILIES` in `hipengine/core/build.py` is the
-diagnostic knob those measurements used; it selects nothing by default.
-
-Removal condition: the env override goes once a release has shipped with
-the row rule; the diagnostic knob can stay with the other build ablations or
-go with them.
-
 ## Qwen4Exp row-split GDN prefill recurrence (`qwen4exp_gdn_rowsplit_prefill`)
 
 The `gguf_ud_q4_k_xl` production binder names

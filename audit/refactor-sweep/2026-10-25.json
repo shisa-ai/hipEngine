@@ -13074,8 +13074,8 @@
       "start_line": 10889,
       "end_line": 10906,
       "sha256": "c9f18fd7893ced071bc988cf46a61c54b92b4c7dbee8593952740a77cdf00225",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed short-row WGP override, retaining fixed bounds and direct build/library controls. RED10/GREEN102, build22, native9, full CPU bundle, docs/audit pass. Public generation recorded398 prefill-build launches at513 rows despite stale0. Generic build diagnostics triaged NOT-DEBT/keep. worklog/entries/20261030T001919.315811Z-cleanup-cleanup-refactor-r0458-94e9b5.md."],
       "subitems": []
     },
     {
