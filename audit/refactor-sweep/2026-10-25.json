@@ -1427,7 +1427,7 @@
       "start_line": 1475,
       "end_line": 1538,
       "sha256": "0ceab8be95fcf508fcfb3674b07287ae5bb0375480211401c22e379af76a95d9",
-      "status": "resolved",
+      "status": "triaged-promotion-complete-scope-review-deferred",
       "evidence": [
         "T16 rollback removed with harness-local control, real on/off engagement and public parity validated; attention routing prose corrected, assistant-reachable flash fallback retained. Worklog:worklog/entries/20261026T053816.467794Z-lhl-cleanup-refactor-r0049-r0052-542fd1.md."
       ],

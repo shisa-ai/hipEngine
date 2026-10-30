@@ -992,10 +992,9 @@ the plan's rollback key is `gemma4_plain`, and on gfx1100 the flash wrapper's
 own fallback is the only route to it (see the flash-decode section below).
 Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan declares it
 as each scope's rollback key and forwards no prefill request, so strict prefill
-there stays on the layer's own route chain. Unifying the two backends' decode
-routing and binding plain for gfx1100 strict are the open cleanups here. The
-profile remains the rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict`
-selects plain attention.
+there stays on the layer's own route chain. The remaining routing review is
+tracked under deferred R0051 below; these historical descriptions are not a
+request to change defaults without checking current scope resolution.
 
 Before the section 2.11 envelope the WMMA candidates were held out of the
 default: the multicategory teacher-chain packet found KL failures against the
@@ -1752,6 +1751,23 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0051 — Review backend decode and strict attention scope ownership
+
+WMMA prefill promotion is complete; profile selection is a product API, not a
+candidate-only flag to delete. **Deferred routing decision:** review whether
+backend decode routing and explicit strict attention binding should share one
+scope contract. Inventory current prefill, one-row prefill-tail, incremental
+decode and verification selectors before changing them; verification's explicit
+`gemma4_plain` binding does not prove every strict-profile phase uses that path.
+
+Preserve registered staged decode, plain strict and shape/backend fallbacks.
+Any unification must test scope precedence, profile isolation, graph capture and
+public selected routes on both backends. Keep historical WMMA-versus-staged
+measurements separate from arithmetic-preserving staging claims. Do not infer
+traffic from static shared-memory metadata or treat single-chain evidence as
+coverage of failed categories. No routing/default change is made here.
+
 
 ### R0041 — PLE mapping-advice diagnostic retirement
 
