@@ -965,51 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## Q5_1T16 down-prefill rollback lever (added 2026-10-08)
-
-Cleanup status (2026-10-26, R0049): removed. The environment read is gone from
-`_gemma4_project_experts_down_wmma_t16`
-(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`), with the
-function-local `import os` it needed and its `docs/ENVS.md` row. The leaf now
-decides on the weight's own facts alone: the `gguf_q5_1` quant key, the
-`in_features % 32` / `out_features % 16` geometry, and whether the weight
-carries the `t16_down` tile allocation. Each decline falls through to
-`gemma4_project_experts_wmma`, the raw-block grouped WMMA owner, which stays
-for weights that carry no tile allocation; the strict compensated variant
-resolves through that owner by the call site's `not compensated` guard, so no
-isolated path was deleted with the lever.
-
-The lever existed only to A/B the two owners inside one process on the
-shared-memory iGPU, where mid-band session variance (~10 percent) is larger
-than the expected step-level delta. Both halves of its removal condition were
-on file. The paired ladder is the 2026-10-08 entry
-`worklog/entries/20261008T211640.994270Z-lhl-gemma4-q51-t16-down-5bc7e4.md`:
-the interleaved leaf A/B at the in-situ geometry (2.817 -> 1.714 ms, 1.6435x,
-40 alternating iterations) and two paired end-to-end rounds at 8192 with fresh
-processes and the arm order reversed (prefill 1163.9/1166.0 -> 1244.3/1245.3
-tok/s, 1.069x and 1.068x, both arms `status: ok` and `public_path_parity:
-True`). The lever shipped in `v0.8.0` (2026-10-20) and survived `v0.8.1`
-through `v0.8.3`; it is absent at `v0.7.1`, and no rollback is recorded. A
-numerical gate is not owed: the tile value byte is the integer the raw decoder
-derives and the arithmetic is the raw kernel's, so the two leaves are
-bit-identical, pinned by
-`tests/test_gpu_gguf_q5_1_t16_grouped_prefill.py` at uniform and ragged expert
-loads.
-
-The comparison control moved into the harness rather than being lost.
-`scripts/gemma4_p3_down_ab.py --down-t16 {on,off}` pins the raw-block owner
-in-process by pointing `_gemma4_down_t16_tiles_ready` at a constant `False` --
-the guard the leaf itself reads, so there is no second selector -- and
-restores it, with the run's HIP-event timing wrappers, from `main`'s `finally`.
-Both down owners are timed on every call because the tile leaf launches outside
-`gemma4_project_experts_wmma`; the run prints each owner's launch count and the
-`gemma4_moe_expert_route_counts()` delta, and exits nonzero when the selected
-arm's own owner never launched. Two fresh processes with the arm order reversed
-are the paired ladder.
-`tests/test_unit_gemma4_down_t16_control.py` pins the arm, its restore after a
-raising run, the leaf's selection and fall-through, and the absence of an
-environment read.
-
 ## Gemma 4 WMMA attention candidates were promoted to the production prefill default (updated 2026-10-15)
 
 Production routes multi-row prefill to `gemma4_wmma_flash` (sliding) and
