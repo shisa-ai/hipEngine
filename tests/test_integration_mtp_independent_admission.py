@@ -6,7 +6,7 @@ import pytest
 
 from hipengine.llm import SamplingParams
 from hipengine.server.api import _GenerationBatcher
-from tests.test_integration_server_api import SpeculativeMTPFakeLLM
+from tests.support.server_api_fakes import SpeculativeMTPFakeLLM
 
 
 @pytest.mark.parametrize("batch_window_seconds", [0, 0.01])

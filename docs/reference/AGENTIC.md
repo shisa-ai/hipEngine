@@ -268,7 +268,8 @@ Minimum matrix:
 
 Current code reality:
 
-- `tests/test_integration_server_api.py`, `tests/test_integration_agentic_server_conformance.py`,
+- The behavior-owned `tests/test_integration_server_*` modules,
+  `tests/test_integration_agentic_server_conformance.py`,
   `tests/test_integration_agentic_harness_traces.py`, and `tests/test_integration_local_agent_config.py`
   cover the current matrix with fake engines and checked-in golden traces.
 - `tests/test_unit_sampling.py` exhaustively maps every advertised
@@ -2700,7 +2701,9 @@ Current code reality:
   completion/chat logprob success paths, explicit selected-score omission
   reasons when backend token metadata is partial, and the stable
   `unsupported_feature` fallback when a backend cannot return token metadata.
-- `tests/test_integration_server_api.py` covers server streaming edge paths that need
+- `tests/test_integration_server_streaming.py`, `tests/test_integration_server_tools.py`,
+  `tests/test_integration_server_logprobs.py` and `tests/test_integration_server_structured_output.py`
+  cover server streaming edge paths that need
   direct SSE-shape assertions outside the golden trace harness, including
   backend scheduler token chunks forwarded as buffered completion and plain
   chat answer/reasoning deltas, plus plain chat content logprob and validated

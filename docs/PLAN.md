@@ -1905,6 +1905,59 @@ hipengine/
 
 ## Development Roadmap (LoC Estimates)
 
+### Measured server-test boundary
+
+The server integration tests use behavior-owned `test_integration_server_*`
+modules and test-free shared helpers under `tests/support/`. This measurement
+is separate from the historical product-code estimates below; test code and
+embedded native source are not interchangeable budget categories.
+
+| Area | Physical lines | Test functions | Collected cases |
+| --- | ---: | ---: | ---: |
+| Behavior-owned modules | 26,065 | 523 | 698 |
+| Shared Python support | 1,623 | 0 | 0 |
+| Legacy helper shim | 77 | 0 | 0 |
+| Boundary contract | 170 | 7 | 22 |
+
+The target is one owner per behavior, no tests in support or compatibility
+modules, no cross-test imports in the split modules, and no duplicate
+collection. There is no arbitrary per-file line ceiling. The pre-split module
+had 25,807 physical lines and the same 523 functions / 698 cases; repeated
+import headers mean this ownership split does not reduce total lines.
+
+Reproduce the physical-line and function counts from the declared module set:
+
+```bash
+python3 - <<'PY'
+import ast
+from pathlib import Path
+contract = Path('tests/test_integration_server_split_contract.py')
+tree = ast.parse(contract.read_text())
+names = next(ast.literal_eval(node.value) for node in tree.body
+             if isinstance(node, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == 'SPLIT_MODULES'
+                     for t in node.targets))
+groups = {
+    'behavior': [Path('tests') / name for name in names],
+    'support': sorted(Path('tests/support').glob('*.py')),
+    'shim': [Path('tests/test_integration_server_api.py')],
+    'contract': [contract],
+}
+for label, paths in groups.items():
+    texts = [path.read_text() for path in paths]
+    functions = sum(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and n.name.startswith('test_')
+                    for text in texts for n in ast.walk(ast.parse(text)))
+    print(label, sum(len(text.splitlines()) for text in texts), functions)
+PY
+```
+
+The boundary contract checks collection uniqueness and non-empty modules;
+`tests/support/server_api_split_identities.json` records the parameter-preserving
+migration comparison, not a discovery filter.
+
+### Product roadmap estimates
+
 The current focused Laguna S 2.1 performance campaign is owned by
 [`LAGUNA-prefill.md`](campaigns/LAGUNA-prefill.md). It succeeds the exhausted LPF/AR-O
 work in `LAGUNA.md` and keeps the architecture invariants in this file: new

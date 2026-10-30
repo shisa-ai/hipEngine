@@ -4,7 +4,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from hipengine.server import ServerConfig, create_app
-from tests.test_integration_server_api import FakeLLM
+from tests.support.server_api_fakes import FakeLLM
 from hipengine.generation.registry import FinishDetails, GenerationStreamChunk, TokenLogprob
 
 

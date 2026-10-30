@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from hipengine import DMSConfig
 from hipengine.server.api import ServerConfig, create_app
-from tests.test_integration_server_api import FakeLLM
+from tests.support.server_api_fakes import FakeLLM
 
 
 def test_http_status_reports_the_typed_sidecar_path():

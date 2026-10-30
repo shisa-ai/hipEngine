@@ -22,7 +22,7 @@ import pytest
 
 from hipengine.llm import SamplingParams
 from hipengine.server.api import _GenerationBatcher
-from tests.test_integration_server_api import SpeculativeMTPFakeLLM
+from tests.support.server_api_fakes import SpeculativeMTPFakeLLM
 
 _BUDGET = {"thinking_close_token_ids": (7,), "thinking_hard_token_cap": 8}
 

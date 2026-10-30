@@ -795,7 +795,7 @@ every change.
 | P1 attention admission | `tests/test_unit_qwen35_gguf_slot_local_aotriton_admission.py`, `tests/test_unit_gguf_int8_prefill_oracle_per_layer.py`, `tests/test_unit_gguf_packed_kv_import_skip.py`, `tests/test_unit_gguf_device_kv_binding.py` |
 | P2-P4 resource/lifetime changes | `tests/test_unit_qwen35_gguf_int8_kv_policy.py`, `tests/test_unit_gguf_int8_prefill_oracle_per_layer.py`, `tests/test_unit_int8_layer_outer_hidden_alias.py`, `tests/test_unit_gguf_packed_workspace_stability.py`, `tests/test_unit_gguf_packed_verify_layout.py`, `tests/test_unit_gguf_device_kv_binding.py` |
 | P5 decode and sampler | `tests/test_live_generation_qwen35_gguf_sampling.py`, `tests/test_unit_gguf_packed_execution_manifest.py`, `tests/test_unit_gguf_packed_decode_graph.py`, `tests/test_unit_qwen38_int8_batch_decode_gate.py`, `tests/test_unit_qwen38_int8_kv_capability.py` |
-| P6 service and lifecycle | `tests/test_integration_generation_engine_service.py`, `tests/test_integration_generation_engine_loop_burst.py`, `tests/test_unit_qwen38_int8_server_context_soak.py`, plus the affected nodes in `tests/test_integration_server_api.py` |
+| P6 service and lifecycle | `tests/test_integration_generation_engine_service.py`, `tests/test_integration_generation_engine_loop_burst.py`, `tests/test_unit_qwen38_int8_server_context_soak.py`, plus the affected nodes in `tests/test_integration_server_startup.py`, `tests/test_integration_server_sessions.py`, `tests/test_integration_server_batcher.py` and `tests/test_integration_server_errors.py` |
 
 An existing test filename is not proof of coverage for a new route. Add RED
 fixtures for the actual gaps: shared-owner sums, omitted growth owners,

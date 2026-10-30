@@ -358,7 +358,7 @@ Existing direct-runtime results are not HTTP completion evidence.
   refused consumer and the priced totals before any allocation;
   `tests/test_unit_memory_admission.py` (18 passed) makes each of the five named
   consumers the refusal reason when it is the one that does not fit, and
-  `tests/test_integration_server_api.py` shows the refusal answered over HTTP as
+  `tests/test_integration_server_errors.py` shows the refusal answered over HTTP as
   capacity rather than as an internal fault. The refusal is exercised against
   the priced budget, not by driving the device to exhaustion.
 - [x] Compact mode reports no persistent BF16 mirrors; any mirror mode is

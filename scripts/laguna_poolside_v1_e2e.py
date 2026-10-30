@@ -546,7 +546,19 @@ def run_gate(
             "external_tests": [
                 "tests/test_integration_poolside_v1_reasoning.py",
                 "tests/test_integration_poolside_v1_tools.py",
-                "tests/test_integration_server_api.py -k 'tool or reasoning or thinking or capabilit'",
+                (
+                    "tests/test_integration_server_tools.py "
+                    "tests/test_integration_server_request_semantics.py "
+                    "tests/test_integration_server_capabilities.py "
+                    "tests/test_integration_server_routing.py "
+                    "tests/test_integration_server_logprobs.py "
+                    "tests/test_integration_server_continuation.py "
+                    "tests/test_integration_server_context.py "
+                    "tests/test_integration_server_errors.py "
+                    "tests/test_integration_server_replay.py "
+                    "tests/test_integration_server_sessions.py "
+                    "-k 'tool or reasoning or thinking or capabilit'"
+                ),
                 "tests/test_integration_agentic_server_conformance.py",
             ],
         },

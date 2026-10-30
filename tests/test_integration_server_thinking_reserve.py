@@ -7,7 +7,7 @@ from hipengine.server.api import (
     ChatCompletionRequest, OpenAIHTTPError, ServerConfig,
     _thinking_budget_sampling_kwargs, create_app,
 )
-from tests.test_integration_server_api import FakeLLM
+from tests.support.server_api_fakes import FakeLLM
 
 
 def lower(**fields):

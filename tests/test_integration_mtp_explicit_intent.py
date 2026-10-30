@@ -14,7 +14,7 @@ from hipengine.server.api import (
     _mtp_unavailable_route_fallback,
     _serving_plan_route_decision,
 )
-from tests.test_integration_server_api import SpeculativeMTPFakeLLM
+from tests.support.server_api_fakes import SpeculativeMTPFakeLLM
 
 
 @pytest.mark.parametrize("error", [NotImplementedError("control"), ValueError("input")])

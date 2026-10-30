@@ -1484,7 +1484,7 @@ replaced, migrate `hipengine/llm.py`, engine-loop configuration,
 `tests/test_integration_generation_engine_loop_burst.py`, engine-loop CLI/env nodes in
 `tests/test_integration_generation_batch_scheduler.py`, generator-default nodes in
 `tests/test_unit_llm_generate.py`, load-gate tuning nodes and resident-loop metrics nodes in
-`tests/test_integration_server_api.py`. A behavior change also needs mixed-arrival public serving
+`tests/test_integration_server_metrics.py`. A behavior change also needs mixed-arrival public serving
 validation of bounded decode interruption, completion, cancellation and cleanup; cold-prefill
 throughput alone does not validate fairness.
 
@@ -4429,24 +4429,21 @@ direct-control retirement. Compare selected operations, operands and fallback re
 threshold-straddling and unrelated shapes; test owner isolation, graph reuse, scratch invalidation
 and public commit/rollback lifecycle.
 
-### RF-12 / R0187 — Split integration fixtures and refresh measured budgets
+### RF-12 / R0187 — Retire the legacy server-test helper shim
 
 Owner: `tests/test_integration_server_api.py`.
 
-Scope: `tests/test_integration_server_api.py`.
+Scope: `tests/test_integration_server_api.py`, `tests/test_integration_server_split_contract.py`.
 
-**Deferred test-boundary design:** extract shared fixtures into explicit test support, then split
-tests by behavior and ownership. Preserve parametrizations, marks, HIP guards, setup/teardown and
-import compatibility during migration. Follow the tier naming/discovery rules in `docs/TESTING.md`;
-do not silently move expensive integration cases into default unit collection or duplicate cases
-through compatibility re-exports.
+The legacy module is now a test-free helper compatibility surface for external importers; all
+in-tree consumers use `tests/support/`. Remove the shim and its compatibility-only assertions when
+external import compatibility is no longer needed. Check with
+`rg -n 'tests[.]test_integration_server_api' tests scripts`; only the shim and its contract check
+may remain before deletion.
 
-Done when: compare collected test identities and parameter coverage before and after the
-split, exercise affected bundles in both ordinary and audit-first collection orders, and verify no
-fixture/global-state leakage. Refresh PLAN's current/target budgets with an executed, reproducible
-counting command and a clear distinction between measured code and historical roadmap estimates. Add
-growth checks only after meaningful module boundaries exist, not arbitrary limits that reward moving
-code without changing ownership.
+Done when: run the split-module and consumer bundles in ordinary and audit-first orders, confirm
+no duplicate collection or fixture/global-state leakage, and preserve the support ownership checks
+without the deleted compatibility assertions. Do not re-export tests from a replacement facade.
 
 ### R0189 — Packed-PARO transaction storage after journal integration
 

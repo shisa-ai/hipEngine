@@ -7103,7 +7103,8 @@ env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 \
   .venv/bin/python -m pytest tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py -q
 
 .venv/bin/python -m pytest tests/test_unit_gemma4_chat.py \
-  tests/test_integration_server_api.py tests/test_integration_poolside_v1_reasoning.py \
+  tests/test_integration_server_{routing,capabilities,startup,sessions,context,batcher,errors,mtp_accounting,continuation,structured_output,tools,logprobs,streaming,request_semantics,metrics,replay}.py \
+  tests/test_integration_poolside_v1_reasoning.py \
   tests/test_unit_qwen4exp_chat_protocol.py -q
 ```
 
