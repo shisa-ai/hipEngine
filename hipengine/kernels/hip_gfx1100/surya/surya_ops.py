@@ -383,28 +383,6 @@ def surya_rmsnorm_f32(
     _check(err, runtime, "surya rmsnorm")
 
 
-def surya_scatter_kv_f32(
-    src_ptr: int,
-    dst_ptr: int,
-    tokens: int,
-    token_offset: int,
-    kv_heads: int,
-    head_dim: int,
-    max_seq: int,
-    *,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    runtime = runtime or get_hip_runtime()
-    library = library or build_surya_ops(load=True)
-    fn = _fn(library, "hipengine_surya_scatter_kv_f32",
-             [_P, _P, _I, _I, _I, _I, _I, _S])
-    err = fn(_P(src_ptr), _P(dst_ptr), _I(tokens), _I(token_offset),
-             _I(kv_heads), _I(head_dim), _I(max_seq), _S(stream))
-    _check(err, runtime, "surya scatter_kv")
-
-
 def surya_causal_mask_scale_f32(
     scores_ptr: int,
     scale: float,

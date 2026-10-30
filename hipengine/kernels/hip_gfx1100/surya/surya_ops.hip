@@ -191,55 +191,6 @@ extern "C" int hipengine_surya_split_qgate_f32(
   return static_cast<int>(hipGetLastError());
 }
 
-// Scatter per-token K/V rows into persistent cache planes.
-//   src (tokens, nk * head_dim) row-major (the k/v GEMM output);
-//   dst (nk, max_seq, head_dim) per-head planes; token t lands at
-//   dst[h, token_offset + t, :].
-__global__ void surya_scatter_kv_kernel(
-    const float* __restrict__ src,
-    float* __restrict__ dst,
-    int64_t tokens,
-    int64_t token_offset,
-    int64_t kv_heads,
-    int64_t head_dim,
-    int64_t max_seq) {
-  const int64_t idx =
-      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  const int64_t n = tokens * kv_heads * head_dim;
-  if (idx >= n) {
-    return;
-  }
-  const int64_t d = idx % head_dim;
-  const int64_t head = (idx / head_dim) % kv_heads;
-  const int64_t token = idx / (head_dim * kv_heads);
-  dst[head * max_seq * head_dim + (token_offset + token) * head_dim + d] =
-      src[token * kv_heads * head_dim + head * head_dim + d];
-}
-
-extern "C" int hipengine_surya_scatter_kv_f32(
-    const float* src,
-    float* dst,
-    int64_t tokens,
-    int64_t token_offset,
-    int64_t kv_heads,
-    int64_t head_dim,
-    int64_t max_seq,
-    hipStream_t stream) {
-  if (tokens <= 0 || kv_heads <= 0 || head_dim <= 0 || max_seq <= 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (token_offset < 0 || token_offset + tokens > max_seq) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  const int64_t n = tokens * kv_heads * head_dim;
-  const int threads = 256;
-  const int blocks = static_cast<int>((n + threads - 1) / threads);
-  hipLaunchKernelGGL(
-      surya_scatter_kv_kernel, dim3(blocks), dim3(threads), 0, stream,
-      src, dst, tokens, token_offset, kv_heads, head_dim, max_seq);
-  return static_cast<int>(hipGetLastError());
-}
-
 // Causal mask + 1/sqrt(d_k) scale over batched score rows.
 //   scores layout: (heads, queries, head_stride) row-major; entry
 //   (h, i, j) with j > query_offset + i becomes -inf, everything else is

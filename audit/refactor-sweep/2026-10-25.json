@@ -13392,8 +13392,8 @@
       "start_line": 11373,
       "end_line": 11409,
       "sha256": "d5d0233603c289b216092e0b047f16a75f57ac74caa6e862187a57a47f5052e6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Removed unused pre-spans scatter and repaired debug hook. Two RED/GREEN unit tests, eight spans GPU tests and CPU/docs/audit gates passed. Public request blocked by absent Surya checkpoint. Live fallback migration and sparse-chunk profiling moved to bottom R0484. worklog/entries/20261030T041152.816435Z-cleanup-cleanup-r0484-5aa96f.md."],
       "subitems": []
     },
     {

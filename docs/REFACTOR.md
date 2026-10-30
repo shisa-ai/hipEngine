@@ -3544,43 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-11 Surya KV write and decode: dense offset scheme — closed 2026-09-13
-
-`surya_scatter_kv_f32(k, cache, tokens, base_pos, nk, hd, max_seq, row)` wrote
-into a contiguous `(nk, max_seq, hd)` plane from a host-supplied
-`(tokens, token_offset)` pair, and `_attention_decode` built per-head cache
-pointer arrays from `max_seq * hd` strides. Both read no span metadata, which
-the architectural invariant forbids.
-
-Closed by two spans-aware kernels in `surya/surya_ops.{hip,py}` plus the runtime
-wiring: `surya_scatter_kv_f32_spans` resolves each logical token index through
-`base_offsets` and skips tokens outside `live_counts` with a negative
-`token_positions` entry or an `evict_mask` mark, and
-`surya_full_attn_decode_f32_spans` is a fused fp32 head_dim-256 GQA-4 split-K
-producer plus `..._split_k_reduce_f32`. The producer runs one block per
-`(kv_head, context chunk)` so all four query heads of a KV head share one K/V
-read, and the split count comes from `plan_surya_decode_splits`, which targets a
-constant split count rather than a constant chunk because the launch has to stay
-wide enough to fill the machine at every context length. The dense policy fills
-all four span fields uniformly (identity page table, `arange` positions, empty
-eviction mask), so the default path exercises the ABI.
-
-Retained as explicit fallbacks/bisection oracles, not dead code:
-`attention_decode_rocblas_f32` (the four-dispatch parent) is the strict
-fallback for head_dim != 256 or GQA repeat != 4 and is what
-`tests/test_gpu_surya_kv_spans.py` measures parent parity against;
-`surya_scatter_kv_f32` (the pre-spans scatter) is used by
-`scripts/surya_gpu_debug_attn.py`. Remove both when the fp32 spans decode kernel
-is shared with the Qwen3.5 decode path or when the debug script no longer needs
-the parent, whichever comes first.
-
-The fused producer still passes `chunk_size` as the score GEMM's `m`, so its
-QK^T work is `q_per_kv * head_dim * chunk_size` regardless of how many tokens in
-the chunk are invisible; a chunk whose tokens are mostly evicted or empty does
-the same dot products as a full one. Bounding each chunk's keys to its last
-visible token would cut that, but the dense policy has no invisible tokens, so
-there is nothing to measure yet.
-
 ## 2026-09-11 Surya vision attention: quadratic score scratch — closed
 
 `hipengine/runtime/surya.py` `_vis_scores` materialized the full vision
@@ -10231,3 +10194,23 @@ including `tests/test_live_evie_gpu_runtime.py`,
 `tests/test_integration_surya_server_multimodal.py`. If explicit ownership is
 chosen, document that exception and remove this entry. No runtime gate or
 fallback is added while the decision is open.
+
+### R0484 — Surya decode fallback and sparse-chunk work
+
+The unused pre-spans scatter is removed; the debug script now hooks
+`surya_scatter_kv_f32_spans`. The rocBLAS decode chain is different: it is
+still the strict fallback for head dimensions other than 256 or GQA repeats
+other than four, and the parent oracle for `tests/test_gpu_surya_kv_spans.py`.
+Retiring a debug hook cannot justify removing that capability.
+
+**Deferred contract migration:** provide a span-aware unfused chain for those
+shapes before retiring the dense-offset fallback. Preserve its oracle role
+until replacement comparisons cover nonidentity pages, evictions and partial
+contexts, then exercise public Surya generation. Sharing a kernel with
+Qwen3.5 is not itself a clearing condition.
+
+**Deferred optimization follow-up:** profile sparse live spans before changing
+the fused producer's full-chunk dot products. Bounding work by visibility
+must preserve token positions and masking; verify with the spans GPU suite
+and the applicable numerical gate. No performance improvement is claimed by
+the scatter cleanup.

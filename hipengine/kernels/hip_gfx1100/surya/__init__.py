@@ -15,7 +15,6 @@ from hipengine.kernels.hip_gfx1100.surya.surya_ops import (
     surya_full_attn_decode_f32_spans,
     surya_gdn_l2norm_f32,
     surya_rmsnorm_f32,
-    surya_scatter_kv_f32,
     surya_scatter_kv_f32_spans,
     surya_split_qgate_f32,
 )
@@ -35,7 +34,6 @@ __all__ = [
     "surya_full_attn_decode_f32_spans",
     "surya_gdn_l2norm_f32",
     "surya_rmsnorm_f32",
-    "surya_scatter_kv_f32",
     "surya_scatter_kv_f32_spans",
     "surya_split_qgate_f32",
 ]

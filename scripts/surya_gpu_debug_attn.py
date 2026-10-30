@@ -108,7 +108,7 @@ def main():
 
         runner._k = k_dbg
         import hipengine.runtime.surya as _smod
-        for _fname in ("surya_gdn_l2norm_f32", "surya_split_qgate_f32", "surya_scatter_kv_f32"):
+        for _fname in ("surya_gdn_l2norm_f32", "surya_split_qgate_f32", "surya_scatter_kv_f32_spans"):
             _orig = getattr(_smod, _fname, None)
             if _orig is not None:
                 def _mk(name, f):
