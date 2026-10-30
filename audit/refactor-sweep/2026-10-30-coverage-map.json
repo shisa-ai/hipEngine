@@ -3,7 +3,7 @@
   "kind": "source_to_current_coverage_inventory",
   "claim": "Mechanical mapping only; final semantic audit remains required.",
   "source_commit": "cfe1987b41ba99d22a8caa4a0bf8c3b9a4bc710e",
-  "ledger_sha256": "db706cc59d3b1959b06e6d0df0fddfa6d478528468766817b80c172e8a32560c",
+  "ledger_sha256": "5a28d3a634c899de2b872b51f416cc8710ff689f94d9f85b79af6e04d91ac493",
   "requirements": [
     {
       "requirement": "Review every original item and subitem",
@@ -40,6 +40,9 @@
         "R0001 \u2014 PARO verifier graph regression"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130438.200270Z-cleanup-cleanup-coverage-final-direct-d2b460.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -51,6 +54,7 @@
       "worklog_references": [
         "worklog/entries/20261027T092839.755071Z-cleanup-refactor-r0002-8545ae.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -64,6 +68,7 @@
       "worklog_references": [
         "worklog/entries/20261030T061329.839123Z-cleanup-cleanup-r0003-fe93ea.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -76,6 +81,7 @@
         "worklog/entries/20261018T112200.379001Z-lhl-qwen4exp-risk-queue-oob-5211f3.md",
         "worklog/entries/20261018T150728.247921Z-lhl-qwen38-full-suite-green-88ab2b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -87,6 +93,7 @@
       "worklog_references": [
         "worklog/entries/20261027T091303.198480Z-cleanup-refactor-r0005-b9ec7d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -101,6 +108,7 @@
         "worklog/entries/20261027T103743.743786Z-cleanup-refactor-r0006-ar-4e6404.md",
         "worklog/entries/20261030T084224.018548Z-cleanup-cleanup-r0006-final-b079f1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -115,6 +123,7 @@
         "worklog/entries/20261027T095542.477175Z-cleanup-refactor-r0007-reset-622379.md",
         "worklog/entries/20261030T084543.560317Z-cleanup-cleanup-r0007-final-1cb75f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -126,6 +135,7 @@
       "worklog_references": [
         "worklog/entries/20261027T093523.078875Z-cleanup-refactor-r0008-8bf1d7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -135,6 +145,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T123923.908138Z-cleanup-cleanup-coverage-direct-evidence2-13d863.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -148,6 +161,7 @@
       "worklog_references": [
         "worklog/entries/20261030T084842.872301Z-cleanup-cleanup-r0010-final-f38986.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -161,6 +175,7 @@
       "worklog_references": [
         "worklog/entries/20261030T061714.750608Z-cleanup-cleanup-r0011-6f9c51.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -172,6 +187,7 @@
       "worklog_references": [
         "worklog/entries/20261027T115914.626790Z-cleanup-refactor-r0012-41bfa3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -183,6 +199,7 @@
       "worklog_references": [
         "worklog/entries/20261027T105916.290194Z-cleanup-refactor-r0013-41a456.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -192,6 +209,9 @@
       "disposition": "not-debt-retained",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T125631.159932Z-cleanup-cleanup-coverage-reference-controls-281f60.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -203,6 +223,7 @@
       "worklog_references": [
         "worklog/entries/20261027T114113.967118Z-cleanup-refactor-r0015-29eb86.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -212,6 +233,9 @@
       "disposition": "not-debt-retained",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T125631.159932Z-cleanup-cleanup-coverage-reference-controls-281f60.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -223,6 +247,7 @@
       "worklog_references": [
         "worklog/entries/20261027T112530.899759Z-cleanup-refactor-r0017-owner-0a24e2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -234,6 +259,7 @@
       "worklog_references": [
         "worklog/entries/20261027T091609.509879Z-cleanup-refactor-r0018-791dc6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -245,6 +271,7 @@
       "worklog_references": [
         "worklog/entries/20261027T121946.634773Z-cleanup-refactor-r0019-da3447.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -256,6 +283,7 @@
       "worklog_references": [
         "worklog/entries/20261025T205203.077962Z-cleanup-refactor-r0020-donor-b59da2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 11
     },
@@ -267,6 +295,7 @@
       "worklog_references": [
         "worklog/entries/20261025T210403.832338Z-cleanup-refactor-r0021-c04ab8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 8
     },
@@ -278,6 +307,7 @@
       "worklog_references": [
         "worklog/entries/20261025T211104.838592Z-lhl-cleanup-refactor-r0022-r0023-ledger-2ab9f2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -292,6 +322,7 @@
         "worklog/entries/20261025T211104.838592Z-lhl-cleanup-refactor-r0022-r0023-ledger-2ab9f2.md",
         "worklog/entries/20261025T211431.150088Z-cleanup-refactor-r0023-disposition-4ea5e1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -303,6 +334,7 @@
       "worklog_references": [
         "worklog/entries/20261025T131609.889958Z-cleanup-refactor-r0024-b7917b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -312,6 +344,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124106.988742Z-cleanup-cleanup-coverage-removal-evidence-272464.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -324,6 +359,9 @@
       ],
       "worklog_references": [
         "worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124106.988742Z-cleanup-cleanup-coverage-removal-evidence-272464.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 3
@@ -338,6 +376,9 @@
       "worklog_references": [
         "worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124106.988742Z-cleanup-cleanup-coverage-removal-evidence-272464.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -351,6 +392,7 @@
       "worklog_references": [
         "worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -364,6 +406,7 @@
       "worklog_references": [
         "worklog/entries/20261025T212633.831377Z-cleanup-refactor-r0029-r0030-router-ownership-bd9ddc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -377,6 +420,7 @@
       "worklog_references": [
         "worklog/entries/20261025T212633.831377Z-cleanup-refactor-r0029-r0030-router-ownership-bd9ddc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 9
     },
@@ -386,6 +430,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T123732.553357Z-cleanup-cleanup-coverage-direct-evidence-d5be2c.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -397,6 +444,7 @@
       "worklog_references": [
         "worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 10
     },
@@ -408,6 +456,7 @@
       "worklog_references": [
         "worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -421,6 +470,7 @@
       "worklog_references": [
         "worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -434,6 +484,7 @@
       "worklog_references": [
         "worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -447,6 +498,7 @@
       "worklog_references": [
         "worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -460,6 +512,7 @@
       "worklog_references": [
         "worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -469,6 +522,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124106.988742Z-cleanup-cleanup-coverage-removal-evidence-272464.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -482,6 +538,7 @@
       "worklog_references": [
         "worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -493,6 +550,7 @@
       "worklog_references": [
         "worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -506,6 +564,7 @@
       "worklog_references": [
         "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -517,6 +576,7 @@
       "worklog_references": [
         "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -528,6 +588,7 @@
       "worklog_references": [
         "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -539,6 +600,7 @@
       "worklog_references": [
         "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -550,6 +612,7 @@
       "worklog_references": [
         "worklog/entries/20261026T042627.970475Z-cleanup-refactor-r0045-d34ae0.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -561,6 +624,7 @@
       "worklog_references": [
         "worklog/entries/20261026T043520.018655Z-cleanup-refactor-r0046-1153da.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -572,6 +636,7 @@
       "worklog_references": [
         "worklog/entries/20261026T045251.789938Z-cleanup-refactor-r0047-89c5cc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -583,6 +648,7 @@
       "worklog_references": [
         "worklog/entries/20261026T050154.951963Z-cleanup-refactor-r0048-8ea240.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -594,6 +660,7 @@
       "worklog_references": [
         "worklog/entries/20261026T053816.467794Z-lhl-cleanup-refactor-r0049-r0052-542fd1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -603,6 +670,9 @@
       "disposition": "obsolete-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T123923.908138Z-cleanup-cleanup-coverage-direct-evidence2-13d863.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -616,6 +686,7 @@
       "worklog_references": [
         "worklog/entries/20261026T053816.467794Z-lhl-cleanup-refactor-r0049-r0052-542fd1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -627,6 +698,7 @@
       "worklog_references": [
         "worklog/entries/20261026T053816.467794Z-lhl-cleanup-refactor-r0049-r0052-542fd1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -638,6 +710,7 @@
       "worklog_references": [
         "worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -649,6 +722,7 @@
       "worklog_references": [
         "worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -660,6 +734,7 @@
       "worklog_references": [
         "worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -671,6 +746,7 @@
       "worklog_references": [
         "worklog/entries/20261026T062604.686543Z-lhl-r0056-gemma-decode-route-abi-415a9d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -684,6 +760,7 @@
       "worklog_references": [
         "worklog/entries/20261026T070747.633871Z-cleanup-refactor-r0057-r0059-010c30.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -697,6 +774,7 @@
       "worklog_references": [
         "worklog/entries/20261026T070747.633871Z-cleanup-refactor-r0057-r0059-010c30.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -710,6 +788,7 @@
       "worklog_references": [
         "worklog/entries/20261026T071359.781748Z-cleanup-refactor-r0059-569bbc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -723,6 +802,7 @@
       "worklog_references": [
         "worklog/entries/20261026T070317.847391Z-cleanup-refactor-r0060-61ff7b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -734,6 +814,7 @@
       "worklog_references": [
         "worklog/entries/20261026T071736.963919Z-cleanup-refactor-r0061-r0064-328b17.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -743,6 +824,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T123732.553357Z-cleanup-cleanup-coverage-direct-evidence-d5be2c.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -752,6 +836,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T123732.553357Z-cleanup-cleanup-coverage-direct-evidence-d5be2c.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -763,6 +850,7 @@
       "worklog_references": [
         "worklog/entries/20261026T071736.963919Z-cleanup-refactor-r0061-r0064-328b17.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -774,6 +862,7 @@
       "worklog_references": [
         "worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -785,6 +874,7 @@
       "worklog_references": [
         "worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -798,6 +888,7 @@
       "worklog_references": [
         "worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -809,6 +900,7 @@
       "worklog_references": [
         "worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -820,6 +912,7 @@
       "worklog_references": [
         "worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -831,6 +924,7 @@
       "worklog_references": [
         "worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -844,6 +938,7 @@
       "worklog_references": [
         "worklog/entries/20261030T062131.365447Z-cleanup-cleanup-r0071-5d5789.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -853,6 +948,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130754.898836Z-cleanup-cleanup-coverage-refresh-7b4eae.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -864,6 +962,7 @@
       "worklog_references": [
         "worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 9
     },
@@ -877,6 +976,7 @@
       "worklog_references": [
         "worklog/entries/20261030T062458.861841Z-cleanup-cleanup-r0074-f8bd1a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -888,6 +988,7 @@
       "worklog_references": [
         "worklog/entries/20261026T081543.029280Z-cleanup-refactor-r0075-805260.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -899,6 +1000,7 @@
       "worklog_references": [
         "worklog/entries/20261027T124046.731843Z-cleanup-refactor-r0076-a28f64.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -910,6 +1012,7 @@
       "worklog_references": [
         "worklog/entries/20261026T090655.553954Z-cleanup-refactor-r0077-8e7b36.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -919,6 +1022,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T123923.908138Z-cleanup-cleanup-coverage-direct-evidence2-13d863.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -928,6 +1034,9 @@
       "disposition": "resolved-duplicate-rows",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130438.200270Z-cleanup-cleanup-coverage-final-direct-d2b460.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -943,6 +1052,7 @@
         "worklog/entries/20261026T095516.745110Z-cleanup-refactor-r0080-provider-71e3e5.md",
         "worklog/entries/20261026T101415.814835Z-cleanup-refactor-r0080-setting-781d53.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -956,6 +1066,9 @@
       "worklog_references": [
         "worklog/entries/20261026T103336.457816Z-cleanup-refactor-r0081-accounting-906c03.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124322.987638Z-cleanup-cleanup-coverage-q8-screens-71854d.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -967,6 +1080,7 @@
       "worklog_references": [
         "worklog/entries/20261026T104604.591425Z-cleanup-refactor-r0082-evidence-74531c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -981,6 +1095,7 @@
         "worklog/entries/20261026T180226.744006Z-cleanup-refactor-r0083-raw-attention-502e20.md",
         "worklog/entries/20261030T085130.200351Z-cleanup-cleanup-r0083-final-a3d2fd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -992,6 +1107,7 @@
       "worklog_references": [
         "worklog/entries/20261026T105225.538580Z-cleanup-refactor-r0084-profiles-59ce20.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1005,6 +1121,7 @@
       "worklog_references": [
         "worklog/entries/20261026T181013.745278Z-cleanup-refactor-r0085-fc00c9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1016,6 +1133,7 @@
       "worklog_references": [
         "worklog/entries/20261026T173737.421794Z-cleanup-refactor-r0086-c42e6a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1027,6 +1145,7 @@
       "worklog_references": [
         "worklog/entries/20261025T133422.267347Z-cleanup-refactor-r0087-fda71a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1039,6 +1158,7 @@
         "worklog/entries/20261026T174511.632228Z-cleanup-refactor-r0088-admission-039ee3.md",
         "worklog/entries/20261026T181939.048632Z-cleanup-refactor-r0088-floor-31e669.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1070,6 +1190,7 @@
         "worklog/entries/20261026T172019.487565Z-cleanup-refactor-r0089-nextn-kernel-a0441b.md",
         "worklog/entries/20261026T173114.324139Z-cleanup-refactor-r0089-staging-c70f55.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1079,6 +1200,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124322.987638Z-cleanup-cleanup-coverage-q8-screens-71854d.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1088,6 +1212,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124322.987638Z-cleanup-cleanup-coverage-q8-screens-71854d.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1097,6 +1224,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130158.414923Z-cleanup-cleanup-coverage-head-grouping-5e1c17.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1108,6 +1238,7 @@
       "worklog_references": [
         "worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1119,6 +1250,7 @@
       "worklog_references": [
         "worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1130,6 +1262,7 @@
       "worklog_references": [
         "worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1141,6 +1274,7 @@
       "worklog_references": [
         "worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1152,6 +1286,7 @@
       "worklog_references": [
         "worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1163,6 +1298,7 @@
       "worklog_references": [
         "worklog/entries/20261026T193351.792518Z-cleanup-refactor-r0098-987ff8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1172,6 +1308,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124322.987638Z-cleanup-cleanup-coverage-q8-screens-71854d.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1181,6 +1320,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124322.987638Z-cleanup-cleanup-coverage-q8-screens-71854d.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1192,6 +1334,7 @@
       "worklog_references": [
         "worklog/entries/20261026T191326.912201Z-cleanup-refactor-r0101-502907.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1201,6 +1344,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1213,6 +1359,7 @@
         "worklog/entries/20261026T184121.228376Z-cleanup-refactor-r0103-4407b8.md",
         "worklog/entries/20261026T190419.491585Z-cleanup-refactor-r0103-local-4c1bb3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -1224,6 +1371,7 @@
       "worklog_references": [
         "worklog/entries/20261026T182839.863045Z-cleanup-refactor-r0104-af3658.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1233,6 +1381,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1242,6 +1393,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1253,6 +1407,7 @@
       "worklog_references": [
         "worklog/entries/20261026T195455.817001Z-cleanup-refactor-r0107-r0108-664b10.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1264,6 +1419,7 @@
       "worklog_references": [
         "worklog/entries/20261026T195455.817001Z-cleanup-refactor-r0107-r0108-664b10.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1273,6 +1429,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1284,6 +1443,7 @@
       "worklog_references": [
         "worklog/entries/20261026T201059.263459Z-cleanup-refactor-r0110-f4f4c2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1293,6 +1453,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1302,6 +1465,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1313,6 +1479,7 @@
       "worklog_references": [
         "worklog/entries/20261026T202620.453663Z-cleanup-refactor-r0113-07e741.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1322,6 +1489,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1333,6 +1503,7 @@
       "worklog_references": [
         "worklog/entries/20261026T203749.801471Z-cleanup-refactor-r0115-51b378.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1344,6 +1515,7 @@
       "worklog_references": [
         "worklog/entries/20261026T204543.086592Z-cleanup-refactor-r0116-48dbcc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1355,6 +1527,7 @@
       "worklog_references": [
         "worklog/entries/20261026T205951.108479Z-cleanup-refactor-r0117-r0121-7022b5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1364,6 +1537,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1375,6 +1551,7 @@
       "worklog_references": [
         "worklog/entries/20261026T211316.136673Z-cleanup-refactor-r0119-6693f4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1386,6 +1563,7 @@
       "worklog_references": [
         "worklog/entries/20261026T212313.058102Z-cleanup-refactor-r0120-9842a8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1397,6 +1575,7 @@
       "worklog_references": [
         "worklog/entries/20261026T205951.108479Z-cleanup-refactor-r0117-r0121-7022b5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1406,6 +1585,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124515.104621Z-cleanup-cleanup-coverage-rejected-screens-57c705.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1417,6 +1599,7 @@
       "worklog_references": [
         "worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1428,6 +1611,7 @@
       "worklog_references": [
         "worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1439,6 +1623,7 @@
       "worklog_references": [
         "worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1450,6 +1635,7 @@
       "worklog_references": [
         "worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1464,6 +1650,7 @@
         "worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md",
         "worklog/entries/20261030T062801.065927Z-cleanup-cleanup-r0127-390d94.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1479,6 +1666,7 @@
         "worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md",
         "worklog/entries/20261030T063106.056374Z-cleanup-cleanup-r0128-3c41be.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -1492,6 +1680,7 @@
       "worklog_references": [
         "worklog/entries/20261030T063541.745116Z-cleanup-cleanup-r0129-c07699.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1501,6 +1690,9 @@
       "disposition": "resolved",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130754.898836Z-cleanup-cleanup-coverage-refresh-7b4eae.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -1514,6 +1706,7 @@
       "worklog_references": [
         "worklog/entries/20261030T063922.264585Z-cleanup-cleanup-r0131-cfafe2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1527,6 +1720,7 @@
       "worklog_references": [
         "worklog/entries/20261030T064255.501699Z-cleanup-cleanup-r0132-71c930.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -1538,6 +1732,7 @@
       "worklog_references": [
         "worklog/entries/20261030T064540.884554Z-cleanup-cleanup-r0133-12f97f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1549,6 +1744,7 @@
       "worklog_references": [
         "worklog/entries/20261018T120817.976900Z-lhl-dms-append-compaction-race-6fa3d4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1562,6 +1758,7 @@
       "worklog_references": [
         "worklog/entries/20260908T191409.775774Z-lhl-ud-w4a16-default-6c43c5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -1573,6 +1770,9 @@
         "R0135/R0136 \u2014 Unselected dense integer-MMQ alternative"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130438.200270Z-cleanup-cleanup-coverage-final-direct-d2b460.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -1586,6 +1786,7 @@
       "worklog_references": [
         "worklog/entries/20261030T064932.736749Z-cleanup-cleanup-r0137-9c4a6a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1600,6 +1801,7 @@
         "worklog/entries/20261026T222549.230606Z-cleanup-refactor-r0138-native-diagnostic-12a5fc.md",
         "worklog/entries/20261030T065251.618480Z-cleanup-cleanup-r0138-e87e5e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1613,6 +1815,7 @@
       "worklog_references": [
         "worklog/entries/20261030T065630.210949Z-cleanup-cleanup-r0139-51d179.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -1624,6 +1827,7 @@
       "worklog_references": [
         "worklog/entries/20261026T234453.438237Z-cleanup-refactor-r0140-gdn-tile16-da3ad8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1637,6 +1841,7 @@
       "worklog_references": [
         "worklog/entries/20261030T065947.525394Z-cleanup-cleanup-r0141-80e70b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1648,6 +1853,7 @@
       "worklog_references": [
         "worklog/entries/20261026T224007.259974Z-cleanup-refactor-r0142-compact-proposal-b36f3c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1659,6 +1865,10 @@
         "R0143 \u2014 Qwen4Exp P9 load drop-behind"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122457.525475Z-cleanup-cleanup-coverage-heading-map-902bac.md",
+        "worklog/entries/20261030T125631.159932Z-cleanup-cleanup-coverage-reference-controls-281f60.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1670,6 +1880,7 @@
       "worklog_references": [
         "worklog/entries/20261027T015452.816399Z-cleanup-refactor-r0144-q8-selectors-ff1060.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1681,6 +1892,7 @@
       "worklog_references": [
         "worklog/entries/20261026T230142.708820Z-cleanup-refactor-r0145-pf13-policy-2e71b6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1692,6 +1904,7 @@
       "worklog_references": [
         "worklog/entries/20261026T224722.166170Z-cleanup-refactor-r0146-grouped-selector-4a4d0e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1705,6 +1918,7 @@
       "worklog_references": [
         "worklog/entries/20261030T070320.872724Z-cleanup-cleanup-r0147-9a0b4e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1714,6 +1928,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124106.988742Z-cleanup-cleanup-coverage-removal-evidence-272464.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1728,6 +1945,7 @@
         "worklog/entries/20261026T233425.920612Z-cleanup-refactor-r0149-mmq-0b7fec.md",
         "worklog/entries/20261030T070659.924118Z-cleanup-cleanup-r0149-4424c5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1739,6 +1957,7 @@
       "worklog_references": [
         "worklog/entries/20261026T231953.432264Z-cleanup-refactor-r0150-moe-graph-868a0c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1752,6 +1971,7 @@
       "worklog_references": [
         "worklog/entries/20261030T071039.193689Z-cleanup-cleanup-r0151-177047.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1765,6 +1985,7 @@
       "worklog_references": [
         "worklog/entries/20261030T071346.969977Z-cleanup-cleanup-r0152-9f4f58.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1778,6 +1999,7 @@
       "worklog_references": [
         "worklog/entries/20261030T071716.081488Z-cleanup-cleanup-r0153-8f1ad4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1789,6 +2011,7 @@
       "worklog_references": [
         "worklog/entries/20261027T011418.901738Z-cleanup-refactor-r0154-out8-ed23f2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1800,6 +2023,7 @@
       "worklog_references": [
         "worklog/entries/20261027T012758.049036Z-cleanup-refactor-r0155-out4-d68c1a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1811,6 +2035,7 @@
       "worklog_references": [
         "worklog/entries/20261027T013719.990245Z-cleanup-refactor-r0156-q4-gates-8d8f04.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1822,6 +2047,7 @@
       "worklog_references": [
         "worklog/entries/20261027T000244.592627Z-cleanup-refactor-r0157-qsa-selection-994924.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1833,6 +2059,7 @@
       "worklog_references": [
         "worklog/entries/20261027T004801.907193Z-cleanup-refactor-r0158-qsa-wave32-b9d6ef.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1844,6 +2071,7 @@
       "worklog_references": [
         "worklog/entries/20261027T002615.120716Z-cleanup-refactor-r0159-grouped-down-d11f93.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1858,6 +2086,7 @@
         "worklog/entries/20261027T023651.116584Z-cleanup-refactor-r0160-q51-wmma-36e509.md",
         "worklog/entries/20261027T030526.829497Z-cleanup-refactor-r0160-dense-q8-670052.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1869,6 +2098,7 @@
       "worklog_references": [
         "worklog/entries/20261027T014909.329012Z-cleanup-refactor-r0161-prefill-e3cb10.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1881,6 +2111,7 @@
         "worklog/entries/20261027T032410.164954Z-cleanup-refactor-r0162-qsa-host-594fae.md",
         "worklog/entries/20261027T071854.406762Z-cleanup-refactor-r0162-complete-24b33c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -1894,6 +2125,7 @@
       "worklog_references": [
         "worklog/entries/20261030T072024.486941Z-cleanup-cleanup-r0163-c27a4c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 8
     },
@@ -1908,6 +2140,7 @@
         "worklog/entries/20261026T233233.859722Z-cleanup-refactor-r0164-depth-bound-ca1a20.md",
         "worklog/entries/20261030T072350.381050Z-cleanup-cleanup-r0164-1e1b78.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -1921,6 +2154,7 @@
       "worklog_references": [
         "worklog/entries/20261027T125027.960452Z-cleanup-refactor-r0165-dfd5b5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1935,6 +2169,7 @@
         "worklog/entries/20261027T130404.357161Z-cleanup-refactor-r0166-row48-a93c17.md",
         "worklog/entries/20261027T131415.927096Z-cleanup-refactor-r0166-w2-f52205.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1946,6 +2181,7 @@
       "worklog_references": [
         "worklog/entries/20261027T132305.153626Z-cleanup-refactor-r0167-d18461.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1959,6 +2195,7 @@
       "worklog_references": [
         "worklog/entries/20261027T133338.177493Z-cleanup-refactor-r0168-0b6de9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1972,6 +2209,7 @@
       "worklog_references": [
         "worklog/entries/20261027T134329.923876Z-cleanup-refactor-r0169-dcad79.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -1985,6 +2223,7 @@
       "worklog_references": [
         "worklog/entries/20261027T135723.565957Z-cleanup-refactor-r0170-be7d9c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -1998,6 +2237,7 @@
       "worklog_references": [
         "worklog/entries/20261027T141031.779143Z-cleanup-refactor-r0171-b9860d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2011,6 +2251,7 @@
       "worklog_references": [
         "worklog/entries/20261027T142139.658766Z-cleanup-refactor-r0172-870247.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2024,6 +2265,7 @@
       "worklog_references": [
         "worklog/entries/20261030T072846.566163Z-cleanup-cleanup-r0173-21d107.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2037,6 +2279,7 @@
       "worklog_references": [
         "worklog/entries/20261027T142751.311949Z-cleanup-refactor-r0174-6bb4bb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2046,6 +2289,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124721.355838Z-cleanup-cleanup-coverage-compatibility-28b677.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2059,6 +2305,7 @@
       "worklog_references": [
         "worklog/entries/20261027T143547.149081Z-cleanup-refactor-r0176-57e7c7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2067,10 +2314,13 @@
       "original_title": "2026-09-02 gfx1100 planar-Q6 root R8 rollback \u2014 closed",
       "disposition": "deferred-public-validation",
       "current_headings": [
-        "R0177 \u2014 Public planar-Q6 chunk-policy validation"
+        "R0177 / R0292 \u2014 Public planar-Q6 chunk-policy validation"
       ],
       "worklog_references": [
         "worklog/entries/20261027T144020.081262Z-cleanup-refactor-r0177-7c330b.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130004.910444Z-cleanup-cleanup-coverage-consolidated-7707d8.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 1
@@ -2085,6 +2335,7 @@
       "worklog_references": [
         "worklog/entries/20261027T144349.182997Z-cleanup-refactor-r0178-acf73b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -2098,6 +2349,7 @@
       "worklog_references": [
         "worklog/entries/20261027T144833.657486Z-cleanup-refactor-r0179-cfcd24.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -2111,6 +2363,7 @@
       "worklog_references": [
         "worklog/entries/20261027T145246.713814Z-cleanup-refactor-r0180-205c73.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -2124,6 +2377,7 @@
       "worklog_references": [
         "worklog/entries/20261027T145647.988271Z-cleanup-refactor-r0181-b1a6e7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -2137,6 +2391,7 @@
       "worklog_references": [
         "worklog/entries/20261027T150128.281095Z-cleanup-refactor-r0182-e81b20.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -2151,6 +2406,7 @@
         "worklog/entries/20261027T150535.683495Z-cleanup-refactor-r0183-2620b0.md",
         "worklog/entries/20261030T085428.295833Z-cleanup-cleanup-r0183-final-5b577a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2164,6 +2420,7 @@
       "worklog_references": [
         "worklog/entries/20261027T151010.021868Z-cleanup-refactor-r0184-2d9987.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2173,6 +2430,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124721.355838Z-cleanup-cleanup-coverage-compatibility-28b677.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2182,6 +2442,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124721.355838Z-cleanup-cleanup-coverage-compatibility-28b677.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2220,6 +2483,7 @@
         "worklog/entries/20261030T082234.245003Z-cleanup-cleanup-r0187-rf11-b7e4ec.md",
         "worklog/entries/20261030T082515.754258Z-cleanup-cleanup-r0187-rf12-81bd4c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 43
     },
@@ -2234,6 +2498,7 @@
         "worklog/entries/20261027T151435.396671Z-cleanup-refactor-r0188-a37c37.md",
         "worklog/entries/20261030T085705.602694Z-cleanup-cleanup-r0188-final-c9f0a0.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2247,6 +2512,7 @@
       "worklog_references": [
         "worklog/entries/20261030T083229.132480Z-cleanup-cleanup-r0189-9318f6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2261,6 +2527,7 @@
         "worklog/entries/20261027T151841.930940Z-cleanup-refactor-r0190-89a9e3.md",
         "worklog/entries/20261030T085945.656659Z-cleanup-cleanup-r0190-final-819dbb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2275,6 +2542,7 @@
         "worklog/entries/20261027T152230.570879Z-cleanup-refactor-r0191-cd7286.md",
         "worklog/entries/20261030T090233.914272Z-cleanup-cleanup-r0191-final-70fc2c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2290,6 +2558,7 @@
         "worklog/entries/20261027T154355.850123Z-cleanup-refactor-r0192-target-b8828a.md",
         "worklog/entries/20261030T090514.792951Z-cleanup-cleanup-r0192-final-05810f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2304,6 +2573,7 @@
         "worklog/entries/20261027T154759.095312Z-cleanup-refactor-r0193-r0194-8b5f45.md",
         "worklog/entries/20261030T090759.067669Z-cleanup-cleanup-r0193-final-4adb6f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2318,6 +2588,7 @@
         "worklog/entries/20261027T154759.095312Z-cleanup-refactor-r0193-r0194-8b5f45.md",
         "worklog/entries/20261030T091031.309124Z-cleanup-cleanup-r0194-final-8de0df.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2331,6 +2602,7 @@
       "worklog_references": [
         "worklog/entries/20261030T083541.556038Z-cleanup-cleanup-r0195-50755d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -2344,6 +2616,7 @@
       "worklog_references": [
         "worklog/entries/20261027T155317.132024Z-cleanup-refactor-r0196-f93861.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2357,6 +2630,7 @@
       "worklog_references": [
         "worklog/entries/20261030T083854.616070Z-cleanup-cleanup-r0197-68c84d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2372,6 +2646,7 @@
         "worklog/entries/20261027T163533.128359Z-cleanup-refactor-r0198-public-08b7e6.md",
         "worklog/entries/20261027T163913.377040Z-cleanup-refactor-r0198-public-matrix-723a3e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2385,6 +2660,7 @@
       "worklog_references": [
         "worklog/entries/20261027T160304.614159Z-cleanup-refactor-r0199-6b7f73.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2398,6 +2674,7 @@
       "worklog_references": [
         "worklog/entries/20261027T160757.885029Z-cleanup-refactor-r0200-422bb0.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2412,6 +2689,7 @@
         "worklog/entries/20261027T161223.686161Z-cleanup-refactor-r0201-9a3070.md",
         "worklog/entries/20261030T091301.986272Z-cleanup-cleanup-r0201-final-29db0e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2425,6 +2703,7 @@
       "worklog_references": [
         "worklog/entries/20261027T161809.092938Z-cleanup-refactor-r0202-12f6f8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2439,6 +2718,7 @@
         "worklog/entries/20261027T162229.960164Z-cleanup-refactor-r0203-9fd159.md",
         "worklog/entries/20261030T091530.643089Z-cleanup-cleanup-r0203-final-ead494.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2453,6 +2733,7 @@
         "worklog/entries/20261027T162745.737930Z-cleanup-refactor-r0204-6c702f.md",
         "worklog/entries/20261030T091812.333751Z-cleanup-cleanup-r0204-final-6dc5ad.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2467,6 +2748,7 @@
         "worklog/entries/20261027T163113.595877Z-cleanup-refactor-r0205-b877a7.md",
         "worklog/entries/20261030T092102.571592Z-cleanup-cleanup-r0205-final-cceec4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2481,6 +2763,7 @@
         "worklog/entries/20261027T165950.144426Z-cleanup-refactor-r0206-d6f028.md",
         "worklog/entries/20261030T092347.731860Z-cleanup-cleanup-r0206-final-f1cf39.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2495,6 +2778,7 @@
         "worklog/entries/20261027T171236.772115Z-cleanup-refactor-r0207-b69c32.md",
         "worklog/entries/20261030T092658.121683Z-cleanup-cleanup-r0207-final-490bc3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -2509,6 +2793,7 @@
         "worklog/entries/20261027T172107.968090Z-cleanup-refactor-r0208-cf40f8.md",
         "worklog/entries/20261030T092935.678904Z-cleanup-cleanup-r0208-final-1e178c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2523,6 +2808,7 @@
         "worklog/entries/20261027T172435.748577Z-cleanup-refactor-r0209-r0210-9e664a.md",
         "worklog/entries/20261030T093219.416520Z-cleanup-cleanup-r0209-final-d400da.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2537,6 +2823,7 @@
         "worklog/entries/20261027T005813.069045Z-cleanup-refactor-r0210-packed-map-c7e7be.md",
         "worklog/entries/20261030T093459.888159Z-cleanup-cleanup-r0210-final-a79dd4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2550,6 +2837,7 @@
       "worklog_references": [
         "worklog/entries/20261027T173300.955410Z-cleanup-refactor-r0211-r0212-128ecc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2563,6 +2851,7 @@
       "worklog_references": [
         "worklog/entries/20261027T173300.955410Z-cleanup-refactor-r0211-r0212-128ecc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2576,6 +2865,7 @@
       "worklog_references": [
         "worklog/entries/20261027T173803.625903Z-cleanup-refactor-r0213-f079e8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -2589,6 +2879,7 @@
       "worklog_references": [
         "worklog/entries/20261027T175356.715114Z-cleanup-refactor-r0214-r0215-aebccf.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2602,6 +2893,7 @@
       "worklog_references": [
         "worklog/entries/20261027T175356.715114Z-cleanup-refactor-r0214-r0215-aebccf.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2613,6 +2905,7 @@
       "worklog_references": [
         "worklog/entries/20261027T174749.840623Z-cleanup-refactor-r0216-58487a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2626,6 +2919,9 @@
       "worklog_references": [
         "worklog/entries/20261027T175646.948568Z-cleanup-refactor-r0217-1a0837.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -2637,6 +2933,7 @@
       "worklog_references": [
         "worklog/entries/20261027T180129.361149Z-cleanup-refactor-r0218-f1f728.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2649,6 +2946,9 @@
       ],
       "worklog_references": [
         "worklog/entries/20261027T180839.282466Z-cleanup-refactor-r0219-5842e5.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 2
@@ -2663,6 +2963,7 @@
       "worklog_references": [
         "worklog/entries/20261027T182246.881294Z-cleanup-refactor-r0220-b96656.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2674,6 +2975,7 @@
       "worklog_references": [
         "worklog/entries/20261027T182937.685063Z-cleanup-refactor-r0221-f2a718.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2685,6 +2987,7 @@
       "worklog_references": [
         "worklog/entries/20261027T183344.042619Z-cleanup-refactor-r0222-98571f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2698,6 +3001,7 @@
       "worklog_references": [
         "worklog/entries/20261027T183646.802897Z-cleanup-refactor-r0223-878294.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -2709,6 +3013,7 @@
       "worklog_references": [
         "worklog/entries/20261027T184123.796503Z-cleanup-refactor-r0224-6a2a90.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2720,6 +3025,7 @@
       "worklog_references": [
         "worklog/entries/20261027T185226.192499Z-cleanup-refactor-r0225-63fdb2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2731,6 +3037,7 @@
       "worklog_references": [
         "worklog/entries/20261027T185609.433890Z-cleanup-refactor-r0226-2b3961.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2742,6 +3049,7 @@
       "worklog_references": [
         "worklog/entries/20261027T185901.660060Z-cleanup-refactor-r0227-735379.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2753,6 +3061,7 @@
       "worklog_references": [
         "worklog/entries/20261027T190417.981839Z-cleanup-refactor-r0228-78ed90.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2764,6 +3073,7 @@
       "worklog_references": [
         "worklog/entries/20261027T191440.042645Z-cleanup-refactor-r0229-2a235a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2775,6 +3085,7 @@
       "worklog_references": [
         "worklog/entries/20261027T192516.568577Z-cleanup-refactor-r0230-f56d87.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2788,6 +3099,7 @@
       "worklog_references": [
         "worklog/entries/20261027T192823.267681Z-cleanup-refactor-r0231-c4f09f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2799,6 +3111,7 @@
       "worklog_references": [
         "worklog/entries/20261027T193059.169529Z-cleanup-refactor-r0232-cd32fc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2810,6 +3123,7 @@
       "worklog_references": [
         "worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2821,6 +3135,7 @@
       "worklog_references": [
         "worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2832,6 +3147,7 @@
       "worklog_references": [
         "worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2843,6 +3159,7 @@
       "worklog_references": [
         "worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2854,6 +3171,7 @@
       "worklog_references": [
         "worklog/entries/20261027T193524.178739Z-cleanup-refactor-r0237-5bd441.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -2865,6 +3183,7 @@
       "worklog_references": [
         "worklog/entries/20261027T020217.970546Z-cleanup-refactor-r0238-arena-f4567a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -2878,6 +3197,7 @@
       "worklog_references": [
         "worklog/entries/20261027T194424.478502Z-cleanup-refactor-r0239-b91221.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2889,6 +3209,7 @@
       "worklog_references": [
         "worklog/entries/20261027T045723.695977Z-cleanup-refactor-r0240-f750ce.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2900,6 +3221,7 @@
       "worklog_references": [
         "worklog/entries/20261027T052525.970282Z-cleanup-refactor-r0241-aa515c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -2911,6 +3233,7 @@
       "worklog_references": [
         "worklog/entries/20261027T052901.877360Z-cleanup-refactor-r0242-bd7f79.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -2920,6 +3243,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T125214.508100Z-cleanup-cleanup-coverage-laguna-window-2c0483.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -2929,6 +3255,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T125411.725248Z-cleanup-cleanup-coverage-laguna-producers-0d5156.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -2938,6 +3267,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T125411.725248Z-cleanup-cleanup-coverage-laguna-producers-0d5156.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -2947,6 +3279,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124922.479596Z-cleanup-cleanup-coverage-laguna-references-09e0fe.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2956,6 +3291,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124922.479596Z-cleanup-cleanup-coverage-laguna-references-09e0fe.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2969,6 +3307,7 @@
       "worklog_references": [
         "worklog/entries/20261027T081802.910778Z-cleanup-refactor-r0248-ff4cba.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -2982,6 +3321,7 @@
       "worklog_references": [
         "worklog/entries/20261027T074253.906360Z-cleanup-refactor-r0249-r0250-7c9bde.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -2995,6 +3335,7 @@
       "worklog_references": [
         "worklog/entries/20261027T074253.906360Z-cleanup-refactor-r0249-r0250-7c9bde.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3006,6 +3347,7 @@
       "worklog_references": [
         "worklog/entries/20261027T022834.784822Z-cleanup-refactor-r0251-h6z-2e499f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3017,6 +3359,7 @@
       "worklog_references": [
         "worklog/entries/20261027T024455.000833Z-cleanup-refactor-r0252-r0272-de0474.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3028,6 +3371,7 @@
       "worklog_references": [
         "worklog/entries/20261027T025819.350455Z-cleanup-refactor-r0253-67df83.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3039,6 +3383,7 @@
       "worklog_references": [
         "worklog/entries/20261027T073351.330486Z-cleanup-refactor-r0254-492122.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -3050,6 +3395,7 @@
       "worklog_references": [
         "worklog/entries/20261027T030204.857128Z-cleanup-refactor-r0255-7788e7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3061,6 +3407,7 @@
       "worklog_references": [
         "worklog/entries/20261027T072745.177432Z-cleanup-refactor-r0256-4f0825.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3072,6 +3419,7 @@
       "worklog_references": [
         "worklog/entries/20261027T023211.342938Z-cleanup-refactor-r0257-matrix-cli-b936d8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3085,6 +3433,7 @@
       "worklog_references": [
         "worklog/entries/20261027T194807.594125Z-cleanup-refactor-r0258-464c1f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 12
     },
@@ -3098,6 +3447,7 @@
       "worklog_references": [
         "worklog/entries/20261027T195155.933650Z-cleanup-refactor-r0259-478b0d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -3109,6 +3459,7 @@
       "worklog_references": [
         "worklog/entries/20261027T034815.303677Z-cleanup-refactor-r0260-r0261-32b96e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3120,6 +3471,7 @@
       "worklog_references": [
         "worklog/entries/20261027T034815.303677Z-cleanup-refactor-r0260-r0261-32b96e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3129,6 +3481,9 @@
       "disposition": "resolved-removed",
       "current_headings": [],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T124922.479596Z-cleanup-cleanup-coverage-laguna-references-09e0fe.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3140,6 +3495,7 @@
       "worklog_references": [
         "worklog/entries/20261027T040118.091251Z-cleanup-refactor-r0263-cc5257.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -3153,6 +3509,7 @@
       "worklog_references": [
         "worklog/entries/20261027T195558.019946Z-cleanup-refactor-r0264-767e68.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3166,6 +3523,7 @@
       "worklog_references": [
         "worklog/entries/20261027T195859.003911Z-cleanup-refactor-r0265-r0267-f1520d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3179,6 +3537,7 @@
       "worklog_references": [
         "worklog/entries/20261027T195859.003911Z-cleanup-refactor-r0265-r0267-f1520d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3192,6 +3551,7 @@
       "worklog_references": [
         "worklog/entries/20261027T195859.003911Z-cleanup-refactor-r0265-r0267-f1520d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3203,6 +3563,7 @@
       "worklog_references": [
         "worklog/entries/20261027T040446.954213Z-cleanup-refactor-r0268-9514d1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3216,6 +3577,7 @@
       "worklog_references": [
         "worklog/entries/20261027T200153.380117Z-cleanup-refactor-r0269-2491f1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 14
     },
@@ -3228,6 +3590,9 @@
       ],
       "worklog_references": [
         "worklog/entries/20261027T200903.364588Z-cleanup-refactor-r0270-61347a.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 2
@@ -3244,6 +3609,7 @@
         "worklog/entries/20261027T085524.959572Z-cleanup-refactor-r0271-setter-e47c31.md",
         "worklog/entries/20261027T090221.199576Z-cleanup-refactor-r0271-norm-f6930c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -3255,6 +3621,7 @@
       "worklog_references": [
         "worklog/entries/20261027T024455.000833Z-cleanup-refactor-r0252-r0272-de0474.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3268,6 +3635,7 @@
       "worklog_references": [
         "worklog/entries/20261027T075235.718078Z-cleanup-refactor-r0273-09b19c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3281,6 +3649,7 @@
       "worklog_references": [
         "worklog/entries/20261027T080553.662334Z-cleanup-refactor-r0274-158dd3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3294,6 +3663,7 @@
       "worklog_references": [
         "worklog/entries/20261027T075909.952556Z-cleanup-refactor-r0275-567ba2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3309,6 +3679,7 @@
         "worklog/entries/20261027T083234.102496Z-cleanup-refactor-r0276-q4-10c6c0.md",
         "worklog/entries/20261027T083855.670345Z-cleanup-refactor-r0276-session-d37b24.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -3322,6 +3693,7 @@
       "worklog_references": [
         "worklog/entries/20261027T201917.308379Z-cleanup-refactor-r0277-b8410a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -3335,6 +3707,7 @@
       "worklog_references": [
         "worklog/entries/20261027T202234.233016Z-cleanup-refactor-r0278-8079c2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3347,6 +3720,9 @@
       ],
       "worklog_references": [
         "worklog/entries/20261027T202600.279151Z-cleanup-refactor-r0279-9b29e8.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 2
@@ -3361,6 +3737,7 @@
       "worklog_references": [
         "worklog/entries/20261027T202906.902384Z-cleanup-refactor-r0280-cae1ab.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3376,8 +3753,8 @@
         "R0281-MIXED \u2014 Mixed-projection comparison levels",
         "R0281-Q4HEAD \u2014 Scalar Q4 head comparison control",
         "R0281-IQ3 \u2014 c1 IQ3 schedule comparison interface",
-        "R0281-SPLIT \u2014 Split-attention and tile16 comparison controls",
-        "R0281-FUSION \u2014 Attention fusion and reducer comparison controls",
+        "R0281-SPLIT / R0339 \u2014 Split-attention and tile16 comparison controls",
+        "R0281-FUSION / R0338 \u2014 Attention fusion and reducer comparison controls",
         "R0281-IQ2 \u2014 c1 IQ2 grid comparison control",
         "R0281-DFLASH \u2014 Verifier tiles and shared true-AR mismatch",
         "R0281-PARO-ARGRAPH \u2014 gfx1151 greedy graph mismatch",
@@ -3565,6 +3942,11 @@
         "worklog/entries/20261028T194439.395827Z-cleanup-refactor-r0281-q6-thread-aliases-f0cb03.md",
         "worklog/entries/20261028T195357.298495Z-cleanup-refactor-r0281-rocprof-cache-a018e8.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122457.525475Z-cleanup-cleanup-coverage-heading-map-902bac.md",
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md",
+        "worklog/entries/20261030T130004.910444Z-cleanup-cleanup-coverage-consolidated-7707d8.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 160
     },
@@ -3585,6 +3967,7 @@
         "worklog/entries/20261028T210115.994531Z-cleanup-refactor-r0282-dflash-drafter-979f2a.md",
         "worklog/entries/20261028T211627.627548Z-cleanup-refactor-r0282-benchmark-commands-5bf3dc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 9
     },
@@ -3598,6 +3981,7 @@
       "worklog_references": [
         "worklog/entries/20261028T213055.247647Z-cleanup-refactor-r0283-selected-dp4a-7304aa.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3611,6 +3995,7 @@
       "worklog_references": [
         "worklog/entries/20261028T213858.890855Z-cleanup-refactor-r0284-compat-policy-681bd1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3624,6 +4009,7 @@
       "worklog_references": [
         "worklog/entries/20261028T215358.283217Z-cleanup-refactor-r0285-draft-timing-69309f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3637,6 +4023,7 @@
       "worklog_references": [
         "worklog/entries/20261028T220545.064019Z-cleanup-refactor-r0286-target-timing-c74590.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3650,6 +4037,7 @@
       "worklog_references": [
         "worklog/entries/20261028T221649.369889Z-cleanup-refactor-r0287-f32-provenance-6eb796.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3663,6 +4051,7 @@
       "worklog_references": [
         "worklog/entries/20261028T223039.505537Z-cleanup-refactor-r0288-dp4a-threads-9c1e14.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3674,6 +4063,7 @@
       "worklog_references": [
         "worklog/entries/20261027T073918.072218Z-cleanup-refactor-r0289-c0bb0c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3685,6 +4075,7 @@
       "worklog_references": [
         "worklog/entries/20261028T225646.729053Z-cleanup-refactor-r0290-q8t16-dp4a-abc191.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3698,6 +4089,7 @@
       "worklog_references": [
         "worklog/entries/20261028T232639.714580Z-cleanup-refactor-r0291-pair-control-feca3d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -3705,8 +4097,13 @@
       "id": "R0292",
       "original_title": "`HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` (Q6 F32 root rollback)",
       "disposition": "resolved-removed",
-      "current_headings": [],
+      "current_headings": [
+        "R0177 / R0292 \u2014 Public planar-Q6 chunk-policy validation"
+      ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130004.910444Z-cleanup-cleanup-coverage-consolidated-7707d8.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3720,6 +4117,7 @@
       "worklog_references": [
         "worklog/entries/20261028T234619.070301Z-cleanup-refactor-r0293-rowtile-policy-162c07.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -3732,6 +4130,9 @@
       ],
       "worklog_references": [
         "worklog/entries/20261029T000704.219813Z-cleanup-refactor-r0294-q6-row-a5a57e.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122457.525475Z-cleanup-cleanup-coverage-heading-map-902bac.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 3
@@ -3746,6 +4147,7 @@
       "worklog_references": [
         "worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3759,6 +4161,7 @@
       "worklog_references": [
         "worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3772,6 +4175,7 @@
       "worklog_references": [
         "worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3784,6 +4188,9 @@
       ],
       "worklog_references": [
         "worklog/entries/20261029T001624.463101Z-cleanup-refactor-r0295-q6-shapes-ec80c6.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122457.525475Z-cleanup-cleanup-coverage-heading-map-902bac.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 3
@@ -3798,6 +4205,7 @@
       "worklog_references": [
         "worklog/entries/20261029T002411.788347Z-cleanup-refactor-r0299-b1-probe-9a1703.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3811,6 +4219,7 @@
       "worklog_references": [
         "worklog/entries/20261029T003018.369231Z-cleanup-refactor-r0300-partial-replay-efa934.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -3824,6 +4233,7 @@
       "worklog_references": [
         "worklog/entries/20261029T004649.314018Z-cleanup-refactor-r0301-verifier-lm-head-5e3fc5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3837,6 +4247,7 @@
       "worklog_references": [
         "worklog/entries/20261029T010105.859511Z-cleanup-refactor-r0302-draft-router-f91149.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3850,6 +4261,7 @@
       "worklog_references": [
         "worklog/entries/20261029T010620.196805Z-cleanup-refactor-r0303-draft-dense-q8-fc5d8d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -3862,6 +4274,9 @@
       ],
       "worklog_references": [
         "worklog/entries/20261029T011119.117185Z-cleanup-refactor-r0304-selected-silu-down-4f6b11.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 4
@@ -3876,6 +4291,7 @@
       "worklog_references": [
         "worklog/entries/20261029T011856.387160Z-cleanup-refactor-r0305-f32-embedding-804005.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3889,6 +4305,7 @@
       "worklog_references": [
         "worklog/entries/20261029T012431.375949Z-cleanup-refactor-r0306-stage-trace-992897.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3902,6 +4319,7 @@
       "worklog_references": [
         "worklog/entries/20261029T013315.625516Z-cleanup-refactor-r0307-target-scores-55eb41.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3915,6 +4333,7 @@
       "worklog_references": [
         "worklog/entries/20261029T013822.281055Z-cleanup-refactor-r0308-r0309-packed-ar-e7e1c4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -3928,6 +4347,7 @@
       "worklog_references": [
         "worklog/entries/20261029T013822.281055Z-cleanup-refactor-r0308-r0309-packed-ar-e7e1c4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -3941,6 +4361,7 @@
       "worklog_references": [
         "worklog/entries/20261029T014323.217118Z-cleanup-refactor-r0310-rowchunk-c80c0f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -3954,6 +4375,7 @@
       "worklog_references": [
         "worklog/entries/20261029T014840.389427Z-cleanup-refactor-r0311-aotriton-stream-7539dd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -3967,6 +4389,7 @@
       "worklog_references": [
         "worklog/entries/20261029T015952.050970Z-cleanup-refactor-r0312-head-major-a24a43.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -3980,6 +4403,7 @@
       "worklog_references": [
         "worklog/entries/20261029T021242.593586Z-cleanup-refactor-r0313-r0314-laguna-rowvec-3f210f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -3993,6 +4417,7 @@
       "worklog_references": [
         "worklog/entries/20261029T021242.593586Z-cleanup-refactor-r0313-r0314-laguna-rowvec-3f210f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4006,6 +4431,7 @@
       "worklog_references": [
         "worklog/entries/20261029T021913.531715Z-cleanup-refactor-r0315-r0316-laguna-pair-c34d9e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4019,6 +4445,7 @@
       "worklog_references": [
         "worklog/entries/20261029T021913.531715Z-cleanup-refactor-r0315-r0316-laguna-pair-c34d9e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4030,6 +4457,7 @@
       "worklog_references": [
         "worklog/entries/20261027T033543.258001Z-cleanup-refactor-r0317-2d21a3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4043,6 +4471,7 @@
       "worklog_references": [
         "worklog/entries/20261029T022357.296878Z-cleanup-refactor-r0318-r0319-laguna-04169f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4056,6 +4485,7 @@
       "worklog_references": [
         "worklog/entries/20261029T022357.296878Z-cleanup-refactor-r0318-r0319-laguna-04169f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4069,6 +4499,7 @@
       "worklog_references": [
         "worklog/entries/20261029T023252.779032Z-cleanup-refactor-r0320-laguna-doublebuf-7989ea.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4082,6 +4513,7 @@
       "worklog_references": [
         "worklog/entries/20261029T024159.262366Z-cleanup-refactor-r0321-laguna-cached-attention-ec54ca.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -4093,6 +4525,9 @@
         "R0322 \u2014 Laguna Q6 resident-layout comparison migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130754.898836Z-cleanup-cleanup-coverage-refresh-7b4eae.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4104,6 +4539,9 @@
         "R0323 \u2014 Laguna fused selected-SiLU pack comparison ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130754.898836Z-cleanup-cleanup-coverage-refresh-7b4eae.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4115,6 +4553,7 @@
         "R0324 / R0325 / R0326 \u2014 Laguna Q6 activation comparison migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4126,6 +4565,7 @@
         "R0324 / R0325 / R0326 \u2014 Laguna Q6 activation comparison migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4137,6 +4577,7 @@
         "R0324 / R0325 / R0326 \u2014 Laguna Q6 activation comparison migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4148,6 +4589,7 @@
         "R0327 / R0328 \u2014 Laguna permute/planar comparison migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4159,6 +4601,7 @@
         "R0327 / R0328 \u2014 Laguna permute/planar comparison migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4170,6 +4613,9 @@
         "R0329 \u2014 Laguna source-F16 boundary comparison ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130754.898836Z-cleanup-cleanup-coverage-refresh-7b4eae.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4181,6 +4627,9 @@
         "R0330 \u2014 Laguna Q6 integer-WMMA reference ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130754.898836Z-cleanup-cleanup-coverage-refresh-7b4eae.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -4192,6 +4641,9 @@
         "R0331 \u2014 Laguna Q6 prefetch/sum comparison ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -4203,6 +4655,7 @@
       "worklog_references": [
         "worklog/entries/20261027T035722.267327Z-cleanup-refactor-r0332-53757f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -4214,6 +4667,7 @@
         "R0333\u2013R0335 \u2014 Laguna Q4 P8 and sum comparison ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -4225,6 +4679,7 @@
         "R0333\u2013R0335 \u2014 Laguna Q4 P8 and sum comparison ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4236,6 +4691,7 @@
         "R0333\u2013R0335 \u2014 Laguna Q4 P8 and sum comparison ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4247,6 +4703,9 @@
         "R0336 \u2014 Laguna packed-output comparison migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4258,6 +4717,7 @@
       "worklog_references": [
         "worklog/entries/20261027T035225.235941Z-cleanup-refactor-r0337-r0342-e1ce26.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4265,8 +4725,13 @@
       "id": "R0338",
       "original_title": "Laguna gfx1151 head/KV transfer selector",
       "disposition": "resolved-consolidated-r0281-fusion",
-      "current_headings": [],
+      "current_headings": [
+        "R0281-FUSION / R0338 \u2014 Attention fusion and reducer comparison controls"
+      ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130004.910444Z-cleanup-cleanup-coverage-consolidated-7707d8.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4274,8 +4739,13 @@
       "id": "R0339",
       "original_title": "Laguna gfx1151 split-attention transfer selector",
       "disposition": "resolved-consolidated-r0281-split-fusion",
-      "current_headings": [],
+      "current_headings": [
+        "R0281-SPLIT / R0339 \u2014 Split-attention and tile16 comparison controls"
+      ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130004.910444Z-cleanup-cleanup-coverage-consolidated-7707d8.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4287,6 +4757,9 @@
         "R0340 \u2014 Source-F16 decode comparison migration and shape validation"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4298,6 +4771,9 @@
         "R0341 \u2014 Laguna natural tile8 diagnostic ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122712.324301Z-cleanup-cleanup-coverage-substatus-f715b5.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4309,6 +4785,7 @@
       "worklog_references": [
         "worklog/entries/20261027T035225.235941Z-cleanup-refactor-r0337-r0342-e1ce26.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4320,6 +4797,7 @@
         "R0343\u2013R0348 \u2014 SWA issue-schedule diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4331,6 +4809,7 @@
         "R0343\u2013R0348 \u2014 SWA issue-schedule diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4342,6 +4821,7 @@
         "R0343\u2013R0348 \u2014 SWA issue-schedule diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4353,6 +4833,7 @@
         "R0343\u2013R0348 \u2014 SWA issue-schedule diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4364,6 +4845,7 @@
         "R0343\u2013R0348 \u2014 SWA issue-schedule diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4375,6 +4857,7 @@
         "R0343\u2013R0348 \u2014 SWA issue-schedule diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4386,6 +4869,7 @@
         "R0349\u2013R0351 \u2014 Global exp/mixed32 diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4397,6 +4881,7 @@
         "R0349\u2013R0351 \u2014 Global exp/mixed32 diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4408,6 +4893,7 @@
         "R0349\u2013R0351 \u2014 Global exp/mixed32 diagnostic migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4419,6 +4905,7 @@
       "worklog_references": [
         "worklog/entries/20261027T044726.544694Z-cleanup-refactor-r0352-7477f9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -4430,6 +4917,7 @@
         "R0353 \u2014 SWA value-tail reference ownership"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4441,6 +4929,7 @@
         "R0354 \u2014 Paired expert cache and ordinary-layout migration"
       ],
       "worklog_references": [],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4452,6 +4941,7 @@
       "worklog_references": [
         "worklog/entries/20261029T050527.430392Z-cleanup-refactor-r0355-r0357-dense-t16-af9d51.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4463,6 +4953,7 @@
       "worklog_references": [
         "worklog/entries/20261029T051336.870057Z-cleanup-refactor-r0356-scalar-q-734858.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4474,6 +4965,7 @@
       "worklog_references": [
         "worklog/entries/20261029T050527.430392Z-cleanup-refactor-r0355-r0357-dense-t16-af9d51.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -4485,6 +4977,7 @@
       "worklog_references": [
         "worklog/entries/20261027T044351.285392Z-cleanup-refactor-r0358-dfb085.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4496,6 +4989,7 @@
       "worklog_references": [
         "worklog/entries/20261027T041434.702679Z-cleanup-refactor-r0359-529849.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -4507,6 +5001,7 @@
       "worklog_references": [
         "worklog/entries/20261027T041804.519542Z-cleanup-refactor-r0360-23686a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -4518,6 +5013,7 @@
       "worklog_references": [
         "worklog/entries/20261027T042128.107955Z-cleanup-refactor-r0361-78bff9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -4529,6 +5025,7 @@
       "worklog_references": [
         "worklog/entries/20261027T042504.400484Z-cleanup-refactor-r0362-a1020e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -4540,6 +5037,7 @@
       "worklog_references": [
         "worklog/entries/20261027T042846.897059Z-cleanup-refactor-r0363-7f0b1d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4551,6 +5049,7 @@
       "worklog_references": [
         "worklog/entries/20261027T043254.284085Z-cleanup-refactor-r0364-668722.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4562,6 +5061,7 @@
       "worklog_references": [
         "worklog/entries/20261027T043617.207089Z-cleanup-refactor-r0365-e72e07.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4573,6 +5073,7 @@
       "worklog_references": [
         "worklog/entries/20261027T043953.393816Z-cleanup-refactor-r0366-4ca3b0.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4586,6 +5087,7 @@
       "worklog_references": [
         "worklog/entries/20261029T051941.870930Z-cleanup-refactor-r0367-halfdot-655c78.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4599,6 +5101,7 @@
       "worklog_references": [
         "worklog/entries/20261029T052818.119585Z-cleanup-refactor-r0368-global-geometry-2d8a00.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4610,6 +5113,7 @@
       "worklog_references": [
         "worklog/entries/20261027T040930.233208Z-cleanup-refactor-r0369-f11874.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4623,6 +5127,7 @@
       "worklog_references": [
         "worklog/entries/20261029T053656.048862Z-cleanup-refactor-r0370-moonshine-scheduler-450f11.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4636,6 +5141,7 @@
       "worklog_references": [
         "worklog/entries/20261029T054141.006360Z-cleanup-refactor-r0371-moonshine-head-f84584.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4647,6 +5153,7 @@
       "worklog_references": [
         "worklog/entries/20261029T055116.686953Z-cleanup-refactor-r0372-maple-prefill-3068eb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4660,6 +5167,7 @@
       "worklog_references": [
         "worklog/entries/20261029T060332.264079Z-cleanup-refactor-r0373-r0374-maple-fusion-f988a1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4673,6 +5181,7 @@
       "worklog_references": [
         "worklog/entries/20261029T060332.264079Z-cleanup-refactor-r0373-r0374-maple-fusion-f988a1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4686,6 +5195,7 @@
       "worklog_references": [
         "worklog/entries/20261029T061601.286055Z-cleanup-refactor-r0375-r0376-pack8-controls-94bcab.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -4699,6 +5209,7 @@
       "worklog_references": [
         "worklog/entries/20261029T061601.286055Z-cleanup-refactor-r0375-r0376-pack8-controls-94bcab.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -4712,6 +5223,7 @@
       "worklog_references": [
         "worklog/entries/20261029T062242.710835Z-cleanup-refactor-r0377-gdn-cluster8-6bb03a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -4725,6 +5237,7 @@
       "worklog_references": [
         "worklog/entries/20261029T063009.044590Z-cleanup-refactor-r0378-dense-wmma-35a284.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -4736,6 +5249,7 @@
       "worklog_references": [
         "worklog/entries/20261029T063635.200453Z-cleanup-refactor-r0379-shared-silu-732945.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -4749,6 +5263,7 @@
       "worklog_references": [
         "worklog/entries/20261029T065217.880731Z-cleanup-refactor-r0380-fp16-state-b408b8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 7
     },
@@ -4762,6 +5277,7 @@
       "worklog_references": [
         "worklog/entries/20261029T065835.550222Z-cleanup-refactor-r0381-c1-threads-94725b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4775,6 +5291,9 @@
       "worklog_references": [
         "worklog/entries/20261029T070304.872563Z-cleanup-refactor-r0382-staged-long-b85977.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T130438.200270Z-cleanup-cleanup-coverage-final-direct-d2b460.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -4786,6 +5305,7 @@
       "worklog_references": [
         "worklog/entries/20261029T070927.955081Z-cleanup-refactor-r0383-prefill-lds-73ddb8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4799,6 +5319,7 @@
       "worklog_references": [
         "worklog/entries/20261029T071419.173707Z-cleanup-refactor-r0384-long-graphs-71052b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4812,6 +5333,7 @@
       "worklog_references": [
         "worklog/entries/20261029T073138.453465Z-cleanup-refactor-r0385-handoff-sentinel-e79420.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -4823,6 +5345,7 @@
       "worklog_references": [
         "worklog/entries/20261029T074746.762664Z-cleanup-refactor-r0386-payload-controls-6c470a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4836,6 +5359,7 @@
       "worklog_references": [
         "worklog/entries/20261029T080300.651186Z-cleanup-refactor-r0387-packed-drift-427ed3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4849,6 +5373,7 @@
       "worklog_references": [
         "worklog/entries/20261029T081135.159700Z-cleanup-refactor-r0388-budget-diagnostics-b6c161.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4862,6 +5387,7 @@
       "worklog_references": [
         "worklog/entries/20261029T082338.709275Z-cleanup-refactor-r0389-hidden-policy-33c893.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4873,6 +5399,7 @@
       "worklog_references": [
         "worklog/entries/20261027T045201.569971Z-cleanup-refactor-r0390-19a056.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4884,6 +5411,7 @@
       "worklog_references": [
         "worklog/entries/20261029T083937.904678Z-cleanup-refactor-r0391-cooldown-355d69.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4899,6 +5427,7 @@
         "worklog/entries/20261029T092341.784588Z-cleanup-refactor-r0392-prefill-replay-4f157c.md",
         "worklog/entries/20261029T093602.697721Z-cleanup-refactor-r0392-closure-f701d1.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4922,6 +5451,7 @@
         "worklog/entries/20261029T112156.623409Z-cleanup-refactor-r0393-q6-capability-69ea5f.md",
         "worklog/entries/20261029T114236.423489Z-cleanup-refactor-r0393-q5-lifecycle-f07019.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 25
     },
@@ -4935,6 +5465,7 @@
       "worklog_references": [
         "worklog/entries/20261029T114932.236223Z-cleanup-refactor-r0394-direct-state-0c77b2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -4946,6 +5477,7 @@
       "worklog_references": [
         "worklog/entries/20261029T121740.480751Z-cleanup-refactor-r0395-width-policy-82192a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -4958,6 +5490,7 @@
         "worklog/entries/20261026T071736.963919Z-cleanup-refactor-r0061-r0064-328b17.md",
         "worklog/entries/20261029T122338.477390Z-cleanup-refactor-r0396-whole-batch-c1bace.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -4969,6 +5502,7 @@
       "worklog_references": [
         "worklog/entries/20261029T122853.516873Z-cleanup-refactor-r0397-target-prefill-56c7c7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -4980,6 +5514,7 @@
       "worklog_references": [
         "worklog/entries/20261029T124032.688533Z-cleanup-refactor-r0398-q6-mmq-47d061.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -4991,6 +5526,7 @@
       "worklog_references": [
         "worklog/entries/20261029T125207.689379Z-cleanup-refactor-r0399-f16-staging-7ac0f9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5003,6 +5539,7 @@
         "worklog/entries/20260925T053754.966144Z-lhl-mlperf-edge-integration-repair-187aa6.md",
         "worklog/entries/20261029T131425.760548Z-cleanup-refactor-r0400-xml-tool-contract-bcdcea.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5014,6 +5551,7 @@
       "worklog_references": [
         "worklog/entries/20261026T090655.553954Z-cleanup-refactor-r0077-8e7b36.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5027,6 +5565,7 @@
       "worklog_references": [
         "worklog/entries/20261029T140628.514334Z-cleanup-refactor-r0402-target-routes-5e6745.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5041,6 +5580,7 @@
         "worklog/entries/20261020T190611.875927Z-subagent-deferred-hidden-capacity-gguf-deferred-bulk-prefill-hidden-capacity-a21cd9.md",
         "worklog/entries/20261029T142538.447187Z-cleanup-refactor-r0403-hidden-alias-013ec8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5054,6 +5594,7 @@
       "worklog_references": [
         "worklog/entries/20261029T143522.416005Z-cleanup-refactor-r0404-direct-int8-dtypes-9a1059.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5065,6 +5606,7 @@
       "worklog_references": [
         "worklog/entries/20261029T150147.004296Z-cleanup-refactor-r0405-slot-local-history-260a8a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -5078,6 +5620,7 @@
       "worklog_references": [
         "worklog/entries/20261029T151035.839639Z-cleanup-refactor-r0406-xtx-capacity-d69914.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5092,6 +5635,7 @@
         "worklog/entries/20261029T151518.411951Z-cleanup-refactor-r0407-aotriton-evaluator-4f9845.md",
         "worklog/entries/20261029T152208.901622Z-cleanup-refactor-r0407-timesfm-scores-df9c42.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5103,6 +5647,7 @@
       "worklog_references": [
         "worklog/entries/20261029T152952.011607Z-cleanup-refactor-r0408-mmq-template-0dcdfa.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 1
     },
@@ -5114,6 +5659,7 @@
       "worklog_references": [
         "worklog/entries/20261029T153447.138496Z-cleanup-refactor-r0409-f32-plane-scope-a06145.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5127,6 +5673,7 @@
       "worklog_references": [
         "worklog/entries/20261029T155108.910534Z-cleanup-refactor-r0410-fused-combine-e366e4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5137,6 +5684,9 @@
       "current_headings": [],
       "worklog_references": [
         "worklog/entries/20261029T160110.035014Z-cleanup-refactor-r0411-q5k-row4-c65606.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122948.494360Z-cleanup-cleanup-coverage-source-lines-2e86e8.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 2
@@ -5151,6 +5701,10 @@
       "worklog_references": [
         "worklog/entries/20261029T163722.751625Z-cleanup-refactor-r0412-h256-prefill-2bd929.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122948.494360Z-cleanup-cleanup-coverage-source-lines-2e86e8.md",
+        "worklog/entries/20261030T123229.845514Z-cleanup-cleanup-coverage-derived-4c5a07.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5162,6 +5716,7 @@
       "worklog_references": [
         "worklog/entries/20261029T165643.836935Z-cleanup-refactor-r0413-q4-bundle-9728bf.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5173,6 +5728,7 @@
       "worklog_references": [
         "worklog/entries/20261029T170807.738254Z-cleanup-refactor-r0414-q51-pair-ba0af2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5186,6 +5742,7 @@
       "worklog_references": [
         "worklog/entries/20261029T172026.382460Z-cleanup-refactor-r0415-gdn-register-f765dd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5196,6 +5753,10 @@
       "current_headings": [],
       "worklog_references": [
         "worklog/entries/20261029T172959.150738Z-cleanup-refactor-r0416-q4-pair-6f8630.md"
+      ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122948.494360Z-cleanup-cleanup-coverage-source-lines-2e86e8.md",
+        "worklog/entries/20261030T123229.845514Z-cleanup-cleanup-coverage-derived-4c5a07.md"
       ],
       "missing_worklog_references": [],
       "subitem_count": 3
@@ -5208,6 +5769,7 @@
       "worklog_references": [
         "worklog/entries/20261027T051248.504284Z-cleanup-refactor-r0417-8f8cc9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5219,6 +5781,7 @@
       "worklog_references": [
         "worklog/entries/20261029T174436.165335Z-cleanup-refactor-r0418-q8-wave-scale-28756c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5230,6 +5793,7 @@
       "worklog_references": [
         "worklog/entries/20261029T175629.845600Z-cleanup-refactor-r0419-gr-wave-scale-688713.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5241,6 +5805,7 @@
       "worklog_references": [
         "worklog/entries/20261029T181414.804294Z-cleanup-refactor-r0420-timesfm-registry-7ae5dd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5254,6 +5819,7 @@
       "worklog_references": [
         "worklog/entries/20261029T182650.701375Z-cleanup-refactor-r0421-paro-pin-20d2af.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5267,6 +5833,7 @@
       "worklog_references": [
         "worklog/entries/20261029T183255.657751Z-cleanup-refactor-r0422-auto-context-9c4ccd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5278,6 +5845,7 @@
       "worklog_references": [
         "worklog/entries/20261029T183705.791249Z-cleanup-refactor-r0423-int8-policy-c7a92f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5290,6 +5858,7 @@
         "worklog/entries/20261027T050728.010409Z-cleanup-refactor-r0424-a6d61b.md",
         "worklog/entries/20261027T051714.408365Z-cleanup-refactor-r0424-final-b57159.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5303,6 +5872,7 @@
       "worklog_references": [
         "worklog/entries/20261029T184203.938095Z-cleanup-refactor-r0425-binder-conflicts-b4ac19.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5316,6 +5886,7 @@
       "worklog_references": [
         "worklog/entries/20261029T184908.042620Z-cleanup-refactor-r0426-wide-prefill-fcf10e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 21
     },
@@ -5329,6 +5900,7 @@
       "worklog_references": [
         "worklog/entries/20261029T185354.280363Z-cleanup-refactor-r0427-fixed256-f9d7e7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5342,6 +5914,7 @@
       "worklog_references": [
         "worklog/entries/20261029T185840.489411Z-cleanup-refactor-r0428-r0429-7e8f0a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -5354,6 +5927,7 @@
         "worklog/entries/20260928T155352.726337Z-lhl-qwen4exp-fullattn-qk4-promoted-6575b7.md",
         "worklog/entries/20261029T185840.489411Z-cleanup-refactor-r0428-r0429-7e8f0a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5365,6 +5939,7 @@
       "worklog_references": [
         "worklog/entries/20261029T190514.274565Z-cleanup-refactor-r0430-875516.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -5376,6 +5951,7 @@
       "worklog_references": [
         "worklog/entries/20261029T190855.061810Z-cleanup-refactor-r0431-13dd90.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5389,6 +5965,7 @@
       "worklog_references": [
         "worklog/entries/20261029T191254.312246Z-cleanup-refactor-r0432-fa6eb2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -5400,6 +5977,7 @@
       "worklog_references": [
         "worklog/entries/20261029T191843.232168Z-cleanup-refactor-r0433-ee0371.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5413,6 +5991,7 @@
       "worklog_references": [
         "worklog/entries/20261029T192349.450639Z-cleanup-refactor-r0434-4bc573.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -5426,6 +6005,7 @@
       "worklog_references": [
         "worklog/entries/20261029T192838.841154Z-cleanup-refactor-r0435-cd24b0.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -5437,6 +6017,7 @@
       "worklog_references": [
         "worklog/entries/20261029T193352.190619Z-cleanup-refactor-r0436-6e025c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5450,6 +6031,7 @@
       "worklog_references": [
         "worklog/entries/20261029T194103.398080Z-cleanup-refactor-r0437-a865f5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 8
     },
@@ -5463,6 +6045,7 @@
       "worklog_references": [
         "worklog/entries/20261029T195224.685777Z-cleanup-refactor-r0438-1c85f6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5476,6 +6059,7 @@
       "worklog_references": [
         "worklog/entries/20261029T195712.777984Z-cleanup-refactor-r0439-258d7d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -5487,6 +6071,7 @@
       "worklog_references": [
         "worklog/entries/20261029T200242.207875Z-cleanup-refactor-r0440-b73bbe.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5498,6 +6083,7 @@
       "worklog_references": [
         "worklog/entries/20261029T200848.373072Z-cleanup-refactor-r0441-5f1760.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5511,6 +6097,7 @@
       "worklog_references": [
         "worklog/entries/20261029T201635.969016Z-cleanup-refactor-r0442-e923ef.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5524,6 +6111,7 @@
       "worklog_references": [
         "worklog/entries/20261029T202553.939702Z-cleanup-refactor-r0443-95c64b.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5537,6 +6125,7 @@
       "worklog_references": [
         "worklog/entries/20261029T203123.488199Z-cleanup-refactor-r0444-d80e45.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 6
     },
@@ -5548,6 +6137,7 @@
       "worklog_references": [
         "worklog/entries/20261029T203821.686459Z-cleanup-refactor-r0445-a8b7cd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5561,6 +6151,7 @@
       "worklog_references": [
         "worklog/entries/20261029T204623.968297Z-cleanup-refactor-r0446-9e2320.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5572,6 +6163,7 @@
       "worklog_references": [
         "worklog/entries/20261029T205432.027473Z-cleanup-refactor-r0447-f8f7cd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5583,6 +6175,7 @@
       "worklog_references": [
         "worklog/entries/20261029T210003.157171Z-cleanup-refactor-r0448-fcd57e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5594,6 +6187,7 @@
       "worklog_references": [
         "worklog/entries/20261029T210534.002095Z-cleanup-refactor-r0449-e4b788.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5607,6 +6201,7 @@
       "worklog_references": [
         "worklog/entries/20261029T211140.396344Z-cleanup-refactor-r0450-99b3a5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5618,6 +6213,7 @@
       "worklog_references": [
         "worklog/entries/20261029T213646.706846Z-cleanup-cleanup-refactor-r0451-6a5bd5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5629,6 +6225,7 @@
       "worklog_references": [
         "worklog/entries/20261029T215920.290113Z-cleanup-cleanup-refactor-r0452-020751.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5640,6 +6237,7 @@
       "worklog_references": [
         "worklog/entries/20261029T221847.413715Z-cleanup-cleanup-refactor-r0453-7a5c2f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5653,6 +6251,7 @@
         "worklog/entries/20261029T223540.738726Z-cleanup-cleanup-refactor-r0454-gdn-b83a70.md",
         "worklog/entries/20261029T224736.722479Z-cleanup-cleanup-refactor-r0454-moe-cd513c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -5670,6 +6269,10 @@
         "worklog/entries/20261029T235347.056749Z-cleanup-cleanup-refactor-r0455-publication-2c944b.md",
         "worklog/entries/20261030T000155.979928Z-cleanup-cleanup-refactor-r0455-close-a136cb.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122948.494360Z-cleanup-cleanup-coverage-source-lines-2e86e8.md",
+        "worklog/entries/20261030T123229.845514Z-cleanup-cleanup-coverage-derived-4c5a07.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -5681,6 +6284,7 @@
       "worklog_references": [
         "worklog/entries/20261030T000705.544814Z-cleanup-cleanup-refactor-r0456-bd7f93.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5692,6 +6296,7 @@
       "worklog_references": [
         "worklog/entries/20261030T001345.427781Z-cleanup-cleanup-refactor-r0457-8991b3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5703,6 +6308,7 @@
       "worklog_references": [
         "worklog/entries/20261030T001919.315811Z-cleanup-cleanup-refactor-r0458-94e9b5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5716,6 +6322,7 @@
       "worklog_references": [
         "worklog/entries/20261030T002911.260285Z-cleanup-cleanup-r0459-correction-f8285d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5727,6 +6334,7 @@
       "worklog_references": [
         "worklog/entries/20261030T004734.660604Z-cleanup-cleanup-r0460-gr-manifest-128f9f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5738,6 +6346,7 @@
       "worklog_references": [
         "worklog/entries/20261030T005613.683397Z-cleanup-cleanup-r0461-0ba6aa.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5751,6 +6360,10 @@
       "worklog_references": [
         "worklog/entries/20261030T012436.140169Z-cleanup-cleanup-r0462-disposition-92a3ce.md"
       ],
+      "coverage_review_references": [
+        "worklog/entries/20261030T122948.494360Z-cleanup-cleanup-coverage-source-lines-2e86e8.md",
+        "worklog/entries/20261030T123229.845514Z-cleanup-cleanup-coverage-derived-4c5a07.md"
+      ],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5762,6 +6375,7 @@
       "worklog_references": [
         "worklog/entries/20261030T012910.306501Z-cleanup-cleanup-r0463-e319e4.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5773,6 +6387,7 @@
       "worklog_references": [
         "worklog/entries/20261030T013318.183882Z-cleanup-cleanup-r0464-b4097a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5784,6 +6399,7 @@
       "worklog_references": [
         "worklog/entries/20261030T013740.330043Z-cleanup-cleanup-r0465-61d244.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5795,6 +6411,7 @@
       "worklog_references": [
         "worklog/entries/20261030T014427.086399Z-cleanup-cleanup-r0466-2d7f62.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5806,6 +6423,7 @@
       "worklog_references": [
         "worklog/entries/20261030T015445.646838Z-cleanup-cleanup-r0467-2a1d03.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5817,6 +6435,7 @@
       "worklog_references": [
         "worklog/entries/20261030T020207.348922Z-cleanup-cleanup-r0468-bf51b3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5828,6 +6447,7 @@
       "worklog_references": [
         "worklog/entries/20261030T021026.289206Z-cleanup-cleanup-r0469-c3bf3e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5839,6 +6459,7 @@
       "worklog_references": [
         "worklog/entries/20261030T021925.750802Z-cleanup-cleanup-r0470-5c83ca.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5852,6 +6473,7 @@
       "worklog_references": [
         "worklog/entries/20261030T023252.345528Z-cleanup-cleanup-r0471-d2154d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -5863,6 +6485,7 @@
       "worklog_references": [
         "worklog/entries/20261030T023830.095483Z-cleanup-cleanup-r0472-167ac2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -5874,6 +6497,7 @@
       "worklog_references": [
         "worklog/entries/20261030T030012.765428Z-cleanup-cleanup-r0473-dtype-505656.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -5885,6 +6509,7 @@
       "worklog_references": [
         "worklog/entries/20261030T030910.768251Z-cleanup-cleanup-r0474-f79f2c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5898,6 +6523,7 @@
       "worklog_references": [
         "worklog/entries/20261030T031407.532336Z-cleanup-cleanup-r0475-49b2bc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5909,6 +6535,7 @@
       "worklog_references": [
         "worklog/entries/20261030T031748.713530Z-cleanup-cleanup-r0476-6a09e5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5920,6 +6547,7 @@
       "worklog_references": [
         "worklog/entries/20261030T033041.035124Z-cleanup-cleanup-r0477-4d4f19.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5931,6 +6559,7 @@
       "worklog_references": [
         "worklog/entries/20261030T033945.181240Z-cleanup-cleanup-r0478-0f21f2.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5944,6 +6573,7 @@
       "worklog_references": [
         "worklog/entries/20261030T034543.612618Z-cleanup-cleanup-r0479-611184.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5955,6 +6585,7 @@
       "worklog_references": [
         "worklog/entries/20261030T035042.196272Z-cleanup-cleanup-r0480-6765c7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5966,6 +6597,7 @@
       "worklog_references": [
         "worklog/entries/20261030T035526.442545Z-cleanup-cleanup-r0481-08a608.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5977,6 +6609,7 @@
       "worklog_references": [
         "worklog/entries/20261030T040037.167265Z-cleanup-cleanup-r0482-8d20f3.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -5990,6 +6623,7 @@
       "worklog_references": [
         "worklog/entries/20261030T040737.911861Z-cleanup-cleanup-r0483-621ed7.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6003,6 +6637,7 @@
       "worklog_references": [
         "worklog/entries/20261030T041152.816435Z-cleanup-cleanup-r0484-5aa96f.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6014,6 +6649,7 @@
       "worklog_references": [
         "worklog/entries/20261030T041609.617680Z-cleanup-cleanup-r0485-r0487-fc59cc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6025,6 +6661,7 @@
       "worklog_references": [
         "worklog/entries/20261030T041609.617680Z-cleanup-cleanup-r0485-r0487-fc59cc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6036,6 +6673,7 @@
       "worklog_references": [
         "worklog/entries/20261030T041609.617680Z-cleanup-cleanup-r0485-r0487-fc59cc.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6049,6 +6687,7 @@
       "worklog_references": [
         "worklog/entries/20261030T041958.107569Z-cleanup-cleanup-r0488-accf3d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6060,6 +6699,7 @@
       "worklog_references": [
         "worklog/entries/20261030T042210.522734Z-cleanup-cleanup-r0489-d0efd8.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6073,6 +6713,7 @@
       "worklog_references": [
         "worklog/entries/20261030T042438.639602Z-cleanup-cleanup-r0490-74bcf9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -6086,6 +6727,7 @@
       "worklog_references": [
         "worklog/entries/20261030T043241.164193Z-cleanup-cleanup-r0491-shapes-c7f3cb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -6099,6 +6741,7 @@
       "worklog_references": [
         "worklog/entries/20261030T043600.047954Z-cleanup-cleanup-r0492-eeda0d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6112,6 +6755,7 @@
       "worklog_references": [
         "worklog/entries/20261030T043836.733445Z-cleanup-cleanup-r0493-d62830.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6125,6 +6769,7 @@
       "worklog_references": [
         "worklog/entries/20261030T044326.320397Z-cleanup-cleanup-r0494-d10065.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6138,6 +6783,7 @@
       "worklog_references": [
         "worklog/entries/20261030T044815.391846Z-cleanup-cleanup-r0495-77e784.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -6149,6 +6795,7 @@
       "worklog_references": [
         "worklog/entries/20261030T045134.832243Z-cleanup-cleanup-r0496-61ed2a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6160,6 +6807,7 @@
       "worklog_references": [
         "worklog/entries/20261030T045357.669211Z-cleanup-cleanup-r0497-7d3514.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 4
     },
@@ -6171,6 +6819,7 @@
       "worklog_references": [
         "worklog/entries/20261030T045650.070602Z-cleanup-cleanup-r0498-9d21e5.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -6184,6 +6833,7 @@
       "worklog_references": [
         "worklog/entries/20261030T045925.333733Z-cleanup-cleanup-r0499-efb2c9.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 5
     },
@@ -6197,6 +6847,7 @@
       "worklog_references": [
         "worklog/entries/20261030T050300.999697Z-cleanup-cleanup-r0500-b0fefe.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -6208,6 +6859,7 @@
       "worklog_references": [
         "worklog/entries/20261030T050523.203458Z-cleanup-cleanup-r0501-6eb66e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6219,6 +6871,7 @@
       "worklog_references": [
         "worklog/entries/20261030T050810.297700Z-cleanup-cleanup-r0502-631aff.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6232,6 +6885,7 @@
       "worklog_references": [
         "worklog/entries/20261030T051107.924207Z-cleanup-cleanup-r0503-3a6d5d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6245,6 +6899,7 @@
       "worklog_references": [
         "worklog/entries/20261030T051533.852365Z-cleanup-cleanup-r0504-1a0a4a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6258,6 +6913,7 @@
       "worklog_references": [
         "worklog/entries/20261030T052140.700312Z-cleanup-cleanup-r0505-1205da.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6271,6 +6927,7 @@
       "worklog_references": [
         "worklog/entries/20261030T052435.456434Z-cleanup-cleanup-r0506-2266da.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6284,6 +6941,7 @@
       "worklog_references": [
         "worklog/entries/20261030T052802.377239Z-cleanup-cleanup-r0507-9a0a9a.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -6297,6 +6955,7 @@
       "worklog_references": [
         "worklog/entries/20261028T050243.205032Z-cleanup-refactor-r0281-sampler-6365de.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6310,6 +6969,7 @@
       "worklog_references": [
         "worklog/entries/20261030T053120.997595Z-cleanup-cleanup-r0509-ac7268.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6323,6 +6983,7 @@
       "worklog_references": [
         "worklog/entries/20261030T053417.246066Z-cleanup-cleanup-r0510-f005d0.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6336,6 +6997,7 @@
       "worklog_references": [
         "worklog/entries/20261030T053735.552067Z-cleanup-cleanup-r0511-44c15c.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6349,6 +7011,7 @@
       "worklog_references": [
         "worklog/entries/20261030T054131.120473Z-cleanup-cleanup-r0512-fc0317.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6362,6 +7025,7 @@
       "worklog_references": [
         "worklog/entries/20261030T054428.090722Z-cleanup-cleanup-r0513-d4c6af.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6375,6 +7039,7 @@
       "worklog_references": [
         "worklog/entries/20261030T054704.775988Z-cleanup-cleanup-r0514-dd42dd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6388,6 +7053,7 @@
       "worklog_references": [
         "worklog/entries/20261030T055013.430897Z-cleanup-cleanup-r0515-0a2771.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6401,6 +7067,7 @@
       "worklog_references": [
         "worklog/entries/20261030T055331.626666Z-cleanup-cleanup-r0516-efe8c6.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6412,6 +7079,7 @@
       "worklog_references": [
         "worklog/entries/20261030T055626.094892Z-cleanup-cleanup-r0517-9ca6cd.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 3
     },
@@ -6425,6 +7093,7 @@
       "worklog_references": [
         "worklog/entries/20261030T060018.967169Z-cleanup-cleanup-r0518-650f6d.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 2
     },
@@ -6438,6 +7107,7 @@
       "worklog_references": [
         "worklog/entries/20261030T060330.593271Z-cleanup-cleanup-r0519-9919bb.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6449,6 +7119,7 @@
       "worklog_references": [
         "worklog/entries/20261030T060632.329369Z-cleanup-cleanup-r0520-d964b0.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     },
@@ -6462,6 +7133,7 @@
       "worklog_references": [
         "worklog/entries/20261030T060931.741764Z-cleanup-cleanup-r0521-46228e.md"
       ],
+      "coverage_review_references": [],
       "missing_worklog_references": [],
       "subitem_count": 0
     }
