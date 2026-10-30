@@ -807,7 +807,7 @@ route only after reproducing its failure and passing the width-one explicit-K3
 category suite plus C1-C2 validation. Keep the working captured/deferred
 one-slot mapping enabled while that separate hardware follow-up runs.
 
-### R0177 — Public planar-Q6 chunk-policy validation
+### R0177 / R0292 — Public planar-Q6 chunk-policy validation
 
 The LM-head chunk environment override is removed. Backend policy and primitive
 capacity own chunk size; `_small_b_rowtile_chunks` and the 2–8-row kernels remain.
@@ -1619,7 +1619,7 @@ primitive comparisons and R0249/R0250's public c1/multi-row continuation and
 cleanup gate. Keep unsupported/backend fallbacks, grouped-prefill consumers
 and independent verifier tiles. No mode, kernel or default changes here.
 
-### R0281-SPLIT — Split-attention and tile16 comparison controls
+### R0281-SPLIT / R0339 — Split-attention and tile16 comparison controls
 
 R0339's historical gfx1151 transfer entry is consolidated here; its promotion
 is already reflected in package defaults. The profiler's explicit bundle
@@ -1647,7 +1647,7 @@ and unrelated to each crossover, wrap/continuation and multi-row fallback,
 then R0249/R0250's public generation and allocation-cleanup gate. No control,
 threshold, allocation or attention implementation changes here.
 
-### R0281-FUSION — Attention fusion and reducer comparison controls
+### R0281-FUSION / R0338 — Attention fusion and reducer comparison controls
 
 R0338's historical gfx1151 head/KV transfer entry is consolidated here; the
 transfer is already enabled. Host CLI-to-constructor tests preserve unset,
