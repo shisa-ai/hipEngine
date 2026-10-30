@@ -3915,8 +3915,11 @@ Owner: `hipengine/execution_profiles.py`.
 Scope: `qwen35_dense_gfx1100_profiles.py`, `qwen35_dense_gfx1151_profiles.py`,
 `qwen35_moe_gfx1151_profiles.py`.
 
-**Deferred ownership design:** move settings needed by coexisting owners into explicit fields
-consumed by those owners. Inventory each actual consumer and its binding lifetime; do not surround
+**Remaining ownership migration:** move settings needed by coexisting owners into explicit fields
+consumed by those owners. The gfx1151 dense Q4 verifier rowtile choice is generator-bound and
+transported to ordinary, streaming, native-batch, MTP and NextN sessions; direct/unbound sessions
+keep their construction-time diagnostic input. FP16 state, GDN capture and manifest transport
+remain to migrate. Inventory each actual consumer and its binding lifetime; do not surround
 every method with an implicit environment context. Preserve ordinary profile plugin composition and
 header identity.
 

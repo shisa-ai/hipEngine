@@ -12642,6 +12642,21 @@ class _ExternalDMSDevicePrefillCollector:
         self._closed = True
 
 
+def _resolve_target_verifier_production_q4_rowtile(
+    requested: bool | None,
+) -> bool:
+    """Resolve the session's frozen rowtile decision.
+
+    A profile-bound generator supplies the value directly. ``None`` is the
+    unbound/direct diagnostic path, where the explicit environment input is
+    still honored at construction time.
+    """
+
+    if requested is not None:
+        return bool(requested)
+    return _env_flag(TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV, False)
+
+
 @dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
@@ -12715,6 +12730,9 @@ class Qwen35GGUFResidentSession:
     # use a decision sweep followed by layerwise packing.
     dms_prefill_mode: str = "dense_pool"
     dms_backend_factory: Callable | None = None
+    # Profile-owned production verifier-Q4 rowtile decision. ``None`` keeps the
+    # unbound/direct diagnostic environment input at construction.
+    target_verifier_production_q4_rowtile: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch = resident_state_field("canonical", "scratch")
     _target_scratch_owner = resident_state_field("canonical", "scratch_owner")
@@ -13197,9 +13215,10 @@ class Qwen35GGUFResidentSession:
         self.backend = self.runner.backend
         # Freeze this experimental T2 axis at session construction so strict
         # and candidate owners can coexist in one numerical evaluator process.
-        self.target_verifier_production_q4_rowtile = _env_flag(
-            TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
-            False,
+        self.target_verifier_production_q4_rowtile = (
+            _resolve_target_verifier_production_q4_rowtile(
+                self.target_verifier_production_q4_rowtile
+            )
         )
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")

@@ -1438,6 +1438,9 @@ class Qwen35GGUFBringupGenerator:
         default_factory=dict,
         repr=False,
     )
+    # Profile-owned production verifier-Q4 rowtile decision. ``None`` keeps the
+    # unbound/direct diagnostic environment input at session construction.
+    target_verifier_production_q4_rowtile: bool | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -1740,6 +1743,18 @@ class Qwen35GGUFBringupGenerator:
         self._prepared_kv_policy = policy
         self._prepared_kv_scale_dtype = scale_dtype
         self._prepared_kv_signature = signature
+
+    def _target_verifier_rowtile_session_kwargs(self) -> dict[str, Any]:
+        """Carry the owner-bound rowtile decision into every session constructor."""
+
+        requested = getattr(
+            self,
+            "target_verifier_production_q4_rowtile",
+            None,
+        )
+        if requested is None:
+            return {}
+        return {"target_verifier_production_q4_rowtile": bool(requested)}
 
     def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
         signature = getattr(self, "_prepared_kv_signature", None)
@@ -3139,6 +3154,7 @@ class Qwen35GGUFBringupGenerator:
                     defer_kv_allocation=bool(defer_kv_allocation),
                     max_batch_size=int(max_batch_size),
                     **self._prepared_session_kv_kwargs(),
+                    **self._target_verifier_rowtile_session_kwargs(),
                     **session_kwargs,
                 )
             except (HipError, MemoryError) as exc:
@@ -3335,6 +3351,7 @@ class Qwen35GGUFBringupGenerator:
             session_kwargs: dict[str, Any] = {
                 "backend": self.backend,
                 **self._prepared_session_kv_kwargs(),
+                **self._target_verifier_rowtile_session_kwargs(),
             }
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
@@ -3429,6 +3446,11 @@ class Qwen35GGUFBringupGenerator:
                 hot_vocab_path=hot_vocab_path,
             ),
             hot_vocab_path=hot_vocab_path,
+            target_verifier_production_q4_rowtile=getattr(
+                self,
+                "target_verifier_production_q4_rowtile",
+                None,
+            ),
         )
         return provider, key if pool_enabled else None, False
 
@@ -3549,6 +3571,13 @@ class Qwen35GGUFBringupGenerator:
 
     def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
         self._configure_native_sampler(session)
+        requested_rowtile = getattr(
+            self,
+            "target_verifier_production_q4_rowtile",
+            None,
+        )
+        if requested_rowtile is not None:
+            session.target_verifier_production_q4_rowtile = bool(requested_rowtile)
         # Prefill correctness policy is selected by the generator registry
         # factory, not by a quant branch in runtime dispatch.
         session.default_bulk_attention_mode = getattr(
@@ -3857,6 +3886,7 @@ class Qwen35GGUFBringupGenerator:
             "use_wmma_prefill": _resident_session_wmma_prefill_default(),
             "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
             **self._prepared_session_kv_kwargs(),
+            **self._target_verifier_rowtile_session_kwargs(),
         }
         if shared_runner is not None:
             session_kwargs.update(runtime=shared_runner.runtime, shared_runner=shared_runner)
@@ -3961,6 +3991,7 @@ class Qwen35GGUFBringupGenerator:
                 max_batch_size=native_capacity,
                 backend=self.backend,
                 execution_routes=("eager", "native_rows", "native_graph"),
+                **self._target_verifier_rowtile_session_kwargs(),
             ) as session:
                 self._configure_session(session)
                 native_run = self._generate_greedy_batch(
@@ -5147,6 +5178,7 @@ class Qwen35GGUFBringupGenerator:
                         shared_runner=shared_runner,
                         use_wmma_prefill=_resident_session_wmma_prefill_default(),
                         use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
+                        **self._target_verifier_rowtile_session_kwargs(),
                     ),
                     None,
                     False,
@@ -5356,6 +5388,7 @@ class Qwen35GGUFBringupGenerator:
                     shared_runner=shared_runner,
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
+                    **self._target_verifier_rowtile_session_kwargs(),
                 ),
                 None,
                 False,

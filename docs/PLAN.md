@@ -373,6 +373,10 @@ implemented candidate remains reachable for explicitly recorded evaluation.
 Profile factories remain ordinary plugin construction hooks, not artifact
 validation or transaction frameworks. Model loaders own format/consumer checks;
 numerical evidence is still scoped to the tested artifact and workload.
+The gfx1151 dense GGUF binder carries its Q4 verifier rowtile decision on the
+generator; all resident and NextN session constructors receive that owner value.
+Unbound/direct sessions still parse the explicit diagnostic environment input at
+construction. The existing verifier ContextVar scopes the frozen session choice.
 
 Missing benchmark coverage is not an implementation failure. Within declared
 input, resource and execution contracts, run implemented paths, measure real

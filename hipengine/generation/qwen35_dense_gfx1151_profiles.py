@@ -50,12 +50,12 @@ def _binder(
     fp16_state: bool,
     q4_verifier_rowtile: bool,
 ) -> None:
-    del generator
+    # The rowtile decision is frozen on the generator before any resident
+    # session exists. The environment remains the unbound/direct diagnostic
+    # input, but it is no longer the carrier between profile owners.
+    generator.target_verifier_production_q4_rowtile = bool(q4_verifier_rowtile)
     os.environ[FP16_RECURRENT_STATE_ENV] = "1" if fp16_state else "0"
     os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] = "1"
-    os.environ[PRODUCTION_Q4_VERIFIER_ROWTILE_ENV] = (
-        "1" if q4_verifier_rowtile else "0"
-    )
     os.environ["HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256"] = (
         resolved.manifest_sha256
     )

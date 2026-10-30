@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -64,7 +65,8 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
 
     assert os.environ[FP16_RECURRENT_STATE_ENV] == "0"
     assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
-    assert os.environ[PRODUCTION_Q4_VERIFIER_ROWTILE_ENV] == "0"
+    assert generator.target_verifier_production_q4_rowtile is False
+    assert PRODUCTION_Q4_VERIFIER_ROWTILE_ENV not in os.environ
     assert resolved.profile is ExecutionProfile.STRICT
     assert resolved.manifest_sha256 == resolved.strict_manifest_sha256
     assert resolved.manifest["graph_policy"] == "specdec2_eager_c1"
@@ -98,7 +100,8 @@ def test_qwen38_production_profile_keeps_fp32_state_and_q4_rowtiles() -> None:
     assert resolved.manifest_sha256 != resolved.strict_manifest_sha256
     assert os.environ[FP16_RECURRENT_STATE_ENV] == "0"
     assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
-    assert os.environ[PRODUCTION_Q4_VERIFIER_ROWTILE_ENV] == "1"
+    assert generator.target_verifier_production_q4_rowtile is True
+    assert PRODUCTION_Q4_VERIFIER_ROWTILE_ENV not in os.environ
     selections = _selection_map(resolved)
     expected = {
         ("linear", "specdec2_mtp2_c2_k3_r8_q4_single"): (
@@ -136,3 +139,260 @@ def test_qwen38_production_profile_keeps_fp32_state_and_q4_rowtiles() -> None:
             selections[key]["selected_variant"],
             selections[key]["strict_fallback_variant"],
         ) == variants
+
+
+def _new_generator():
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
+
+    return object.__new__(Qwen35GGUFBringupGenerator)
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        (ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION),
+        (ExecutionProfile.PRODUCTION, ExecutionProfile.STRICT),
+    ],
+)
+def test_qwen38_construction_order_keeps_per_owner_rowtile(order) -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen38_gguf_gfx1151_profiles()
+    generators = {}
+    for profile in order:
+        resolved = _resolve(profile)
+        generators[profile] = resolved.construct_generator(_new_generator)
+
+    strict = generators[ExecutionProfile.STRICT]
+    production = generators[ExecutionProfile.PRODUCTION]
+    assert strict.target_verifier_production_q4_rowtile is False
+    assert production.target_verifier_production_q4_rowtile is True
+    assert strict._target_verifier_rowtile_session_kwargs() == {
+        "target_verifier_production_q4_rowtile": False
+    }
+    assert production._target_verifier_rowtile_session_kwargs() == {
+        "target_verifier_production_q4_rowtile": True
+    }
+
+
+@pytest.mark.parametrize(
+    ("profile", "ambient", "expected"),
+    [
+        (ExecutionProfile.PRODUCTION, "0", True),
+        (ExecutionProfile.STRICT, "1", False),
+    ],
+)
+def test_qwen38_profile_decision_overrides_ambient_without_rewriting_it(
+    monkeypatch: pytest.MonkeyPatch,
+    profile: ExecutionProfile,
+    ambient: str,
+    expected: bool,
+) -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen38_gguf_gfx1151_profiles()
+    monkeypatch.setenv(PRODUCTION_Q4_VERIFIER_ROWTILE_ENV, ambient)
+
+    generator = _resolve(profile).construct_generator(_new_generator)
+
+    assert generator.target_verifier_production_q4_rowtile is expected
+    assert os.environ[PRODUCTION_Q4_VERIFIER_ROWTILE_ENV] == ambient
+
+
+def test_qwen38_unbound_rowtile_uses_ambient_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _resolve_target_verifier_production_q4_rowtile,
+    )
+
+    monkeypatch.setenv(PRODUCTION_Q4_VERIFIER_ROWTILE_ENV, "1")
+    assert _resolve_target_verifier_production_q4_rowtile(None) is True
+    assert _resolve_target_verifier_production_q4_rowtile(False) is False
+
+    monkeypatch.setenv(PRODUCTION_Q4_VERIFIER_ROWTILE_ENV, "0")
+    assert _resolve_target_verifier_production_q4_rowtile(None) is False
+    assert _resolve_target_verifier_production_q4_rowtile(True) is True
+
+    monkeypatch.delenv(PRODUCTION_Q4_VERIFIER_ROWTILE_ENV, raising=False)
+    assert _resolve_target_verifier_production_q4_rowtile(None) is False
+
+
+def test_qwen38_shared_session_construction_transports_rowtile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import qwen35_gguf as gguf
+
+    captured: dict[str, object] = {}
+
+    class FakeSession:
+        max_sequence_length = None
+
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _new_generator()
+    generator.model_path = "unused"
+    generator.backend = QWEN38_GGUF_BACKEND
+    generator.target_verifier_production_q4_rowtile = True
+    generator._prepared_kv_signature = None
+    generator.dms_metadata_path = None
+    generator._auto_context_estimate = None
+
+    generator._construct_shared_session(
+        SimpleNamespace(runtime=None),
+        max_sequence_length=None,
+        max_batch_size=1,
+        defer_kv_allocation=False,
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+    )
+
+    assert captured["target_verifier_production_q4_rowtile"] is True
+
+
+def test_qwen38_direct_session_scope_transports_rowtile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.generation import qwen35_gguf as gguf
+
+    captured: dict[str, object] = {}
+
+    class FakeSession:
+        runtime = None
+
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc) -> bool:
+            return False
+
+    monkeypatch.setattr(gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _new_generator()
+    generator.model_path = "unused"
+    generator.backend = QWEN38_GGUF_BACKEND
+    generator.target_verifier_production_q4_rowtile = False
+    generator._prepared_kv_signature = None
+    generator.dms_metadata_path = None
+    monkeypatch.setattr(generator, "_configure_session", lambda session: None)
+
+    with generator._resident_session_scope(
+        shared_runner=None,
+        pool_name="test",
+    ) as (session, reused):
+        assert session is not None
+        assert reused is False
+
+    assert captured["target_verifier_production_q4_rowtile"] is False
+
+
+def test_qwen38_configure_session_preserves_interleaved_owner_rowtile_against_ambient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.runtime.gguf_linear import (
+        _target_verifier_production_q4_rowtile_session_enabled as session_rowtile,
+        target_verifier_production_q4_rowtile_session,
+    )
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen38_gguf_gfx1151_profiles()
+    owners = [
+        (_resolve(ExecutionProfile.STRICT).construct_generator(_new_generator), False),
+        (
+            _resolve(ExecutionProfile.PRODUCTION).construct_generator(_new_generator),
+            True,
+        ),
+        (_resolve(ExecutionProfile.STRICT).construct_generator(_new_generator), False),
+    ]
+    for generator, _ in owners:
+        generator.backend = QWEN38_GGUF_BACKEND
+    sessions = [SimpleNamespace(_native_sampler_workspace=None) for _ in owners]
+
+    # Hostile ambient values alternate between every owner. A bound owner's
+    # choice must survive both a fresh session and a session reused in
+    # strict -> production -> strict order.
+    for ambient in ("1", "0"):
+        monkeypatch.setenv(PRODUCTION_Q4_VERIFIER_ROWTILE_ENV, ambient)
+        for (generator, expected), session in zip(owners, sessions):
+            generator._configure_session(session)
+            assert session.target_verifier_production_q4_rowtile is expected
+            with target_verifier_production_q4_rowtile_session(
+                session.target_verifier_production_q4_rowtile
+            ):
+                assert session_rowtile.get() is expected
+            assert session_rowtile.get() is False
+
+    reused = sessions[0]
+    for generator, expected in owners:
+        monkeypatch.setenv(
+            PRODUCTION_Q4_VERIFIER_ROWTILE_ENV,
+            "0" if expected else "1",
+        )
+        generator._configure_session(reused)
+        assert reused.target_verifier_production_q4_rowtile is expected
+        with target_verifier_production_q4_rowtile_session(
+            reused.target_verifier_production_q4_rowtile
+        ):
+            assert session_rowtile.get() is expected
+        assert session_rowtile.get() is False
+
+    # An unbound/direct owner leaves the session's construction-time diagnostic
+    # decision alone instead of retargeting it from ambient input.
+    monkeypatch.setenv(PRODUCTION_Q4_VERIFIER_ROWTILE_ENV, "0")
+    unbound = _new_generator()
+    unbound.backend = QWEN38_GGUF_BACKEND
+    assert unbound.target_verifier_production_q4_rowtile is None
+    diagnostic_session = SimpleNamespace(
+        _native_sampler_workspace=None,
+        target_verifier_production_q4_rowtile=True,
+    )
+    unbound._configure_session(diagnostic_session)
+    assert diagnostic_session.target_verifier_production_q4_rowtile is True
+
+
+@pytest.mark.parametrize("requested", [True, False, None])
+def test_qwen38_nextn_transports_rowtile_to_batch_session(
+    monkeypatch: pytest.MonkeyPatch,
+    requested: bool | None,
+) -> None:
+    from hipengine.runtime import qwen35_gguf_nextn as nextn
+
+    captured: dict[str, object] = {}
+
+    class StopNextN(Exception):
+        pass
+
+    class FakeWeights:
+        backend = QWEN38_GGUF_BACKEND
+
+        def as_full_stack_weights(self):
+            return object()
+
+    class FakeRunner:
+        def __init__(self, *args, **kwargs) -> None:
+            self.hidden_size = 4
+            self.vocab_size = 8
+            self.runtime = kwargs.get("runtime")
+
+    class FakeSession:
+        def __init__(self, *args, **kwargs) -> None:
+            captured.update(kwargs)
+            raise StopNextN
+
+    monkeypatch.setattr(nextn, "register_gguf_q3_k_gemv_kernels", lambda: None)
+    monkeypatch.setattr(nextn, "Qwen35GGUFFullStackRunner", FakeRunner)
+    monkeypatch.setattr(nextn, "Qwen35GGUFResidentSession", FakeSession)
+
+    with pytest.raises(StopNextN):
+        nextn.Qwen35GGUFNextNDraftProvider.from_model(
+            "unused",
+            max_positions=8,
+            max_requests=1,
+            runtime=object(),
+            resident_weights=FakeWeights(),
+            target_verifier_production_q4_rowtile=requested,
+        )
+
+    assert captured["target_verifier_production_q4_rowtile"] is requested

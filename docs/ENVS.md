@@ -431,8 +431,10 @@ verifier's T16/raw sidecar placement.
 
 The prefill-GDN control selects the production verifier's per-row Conv/GDN
 state capture. Public generation and profile binders set
-`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` and
-`HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` themselves. The five alternative
+`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`. The Qwen3.8 gfx1151 profile binds
+its production-Q4 rowtile decision directly to each generator and resident
+session; `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` remains an input for
+unbound/direct diagnostic sessions. The five alternative
 capture controls below change Conv/GDN execution or the scored output, not
 just which intermediates are observable. They are diagnostic inputs recorded
 by the forced-target and native-state probes, not user tuning controls. The
@@ -460,7 +462,7 @@ F32 flags select per-stage diagnostic arithmetic to localize divergence.
 | `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` | unset | Replays the selected-expert down projection in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` | unset | Replays the selected-expert intermediate in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` | unset | Replays the shared-expert down projection in F32. |
-| `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` | set by the Qwen3.8 production profile binder | Production Q4 verifier rowtile admission. |
+| `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` | false for unbound/direct sessions | Construction-time diagnostic input. Qwen3.8 gfx1151 profile-bound generators carry their strict/production choice directly to each session without rewriting this variable; the owner value takes precedence. |
 | `HIPENGINE_GGUF_ROUTER_F32W_COOP` | true; gfx1151 strict binder sets `0` | Cooperative BF16-hidden/F32-weight c1 router when registered; `0` uses separate logits/select. The production binder sets `1`. |
 | `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER` | true; gfx1151 strict binder sets `0` | Cooperative router counter policy: `1` uses the dedicated self-resetting scratch counter; `0` uses the selected-ID alias and launch-time reset. Only used when cooperative routing runs. |
 

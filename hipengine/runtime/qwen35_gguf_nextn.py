@@ -544,6 +544,7 @@ class Qwen35GGUFNextNExecutor:
         hot_vocab_path: str | Path | None = None,
         backend: str | None = None,
         resident_weights: Qwen35GGUFNextNResidentWeights | None = None,
+        target_verifier_production_q4_rowtile: bool | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
@@ -560,6 +561,9 @@ class Qwen35GGUFNextNExecutor:
         self.require_cached_build = bool(require_cached_build)
         self.max_requests = int(max_requests)
         self.closed = False
+        self.target_verifier_production_q4_rowtile = (
+            target_verifier_production_q4_rowtile
+        )
         register_gguf_q3_k_gemv_kernels()
         # Borrowed weights stay owned by the caller (the generator shares one
         # draft block across every provider shape); only self-materialized
@@ -600,6 +604,9 @@ class Qwen35GGUFNextNExecutor:
             use_wmma_prefill=True,
             use_gemv_decode=True,
             prefill_chunk_size=_NEXTN_BATCH_PREFILL_SCRATCH_ROWS,
+            target_verifier_production_q4_rowtile=(
+                target_verifier_production_q4_rowtile
+            ),
         )
         self.scratch = self._batch_session._target_scratch_owner
         if self.scratch is None:
