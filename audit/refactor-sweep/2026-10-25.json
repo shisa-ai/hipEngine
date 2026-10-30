@@ -13919,8 +13919,8 @@
       "start_line": 12483,
       "end_line": 12511,
       "sha256": "27d24b278181b6b4300c43f7543a18cc4ade552a7e91b02253f77fb46974813c",
-      "status": "pending",
-      "evidence": [],
+      "status": "removed-resolved-history",
+      "evidence": ["Automatic duplicate allocation resolved; optional split API still exists and was preserved, correcting old all-symbols-gone claim. 74 tests passed, 4 skipped. worklog/entries/20261030T060632.329369Z-cleanup-cleanup-r0520-d964b0.md."],
       "subitems": []
     },
     {
