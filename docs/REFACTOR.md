@@ -965,43 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## gfx1151 Q4 dual-SiLU prefill 16-column arms: removed (2026-09-13)
-
-Cleanup status (2026-10-26, R0042): resolved and verified at HEAD. No
-`col16_row256`/`col16_row512` export, wrapper, registry entry, test, or
-`out_tiles_per_block` template parameter remains in `hipengine/` or `tests/`;
-the remaining occurrences are this record, its worklog entries, the rejected-arm
-artifact, the 2026-09-13 prefill-kernel profile artifact, the benchmark
-changelog and the audit sweep inventory. The arms are reproducible only from
-the pre-removal source named in the rejected-arm artifact. The open directions
-below are unstarted hypotheses, not cleanup debt.
-
-- `dense_dual_wmma_prefill_col16_row256_bf16_bf16_out`,
-  `dense_dual_wmma_prefill_col16_row512_bf16_bf16_out`, and the
-  `out_tiles_per_block` template parameter they were built on were added,
-  measured, and removed inside one day. Same-host A/B on real Qwen3.8-27B
-  gate/up tiles at rows 256/512/1024/2048/4096, three harness invocations per
-  shape: the parent takes 3.31/6.62/13.12/26.03/52.15 ms, `col16_row256`
-  **0.71/0.67/0.63/0.61/0.61x** and `col16_row512` **0.41/0.71/0.69/0.68/0.67x**,
-  bit-identical output in all 30 cells. Do not repeat these unchanged variants;
-  a different decode mapping or epilogue is a new hypothesis.
-- Review correction: neither the original instruction-count ranking nor the
-  later doubled-decode-time explanation isolates the loss. In particular,
-  col16_row512 has the same block count as the parent at rows512+, not double.
-  Source-level counts and effective bandwidth are not issue/traffic counters.
-- The screen's occupancy arm (16 columns x 256 rows with
-  `__launch_bounds__(128, 4)`) was built, measured, and dropped inside the same
-  day: gfx1151 allocates 219 VGPRs with min-blocks 1 and with min-blocks 4,
-  literal and template-parameter spellings both. This establishes unchanged
-  compiled register counts, not actual residency. The previous 512-VGPR
-  occupancy model was wrong: gfx1151 wave32 uses 1536 physical VGPRs and a
-  24-register granule. Recompute mode/LDS limits before any register-cap work.
-- Open directions that the removal leaves untouched, with their prerequisites:
-  a wider column tile (48 columns) needs the decode to reach 192 threads or a
-  lane remap, since 128 threads cannot cover 48 decode pairs; 32 columns x 512
-  rows per block needs the row-tile limit extended and makes the epilogue
-  union 64 KiB. Measure residency or test a register-local-SiLU epilogue.
-
 ## gfx1100 has no kernel-registration refresh hook (found 2026-10-12)
 
 Cleanup status (2026-10-26, R0044): resolved by the test baseline, not by a
