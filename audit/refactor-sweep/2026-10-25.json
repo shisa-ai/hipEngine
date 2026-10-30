@@ -12042,12 +12042,14 @@
       "subitems": [
         {
           "line": 9503,
-          "text": "Production binder selection and strict fallback",
+          "text": "`selected_grouped_row4_gemv_bf16_bf16_out` is now selected by the production",
+          "interpretation": "Production binder selection and strict fallback",
           "status": "fixed-runner-owned-profile-publication-preserves-row-registry-preemptor-guards"
         },
         {
           "line": 9505,
-          "text": "Keep rollback and reproducible A/B; replace process selector",
+          "text": "The clean Framework all-category gate retained the path. Keep the post-binder",
+          "interpretation": "Keep rollback and reproducible A/B; replace process selector",
           "status": "fixed-runner-scopes-and-harness-bindings-retire-env-reader-and-writer"
         }
       ]
