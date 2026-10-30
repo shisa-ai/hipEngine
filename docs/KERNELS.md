@@ -728,8 +728,9 @@ skip the conversion when an image is declared.
 `linear_attn/qwen4_exp_gdn.hip`
 `qwen4_exp_gdn_prefill_rowsplit_f32_kernel<4, 4>`, registered for
 `hip_gfx1151` as `gdn_recurrence_norm_gate / f32_state /
-qwen4exp_gdn_rowsplit_prefill` and selected by the `gguf_ud_q4_k_xl`
-production binder. Ported from gufo `GdnRowSplitKernel` (commit 9cad139,
+qwen4exp_gdn_rowsplit_prefill` as a callable alternative. The production
+manifest selects `qwen4exp_gdn_tiled16_multi_prefill` for its GDN layer
+window. Ported from gufo `GdnRowSplitKernel` (commit 9cad139,
 MIT); the file header records the hipEngine changes (state layout, in-block
 norms, decay and beta). Four lanes own one value column of the 128x128
 state, blocks are 128 threads, tokens are staged four at a time through LDS
@@ -738,8 +739,8 @@ to the two dot products and sums in a different FP32 order than the
 column-warp owners (relative L2 1.5e-7 over 4096 tokens). Its norm/gate
 epilogue can publish `half(core)` for the output projection. Test:
 `tests/test_gpu_qwen4exp_gdn_rowsplit_prefill.py`. Strict fallback:
-`qwen4exp_sigmoid_strict_prefill`; rollback
-`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT=qwen4exp_gdn_tiled16_multi_prefill`.
+`qwen4exp_sigmoid_strict_prefill`. The multi-column production owner and
+row-split alternative remain separately registered.
 
 ## Qwen4Exp indexed GDN decode primitive
 
