@@ -2231,23 +2231,6 @@ compare trace metadata/values for initial catch-up, multiple proposal depths and
 replacement needs independent numerical rows plus a public NextN preservation request; host trace
 time must not be reported as a normal device-chain timing result.
 
-### R0305 — Diagnostic F32 token-embedding seed ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `token_embd.weight`, `_verify_hidden_f32_a`; `HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING`.
-
-**Decision needed:** retain this explicit host precision oracle or replace it with a device-side
-FP32 embedding implementation before retiring the selector. Keep reader/seed ownership distinct from
-the broader R0287 arithmetic plan.
-
-Done when: migrate seed construction, F32-residual caller, trace and native-attribution
-contracts together. Run `tests/test_unit_qwen35_gguf_verify_f32_token_embedding.py`, token-embedding
-parity and attribution tests. Any replacement must compare requested/duplicate rows at FP32
-precision, preserve the BF16 mirror and actual block inputs, then exercise real verify/commit/reset
-and cleanup. A changed-arithmetic production default needs its execution-profile gates; a host-only
-trace is not that gate.
-
 ### R0304 — Legacy selected-SiLU/down comparison ownership
 
 Owner: `hipengine/speculative/mtp_resident_draft.py`.

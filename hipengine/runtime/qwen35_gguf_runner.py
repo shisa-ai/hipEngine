@@ -8448,7 +8448,10 @@ class Qwen35GGUFFullStackRunner:
                 if (use_prefill_gdn_capture or prefill_score_ready)
                 else GGUF_ACTIVATION_F32
             )
-            if _gguf_verify_capture_bf16_gdn_out_enabled() and not use_prefill_gdn_capture:
+            if ssm_out_activation_dtype == GGUF_ACTIVATION_F32 and (
+                _gguf_verify_capture_bf16_gdn_out_enabled()
+                or _gguf_gdn_projection_requires_bf16(layer.weight("ssm_out"))
+            ):
                 f32_to_bf16(
                     scratch.recurrent_out.ptr,
                     scratch.recurrent_bf16.ptr,
@@ -11298,6 +11301,14 @@ def _gguf_verify_capture_f32_chain_conv_enabled() -> bool:
 
 def _gguf_verify_capture_regular_chain_gdn_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN_ENV, False)
+
+
+def _gguf_gdn_projection_requires_bf16(weight) -> bool:
+    """Use the consumer's declared input ABI for an F32 GDN result."""
+
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_output_handoff
+
+    return bool(resolve_gdn_output_handoff(weight.spec.layout).adapters)
 
 
 def _gguf_verify_capture_bf16_gdn_out_enabled() -> bool:
