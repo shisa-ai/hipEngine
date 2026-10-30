@@ -19,6 +19,7 @@ from hipengine.runtime.gguf_linear import (
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
 )
+from hipengine.kernels.backends import backend_package_capability
 
 _CAPABILITY = "GGUF_RAW_K_PREFILL_H7C_ROLE_VARIANTS"
 _GENERIC_CAPABILITY = "GGUF_RAW_K_PREFILL_GENERIC_ROLE_VARIANTS"
@@ -113,9 +114,9 @@ def test_h7c_runtime_capability_and_rollback_survive_source_promotion() -> None:
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROWBATCH == 32
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED is True
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_VARIANT == "coltile"
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED is False
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED is False
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_VARIANT == "rowbatch"
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED") is False
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED") is False
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_VARIANT") == "rowbatch"
     assert not hasattr(hip_gfx1151, _CAPABILITY)
     assert not hasattr(hip_gfx1151, _GENERIC_CAPABILITY)
     assert not hasattr(hip_gfx1151, _SOURCE_CAPABILITY)

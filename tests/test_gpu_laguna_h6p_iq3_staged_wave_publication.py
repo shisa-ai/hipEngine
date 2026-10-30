@@ -33,6 +33,7 @@ from tests.test_gpu_gguf_iq_gemv import (
     _make_x,
     _selected_reference,
 )
+from hipengine.kernels.backends import backend_package_capability
 
 _EXPERT_PARTITIONS = 64
 _OUTPUT_PARTITIONS = 256
@@ -228,8 +229,8 @@ def test_h6p_registry_schedule_and_h6r_production_immutability() -> None:
 
     load_backend_kernel_package("hip_gfx1151")
     assert not is_registered(_candidate_key("hip_gfx1151"))
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANTS") == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS") == {}
 
     source = Path(_module().__file__).with_suffix(".hip").read_text()
     h6i_body = _function_body(source, f"__global__ void {_H6I_KERNEL_NAME}")

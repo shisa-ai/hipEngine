@@ -10,6 +10,7 @@ from hipengine.runtime.laguna_moe import (
     resolve_laguna_moe_plan,
 )
 from tests._laguna_synthetic import make_laguna_info
+from hipengine.kernels.backends import backend_package_capability
 
 
 _BASELINE_IQ3 = "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out"
@@ -96,8 +97,8 @@ def test_h6d_source_default_is_retained_under_h6r_source_and_fail_closed(
     assert hip_gfx1100.LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS == {
         _H6C_ROLE: _H6C_VARIANT
     }
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANTS") == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS") == {}
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     key = package_default.grouped_exact_down_keys["gguf_iq3_xxs"]

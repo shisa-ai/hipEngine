@@ -11,6 +11,7 @@ from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.runtime import laguna_moe
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from tests._laguna_synthetic import make_laguna_info
+from hipengine.kernels.backends import backend_package_capability
 
 _GFX1100_CANDIDATE_KEY = KernelKey(
     "hip_gfx1100",
@@ -36,7 +37,7 @@ def test_router_projection_wave0_tree_is_gfx1151_default_on() -> None:
 
     register_qwen35_router_kernels()
     assert not hasattr(gfx1100, "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE")
-    assert gfx1151.LAGUNA_ROUTER_PROJECTION_WAVE0_TREE is True
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_ROUTER_PROJECTION_WAVE0_TREE") is True
     assert "use_router_projection_wave0_tree" in inspect.signature(
         LagunaGGUFResidentSession
     ).parameters

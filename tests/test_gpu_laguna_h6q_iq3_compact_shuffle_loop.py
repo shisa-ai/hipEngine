@@ -38,6 +38,7 @@ from tests.test_gpu_laguna_h6p_iq3_staged_wave_publication import (
     _partition_boundary_metadata,
     _single_expert_metadata,
 )
+from hipengine.kernels.backends import backend_package_capability
 
 _WRAPPER_NAME = (
     "gguf_iq3_xxs_selected_grouped_prefill_compact_k1024_active_expert_p64_"
@@ -238,8 +239,8 @@ def test_h6q_registry_structure_rollback_and_h6p_body_immutability() -> None:
 
     load_backend_kernel_package("hip_gfx1151")
     assert not is_registered(_candidate_key("hip_gfx1151"))
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANTS") == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS") == {}
 
     # RED must fail here, after proving production/source immutability, and all
     # remaining tests must fail at the same missing Python wrapper boundary.

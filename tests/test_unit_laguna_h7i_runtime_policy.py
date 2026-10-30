@@ -22,6 +22,7 @@ from hipengine.runtime.gguf_linear import (
     raw_k_prefill_variant_session,
 )
 from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
+from hipengine.kernels.backends import backend_package_capability
 
 _ROOT = Path(__file__).parents[1]
 _ARTIFACT = (
@@ -146,9 +147,9 @@ def test_h7i_runtime_capability_is_source_qualified_and_gfx1100_only() -> None:
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_ROWBATCH == 32
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED is True
     assert hip_gfx1100.GGUF_RAW_K_PREFILL_VARIANT == "coltile"
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED is False
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED is False
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_VARIANT == "rowbatch"
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED") is False
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED") is False
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_VARIANT") == "rowbatch"
     assert not hasattr(hip_gfx1151, _CAPABILITY)
     assert not hasattr(hip_gfx1151, _H7C_CAPABILITY)
     assert not hasattr(hip_gfx1151, _GENERIC_CAPABILITY)

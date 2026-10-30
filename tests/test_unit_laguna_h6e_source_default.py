@@ -15,6 +15,7 @@ from hipengine.runtime.gguf_linear import (
     f32_ordered_prefill_session,
 )
 from hipengine.runtime.laguna_gguf_runner import LagunaF32OrderedScratch
+from hipengine.kernels.backends import backend_package_capability
 
 
 _H5W_POLICY = {
@@ -131,7 +132,7 @@ def test_h6e_source_remains_explicit_rollback_for_qualified_q6_roles(
         "gguf_q5_k": hip_gfx1100.GGUF_Q5_F32_ORDERED_PREFILL_POLICY,
         "gguf_q6_k": _H6U_POLICY,
     }
-    assert hip_gfx1151.GGUF_Q6_F32_ORDERED_PREFILL_POLICY == {}
+    assert backend_package_capability("hip_gfx1151", "GGUF_Q6_F32_ORDERED_PREFILL_POLICY") == {}
     assert not hasattr(hip_gfx1151, "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY")
     assert not hasattr(hip_gfx1151, "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY")
     assert {

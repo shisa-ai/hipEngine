@@ -5452,10 +5452,12 @@ def test_prompt_streaming_resolver_accepts_width_one_and_rejects_out_of_range(
     without broadening the unqualified upper bound; unregistered profiles and
     models keep the replay route (empty widths)."""
 
-    import hipengine.kernels.hip_gfx1151 as gfx1151
+    from hipengine.kernels.backends import backend_package_capability
 
     monkeypatch.setitem(
-        gfx1151.GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES,
+        backend_package_capability(
+            "hip_gfx1151", "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES"
+        ),
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"),
         (1, 2, 3),
     )
@@ -5483,7 +5485,9 @@ def test_prompt_streaming_resolver_accepts_width_one_and_rejects_out_of_range(
     # Out-of-range registered widths remain a hard error on both ends.
     for bad in ((0, 2), (2, 9)):
         monkeypatch.setitem(
-            gfx1151.GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES,
+            backend_package_capability(
+                "hip_gfx1151", "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES"
+            ),
             (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"),
             bad,
         )
@@ -5501,15 +5505,22 @@ def test_mtp2_production_routes_full_batches_above_the_measured_bound_to_ar() ->
     # physical widths 5-8, so a due batch wider than the production economic
     # bound must partition to 0 (one full-batch AR decode) instead of
     # chaining MTP sub-groups.
-    from hipengine.kernels.hip_gfx1151 import (
-        GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS,
-        GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS,
-    )
+    from hipengine.kernels.backends import backend_package_capability
 
-    assert GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"] == 4
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS"
+        )["production"]
+        == 4
+    )
     # The wide cell is withdrawn, so the whole C1-C4 policy sits below the
     # bound and no listed cell can reach a due group wider than it.
-    assert GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"][-1] == (4, 3)
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS"
+        )["production"][-1]
+        == (4, 3)
+    )
 
     row = SimpleNamespace(
         native_greedy=True,

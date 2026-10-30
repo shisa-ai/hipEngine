@@ -11,6 +11,7 @@ from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.runtime import laguna_gguf_runner as runner
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from tests._laguna_synthetic import make_laguna_info
+from hipengine.kernels.backends import backend_package_capability
 
 _CANDIDATE_KEY = KernelKey(
     "hip_gfx1100",
@@ -31,7 +32,7 @@ def test_wave0_tree_runtime_owner_is_gfx1151_only() -> None:
     register_paro_combine_kernels()
     gfx1151.register_backend_kernels()
     assert not hasattr(gfx1100, "LAGUNA_MOE_TAIL_WAVE0_TREE")
-    assert gfx1151.LAGUNA_MOE_TAIL_WAVE0_TREE
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_MOE_TAIL_WAVE0_TREE")
     assert not hasattr(runner, "resolve_laguna_moe_tail_wave0_tree")
     assert "use_moe_tail_wave0_tree" in inspect.signature(
         LagunaGGUFResidentSession

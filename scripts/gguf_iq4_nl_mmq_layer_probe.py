@@ -27,12 +27,13 @@ from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import load_prompt_rows
+from hipengine.kernels.backends import backend_package_capability
 
 MODEL = '/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf'
 PROMPT_INDEX = int(sys.argv[1]) if len(sys.argv) > 1 else 4
 # IQ4_NL is routed by default now, so the "off" arm removes it and the "on"
 # arm restores it; the probe still reports divergence between the two.
-BASE_POLICY = {k: v for k, v in be.GGUF_IQ_DENSE_PREFILL_POLICY.items()
+BASE_POLICY = {k: v for k, v in backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY").items()
                if k != 'gguf_iq4_nl'}
 
 rows = []
@@ -53,9 +54,9 @@ def run(session, enable_iq4_nl, layers, shapes=None):
     }
     if shapes is not None:
         entry['shapes'] = frozenset(shapes)
-    be.GGUF_IQ_DENSE_PREFILL_POLICY = (
+    setattr(be, "GGUF_IQ_DENSE_PREFILL_POLICY", (
         {**BASE_POLICY, 'gguf_iq4_nl': entry}
-        if enable_iq4_nl else dict(BASE_POLICY))
+        if enable_iq4_nl else dict(BASE_POLICY)))
     gl._DISPATCH_RESOLVE_CACHE.clear()   # policy is not part of the cache key
     session.reset()
     session._last_layer_output_hidden.clear()
@@ -91,7 +92,7 @@ with Qwen35GGUFResidentSession(
         print(f'  {name:42s} logits rel diff {results[name]:.4e}', flush=True)
     on, on_logits = run(s, True, layers)
 
-be.GGUF_IQ_DENSE_PREFILL_POLICY = dict(BASE_POLICY)
+setattr(be, "GGUF_IQ_DENSE_PREFILL_POLICY", dict(BASE_POLICY))
 print(f'\ncaptured {len(off)} layers\n')
 print(f'{"layer":>6s}{"rel diff":>12s}{"growth":>9s}   note')
 prev = None

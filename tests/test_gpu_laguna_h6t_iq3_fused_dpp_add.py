@@ -38,6 +38,7 @@ from tests.test_gpu_laguna_h6p_iq3_staged_wave_publication import (
     _partition_boundary_metadata,
     _single_expert_metadata,
 )
+from hipengine.kernels.backends import backend_package_capability
 
 _H6T_VARIANT = (
     "selected_grouped_prefill_compact_k1024_active_expert_p64_"
@@ -268,8 +269,8 @@ def test_h6t_registry_source_policy_and_h6r_immutability() -> None:
 
     load_backend_kernel_package("hip_gfx1151")
     assert not is_registered(_candidate_key("hip_gfx1151"))
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANTS") == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS") == {}
 
     # Intentional RED: all retained production/source facts pass before the
     # only missing boundary, the separately named H6T Python wrapper.

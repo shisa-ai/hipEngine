@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from hipengine.loading.materialize import float_array_to_bf16_bits
+from hipengine.kernels.backends import backend_package_capability
 
 
 _LINEAR_SOURCE = (
@@ -92,8 +93,8 @@ def test_anyorder_runtime_is_gfx1151_available_and_default_on() -> None:
     linear.register_laguna_f16_projection_kernels(replace=True)
     router.register_qwen35_router_kernels(replace=True)
     gfx1151.register_gfx1151_kernels(replace=True)
-    assert gfx1151.LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE is True
-    assert gfx1151.LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE is True
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE") is True
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE") is True
     assert "use_output_router_anyorder_decode" in inspect.signature(
         LagunaGGUFResidentSession
     ).parameters

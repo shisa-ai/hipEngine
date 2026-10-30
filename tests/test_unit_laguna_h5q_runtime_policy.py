@@ -8,6 +8,7 @@ from hipengine.kernels import hip_gfx1100, hip_gfx1151
 from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
 from hipengine.runtime.laguna_moe import resolve_laguna_moe_plan
 from tests._laguna_synthetic import make_laguna_info
+from hipengine.kernels.backends import backend_package_capability
 
 
 _H5J_IQ3 = (
@@ -90,8 +91,8 @@ def test_h5q_runtime_capability_is_retained_bounded_and_fail_closed(
 
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == production_variants
     assert hip_gfx1100.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == production_abis
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANTS") == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS") == {}
 
     package_default = resolve_laguna_moe_plan(config, backend="hip_gfx1100")
     assert package_default.grouped_exact_down_keys["gguf_iq3_xxs"].variant == (

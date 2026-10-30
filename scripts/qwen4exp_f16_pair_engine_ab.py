@@ -97,9 +97,11 @@ def _arm_order(index: int) -> tuple[str, ...]:
 
 def _admitted_pair_rows() -> frozenset[int]:
     """Read row admission from the same backend capability as the runner."""
-    from hipengine.kernels.hip_gfx1151 import GGUF_DENSE_WIDE_F16_PAIR_POLICIES
+    from hipengine.kernels.backends import backend_package_capability
 
-    policy = GGUF_DENSE_WIDE_F16_PAIR_POLICIES[
+    policy = backend_package_capability(
+        "hip_gfx1151", "GGUF_DENSE_WIDE_F16_PAIR_POLICIES"
+    )[
         ("linear", "gguf_q8_0", "dense_wide256_f32_f32_out")
     ]
     return frozenset(int(rows) for rows in policy["rows"])

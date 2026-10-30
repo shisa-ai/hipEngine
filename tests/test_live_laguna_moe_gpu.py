@@ -1950,7 +1950,7 @@ def test_h5j_grouped_iq_down_package_policy_is_bounded_and_fail_closed(
 
     # H5Q now owns the package IQ3 entry; this historical H5J contract keeps
     # testing its explicit map and every retained fallback independently.
-    assert hip_gfx1151.LAGUNA_GROUPED_IQ_DOWN_VARIANTS == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GROUPED_IQ_DOWN_VARIANTS") == {}
     monkeypatch.setattr(
         hip_gfx1100,
         "LAGUNA_GROUPED_IQ_DOWN_VARIANTS",

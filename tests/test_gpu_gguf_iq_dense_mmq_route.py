@@ -109,10 +109,10 @@ def test_integer_mmq_variant_still_requires_its_workspace():
     """Swapping the policy back to integer MMQ must re-impose the workspace gate."""
     import hipengine.kernels.hip_gfx1151 as be
     from hipengine.runtime.gguf_linear import _IQ_DENSE_INTEGER_MMQ_VARIANT
-    base = dict(be.GGUF_IQ_DENSE_PREFILL_POLICY)
+    base = dict(backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY"))
     swapped = {q: {**e, "variant": _IQ_DENSE_INTEGER_MMQ_VARIANT}
                for q, e in base.items()}
-    be.GGUF_IQ_DENSE_PREFILL_POLICY = swapped
+    setattr(be, "GGUF_IQ_DENSE_PREFILL_POLICY", swapped)
     try:
         with iq_mmq.iq_dense_mmq_session(True):
             out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120,
@@ -123,7 +123,7 @@ def test_integer_mmq_variant_still_requires_its_workspace():
             out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120, out_features=17408)
         assert out.key.variant == _IQ_DENSE_INTEGER_MMQ_VARIANT
     finally:
-        be.GGUF_IQ_DENSE_PREFILL_POLICY = base
+        setattr(be, "GGUF_IQ_DENSE_PREFILL_POLICY", base)
 
 
 @pytest.mark.parametrize(

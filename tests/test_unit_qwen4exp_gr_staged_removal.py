@@ -125,14 +125,17 @@ def test_dense_staged_registration_survives_the_gr_removal() -> None:
     silently select nothing while still looking bound.
     """
 
+    from hipengine.kernels.backends import backend_package_capability
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_gr_staged_f32 as staged
-    from hipengine.kernels.hip_gfx1151 import (
-        STAGED_F32_VARIANT,
-        register_gfx1151_kernels,
-    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
-    key = KernelKey("hip_gfx1151", "linear", GR_QUANT, STAGED_F32_VARIANT)
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        GR_QUANT,
+        backend_package_capability("hip_gfx1151", "STAGED_F32_VARIANT"),
+    )
 
     assert is_registered(key)
     assert resolve(

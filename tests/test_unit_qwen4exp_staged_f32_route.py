@@ -32,10 +32,12 @@ def test_variant_name_agrees_between_runtime_and_backend_package():
     import a backend package eagerly. This is the check that the two stay equal.
     """
 
-    from hipengine.kernels.hip_gfx1151 import STAGED_F32_VARIANT
+    from hipengine.kernels.backends import backend_package_capability
     from hipengine.runtime import gguf_linear
 
-    assert gguf_linear._Q8_STAGED_F32_VARIANT == STAGED_F32_VARIANT
+    assert gguf_linear._Q8_STAGED_F32_VARIANT == backend_package_capability(
+        "hip_gfx1151", "STAGED_F32_VARIANT"
+    )
 
 
 def test_route_is_off_when_nothing_binds_it():
@@ -104,11 +106,17 @@ def test_registration_resolves_to_the_staged_launcher():
     silently select the wrong arithmetic under a name that says otherwise.
     """
 
-    from hipengine.kernels.hip_gfx1151 import STAGED_F32_VARIANT, register_gfx1151_kernels
+    from hipengine.kernels.backends import backend_package_capability
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_gr_staged_f32 as staged
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
-    key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", STAGED_F32_VARIANT)
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q8_0",
+        backend_package_capability("hip_gfx1151", "STAGED_F32_VARIANT"),
+    )
     assert is_registered(key)
     assert resolve(
         backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant
@@ -180,10 +188,8 @@ def test_dispatch_is_a_no_op_when_the_route_is_unbound():
 
 
 def test_dispatch_swaps_only_inside_the_named_scope():
-    from hipengine.kernels.hip_gfx1151 import (
-        STAGED_F32_VARIANT,
-        register_gfx1151_kernels,
-    )
+    from hipengine.kernels.backends import backend_package_capability
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.runtime import gguf_linear
 
     register_gfx1151_kernels(replace=True)
@@ -196,7 +202,9 @@ def test_dispatch_swaps_only_inside_the_named_scope():
         inside = gguf_linear._raw_k_staged_f32_dispatch(
             original, weight=_FakeWeight("layers.5.attn_qkv.weight")
         )
-        assert inside.key.variant == STAGED_F32_VARIANT
+        assert inside.key.variant == backend_package_capability(
+            "hip_gfx1151", "STAGED_F32_VARIANT"
+        )
         # Outside the scope: untouched.
         outside = gguf_linear._raw_k_staged_f32_dispatch(
             original, weight=_FakeWeight("layers.9.attn_qkv.weight")

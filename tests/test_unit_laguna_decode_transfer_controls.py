@@ -7,6 +7,7 @@ import pytest
 
 from hipengine.kernels import hip_gfx1151
 from scripts import laguna_long_context_profile as profiler
+from hipengine.kernels.backends import backend_package_capability
 
 
 @pytest.mark.parametrize("head", [None, False, True])
@@ -55,9 +56,9 @@ def test_profile_keeps_explicit_decode_controls_distinct_from_package_defaults(m
 
 
 def test_gfx1151_transfer_capabilities_are_already_package_defaults():
-    assert hip_gfx1151.LAGUNA_HEAD_KV_FUSION
-    assert hip_gfx1151.LAGUNA_GLOBAL_SPLIT_MIN_LIVE == 127
-    assert hip_gfx1151.LAGUNA_SWA_SPLIT_MIN_LIVE == 65
-    assert hip_gfx1151.LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE == 257
-    assert hip_gfx1151.LAGUNA_SPLIT_GATE_FUSION
-    assert hip_gfx1151.LAGUNA_SWA_SPLIT_WAVE_LOCAL
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_HEAD_KV_FUSION")
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_GLOBAL_SPLIT_MIN_LIVE") == 127
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_SWA_SPLIT_MIN_LIVE") == 65
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE") == 257
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_SPLIT_GATE_FUSION")
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_SWA_SPLIT_WAVE_LOCAL")

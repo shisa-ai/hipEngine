@@ -27,6 +27,7 @@ from tests.test_gpu_gguf_q5_k_f32_rocblas_prefill import (
     _device,
     _exact_q6_f32_cpu,
 )
+from hipengine.kernels.backends import backend_package_capability
 
 # role, col tile, row batch, output dtype, exact K, exact N
 _ROLES = (
@@ -725,11 +726,11 @@ def test_h7c_registry_source_policy_and_generic_immutability(
     assert selected.abi == "raw"
 
     load_backend_kernel_package("hip_gfx1151")
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED is False
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_ROWBATCH == 0
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED is False
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_COLTILE2_SHAPES == frozenset()
-    assert hip_gfx1151.GGUF_RAW_K_PREFILL_VARIANT == "rowbatch"
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED") is False
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_ROWBATCH") == 0
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED") is False
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES") == frozenset()
+    assert backend_package_capability("hip_gfx1151", "GGUF_RAW_K_PREFILL_VARIANT") == "rowbatch"
 
     # Intentional RED: generic source bytes, package/runtime selection, and
     # backend isolation pass before the separately named H7C wrapper lookup.

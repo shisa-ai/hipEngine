@@ -28,6 +28,7 @@ from tests.test_gpu_gguf_iq_gemv import (
     _selected_reference,
 )
 from tests.test_gpu_gguf_iq_selected_prefill import _compact_meta, _run_dual_grouped
+from hipengine.kernels.backends import backend_package_capability
 
 _IN_FEATURES = 3072
 _OUT_FEATURES = 1024
@@ -161,7 +162,7 @@ def test_h6l_registry_source_and_production_ownership() -> None:
 
     load_backend_kernel_package("hip_gfx1151")
     assert not is_registered(_candidate_key("hip_gfx1151"))
-    assert hip_gfx1151.LAGUNA_SELECTED_GATE_UP_MODE == (
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_SELECTED_GATE_UP_MODE") == (
         "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
     )
 

@@ -13,6 +13,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
+from hipengine.kernels.backends import backend_package_capability
 
 
 def _hip_available() -> bool:
@@ -822,7 +823,7 @@ def test_laguna_swa_qrow4_role_policy_is_bounded_and_fail_closed(
     candidate = "swa_context_rows_qrow4_sourcequal_exact_spans"
     retained = "swa_context_rows_qrow4_m128_c256_exact_spans"
     assert hip_gfx1100.LAGUNA_SWA_PREFILL_ROLE_VARIANTS == {role: candidate}
-    assert hip_gfx1151.LAGUNA_SWA_PREFILL_ROLE_VARIANTS == {}
+    assert backend_package_capability("hip_gfx1151", "LAGUNA_SWA_PREFILL_ROLE_VARIANTS") == {}
 
     monkeypatch.setattr(
         hip_gfx1100,

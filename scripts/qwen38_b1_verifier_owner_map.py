@@ -242,7 +242,7 @@ def main() -> None:
 
     sys.path.insert(0, str(REPO))
 
-    import hipengine.kernels.hip_gfx1151 as gfx1151
+    from hipengine.kernels.backends import backend_package_capability
 
     planar = "gguf_q6_k_t16_qmicro_planar_v1"
     std = "gguf_q6_k_t16_v1"
@@ -251,7 +251,7 @@ def main() -> None:
     transfer_targets = [
         {
             "quant": q4,
-            "shapes": sorted(gfx1151.GGUF_Q4_T16_DENSE_LOWM_SHAPES),
+            "shapes": sorted(backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWM_SHAPES")),
             "current_verify_owner": "dense Q4 wmma-prefill band routers "
             "(rows>1 base variant t16_wmma_prefill_bf16_bf16_out); measured "
             "windows show gguf_q4_t16_dense_wmma_prefill_bf16_kernel, "

@@ -87,127 +87,20 @@ from hipengine.kernels.hip_gfx1100 import (
     LAGUNA_SWA_PREFILL_VARIANT as GFX1100_LAGUNA_SWA_PREFILL_VARIANT,
 )
 from hipengine.kernels.hip_gfx1151 import (
-    GGUF_C2_PACKED_PREFILL_MAX_ROWS,
-    GGUF_DIRECT_RESIDENT_LINEAR_STATE,
-    GGUF_FUSED_LINEAR_STATE_TRANSFER,
-    GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
-    GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
-    GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY,
-    GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK,
-    GGUF_PAGED_ATTN_PARALLEL_REDUCE,
-    GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
-    GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS,
-    GGUF_PREFILL_ROUTER_SELECT_THREADS,
-    GGUF_PREFILL_SCRATCH_ARENA_GROUPING,
-    GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS,
-    GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS,
-    GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS,
-    GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS,
-    GGUF_Q5_T16_SELECTED_QWEN_TILE8,
-    GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS,
-    GGUF_Q6_LM_HEAD_MAX_CHUNK,
-    GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS,
-    GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT,
-    GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
-    GGUF_Q8_T16_DECODE_ROWTILE_ALL,
-    GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS,
-    GGUF_Q8_T16_PREFILL_FOUR_WAVE,
-    GGUF_Q8_T16_PREFILL_TWO_WAVE,
-    GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
-    GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
-    LAGUNA_DENSE_Q4_PREFILL_MODE,
-    LAGUNA_F16_ATTENTION_QUAD_DECODE,
-    LAGUNA_F16_NONTEMPORAL_DECODE,
-    LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE,
-    LAGUNA_F16_PROJECTION_HEAD_KV_DECODE,
-    LAGUNA_F16_BOUNDARY_FUSION,
-    LAGUNA_F16_DECODE_FIXEDK,
-    LAGUNA_F16_DECODE_ONEBARRIER,
-    LAGUNA_Q4_PACK8_DUAL_SILU_DECODE,
-    LAGUNA_SELECTED_NATURAL_DECODE,
-    LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE,
-    LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE,
-    LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE,
-    LAGUNA_SELECTED_NATURAL_TILE8_DECODE,
-    LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE,
-    LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE,
-    LAGUNA_SELECTED_HALFDOT_DECODE,
-    LAGUNA_F16_PREFILL_MIN_ROWS,
-    LAGUNA_F16_PREFILL_MODE,
-    LAGUNA_F16_PREFILL_STRATEGY,
-    LAGUNA_GLOBAL_PREFILL_VARIANT,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER,
-    LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH8_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
-    LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE,
-    LAGUNA_MOE_BRANCH_CONCURRENCY,
-    LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY,
-    LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY,
-    LAGUNA_MOE_GROUP_COMPACT_MODE,
-    LAGUNA_MOE_SHARED_AFTER_ROUTER,
-    LAGUNA_MOE_SHARED_LOW_PRIORITY,
-    LAGUNA_PREFILL_ATTENTION_HIPBLASLT,
-    LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE,
-    LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER,
-    LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES,
-    LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX,
-    LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT,
-    LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE,
-    LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS,
-    LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT,
-    LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT,
-    LAGUNA_Q6_WMMA_PREFETCH_WEIGHT,
-    LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION,
-    LAGUNA_PREFILL_CACHED_META,
-    LAGUNA_PREFILL_GLOBAL_QROW6,
-    LAGUNA_PREFILL_KV_PREAPPEND,
-    LAGUNA_PREFILL_MATRIX_ROWS,
-    LAGUNA_ROUTER_LOGITS_MODE,
-    LAGUNA_SELECTED_DOWN_MODE,
-    LAGUNA_SELECTED_GATE_UP_MODE,
-    LAGUNA_SWA_PREFILL_VARIANT,
-    GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES,
-    GGUF_GDN_INDEXED_SINGLETON_DECODE,
-    GGUF_GDN_PREFILL_AUTO_MODE,
-    GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE,
-    GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS,
-    GGUF_GDN_PREFILL_EXACT_MODE,
-    GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
-    GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES,
-    GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS,
-    GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES,
-    GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS,
-    GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES,
-    GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE,
-    GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES,
-    GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT,
-    GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS,
-    GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES,
-    GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT,
-    GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT,
-    GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS,
-    GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS,
-    TARGET_ARCH,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
     register_gfx1151_kernels,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
+
+def _capability(name: str):
+    """Live gfx1151 policy read; a missing declaration fails the test."""
+
+    missing = object()
+    value = backend_package_capability("hip_gfx1151", name, missing)
+    assert value is not missing, name
+    return value
+
 
 
 def test_rejected_unrouted_kernel_bodies_are_absent() -> None:
@@ -520,7 +413,7 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
 
 
 def test_gfx1151_backend_admits_only_q5_source_f16_prefill() -> None:
-    assert GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES == {
+    assert _capability("GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES") == {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): True,
     }
@@ -530,11 +423,11 @@ def test_gfx1151_backend_admits_only_q5_source_f16_prefill() -> None:
     ):
         assert not hasattr(gfx1151_backend, capability)
         assert backend_package_capability("hip_gfx1151", capability, {}) == {}
-    assert GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES == {
+    assert _capability("GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES") == {
         (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
     }
-    assert GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE == {}
-    assert GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES == {
+    assert _capability("GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE") == {}
+    assert _capability("GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES") == {
         "gguf_q5_k_t16_v1": {
             (6_144, 5_120): {
                 (512, 4_096): "f16_rocblas_t16_octet_bf16_bf16_out",
@@ -558,12 +451,12 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
         "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
         (),
     ) == ("attn_qkv",)
-    assert GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS == 96
-    assert GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES == frozenset({(5_120, 10_240)})
-    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS == 256
+    assert _capability("GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS") == 96
+    assert _capability("GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES") == frozenset({(5_120, 10_240)})
+    assert _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS") == 256
     assert (
-        GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
-        == gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES
+        _capability("GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES")
+        == _capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES")
     )
     assert (
         resolve(
@@ -604,15 +497,15 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
 
 
 def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None:
-    assert GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT == {
+    assert _capability("GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT") == {
         "gguf_q5_k_t16_v1": frozenset({9, 12}),
         "gguf_q6_k_t16_v1": frozenset({9, 12, 16}),
         "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16}),
     }
-    assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS == frozenset(
+    assert _capability("GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS") == frozenset(
         {6, 8, 9, 12}
     )
-    assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES == frozenset(
+    assert _capability("GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES") == frozenset(
         {
             (5_120, 6_144),
             (5_120, 10_240),
@@ -622,27 +515,27 @@ def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None
             (17_408, 5_120),
         }
     )
-    assert GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT == {
+    assert _capability("GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT") == {
         "gguf_q5_k_t16_v1": frozenset({(6_144, 5_120)}),
         "gguf_q6_k_t16_v1": frozenset({(5_120, 10_240)}),
         "gguf_q6_k_t16_qmicro_planar_v1": frozenset(
             {(5_120, 1_024), (17_408, 5_120)}
         ),
     }
-    assert GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS[
+    assert _capability("GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS")[
         ("gguf_q5_k_t16_v1", 16, 6_144, 5_120)
     ] == "t16_gemv_rowtile16_col8_bf16_bf16_out"
-    assert len(GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS) == 15
-    assert set(GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS.values()) == {
+    assert len(_capability("GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS")) == 15
+    assert set(_capability("GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS").values()) == {
         "t16_wmma_prefill_shared_b2w2_bf16_bf16_out",
         "t16_wmma_prefill_shared4_bf16_bf16_out",
     }
     assert {
-        key[1] for key in GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS
+        key[1] for key in _capability("GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS")
     } == {20, 24, 32}
-    assert GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT["gguf_q6_k_t16_v1"] == 8
+    assert _capability("GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT")["gguf_q6_k_t16_v1"] == 8
     assert (
-        GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[
+        _capability("GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT")[
             "gguf_q6_k_t16_qmicro_planar_v1"
         ]
         == 8
@@ -984,7 +877,7 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
         )
 
     fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
-    shapes = sorted(gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES)
+    shapes = sorted(_capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES"))
     for rows in (17, 32):
         for in_f, out_f in shapes:
             fn(1, 2, 3, rows, in_f, out_f)
@@ -1002,7 +895,7 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
     for rows in (49, 64):
         for in_f, out_f in shapes:
             fn(1, 2, 3, rows, in_f, out_f)
-    lowvgpr80_shapes = gfx1151_backend.GGUF_Q6_PLANAR_LOWVGPR80_SHAPES
+    lowvgpr80_shapes = _capability("GGUF_Q6_PLANAR_LOWVGPR80_SHAPES")
     for rows in (65, 80):
         for in_f, out_f in sorted(lowvgpr80_shapes):
             fn(1, 2, 3, rows, in_f, out_f)
@@ -1053,27 +946,27 @@ def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
         )
 
     fn = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
-    shapes = sorted(gfx1151_backend.GGUF_Q5_T16_DENSE_LOWM_SHAPES)
+    shapes = sorted(_capability("GGUF_Q5_T16_DENSE_LOWM_SHAPES"))
     for rows in (17, 32):
         for in_f, out_f in shapes:
             fn(1, 2, 3, rows, in_f, out_f)
     for rows in (33, 48):
         fn(1, 2, 3, rows, 17_408, 5_120)
     lowvgpr48_shapes = sorted(
-        gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+        _capability("GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES")
     )
     for rows in (33, 48):
         for in_f, out_f in lowvgpr48_shapes:
             fn(1, 2, 3, rows, in_f, out_f)
     for rows in (33, 48):
         fn(1, 2, 3, rows, 5_120, 17_408)
-    lowvgpr64_shapes = gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+    lowvgpr64_shapes = _capability("GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES")
     for rows in (49, 64):
         for in_f, out_f in sorted(lowvgpr64_shapes):
             fn(1, 2, 3, rows, in_f, out_f)
         for in_f, out_f in sorted(set(shapes) - lowvgpr64_shapes):
             fn(1, 2, 3, rows, in_f, out_f)
-    lowvgpr80_shapes = gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+    lowvgpr80_shapes = _capability("GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES")
     for rows in (65, 80):
         for in_f, out_f in sorted(lowvgpr80_shapes):
             fn(1, 2, 3, rows, in_f, out_f)
@@ -1173,7 +1066,7 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
             (lambda tag: lambda *a, **k: calls.append(tag))(tag),
         )
 
-    shapes = sorted(gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES)
+    shapes = sorted(_capability("GGUF_Q4_T16_DENSE_LOWM_SHAPES"))
 
     def assert_routes(fn, rows: tuple[int, ...], expected: dict[tuple[int, int], str]):
         for row_count in rows:
@@ -1463,7 +1356,7 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
 
 
 def test_gfx1151_backend_declares_q4_two_wave_shape_and_row_policy() -> None:
-    policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT[
+    policy = _capability("GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT")[
         "gguf_q4_k_t16_v1"
     ]
     shapes = policy["shapes"]
@@ -1496,16 +1389,8 @@ def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_smallm_wmma(
         "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
         None,
     )
-    rows_policy = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS",
-        None,
-    )
-    shape_policy = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES",
-        None,
-    )
+    rows_policy = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS", None)
+    shape_policy = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES", None)
     assert callable(selector)
     assert rows_policy == frozenset({6, 8, 12, 16})
     assert shape_policy == frozenset(
@@ -1578,41 +1463,13 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
         "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
         None,
     )
-    lowm_max_rows = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS",
-        None,
-    )
-    lowm_shapes = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_DENSE_LOWM_SHAPES",
-        None,
-    )
-    lowvgpr_max_rows = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS",
-        None,
-    )
-    lowvgpr48_max_rows = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS",
-        None,
-    )
-    lowvgpr48_shapes = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES",
-        None,
-    )
-    lowvgpr64_shapes = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES",
-        None,
-    )
-    lowvgpr80_shapes = getattr(
-        gfx1151_backend,
-        "GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES",
-        None,
-    )
+    lowm_max_rows = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS", None)
+    lowm_shapes = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWM_SHAPES", None)
+    lowvgpr_max_rows = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS", None)
+    lowvgpr48_max_rows = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS", None)
+    lowvgpr48_shapes = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES", None)
+    lowvgpr64_shapes = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES", None)
+    lowvgpr80_shapes = backend_package_capability("hip_gfx1151", "GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES", None)
     assert callable(selector)
     assert lowm_max_rows == 80
     assert lowvgpr_max_rows == 32
@@ -1795,18 +1652,18 @@ def test_gfx1151_backend_overrides_q5_rowtile_with_scoped_col8_wrapper(
 
 
 def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
-    assert GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS == (1, 2, 3, 4, 5, 6, 7, 8)
+    assert _capability("GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS") == (1, 2, 3, 4, 5, 6, 7, 8)
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
     ) == (1, 2, 3, 4, 5, 6, 7, 8)
-    assert GGUF_C2_PACKED_PREFILL_MAX_ROWS == 8
+    assert _capability("GGUF_C2_PACKED_PREFILL_MAX_ROWS") == 8
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
     ) == 8
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
     ) == 8
-    assert GGUF_DIRECT_RESIDENT_LINEAR_STATE is True
+    assert _capability("GGUF_DIRECT_RESIDENT_LINEAR_STATE") is True
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_DIRECT_RESIDENT_LINEAR_STATE", False
     ) is True
@@ -1821,7 +1678,7 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY", {}
     ) == {}
-    assert GGUF_FUSED_LINEAR_STATE_TRANSFER is True
+    assert _capability("GGUF_FUSED_LINEAR_STATE_TRANSFER") is True
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False
     ) is True
@@ -1844,7 +1701,7 @@ def test_packed_prefill_final_output_mask_is_qualified_on_both_backends() -> Non
     LM head, and sampling on both.
     """
 
-    assert GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK is True
+    assert _capability("GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK") is True
     assert GFX1100_GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK is True
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK", False
@@ -2281,116 +2138,116 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     register_qwen35_rmsnorm_kernels()
     register_gfx1151_kernels()
 
-    assert TARGET_ARCH == "gfx1151"
-    assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
-    assert GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY == {
+    assert _capability("TARGET_ARCH") == "gfx1151"
+    assert _capability("GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS") == 128
+    assert _capability("GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY") == {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {2: 23},
     }
-    assert LAGUNA_F16_PREFILL_STRATEGY == "wmma_comp_swa"
-    assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
-    assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_range_direct"
-    assert LAGUNA_F16_BOUNDARY_FUSION is True
-    assert LAGUNA_F16_ATTENTION_QUAD_DECODE is True
-    assert LAGUNA_F16_NONTEMPORAL_DECODE is True
-    assert LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE is True
-    assert LAGUNA_F16_PROJECTION_HEAD_KV_DECODE is True
-    assert LAGUNA_F16_DECODE_FIXEDK is True
-    assert LAGUNA_F16_DECODE_ONEBARRIER is True
-    assert LAGUNA_Q4_PACK8_DUAL_SILU_DECODE is True
-    assert LAGUNA_SELECTED_NATURAL_DECODE is True
-    assert LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE is True
-    assert LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE is True
-    assert LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE is True
-    assert LAGUNA_SELECTED_NATURAL_TILE8_DECODE is True
-    assert LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE is True
-    assert LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE is True
-    assert LAGUNA_SELECTED_HALFDOT_DECODE is True
-    assert LAGUNA_DENSE_Q4_PREFILL_MODE == "wmma_pack8"
-    assert LAGUNA_MOE_BRANCH_CONCURRENCY is True
-    assert LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY is True
-    assert LAGUNA_MOE_SHARED_AFTER_ROUTER is True
-    assert LAGUNA_MOE_SHARED_LOW_PRIORITY is True
-    assert LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY is True
-    assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT is True
-    assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE is True
-    assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER is True
-    assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES is True
-    assert LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX is True
-    assert LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT is True
-    assert LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE is True
-    assert LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS == 2_048
-    assert LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT is True
-    assert LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT is True
-    assert LAGUNA_Q6_WMMA_PREFETCH_WEIGHT is True
-    assert LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION is True
-    assert LAGUNA_MOE_GROUP_COMPACT_MODE == "parallel"
-    assert LAGUNA_ROUTER_LOGITS_MODE == "token_tile_8"
+    assert _capability("LAGUNA_F16_PREFILL_STRATEGY") == "wmma_comp_swa"
+    assert _capability("LAGUNA_F16_PREFILL_MIN_ROWS") == 16
+    assert _capability("LAGUNA_F16_PREFILL_MODE") == "hipblaslt_range_direct"
+    assert _capability("LAGUNA_F16_BOUNDARY_FUSION") is True
+    assert _capability("LAGUNA_F16_ATTENTION_QUAD_DECODE") is True
+    assert _capability("LAGUNA_F16_NONTEMPORAL_DECODE") is True
+    assert _capability("LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE") is True
+    assert _capability("LAGUNA_F16_PROJECTION_HEAD_KV_DECODE") is True
+    assert _capability("LAGUNA_F16_DECODE_FIXEDK") is True
+    assert _capability("LAGUNA_F16_DECODE_ONEBARRIER") is True
+    assert _capability("LAGUNA_Q4_PACK8_DUAL_SILU_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_NATURAL_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_NATURAL_TILE8_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE") is True
+    assert _capability("LAGUNA_SELECTED_HALFDOT_DECODE") is True
+    assert _capability("LAGUNA_DENSE_Q4_PREFILL_MODE") == "wmma_pack8"
+    assert _capability("LAGUNA_MOE_BRANCH_CONCURRENCY") is True
+    assert _capability("LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY") is True
+    assert _capability("LAGUNA_MOE_SHARED_AFTER_ROUTER") is True
+    assert _capability("LAGUNA_MOE_SHARED_LOW_PRIORITY") is True
+    assert _capability("LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY") is True
+    assert _capability("LAGUNA_PREFILL_ATTENTION_HIPBLASLT") is True
+    assert _capability("LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE") is True
+    assert _capability("LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER") is True
+    assert _capability("LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES") is True
+    assert _capability("LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX") is True
+    assert _capability("LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT") is True
+    assert _capability("LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE") is True
+    assert _capability("LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS") == 2_048
+    assert _capability("LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT") is True
+    assert _capability("LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT") is True
+    assert _capability("LAGUNA_Q6_WMMA_PREFETCH_WEIGHT") is True
+    assert _capability("LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION") is True
+    assert _capability("LAGUNA_MOE_GROUP_COMPACT_MODE") == "parallel"
+    assert _capability("LAGUNA_ROUTER_LOGITS_MODE") == "token_tile_8"
     assert (
-        LAGUNA_SELECTED_GATE_UP_MODE
+        _capability("LAGUNA_SELECTED_GATE_UP_MODE")
         == "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
     )
     assert (
-        LAGUNA_SELECTED_DOWN_MODE
+        _capability("LAGUNA_SELECTED_DOWN_MODE")
         == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     )
-    assert LAGUNA_PREFILL_MATRIX_ROWS == 2048
-    assert LAGUNA_PREFILL_CACHED_META is True
-    assert LAGUNA_PREFILL_GLOBAL_QROW6 is True
-    assert LAGUNA_PREFILL_KV_PREAPPEND is True
+    assert _capability("LAGUNA_PREFILL_MATRIX_ROWS") == 2048
+    assert _capability("LAGUNA_PREFILL_CACHED_META") is True
+    assert _capability("LAGUNA_PREFILL_GLOBAL_QROW6") is True
+    assert _capability("LAGUNA_PREFILL_KV_PREAPPEND") is True
     assert (
-        LAGUNA_GLOBAL_PREFILL_VARIANT
+        _capability("LAGUNA_GLOBAL_PREFILL_VARIANT")
         == "global_context_rows_qrow4_m128_online_spans"
     )
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER == 28
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER") == 28
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH")
         == 16
     )
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE == 64
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM is True
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE") == 64
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM") is True
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE")
         is True
     )
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH")
         == 4
     )
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE is True
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER == 32
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE == 98_304
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4 is True
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64 is True
-    assert LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80 is True
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE") is True
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER") == 32
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE") == 98_304
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4") is True
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64") is True
+    assert _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80") is True
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX")
         is True
     )
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE")
         == 65_536
     )
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE")
         is True
     )
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH8_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH8_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE")
         is True
     )
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE")
         is True
     )
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE")
         is True
     )
     assert (
-        LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+        _capability("LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE")
         is True
     )
-    assert LAGUNA_SWA_PREFILL_VARIANT == "swa_context_rows_qrow4_m128_online_spans"
+    assert _capability("LAGUNA_SWA_PREFILL_VARIANT") == "swa_context_rows_qrow4_m128_online_spans"
     assert (
         backend_package_capability(
             "hip_gfx1151", "LAGUNA_F16_PREFILL_STRATEGY"
@@ -2781,32 +2638,32 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         == "swa_context_rows_qrow4_m128_c256_exact_spans"
         == GFX1100_LAGUNA_SWA_PREFILL_VARIANT
     )
-    assert GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
+    assert _capability("GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS") == 4096
     assert GFX1100_GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
-    assert GGUF_PREFILL_ROUTER_SELECT_THREADS == 128
+    assert _capability("GGUF_PREFILL_ROUTER_SELECT_THREADS") == 128
     assert GFX1100_GGUF_PREFILL_ROUTER_SELECT_THREADS == 128
-    assert GGUF_PREFILL_SCRATCH_ARENA_GROUPING == "owner_slots"
-    assert GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS is True
-    assert GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS == 768
-    assert GGUF_Q8_T16_PREFILL_FOUR_WAVE is True
-    assert GGUF_Q8_T16_PREFILL_TWO_WAVE is True
-    assert GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 65536
-    assert GGUF_ROUTER_F32_BF16_HIDDEN_THREADS == 256
+    assert _capability("GGUF_PREFILL_SCRATCH_ARENA_GROUPING") == "owner_slots"
+    assert _capability("GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS") is True
+    assert _capability("GGUF_PREFILL_SCRATCH_LIVENESS_MIN_ROWS") == 768
+    assert _capability("GGUF_Q8_T16_PREFILL_FOUR_WAVE") is True
+    assert _capability("GGUF_Q8_T16_PREFILL_TWO_WAVE") is True
+    assert _capability("GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS") == 65536
+    assert _capability("GGUF_ROUTER_F32_BF16_HIDDEN_THREADS") == 256
     assert GFX1100_GGUF_ROUTER_F32_BF16_HIDDEN_THREADS == 256
     assert GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
-    assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
+    assert _capability("GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS") == 4096
     assert GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE is True
-    assert GGUF_GDN_INDEXED_SINGLETON_DECODE is True
+    assert _capability("GGUF_GDN_INDEXED_SINGLETON_DECODE") is True
     assert GFX1100_GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 8
-    assert GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 8
+    assert _capability("GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS") == 8
     # gfx1100 qualified the c8 selected pair-reuse dual owner on the W7900
     # (2026-09-05 audit packet D1); parity with the gfx1151 floor.
     assert GFX1100_GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
-    assert GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
+    assert _capability("GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS") == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
-    assert GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
+    assert _capability("GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS") == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_QWEN_TILE8 is False
-    assert GGUF_Q5_T16_SELECTED_QWEN_TILE8 is True
+    assert _capability("GGUF_Q5_T16_SELECTED_QWEN_TILE8") is True
     # 2026-09-13: the Q5T16 single-wave verifier rowtile (43fdf9129) registered
     # its own c1 variant table on this backend, so the alias check is no longer
     # an empty-table equality.
@@ -2846,18 +2703,18 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         },
     }
     assert GFX1100_GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
-    assert GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
+    assert _capability("GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS") == 8
     assert GFX1100_GGUF_Q6_LM_HEAD_MAX_CHUNK == 8
-    assert GGUF_Q6_LM_HEAD_MAX_CHUNK == 8
+    assert _capability("GGUF_Q6_LM_HEAD_MAX_CHUNK") == 8
     assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
-    assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
+    assert _capability("GGUF_Q8_T16_DECODE_ROWTILE_ALL") is False
     assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS == 0
-    assert GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS == 4
+    assert _capability("GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS") == 4
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_compact_peer_wave32"
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {}
     assert GFX1100_GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
-    assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
-    assert GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE == {
+    assert _capability("GGUF_GDN_PREFILL_AUTO_MODE") == "chain_lds32_direct_nonvolatile"
+    assert _capability("GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE") == {
         ("MOSTLY_Q4_K_M", 16, 16, 128, 128): "chain_peer_cluster8",
         ("MOSTLY_Q4_K_M", 16, 48, 128, 128): "chain_compact_peer_wave32",
         ("MOSTLY_Q4_K_S", 16, 48, 128, 128): "chain_compact_peer_wave32",
@@ -2865,14 +2722,14 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         # rejection was superseded by exact-core graph-decode evidence.
         ("MOSTLY_Q8_0", 16, 16, 128, 128): "chain_peer_cluster8",
     }
-    assert GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS == 1024
-    assert GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
+    assert _capability("GGUF_GDN_PREFILL_COMPACT_PEER_CHUNK_ROWS") == 1024
+    assert _capability("GGUF_GDN_PREFILL_EXACT_MODE") == "chain_lds32_direct_nonvolatile"
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
     assert GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
-    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE is True
-    assert GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT == 32768
+    assert _capability("GGUF_PAGED_ATTN_PARALLEL_REDUCE") is True
+    assert _capability("GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT") == 32768
     assert GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "shared_x"
-    assert GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE == "pair32"
+    assert _capability("GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE") == "pair32"
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE is True
     assert GFX1100_GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS == 4096
     assert (
