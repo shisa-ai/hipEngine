@@ -336,68 +336,6 @@ pins the F16 re-admission. These tests cover binder behavior, not the prose here
   can be re-admitted on its evidence
   (`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/`).
 
-## Router Producer Variant (`HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`)
-
-Cleanup status (2026-10-26, R0030): no runtime cleanup. The closing ownership
-sentence is corrected; the rejection record and its campaign-level reopening
-condition stand. The reader-removal decision belongs to R0029 above, not here.
-
-- Historical warp screening: `f32_hidden_warp_reduce_dense_exact` uses one
-  warp per token, a 32-lane shuffle reduction and one expert row staged per
-  block in LDS. Its comparison parent was `f32_hidden_token_tile4_dense_exact`.
-  The current UD production producer is `f32_hidden_f16_wmma_gemm`; ordered DPP
-  is the arithmetic-recovery default and the named rollback, as documented in
-  the preceding section. The runner reads the selector at launch, and the
-  profile binder publishes the resolved selection.
-- Screened at `+1.65%` prefill on `code-p4096` (247.739 -> 251.823 tok/s,
-  `-0.272 s`), with the router kernel itself `2.158x` faster
-  (619.45 -> 287.11 ms). Same-session two-arm A/B, disjoint per-run spreads.
-  Evidence: `benchmarks/results/2026-09-27-router-warp-reduce/`.
-- **Not bit-exact**: the reduction order changes from a 256-thread LDS tree to a
-  32-lane shuffle, so the two variants are distinct production arithmetics. The
-  promotion bar is the production envelope in `docs/EXECUTION-PROFILES.md`, not
-  parent parity. The tile4 parent stays registered as the strict fallback.
-- **The risk mechanism is discrete, not drift.** The router logits feed
-  `qwen35_router_select`, so a near-tie expert can change which of the 512
-  experts is selected. A 4.9e-7 logit difference is irrelevant as drift and
-  decisive as a selection flip. Judge this route on expert-selection stability
-  and the model-logit envelope together; a KL-only reading can miss it. This is
-  the "confirmed router-flip mechanism" the GR section below asks for, applied
-  to the router itself rather than to a GR projection.
-- **The 450-row production gate rejected the route.** `measurement_valid: true`,
-  `candidate_dispatch_calls: 4320` (so it ran; this is not the `rows > 256`
-  silent no-op). Numerical FAILED, task FAILED, state/determinism and lifecycle
-  passed. Mean KL 5.714e-4, p95 2.322e-3, p99 6.228e-3, max 3.344e-2 - all four
-  KL gates pass, at 57% of the mean budget - while **top-1 is 98.67% against a
-  99% floor**. Scope failures: `category/mixed_ja_en` (mean KL 1.083e-3),
-  `shape/prefill_last` and `transition/prefill_to_c1` (mean KL 3.515e-3).
-- **The cause is the router's discrete selection, not drift.**
-  `flip_eligible_rows` 48, `top1_mismatches_flip_eligible` **6**,
-  `top1_mismatches_outside_flip_eligible` **0**, `max_abs_logit_delta` 1.673.
-  Every top-1 mismatch sits on a row whose strict margin is small enough for the
-  observed drift to explain it. The router logits feed `qwen35_router_select`, so
-  a 4.9e-7 difference flips which of 512 experts is selected and becomes an O(1)
-  model-logit change. A passing KL envelope alongside a failing top-1 is the
-  signature of a discrete amplification node.
-- **Tuning the router kernel cannot clear this gate.** Any reduction-order change
-  moves the logits by ~1 ulp and flips the same near-ties. This also explains why
-  the GR family below "is closed to arithmetic change": a router flip changes
-  which experts run, so every downstream GR route inherits the same saturation.
-  Treat the router selection as the amplification node for the whole model's
-  arithmetic-change design space.
-- **Reopening path, campaign-level.** Make the *selection* invariant instead of
-  the arithmetic: rank experts on a quantized logit with a deterministic
-  tie-break, so a 1-ulp difference cannot reorder them. That must apply to the
-  reference too, so it re-baselines strict and needs a campaign decision, not a
-  kernel change. Reopen this route only alongside that decision; do not spend
-  another kernel attempt on it before then.
-- Historical screening note: the selector also accepts the ordered DPP
-  producer described above. UD production selects the F16-operand GEMM
-  producer, DPP is the recovery plan's default and the named rollback, and the
-  failed warp route remains opt-in and diagnostic only. Remove the reader under
-  the plan-level selection API condition recorded in the preceding section, not
-  by treating all named siblings as one failed candidate.
-
 ## MoE Decode warp256 GEMV Pair - REMOVED 2026-09-30
 
 > 2026-10-14: the two kernels this section retained are selected again for
@@ -597,6 +535,29 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0030 — Decide router-selection semantics before reopening warp arithmetic
+
+`f32_hidden_warp_reduce_dense_exact` changes reduction association from the
+tile4 parent. Its recorded production gate had actual candidate dispatch and
+passed KL terms but failed top-1/task criteria; state, repeatability and
+lifecycle passing did not clear it. Evidence remains in
+`benchmarks/results/2026-09-27-router-warp-reduce/` and the full ledger record
+at `4b91faf09`. Near-tie expert-selection changes can amplify small router-logit
+differences; assess selection stability and model-output gates together.
+
+**Deferred campaign decision:** the recorded reopening proposal quantizes
+ranking logits with deterministic tie-breaking, including the reference. That
+changes strict selection semantics and needs an explicit campaign decision and
+new reference validation, not a kernel-only retry or threshold relaxation.
+Do not rerun the unchanged rejected route before that decision.
+
+Preserve tile4 strict fallback and the diagnostic warp implementation. F16
+production and ordered-DPP recovery choices are separate siblings, not rejected
+by this candidate's result. R0029 owns selector API/transport retirement; do not
+delete shared selection infrastructure to remove one candidate. No reference,
+arithmetic or default changes in this triage.
+
 
 ### R0029 — Replace router producer handoff with a plan-level diagnostic API
 

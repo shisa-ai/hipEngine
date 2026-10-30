@@ -896,7 +896,7 @@
       "start_line": 937,
       "end_line": 992,
       "sha256": "dbeae01c30914e934dd5e4852c48ff3565fce6873f9a4fb233441684a47889c6",
-      "status": "resolved",
+      "status": "triaged-router-campaign-reopening-deferred",
       "evidence": [
         "Router ownership corrected; explicit F16 import KeyError fixed with RED/GREEN fresh-process test.63 focused tests, CPU suite, explicit-selector production HTTP and docs/audit passed. Intentional rollback/publication reader preserved. Worklog:worklog/entries/20261025T212633.831377Z-cleanup-refactor-r0029-r0030-router-ownership-bd9ddc.md."
       ],
