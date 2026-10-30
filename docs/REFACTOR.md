@@ -2335,53 +2335,6 @@ should be removed or collapsed.
 
 
 
-## 2026-08-29 Qwen4Exp late-layer production prefill
-
-- The remaining `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` process bridge controls
-  Q8 MMQ resources; UD arithmetic recovery keeps it off. Remove its environment
-  transport when resolved profile state is request-local. Superseded Q5_1/Q4_K
-  MMQ selector/layer-list transport and workspace branches are removed; their
-  registered kernels remain available for explicit diagnostics. Preserve exact
-  coltile-Q8 and grouped Q4/Q5 fallbacks; the Q8 (320,10240) hc-down and
-  K%256!=0 shapes remain strict.
-- `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and
-  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` were superseded for the named production
-  profile by the faster admitted MMQ stack, but `PRODUCTION_MOE_PREFILL` is
-  re-admitted 2026-08-29 as the certified transport for the WMMA-MoE27
-  suffix and now owned by the named production profile manifest
-  (`3b7a0644…`, see
-  `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json`).
-  The binder keeps the env transport as the request binding surface; fold it
-  into request-local profile state together with the other Qwen4Exp bridges
-  and retain the registered strict-owner fallbacks. Note the binder writes
-  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` as `""` during its own pass, so a value
-  set before generator construction is silently inert; gates that need the route
-  must set it after the binder runs
-  (`scripts/execution_profile_q8_wmma_prefill_layers_gate.py`). Give the folded
-  request-local surface an explicit getter so callers stop depending on binder
-  ordering.
-- `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` is the internal Q4 decode
-  bridge. UD-Q4_K_XL production and fast bind `Q4_DP4A64=0`: the one-plane
-  route caused the isolated long-context decode discrepancy, and the manifest
-  already declared the strict logical128/t64 owner. Other production routes
-  stay enabled. The historical layer list remains available for diagnostics.
-  Evidence: `benchmarks/results/20261022-qwen38fn-q4-decode-repair.json`.
-  Remove the process-global transport when profile state becomes request-local;
-  keep the registered strict fallback.
-
-  To reconsider DP4A, repair the operation and run the existing explicit
-  candidate, which pins the logical128 consumer rather than allowing the warp
-  override. Set `MODEL_ROOT` to the model directory and `LONG_PROMPTS` to the
-  long numerical JSONL fixture including the 12,287-token failure and controls:
-
-  ```bash
-  python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json
-  python3 scripts/qwen4exp_long_context_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --numeric-prompts "$LONG_PROMPTS" --max-sequence-length 20000 --prefill-chunk-size 1024 --candidate-repeats 3 --output /tmp/q4-decode-long.json
-  ```
-
-  Both numerical gates and the campaign's complete task/serving gates must pass
-  before restoring this arithmetic default. A two-trajectory screen does not
-  clear the failure.
 
 ## 2026-08-28 Qwen4Exp native c2 runner pool
 
@@ -9682,3 +9635,44 @@ the enabled route through public prefill and confirm actual dispatch. Check full
 logits/state, repeatability and cleanup before retiring the comparison. Do not
 silently claim engagement from setting this flag while the MMQ owner is absent.
 This triage changes no runtime or default.
+
+### R0149 — Replace remaining Qwen4Exp profile environment transport
+
+**Deferred ownership migration:** replace `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
+`HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`,
+`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` and
+`HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` with explicit resolved owner state
+at their consumers. The binder still resets the Q8 WMMA layer list to empty;
+provide a getter and explicit diagnostic override instead of requiring callers
+to know binder order. Test independent owners in both construction orders and
+interleaved requests before removing the environment transport.
+
+Q5_1/Q4_K MMQ selector/layer-list transport and workspace branches were already
+removed in
+`worklog/entries/20261026T233425.920612Z-cleanup-refactor-r0149-mmq-0b7fec.md`.
+Keep the registered diagnostic kernels and exact coltile-Q8/grouped Q4/Q5
+fallbacks. Ownership migration must not widen MMQ shape support or change the
+strict handling of hc-down and unsupported K alignment. R0128 owns optional
+resource accounting; R0129 and R0147 own their distinct prepack/scope decisions.
+Historical WMMA-MoE27 results remain in
+`benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json`.
+
+The UD-Q4_K_XL recovery disables Q4 DP4A because of the observed long-context
+decode discrepancy, recorded in
+`benchmarks/results/20261022-qwen38fn-q4-decode-repair.json`.
+Removing global transport does not repair or promote that arithmetic. Preserve
+the strict logical128/t64 owner and explicit diagnostic layer selection.
+To reconsider DP4A, repair the operation and use the explicit candidate that
+pins the logical128 consumer. Set `MODEL_ROOT` to the model directory and
+`LONG_PROMPTS` to the long numerical JSONL fixture containing the 12,287-token
+failure and controls:
+
+```bash
+python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json
+python3 scripts/qwen4exp_long_context_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --numeric-prompts "$LONG_PROMPTS" --max-sequence-length 20000 --prefill-chunk-size 1024 --candidate-repeats 3 --output /tmp/q4-decode-long.json
+```
+
+Both numerical gates and complete task/serving gates must pass before restoring
+that arithmetic default; a two-trajectory screen is insufficient. For transport
+migration, run profile and owner-isolation tests and public generation confirming
+selected routes, cleanup and unchanged outputs. This triage changes no runtime.

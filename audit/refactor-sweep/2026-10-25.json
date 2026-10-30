@@ -3934,24 +3934,24 @@
       "start_line": 3555,
       "end_line": 3603,
       "sha256": "a921c8f8c6c38081d8be6379d44907745cea511b2b0a7970aa6c9a76643a7649",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-profile-ownership",
+      "evidence": ["Remaining binder/runtime bridges verified; moved owner-state migration to bottom while preserving DP4A failure and exact clearing commands. Earlier Q5/Q4 cleanup preserved.79 tests/docs/audit pass. worklog/entries/20261030T070659.924118Z-cleanup-cleanup-r0149-4424c5.md."],
       "subitems": [
         {
           "line": 3557,
           "text": "- The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,",
-          "status": "pending",
+          "status": "deferred-profile-ownership",
           "evidence": ["Removed superseded Q5_1/Q4_K MMQ selectors/layer constants/workspace+dispatch plumbing; registered kernels remain. Q8 MMQ environment transport still open. CPU288+focused, GPU289, public290 and final gates pass. Worklog: worklog/entries/20261026T233425.920612Z-cleanup-refactor-r0149-mmq-0b7fec.md."]
         },
         {
           "line": 3565,
           "text": "- `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and",
-          "status": "pending"
+          "status": "deferred-profile-ownership"
         },
         {
           "line": 3581,
           "text": "- `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` is the internal Q4 decode",
-          "status": "pending"
+          "status": "deferred-profile-ownership-and-arithmetic-repair"
         }
       ]
     },
