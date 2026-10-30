@@ -3563,33 +3563,33 @@
       "start_line": 3259,
       "end_line": 3281,
       "sha256": "e3f61e1e7b91e4dac7b9e81dbdeea0052838089098fbccc1894011d1a9378dd4",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-cap-consolidation",
+      "evidence": ["Dense cap exception implemented; corrected BF16-only to BF16/INT8 and referred staged/scalar ownership to R0382. Generic cap consolidation remains deferred with MoE diagnosis; removed evidence-based admission prose. 21 tests/docs/audit pass. worklog/entries/20261030T064255.501699Z-cleanup-cleanup-r0132-71c930.md."],
       "subitems": [
         {
           "line": 3261,
           "text": "- Remove the obsolete gfx1100 dense H5120 Q4_K_M p95 native-context workaround",
-          "status": "pending"
+          "status": "resolved-implemented"
         },
         {
           "line": 3265,
           "text": "- The backend cache-capacity policy is geometry/quant keyed and applies to BF16",
-          "status": "pending"
+          "status": "deferred-cap-consolidation"
         },
         {
           "line": 3270,
           "text": "- Native graph admission owns allocated capacity, supported rows, kernel-family",
-          "status": "pending"
+          "status": "resolved-contract-preserved"
         },
         {
           "line": 3273,
           "text": "- `strict_long_rows` in the native verifier currently scalarizes attention and",
-          "status": "pending"
+          "status": "resolved-duplicate-r0382"
         },
         {
           "line": 3277,
           "text": "- Public serving evidence still independently owns request/context/horizon",
-          "status": "pending"
+          "status": "resolved-policy-corrected"
         }
       ]
     },

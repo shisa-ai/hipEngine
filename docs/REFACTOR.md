@@ -2329,28 +2329,6 @@ should be removed or collapsed.
   experiment toggles first.
 
 
-## 2026-09-08 Native C1 Context Admission
-
-- Remove the obsolete gfx1100 dense H5120 Q4_K_M p95 native-context workaround
-  after the scratch lifetime and scalarized initial-state snapshot repairs. A provisional
-  geometry-scoped 256 cap was tested but is not retained: untested context
-  lengths are not presumed broken.
-- The backend cache-capacity policy is geometry/quant keyed and applies to BF16
-  KV with FP32 recurrent state. Other routes keep their existing dispatch:
-  the MoE control already fails strict full-logit equality at p8 under the old
-  policy. Resolve that model-route discrepancy separately before consolidating
-  the generic cap and cache-capacity policy.
-- Native graph admission owns allocated capacity, supported rows, kernel-family
-  transitions and split-workspace boundaries. Its private metadata producer is
-  independent of the bulk-prefill device-metadata threshold.
-- `strict_long_rows` in the native verifier currently scalarizes attention and
-  dense FFN beyond the split-K crossover to preserve exact scalar arithmetic.
-  This is an explicit execution path, not a disabled-context policy. Replace it
-  only when a faster row-batched path passes its declared exact/profile gates.
-- Public serving evidence still independently owns request/context/horizon
-  admission. Do not equate removal of a backend workaround with new automatic
-  serving keys. Keep eager/serial verification for legitimate unsupported
-  graph configurations and as the correctness oracle.
 
 ## 2026-09-07 DMS codec evaluation bootstrap — open
 
@@ -9636,3 +9614,34 @@ strict fallback checks, then public Surya continuation at fixed live lengths
 across different configured capacities. Profile before claiming convergence or
 speedup. Retire capacity-derived chunking only after the coordinated replacement
 passes; this triage changes neither launch behavior nor arithmetic.
+
+### R0132 — Consolidate native context bounds without restoring evidence admission
+
+The gfx1100 dense H5120 Q4_K_M cache-capacity policy already bypasses the old
+p95 cap. `_backend_native_context_limit` accepts BF16 and INT8-per-token-head
+KV with FP32 recurrent state for that policy; the old BF16-only description
+was stale. Other configurations still encounter the backend fallback limit.
+Graph admission separately checks capacity, rows, kernel transitions and split
+workspace boundaries. Preserve those executable constraints and the independent
+graph metadata producer.
+
+**Deferred consolidation:** replace the generic cap/cache-policy split with
+capability-based bounds after diagnosing the recorded MoE full-logit discrepancy.
+The historical p8 observation is preserved in `docs/REFACTOR.md` at commit
+`40a912a08`; it is not a fresh failure result or justification for blocking every
+unmeasured context. Exercise the affected route, identify its actual failure
+scope, and retain eager/serial execution where graph capability is absent.
+Do not restore a 256 cap merely because longer contexts lack measurements.
+
+R0382 owns long-context staged/scalar orchestration. `strict_long_rows` is
+conditional on linear attention and staged-policy selection, not a blanket
+scalarization of all long-context verification. Keep its strict arithmetic
+contract separate from context admission. Public requests must be admitted by
+implementation and resource capability, not benchmark records or serving-key
+identity; automatic variant policy and arithmetic promotion are separate.
+
+Clearing checks: run native-context and native-cycle unit tests, then the
+native-context state/logit gates across affected geometries, KV layouts and
+boundary-straddling rows. Verify public generation, every accepted-prefix state,
+continuation, rollback and graph/eager route attribution before consolidating
+bounds. This triage changes documentation only, not the surviving cap.
