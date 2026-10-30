@@ -3544,41 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## The 128-wide MMQ32 K pass is implemented, correct and unwired (open 2026-09-28)
-
-`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel` stages four Q4_K
-subblocks per pass instead of one, taking the gate/up projection from 88 staging iterations
-and 176 `__syncthreads()` to 22 and 44 at identical arithmetic. It is exported as
-`hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out` with a
-Python wrapper, and `tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py` checks it **bitwise**
-against the 32-wide route on three geometries plus the CPU reference. Nothing routes to it.
-
-Removal condition: delete
-`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel`, its `extern "C"`
-launcher and its Python symbol unless the route is either re-measured at the production gate/up
-geometry and wins, or wired behind an `in_features % 128 == 0` dispatch condition and shown to
-improve end-to-end prefill. Clearing command: rerun
-`scripts/gemma4_mmq_k_width_leaf_bench.py` at `out_features` 1408 once the fixture can reach it,
-or promote the route and take an end-to-end number.
-
-**It is unwired because it was measured and did not earn the place.** On the leaf bench
-(`scripts/gemma4_mmq_k_width_leaf_bench.py`) the wide pass was 0.986x at `in_features` 512,
-0.897x at 1024, and 0.914x at 2816 -- and the 2816 medians moved between runs (narrow 138.2
-then 159.5 us) while the minima sat within 4% of each other, so at the production K depth it
-is a wash. The barrier count was worth a factor of 1.36 in the earlier estimate; it is worth
-about 10% at best and nothing at 2816.
-
-Two things would clear it, and either is enough:
-
-- **Re-measure at the production geometry.** The bench could not reach `out_features` 1408
-  because the synthetic weight generator overflows `uint8` past 128, so every point above runs
-  at 128 output features and a quarter of the intended arithmetic intensity.
-- **Wire it and take an end-to-end number.** That requires an `in_features % 128 == 0`
-  dispatch condition, which the narrow route does not need.
-
-If neither happens, delete the kernel, its `extern "C"` launcher, its Python symbol and its
-three test parameters. The `KSUB` template machinery underneath stays either way: it is a
-verified no-op at `KSUB = 1` and it is what made the experiment cheap.
 ## `HIPENGINE_GEMMA4_MOE_PREFILL` selects a prefill route that fails an absolute bar (open 2026-09-26)
 
 The Gemma 4 prefill MoE has two WMMA owner variants per projection that are 2.7x
@@ -9673,3 +9638,26 @@ See `worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dis
 Historical route attribution remains in
 `benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json`
 and ledger history at `43477a865`.
+
+### R0518 — Choose production-geometry evaluation or removal of wide-K MMQ
+
+The `mmq32x128` Q4_K selected-dual export and Python wrapper still exist, but no
+production Python route calls them. The earlier fixture overflow is repaired:
+`_make_q4_k_block` now uses int32 arithmetic before casting packed fields to
+uint8. Do not treat that old blocker as unfinished work.
+
+**Deferred candidate decision:** run the narrow/wide comparison at production
+geometry, or remove the unused wide export, wrapper and wide-only test cases.
+The current benchmark accepts the intended geometry:
+
+```bash
+.venv/bin/python scripts/gemma4_mmq_k_width_leaf_bench.py \
+  --in-features 2816 --out-features-a 1408 --out-features-b 1408
+```
+
+If selecting the wide route, preserve its input-width capability restriction,
+verify numerical parity and demonstrate the selected route through public prefill
+with the applicable gates. A leaf result alone does not establish end-to-end gain.
+If deleting it, preserve the shared `KSUB` machinery and narrow implementation.
+Historical screens remain in ledger history at `d82800038`; they are not new
+production-geometry results.

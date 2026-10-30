@@ -13888,8 +13888,8 @@
       "start_line": 12427,
       "end_line": 12461,
       "sha256": "2629b739324b4fa211919970d21b1971089091844204d2c1a91e717c594d39ff",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Fixture overflow already fixed; production-width CPU weight construction succeeds. Deferred wide-K production-geometry evaluation versus removal; shared narrow machinery preserved. worklog/entries/20261030T060018.967169Z-cleanup-cleanup-r0518-650f6d.md."],
       "subitems": [
         {
           "line": 12453,
