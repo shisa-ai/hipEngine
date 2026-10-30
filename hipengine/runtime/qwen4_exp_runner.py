@@ -3205,10 +3205,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             score_blocks = (start + count) // index_state.compression_ratio
             if score_blocks > metadata.score_blocks:
                 raise ValueError("QSA score width exceeds prefill metadata capacity")
-            direct_select = (
-                index_heads == 4 and index_dim == 128
-                and _qwen4_exp_qsa_direct_select_enabled()
-            )
+            direct_select = index_heads == 4 and index_dim == 128
             sparse_query_ptr = (
                 scratch.index_query.ptr
                 + dense_rows * index_heads * index_dim * DType.FP32.itemsize
@@ -3983,16 +3980,6 @@ def _qwen4_exp_qsa_strided_gate_enabled() -> bool:
 
     return os.environ.get(
         "HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE", "1"
-    ) not in {"", "0", "false", "False"}
-
-
-def _qwen4_exp_qsa_direct_select_enabled() -> bool:
-    """Causal-only block scoring and, with the WMMA attention, a selection
-    mask written straight from the scores. Bit-identical selection; the env
-    switch is a rollback (docs/REFACTOR.md)."""
-
-    return os.environ.get(
-        "HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT", "1"
     ) not in {"", "0", "false", "False"}
 
 

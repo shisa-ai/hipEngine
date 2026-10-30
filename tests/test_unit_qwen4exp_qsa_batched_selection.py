@@ -6,7 +6,7 @@ is now the owning runner's ``qsa_batched_selection`` field, threaded through the
 prefill layer to the token mixer:
 
 - ``True``  - the batched owner: one score pass, the top-k mask, and one
-  expansion per row (production).
+  expansion of the last row for WMMA decode handoff (otherwise every row).
 - ``False`` - the strict per-row fallback: one ``select_positions_device`` call
   per sparse row, keeping its own selection-capacity check.
 
@@ -206,12 +206,11 @@ def test_per_row_fallback_survives_the_transport_change() -> None:
         for node in ast.walk(tree)
     )
     # The H4/D128 direct-scoring guard stays a runtime decision.
-    assert any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_qwen4_exp_qsa_direct_select_enabled"
-        for node in ast.walk(tree)
-    )
+    decision = next(node.value for node in ast.walk(tree)
+                    if isinstance(node, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == "direct_select"
+                            for t in node.targets))
+    assert ast.unparse(decision) == "index_heads == 4 and index_dim == 128"
 
 
 def test_cache_only_verifier_call_site_never_selects() -> None:

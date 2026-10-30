@@ -743,7 +743,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY` | `0` | `1` measures the pre-promotion fixed-256 full-attention context route against the promoted one (A/B only). |
 | `HIPENGINE_QWEN4_EXP_PLE_OVERLAP` | `1` | Overlaps the pinned PLE staging upload with layer-0 work; `0` serializes it. |
 | `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS` | `random` (production UD), else `normal` | `madvise` access hint for the host-mapped PLE table; `normal` restores sequential access. |
-| `HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT` | `1` | QSA decode writes its selection directly; `0` is the rollback. |
+| `HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT` | retired; ignored | H4/D128 batched prefill uses causal scoring and direct WMMA masks. Other geometries and per-row selection keep their fallbacks. |
 | `HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE` | `1` | QSA gate reads the strided projection in place; `0` is the rollback. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` | retired | Ignored. Ordered v2 uses the registered three-pass route; the fused experiment is removed. |
 | `HIPENGINE_QWEN4_EXP_QSA_WMMA` | retired; ignored | The manifest publishes `runner.qsa_wmma_enabled`; diagnostic arms use `qsa_wmma_attention(runner, enabled)`. |

@@ -3488,17 +3488,12 @@ remains for this unit; strict fallbacks and the separate DP4A prerequisite remai
 
 ## Qwen4Exp direct QSA prefill selection (`HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT`)
 
-Default on. Prefill rows past the dense-equivalent limit score only the
-complete blocks they can see (`qsa_score_h4_d128_rows_f32_kernel`, one
-staged query tile per workgroup), and with the WMMA attention the top-k
-writes the selection mask directly (`qsa_topk_mask_rows_f32_kernel`); only
-the last row still expands positions, for decode. Selection and output are
-bit-identical (`tests/test_gpu_qwen4exp_qsa_select_mask.py`; same-process
-`code-p4096` 1612.6 -> 1629.4 tok/s, identical tokens). `=0` restores the
-tiled all-block scorer, the full expand and the separate mask kernel.
-
-Remove the flag, the tiled scorer's prefill call and the mask kernel's
-prefill call once the next Qwen4Exp rate rollup passes with it on.
+Resolved: the process rollback is retired. H4/D128 batched prefill always uses
+causal scoring and, with WMMA attention, direct mask publication. Other
+geometries retain the generic scorer, and per-row selection retains its mask
+conversion. Only the final sparse row expands positions on the direct-mask
+route to publish decode state. The generic kernels remain strict comparison
+oracles in `tests/test_gpu_qwen4exp_qsa_select_mask.py`.
 
 ## Qwen4Exp QSA prefill gate read in place (`HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE`)
 
@@ -3508,7 +3503,8 @@ and writes the gated context's F16 image into the wide-route workspace
 (declared as the F16 mirror) so the output projection skips its conversion.
 Bit-identical (`tests/test_gpu_qwen4exp_qsa_select_mask.py`); same-process
 `code-p4096` 1631.4 -> 1634.5 prefill tok/s. `=0` restores the copy and the
-separate multiply. Remove with the direct-selection flag above.
+separate multiply. Remove the strided-gate rollback after its route validation;
+the direct-selection rollback is retired.
 
 ## Qwen4Exp residual write fused into the next norm (`HIPENGINE_QWEN4_EXP_GR_WRITE_NORM`)
 

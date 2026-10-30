@@ -13124,8 +13124,8 @@
       "start_line": 11006,
       "end_line": 11019,
       "sha256": "b88cb6c5261205f865f278c54da14a10d2632d2f8a3279e7202175d4c3d1bd5e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed process rollback; preserved geometry scorer fallback, per-row mask conversion and final-row decode handoff. RED3/GREEN27, GPU8 and public bg873 direct scorer/mask24 calls with stale key0 and unchanged IDs; full CPU bg874, docs/audit pass. worklog/entries/20261030T012910.306501Z-cleanup-cleanup-r0463-e319e4.md."],
       "subitems": []
     },
     {
