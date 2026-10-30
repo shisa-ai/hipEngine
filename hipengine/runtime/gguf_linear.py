@@ -6809,6 +6809,49 @@ def launch_gguf_linear_raw_ptr(
     fn(x_ptr, int(qweight_ptr), out_ptr, rows, in_features, out_features, **kwargs)
 
 
+@dataclass(frozen=True)
+class _GGUFPairedOperand:
+    """One exact pair operand and its logical geometry."""
+
+    weight: GGUFDeviceWeight
+    out_features: int
+
+
+@dataclass(frozen=True)
+class _GGUFT16PairOperand:
+    """One resolved T16 F16/rocBLAS pair side."""
+
+    key: KernelKey
+    quant: str
+    tile_override: int | None
+    activation_inplace: bool | None
+    cast_activation: bool
+
+
+@dataclass(frozen=True)
+class _GGUFLinearPairPlan:
+    """Private, pointer-free, single-use plan for one GGUF projection pair."""
+
+    backend: str
+    rows: int
+    in_features: int
+    out_features: int
+    out_features_b: int
+    activation_dtype: str
+    output_dtype: str
+    operands: tuple[_GGUFPairedOperand, _GGUFPairedOperand]
+    operation: str | None
+    pair_key: KernelKey | None
+    t16_operands: tuple[_GGUFT16PairOperand, ...]
+    q4_prefill_mode: str | None
+    q8_split_mode: str | None
+    threads: int
+    library_keys: tuple[str, ...]
+    library_always: bool
+    fallback_reason: str | None
+    registry_generation: int
+
+
 def launch_gguf_linear_pair(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
@@ -7015,557 +7058,33 @@ def launch_gguf_linear_pair(
                         )
                 return True
 
-    cache_key = (
-        generation(),
-        weight_a.spec.layout,
-        weight_a.spec.quant_key,
-        weight_b.spec.layout,
-        weight_b.spec.quant_key,
-        rows,
-        in_features,
-        out_features,
-        out_features_b,
-        activation_dtype,
-        output_dtype,
-        resolved_backend,
-        use_wmma,
-        use_gemv,
-        os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1"),
-        _q8_t16_dual_wmma_prefill_enabled.get(),
-        _q4_t16_unequal_pair_prefill_enabled.get(),
-        (
-            None
-            if (source_f16_session := _t16_f16_rocblas_prefill_session.get())
-            is None
-            else id(source_f16_session)
-        ),
-        bool(_native_batch_decode_session_enabled),
-        bool(registered_decode_only),
-        registered_decode_variant,
+    plan = _resolve_gguf_linear_pair_plan(
+        weight_a,
+        weight_b,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        out_features_b=out_features_b,
+        activation_dtype=activation_dtype,
+        output_dtype=output_dtype,
+        backend=resolved_backend,
+        use_wmma_prefill=use_wmma,
+        use_gemv_decode=use_gemv,
+        threads=threads,
+        registered_decode_only=registered_decode_only,
+        registered_decode_variant=registered_decode_variant,
     )
-    pair_kind = _PAIR_DISPATCH_RESOLVE_CACHE.get(cache_key)
-    if pair_kind is None:
-        pair_kind = _resolve_gguf_linear_pair_kind(
-            weight_a,
-            weight_b,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
-            out_features_b=out_features_b,
-            activation_dtype=activation_dtype,
-            output_dtype=output_dtype,
-            backend=resolved_backend,
-            use_wmma=use_wmma,
-            use_gemv=use_gemv,
-            registered_decode_only=bool(registered_decode_only),
-            registered_decode_variant=registered_decode_variant,
-        )
-        _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
-
-    if pair_kind == "q6_q4_t16_mixed_grid":
-        pair_key = KernelKey(
-            resolved_backend,
-            "linear_pair",
-            "gguf_q6_k_t16_v1+gguf_q4_k_t16_v1",
-            "mixed_grid_bf16_bf16_out",
-        )
-        pair_fn = resolve(
-            backend=pair_key.backend,
-            layer=pair_key.layer,
-            quant=pair_key.quant,
-            variant=pair_key.variant,
-        )
-        pair_kwargs = {"stream": stream, "runtime": runtime}
-        pair_library = None if libraries is None else libraries.get(pair_key.quant)
-        if pair_library is not None:
-            pair_kwargs["library"] = pair_library
-        pair_fn(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features_b,
-            **pair_kwargs,
-        )
-        return True
-
-    if pair_kind in {
-        "q4_q4_t16_narrow_col4",
-        "q4_q6_t16_narrow_col4_planar",
-    }:
-        if pair_kind == "q4_q4_t16_narrow_col4":
-            pair_quant = "gguf_q4_k_t16_v1"
-            pair_variant = "narrow_col4_pair_bf16_bf16_out"
-        else:
-            pair_quant = (
-                "gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1"
-            )
-            pair_variant = "narrow_col4_planar_pair_bf16_bf16_out"
-        pair_key = KernelKey(
-            resolved_backend,
-            "linear_pair",
-            pair_quant,
-            pair_variant,
-        )
-        pair_fn = resolve(
-            backend=pair_key.backend,
-            layer=pair_key.layer,
-            quant=pair_key.quant,
-            variant=pair_key.variant,
-        )
-        pair_kwargs = {"stream": stream, "runtime": runtime}
-        pair_library = None if libraries is None else libraries.get(pair_key.quant)
-        if pair_library is not None:
-            pair_kwargs["library"] = pair_library
-        pair_fn(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features_b,
-            **pair_kwargs,
-        )
-        return True
-
-    if pair_kind == "dense_f32_alpha_beta":
-        pair_key = KernelKey(
-            resolved_backend,
-            "linear_pair",
-            "f32",
-            "bf16_hidden_bf16_out",
-        )
-        pair_fn = resolve(
-            backend=pair_key.backend,
-            layer=pair_key.layer,
-            quant=pair_key.quant,
-            variant=pair_key.variant,
-        )
-        pair_kwargs = {"stream": stream, "runtime": runtime}
-        pair_library = None if libraries is None else libraries.get(pair_key.quant)
-        if pair_library is not None:
-            pair_kwargs["library"] = pair_library
-        pair_fn(
-            x_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            **pair_kwargs,
-        )
-        return True
-
-    if pair_kind == "q8_t16_dual_wmma":
-        pair_key = KernelKey(
-            resolved_backend,
-            "linear_pair",
-            "gguf_q8_0_t16_v1",
-            "t16_dual_wmma_prefill_bf16_bf16_out",
-        )
-        pair_fn = resolve(
-            backend=pair_key.backend,
-            layer=pair_key.layer,
-            quant=pair_key.quant,
-            variant=pair_key.variant,
-        )
-        pair_kwargs = {"stream": stream, "runtime": runtime}
-        pair_library = None if libraries is None else libraries.get(pair_key.quant)
-        if pair_library is not None:
-            pair_kwargs["library"] = pair_library
-        pair_fn(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            **pair_kwargs,
-        )
-        return True
-
-    if pair_kind == "q4_t16_unequal_dual_wmma":
-        pair_key = KernelKey(
-            resolved_backend,
-            "linear_pair",
-            "gguf_q4_k_t16_v1",
-            "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
-        )
-        pair_fn = resolve(
-            backend=pair_key.backend,
-            layer=pair_key.layer,
-            quant=pair_key.quant,
-            variant=pair_key.variant,
-        )
-        pair_kwargs = {"stream": stream, "runtime": runtime}
-        pair_library = None if libraries is None else libraries.get(pair_key.quant)
-        if pair_library is not None:
-            pair_kwargs["library"] = pair_library
-        pair_fn(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features_b,
-            **pair_kwargs,
-        )
-        return True
-
-    if pair_kind in {
-        "t16_f16_rocblas_shared_activation",
-        "t16_f16_rocblas_pair_only_second",
-    }:
-        session = _t16_f16_rocblas_prefill_session.get()
-        assert session is not None
-        pair_only_spec = (
-            session.pair_only_second_operand(
-                rows,
-                in_features,
-                out_features,
-                out_features_b,
-                first_quant=weight_a.spec.quant_key,
-                second_quant=weight_b.spec.quant_key,
-            )
-            if pair_kind == "t16_f16_rocblas_pair_only_second"
-            else None
-        )
-        for index, (weight, out_ptr, outputs) in enumerate(
-            (
-                (weight_a, out_a_ptr, out_features),
-                (weight_b, out_b_ptr, out_features_b),
-            )
-        ):
-            dispatch = _pack8_decode_dispatch(
-                resolve_gguf_linear_dispatch(
-                    weight,
-                    activation_dtype=activation_dtype,
-                    output_dtype=output_dtype,
-                    backend=resolved_backend,
-                    rows=rows,
-                ),
-                rows=rows,
-                out_features=outputs,
-            )
-            tile_override = None
-            activation_inplace_override = None
-            if index == 1 and pair_only_spec is not None:
-                tile_override, variant, activation_inplace_override = pair_only_spec
-                dispatch = GGUFLinearDispatch(
-                    KernelKey(
-                        dispatch.key.backend,
-                        "linear",
-                        dispatch.key.quant,
-                        variant,
-                    ),
-                    _T16_F16_ROCBLAS_ROUTE_BY_QUANT[dispatch.key.quant][1],
-                )
-            else:
-                dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
-                    dispatch,
-                    rows=rows,
-                    in_features=in_features,
-                    out_features=outputs,
-                )
-            _ensure_linear_kernel_registered(dispatch.key)
-            fn = resolve(
-                backend=dispatch.key.backend,
-                layer=dispatch.key.layer,
-                quant=dispatch.key.quant,
-                variant=dispatch.key.variant,
-            )
-            _launch_t16_f16_rocblas(
-                dispatch.key.quant,
-                fn,
-                weight,
-                x_ptr,
-                out_ptr,
-                rows,
-                in_features,
-                outputs,
-                {"stream": stream, "runtime": runtime},
-                cast_activation=index == 0,
-                tile_override=tile_override,
-                activation_inplace_override=activation_inplace_override,
-            )
-        return True
-
-    if pair_kind == "q4_raw_dual_wmma":
-        gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-
-    if pair_kind == "q8_t16_dual_split":
-        if _use_q8_t16_pair_rowtile(
-            rows=rows,
-            in_features=in_features,
-            out_features_a=out_features,
-            out_features_b=out_features_b,
-            threads=threads,
-        ):
-            pair_rowtile_fn = (
-                gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out
-                if _resolve_use_q8_t16_pair_col8(rows=rows)
-                else gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
-            )
-            pair_rowtile_fn(
-                x_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                rows,
-                in_features,
-                out_features,
-                out_features_b,
-                threads=_Q8_T16_ROWTILE_THREADS,
-                stream=stream,
-                runtime=runtime,
-            )
-            return True
-        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features_b,
-            threads=_resolve_q8_t16_dual_split_threads(
-                resolved_backend, rows, in_features, out_features, out_features_b, threads
-            ),
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-
-    if pair_kind in {
-        "registered_raw_decode_pair_equal",
-        "registered_raw_decode_pair_unequal",
-        "registered_raw_decode_pair_custom",
-    }:
-        pair_variant = (
-            registered_decode_variant
-            if pair_kind == "registered_raw_decode_pair_custom"
-            else f"pack8_gemv_decode_{activation_dtype}_{output_dtype}_out"
-        )
-        pair_key = KernelKey(
-            resolved_backend,
-            "linear_pair",
-            weight_a.spec.quant_key,
-            pair_variant,
-        )
-        pair_fn = resolve(
-            backend=pair_key.backend,
-            layer=pair_key.layer,
-            quant=pair_key.quant,
-            variant=pair_key.variant,
-        )
-        pair_kwargs = {"stream": stream, "runtime": runtime}
-        pair_library = None if libraries is None else libraries.get(pair_key.quant)
-        if pair_library is not None:
-            pair_kwargs["library"] = pair_library
-        pair_args = (
-            x_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-        )
-        if pair_kind in {
-            "registered_raw_decode_pair_unequal",
-            "registered_raw_decode_pair_custom",
-        }:
-            pair_args = (*pair_args, out_features_b)
-        pair_fn(*pair_args, **pair_kwargs)
-        return True
-
-    if pair_kind == "q8_raw_dual":
-        gguf_q8_0_dual_gemv_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-
-    if pair_kind == "q4_pack8_dual_prefill":
-        if (
-            _native_batch_decode_session_enabled
-            and not use_wmma
-            and _resolve_use_q4k_rowtile(None)
-            and _PACK8_ROWTILE_MIN_ROWS <= rows <= _PACK8_ROWTILE_MAX_ROWS
-        ):
-            pair_library = None if libraries is None else libraries.get("gguf_q4_k")
-            common_kwargs = {
-                "stream": stream,
-                "runtime": runtime,
-                "library": pair_library,
-            }
-            gguf_q4_k_pack8_rowtile_bf16_bf16_out(
-                x_ptr,
-                weight_a.allocation("qweight").tensor.ptr,
-                weight_a.allocation("scales").tensor.ptr,
-                weight_a.allocation("mins").tensor.ptr,
-                out_a_ptr,
-                rows,
-                in_features,
-                out_features,
-                **common_kwargs,
-            )
-            gguf_q4_k_pack8_rowtile_bf16_bf16_out(
-                x_ptr,
-                weight_b.allocation("qweight").tensor.ptr,
-                weight_b.allocation("scales").tensor.ptr,
-                weight_b.allocation("mins").tensor.ptr,
-                out_b_ptr,
-                rows,
-                in_features,
-                out_features,
-                **common_kwargs,
-            )
-            return True
-        # D08-X2-K5a: bulk rows prefer the routed pack8 WMMA leaf per side
-        # over the per-row base dual kernel (same registry route the single
-        # projection path takes; the base dual stays the fallback).
-        wmma_key = KernelKey(
-            resolved_backend,
-            "linear",
-            "gguf_q4_k",
-            "pack8_wmma_prefill_bf16_bf16_out",
-        )
-        if (
-            use_wmma
-            and rows >= 16
-            and os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0"
-            and backend_package_capability(
-                resolved_backend,
-                "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
-                False,
-            )
-            and _backend_prefill_shape_is_qualified(
-                resolved_backend,
-                "GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES",
-                rows=rows,
-                in_features=in_features,
-                out_features=out_features,
-            )
-            and is_registered(wmma_key)
-        ):
-            wmma_fn = resolve(
-                backend=wmma_key.backend,
-                layer=wmma_key.layer,
-                quant=wmma_key.quant,
-                variant=wmma_key.variant,
-            )
-            pair_library = None if libraries is None else libraries.get(
-                f"{wmma_key.quant}:{wmma_key.variant}",
-                libraries.get(wmma_key.quant),
-            )
-            common_kwargs = {
-                "stream": stream,
-                "runtime": runtime,
-                "library": pair_library,
-            }
-            for weight, out_ptr in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
-                wmma_fn(
-                    x_ptr,
-                    weight.allocation("qweight").tensor.ptr,
-                    weight.allocation("scales").tensor.ptr,
-                    weight.allocation("mins").tensor.ptr,
-                    out_ptr,
-                    rows,
-                    in_features,
-                    out_features,
-                    **common_kwargs,
-                )
-            return True
-        gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("qweight").tensor.ptr,
-            weight_a.allocation("scales").tensor.ptr,
-            weight_a.allocation("mins").tensor.ptr,
-            weight_b.allocation("qweight").tensor.ptr,
-            weight_b.allocation("scales").tensor.ptr,
-            weight_b.allocation("mins").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-    if pair_kind == "q4_pack8_dual_decode":
-        pair_key = KernelKey(
-            resolved_backend,
-            "linear_pair",
-            "gguf_q4_k",
-            "pack8_dual_decode_bf16_bf16_out",
-        )
-        pair_fn = resolve(
-            backend=pair_key.backend,
-            layer=pair_key.layer,
-            quant=pair_key.quant,
-            variant=pair_key.variant,
-        )
-        pair_kwargs = {"stream": stream, "runtime": runtime}
-        pair_library = None if libraries is None else libraries.get(pair_key.quant)
-        if pair_library is not None:
-            pair_kwargs["library"] = pair_library
-        pair_fn(
-            x_ptr,
-            weight_a.allocation("qweight").tensor.ptr,
-            weight_a.allocation("scales").tensor.ptr,
-            weight_a.allocation("mins").tensor.ptr,
-            weight_b.allocation("qweight").tensor.ptr,
-            weight_b.allocation("scales").tensor.ptr,
-            weight_b.allocation("mins").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            rows,
-            in_features,
-            out_features,
-            **pair_kwargs,
-        )
-        return True
-    return False
+    return _execute_gguf_linear_pair_plan(
+        plan,
+        weight_a,
+        weight_b,
+        x_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+    )
 
 
 def _rowtile8_row_chunks(rows: int) -> list[tuple[int, int]]:
@@ -9215,6 +8734,781 @@ def _resolve_gguf_linear_pair_kind(
     if rows > 1 and out_features_b == out_features and dispatch_a.key == q4_prefill and dispatch_b.key == q4_prefill:
         return "q4_pack8_dual_prefill"
     return "none"
+
+
+def _pair_plan_operand(
+    weight: GGUFDeviceWeight,
+    *,
+    out_features: int,
+) -> _GGUFPairedOperand:
+    return _GGUFPairedOperand(weight=weight, out_features=int(out_features))
+
+
+def _pair_plan_library(
+    plan: _GGUFLinearPairPlan,
+    libraries: Mapping[str, ctypes.CDLL] | None,
+):
+    if libraries is None:
+        return None
+    for key in plan.library_keys:
+        if key in libraries:
+            return libraries[key]
+    return None
+
+
+def _pair_plan_kwargs(
+    plan: _GGUFLinearPairPlan,
+    *,
+    stream: int,
+    libraries: Mapping[str, ctypes.CDLL] | None,
+    runtime,
+) -> dict:
+    kwargs = {"stream": stream, "runtime": runtime}
+    library = _pair_plan_library(plan, libraries)
+    if library is not None or plan.library_always:
+        kwargs["library"] = library
+    return kwargs
+
+
+def _pair_plan_resolve_key(plan: _GGUFLinearPairPlan):
+    key = plan.pair_key
+    if key is None:
+        raise ValueError("GGUF pair plan operation has no registry key")
+    if not is_registered(key):
+        raise ValueError(f"GGUF pair plan owner {key} is no longer registered")
+    return resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+
+
+def _bind_pair_plan_owners(
+    plan: _GGUFLinearPairPlan,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+) -> None:
+    for index, (weight, operand) in enumerate(
+        zip((weight_a, weight_b), plan.operands)
+    ):
+        if operand.weight is not weight:
+            raise ValueError(f"GGUF pair plan operand {index} owner changed")
+
+
+def _resolve_gguf_linear_pair_plan(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    out_features_b: int | None = None,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
+    backend: str | None = None,
+    use_wmma_prefill: bool | None = None,
+    use_gemv_decode: bool | None = None,
+    threads: int = 0,
+    registered_decode_only: bool = False,
+    registered_decode_variant: str | None = None,
+) -> _GGUFLinearPairPlan:
+    """Resolve one private, pointer-free, launch-local GGUF pair plan.
+
+    Resolution owns the shape/resource decision and the selected operation.
+    Allocations, output pointers and registry callables stay with execution.
+    The plan binds the exact resident weight objects and is single-use: the
+    public launcher resolves and executes immediately, and there is no
+    exported reuse surface or profile token.
+    """
+
+    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
+    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
+    use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
+    out_features_b = out_features if out_features_b is None else int(out_features_b)
+    operands = (
+        _pair_plan_operand(weight_a, out_features=out_features),
+        _pair_plan_operand(weight_b, out_features=out_features_b),
+    )
+
+    cache_key = (
+        generation(),
+        weight_a.spec.layout,
+        weight_a.spec.quant_key,
+        weight_b.spec.layout,
+        weight_b.spec.quant_key,
+        rows,
+        in_features,
+        out_features,
+        out_features_b,
+        activation_dtype,
+        output_dtype,
+        resolved_backend,
+        use_wmma,
+        use_gemv,
+        os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1"),
+        _q8_t16_dual_wmma_prefill_enabled.get(),
+        _q4_t16_unequal_pair_prefill_enabled.get(),
+        (
+            None
+            if (source_f16_session := _t16_f16_rocblas_prefill_session.get())
+            is None
+            else id(source_f16_session)
+        ),
+        bool(_native_batch_decode_session_enabled),
+        bool(registered_decode_only),
+        registered_decode_variant,
+    )
+    pair_kind = _PAIR_DISPATCH_RESOLVE_CACHE.get(cache_key)
+    if pair_kind is None:
+        pair_kind = _resolve_gguf_linear_pair_kind(
+            weight_a,
+            weight_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            out_features_b=out_features_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=resolved_backend,
+            use_wmma=use_wmma,
+            use_gemv=use_gemv,
+            registered_decode_only=bool(registered_decode_only),
+            registered_decode_variant=registered_decode_variant,
+        )
+        _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
+
+    def _plan(
+        operation: str | None,
+        *,
+        pair_key: KernelKey | None = None,
+        t16_operands: tuple[_GGUFT16PairOperand, ...] = (),
+        q4_prefill_mode: str | None = None,
+        q8_split_mode: str | None = None,
+        resolved_threads: int = 0,
+        library_keys: tuple[str, ...] = (),
+        library_always: bool = False,
+        fallback_reason: str | None = None,
+    ) -> _GGUFLinearPairPlan:
+        return _GGUFLinearPairPlan(
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            out_features_b=out_features_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            operands=operands,
+            operation=operation,
+            pair_key=pair_key,
+            t16_operands=t16_operands,
+            q4_prefill_mode=q4_prefill_mode,
+            q8_split_mode=q8_split_mode,
+            threads=resolved_threads,
+            library_keys=library_keys,
+            library_always=library_always,
+            fallback_reason=fallback_reason,
+            registry_generation=generation(),
+        )
+
+    if pair_kind == "none":
+        return _plan(
+            None,
+            fallback_reason=(
+                "registered_decode_only_declined"
+                if registered_decode_only
+                else "pair_dispatch_declined"
+            ),
+        )
+
+    if pair_kind == "q6_q4_t16_mixed_grid":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q6_k_t16_v1+gguf_q4_k_t16_v1",
+            "mixed_grid_bf16_bf16_out",
+        )
+        return _plan(pair_kind, pair_key=pair_key, library_keys=(pair_key.quant,))
+
+    if pair_kind in {
+        "q4_q4_t16_narrow_col4",
+        "q4_q6_t16_narrow_col4_planar",
+    }:
+        if pair_kind == "q4_q4_t16_narrow_col4":
+            pair_quant = "gguf_q4_k_t16_v1"
+            pair_variant = "narrow_col4_pair_bf16_bf16_out"
+        else:
+            pair_quant = "gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1"
+            pair_variant = "narrow_col4_planar_pair_bf16_bf16_out"
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            pair_quant,
+            pair_variant,
+        )
+        return _plan(pair_kind, pair_key=pair_key, library_keys=(pair_key.quant,))
+
+    if pair_kind == "dense_f32_alpha_beta":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "f32",
+            "bf16_hidden_bf16_out",
+        )
+        return _plan(pair_kind, pair_key=pair_key, library_keys=(pair_key.quant,))
+
+    if pair_kind == "q8_t16_dual_wmma":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q8_0_t16_v1",
+            "t16_dual_wmma_prefill_bf16_bf16_out",
+        )
+        return _plan(pair_kind, pair_key=pair_key, library_keys=(pair_key.quant,))
+
+    if pair_kind == "q4_t16_unequal_dual_wmma":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q4_k_t16_v1",
+            "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        )
+        return _plan(pair_kind, pair_key=pair_key, library_keys=(pair_key.quant,))
+
+    if pair_kind in {
+        "t16_f16_rocblas_shared_activation",
+        "t16_f16_rocblas_pair_only_second",
+    }:
+        session = _t16_f16_rocblas_prefill_session.get()
+        if session is None:
+            return _plan(None, fallback_reason="pair_dispatch_declined")
+        pair_only_spec = (
+            session.pair_only_second_operand(
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                first_quant=weight_a.spec.quant_key,
+                second_quant=weight_b.spec.quant_key,
+            )
+            if pair_kind == "t16_f16_rocblas_pair_only_second"
+            else None
+        )
+        t16_operands: list[_GGUFT16PairOperand] = []
+        for index, (weight, outputs) in enumerate(
+            (
+                (weight_a, out_features),
+                (weight_b, out_features_b),
+            )
+        ):
+            dispatch = _pack8_decode_dispatch(
+                resolve_gguf_linear_dispatch(
+                    weight,
+                    activation_dtype=activation_dtype,
+                    output_dtype=output_dtype,
+                    backend=resolved_backend,
+                    rows=rows,
+                ),
+                rows=rows,
+                out_features=outputs,
+            )
+            tile_override = None
+            activation_inplace_override = None
+            if index == 1 and pair_only_spec is not None:
+                tile_override, variant, activation_inplace_override = pair_only_spec
+                dispatch = GGUFLinearDispatch(
+                    KernelKey(
+                        dispatch.key.backend,
+                        "linear",
+                        dispatch.key.quant,
+                        variant,
+                    ),
+                    _T16_F16_ROCBLAS_ROUTE_BY_QUANT[dispatch.key.quant][1],
+                )
+            else:
+                dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
+                    dispatch,
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=outputs,
+                )
+            _ensure_linear_kernel_registered(dispatch.key)
+            t16_operands.append(
+                _GGUFT16PairOperand(
+                    key=dispatch.key,
+                    quant=dispatch.key.quant,
+                    tile_override=tile_override,
+                    activation_inplace=activation_inplace_override,
+                    cast_activation=index == 0,
+                )
+            )
+        return _plan(pair_kind, t16_operands=tuple(t16_operands))
+
+    if pair_kind == "q4_raw_dual_wmma":
+        return _plan(pair_kind)
+
+    if pair_kind == "q8_t16_dual_split":
+        if _use_q8_t16_pair_rowtile(
+            rows=rows,
+            in_features=in_features,
+            out_features_a=out_features,
+            out_features_b=out_features_b,
+            threads=threads,
+        ):
+            mode = (
+                "rowtile_col8"
+                if _resolve_use_q8_t16_pair_col8(rows=rows)
+                else "rowtile"
+            )
+            return _plan(
+                pair_kind,
+                q8_split_mode=mode,
+                resolved_threads=_Q8_T16_ROWTILE_THREADS,
+            )
+        return _plan(
+            pair_kind,
+            q8_split_mode="exact",
+            resolved_threads=_resolve_q8_t16_dual_split_threads(
+                resolved_backend,
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                threads,
+            ),
+        )
+
+    if pair_kind in {
+        "registered_raw_decode_pair_equal",
+        "registered_raw_decode_pair_unequal",
+        "registered_raw_decode_pair_custom",
+    }:
+        pair_variant = (
+            registered_decode_variant
+            if pair_kind == "registered_raw_decode_pair_custom"
+            else f"pack8_gemv_decode_{activation_dtype}_{output_dtype}_out"
+        )
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            weight_a.spec.quant_key,
+            pair_variant,
+        )
+        return _plan(pair_kind, pair_key=pair_key, library_keys=(pair_key.quant,))
+
+    if pair_kind == "q8_raw_dual":
+        return _plan(pair_kind)
+
+    if pair_kind == "q4_pack8_dual_prefill":
+        if (
+            _native_batch_decode_session_enabled
+            and not use_wmma
+            and _resolve_use_q4k_rowtile(None)
+            and _PACK8_ROWTILE_MIN_ROWS <= rows <= _PACK8_ROWTILE_MAX_ROWS
+        ):
+            return _plan(
+                pair_kind,
+                q4_prefill_mode="rowtile",
+                library_keys=("gguf_q4_k",),
+                library_always=True,
+            )
+        wmma_key = KernelKey(
+            resolved_backend,
+            "linear",
+            "gguf_q4_k",
+            "pack8_wmma_prefill_bf16_bf16_out",
+        )
+        if (
+            use_wmma
+            and rows >= 16
+            and os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0"
+            and backend_package_capability(
+                resolved_backend,
+                "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",
+                False,
+            )
+            and _backend_prefill_shape_is_qualified(
+                resolved_backend,
+                "GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES",
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            and is_registered(wmma_key)
+        ):
+            return _plan(
+                pair_kind,
+                pair_key=wmma_key,
+                q4_prefill_mode="wmma_bulk",
+                library_keys=(
+                    f"{wmma_key.quant}:{wmma_key.variant}",
+                    wmma_key.quant,
+                ),
+                library_always=True,
+            )
+        return _plan(pair_kind, q4_prefill_mode="base")
+
+    if pair_kind == "q4_pack8_dual_decode":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            "gguf_q4_k",
+            "pack8_dual_decode_bf16_bf16_out",
+        )
+        return _plan(pair_kind, pair_key=pair_key, library_keys=(pair_key.quant,))
+
+    return _plan(None, fallback_reason="pair_dispatch_declined")
+
+
+def _execute_gguf_linear_pair_plan(
+    plan: _GGUFLinearPairPlan,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    *,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+) -> bool:
+    """Execute one private GGUF pair plan, resolving pointers and callables now."""
+
+    operation = plan.operation
+    if operation is None:
+        return False
+    if generation() != plan.registry_generation:
+        raise ValueError("GGUF pair plan registry changed since resolution")
+    _bind_pair_plan_owners(plan, weight_a, weight_b)
+
+    rows = plan.rows
+    in_features = plan.in_features
+    out_features = plan.out_features
+    out_features_b = plan.out_features_b
+
+    if operation == "q6_q4_t16_mixed_grid":
+        pair_fn = _pair_plan_resolve_key(plan)
+        pair_kwargs = _pair_plan_kwargs(
+            plan, stream=stream, libraries=libraries, runtime=runtime
+        )
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            **pair_kwargs,
+        )
+        return True
+
+    if operation in {
+        "q4_q4_t16_narrow_col4",
+        "q4_q6_t16_narrow_col4_planar",
+    }:
+        pair_fn = _pair_plan_resolve_key(plan)
+        pair_kwargs = _pair_plan_kwargs(
+            plan, stream=stream, libraries=libraries, runtime=runtime
+        )
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            **pair_kwargs,
+        )
+        return True
+
+    if operation == "dense_f32_alpha_beta":
+        pair_fn = _pair_plan_resolve_key(plan)
+        pair_kwargs = _pair_plan_kwargs(
+            plan, stream=stream, libraries=libraries, runtime=runtime
+        )
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
+
+    if operation == "q8_t16_dual_wmma":
+        pair_fn = _pair_plan_resolve_key(plan)
+        pair_kwargs = _pair_plan_kwargs(
+            plan, stream=stream, libraries=libraries, runtime=runtime
+        )
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
+
+    if operation == "q4_t16_unequal_dual_wmma":
+        pair_fn = _pair_plan_resolve_key(plan)
+        pair_kwargs = _pair_plan_kwargs(
+            plan, stream=stream, libraries=libraries, runtime=runtime
+        )
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            **pair_kwargs,
+        )
+        return True
+
+    if operation in {
+        "t16_f16_rocblas_shared_activation",
+        "t16_f16_rocblas_pair_only_second",
+    }:
+        if len(plan.t16_operands) != 2:
+            raise ValueError("GGUF pair plan T16 operation needs two operands")
+        for index, (weight, out_ptr, outputs) in enumerate(
+            (
+                (weight_a, out_a_ptr, out_features),
+                (weight_b, out_b_ptr, out_features_b),
+            )
+        ):
+            operand = plan.t16_operands[index]
+            if not is_registered(operand.key):
+                raise ValueError(
+                    f"GGUF pair plan T16 owner {operand.key} is no longer registered"
+                )
+            fn = resolve(
+                backend=operand.key.backend,
+                layer=operand.key.layer,
+                quant=operand.key.quant,
+                variant=operand.key.variant,
+            )
+            _launch_t16_f16_rocblas(
+                operand.quant,
+                fn,
+                weight,
+                x_ptr,
+                out_ptr,
+                rows,
+                in_features,
+                outputs,
+                {"stream": stream, "runtime": runtime},
+                cast_activation=operand.cast_activation,
+                tile_override=operand.tile_override,
+                activation_inplace_override=operand.activation_inplace,
+            )
+        return True
+
+    if operation == "q4_raw_dual_wmma":
+        gguf_q4_k_wmma_prefill_dual_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if operation == "q8_t16_dual_split":
+        if plan.q8_split_mode in {"rowtile_col8", "rowtile"}:
+            pair_rowtile_fn = (
+                gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out
+                if plan.q8_split_mode == "rowtile_col8"
+                else gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+            )
+            pair_rowtile_fn(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_a_ptr,
+                out_b_ptr,
+                rows,
+                in_features,
+                out_features,
+                out_features_b,
+                threads=plan.threads,
+                stream=stream,
+                runtime=runtime,
+            )
+            return True
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b,
+            threads=plan.threads,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if operation in {
+        "registered_raw_decode_pair_equal",
+        "registered_raw_decode_pair_unequal",
+        "registered_raw_decode_pair_custom",
+    }:
+        pair_fn = _pair_plan_resolve_key(plan)
+        pair_kwargs = _pair_plan_kwargs(
+            plan, stream=stream, libraries=libraries, runtime=runtime
+        )
+        pair_args = (
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+        )
+        if operation in {
+            "registered_raw_decode_pair_unequal",
+            "registered_raw_decode_pair_custom",
+        }:
+            pair_args = (*pair_args, out_features_b)
+        pair_fn(*pair_args, **pair_kwargs)
+        return True
+
+    if operation == "q8_raw_dual":
+        gguf_q8_0_dual_gemv_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if operation == "q4_pack8_dual_prefill":
+        if plan.q4_prefill_mode == "rowtile":
+            pair_library = _pair_plan_library(plan, libraries)
+            common_kwargs = {
+                "stream": stream,
+                "runtime": runtime,
+                "library": pair_library,
+            }
+            gguf_q4_k_pack8_rowtile_bf16_bf16_out(
+                x_ptr,
+                weight_a.allocation("qweight").tensor.ptr,
+                weight_a.allocation("scales").tensor.ptr,
+                weight_a.allocation("mins").tensor.ptr,
+                out_a_ptr,
+                rows,
+                in_features,
+                out_features,
+                **common_kwargs,
+            )
+            gguf_q4_k_pack8_rowtile_bf16_bf16_out(
+                x_ptr,
+                weight_b.allocation("qweight").tensor.ptr,
+                weight_b.allocation("scales").tensor.ptr,
+                weight_b.allocation("mins").tensor.ptr,
+                out_b_ptr,
+                rows,
+                in_features,
+                out_features,
+                **common_kwargs,
+            )
+            return True
+        if plan.q4_prefill_mode == "wmma_bulk":
+            wmma_fn = _pair_plan_resolve_key(plan)
+            pair_library = _pair_plan_library(plan, libraries)
+            common_kwargs = {
+                "stream": stream,
+                "runtime": runtime,
+                "library": pair_library,
+            }
+            for weight, out_ptr in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
+                wmma_fn(
+                    x_ptr,
+                    weight.allocation("qweight").tensor.ptr,
+                    weight.allocation("scales").tensor.ptr,
+                    weight.allocation("mins").tensor.ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **common_kwargs,
+                )
+            return True
+        gguf_q4_k_pack8_dual_prefill_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("qweight").tensor.ptr,
+            weight_a.allocation("scales").tensor.ptr,
+            weight_a.allocation("mins").tensor.ptr,
+            weight_b.allocation("qweight").tensor.ptr,
+            weight_b.allocation("scales").tensor.ptr,
+            weight_b.allocation("mins").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if operation == "q4_pack8_dual_decode":
+        pair_fn = _pair_plan_resolve_key(plan)
+        pair_kwargs = _pair_plan_kwargs(
+            plan, stream=stream, libraries=libraries, runtime=runtime
+        )
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("qweight").tensor.ptr,
+            weight_a.allocation("scales").tensor.ptr,
+            weight_a.allocation("mins").tensor.ptr,
+            weight_b.allocation("qweight").tensor.ptr,
+            weight_b.allocation("scales").tensor.ptr,
+            weight_b.allocation("mins").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
+
+    raise ValueError(f"unknown GGUF pair plan operation {operation!r}")
 
 
 def _triple_plan_operand(

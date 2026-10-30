@@ -4374,11 +4374,11 @@ Owner: `hipengine/runtime/gguf_linear.py`.
 
 Scope: `hipengine/runtime/gguf_linear.py`.
 
-**Remaining planning work:** resolve pair launch decisions at the owning shape/resource
-boundary. Bind reusable pair/triple/residual plans to RF-1's resolved profile owner; the private
-launch-local triple and residual plans are not cross-owner caches. Do not cache stale pointers or scratch
-generations in reusable policy. R0188 owns migration of non-staged providers before direct-control
-retirement.
+**Remaining planning work:** resolve fused pair-plus-SiLU and concatenated-pair launch
+decisions at the owning shape/resource boundary. Bind reusable pair/triple/residual plans to RF-1's
+resolved profile owner; the private launch-local plans are not cross-owner caches. Do not cache stale
+pointers or scratch generations in reusable policy. R0188 owns migration of non-staged providers
+before direct-control retirement.
 
 Done when: compare selected operations, operands and fallback reasons across threshold-straddling
 and unrelated shapes; test owner isolation, Q8T16 triple graph reuse, scratch invalidation and public
