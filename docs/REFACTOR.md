@@ -2127,53 +2127,6 @@ the allocation repair. The observations and proposal below are historical.
   `worklog/entries/20260918T142514.675878Z-pi-prefix-cache-batched-suffix-audit-73980d.md`
   records the mechanism.
 
-## Split prefill diverges from a single call (found 2026-09-19)
-
-- Prefilling a prompt in two `prefill_batch_native` calls does not always equal
-  prefilling it in one. Two shapes diverge, measured on the Qwen3.5-0.8B
-  fixture and reproduced identically on Qwen3.6-35B-A3B across all four
-  mtp-bench categories:
-  * `rows == 1` - a one-token chunk selects decode-shaped kernels
-    (`dense_down_decode_fused`, the rows==1 projection routes), whose
-    arithmetic differs from the bulk prefill path. **Closed for the prefix
-    cache on 2026-09-19**: a one-token reused suffix now takes the serial step
-    (`_gguf_prefix_batched_suffix_chunk_eligible`), so a hit never emits a
-    one-row prefill, and prefill callers pass `force_bulk_rows` to
-    `_run_post_attention_ffn_rows` to keep a one-row prefill off the dense GEMV
-    decode variants. MoE cannot be redirected the same way -
-    `_run_post_attention_moe_rows` refuses `rows <= 1` - so the raw
-    `prefill_batch_native` API still exposes the shape and the pin covers it.
-  * total context above 2048 - splitting anywhere diverges from one call.
-    **Root cause located 2026-09-19**: per-layer capture shows the first
-    divergent layer is the first `full_attention` layer (layer 3 on
-    Qwen3.5-0.8B, max|d| 1.953e-03, BF16-ULP scale) while every preceding
-    `linear_attention` layer is bit-identical, so the effect is in full
-    attention, not GDN. Splits at different boundaries agree with each other
-    and only the single call differs, which places it in query-window handling
-    once one call carries more than 2048 query rows. Capping the query window
-    would make misses match hits but measured *worse* against a serial
-    reference (kl_mean 2.37e-2 single call versus 1.59e-1 split), so that trade
-    was rejected. The
-    threshold is absolute, not relative to `max_sequence_length` (verified with
-    the session capacity held at 4096), and is independent of the split point:
-    at total 2148 the split result is identical for boundaries 1024, 1792,
-    1920 and 2048, and differs from the single call in all four.
-- **This is not a prefix-cache defect.** The probe uses one session and two
-  direct prefill calls - no pool sharing, no snapshot restore, no cache. Both
-  families reproduce on clean HEAD (d01ec1b51) to three significant figures.
-  The batched reused-suffix extend inherits them because a cache hit takes the
-  split path; it does not cause them.
-- Which side is right: against a serial autoregressive reference at total 2052,
-  the single call is closer (kl_mean 2.37e-2, top-1 100%) than the split
-  (kl_mean 1.59e-1, top-1 91.7%). So the >2048 split path is a real accuracy
-  gap, not a neutral re-association.
-- Pinned by `test_split_prefill_divergence_boundaries_are_unchanged` in
-  `tests/test_live_qwen35_gguf_chunked_prefill.py`, which also asserts that
-  total 2048 is still bit-exact. Fixing either family should break that test;
-  replace it with coverage in
-  `test_batched_suffix_extend_is_bit_exact_against_recompute`.
-- Removal scope: the pin, once both families are fixed and every shape is
-  covered by the bit-exact contract test.
 
 ## Strict prefix gate cannot bind a batched candidate (found 2026-09-19, fixed 2026-09-20)
 
@@ -9626,3 +9579,33 @@ ownership. Existing tests of rejection and MTP compatibility are containment
 coverage, not proof that the missing generic lifecycle is implemented.
 Original repair evidence remains in
 `worklog/entries/20261017T190456.513027Z-lhl-speculative-service-ownership-3d661c.md`.
+
+### R0071 — Resolve split-prefill arithmetic before retiring its divergence pin
+
+`tests/test_live_qwen35_gguf_chunked_prefill.py` still pins divergence for a
+one-token suffix and a total context above 2048, alongside an equal-output
+control at 2048. The pin covers direct prefill, not only prefix-cache reuse.
+The separate batched-suffix equality test excludes the above-2048 shapes.
+The completed one-token prefix-cache routing repair therefore does not close
+this item. The R0077 handoff also explicitly leaves this arithmetic work open:
+`worklog/entries/20261026T090655.553954Z-cleanup-refactor-r0077-8e7b36.md`.
+
+**Deferred numerical-contract decision and repair:** establish the intended
+cross-schedule contract using the execution-profile oracle, then repair the
+one-row routing and long-context full-attention differences against that
+contract. The old serial-reference comparison and layer-localization evidence
+are preserved in `docs/REFACTOR.md` at commit `304c3324d`, under
+“Split prefill diverges from a single call”. They are historical observations,
+not a fresh quality verdict for current kernels. Do not cap query windows just
+to force equality: the recorded experiment rejected that tradeoff.
+
+Clearing checks: reproduce both families and the equal-output control, test
+values on both sides of the boundary plus unrelated lengths and split points,
+and compare independent sessions against the declared oracle. Run
+`tests/test_live_qwen35_gguf_chunked_prefill.py` and the applicable numerical
+profile gates; exercise public prefix reuse and fresh generation with
+continuation. Replace `test_split_prefill_divergence_boundaries_are_unchanged`
+with positive contract coverage only after the repair, and extend
+`test_batched_suffix_extend_is_bit_exact_against_recompute` where that exactness
+contract applies. Do not treat passing a test that requires inequality as proof
+of numerical correctness or remove it merely to clear the ledger.

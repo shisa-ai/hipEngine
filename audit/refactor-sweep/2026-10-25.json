@@ -1809,43 +1809,43 @@
       "start_line": 2127,
       "end_line": 2174,
       "sha256": "0393bf467ef58c3ef8525f3b8892fd0de55541395a0a2aceb9306a66b0632ea7",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-numerical-repair",
+      "evidence": ["Live pin still asserts divergence and exactness coverage excludes long contexts; R0077 handoff leaves arithmetic open. Moved contract decision/repair to bottom, preserving historical evidence at304c3324d. Docs/audit pass. worklog/entries/20261030T062131.365447Z-cleanup-cleanup-r0071-5d5789.md."],
       "subitems": [
         {
           "line": 2129,
           "text": "- Prefilling a prompt in two `prefill_batch_native` calls does not always equal",
-          "status": "pending"
+          "status": "deferred-numerical-repair"
         },
         {
           "line": 2133,
           "text": "  * `rows == 1` - a one-token chunk selects decode-shaped kernels",
-          "status": "pending"
+          "status": "deferred-numerical-repair"
         },
         {
           "line": 2143,
           "text": "  * total context above 2048 - splitting anywhere diverges from one call.",
-          "status": "pending"
+          "status": "deferred-numerical-repair"
         },
         {
           "line": 2158,
           "text": "- **This is not a prefix-cache defect.** The probe uses one session and two",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 2163,
           "text": "- Which side is right: against a serial autoregressive reference at total 2052,",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 2167,
           "text": "- Pinned by `test_split_prefill_divergence_boundaries_are_unchanged` in",
-          "status": "pending"
+          "status": "deferred-numerical-repair"
         },
         {
           "line": 2172,
           "text": "- Removal scope: the pin, once both families are fixed and every shape is",
-          "status": "pending"
+          "status": "deferred-numerical-repair"
         }
       ]
     },
