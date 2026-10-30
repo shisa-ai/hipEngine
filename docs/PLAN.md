@@ -419,6 +419,11 @@ acquisition and lease retirement. Their supported compositions remain distinct;
 [KV/DMS integration](reference/KV-DMS-INTEGRATION.md) names the actual production
 consumers and the generic backend adapters that are not universal entry points.
 
+OpenAI request models live in `hipengine/server/schemas.py`, independently of
+application composition. Schema imports stay free of FastAPI, generation and
+runtime imports. The server package lazily resolves its existing public app
+exports; `server.api` keeps aliases to the same request-model classes.
+
 ### Layer Diagram
 
 ```

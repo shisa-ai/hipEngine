@@ -4266,11 +4266,12 @@ Owner: `hipengine/server/multimodal.py`.
 Scope: `hipengine/server/multimodal.py`, `hipengine/server/tool_stream.py`,
 `hipengine/server/api.py`, `hipengine/generation/engine_service.py`.
 
-**Deferred boundary design:** define explicit application-state dependencies for routers, model
+**Remaining boundary design:** define explicit application-state dependencies for routers, model
 lifecycle, metrics and stream translation, then extract cohesive units so `create_app()` composes
-them. Preserve transport backpressure and queue admission while keeping device scheduling, request
-state and commit ownership in the generation engine. Separate OpenAI schemas, tool/structured
-validation and SSE accounting without changing public errors or response shapes.
+them. Request schemas have the independent `hipengine/server/schemas.py` owner; importing them
+does not load the application. Preserve transport backpressure and queue admission while keeping
+device scheduling, request state and commit ownership in the generation engine. Separate remaining
+tool/structured validation and SSE accounting without changing public errors or response shapes.
 
 Done when: preserve public/import compatibility during move-only units; exercise HTTP
 ordinary/streamed requests, tool and structured responses, disconnect/cancel, queue saturation,

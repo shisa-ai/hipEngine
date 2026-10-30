@@ -57,7 +57,7 @@ callers rather than inferring ownership from the filename.
 
 | Subsystem | Owns | Must delegate | Start here |
 | --- | --- | --- | --- |
-| Public API and transport | Request validation, HTTP errors, transport backpressure, disconnect signals | Device scheduling and model state | `hipengine/llm.py`, `hipengine/server/api.py`; [API](API.md) |
+| Public API and transport | Request validation, HTTP errors, transport backpressure, disconnect signals | Device scheduling and model state | `hipengine/llm.py`, `hipengine/server/api.py`, `hipengine/server/schemas.py`; [API](API.md) |
 | Construction | Temporary ownership until generator, driver and service publication; setup-error cleanup | Model loading and declared capabilities | `hipengine/generation/construction.py`; [construction evidence](campaigns/MAIN-PATH-OWNERSHIP-EVIDENCE.md) |
 | Generation engine | Request identity, scheduling, cancellation, outputs and scheduler commit boundaries | Format-specific memory pricing, layer arithmetic and draft execution | `hipengine/generation/engine_service.py`, `hipengine/generation/engine_loop.py`, `hipengine/generation/batch_scheduler.py`; [Generation 2](reference/CONCURRENCY2.md) |
 | Model/loading/quant | Architecture, tensor mapping, materialization and invocation contracts | Request queues and cross-request state | `hipengine/models/`, `hipengine/loading/`, `hipengine/quant/`; [PLAN](PLAN.md#extensibility-design) |
@@ -76,6 +76,12 @@ queue clients while the scheduler separately admits device work. Conversely,
 BF16, INT8 and DMS storage must not each introduce another request scheduler.
 
 ## State and lifetime boundaries
+
+`hipengine/server/schemas.py` owns the OpenAI request models and depends only on
+Pydantic and standard-library types. Importing it does not load the application,
+generation service or model runtime. `hipengine.server` lazily exports the app
+factory/configuration; `server.api` re-exports the same schema classes for existing
+callers. HTTP composition and request/resource lifetimes remain in the application.
 
 | Lifetime | Typical resources | Release/transfer boundary |
 | --- | --- | --- |
