@@ -358,48 +358,6 @@ state-byte ceiling. Update defaults, configuration docs and tests together, then
 interleaved conversations and memory pressure. Preserve explicit operator controls until equivalent
 owner-bound policy replaces them.
 
-### R0085 — Layer-outer prefill rollback control
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `scripts/gguf_p6e_cancel_refill_proof.py`; `HIPENGINE_GGUF_PACKED_LAYER_OUTER`.
-
-Done when: Decision needed: retire the production rollback control, or keep it for operational bisection.
-**Clearing action:** if retired, remove the environment reader and its dispatch condition, migrate
-the service proof's explicit control to its test harness, update CLI/configuration documentation,
-and run `tests/test_unit_gguf_packed_layer_outer_prefill.py`,
-`tests/test_unit_gguf_resumable_layer_outer_prefill.py` and
-`tests/test_unit_gguf_p6e_cancel_refill_proof.py`, preserving decline coverage.
-
-### R0135/R0136 — Unselected dense integer-MMQ alternative
-
-Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
-
-Scope: `GGUF_IQ_DENSE_PREFILL_POLICY`; `dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out`; `tests/test_gpu_gguf_iq_dense_mmq_route.py`.
-
-W4A16 is the dense raw-IQ prefill default in `GGUF_IQ_DENSE_PREFILL_POLICY` on both HIP backends,
-including the cooperative variants on gfx1100.
-
-Done when: The integer alternative `dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out` remains registered
-but unselected. Its workspace is allocated only when a policy selects it. **Decision needed:**
-retain this explicit comparison alternative or remove it. **Clearing action:** if retired, remove
-its registrations and route-specific workspace/build plumbing, migrate the route-swap tests, then
-run `tests/test_gpu_gguf_iq_dense_mmq_route.py` and
-`tests/test_unit_gfx1151_iq_dense_policy_parity.py`. Preserve W4A16 and strict fallbacks. If
-retained, record its diagnostic owner and close the cleanup.
-
-### R0143 — Qwen4Exp P9 load drop-behind
-
-Owner: `hipengine/loading/qwen4_exp_materialize.py`.
-
-Scope: `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND`.
-
-Done when: Decision needed: keep one-shot low-RSS deployment as a supported mode or retire it. **Clearing
-action:** if kept, retain the explicit control (or replace it with a named loader policy) and close
-this cleanup. If retired, remove the flag and advice branch, update ENVS, and run
-`tests/test_live_qwen4_exp_materialize.py` with its copy-order/PLE-exclusion coverage. Do not turn
-it into a reload-heavy default: drop-behind discards cache pages needed by subsequent loads.
-
 ### R0249/R0250 — Laguna public cache-owner validation
 
 Owner: `scripts/laguna_public_correctness.py`.
@@ -1426,23 +1384,6 @@ chunk/owner/stream traces, exact commit/rollback and refusal-after-progress chec
 requests and cleanup. Compare complete-wall and latency on the intended backend against the bounded
 policy before choosing a tuning result. Keep per-slot unsupported-shape fallback and request-local
 state isolation.
-
-### R0281-VERIFY-TIMING — Packed verifier profiling interface
-
-Owner: `hipengine/runtime/qwen35_gguf_timing.py`.
-
-Scope: `Qwen35GGUFResidentSession.verify_target_blocks_batch()`, `device_result=True`;
-`HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS`.
-
-Decide whether to keep the documented process-environment opt-in as the diagnostic interface or
-replace it with an explicit profiling argument/helper and migrate its callers. Preserve default-off
-behavior, device-result bypass, stream association, bucket aliases and negative-time accounting.
-Do not enable diagnostic events on the default path to retire the flag.
-
-Done when: a supported interface owns the diagnostic selection and its callers/tests/docs agree.
-If replacing the environment adapter, rerun timing fault-injection and real-HIP lifecycle tests plus
-repeated public MTP requests, recording selected instrumentation mode and cleanup. Instrumented
-diagnostic results are not uninstrumented performance evidence.
 
 ### R0281-LAUNCH-BOUNDS — Selected-WMMA compiler tuning surface
 
@@ -3311,19 +3252,6 @@ body, exports or registry entries while their independent consumers remain. Revi
 `scripts/qwen4exp_fullattn_prefill_microbench.py` separately from this switch: it calls the
 reference directly and is not made obsolete by removing the switch.
 
-### R0428 — Full-attention unroll comparison interface
-
-Owner: `hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py`.
-
-Scope: `qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_experiment_spans`,
-`scripts/qwen4exp_fullattn_prefill_microbench.py --replay <capture.npz> --qk-variants 0,1,2`.
-
-Done when: Deferred decision: retain this comparison interface or retire its replay arms. If retiring it,
-remove the experimental HIP export, Python wrapper, package export and `--qk-variants` handling
-together. Preserve the promoted launcher and its shared kernel template, and the fixed256 consumers
-recorded in R0427. Run the CLI regressions and promoted-route GPU parity tests after removal;
-historical captures and measurements remain evidence, not callers.
-
 ### R0432 — Dense staged-F32 scope and comparison ownership
 
 Owner: `hipengine/runtime/gguf_linear.py`.
@@ -3350,37 +3278,6 @@ launch policy before removing its environment reader. Preserve per-launch select
 precedence, narrow/wide boundaries and default behavior. Validate with
 `tests/test_unit_gguf_pack8_gemv_wide_threads.py`, the migrated gate and public generation
 confirming the selected widths and strict/candidate isolation.
-
-### R0435 — Bounded KV reset comparison ownership
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `written_cache_bytes()`; `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET`.
-
-**Deferred decision:** keep the full/bounded comparison interface or migrate
-`scripts/qwen4exp_rt4_kv_compare.py` and the layer2 candidate to explicit reset policy before
-removing the environment reader. A release cycle alone does not remove these comparison consumers.
-
-Done when: Keep `tests/test_gpu_qwen4exp_kv_reset_bounded.py` as the range and reuse contract. Before retiring
-the full-clear control, exercise repeated requests, long-to-short reuse, rollback, cancellation and
-changing request widths through public generation/serving, comparing cleared buffers and post-reset
-outputs. Do not assume the low-level range tests establish every lifecycle case. The RT-4 reader
-synchronizes before device-to-host copying; keep that ordering so unfinished device writes cannot
-create a false arm difference.
-
-### R0438 — Chunked WY diagnostic retention
-
-Owner: `hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.py`.
-
-Scope: `qwen4_exp_gdn_prefill_wy_f32`, `wy_chunked`, `scripts/qwen4exp_gd3_recurrence_screen.py`.
-
-Done when: Deferred decision: keep that comparison reproducible from the working tree, or retire its
-executable arm while preserving the historical artifact and Git source. Waiting for historical
-references to disappear is not a useful removal condition. If retiring it, remove the screen entry,
-host wrapper, HIP export, WY kernel and its private constants together; preserve the other
-recurrence implementations in the shared source. Run screen CLI/consumer checks, rebuild the
-affected GDN library and run its surviving recurrence tests. Production profile selection is
-independent and must not change as a side effect.
 
 ### R0439 — Architecture chunk fallback ownership
 
