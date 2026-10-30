@@ -3544,43 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## `HIPENGINE_GGUF_GAPPED_GATHER` kill-switch for the gapped slot-local gather route (added 2026-09-19)
-
-Default **on**. A gapped device-KV placement used to drop the whole packed
-prefill slab onto the native three-pass paged prefill kernel (~34x per-launch
-vs AOTriton on gfx1151; the 35B regression lane measured 134,511 ms vs 8,226 ms
-for the same 6,144-token suffix). With the flag on, a gapped BF16 slot keeps the
-slot-local executor: `_gguf_gapped_slot_local_prefill_scratch` swaps its identity
-spans for spans carrying the session's real chunk-local block table, the paged
-KV write / native fallback / head-major gather all walk it, and AOTriton reads
-the same gathered dense head-major buffers the contiguous route uses.
-
-The gather buffers are demand-sized per session
-(`_gguf_gapped_slot_head_major_scratch`): resident sessions built at a model's
-full context class (e.g. 262,144 positions) exceed the validated 64K head-major
-allocation class, so `_ensure_bulk_prefill_workspace`'s capacity-sized pair is
-never allocated there. The first gapped slot-local prefill instead grows one
-bucketed pair (4,096-token buckets) sized to the context the session actually
-prefills, capped by the same validated token/byte class limits, and a context
-past the class keeps the native spans fallback.
-
-The forced AOTriton slots survive the gather route: the engine loop slices long
-prompts into 256-row prefill chunks, below the 512-token AOTriton threshold,
-and contiguous slots cross it via `aotriton_min_tokens=1`. Clearing the force
-for gapped slabs (the old packed-route behavior) stranded every gapped chunk
-on the native kernel and reproduced the original 104 s lane inside the served
-bench; keeping it makes gapped chunks pay contiguous cost.
-
-Removal scope: the flag, the `gapped_slot_local_gather` branch in
-`_prefill_batch_native_single_slab`, the demand-sized gather buffers, and the
-fast-route condition that keeps `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX`
-binding only when the gather is unavailable - once the gather route holds
-through a full `--suite all` milestone plus the served multi-turn A/B on both
-the gfx1151 zbook and a W7900 host. Gapped gfx1100 BF16 slots use the registered
-gather by default; the optional contiguous-layout capability is not a
-prerequisite. Explicit rollback, missing copy kernels, and allocation limits
-still select the native spans fallback and retain the suffix guard.
-
 ## Two MTP entry points disagree on the sampling contract (open 2026-09-19)
 
 The served GGUF MTP route (the MTP2 adapter, `qwen35_gguf_mtp2.py`) is
@@ -9856,3 +9819,20 @@ not a pending admission prerequisite. Finish-rule resolution remains recorded
 in `worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md` and its
 linked artifacts. Missing measurement rows do not block implemented MTP
 capabilities; the old evidence-only admission requirement is retired.
+
+### R0506 — Decide whether to retire the gapped-gather rollback switch
+
+`HIPENGINE_GGUF_GAPPED_GATHER` is enabled by default and documented in
+`docs/ENVS.md`; `0` selects the native paged fallback. The route uses registered
+copy capability, real chunk-local page tables, demand-sized head-major buffers,
+and token/byte allocation limits. INT8 and unsupported layouts retain their
+own paths. These are runtime requirements, not temporary cleanup targets.
+
+**Deferred decision:** retain the diagnostic rollback or remove only its env
+lookup and switch-specific tests/documentation. The original retirement plan
+calls for `uv run pytest --suite all -v` and served multi-turn A/B on gfx1151 and
+W7900. This triage does not establish that cross-host result or change defaults.
+If retiring the switch, keep the gapped-layout branch, demand-sized buffers,
+forced AOTriton handling, missing-kernel/allocation fallbacks, and suffix guard
+when the fast route is unavailable. Removing those mechanisms requires a
+working replacement, not just successful switch retirement.

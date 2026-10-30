@@ -13739,8 +13739,8 @@
       "start_line": 12014,
       "end_line": 12050,
       "sha256": "8ebfbce7c7670b70d67a7cb96d50efbbfef09802c276a6bc563ace84aa1ba0c2",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Narrowed retirement to rollback switch, preserving required routing, buffers and capability/resource fallbacks. Cross-host retirement decision remains at ledger bottom. worklog/entries/20261030T052435.456434Z-cleanup-cleanup-r0506-2266da.md."],
       "subitems": []
     },
     {
