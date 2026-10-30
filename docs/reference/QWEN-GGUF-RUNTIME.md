@@ -209,6 +209,13 @@ host proposal chain; cache-history rows and attention debug report the visible
 draft context without changing acceptance or commit selection. These controls
 perform host readbacks and are not normal device-chain timing routes.
 
+The legacy selected-SiLU/down comparison remains explicit through
+`HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` and the benchmark/profiler
+CLI options. The draft runner captures it at construction and forwards it to the
+device-owned combine helper; the benchmark separates runner caches by this value.
+Profiler artifacts report the selected branch as a diagnostic, not a performance
+claim. The unfused comparison and the shared registered kernels remain available.
+
 `Qwen35GGUFMTPDecodeSession(draft_hidden_variant=...)` and
 `scripts/qwen36_dense_gguf_suite.py --draft-hidden-variant` support explicit
 `pre_output_norm` and `post_output_norm` diagnostic conventions. The immutable

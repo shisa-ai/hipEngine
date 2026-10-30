@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 import inspect
+import os
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -1425,6 +1427,139 @@ def test_benchmark_preserves_explicit_silu_down_comparison(monkeypatch, option, 
         bench.main(([option] if option else []) + ["--root-topk-accept", "0"])
     assert excinfo.value.code == 2
     assert bench.os.environ.get(name) == ("1" if option == "--resident-mtp-draft-selected-silu-down-fused" else ambient)
+
+
+def test_benchmark_draft_runner_cache_key_separates_selected_silu_down(monkeypatch, tmp_path):
+    from hipengine.loading import gguf as gguf_module
+    from hipengine.quant import gguf as quant_module
+    from hipengine.runtime import qwen35_gguf_runner as runner_module
+    from hipengine.speculative import mtp_resident_draft as draft_module
+    from hipengine.tokenization import gguf as tokenizer_module
+
+    name = "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
+    monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HIPENGINE_MTP_BENCH_CACHE_SESSION", "1")
+    monkeypatch.setattr(bench, "_hip_available", lambda: True)
+    monkeypatch.setattr(
+        bench,
+        "_rope_tables",
+        lambda **kwargs: (
+            np.zeros((1, 1), dtype=np.float32),
+            np.zeros((1, 1), dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(bench, "select_prompt_tokens", lambda *args, **kwargs: [1])
+    monkeypatch.setattr(bench, "_DRAFT_RUNNER_CACHE", {})
+    monkeypatch.setattr(bench, "_SESSION_CACHE", {})
+
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"benchmark-cache-key-model")
+    tensor_names = (
+        "blk.40.nextn.eh_proj.weight", "blk.40.nextn.hnorm.weight",
+        "blk.40.nextn.enorm.weight", "blk.40.attn_norm.weight",
+        "blk.40.attn_q.weight", "blk.40.attn_k.weight", "blk.40.attn_v.weight",
+        "blk.40.attn_output.weight", "blk.40.attn_q_norm.weight",
+        "blk.40.attn_k_norm.weight", "blk.40.post_attention_norm.weight",
+        "blk.40.ffn_gate_inp.weight", "blk.40.ffn_gate_exps.weight",
+        "blk.40.ffn_up_exps.weight", "blk.40.ffn_down_exps.weight",
+        "blk.40.ffn_gate_inp_shexp.weight", "blk.40.ffn_gate_shexp.weight",
+        "blk.40.ffn_up_shexp.weight", "blk.40.ffn_down_shexp.weight",
+        "blk.40.nextn.shared_head_norm.weight", "output.weight", "token_embd.weight",
+    )
+
+    class Reader:
+        info = SimpleNamespace(
+            metadata={},
+            tensors=[
+                SimpleNamespace(
+                    name=tensor_name,
+                    ggml_type=quant_module.GGMLQuantizationType.Q8_0,
+                    shape=(1, 1),
+                )
+                for tensor_name in tensor_names
+            ],
+        )
+
+        def __init__(self, path):
+            pass
+
+        def tensor_data(self, tensor_name):
+            if tensor_name == "output.weight":
+                return np.zeros((8, 1), dtype=np.uint8)
+            if tensor_name == "token_embd.weight":
+                return np.zeros((8, 8), dtype=np.float32)
+            return np.zeros((1, 1), dtype=np.float32)
+
+    class Tokenizer:
+        @classmethod
+        def from_gguf_info(cls, info):
+            return cls()
+
+        def decode(self, tokens):
+            return "prompt"
+
+    class Session:
+        runtime = object()
+        use_gemv_decode = True
+        use_wmma_prefill = True
+
+        def __init__(self, *args, **kwargs):
+            self.reset_count = 0
+
+        def reset(self):
+            self.reset_count += 1
+
+        def close(self):
+            pass
+
+    class ReachedRunnerCache(Exception):
+        pass
+
+    constructed = []
+
+    class Runner:
+        def __init__(self, *args, **kwargs):
+            constructed.append(os.environ.get(name))
+            self.closed = False
+
+        @property
+        def _device_chain_enabled(self):
+            raise ReachedRunnerCache
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(gguf_module, "GGUFReader", Reader)
+    monkeypatch.setattr(
+        quant_module,
+        "dequantize_gguf_data",
+        lambda data, qtype: np.asarray(data, dtype=np.float32),
+    )
+    monkeypatch.setattr(tokenizer_module, "Qwen35GGUFTokenizer", Tokenizer)
+    monkeypatch.setattr(runner_module, "Qwen35GGUFResidentSession", Session)
+    monkeypatch.setattr(
+        draft_module, "Qwen35GGUFResidentMTPDraftRunner", Runner
+    )
+
+    def run(fused):
+        argv = [
+            "--model", str(model),
+            "--resident-mtp-draft",
+            "--root-topk-accept", "1",
+        ]
+        if fused:
+            argv.append("--resident-mtp-draft-selected-silu-down-fused")
+        with pytest.raises(ReachedRunnerCache):
+            bench.main(argv)
+
+    run(True)
+    monkeypatch.delenv(name, raising=False)
+    run(False)
+    run(True)
+
+    # The first and third runs share one cache key; the unfused run cannot reuse
+    # the fused runner because the captured environment is part of that key.
+    assert constructed == ["1", None]
 
 
 def test_arg_parser_exposes_selected_down_x8_repack_mode() -> None:

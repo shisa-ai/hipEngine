@@ -4,6 +4,7 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from hipengine.speculative import mtp_resident_draft as draft
@@ -44,7 +45,8 @@ def test_draft_allocates_only_live_device_moe_scratch():
 @pytest.mark.parametrize("retired", [None, "0", "false", "1"])
 @pytest.mark.parametrize("stream", [0, 7])
 @pytest.mark.parametrize("router_parallel", [False, True])
-def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired, stream, router_parallel):
+@pytest.mark.parametrize("fused", [False, True])
+def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired, stream, router_parallel, fused):
     if retired is None:
         monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE", raising=False)
     else:
@@ -57,8 +59,12 @@ def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired
     runner.qk_head_dim, runner.experts_used, runner.inter_dim = 32, 2, 32
     runner.sync_stage_timings, runner.eps = False, 1e-6
     runner._router_row_parallel_enabled = router_parallel
+    runner._selected_silu_down_fused = fused
     # Execution uses the captured construction choice, not a live environment read.
     monkeypatch.setenv("HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL", str(int(not router_parallel)))
+    monkeypatch.setenv(
+        "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED", str(int(not fused))
+    )
     for index, name in enumerate((
         "attn_normed", "wq", "wk", "wv", "q_full", "key_cur", "value_cur", "query", "gate",
         "q_norm", "k_norm", "attn", "gated", "wo", "wo_out", "projected", "attended",
@@ -102,6 +108,7 @@ def test_run_one_always_reaches_device_moe_without_readback(monkeypatch, retired
     assert calls[0]["ffn_out_f32_ptr"] == runner.ffn_out.ptr
     assert calls[0]["runtime"] is runner.runtime
     assert calls[0]["stream"] == stream
+    assert calls[0]["selected_silu_down_fused"] is fused
     symbol = "qwen35_router_logits_f32_f32w" if router_parallel else "mtp_linear_f32"
     library = runner._router_lib if router_parallel else runner._mtp_lib
     assert [name for name, args, kwargs in router_calls] == [symbol, symbol]
@@ -155,6 +162,47 @@ def test_selected_silu_down_comparison_keeps_device_owned_combine(monkeypatch, f
     assert markers == (["draft_run_moe_selected_silu_down_fused"] if fused else
                        ["draft_run_moe_selected_silu", "draft_run_moe_selected_down"]) + [
                            "draft_run_moe_combine_cast_inputs", "draft_run_moe_weighted_combine"]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_constructor_captures_selected_silu_down_comparison(monkeypatch, enabled):
+    name = "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
+    monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A", raising=False)
+    monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES", raising=False)
+    monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE", "pack8")
+    if enabled:
+        monkeypatch.setenv(name, "1")
+    else:
+        monkeypatch.delenv(name, raising=False)
+
+    runner = object.__new__(draft.Qwen35GGUFResidentMTPDraftRunner)
+    runner.weights = {
+        "blk.40.attn_q_norm.weight": (np.zeros(8, dtype=np.float32), None, None),
+        "blk.40.ffn_gate_exps.weight": (np.zeros((1, 32), dtype=np.float32), None, None),
+        "output.weight": (np.zeros((8, 1), dtype=np.uint8), None, None),
+    }
+    runner.token_embd_f32 = np.zeros((8, 8), dtype=np.float32)
+    runner.runtime = object()
+    runner._get = lambda weight_name: runner.weights[weight_name][0]
+    runner._check_real_model_qtypes = lambda: None
+    runner._upload_weights = lambda: None
+    runner._allocate_buffers = lambda: None
+    for build_name in (
+        "build_mtp_nextn", "build_gguf_k_gemv", "build_gguf_q4_k_gemv",
+        "build_gguf_q6_k_pack8_gemv", "build_gguf_q8_0_dp4a_gemv", "build_cast",
+        "build_qwen35_router", "build_lm_head", "build_paro_silu",
+        "build_paro_combine", "build_gather",
+    ):
+        monkeypatch.setattr(draft, build_name, lambda **kwargs: object())
+
+    runner.__post_init__()
+
+    assert runner._selected_silu_down_fused is enabled
+    # The comparison is a construction choice; later environment changes do not
+    # retarget an existing runner.
+    monkeypatch.setenv(name, "0" if enabled else "1")
+    assert runner._selected_silu_down_fused is enabled
 
 
 def test_constructor_has_no_retired_device_moe_selector():

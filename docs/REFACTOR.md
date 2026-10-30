@@ -2214,23 +2214,6 @@ families. A changed GGUF isolation design must finish the recorded long-prompt p
 same-stream controls before replacing its default; timing claims need copy/queue-inclusive
 end-to-end evidence, not a clean short focus leg.
 
-### R0304 — Legacy selected-SiLU/down comparison ownership
-
-Owner: `hipengine/speculative/mtp_resident_draft.py`.
-
-Scope: `tests/test_gpu_gguf_k_selected_pack8_dp4a_gemv.py`;
-`HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED`.
-
-**Decision needed:** keep the explicit diagnostic or migrate it into an owner-local legacy composite
-plan before removing its environment/CLI readers. Do not delete shared registered primitives or
-silently run an unfused control under a fused comparison label.
-
-Done when: migrate constructor capture, helper argument, benchmark/ profiler
-cache/provenance and explicit CLI callers together. Run selected-down branch/marker/stream ownership
-and parser contracts, then the fused/unfused numerical comparison. A changed runtime route needs
-live legacy proposal, commit/reset and cleanup plus separate public NextN preservation. A new
-changed-arithmetic default needs its execution-profile gates.
-
 ### R0302 — Resident draft F32 router and shared-gate comparison ownership
 
 Owner: `hipengine/speculative/mtp_resident_draft.py`.

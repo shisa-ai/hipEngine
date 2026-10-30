@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -113,6 +115,92 @@ def test_draft_profiler_preserves_explicit_silu_down_comparison(monkeypatch, ena
     monkeypatch.setattr(sys, "argv", argv)
     assert profiler.main() == 0
     assert os.environ.get(name) == ("1" if enabled else ambient)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_draft_profiler_artifact_labels_selected_silu_down_honestly(
+    monkeypatch, tmp_path, enabled
+):
+    name = "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
+    monkeypatch.delenv(name, raising=False)
+    compiler_version_file = tmp_path / "hipcc.txt"
+    compiler_version_file.write_text("hipcc\n", encoding="utf-8")
+    output = tmp_path / "artifact.json"
+    args = SimpleNamespace(
+        model=tmp_path / "model.gguf",
+        rocprofv3="/fake/rocprofv3",
+        raw_root=tmp_path / "raw",
+        compiler_version_file=compiler_version_file,
+        roctx_sdk=tmp_path / "roctx",
+        prompt_ids="1",
+        steps=1,
+        warmup=0,
+        max_seq=8,
+        draft_n_max=1,
+        top_k=1,
+        vocab_cap=0,
+        q6_top1_stage1_threads=128,
+        q6_top1_stage1_shape="pack8",
+        selected_down_x8_repack="off",
+        q6_top1_dp4a=False,
+        dense_q8_dp4a=False,
+        dense_q8_dp4a_stages="",
+        selected_silu_down_fused=enabled,
+        router_row_parallel=False,
+        record_stage_timings=False,
+        sync_stage_timings=False,
+        gpu_event_stage_timings=False,
+        skip_warmbuild=True,
+        out=output,
+        top=1,
+    )
+    monkeypatch.setattr(
+        profiler, "_prepare_roctx_override", lambda sdk: tmp_path / "roctx"
+    )
+    monkeypatch.setattr(profiler, "_roctx_sdk_dep_paths", lambda sdk: [])
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(list(command))
+        if "--child" in command:
+            child_json = Path(command[command.index("--child-json") + 1])
+            child_json.write_text(
+                json.dumps(
+                    {
+                        "host_ms": ["1.0"],
+                        "selected_silu_down_fused": (
+                            "--selected-silu-down-fused" in command
+                        ),
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(profiler.subprocess, "run", run)
+    monkeypatch.setattr(
+        profiler, "_single_file", lambda root, pattern: root / "trace.csv"
+    )
+    monkeypatch.setattr(
+        profiler, "_read_marker_windows", lambda path, prefix: [(0, 1.0, 2.0)]
+    )
+    monkeypatch.setattr(profiler, "_read_kernels", lambda path: [])
+    monkeypatch.setattr(
+        profiler, "_summarize_draft", lambda *args, **kwargs: {"total_ms": 1.0}
+    )
+    monkeypatch.setattr(profiler, "_print_summary", lambda summary: None)
+    monkeypatch.setattr(profiler, "_print_stage_timings", lambda child: None)
+
+    assert profiler._run_parent(args) == 0
+
+    artifact = json.loads(output.read_text(encoding="utf-8"))
+    assert artifact["selected_silu_down_fused"] is enabled
+    assert artifact["status"] == "diagnostic_retained"
+    assert artifact["performance_claim"] is False
+    assert "host/GPU split" in artifact["purpose"]
+    assert artifact["child"]["selected_silu_down_fused"] is enabled
+    rocprof_command, = commands
+    assert ("--selected-silu-down-fused" in rocprof_command) is enabled
 
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])
