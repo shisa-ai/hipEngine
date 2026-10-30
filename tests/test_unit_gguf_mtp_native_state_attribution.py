@@ -10,6 +10,7 @@ from scripts.gguf_mtp_forced_target_probe import ProbeError
 from scripts.gguf_mtp_native_state_attribution import (
     LANE_PACKED,
     LANE_SINGLETON,
+    NATIVE_REFUSED_ENV_PAIR,
     VERDICT_CLEAN,
     VERDICT_NUMERICAL_DRIFT,
     VERDICT_OWNERSHIP_DEFECT,
@@ -1338,3 +1339,25 @@ def test_record_reference_row_rejects_a_multi_message_prompt() -> None:
 
     with pytest.raises(SystemExit):
         _record_reference_row(record, row_label="pair0_False")
+
+
+def test_env_contract_refuses_native_f32_residual_and_token_embedding_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (*NATIVE_REFUSED_ENV_PAIR, attribution.NATIVE_REFUSED_LOGIT_ENV):
+        monkeypatch.delenv(name, raising=False)
+
+    first, second = NATIVE_REFUSED_ENV_PAIR
+    monkeypatch.setenv(first, "1")
+    monkeypatch.setenv(second, "1")
+
+    with pytest.raises(
+        ProbeError,
+        match="refuses the F32 residual and F32 token embedding",
+    ):
+        attribution._env_contract()
+
+    monkeypatch.delenv(second)
+    contract = attribution._env_contract()
+    assert contract["enabled"][first] is True
+    assert contract["enabled"][second] is False

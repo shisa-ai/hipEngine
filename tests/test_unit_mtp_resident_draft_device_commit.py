@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 from types import SimpleNamespace
 
 import numpy as np
@@ -866,3 +867,217 @@ def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:
     assert "draft_device_chain_drain" in stage_timings
     assert "draft_topk_d2h" in stage_timings
     assert "draft_topk_readback" in stage_timings
+
+
+def _expected_seed_summary(
+    values: np.ndarray,
+    *,
+    label: str,
+    depth: int,
+    token_id: int,
+    position: int,
+) -> dict[str, object]:
+    row = np.ascontiguousarray(np.asarray(values, dtype=np.float32))
+    values64 = row.astype(np.float64)
+    return {
+        "label": label,
+        "size": int(row.size),
+        "sha256_16": hashlib.sha256(row.view(np.uint8)).hexdigest()[:16],
+        "mean": round(float(np.mean(values64)), 8),
+        "rms": round(float(np.sqrt(np.mean(values64 * values64))), 8),
+        "min": round(float(np.min(values64)), 8),
+        "max": round(float(np.max(values64)), 8),
+        "first8": [round(float(value), 8) for value in row[:8]],
+        "last8": [round(float(value), 8) for value in row[-8:]],
+        "depth": int(depth),
+        "token_id": int(token_id),
+        "position": int(position),
+    }
+
+
+def test_host_draft_trace_metadata_and_values_across_repeated_proposals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compare the host trace across repeated proposals on one runner.
+
+    The dense-cache length and proposal width are inputs to the draft proposal
+    path. They are not accepted-commit counts, and this unit-level runner has
+    no commit or reset method. The real commit/reset owner is
+    ``Qwen35GGUFMTPDecodeSession.generate`` (target reset, draft request reset,
+    verifier commit); that lifecycle still needs a realistic owner fixture or
+    live validation.
+    """
+
+    seed_a_values = np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+    seed_b_values = np.asarray([10.0, 20.0, 30.0, 40.0], dtype=np.float32)
+    seed_a = DeviceBuffer(0x1000, seed_a_values.nbytes)
+    seed_b = DeviceBuffer(0x1100, seed_b_values.nbytes)
+    memory = {
+        seed_a.ptr: seed_a_values.copy(),
+        seed_b.ptr: seed_b_values.copy(),
+    }
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.runtime = SimpleNamespace()
+    runner.hidden_size = 4
+    runner.qk_head_dim = 4
+    runner.experts_used = 8
+    runner._device_chain_enabled = True
+    runner._draft_chain_cap = 16
+    runner.token_embd_f32 = np.arange(64, dtype=np.float32).reshape(16, 4)
+    runner.seed_a = seed_a
+    runner.seed_b = seed_b
+    runner.token_embed = DeviceBuffer(0x2000, 16)
+    runner.cos = DeviceBuffer(0x3000, 16)
+    runner.sin = DeviceBuffer(0x4000, 16)
+    runner.position_i64 = DeviceBuffer(0x5000, 8)
+    runner.context_i64 = DeviceBuffer(0x5008, 8)
+    run_cache_lengths: list[int] = []
+
+    def run_one(current_seed, next_seed, **kwargs) -> None:
+        run_cache_lengths.append(int(kwargs["dense_cache_len"]))
+        memory[next_seed.ptr] = np.ascontiguousarray(
+            memory[current_seed.ptr] + np.float32(100), dtype=np.float32
+        )
+
+    topk_calls = 0
+
+    def read_topk(top_k: int) -> list[int]:
+        nonlocal topk_calls
+        token = 10 + topk_calls
+        topk_calls += 1
+        return [token]
+
+    def copy_to_host(dst, src, nbytes, **kwargs) -> None:
+        values = memory[src.ptr]
+        assert int(nbytes) == values.nbytes
+        ctypes.memmove(int(dst), values.ctypes.data, int(nbytes))
+
+    runner._run_one = run_one
+    runner._read_topk = read_topk
+    monkeypatch.setattr(
+        resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(resident_draft_mod, "copy_device_to_host", copy_to_host)
+
+    def run_proposal(
+        *,
+        start_token: int,
+        start_position: int,
+        dense_cache_len: int,
+        draft_n_max: int,
+    ) -> tuple[list[dict[str, object]], list[int], list[list[int]], int, list[int]]:
+        run_cache_lengths.clear()
+        tokens, topk_rows, cache_len = runner._propose_chain_from_seed_buffer(
+            start_token=start_token,
+            start_position=start_position,
+            draft_n_max=draft_n_max,
+            top_k=1,
+            rope_cos=np.ones((8, 4), dtype=np.float32),
+            rope_sin=np.zeros((8, 4), dtype=np.float32),
+            dense_key_cache=DeviceBuffer(0x6000, 4096),
+            dense_value_cache=DeviceBuffer(0x7000, 4096),
+            dense_cache_len=dense_cache_len,
+            draft_p_min=0.0,
+            record_hidden_stats=True,
+        )
+        return (
+            runner.last_hidden_state_summaries,
+            tokens,
+            topk_rows,
+            cache_len,
+            list(run_cache_lengths),
+        )
+
+    first = run_proposal(
+        start_token=1,
+        start_position=2,
+        dense_cache_len=0,
+        draft_n_max=2,
+    )
+    assert first[0] == [
+        _expected_seed_summary(
+            seed_a_values, label="draft_seed_input", depth=-1, token_id=1, position=2
+        ),
+        _expected_seed_summary(
+            seed_a_values + np.float32(100),
+            label="draft_next_seed",
+            depth=0,
+            token_id=1,
+            position=2,
+        ),
+        _expected_seed_summary(
+            seed_a_values + np.float32(200),
+            label="draft_next_seed",
+            depth=1,
+            token_id=10,
+            position=3,
+        ),
+    ]
+    assert first[1] == [10, 11]
+    assert first[2] == [[10], [11]]
+    assert first[3] == 2
+    assert first[4] == [0, 1]
+    first_summaries = first[0]
+
+    second = run_proposal(
+        start_token=11,
+        start_position=4,
+        dense_cache_len=2,
+        draft_n_max=2,
+    )
+    assert second[0] == [
+        _expected_seed_summary(
+            seed_a_values + np.float32(200),
+            label="draft_seed_input",
+            depth=-1,
+            token_id=11,
+            position=4,
+        ),
+        _expected_seed_summary(
+            seed_a_values + np.float32(300),
+            label="draft_next_seed",
+            depth=0,
+            token_id=11,
+            position=4,
+        ),
+        _expected_seed_summary(
+            seed_a_values + np.float32(400),
+            label="draft_next_seed",
+            depth=1,
+            token_id=12,
+            position=5,
+        ),
+    ]
+    assert second[1] == [12, 13]
+    assert second[2] == [[12], [13]]
+    assert second[3] == 4
+    assert second[4] == [2, 3]
+    assert second[0] is not first_summaries
+
+    third = run_proposal(
+        start_token=13,
+        start_position=6,
+        dense_cache_len=4,
+        draft_n_max=1,
+    )
+    assert third[0] == [
+        _expected_seed_summary(
+            seed_a_values + np.float32(400),
+            label="draft_seed_input",
+            depth=-1,
+            token_id=13,
+            position=6,
+        ),
+        _expected_seed_summary(
+            seed_a_values + np.float32(500),
+            label="draft_next_seed",
+            depth=0,
+            token_id=13,
+            position=6,
+        ),
+    ]
+    assert third[1] == [14]
+    assert third[2] == [[14]]
+    assert third[3] == 5
+    assert third[4] == [4]
+    assert third[0] is not second[0]

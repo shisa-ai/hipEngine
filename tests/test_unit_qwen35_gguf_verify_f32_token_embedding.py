@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import numpy as np
@@ -145,3 +147,124 @@ def test_gguf_verify_f32_token_embedding_env_flag(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING", "1")
     assert _gguf_verify_f32_token_embedding_enabled() is True
+
+
+def _populated_block_path_session() -> object:
+    output_norm = SimpleNamespace(
+        allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x2200))
+    )
+    weights = SimpleNamespace(
+        config=SimpleNamespace(
+            layer_types=(runner_mod.LINEAR_ATTENTION,),
+            is_moe=False,
+            rms_norm_eps=1e-6,
+        ),
+        root=lambda slot: output_norm if slot == "output_norm" else pytest.fail(slot),
+    )
+    runner = SimpleNamespace(hidden_size=4, vocab_size=8, weights=weights)
+    runtime = SimpleNamespace(
+        memcpy_async=lambda *args, **kwargs: None,
+        device_synchronize=lambda: None,
+    )
+    scratch = SimpleNamespace(
+        max_positions=128,
+        position_host=[0],
+        context_host=[1],
+        position_buf=SimpleNamespace(ptr=0x7100),
+        context_buf=SimpleNamespace(ptr=0x7200),
+        hidden_seed_fp32=SimpleNamespace(ptr=0x7300),
+    )
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = runner
+    session.runtime = runtime
+    session.model_path = "synthetic.gguf"
+    session._position = 0
+    session.scratch = scratch
+    session._verify_token_embedding_reader = None
+    session._verify_hidden_f32_a = SimpleNamespace(ptr=0x7000, nbytes=64)
+    session._verify_hidden_f32_b = SimpleNamespace(ptr=0x7100, nbytes=64)
+    session._verify_hidden_seed_buf = SimpleNamespace(ptr=0x6000, nbytes=64)
+    session._prefill_token_buf = SimpleNamespace(ptr=0x3000, nbytes=64)
+    session._prefill_hidden_a = SimpleNamespace(ptr=0x4000, nbytes=64)
+    session._prefill_hidden_b = SimpleNamespace(ptr=0x5000, nbytes=64)
+    session._verify_token_ids_i64 = SimpleNamespace(ptr=0x8000, nbytes=16)
+    session._verify_token_counter_i64 = SimpleNamespace(ptr=0x8100, nbytes=8)
+    session._verify_logits_buf = None
+    session._lm_out_index = None
+    session._verify_conv_out_f32 = None
+    session._bulk_prefill_scratch = SimpleNamespace(
+        rows=16,
+        for_chunk=lambda *args, **kwargs: SimpleNamespace(
+            norm=SimpleNamespace(ptr=0xB000)
+        ),
+    )
+    session.use_wmma_prefill = False
+    session.use_gemv_decode = True
+    session.use_expert_sidecar = False
+    session._ensure_verify_block_buffers = lambda *args, **kwargs: None
+    session._device_token_embedding_weight = lambda **kwargs: object()
+    session._iq_dense_mmq_verify_context = lambda **kwargs: nullcontext()
+    session._sample_target_block_rows_from_hidden = (
+        lambda *args, **kwargs: np.zeros(int(args[1]), dtype=np.int64)
+    )
+    return session
+
+
+def test_populated_block_path_mirrors_bf16_and_feeds_requested_f32_seed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _populated_block_path_session()
+    data = np.arange(32, dtype=np.float32).reshape(8, 4) / np.float32(13)
+    reader = _FakeReader(data)
+    events: list[tuple[object, ...]] = []
+
+    monkeypatch.setattr(runner_mod, "GGUFReader", lambda path: reader)
+    monkeypatch.setattr(runner_mod, "_gguf_verify_f32_residual_enabled", lambda: True)
+    monkeypatch.setattr(runner_mod, "_gguf_verify_f32_token_embedding_enabled", lambda: True)
+    monkeypatch.setattr(
+        runner_mod, "_gguf_verify_f32_residual_layer_limit", lambda layers: layers
+    )
+    monkeypatch.setattr(runner_mod, "gguf_wmma_prefill_enabled", lambda value: False)
+
+    def launch_embedding(weight, token_ids_ptr, hidden_ptr, **kwargs) -> None:
+        events.append(
+            ("bf16_mirror", int(token_ids_ptr), int(hidden_ptr), int(kwargs["rows"]))
+        )
+
+    def upload(buf, rows, nbytes, **kwargs) -> None:
+        if buf is session._verify_hidden_f32_a:
+            events.append(("f32_seed", np.array(rows, copy=True), int(nbytes)))
+
+    def run_linear_layer(*args, **kwargs) -> None:
+        events.append(
+            (
+                "layer_input",
+                int(kwargs["hidden_f32_ptr"]),
+                int(kwargs["out_f32_ptr"]),
+                int(kwargs["rows"]),
+            )
+        )
+
+    def readback(dst, src, nbytes, **kwargs) -> None:
+        ctypes.memset(int(dst), 0, int(nbytes))
+
+    monkeypatch.setattr(runner_mod, "launch_gguf_embedding", launch_embedding)
+    monkeypatch.setattr(runner_mod, "copy_host_array_to_device", upload)
+    monkeypatch.setattr(runner_mod, "copy_device_to_host", readback)
+    monkeypatch.setattr(runner_mod, "gguf_rmsnorm_f32_f32_weight", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner_mod, "gguf_rmsnorm_f32_f32_weight_out_f32", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(runner_mod, "set_decode_position_i64", lambda *args, **kwargs: None)
+    session.runner._run_linear_attention_prefill_layer_rows = run_linear_layer
+
+    result = session.verify_target_block([3, 1], stream=0)
+
+    assert [event[0] for event in events] == ["bf16_mirror", "f32_seed", "layer_input"]
+    assert events[0][1:] == (session._prefill_token_buf.ptr, session._prefill_hidden_a.ptr, 2)
+    np.testing.assert_array_equal(events[1][1], data[[3, 1]])
+    assert events[1][2] == data[[3, 1]].nbytes
+    assert events[2][1:] == (session._verify_hidden_f32_a.ptr, session._verify_hidden_f32_b.ptr, 2)
+    assert result.input_token_ids == [3, 1]
+    assert result.token_ids == [0, 0]
+    assert session._position == 2
