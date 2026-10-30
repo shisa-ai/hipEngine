@@ -2159,7 +2159,7 @@
       "start_line": 2472,
       "end_line": 2493,
       "sha256": "54a8a73cc5b38fb365c3ba8fb43549519b7721868fcc09f7f4aecd5961e2db0f",
-      "status": "resolved-shared-setting",
+      "status": "triaged-shared-setting-fixed-alias-deprecation-deferred",
       "evidence": [
         "Fixed leaf budget publication and dense consumer precedence; CPU and public gfx1151 checks pass. Direct generator fallback migration and provider-declared pre-load default remain. worklog/entries/20261026T093718.344649Z-cleanup-refactor-r0080-3a41ab.md.",
         "Shared provider registration default replaces server/LLM constant; axis-aware construction and typed pending pre-load tested, full CPU bundle and real Flash-Next provider HTTP request pass. worklog/entries/20261026T095516.745110Z-cleanup-refactor-r0080-provider-71e3e5.md. Direct-generator fallback migration remains.",

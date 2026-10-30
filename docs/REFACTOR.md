@@ -1901,36 +1901,6 @@ a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
 
 
 
-## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
-
-- Resolved 2026-09-17: an omitted `--speculative-candidate-budget`
-  (`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`) no longer defaults to 4. The server
-  resolves the depth from the loaded model's retained serving evidence (deepest
-  qualified depth for the resident physical cell), or from the generic
-  provider's declared shape (Laguna keeps B4), and reports requested/resolved/
-  source at startup and in `/v1/hipengine/capabilities`. A pinned depth is used
-  unchanged and an unservable one is warned about instead of silently
-  rewritten. See `docs/ENVS.md` and
-  `worklog/entries/20260917T113608.088508Z-lhl-mtp-candidate-budget-capability-f876c3.md`.
-- Fixed 2026-10-26: `LLM` publishes the resolved depth through service wrappers
-  to the resident generator, including when the depth was resolved before the
-  owner was constructed. Dense C1 generation and workspace sizing consume that
-  published value rather than rereading the fallback environment variable.
-  The shared resolver now reads `HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET` for
-  both serving and direct generators. Explicit values precede automatic
-  defaults; malformed, conflicting or unsupported values fail loudly.
-- `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` remains a compatibility alias because
-  external direct-generator callers used the documented setting. It is not a
-  second fallback: both names must agree when set together. Live repository
-  scripts use the canonical name. Remove the alias only with an explicit API
-  deprecation; deleting it silently would change existing callers' requests.
-- Resolved 2026-10-26: provider registrations declare their candidate budget.
-  Server pre-load reporting and `LLM` use the same registry accessor. Explicit
-  and engine-resolved depths take precedence. A declaration that varies by
-  registry axes reports pending before load; construction uses its known axes
-  to choose the depth. An unregistered provider still fails by name.
-  The generic config default remains for direct provider construction.
-
 ## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
 
 - The three shadowed physical-cell rows were removed after checking resolver
@@ -2054,6 +2024,24 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0080 — Candidate-budget compatibility alias deprecation
+
+Resolved depth propagates from `LLM` through service wrappers to resident
+execution and workspace sizing. Provider registry declarations serve both
+pre-load reporting and construction; axis-dependent declarations remain pending
+until their axes are known. Explicit and engine-resolved depths take precedence,
+and unregistered providers fail by name.
+
+**Deferred API decision:** deprecate `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` only
+through an explicit compatibility transition. Serving and direct generators use
+`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`; both names must agree when present.
+Preserve malformed/conflicting/unsupported-value errors and explicit user intent.
+Update direct callers, configuration documentation and resolver/reporting tests
+before removing the alias. Keep the generic direct-provider config default;
+this is not permission to reinstate independent fallback reads or silently
+rewrite requested depth. No API or runtime change is made by this relocation.
+
 
 ### R0081 — Finish legacy provider telemetry migration
 
