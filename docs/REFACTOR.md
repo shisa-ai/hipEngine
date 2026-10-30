@@ -3544,22 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Startup scratch probe warms the packed route only when N sessions fit (open 2026-09-21)
-
-The startup scratch probe acquires one resident session per probe slot, and each of
-those sessions is constructed at the auto-sized resident context with its own
-preallocated KV pages and packed workspace lease. A width-N probe therefore costs
-about N full-context sessions. On a box whose free memory holds fewer than N of them
-the probe is reduced to one slot, so the packed prefill and verifier warmups the
-wider probe exists to run are skipped and the first concurrent request pays for them.
-
-Remove the reduction once the probe can warm the packed route without holding N
-full-context sessions -- for example by constructing probe sessions at a short
-context, since the warm prompts are at most 128 tokens. That needs a session-pool
-key or construction path carrying a context distinct from the request context. Until
-it exists, `_startup_probe_width_reduction` in `hipengine/server/api.py` is what
-keeps a wide probe from turning a warmup into HIP out-of-memory attempts.
-
 ## A failed wide startup probe leaves the process unable to allocate the next stage (open 2026-09-21)
 
 On the 120 GiB box, a startup at `--max-active-requests 4` sent the scratch probe's
@@ -9829,3 +9813,21 @@ Run `scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: require re
 prefix hits, compact INT8, speculative cycles and parity with the same
 prefix-reusing AR route. A cache miss or AR-only response is not a pass. Include
 budget pressure, overwrite, target eviction and shutdown release tests.
+
+### R0510 — Define bounded-context startup warmup ownership and coverage
+
+`_startup_probe_width_reduction` still prices concurrent resident sessions and
+narrows startup warmup when their combined allocation exceeds usable memory.
+The GGUF session acquisition path already accepts `max_sequence_length` and
+includes it in its pool key; a separate-context constructor is not missing.
+Startup does not yet use that facility to warm a wide packed route independently
+of full-context resident allocations.
+
+**Deferred warmup design:** connect a bounded probe context to explicit temporary
+session ownership, retaining shared weights and releasing probe-only allocations.
+Specify which packed kernels, workspace sizes and graph/context buckets it warms;
+a short-context success must not certify full-context capacity or graph coverage.
+Preserve actual request context limits and capacity estimates. Replace the width
+reduction only after a wide startup probe and subsequent public concurrent
+requests succeed under constrained memory, and failure/cancellation frees all
+probe resources. Keep the current guard until that replacement is implemented.
