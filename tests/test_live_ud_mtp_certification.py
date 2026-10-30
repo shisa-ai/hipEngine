@@ -184,24 +184,6 @@ def test_partial_pinned_manifest_is_refused():
 # ---------------------------------------------------------------------------
 
 
-def _grant_mtp_scope(monkeypatch) -> None:
-    """Grant MTP scope in-process for the pinned UD presets (candidate mode)."""
-
-    from hipengine.loading import qwen35_gguf_admission as admission
-
-    original = admission.resolve_qwen35_gguf_artifact_preset
-
-    def patched(*args, **kwargs):
-        preset = original(*args, **kwargs)
-        if preset is not None and preset.preset_key in UD_SESSION_QUANTS:
-            return admission.replace(
-                preset, scopes=(*preset.scopes, GGUF_PRESET_SCOPE_MTP)
-            )
-        return preset
-
-    monkeypatch.setattr(admission, "resolve_qwen35_gguf_artifact_preset", patched)
-
-
 def test_u6_certification_records_define_all_six_items():
     """U6 defines every required element, and an incomplete unit mints no pin."""
 
@@ -288,7 +270,7 @@ def test_nextn_draft_owns_block_and_borrows_embedding_and_head(path: Path):
     assert not any(name == "output.weight" for name in owned)
 
 
-def test_unplanned_nextn_fallback_is_refused(monkeypatch):
+def test_unplanned_nextn_fallback_is_refused():
     """U6 item 1: a fallback naming no planned resident refuses."""
 
     from hipengine.loading import qwen35_gguf_admission as admission
@@ -296,7 +278,6 @@ def test_unplanned_nextn_fallback_is_refused(monkeypatch):
 
     if not UD_Q4_K_M.exists():
         pytest.skip(f"pinned artifact missing: {UD_Q4_K_M}")
-    _grant_mtp_scope(monkeypatch)
     reader, model_map, nextn_map = _real_map(UD_Q4_K_M)
     assert nextn_map is not None
     original = nextn_map.fallback_tensors["lm_head"]

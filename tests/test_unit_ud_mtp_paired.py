@@ -664,9 +664,13 @@ def test_main_scopes_and_restores_device_selection(tmp_path: Path, capsys, monke
         command["quant"]: command
         for command in paired.resolve_commands(runs=2, raw_dir=tmp_path, limit=None)
     }
+    from hipengine.loading import qwen35_gguf_admission as admission
+
+    resolver = admission.resolve_qwen35_gguf_artifact_preset
     seen: list[str | None] = []
 
     def fake_run_pair(argv, output):
+        assert admission.resolve_qwen35_gguf_artifact_preset is resolver
         seen.append(os.environ.get("HIP_VISIBLE_DEVICES"))
         quant = argv[argv.index("--quant") + 1]
         payload = _payload(command=commands[quant])

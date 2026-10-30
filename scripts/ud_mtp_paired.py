@@ -194,53 +194,6 @@ def resolve_commands(*, runs: int, raw_dir: Path, limit: int | None) -> list[dic
     return commands
 
 
-def _grant_mtp_scope_in_process(preset_keys: set[str]) -> object:
-    """Candidate-mode scope grant: in this process only, never a written pin.
-
-    Returns the function it replaced so the caller can restore it; use
-    :func:`mtp_scope_granted` rather than calling this directly.
-    """
-
-    from hipengine.loading import qwen35_gguf_admission as admission
-
-    original = admission.resolve_qwen35_gguf_artifact_preset
-
-    def patched(*args, **kwargs):
-        preset = original(*args, **kwargs)
-        if (
-            preset is not None
-            and preset.preset_key in preset_keys
-            and not preset.scope_certified(admission.GGUF_PRESET_SCOPE_MTP)
-        ):
-            return admission.replace(
-                preset,
-                scopes=(*preset.scopes, admission.GGUF_PRESET_SCOPE_MTP),
-                note=f"{preset.note} [paired run: MTP scope granted in-process]".strip(),
-            )
-        return preset
-
-    admission.resolve_qwen35_gguf_artifact_preset = patched
-    return original
-
-
-@contextmanager
-def mtp_scope_granted(preset_keys: set[str]):
-    """Scope-grant context manager, so the patch never outlives the run.
-
-    ``main()`` is called in-process by the tests; leaving the admission module
-    patched would silently change every later admission assertion in the same
-    interpreter.
-    """
-
-    from hipengine.loading import qwen35_gguf_admission as admission
-
-    original = _grant_mtp_scope_in_process(preset_keys)
-    try:
-        yield
-    finally:
-        admission.resolve_qwen35_gguf_artifact_preset = original
-
-
 @contextmanager
 def device_selected(index: int) -> Iterator[dict[str, str | None]]:
     """Pin device selection for the child suites, and restore it afterwards.
@@ -785,9 +738,7 @@ def main() -> int:
         if args.from_raw
         else device_selected(int(args.device_index))
     )
-    with mtp_scope_granted(
-        {quant for _, quant, family in PAIRS.values() if family == "ud"}
-    ), device_context:
+    with device_context:
         for command in commands:
             label = str(command["label"])
             output = Path(str(command["argv"][command["argv"].index("--output") + 1]))

@@ -33,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.ud_mtp_paired import device_selected, mtp_scope_granted  # noqa: E402
+from scripts.ud_mtp_paired import device_selected  # noqa: E402
 
 SUITE = "scripts/qwen36_dense_gguf_suite.py"
 DEFAULT_PROMPTS = "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
@@ -197,16 +197,11 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     payloads: dict[str, dict] = {}
     with device_selected(int(args.device_index)):
-        # The suite always materializes the NextN draft provider, so an AR-only
-        # comparison still needs MTP admission. The U6 pin is empty, so the
-        # scope is granted in this process only -- never written -- exactly as
-        # the paired protocol does.
-        with mtp_scope_granted({str(args.quant)}):
-            for mode in AR_MODES:
-                output = args.output_dir / f"ar-{mode}.json"
-                argv = _suite_argv(args, mode, output)
-                print(f"[equivalence] {mode}: {' '.join(argv)}", flush=True)
-                payloads[mode] = _run_suite(argv, output)
+        for mode in AR_MODES:
+            output = args.output_dir / f"ar-{mode}.json"
+            argv = _suite_argv(args, mode, output)
+            print(f"[equivalence] {mode}: {' '.join(argv)}", flush=True)
+            payloads[mode] = _run_suite(argv, output)
 
     device_names = {
         mode: str((payload.get("provenance") or {}).get("device_name") or "")

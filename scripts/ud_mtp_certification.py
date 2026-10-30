@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""U6: evaluate whether a UD artifact may be granted the MTP scope.
+"""U6: evaluate UD artifact MTP certification evidence.
 
-UD AR admission and UD MTP admission are separate certification units.  AR
-certificates are pinned with scope ``("ar",)``; MTP admission is granted only by
-an entry in ``_UD_MTP_PRESET_FINGERPRINTS``.  This script runs the qualification
-that an entry must be based on, WITHOUT writing that entry: it grants the scope
-in-process ("candidate mode") so the run is reproducible, and reports whether
-the candidate meets the gates.
+This script reports whether the candidate meets the evaluation gates without
+writing a certification entry or modifying runtime admission. MTP admission
+uses tensor and kernel capabilities, independently of certification scope.
 
 It refuses to run unless the enabling conditions hold, so a "pass" cannot come
 from relaxed validation:
@@ -103,26 +100,6 @@ def _preflight(path: Path, quant: str) -> dict[str, object]:
     }
 
 
-def _grant_mtp_scope_in_process(preset_keys: set[str]) -> None:
-    """Candidate mode: add the MTP scope for these presets, in this process only."""
-
-    from hipengine.loading import qwen35_gguf_admission as admission
-
-    original = admission.resolve_qwen35_gguf_artifact_preset
-
-    def patched(*args, **kwargs):
-        preset = original(*args, **kwargs)
-        if preset is not None and preset.preset_key in preset_keys:
-            return admission.replace(
-                preset,
-                scopes=(*preset.scopes, admission.GGUF_PRESET_SCOPE_MTP),
-                note=f"{preset.note} [U6 candidate: MTP scope granted in-process]".strip(),
-            )
-        return preset
-
-    admission.resolve_qwen35_gguf_artifact_preset = patched
-
-
 def _category_rows(payload: dict) -> dict[str, dict[str, object]]:
     """Per-category exactness and acceptance for the MTP candidate."""
 
@@ -200,7 +177,6 @@ def _run_one(
     limit: int | None,
 ) -> dict[str, object]:
     preflight = _preflight(path, quant)
-    _grant_mtp_scope_in_process({str(preflight["preset_key"])})
 
     from scripts import qwen36_dense_gguf_suite as suite
 
