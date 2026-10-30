@@ -112,6 +112,23 @@ are removed. Selected down execution uses SiLU/rotate then projection;
 remains registered for diagnostics. Historical comparisons below describe the
 former runtime selection.
 
+## Supported score and hidden comparisons
+
+`scripts/gguf_mtp_bench.py --record-target-topk-scores` is a supported compact
+cross-engine diagnostic, independent of the target top-1 arithmetic selector.
+It writes `target_lm_head_score_rows` and aligned `target_hidden_seed_rows` for
+`scripts/mtp_target_score_compare.py` and native-state attribution consumers.
+Each score row identifies its row offset, input token, target token, top-k and
+requested candidate scores. Scores retain FP32 values, including near ties;
+out-of-vocabulary candidates have null scores. Missing logits produce no score
+rows. Missing hidden rows are marked `hidden_available: false`, never relabelled
+as another row. Native graph attribution refuses missing full logits rather than
+silently substituting an eager result.
+
+These records are diagnostic summaries, not a tensor-trace replacement or a
+production numerical gate. Capturing them does not change the public NextN
+hidden convention, accepted-row commit ownership or ordinary generation route.
+
 ## Dated implementation reports
 
 > **Production-readiness campaign (2026-08-21):** at that date, short-context

@@ -2214,40 +2214,6 @@ families. A changed GGUF isolation design must finish the recorded long-prompt p
 same-stream controls before replacing its default; timing claims need copy/queue-inclusive
 end-to-end evidence, not a clean short focus leg.
 
-### R0310 — PARO rowchunk-boundary diagnostic ownership
-
-Owner: `scripts/qwen35_batch_hidden_bisect.py`.
-
-Scope: `scripts/qwen35_batch_hidden_bisect.py --compare-full-attn-rowchunk-boundary`,
-`native_full_attention_rowchunk_repair`, `performance_claim: false`.
-
-**Decision needed:** retain this named comparison diagnostic or replace it with another trace that
-preserves the two-peer distinction. Solving the c6 rowchunk cost is separate kernel/performance
-work; do not claim it closed from host fixtures or delete reachable c6 execution to avoid the
-question.
-
-Done when: migrate parser, dry-run and executed comparison metadata with the replacement,
-and run `tests/test_unit_qwen35_rowchunk_comparison.py`, hidden-bisect command tests and PARO
-rowchunk policy/forwarding tests. A c6 implementation change also needs independent hidden/state/KV
-numerical checks, public requests at neighboring and unrelated widths, selected paths and cleanup;
-any speed claim needs the full benchmark protocol rather than this diagnostic's wall time.
-
-### R0307 — Target score and hidden trace ownership
-
-Owner: `scripts/gguf_mtp_bench.py`.
-
-Scope: `target_lm_head_score_rows`, `target_hidden_seed_rows`.
-
-**Decision needed:** keep the compact cross-engine score diagnostic or replace it with a tensor
-trace before retiring the CLI and result fields. Keep this trace ownership separate from R0301's
-singleton top-1 arithmetic selector.
-
-Done when: migrate verifier capture, benchmark callers/serialization and attribution
-consumers together. Run benchmark metrics, verifier LM-head, native-state attribution and
-forced-target probe tests. A replacement must preserve exact row/position/candidate alignment,
-near-tie precision, explicit missing-row behavior and graph readback refusal, then exercise real
-verify/commit/reset plus a separate public NextN preservation request.
-
 ### R0306 — Legacy draft stage-trace replacement
 
 Owner: `scripts/gguf_mtp_bench.py`.

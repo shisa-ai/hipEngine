@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Qwen3.5/PARO native c>N hidden-state bisection diagnostic.
 
-This diagnostic compares compact native c=2 decode hidden tensors against
-independent c=1 resident sessions at configurable layer limits.  It is a
-correctness-only tool: it emits JSON with token and hidden mismatches, and it
-never marks a throughput result accepted.
+By default this diagnostic compares compact native c>N decode hidden tensors
+against independent c=1 resident sessions at configurable layer limits.
+``--compare-full-attn-rowchunk-boundary`` instead runs two batched peers:
+``native_no_rowchunk`` and ``native_full_attention_rowchunk_repair``. The
+comparison preserves each peer's label in dry-run and executed JSON and records
+``performance_claim: false``. It does not measure or resolve rowchunk cost.
+
+This is a supported correctness diagnostic: it emits token and hidden
+mismatches and never marks a throughput result accepted.
 """
 
 from __future__ import annotations
