@@ -5457,13 +5457,13 @@
       "start_line": 4589,
       "end_line": 4604,
       "sha256": "53dcedfd12545c18926f5a416d1b1b75bf0c578407f9bfc68414a8f11305b577",
-      "status": "partial-historical-blocker-resolved",
+      "status": "triaged-deferred-oracle-protocol-choice",
       "evidence": ["Accepted 2026-08-18 canonical packet attributes the old fault to graph lifetime across packed prefill; accepted 2026-08-19 packet completes same-owner serial references. Current harness defaults same_owner and retains explicit isolated workers. Reconciled stale blocked prose without deleting either protocol or claiming a current GPU refresh. Integration and production-load unit files plus docs/audit pass. Worklog: worklog/entries/20261027T172107.968090Z-cleanup-refactor-r0208-cf40f8.md."],
       "subitems": [
         {
           "line": 4591,
           "text": "- Added 2026-08-17 after repeated W7900 page faults when a 13-key exact-oracle",
-          "status": "pending"
+          "status": "preserved-benchmark-protocol-context"
         },
         {
           "line": 4596,
@@ -5474,7 +5474,8 @@
         {
           "line": 4601,
           "text": "- Removal trigger: after the canonical clean-source production packet completes",
-          "status": "pending"
+          "status": "deferred-oracle-protocol-choice",
+          "evidence": "Bottom R0208 preserves focused/real packet gates and independent-oracle contracts. Docs/audit pass. worklog/entries/20261030T092935.678904Z-cleanup-cleanup-r0208-final-1e178c.md."
         }
       ]
     },

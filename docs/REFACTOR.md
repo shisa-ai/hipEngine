@@ -2291,33 +2291,6 @@ category and control/ownership gates before closing this entry.
   the refactor contract but do not establish public GPU execution.
 
 
-## C2-6 production oracle process-partition seam
-
-- Added 2026-08-17 after repeated W7900 page faults when a 13-key exact-oracle
-  campaign handed the same HIP generation to measured serving. The production
-  load harness can partition oracle keys into isolated workers, verify merged
-  token digests, and start a separate measured owner. This is benchmark
-  containment, not runtime serving architecture.
-- The earlier W7900 oracle/handoff fault was resolved by invalidating decode
-  graphs before packed prefill reused their workspace. The accepted canonical
-  packet is recorded in
-  `benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`;
-  the subsequent
-  `benchmarks/results/2026-08-19-concurrency2-pipeline-verify-skip-tuning-accepted.json`
-  also completed with same-owner serial oracles. These are historical results,
-  not a current-source rerun or proof that every worker mode is equivalent.
-- The harness defaults to `--oracle-mode same_owner`, disables decode graphs
-  only during reference generation, and checks that requests drain before
-  serving. Explicit `isolated` mode still partitions reference keys into workers
-  and verifies merged key coverage. Neither mode is runtime serving architecture.
-- Remaining cleanup: choose one independent-oracle protocol and remove the other
-  implementation and CLI mode once no diagnostic caller needs it. Preserve exact
-  token coverage, explicit worker failures and final ownership checks. Run
-  `uv run pytest tests/test_integration_gguf_production_load_gate.py
-  tests/test_unit_concurrency2_production_load.py -q`, then the selected real
-  `scripts/gguf_production_load_gate.py` packet before deleting a protocol. The
-  old device fault is not an outstanding runtime blocker.
-
 ## C2-6 guarded idle packed-workspace release API
 
 - Added 2026-08-18. Row reclaim no longer frees the owner-shared packed
@@ -9874,3 +9847,24 @@ on both gfx1100 and gfx1151: graph-pointer, lifecycle, cancellation, pressure,
 SLO and production load. Only after remaining registered packages migrate may
 compatibility fixtures retire. Registered strict/unfused/serial numerical
 fallbacks remain independent of allocator cleanup. No runtime changes here.
+
+### R0208 — Choose the production-load oracle protocol
+
+The historical W7900 oracle/handoff fault was resolved by invalidating decode
+graphs before packed prefill reused workspace. Accepted packets are
+`benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json`
+and `benchmarks/results/2026-08-19-concurrency2-pipeline-verify-skip-tuning-accepted.json`.
+These are historical results, not a current-source rerun or worker-mode equivalence.
+
+The harness defaults to `--oracle-mode same_owner`, disables graphs during
+reference generation and verifies drain before serving. Explicit `isolated`
+mode partitions reference keys into workers and checks merged key coverage and
+token digests. This is benchmark containment, not runtime serving architecture.
+
+**Deferred protocol decision:** choose one independent-oracle protocol only
+after checking diagnostic consumers. Before removing either implementation or
+CLI mode, preserve exact token coverage, explicit worker failures and final
+ownership checks; run `uv run pytest tests/test_integration_gguf_production_load_gate.py
+ tests/test_unit_concurrency2_production_load.py -q` and the selected real
+`scripts/gguf_production_load_gate.py` packet. The old device fault is not a
+current runtime blocker. No protocol is deleted or newly validated here.
