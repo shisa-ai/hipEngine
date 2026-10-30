@@ -5113,18 +5113,19 @@
       "start_line": 4303,
       "end_line": 4315,
       "sha256": "af9ced4c9868b590ada684158e7548ea9d7972de5eb863c6fc88fc95eb9422e5",
-      "status": "partial",
+      "status": "triaged-deferred-exact-linear-transport",
       "evidence": ["Corrected obsolete scalar-only/too-slow claim using existing 2026-08-28 automatic-promotion artifact's segmented implementation. Preserved replacement threshold, numerical/lifecycle gates and live exact scope. Nested/restoration/context tests and docs/audit pass. Profile migration/public validation remain open. Worklog: worklog/entries/20261027T154759.095312Z-cleanup-refactor-r0193-r0194-8b5f45.md."],
       "subitems": [
         {
           "line": 4305,
           "text": "- Added 2026-08-27 after the packed rows6 linear-attention composite failed the",
-          "status": "pending"
+          "status": "preserved-segmented-exact-owner"
         },
         {
           "line": 4311,
           "text": "- Removal trigger: replace scalar Q8/Conv/GDN launches with independently",
-          "status": "pending"
+          "status": "deferred-exact-linear-transport",
+          "evidence": "Bottom R0194 preserves segmented owner, profile transport and replacement gates. Docs/audit pass; unchanged scopes covered by preceding60 tests. worklog/entries/20261030T091031.309124Z-cleanup-cleanup-r0194-final-8de0df.md."
         }
       ]
     },

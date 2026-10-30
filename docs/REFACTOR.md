@@ -2228,24 +2228,6 @@ should be removed or collapsed.
   restoration before retiring the variable; do not substitute a process-global
   boolean or infer this arithmetic choice from the backend alone.
 
-## SPECDEC2 MoE physical-C2 exact-linear fallback
-
-- Added 2026-08-27 after the packed rows6 linear-attention composite failed the
-  binding MoE production gate. The request-local
-  `moe_physical_c2_exact_linear_session(...)` selects the row-exact target path.
-  The initial scalar-heavy fallback was subsequently optimized: the promotion
-  artifact records R6 norm/projection, two R3 Conv segments and segmented GDN
-  journals, followed by row-batched MoE FFN. See
-  `benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`.
-  The old claim that this path is inherently too slow for automatic promotion
-  does not describe that implementation.
-- Remaining cleanup: carry the exact-linear selection in the profile-resolved
-  target manifest while preserving selected-state journals, C1 arithmetic and
-  nested/context-local restoration. Any replacement kernels must independently
-  pass the complete numerical and lifecycle gates and the original >=1.10x AR
-  performance target; do not remove the correctness
-  fallback merely because its original scalar implementation was slower.
-
 ## gfx1100 dense SPECDEC2 C8 physical-width rollback
 
 The maximum-request environment override is removed from server admission and
@@ -9885,3 +9867,21 @@ boundary and keep this migration separate from numerical tuning. Run
 `tests/test_unit_moe_target_arithmetic_scopes.py` and affected adapter tests;
 verify public C1/C2 selected arithmetic and rollback state before retiring the
 scope. No arithmetic, capability or default change is made by this triage.
+
+### R0194 — Preserve exact-linear ownership during profile transport migration
+
+`moe_physical_c2_exact_linear_session(...)` selects the row-exact target path.
+The historical packed rows6 composite failed its MoE gate; the replacement
+subsequently used R6 norm/projection, two R3 Conv segments, segmented GDN
+journals and row-batched MoE FFN. The implementation record is
+`benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`.
+The obsolete scalar-only performance description is not a deletion rationale.
+
+**Deferred profile transport:** carry exact-linear selection in the resolved
+target manifest, preserving selected-state journals, C1 arithmetic, nested
+scopes, exception restoration and execution-context isolation. Verify public
+selected arithmetic, exact rollback state and lifecycle before retiring the
+context. Keep this transport change separate from replacement-kernel tuning.
+Any replacement must independently pass the complete numerical/lifecycle gates
+and the original >=1.10x AR target; the current correctness fallback remains
+until then. No new performance claim or runtime change is made here.
