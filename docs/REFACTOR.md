@@ -3544,57 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## VibeVoice-TTS LM decode gate+up at `threads=64` (rejected on quality, ~1.2x)
-
-`vibevoice_qwen2.py`'s decode gate+up projection calls `dense_dual_gemv_out_bf16`
-at the `threads=256` default. **This entry has been wrong twice; the numbers below
-are the corrected ones.**
-
-What is solid:
-
-- Under DRAM streaming the kernel reaches **169.5 GB/s at `threads=64` against
-  138.1 GB/s at `threads=256`** (55.1 MB of weights per call, 256 MB flush drained
-  and synchronized before timing, median of 12). That is a real **~1.23x**, not the
-  3.8x an earlier draft claimed and not zero as a later draft claimed.
-- End-to-end, applying it took the LM stage from **1.450 s to 1.266 s** and pooled
-  RTF from 1.201 to 1.174. That is consistent with ~1.2x on this kernel, which is
-  the useful cross-check on any isolated figure here.
-- **It is rejected anyway.** It moves 5 of 17920 outputs by one ulp, keeps
-  `chain_exact` true, keeps the correctness suite green at 126 passed, and still
-  takes the ten-seed generated-audio suite from **58/60 to 57/60** by adding a
-  `single-numbers` failure at WER 0.1667.
-
-Two measurement traps were hit while establishing this, both worth avoiding:
-
-1. **Reusing one input buffer measures L2, not the workload.** A benchmark that
-   ran 30 iterations against one 55 MB weight buffer reported 74.8 us at
-   `threads=64` (an impossible 736 GB/s) because the weights stayed cached.
-2. **An unsynchronized flush steals the bandwidth you are measuring.** Writing a
-   256 MB buffer between calls without draining it first dropped the apparent rate
-   to ~37 GB/s for every thread count, which is how an earlier draft concluded the
-   thread count was irrelevant. The memset and the kernel were competing.
-
-**A bit-exact attempt was made and failed to capture the win.** The 256-thread
-path at K=1536 falls entirely into the scalar stride-256 tail loop, so a variant
-that stages the weight row through shared memory with 8-wide loads should have
-recovered the load efficiency while keeping each thread's element set and order
-identical. It was **bit-exact on all four shapes tested** (K=1536/N=8960,
-K=1536/N=1536, K=1024/N=4096, K=2047/N=512) and measured **0.99x** -- no
-improvement. The kernel is latency-bound on DRAM rather than limited by load
-width, so the `threads=64` advantage comes from having more workgroups resident
-per CU, which cannot be reproduced without changing the thread count and therefore
-the reduction width. The variant was reverted rather than kept as neutral code.
-
-To remove this entry: the ~1.2x is worth having but must arrive without moving the
-summation order, and the two obvious routes are now closed -- a bare thread-count
-change moves 5 of 17920 outputs by one ulp, and shared-memory staging is neutral.
-What is left is a change to how workgroups are scheduled or how many outputs each
-one owns, and any such change has to keep the 256-wide tree pairing per output.
-
-**Method note:** for a streaming kernel, flush between calls AND synchronize the
-flush before timing, then cross-check the isolated figure against the end-to-end
-stage delta.
-
 ## VibeVoice-TTS: batch the CFG positive and negative LM branches (open, kernel-ABI change)
 
 The session builds two LM runtimes over the same weights, `positive` and `negative`.
@@ -10011,3 +9960,22 @@ policy is chosen; no arbitrary default ceiling is added by this cleanup.
 Validate the selected policy on both sides of its limit and an unrelated
 size through `LLM.generate()`. Live Surya validation also needs a locally
 available checkpoint; the current local cache lacks `datalab-to/surya-ocr-2`.
+
+### R0499 — Decide whether to pursue exact dual GEMV scheduling
+
+The VibeVoice LM decode caller does not override the dense dual GEMV wrapper's
+`threads=256` default. The rejected thread-count experiment is not installed.
+Corrected measurements and the audio-quality failure remain in
+`worklog/entries/20260915T195500.000000Z-lhl-vibevoice-tts-gemv-bandwidth-corrected-9c4d18.md`;
+the reverted exact staging attempt remains in
+`worklog/entries/20260915T194341.808338Z-lhl-vibevoice-tts-staging-negative-3ca9f5.md`.
+
+**Deferred research decision:** decide whether to fund a different workgroup
+schedule or output partition that preserves the per-output reduction tree.
+Neither restoring the rejected thread count nor repeating shared-memory staging
+resolves this item. If pursued, profile the current session first, compare exact
+outputs, synchronize cache flushes before isolated timing, and verify through
+`scripts/vibevoice_tts_session_bench.py` and the generated-audio quality suite
+(`scripts/vibevoice_tts_quality_suite.py`), not correctness tests alone.
+Alternatively close this research direction explicitly. No runtime change is
+needed merely to keep the rejected variants absent.

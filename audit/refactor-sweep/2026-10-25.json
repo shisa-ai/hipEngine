@@ -13632,33 +13632,33 @@
       "start_line": 11745,
       "end_line": 11795,
       "sha256": "e5833cf54bb8e664a3cbb6de8ec10966e201922de4faa97f8ab7220041efb848",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Rejected variants absent; exact scheduling research decision moved to ledger bottom. worklog/entries/20261030T045925.333733Z-cleanup-cleanup-r0499-efb2c9.md."],
       "subitems": [
         {
           "line": 11753,
           "text": "- Under DRAM streaming the kernel reaches **169.5 GB/s at `threads=64` against",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11757,
           "text": "- End-to-end, applying it took the LM stage from **1.450 s to 1.266 s** and pooled",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11760,
           "text": "- **It is rejected anyway.** It moves 5 of 17920 outputs by one ulp, keeps",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11767,
           "text": "1. **Reusing one input buffer measures L2, not the workload.** A benchmark that",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11770,
           "text": "2. **An unsynchronized flush steals the bandwidth you are measuring.** Writing a",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
