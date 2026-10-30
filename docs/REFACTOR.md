@@ -3544,63 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 Surya attention tile shape: the vision envelope's mid-size anomaly — open
-
-`plan_score_tiles` takes a per-path shape policy. The vision tower consults the
-envelope `max(128, ceil(rows / 32))` rows, rounded down to a multiple of 32
-(`SHAPE_TILE_ROWS`, `SHAPE_TILE_DIVISOR`, `SHAPE_TILE_MULTIPLE` in
-`hipengine/runtime/surya.py`) whenever it is narrower than the tile the byte
-budget admits; the text prefill passes `shape_envelope=False` and keeps the
-budget's width, because its own sweeps show that is its optimum at every
-measured length (`2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json`,
-`2026-09-13-gfx1151-surya-text-prefill-small-prompts.json`). A conditional
-envelope — applying it only while the budget alone left one or two tiles —
-fixed the text prefill but regressed narrow vision budgets: at 4096 patches a
-64 MiB budget picked 320 rows (1081.07 ms) and a 128 MiB budget 672 rows
-(1378.13 ms), against 882.39 ms at the envelope's 128 rows, because the
-4096-patch curve has a spike band between roughly 256 and 1344 rows
-(`2026-09-13-gfx1151-surya-vision-narrow-budget-check.json`). What stays open:
-
-- **The 6400-patch anomaly.** The envelope picks 192 rows (2130.11 ms across 34
-tiles) where 96 rows is 1938.40 ms, 9% faster, and 6400 remains the only
-measured grid that wants *more* tiles than `rows / 32` while the surrounding
-points do not separate on the wavefront multiple the way the A4 page does
-(64 rows is 2057.20 ms, 96 is 1938.40, 128 is 2112.64). Reaching 96 rows needs
-the divisor near 64 *and* the floor below 128, which costs 2.7% at 1024 patches
-(96 rows 139.65 ms against 136.00 ms at 128). Revisit when a sweep over more
-mid-size grids shows what makes this one different; special-casing one grid
-would be overfitting.
-- **Reported time ceiling — fixed.** `vision_patch_ceiling` now bisects the
-monotone one-tile lower bound, then checks plans downward from that upper
-bound. It returns the largest fitting patch count within its bounded search,
-including across wavefront-boundary dips. Admission still estimates the
-requested grid directly; the GPU tile policy is unchanged.
-- **Open: the A4 page.** Its time optimum is a plateau at 2048-8192 rows (40076-40618 ms,
-3217.5-12870.0 MiB) and the 320-row default is 7.4% above it, but the byte
-budget is what stops there (512 MiB admits 325 rows), not the envelope — the cap
-admits 1073 rows at 34320 patches. Raise `max_vision_scratch_bytes` rather than
-loosen the cap. 4096 rows (6435.0 MiB, 40076.23 ms) is the measured minimum and
-8192 rows is 0.93% slower in the same run, so the return from fewer tiles
-saturates around 9 tiles; `rows / 8` would be 4290 rows here and is not a
-candidate rule (see the envelope's other grids).
-
-Also found while sweeping, and now refuted: a user-raised
-`max_vision_scratch_bytes` above ~6 GB on an A4 grid was recorded as making the
-vision attention fail with
-`hipErrorInvalidConfiguration` (error 9) from the `vision score scale` check
-instead of erroring cleanly. **That does not reproduce**: 4096 rows (6435.0 MiB)
-and 8192 rows (12870.0 MiB) both ran cleanly, twice each, in four separate
-processes, at 40076-40449 ms
-(`2026-09-13-gfx1151-surya-vision-tiling-a4-ceiling.json`). The original sweep's
-logs are not retained, so its cause is unknown and no memory ceiling should be
-taken from it. The 512 MiB default derives 320 rows and never approaches that
-scratch. What is still untested is the dense tile itself — 56.5 GB of score
-matrix at 34320 patches, which is inside the host's 124 GiB GTT aperture but is
-a ~10-15 minute forward and a 56.5 GB allocation on a shared machine, so the A4
-evidence remains shape-to-shape rather than shape-to-dense. If a launch-config
-guard on `_vision_attention_packed` is still wanted, the first question is
-whether the dense tile runs at all.
-
 ## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
 
 The text-prefill tiling bounds the *memory* but not the QK^T arithmetic: every
@@ -10103,3 +10046,26 @@ Compare kernel traces for the 128-row and 512-row shapes at 4096 patches, using
 Attribute any shape-dependent latency to the actual kernels before changing
 the policy; a rocBLAS selection change is still only a hypothesis. A policy
 change requires the applicable numerical gate and public Surya validation.
+
+### R0491 — Surya mid-size and A4 vision tile investigations
+
+The CPU time-ceiling inversion is fixed in `2afb609e3`; it is no longer debt.
+Keep the vision envelope and text-prefill budget policy unchanged while the
+remaining shape questions are investigated. Historical sweeps are preserved
+in `benchmarks/results/2026-09-13-gfx1151-surya-vision-tiling-cost*.json`,
+`2026-09-13-gfx1151-surya-vision-narrow-budget-check.json` and
+`2026-09-13-gfx1151-surya-vision-tiling-a4-ceiling.json` in that directory.
+
+**Deferred experiments:** the local Surya checkpoint is missing. Once it is
+available, run `python3 scripts/surya_vision_tiling_cost.py --pages page_dense.png,page_ja.png,page_long.png --blocks 64,96,128,192 --reps 3 --out /tmp/surya-midsize-shapes.json`
+and extend the probe to nearby mid-size grids before choosing a new envelope.
+Do not special-case the lone historical mid-size anomaly.
+
+For A4, separate a larger scratch budget from an envelope change: the byte
+budget is the limiting policy. Start with
+`python3 scripts/surya_vision_tiling_cost.py --pages page_a4.png --blocks 2048,4096,8192 --reps 3 --out /tmp/surya-a4-shapes.json`.
+The dense A4 comparison remains unrun and needs a separately resource-checked
+large allocation; shape-to-shape results do not establish dense parity. The
+historical launch-configuration failure did not reproduce at the tested wide
+tiles, so do not add a memory refusal on that basis. Any policy change needs
+the applicable numerical gate and public Surya validation.

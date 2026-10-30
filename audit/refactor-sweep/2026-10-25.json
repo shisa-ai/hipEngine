@@ -13488,13 +13488,13 @@
       "start_line": 11553,
       "end_line": 11615,
       "sha256": "cffbc7a6aa831ed6228592e31f02cdd058d47ed19ce08cd8e22936a26f4e70c8",
-      "status": "pending",
-      "evidence": ["CPU ceiling repaired across non-monotone tile-plan boundaries; GPU shape investigations remain open. worklog/entries/20261030T042919.370998Z-cleanup-cleanup-r0491-ceiling-318e82.md."],
+      "status": "deferred",
+      "evidence": ["CPU ceiling repaired across non-monotone tile-plan boundaries in 2afb609e3. Remaining checkpoint-dependent shape investigations moved to bottom with commands. worklog/entries/20261030T043241.164193Z-cleanup-cleanup-r0491-shapes-c7f3cb.md."],
       "subitems": [
         {
           "line": 11570,
           "text": "- **The 6400-patch anomaly.** The envelope picks 192 rows (2130.11 ms across 34",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 11579,
@@ -13504,7 +13504,7 @@
         {
           "line": 11590,
           "text": "- **Open: the A4 page.** Its time optimum is a plateau at 2048-8192 rows (40076-40618 ms,",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },
