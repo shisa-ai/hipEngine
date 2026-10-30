@@ -260,39 +260,6 @@ The following records the investigation before removal, not open selector work.
   a default-suite run of either would be a control for the same reason - so
   neither route has measured numerical qualification from this gate.
 
-## Qualified Chunk Tradeoffs
-
-Cleanup status (2026-10-25, R0022): no open cleanup. The tradeoff and selection
-instructions this section used to carry were superseded on 2026-10-04 by the
-prefill capacity guard, so production no longer defaults to a fixed 1024 chunk.
-`_bind_default_chunk` in `hipengine/generation/qwen4_exp_profiles.py` binds the
-guard's `admitted_prefill_chunk_size`, and the guard in
-`hipengine/generation/qwen4_exp_gguf.py` takes the largest rung of
-`_AUTO_PREFILL_CHUNK_LADDER = (4096, 2048, 1024)` whose admission still yields
-the requested context. Guard ownership, its revert lever and its removal
-condition are in "Prefill chunk capacity guard"; they are not repeated here.
-
-- An explicit `prefill_chunk_size` is passed through and bound verbatim, and the
-  guard runs only when the chunk is unset, so 2048 and 4096 remain reachable per
-  construction. The 2048 path passed canonical numerics, active4K tasks,
-  full-payload boundary/reuse and the detailed/deferred-inspection c2 gates
-  (`benchmarks/results/2026-09-14-journey-chunk-admission/`); 4096 passed the
-  780-row, full-payload boundary, active-task and c2 gates after the
-  chunk/context-derived scratch accounting repair
-  (`benchmarks/results/2026-09-15-chunk4096-accounting/`).
-- The 2048 and 4096 rates in those packets come from separate runs against
-  separate baselines, so they are not a controlled 2048-versus-4096 comparison
-  and no difference between the two can be claimed from them. The production
-  promotion measurement and its bit-identical token ids are in
-  `benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-4096/`.
-- Shape-dependent chunk selection, as distinct from the device-dependent
-  admission that shipped, remains a product decision rather than recorded
-  cleanup. No runtime flag exists for it; the explicit factory setting is the
-  available lever.
-- Historical: the routed-MoE half of the chunk lever, including the correction
-  of its projection, is recorded in `benchmarks/README.md` and
-  `benchmarks/results/2026-09-22-moe-main-kernel-cost/`.
-
 ## Withdrawn Routes That Stay Bound In The Production Plan
 
 Cleanup status (2026-10-25, R0023): membership and binding precedence are
