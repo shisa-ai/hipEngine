@@ -2459,38 +2459,6 @@ should be removed or collapsed.
   storage plan passes the full long-horizon numerical and serving gates.
   Do not re-enable it by copying the historical D24 verifier manifest.
 
-## 2026-09-06 GGUF file-type stamp switches — open
-
-- The initial audit found two gfx1151 switches that choose behavior from the header
-  (`general.file_type`) instead of the file's actual per-tensor format mix:
-  `GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` and
-  `GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES`. Any file stamped `MOSTLY_Q4_K_S`
-  passes those identity predicates. Current UD K_S still fails planning on 41
-  tensors; its file-global IQ veto prevents actual Q4 qmicro repacking, so this
-  is an admission hazard, not observed recurrent/kernel execution.
-- The verified audit also finds K_M/K_S policy identities in NextN, GDN,
-  scratch/source-F16, Q6 arithmetic and automatic-MTP admission. Audit all
-  callers rather than fixing only the original two constants.
-- Removal trigger: bind policy to the actual role/shape/type/resident-layout
-  manifest and artifact/profile evidence. A histogram or successful load alone
-  is insufficient. Test identical stamps with different maps and identical
-  histograms with types exchanged between sensitive roles. Preserve certified
-  plain-file behavior; new UD load support must not inherit its numerical or
-  speculative certificates.
-- Related audit debt: fix `root.token_embd` versus `root.token_embedding`,
-  AR/NextN scope, partial-header validation, omitted sidecars/capabilities and
-  allocation accounting in `scripts/gguf_quant_route_audit.py` and its tests.
-  Decouple global IQ repack admission from `contract_f32_linear` without changing
-  existing MoE precision. ~~Remove the diagnostic policy mirror after a pure
-  cold-path shared planner/capability interface supplies the report.~~ Done
-  2026-09-07 (UD-U0): capability/flag resolution now goes through the shared
-  pure policy API `hipengine.loading.qwen35_gguf_policy` (source-reading AST
-  reader in the audit, `backend_package_capability` at runtime); the audit's
-  regex/quoted-substring capability mirror and the local raw-IQ predicate copy
-  are removed. The stamp-switch hazard itself stays open until U1 binds policy
-  to the actual role/shape/type/layout manifest.
-- Analysis and the wider campaign this sits inside:
-  [`UD-QUANTS.md`](campaigns/UD-QUANTS.md), sections 2, 7.3 and U0/U1.
 
 ## 2026-09-07 W7900 packed C1 target qualification — open
 
@@ -9662,3 +9630,35 @@ and `tests/test_integration_gguf_native_physical_operands.py` for each added
 adapter, then test graph capture/replay, allocation failure and teardown. Exercise
 public generation with the intended layout and confirm graph versus eager route
 selection and numerical/state parity. This triage changes no runtime behavior.
+
+### R0139 — Replace file-type policy predicates with actual operand contracts
+
+`hipengine.loading.qwen35_gguf_policy` still reads
+`GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` and
+`GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES`. Shared policy extraction removed
+an audit/runtime mirror, not these stamp predicates. A header file-type label
+does not describe every tensor's role, type or resident layout.
+
+**Deferred policy migration:** inventory the stamp consumers in recurrent state,
+qmicro, NextN/GDN, scratch/source-F16, Q6 and automatic MTP, then bind each to
+actual role/shape/type/layout and execution-profile requirements. Separate
+kernel capability from arithmetic-default selection: unfamiliar compatible
+artifacts must not require a benchmark record to execute. Do not use a histogram
+or successful load as proof of an arithmetic contract. Preserve existing
+precision while separating global IQ repack eligibility from F32 contraction.
+
+The route audit already uses canonical token-embedding paths, separate AR/NextN
+scopes, partial-header diagnostics, sidecar/formula-byte accounting and the shared
+policy API. Coverage is in `tests/test_unit_scripts_gguf_quant_route_audit.py`;
+those completed report repairs are no longer open work. The historical UD K_S
+planning failures and original campaign analysis remain in the ledger at
+`9680870a2` and [UD-QUANTS.md](campaigns/UD-QUANTS.md), not fresh failure claims.
+
+Clearing checks: test identical stamps with different maps, identical histograms
+with types exchanged between sensitive roles, partial NextN plans and optional
+sidecars. Run shared-policy and route-audit tests, then public loading/generation
+for compatible unseen tensor maps and explicit incompatible requests. Any changed
+arithmetic default must pass its profile gate. Preserve source-bound certificate
+consistency without turning source identity into measured-artifact admission.
+The source inventory's R0163 bullets at lines 3770–3817 belong to this item;
+its unrelated speculative-default migration remains separate.

@@ -3755,8 +3755,8 @@
       "start_line": 3415,
       "end_line": 3415,
       "sha256": "ceb994ec061fc73afa13cf0dc88044b5c8f0ddff6c920d0bafd5993bbb41870b",
-      "status": "pending",
-      "evidence": ["Repaired orphaned heading: its six bullets had been merged into R0163. Heading now immediately precedes the file-type stamp discussion. Source inventory subitems at base lines3770,3777,3780,3786,3798,3817 belong to R0139 and remain pending substantive review, not speculative-MTP migration. Corrected migrated audit-test path."],
+      "status": "deferred-operand-policy",
+      "evidence": ["Reconciled R0163-owned inventory bullets: shared policy retains stamp predicates; audit report repairs implemented. Deferred operand migration and IQ/contraction separation.71 tests/docs/audit pass. worklog/entries/20261030T065630.210949Z-cleanup-cleanup-r0139-51d179.md.","Repaired orphaned heading: its six bullets had been merged into R0163. Heading now immediately precedes the file-type stamp discussion. Source inventory subitems at base lines3770,3777,3780,3786,3798,3817 belong to R0139 and remain pending substantive review, not speculative-MTP migration. Corrected migrated audit-test path."],
       "subitems": []
     },
     {
@@ -4220,22 +4220,22 @@
         {
           "line": 3770,
           "text": "- The initial audit found two gfx1151 switches that choose behavior from the header",
-          "status": "pending"
+          "status": "deferred-r0139-operand-policy"
         },
         {
           "line": 3777,
           "text": "- The verified audit also finds K_M/K_S policy identities in NextN, GDN,",
-          "status": "pending"
+          "status": "deferred-r0139-operand-policy"
         },
         {
           "line": 3780,
           "text": "- Removal trigger: bind policy to the actual role/shape/type/resident-layout",
-          "status": "pending"
+          "status": "deferred-r0139-operand-policy"
         },
         {
           "line": 3786,
           "text": "- Related audit debt: fix `root.token_embd` versus `root.token_embedding`,",
-          "status": "pending"
+          "status": "deferred-r0139-iq-policy-report-repairs-complete"
         },
         {
           "line": 3798,
@@ -4246,7 +4246,7 @@
         {
           "line": 3817,
           "text": "- Analysis and the wider campaign this sits inside:",
-          "status": "pending"
+          "status": "resolved-r0139-reference-preserved"
         }
       ]
     },
