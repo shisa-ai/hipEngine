@@ -2400,9 +2400,9 @@ The original measured inventory describes `a9419949d`, not the current tree.
 Its counts and methodology are preserved in this section at commit `c5ded0003`.
 They are triage signals, not line-count targets or evidence that a path is unused.
 Review RF-1 through RF-12 and each deletion candidate independently against
-current consumers. Packaging remains open: `pyproject.toml` includes `scripts`,
-and product benchmark modules still import it. Removing this historical summary
-does not complete any architectural migration.
+current consumers. RF-2 removed `scripts` from the wheel and moved shared
+benchmark helpers into `hipengine.benchmark`; source commands remain available.
+Removing this historical summary does not complete other architectural migrations.
 
 These counts are triage signals, not line-count targets to game. A pure move that
 creates more files but one clear owner is a win; a generic abstraction that
@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-3 | P0 | Finish the superseded-script review below. | Rejected MTP selectors and aliases were handled under R0281; remaining live ownership decisions are deferred under R0281-DRAFT-X8, R0281-SELECTED-X8 and R0281-TARGET-POLICY. Native-XL admission is capability-based. Review the remaining script candidates individually; historical rejection alone does not justify deleting active oracles or supported layouts. |
 | RF-4 | P0 | This active ledger is itself an unbounded historical journal. | Keep `REFACTOR.md` as a compact active index with stable IDs, owner/scope, state (`ready`, `blocked`, `keep-fallback`), exact removal gate, and affected paths. Move closed narrative to `REFACTOR-HISTORY.md` or immutable worklogs. Add a check that rejects duplicate active IDs and closed entries in the active table. |
 | RF-5 | P0 | Compact benchmark decisions and raw captures share one 225.7-MiB directory. | Define a size-bounded decision-artifact schema (default ceiling 256 KiB); keep only current/linked compact decisions in `benchmarks/results/`. Raw tensor traces/logs go to ignored local storage or external/LFS storage with SHA-256 plus retrieval metadata. Inventory references before deleting any existing evidence. |
 | RF-6 | P1 | GGUF/PARO runners combine policy, allocation, all layer families, verification, graph capture, and session lifecycle in giant classes. | Extract pure policy/shape planning first, then scratch/state ownership, full attention, linear attention, MoE, verification, and session façade modules. Preserve public imports through thin compatibility façades during migration. No numerical or dispatch change may share a move-only commit. |
@@ -2440,15 +2439,6 @@ fallback, active test oracle, or current research campaign consumes it.
 | RF-10 | P1 | GGUF linear launchers and generation owners encode a combinatorial decision tree in large functions; direct controls remain callable from production modules. | Replace repeated pair/triple/residual branching with typed launch-plan records resolved before launch. Move direct AR/MTP control loops to explicit oracle helpers once `SubmitPollTextGenerator` owns the same gates. Keep unsupported-shape fallbacks, but give each request exactly one scheduler/commit owner. |
 | RF-11 | P1 | Whole-file SHA tests pin unrelated evolving files, including this ledger and backend package initializers. | Replace whole-file hashes with semantic assertions over the capability/registry owner and hashes of immutable artifacts or localized frozen blocks. A documentation edit must not require refreshing an unrelated kernel-source qualification test. |
 | RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_integration_generation_batch_scheduler.py` is 28K lines; `test_integration_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
-
-### Verified deletion queue
-
-These are code removals to execute separately, not deletions performed by this
-documentation review:
-
-| Scope | Why it is ready | What to remove / what to keep |
-| --- | --- | --- |
-| Superseded one-off scripts | 405 scripts have no textual owner in live code/tests/current docs/package metadata, and many are per-layer or one-candidate audit copies. | First remove them from the wheel. Then consolidate parameter-only families into one driver and delete/archive superseded copies after preserving command, result hash, and decision in an immutable worklog/artifact. “No textual owner” is a review queue, not sufficient deletion proof. |
 
 ### Target organization
 
@@ -9757,3 +9747,29 @@ Verify migrated hot methods no longer reread their moved settings and exercise
 public generation with selected-route attribution. Existing profile unit tests
 cover the current abstraction, not completion of this migration. This triage
 changes no runtime or architecture.
+
+### RF-3 / R0187 — Decide source-script retention and replacement ownership
+
+RF-2 removed research scripts from the wheel. Source-workspace commands and
+sdist scripts remain available. The historical unreferenced-script count at
+`c5ded0003` is not a current, named deletion inventory; absence of textual
+references does not prove a command or numerical oracle is superseded.
+
+**Deferred decision:** choose the supported source-command families and their
+replacement entry points before consolidating or retiring historical drivers.
+For each proposed deletion, record the path, current callers and published
+protocol references, replacement command (or why none is needed), and the
+immutable result hash and decision it reproduces. Preserve active oracles and
+commands required to reproduce evidence. Parameter-only drivers may consolidate
+only after their argument, output-schema and failure contracts are compared.
+
+Clearing checks: a path-by-path disposition inventory, replacement command help
+and focused driver tests, published-command drift checks, and verification that
+each retained evidence reference is still reproducible or explicitly archived.
+Do not delete an unnamed batch based on the old count.
+
+The other RF-3 deletion scopes are reconciled: rejected compatibility selectors
+and aliases were handled under R0281; live layout/verifier decisions remain at
+R0281-DRAFT-X8, R0281-SELECTED-X8 and R0281-TARGET-POLICY. Native-XL loading is
+capability-based and its provenance constants have active verifier/test users.
+This triage does not complete the source-script consolidation.

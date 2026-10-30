@@ -4838,7 +4838,8 @@
         {
           "line": 4146,
           "text": "| RF-3 | P0 | Rejected/default-off runtime experiments remain intertwined with production methods. | Execute the verified deletion queue below as small behavior-preserving units. A removed runtime selector may leave a focused kernel parity test; a production module must not retain an unrouted experiment solely because historical evidence exists. |",
-          "status": "pending"
+          "status": "deferred-source-command-retention",
+          "evidence": ["Compatibility/native-XL rows reconciled separately; source scripts require a per-path retention/replacement decision at bottom RF-3. worklog/entries/20261030T075746.911547Z-cleanup-cleanup-r0187-rf3-1d7d0c.md."]
         },
         {
           "line": 4147,
@@ -4909,7 +4910,8 @@
         {
           "line": 4165,
           "text": "| Superseded one-off scripts | 405 scripts have no textual owner in live code/tests/current docs/package metadata, and many are per-layer or one-candidate audit copies. | First remove them from the wheel. Then consolidate parameter-only families into one driver and delete/archive superseded copies after preserving command, result hash, and decision in an immutable worklog/artifact. \u201cNo textual owner\u201d is a review queue, not sufficient deletion proof. |",
-          "status": "pending"
+          "status": "deferred-source-command-retention",
+          "evidence": ["Wheel prerequisite fixed in RF-2; no unnamed script deletion. Deferred per-path ownership/replacement/evidence inventory under RF-3. 27 tests/docs/audit pass. worklog/entries/20261030T075746.911547Z-cleanup-cleanup-r0187-rf3-1d7d0c.md."]
         },
         {
           "line": 4166,
