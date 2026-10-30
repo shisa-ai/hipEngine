@@ -9843,7 +9843,7 @@
       "start_line": 7431,
       "end_line": 7473,
       "sha256": "bdebc189846d65eef475d4e33e097b240e73e4dbfb793948246e36c079121dda",
-      "status": "partial-comparison-sum-policy-repaired-bottom-owner-migration",
+      "status": "triaged-sum-policy-repaired-owner-migration-deferred",
       "evidence": ["Real setter-state RED reproduced current/weight-only A/B arms leaving sums enabled after activation prefetch off; repaired both to disable sums first. Four Q6 arms tested from both default-on/off states. Real caller/wrapper tests bind half-sum producer and matching four consumer symbols, raw pointer/stream ownership. Focused bundle 134 pass plus four added real-caller checks (138 combined). Production runtime/setters/defaults/kernels unchanged. Bottom R0331 owns coordinated constructor/setter/generalized-comparison/leaf/fixture migration and local actual-weight/public validation resource."],
       "subitems": [
         {
@@ -9925,7 +9925,7 @@
       "start_line": 7530,
       "end_line": 7558,
       "sha256": "d9d00d97c90b6e6b29f0e2d1fe785459b11ea2d4f3a8a6749e58ea114206a84e",
-      "status": "partial-p8-shape-contracts-bound-bottom-reference-migration",
+      "status": "triaged-p8-contracts-bound-reference-migration-deferred",
       "evidence": ["Q4 P8 host contracts bind below/at/above 512 plus unrelated producer rows, real gate caller/wrapper sidecar ABI and deferred-SiLU target; current generalized/leaf/live numerical comparisons still own P8/non-P8 peers. Shared bottom R0333–R0335 replaces stale campaign triggers with coordinated production/reference migration and local Laguna artifact resource for full-model/public validation. Production defaults/runtime/kernels unchanged. Focused run 152 pass plus repaired fixture/new-file 34 pass covers 156 cases."],
       "subitems": [
         {
@@ -9961,7 +9961,7 @@
       "start_line": 7559,
       "end_line": 7576,
       "sha256": "e182fa7df312405378251b2f38ce7c4611d74b978aa65bdc0a46b2aba7ad88ef",
-      "status": "partial-down-p8-contracts-bound-bottom-reference-migration",
+      "status": "triaged-down-p8-contracts-bound-reference-migration-deferred",
       "evidence": ["Real MoE dispatch binds producer-row P8 threshold independently of routed-lane count; actual Q4 down caller/wrapper preserves P8/non-P8 symbols, raw pointers, stream and fused/unfused pack source, with no Q6 sum leakage. Shared bottom R0333–R0335 owns current generalized/leaf/live fixture migration and actual-weight/public resource. No runtime/default/kernel changes. Combined focused coverage 156 cases."],
       "subitems": [
         {
@@ -9987,7 +9987,7 @@
       "start_line": 7577,
       "end_line": 7599,
       "sha256": "7cc5964ba572d924c7056209422747c2d8449ea1da782f2796dfe0f55733494b",
-      "status": "partial-sum-sidecar-contracts-bound-bottom-setter-migration",
+      "status": "triaged-sum-sidecar-contracts-bound-setter-migration-deferred",
       "evidence": ["Real gate caller/wrapper binds optional sum producer sidecar to same consumer pointer and distinct symbol with plain/deferred-SiLU outputs; threshold tests ensure sums apply only on P8 gate/up and real comparison setters isolate Q4 from Q6. Shared bottom R0333–R0335 owns live generalized/leaf/fixture migration, allocation ownership and full-model/public validation resource. Existing scratch/default/runtime/kernels unchanged. Combined focused coverage 156 cases."],
       "subitems": [
         {
@@ -10018,7 +10018,7 @@
       "start_line": 7600,
       "end_line": 7623,
       "sha256": "fe5600637c2c4aada600d77f5ee5c16e0820061f6e0bf4f9b3f363f1a7d4a956",
-      "status": "partial-noop-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-noop-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real layer-route RED 8 fail/4 pass exposed generic-producer setting makes both output-gate A/B arms generic. Both arms now hold packed-query producer on, varying only output gate; JSON basis explicitly changed. Real layer host tests bind BF16/FP16 gate routes, generic prefixes/ragged suffixes, packed intervals, pointer/stream ownership; constructor policy restoration and full-state/exception cleanup pass. Focused 136 pass plus one JSON-basis check; final changed file 16 pass (137 combined), CPU deterministic bundle bg-687 exit 0. Corrected bottom R0274, moved remaining diagnostic-owner/constructor retirement to R0336 with local artifact clearing actions. Runtime/defaults/kernels unchanged."],
       "subitems": [
         {
