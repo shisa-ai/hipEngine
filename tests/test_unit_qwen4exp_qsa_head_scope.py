@@ -12,7 +12,7 @@ an explicit argument:
 
 This selects the **scalar** sparse-prefill rows owner. It is resolved on every
 production chunk but launched only when WMMA attention does not own that chunk:
-the production profiles also bind ``HIPENGINE_QWEN4_EXP_QSA_WMMA=1``, and the
+the production profiles also publish ``runner.qsa_wmma_enabled=True``, and the
 resolved manifest names ``wmma_f16_masked_prefill_f32`` for the same scope. A
 launch-counting probe on the default route therefore sees no head-grouped leaf;
 that is the fallback selection, not a regression.

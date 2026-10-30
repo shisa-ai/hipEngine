@@ -83,12 +83,6 @@ _F16_ROUTE_SCOPES = {
 }
 # The composition window is declared by _DENSE_WIDE_COMPOSITION_SCOPE.
 F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(48))
-# Profile-owned composition selectors: profiles without the composition disable
-# them even when a caller set them before binding, keeping dispatch and manifest aligned.
-_F16_ROUTE_SELECTORS = {
-    # QSA prefill attention on the WMMA kernel.
-    "HIPENGINE_QWEN4_EXP_QSA_WMMA": "1",
-}
 _F16_ROUTE_EVIDENCE = (
     "benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/README.md"
 )
@@ -992,19 +986,6 @@ def _report_prebinder_conflicts() -> None:
     warnings.warn(message, RuntimeWarning, stacklevel=3)
 
 
-def _bind_f16_routes(*, enabled: bool) -> None:
-    """Bind composition selectors, including strict disablement.
-
-    A/B harnesses must set experimental overrides after binding, as for other
-    profile-owned routes. Pre-binder conflicts use the normal warning/error policy.
-    """
-
-    _apply_profile_env({
-        key: value if enabled else "0"
-        for key, value in _F16_ROUTE_SELECTORS.items()
-    })
-
-
 def _bind(
     generator: Any,
     resolved: ResolvedRuntimeProfile,
@@ -1081,7 +1062,7 @@ def _bind(
     # The dispatch-time selector still guards the leaf on the page256 wave
     # variant and Hq24/Hkv2. Note this is the fallback selection, not the owner
     # that runs: the production profiles also bind
-    # HIPENGINE_QWEN4_EXP_QSA_WMMA=1, and the mixer launches the head-grouped
+    # qsa_wmma_enabled=True, and the mixer launches the head-grouped
     # rows owner only when WMMA attention does not own the chunk. The resolved
     # manifest names that WMMA owner for the same scope, which is why this value
     # follows the binder rather than the manifest row.
@@ -1426,6 +1407,11 @@ def _bind(
     generator.dense_mmq_token64_enabled = dense_mmq_token64_enabled
     generator.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
     generator.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
+    generator.qsa_wmma_enabled = any(
+        row["scope"] == "prefill_h256_page256_sparse_rows_ge16"
+        and row["selected_variant"] == _QSA_WMMA_VARIANT
+        for row in resolved.manifest["selections"]
+    )
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.qsa_h256_prefill_mode = qsa_h256_prefill_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
@@ -1503,6 +1489,7 @@ def _bind(
         runner.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
         runner.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
+        runner.qsa_wmma_enabled = generator.qsa_wmma_enabled
         runner.qsa_h256_prefill_mode = qsa_h256_prefill_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
         runner.moe_decode_warp = generator.moe_decode_warp
@@ -1577,7 +1564,6 @@ def _bind(
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(first, last + 1))),
             "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": gdn["selected_variant"],
         })
-    _bind_f16_routes(enabled=f16_routes)
     _report_prebinder_conflicts()
     if production:
         configure = getattr(

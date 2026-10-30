@@ -3488,9 +3488,11 @@ remains for this unit; strict fallbacks and the separate DP4A prerequisite remai
 
 ## The WMMA QSA attention selector and its F16 K/V gather
 
-`HIPENGINE_QWEN4_EXP_QSA_WMMA` (default off) is published by the
-`gguf_ud_q4_k_xl` production binder and read by
-`run_qwen4_exp_qsa_prefill_token_mixer`. The route
+The manifest's WMMA QSA selection is published as `runner.qsa_wmma_enabled`
+and forwarded to `run_qwen4_exp_qsa_prefill_token_mixer`; the process selector
+`HIPENGINE_QWEN4_EXP_QSA_WMMA` is retired. Diagnostic arms use
+`qsa_wmma_attention(runner, enabled)` and restore the runner's choice on exit.
+The route
 gathers the whole context's paged BF16 K/V into contiguous F16 scratch rows
 for every QSA layer on every prefill chunk (`wmma_k_f16`, `wmma_v_f16` on the
 QSA scratch), and builds a per-query block bitmask (`wmma_mask`) from the
@@ -3508,8 +3510,8 @@ non-dense KV policy; scratch accounting is implemented;
 (1) gather only the positions a chunk appended and keep
 the F16 rows per layer once multi-chunk prefill at long context makes the
 full regather measurable; (2) have the block selection write the bitmask
-directly, which also removes the expand-to-positions kernel from this route;
-(3) replace the selector with manifest-driven dispatch.
+directly, which also removes the expand-to-positions kernel from this route.
+The selector is now manifest-bound runner state; condition (3) is complete.
 
 
 ## Qwen4Exp direct QSA prefill selection (`HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT`)

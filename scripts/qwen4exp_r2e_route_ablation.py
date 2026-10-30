@@ -276,8 +276,8 @@ def main() -> None:
 
     with contextlib.ExitStack() as stack:
         stack.enter_context(scope)
-        head_configuration = head_route_configuration(a.route)
-        stack.callback(restore_route_configuration, head_configuration)
+        head_configuration = head_route_configuration(a.route, runner=generator.runner)
+        stack.callback(restore_route_configuration, head_configuration, runner=generator.runner)
         stack.callback(
             restore_scalar_launches, count_scalar_launches(counts))
         teacher = np.load(a.teacher)

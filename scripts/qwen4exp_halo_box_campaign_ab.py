@@ -652,13 +652,12 @@ RUNNER_SCOPED_ROUTE_PACKAGES = frozenset(
     {"mmq-token64", "qsa-head-pair", "qsa-head-quad", "q8-mapped-down"})
 #: Route packages whose counted leaf is the scalar sparse-prefill rows owner.
 HEAD_ROUTE_PACKAGES = frozenset({"qsa-head-pair", "qsa-head-quad"})
-QSA_WMMA_ENV = "HIPENGINE_QWEN4_EXP_QSA_WMMA"
 
 
-def head_route_configuration(route_package, *, environment=os.environ):
+def head_route_configuration(route_package, *, runner):
     """Disable WMMA for a head-grouping arm; return the record that restores it.
 
-    Production binds ``QSA_WMMA=1`` and the mixer launches the grouped rows
+    Production enables WMMA and the mixer launches the grouped rows
     owner only when WMMA attention does not own the chunk, so an arm that leaves
     WMMA on counts zero head launches and measures the WMMA kernel instead. Both
     arms disable it, and the profile's own value is restored from the record.
@@ -666,28 +665,23 @@ def head_route_configuration(route_package, *, environment=os.environ):
 
     if route_package not in HEAD_ROUTE_PACKAGES:
         return None
-    previous = environment.get(QSA_WMMA_ENV)
-    environment[QSA_WMMA_ENV] = "0"
+    previous = runner.qsa_wmma_enabled
+    runner.qsa_wmma_enabled = False
     return {
-        "environment": QSA_WMMA_ENV,
-        "value": "0",
+        "field": "qsa_wmma_enabled",
+        "value": False,
         "previous": previous,
         "arms": "both",
         "reason": (
             "the head-grouped rows owner is the scalar fallback: with "
-            "QSA_WMMA=1 the mixer launches the WMMA attention kernel and the "
+            "WMMA enabled the mixer launches the WMMA attention kernel and the "
             "counted head leaf never engages"),
     }
 
 
-def restore_route_configuration(record, *, environment=os.environ):
-    if record is None:
-        return
-    previous = record["previous"]
-    if previous is None:
-        environment.pop(record["environment"], None)
-    else:
-        environment[record["environment"]] = previous
+def restore_route_configuration(record, *, runner):
+    if record is not None:
+        runner.qsa_wmma_enabled = record["previous"]
 
 
 #: Route packages whose counted leaf is the serial GDN recurrence.
@@ -3081,7 +3075,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         # Applied inside the guarded block so the finally restores it even when
         # prefill or validation fails.
-        head_configuration = head_route_configuration(args.route_package)
+        head_configuration = head_route_configuration(args.route_package, runner=generator.runner)
         if head_configuration is not None:
             artifact["qsa_wmma"] = head_configuration
         if args.route_package == "q8-mmq-prepack":
@@ -3195,7 +3189,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.route_package == "router-dpp":
             register(router_key, router_original, replace=True)
             _apply_mode("before", route_package=args.route_package)
-        restore_route_configuration(head_configuration)
+        restore_route_configuration(head_configuration, runner=generator.runner)
         generator.close()
         artifact["memory_after_close"] = memory_stats()
         _write_json(args.output, artifact)

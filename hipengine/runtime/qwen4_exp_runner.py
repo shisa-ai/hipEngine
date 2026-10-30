@@ -2621,13 +2621,25 @@ def run_qwen4_exp_dense_qsa_token_mixer(
 # published. An unbound runner, an unknown value, or a shape the leaf does not
 # cover keeps the single-head parent. This leaf is resolved here and launched
 # only where WMMA attention does not own the chunk: the production profiles also
-# bind HIPENGINE_QWEN4_EXP_QSA_WMMA=1, so on those lanes the grouping is the
+# publish qsa_wmma_enabled=True, so on those lanes the grouping is the
 # fallback selection rather than the kernel that runs.
 _QSA_HEAD_VARIANTS = {
     "pair": "strict_h256_head_pair_rows_spans",
     "quad": "strict_h256_head_quad_rows_spans",
 }
 _QSA_HEAD_PARENT = "parent"
+
+
+@contextlib.contextmanager
+def qsa_wmma_attention(runner: Any, enabled: bool | None = None):
+    """Temporarily select WMMA attention on one diagnostic runner."""
+    prior = getattr(runner, "qsa_wmma_enabled", False)
+    if enabled is not None:
+        runner.qsa_wmma_enabled = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.qsa_wmma_enabled = prior
 
 
 @contextlib.contextmanager
@@ -2863,6 +2875,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     index_rotary_dim: int,
     rope_positions_ptr: int | None = None,
     cache_only: bool = False,
+    qsa_wmma_enabled: bool = False,
     h256_mode: str = "parent",
     head_mode: str | None = _QSA_HEAD_PARENT,
     batched_selection: bool = True,
@@ -3055,7 +3068,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     # WMMA attention (fast profile): F16 K/V gathered once per chunk for
     # this layer, then one dense launch and one masked sparse launch.
     qsa_wmma = (
-        os.environ.get(_QSA_WMMA_ENV, "0") not in {"", "0", "false", "False"}
+        qsa_wmma_enabled
         and qsa_wmma_geometry_supported(
             query_heads=query_heads,
             kv_heads=kv_heads,
@@ -5587,8 +5600,6 @@ def _qwen4_exp_q51_iu8_exact_enabled() -> bool:
 # gate/up pair with a SwiGLU epilogue and the down projection, each decoding a
 # weight tile once per macro tile of grouped rows. The binder publishes the
 # runner's manifest selection; without it the grouped chains below are untouched.
-# WMMA QSA prefill attention (fast profile); see run_qwen4_exp_qsa_prefill_token_mixer.
-_QSA_WMMA_ENV = "HIPENGINE_QWEN4_EXP_QSA_WMMA"
 # Grouped prefill row counts each gate/up quant routes from, matching the
 # scopes the fast plan declares.
 _ROUTED_F16_MIN_ROWS = {"gguf_q4_k": 2, "gguf_q5_k": 64}
@@ -7721,6 +7732,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     top_k: int,
     rope_positions_ptr: int | None = None,
     head_mode: str | None = _QSA_HEAD_PARENT,
+    qsa_wmma_enabled: bool = False,
     h256_mode: str = "parent",
     batched_selection: bool = True,
     qsa_wave32: bool = True,
@@ -7849,6 +7861,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         index_rotary_dim=index_rotary_dim,
         rope_positions_ptr=rope_positions_ptr,
         head_mode=head_mode,
+        qsa_wmma_enabled=qsa_wmma_enabled,
         h256_mode=h256_mode,
         batched_selection=batched_selection,
         qsa_wave32=qsa_wave32,
@@ -9029,6 +9042,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
     qsa_prefill_head_mode: str = "parent"
+    qsa_wmma_enabled: bool = False
     qsa_h256_prefill_mode: str = "parent"
     # QSA chunk selection owner: True runs the batched score/top-k/expand path,
     # False the strict per-row fallback. The prefill chunk path is its only
@@ -10908,6 +10922,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
+                    qsa_wmma_enabled=self.qsa_wmma_enabled,
                     h256_mode=self.qsa_h256_prefill_mode,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     batched_selection=self.qsa_batched_selection,

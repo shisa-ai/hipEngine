@@ -52,7 +52,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     routed_f16_enabled as routed_f16,
     qsa_ordered_decode_v2,
-    qsa_prefill_head_mode, qsa_h256_prefill_mode,
+    qsa_prefill_head_mode, qsa_h256_prefill_mode, qsa_wmma_attention,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -103,6 +103,7 @@ class CandidateSpec:
     # the base profile published; the gate binds a non-None value with
     # ``qsa_prefill_head_mode`` around the measured rows and restores it after.
     qsa_prefill_head_mode: str | None = None
+    qsa_wmma_enabled: bool | None = None
     # None preserves the base profile; parent, wave or page256 binds one arm.
     qsa_h256_prefill_mode: str | None = None
     # Explicit GDN serial-prefill owner for this arm, same protocol. ``None``
@@ -184,7 +185,6 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
-    "HIPENGINE_QWEN4_EXP_QSA_WMMA": "0",
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
@@ -203,7 +203,7 @@ _F16_ROUTE_ARMS = {
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
         "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm",
     },
-    "recovery_plus_qsa_wmma": {"HIPENGINE_QWEN4_EXP_QSA_WMMA": "1"},
+    "recovery_plus_qsa_wmma": {},
     "recovery_plus_gdn_tiled_all_layers": {
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _ALL_LAYERS,
     },
@@ -227,6 +227,7 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
                 "binder" + (", plus " + ", ".join(sorted(extra)) if extra else "")
             ),
             environment={**_F16_ROUTES_OFF, **extra},
+            qsa_wmma_enabled=name == "recovery_plus_qsa_wmma",
             routed_f16_enabled=name == "recovery_plus_routed_f16",
             gr_f16_direct=False,
             gdn_decode_rowsplit=False,
@@ -530,6 +531,7 @@ CANDIDATES = {
             "F16-operand router-logits producer, the WMMA QSA prefill "
             "attention, and the tiled GDN recurrence at every GDN layer"
         ),
+        qsa_wmma_enabled=True,
         routed_f16_enabled=True,
         environment={
             "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
@@ -538,7 +540,6 @@ CANDIDATES = {
             "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
             "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
             "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm",
-            "HIPENGINE_QWEN4_EXP_QSA_WMMA": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(
                 str(layer) for layer in range(48)
             ),
@@ -1636,6 +1637,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     batch_manifest_binding_value = None
     bound_environment: dict[str, str | None] = {}
     dispatch_stack = ExitStack()
+    dispatch_stack.enter_context(qsa_wmma_attention(
+        candidate_generator.runner, candidate_spec.qsa_wmma_enabled))
     if candidate_spec.qsa_h256_prefill_mode is not None:
         dispatch_stack.enter_context(qsa_h256_prefill_mode(
             candidate_generator.runner, candidate_spec.qsa_h256_prefill_mode))
@@ -2003,6 +2006,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "classification": candidate_spec.classification,
             "mechanism": candidate_spec.mechanism,
             "environment": dict(candidate_spec.environment),
+            "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "base_profile": candidate_spec.base_profile,
             "bound_environment": bound_environment,
             "direct_dispatch_target": candidate_spec.direct_dispatch_target,
@@ -2028,7 +2032,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "candidate_base_profile": candidate_spec.base_profile,
             "candidate_manifest": _json_value(candidate_profile.manifest),
             "candidate_manifest_sha256": candidate_profile.manifest_sha256,
-            "candidate_named_profile_intact": not bool(candidate_spec.environment),
+            "candidate_named_profile_intact": (
+                not candidate_spec.environment and candidate_spec.qsa_wmma_enabled is None),
         },
         "protocol": {
             "prompt_suites": [str(path.resolve()) for path in args.prompts],

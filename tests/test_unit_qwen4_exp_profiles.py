@@ -630,7 +630,7 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
         # Repair the decode operation, not the complete production composition.
         assert generator.routed_f16_enabled is True
         assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
-        assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"
+        assert generator.qsa_wmma_enabled is True
         # The Q5_1 row-publish publication is the fallback selection for its
         # scope, not the owner that runs: the routed F16 WMMA down owns it, the
         # exact iu8 down sits behind it, and the pair2 chain's own gate is on.
@@ -1480,19 +1480,40 @@ def test_ud_gdn_composition_binding_matches_manifest() -> None:
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ",".join(map(str, range(7, 32)))
 
 
+def test_qsa_wmma_binding_follows_manifest_not_environment(monkeypatch):
+    from dataclasses import replace
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    owner = SimpleNamespace(runner=SimpleNamespace())
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_WMMA", "0")
+    production.binder(owner, production)
+    assert owner.runner.qsa_wmma_enabled is True
+    manifest = dict(production.manifest)
+    manifest["selections"] = [
+        dict(row, selected_variant=row["strict_fallback_variant"])
+        if row["selected_variant"] == "wmma_f16_masked_prefill_f32" else row
+        for row in manifest["selections"]]
+    modified = replace(production, manifest=manifest)
+    other = SimpleNamespace(runner=SimpleNamespace())
+    modified.binder(other, modified)
+    assert other.runner.qsa_wmma_enabled is False
+    assert owner.runner.qsa_wmma_enabled is True
+
+
 def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
     other = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_q4_k_m")
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
-    selectors = (
-        "HIPENGINE_QWEN4_EXP_GR_WIDE",
-        "HIPENGINE_QWEN4_EXP_QSA_WMMA",
-    )
+    selectors = ("HIPENGINE_QWEN4_EXP_GR_WIDE",)
     all_layers = ",".join(map(str, range(48)))
 
-    production.binder(SimpleNamespace(), production)
+    owner = SimpleNamespace(runner=SimpleNamespace())
+    production.binder(owner, production)
+    assert owner.qsa_wmma_enabled is True
+    assert owner.runner.qsa_wmma_enabled is True
     for key in selectors:
         assert os.environ[key] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
@@ -1528,12 +1549,9 @@ def test_strict_binder_clears_caller_set_composition_selectors(
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     strict = _resolve(requested, quant=quant)
-    monkeypatch.setattr(profiles, "_binder_written", {})
-    for key in profiles._F16_ROUTE_SELECTORS:
-        monkeypatch.setenv(key, "1")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        strict.binder(SimpleNamespace(), strict)
-    for key in profiles._F16_ROUTE_SELECTORS:
-        assert os.environ[key] == "0", key
-        assert any(key in str(w.message) for w in caught), key
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_WMMA", "1")
+    owner = SimpleNamespace(runner=SimpleNamespace(qsa_wmma_enabled=True))
+    strict.binder(owner, strict)
+    assert owner.qsa_wmma_enabled is False
+    assert owner.runner.qsa_wmma_enabled is False
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"

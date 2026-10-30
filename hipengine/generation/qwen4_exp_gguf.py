@@ -947,6 +947,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
         getattr(generator, "dense_mmq_raw_vector_enabled", False))
     runner.dense_mmq_vec4_enabled = bool(
         getattr(generator, "dense_mmq_vec4_enabled", False))
+    runner.qsa_wmma_enabled = bool(getattr(generator, "qsa_wmma_enabled", False))
     runner.qsa_prefill_head_mode = str(
         getattr(generator, "qsa_prefill_head_mode", "parent"))
     runner.qsa_h256_prefill_mode = str(

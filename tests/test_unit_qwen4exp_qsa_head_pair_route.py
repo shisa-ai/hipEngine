@@ -177,58 +177,38 @@ def test_layer2_gate_binds_a_declared_arm_mode_on_the_candidate_runner():
     )
 
 
-WMMA_ENV = "HIPENGINE_QWEN4_EXP_QSA_WMMA"
-
-
-def test_probe_head_arm_disables_and_restores_wmma():
+@pytest.mark.parametrize("previous", [False, True])
+def test_probe_head_arm_disables_and_restores_wmma(previous):
     """A head arm must not measure the WMMA kernel it never launches."""
-
     from scripts.qwen4exp_qsa_decode_flag_probe import (
-        QSA_WMMA_ENV, restore_scalar_head_measurement, scalar_head_measurement)
+        restore_scalar_head_measurement, scalar_head_measurement)
 
-    assert QSA_WMMA_ENV == WMMA_ENV
-    env = {WMMA_ENV: "1"}
-    record = scalar_head_measurement(True, environment=env)
-    assert env[WMMA_ENV] == "0"
-    assert record["previous"] == "1"
+    runner = SimpleNamespace(qsa_wmma_enabled=previous)
+    record = scalar_head_measurement(True, runner=runner)
+    assert runner.qsa_wmma_enabled is False
+    assert record["previous"] is previous
     assert record["arms"] == "both" and record["measured"] is True
-    restore_scalar_head_measurement(record, environment=env)
-    assert env[WMMA_ENV] == "1"
-
-    unset: dict[str, str] = {}
-    record = scalar_head_measurement(True, environment=unset)
-    assert unset[WMMA_ENV] == "0"
-    restore_scalar_head_measurement(record, environment=unset)
-    assert WMMA_ENV not in unset
-
-    # The decode-phase arms never reach the head leaf, so they leave WMMA alone.
-    untouched = {WMMA_ENV: "1"}
-    assert scalar_head_measurement(False, environment=untouched) is None
-    assert untouched[WMMA_ENV] == "1"
+    restore_scalar_head_measurement(record, runner=runner)
+    assert runner.qsa_wmma_enabled is previous
+    assert scalar_head_measurement(False, runner=runner) is None
+    assert runner.qsa_wmma_enabled is previous
 
 
-def test_halo_head_route_disables_and_restores_wmma():
+@pytest.mark.parametrize("previous", [False, True])
+def test_halo_head_route_disables_and_restores_wmma(previous):
     from scripts.qwen4exp_halo_box_campaign_ab import (
         head_route_configuration, restore_route_configuration)
 
     for package in ("qsa-head-pair", "qsa-head-quad"):
-        env = {WMMA_ENV: "1"}
-        record = head_route_configuration(package, environment=env)
-        assert env[WMMA_ENV] == "0"
-        assert record["previous"] == "1" and record["arms"] == "both"
-        restore_route_configuration(record, environment=env)
-        assert env[WMMA_ENV] == "1"
+        runner = SimpleNamespace(qsa_wmma_enabled=previous)
+        record = head_route_configuration(package, runner=runner)
+        assert runner.qsa_wmma_enabled is False
+        assert record["previous"] is previous and record["arms"] == "both"
+        restore_route_configuration(record, runner=runner)
+        assert runner.qsa_wmma_enabled is previous
 
-        unset: dict[str, str] = {}
-        record = head_route_configuration(package, environment=unset)
-        assert unset[WMMA_ENV] == "0"
-        restore_route_configuration(record, environment=unset)
-        assert WMMA_ENV not in unset
-
-    # Every other package keeps the profile's WMMA decision.
-    env = {WMMA_ENV: "1"}
-    assert head_route_configuration("qsa-h256-page256", environment=env) is None
-    assert env[WMMA_ENV] == "1"
+    assert head_route_configuration("qsa-h256-page256", runner=runner) is None
+    assert runner.qsa_wmma_enabled is previous
 
 
 def test_r2e_counts_launches_instead_of_reading_the_field():
