@@ -3977,18 +3977,18 @@
       "start_line": 3611,
       "end_line": 3621,
       "sha256": "3b793237fafd3932bfe555e433a6c43943eab9bf79a39d39af09751a407c68e9",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-staging-ownership",
+      "evidence": ["Shared resident AR batching implemented; old serial-only premise corrected. Staging pool still has live ownership/transfer consumers.55 focused tests/docs/audit pass. worklog/entries/20261030T071039.193689Z-cleanup-cleanup-r0151-177047.md."],
       "subitems": [
         {
           "line": 3613,
           "text": "- `Qwen4ExpResidentServingRunner` provides request-owned c2 residency and",
-          "status": "pending"
+          "status": "resolved-batching-implemented"
         },
         {
           "line": 3618,
           "text": "- The primary generator runner is reused as one pool row and a second runner is",
-          "status": "pending"
+          "status": "deferred-staging-ownership"
         }
       ]
     },

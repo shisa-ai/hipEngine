@@ -2336,16 +2336,6 @@ should be removed or collapsed.
 
 
 
-## 2026-08-28 Qwen4Exp native c2 runner pool
-
-- `Qwen4ExpResidentServingRunner` provides request-owned c2 residency and
-  scheduler-native stream events while invoking one request transition at a
-  time inside each resident-loop tick. Collapse the runner pool into packed
-  c-aware kernels only after a complete exact c2 performance packet proves a
-  gain; do not relabel the current functionality result as native batch math.
-- The primary generator runner is reused as one pool row and a second runner is
-  allocated lazily/eagerly by resident prepare. Remove the dedicated pool once
-  Qwen4Exp owns a multi-slot state/KV slab; preserve shared-once weights/PLE.
 
 ## 2026-08-28 Qwen4Exp bounded general multimodal
 
@@ -9676,3 +9666,28 @@ Both numerical gates and complete task/serving gates must pass before restoring
 that arithmetic default; a two-trajectory screen is insufficient. For transport
 migration, run profile and owner-isolation tests and public generation confirming
 selected routes, cleanup and unchanged outputs. This triage changes no runtime.
+
+### R0151 — Separate prefill staging ownership from implemented AR batching
+
+`Qwen4ExpResidentServingRunner._prepare_ar_batch` builds a shared
+`Qwen4ExpARBatchOwner` for resident plain-AR requests, and `_step_ar_batch`
+advances batched rows in one owner call. The old serial-only c2 description is
+obsolete. External runners retain the c1 path because they do not own resident
+batch allocations; MTP has separate ownership.
+
+The runner pool still supplies staging runners, reusing the primary runner and
+preparing additional runners up to `staging_capacity`. Multi-slot AR decode is
+not sufficient reason to delete that pool or its request-transfer lifecycle.
+
+**Deferred staging design:** determine whether prefill and remaining c1/MTP
+consumers can use smaller dedicated workspaces or shared state storage without
+losing independent request ownership. Inventory reserve/import/demotion and
+reclaim consumers before replacing allocations. Preserve shared-once weights
+and PLE, request-local KV/state, cancellation and failure cleanup. R0006 owns
+the shared-decode follow-ups; do not reopen its completed batch implementation.
+
+Clearing checks: run AR-batch admission/capacity/decode unit tests and public
+mixed-prefill/decode requests, including transfer, cancellation and continuation.
+Confirm actual batch engagement and staging allocation lifetimes. Any claimed
+memory or speed improvement needs measured comparison; this triage changes no
+runtime behavior and reports no new performance result.
