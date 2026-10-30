@@ -13322,8 +13322,8 @@
       "start_line": 11240,
       "end_line": 11259,
       "sha256": "eb60769afc2192036f7e1f4b23b761dafaa5e8853471e0b3228afc847f6fd0e0",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["NOT-DEBT: dense FFN prefill calls the registered Q5 pair above the full-tile floor; verifier-only observation did not establish unreachability. Added dispatch coverage for all five owners and below-floor controls. 313 dispatch tests pass. worklog/entries/20261030T033041.035124Z-cleanup-cleanup-r0477-4d4f19.md."],
       "subitems": []
     },
     {

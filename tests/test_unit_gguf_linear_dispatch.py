@@ -7361,6 +7361,30 @@ def test_gfx1100_grouped_q4_pair_rows6_policy_defaults_on_and_is_shape_scoped(
         gguf_linear_module._rowtile_variant_policy_env_cache.clear()
 
 
+@pytest.mark.parametrize("rows", (1, 3, 8, 17, 31))
+def test_q5_prefill_pair_declines_partial_tiles(rows):
+    assert gguf_linear_module._q5_t16_dense_pair_silu_variant(rows) is None
+
+
+@pytest.mark.parametrize("rows", (32, 45, 96, 192, 300))
+def test_q5_prefill_pair_reaches_registered_owner(rows):
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")
+    variant = gguf_linear_module._q5_t16_dense_pair_silu_variant(rows)
+    key = KernelKey("hip_gfx1100", "linear_pair_silu", "gguf_q5_k_t16_v1", variant)
+    original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    calls = []
+    register(key, lambda *args, **kwargs: calls.append(args), replace=True)
+    try:
+        assert launch_gguf_linear_pair_silu(
+            weight, weight, x_ptr=100, out_ptr=200, rows=rows,
+            in_features=5120, out_features=17408, backend="hip_gfx1100",
+            runtime="runtime-sentinel",
+        )
+        assert calls == [(100, 14, 14, 200, rows, 5120, 17408)]
+    finally:
+        register(key, original, replace=True)
+
+
 def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor(
     monkeypatch,
 ) -> None:
