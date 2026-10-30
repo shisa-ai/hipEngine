@@ -545,14 +545,9 @@ _UD_MTP_CERTIFICATIONS: Mapping[str, Qwen35GGUFUDMTPCertification] = {
 }
 
 
-# MTP scope is granted ONLY by a complete U6 certification record.  The pin is
-# derived, never hand-written, so a record cannot be added without its
-# envelope and its six gated items, and an incomplete unit can never leak
-# MTP admission.  Empty until the complete U6 MTP scope passes: the scope is
-# not just "MTP runs": it is the declared backend/quant/profile/context/width
-# envelope, the c1..c8 serving paths, draft residency and eh_proj/head
-# ownership, exact accept/commit control, and the full category/heldout suite
-# against a true no-MTP AR denominator.
+# Historical MTP certification metadata, derived only from complete evidence
+# records. These scopes describe measured coverage; preflight and materialization
+# use tensor/consumer capabilities instead of this table to authorize execution.
 _UD_MTP_PRESET_FINGERPRINTS: Mapping[str, str] = MappingProxyType(
     {
         fingerprint: certification.evidence_line()
@@ -2332,12 +2327,21 @@ def preflight_qwen35_gguf_artifact(
     required_plan_slots: set[str] = set()
     operation_scope_refusals: list[str] = []
 
-    # Scope gate: MTP draft operations require an explicitly certified MTP
-    # scope.  No preset (plain lane) or an AR-only UD preset refuses the whole
-    # operation; automatic MTP inheritance from plain-file certification is
-    # impossible because the scope binds to the manifest fingerprint.
+    # Historical certification scopes are provenance, not admission. Require
+    # a structurally valid draft; the per-slot planner and registered consumers
+    # below decide whether its actual source types can execute.
     if QWEN35_GGUF_OP_MTP_NEXTN_DRAFT in requested:
-        if preset is None or not preset.scope_certified(GGUF_PRESET_SCOPE_MTP):
+        draft_error = ""
+        if nextn_map is None:
+            draft_error = "MTP/NextN draft operations require a NextN tensor map"
+        elif nextn_map.validation is None:
+            draft_error = "MTP/NextN draft operations require NextN structural validation"
+        else:
+            validation = nextn_map.validation
+            structural_errors = (*validation.missing, *validation.unexpected, *validation.shape_errors)
+            if structural_errors:
+                draft_error = "invalid NextN tensor map: " + "; ".join(structural_errors)
+        if draft_error:
             operation_scope_refusals.append(QWEN35_GGUF_OP_MTP_NEXTN_DRAFT)
             unsupported.append(
                 Qwen35GGUFUnsupportedOperation(
@@ -2351,12 +2355,7 @@ def preflight_qwen35_gguf_artifact(
                     source_ggml_type="-",
                     resident_layout=None,
                     stage="scope_refused",
-                    reason=(
-                        "artifact preset "
-                        f"{None if preset is None else preset.preset_key!r} is not "
-                        "certified for MTP/NextN draft operations; AR-only and "
-                        "AR+MTP qualification are distinct"
-                    ),
+                    reason=draft_error,
                 )
             )
 

@@ -13261,8 +13261,8 @@
       "start_line": 11158,
       "end_line": 11180,
       "sha256": "268811cb820241c9d78dc6992d80c3afc30896e2619510ab50b3a30ca8f88b68",
-      "status": "pending",
-      "evidence": [],
+      "status": "in_progress",
+      "evidence": ["Removed historical MTP scope pin from preflight/materialization; require structural NextN map, preserve registered slot consumers and fallback ownership. Historical certification records are already populated, not withheld. RED scope tests then focused/live and public gfx1151 pin-empty MTP pass; dtype identity restriction remains active follow-up. Worklog worklog/entries/20261030T024810.184589Z-cleanup-cleanup-r0473-scope-fc6905.md."],
       "subitems": [
         {
           "line": 11160,

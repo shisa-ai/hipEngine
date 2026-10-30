@@ -3544,28 +3544,20 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-11 U6 — UD MTP scope pin is withheld
+## 2026-09-11 U6 — NextN draft dtype identity cleanup (R0473)
 
-- `_UD_MTP_PRESET_FINGERPRINTS` (`hipengine/loading/qwen35_gguf_admission.py`)
-  is the separate MTP certification table. It is **derived** from
-  `_UD_MTP_CERTIFICATIONS` and admits only a complete certification unit, so it
-  is empty on purpose and can no longer be hand-granted. The UD draft dtype pin,
-  the UD accept-chain registrations, the slot-scoped blk.64 draft operation set,
-  and the draft residency/`eh_proj`/head ownership contract are landed and
-  gated; draft/verifier state disjointness, exact AR/MTP control (blocked by the
-  K_S `general_ja_plan` AR divergence), the declared context/width envelope, and
-  the category heldouts are not.
-- Population trigger: flip the affected `Qwen35GGUFUDMTPCertificationItem`
-  entries to `qualified=True` with their passing evidence **and** clear the
-  remaining `docs/campaigns/UD-QUANTS.md` U6 checklist items. A record's `blocker` field
-  names exactly what is missing; `is_complete()` is what grants the pin.
-- Do not populate the pin from a single-prompt or single-width result, and do
-  not widen `_UD_PRESET_FINGERPRINTS` (the AR table) to grant MTP scope: the
-  two tables exist precisely so an AR certificate cannot imply MTP admission.
-- The UD draft dtype manifest (`_UD_NEXTN_DRAFT_QTYPES`) is inert until the pin
-  lands. It is not dead code to delete: it is the identity-bound replacement
-  for the caller-claimed native-XL variant exception, and its coverage
-  contract is enforced and tested.
+MTP preflight and materialization no longer require a historical certification
+scope pin. Preflight requires a supplied structurally valid NextN map, registered
+per-slot consumers, and owned fallback residents. `_UD_MTP_CERTIFICATIONS` and
+its derived scopes describe historical evidence only; the records are populated.
+
+Remaining cleanup: `qwen35_gguf_nextn.py` still chooses exact draft dtype
+expectations by file stamp, native-XL manifest digest, or `_UD_NEXTN_DRAFT_QTYPES`
+preset identity. Replace these execution restrictions with supported slot/dtype
+capabilities while preserving required tensors, shapes, explicit diagnostic
+expectations, and consumer checks. Validate unfamiliar compatible manifests,
+unsupported types, missing tensors, and real public MTP generation before removing
+the identity-bound dtype exceptions.
 
 ## 2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`
 

@@ -1,9 +1,8 @@
 """U6: UD MTP is a separate certification unit from UD AR.
 
-UD AR certificates are pinned per role-manifest fingerprint with scope
-``("ar",)``.  MTP admission is a distinct table keyed by the same fingerprint,
-so a new AR certificate can never widen MTP admission and an MTP certificate can
-be revoked without touching AR.
+UD AR and MTP evidence are recorded separately by role-manifest fingerprint.
+These historical scopes do not authorize execution: draft admission checks
+structural tensors, registered consumers, and fallback ownership.
 
 These tests cover the enabling conditions and the identity binding, not the
 performance qualification:
@@ -331,14 +330,14 @@ def test_draft_operation_set_is_slot_scoped_and_certified(path: Path, monkeypatc
     reader, model_map, nextn_map = _real_map(path)
     draft = admission.QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
 
-    # The pinned artifact now carries the MTP scope, so the draft operation is
-    # certified directly. Removing the pin in-process must refuse it again, which
-    # is what makes the scope the gate rather than the operation set.
+    # Historical scope metadata does not gate the operation set. Each draft
+    # slot must still resolve its registered consumer without the pin.
     monkeypatch.setattr(admission, "_UD_MTP_PRESET_FINGERPRINTS", {})
     scoped = admission.preflight_qwen35_gguf_artifact(
         model_map, backend="hip_gfx1100", operations=(draft,), nextn_map=nextn_map
     )
-    assert any(item.stage == "scope_refused" for item in scoped.unsupported)
+    scoped.raise_for_errors()
+    assert scoped.plan_contract.is_complete()
     monkeypatch.undo()
 
     report = admission.preflight_qwen35_gguf_artifact(

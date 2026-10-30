@@ -297,16 +297,11 @@ def materialize_qwen35_gguf_nextn_weights(
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
-    # UD-U1 identity + scope binding: resolve the AR artifact admission preset
-    # from the same file BEFORE the strict draft validation. Packaged MTP
-    # selections (hot vocabulary) never reuse a plain-artifact certification
-    # that shares the file-type stamp, and an AR-only certified artifact is
-    # refused for draft materialization before any planning or allocation.
+    # Resolve artifact metadata for draft dtype expectations and packaged hot
+    # vocabulary identity. Historical certification scopes do not gate loading.
     from hipengine.loading.gguf import GGUFModelInfo
     from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
     from hipengine.loading.qwen35_gguf_admission import (
-        GGUF_PRESET_SCOPE_MTP,
-        Qwen35GGUFAdmissionError,
         resolve_qwen35_gguf_artifact_preset,
         resolve_qwen35_gguf_nextn_draft_qtypes,
         qwen35_gguf_artifact_preset_key,
@@ -323,16 +318,6 @@ def materialize_qwen35_gguf_nextn_weights(
             nextn_map=structural_map,
             file_type_stamp=getattr(reader.info, "file_type_name", None),
         )
-        if artifact_preset is not None and not artifact_preset.scope_certified(
-            GGUF_PRESET_SCOPE_MTP
-        ):
-            raise Qwen35GGUFAdmissionError(
-                "GGUF NextN draft materialization refused: artifact preset "
-                f"{artifact_preset.preset_key!r} is certified for scopes "
-                f"{list(artifact_preset.scopes)} only; MTP/NextN draft operations "
-                "require an explicitly certified MTP scope (AR-only and AR+MTP "
-                "admission are distinct)"
-            )
         # U6: the draft dtype manifest is resolved from the admitted preset
         # identity, never from file metadata or a caller-supplied variant, so
         # only the pinned artifact can obtain it.
