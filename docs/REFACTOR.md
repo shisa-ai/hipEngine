@@ -1900,67 +1900,6 @@ a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
   records the mechanism.
 
 
-## Grown KV pool could not serve an allocation spanning two chunks (found and fixed 2026-09-19)
-
-- The KV-pool growth path had never been exercised until a retained-snapshot
-  prefix-cache run pinned enough pages to force it. Three defects surfaced in a
-  row; the first two are fixed:
-  * the `before_grow` / `on_pressure` callbacks dereferenced
-    `self._resident_batch_owner` bare, while every other reader in the file
-    guards with `getattr`. A session that owns its own pool never has the
-    attribute, so the first grow/pressure event raised `AttributeError`. Fixed,
-    with `test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner`.
-  * `grow_storage` rebound `pointer_tables` without declaring it `nonlocal`,
-    so `old_tables = pointer_tables` raised `UnboundLocalError` the first time
-    the pool actually grew. Fixed.
-  * bind-time validation checked `block_id - start_block_id < backing.pages`
-    against the first chunk, so any allocation whose pages landed past it was
-    rejected with `GGUF KV allocation is outside its backing chunk`. The
-    backing genuinely describes one chunk (its metadata and buffer sizes are
-    validated against `pages`), so the bound moved instead: allocations now
-    carry `pool_page_capacity` and a pointer-table pool validates against it.
-    Fixed, with `test_bound_blocks_validate_against_pool_capacity_after_growth`.
-  * the GPU memory fault in
-    `qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel` was **not**
-    stale pointer tables, as first recorded here. `bind_device_kv_allocation`
-    gives the session the backing chunk's cache buffers while the block table
-    carries global page ids, and every KV kernel addresses a chunk as
-    `base + page * stride`. A grown pool handed out allocations whose pages sat
-    in the appended chunk, so the write indexed past the end of the first one.
-    Fixed by confining an allocation to one chunk: `_select_free` takes a page
-    range, `GlobalDeviceKVPool` tracks `(start, pages, backing)` per chunk and
-    reports the chunk that owns the allocation. `grow_storage` returns its new
-    chunk's backing as a third element (two-element returns still work).
-  * a shared-prefix admission must place its suffix in the chunk that holds the
-    prefix, and growth appends a separate chunk, so growth can never satisfy
-    that path - it now asks eviction instead and declines with `MemoryError`
-    when the prefix's chunk is full. Admission turns that into the existing
-    private-allocation fallback, so the request is still served.
-- Exposure: eviction runs before growth - `_ensure_free_pages` calls
-  `_on_pressure` (which evicts prefix-cache entries) first and only grows when
-  that cannot free enough - and at `max_pages` growth is refused with
-  `MemoryError` rather than attempted. So the fault needs sustained pressure
-  plus headroom. `kv_pool_high_water_pages` defaults to `None`, which is
-  unbounded headroom; setting it bounds the pool and keeps the pool on the
-  eviction path. At the time of this finding, `GlobalDeviceKVPool.shrink_idle`
-  returned 0 and held grown capacity for the pool's lifetime; the resolution
-  below replaces that stub.
-- Reproduction: `scripts/prefix_cache_multiturn_bench.py` with
-  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. That arm
-  completes, and after the placement cost model below it measures **-11.0%
-  wall** where it first measured +9.5%. The default retention is still better
-  (-18.6%), so the wide set stays opt-in, but it is no longer harmful.
-- **Resolved in the refactor sweep:** the global device pool now retracts free
-  trailing growth units after the configured idle grace period, preserving the
-  load-time capacity. Chunk and VMM providers publish retained pointer tables
-  before releasing superseded storage. Live leases, cache references, pins and
-  in-flight graph epochs block reclamation. Unrecoverable VMM restoration faults
-  stop further admission instead of advertising unmapped storage. Regression
-  coverage includes repeated grow/shrink cycles and provider failure paths in
-  `tests/test_unit_kvcache_global_device_pool.py`,
-  `tests/test_unit_gguf_global_pool_growth.py` and
-  `tests/test_unit_gguf_vmm_kv_pool.py`.
-
 
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
