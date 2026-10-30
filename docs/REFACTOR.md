@@ -2279,17 +2279,6 @@ category and control/ownership gates before closing this entry.
   shape/range policy and explicit registered parent fallback. Direct row64/parent
   GPU parity and dispatch tests do not close public serving validation.
 
-## gfx1100 planar-Q6 exact prefill retile bisection
-
-- Backend policy selects planar-Q6 row64 at `(17408,5120)` rows4-128 and
-  shared256 at rows129-511; `(5120,1024)` uses row64 at rows4-128.
-  The environment lookup/cache is removed. The registered one-wave parent
-  handles shape/range misses; decode and peer backend owners are unchanged.
-- Remaining validation: a defaults-only same-protocol C1-C3 public repeat with
-  all categories, heldouts, exact trajectories, native groups, trace identity
-  and drain checks. Preserve backend policy and registered one-wave fallback;
-  direct numerical parity does not establish public engagement.
-
 ## SPECDEC2 dense NextN host/device proposal duplication
 
 - Host-materialized and device-top1 batch entry points now call
@@ -9885,3 +9874,17 @@ context. Keep this transport change separate from replacement-kernel tuning.
 Any replacement must independently pass the complete numerical/lifecycle gates
 and the original >=1.10x AR target; the current correctness fallback remains
 until then. No new performance claim or runtime change is made here.
+
+### R0201 — Public repeat after planar-Q6 selector cleanup
+
+The planar-Q6 environment lookup/cache is removed. Backend policy selects row64
+at `(17408,5120)` rows4-128 and shared256 at rows129-511;
+`(5120,1024)` uses row64 at rows4-128. The registered one-wave parent handles
+shape/range misses; decode and peer backend owners are unchanged.
+
+**Deferred validation:** perform the later-release defaults-only, same-protocol
+two-pair full-suite C1-C3 public repeat with all categories and heldouts, exact
+trajectories, native groups, trace identity and drain checks. Preserve backend
+policy and the registered one-wave fallback. Prior direct numerical parity does
+not establish public engagement; this relocation supplies no new public result
+and does not close the repeat requirement.

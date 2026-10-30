@@ -5282,7 +5282,8 @@
         {
           "line": 4446,
           "text": "- The binding two-pair full-suite C1-C3 gate is retained with all categories,",
-          "status": "pending"
+          "status": "deferred-public-validation",
+          "evidence": "Two-pair gate preserved at bottom R0201, not claimed passed. Docs/audit pass. worklog/entries/20261030T091301.986272Z-cleanup-cleanup-r0201-final-29db0e.md."
         },
         {
           "line": 4448,
