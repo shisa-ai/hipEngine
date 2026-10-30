@@ -5423,7 +5423,7 @@
       "start_line": 4559,
       "end_line": 4588,
       "sha256": "fb3f8e40ec5c81287380e184668694c84bb400d2616130dd2f0c0ee0f1b36fdd",
-      "status": "partial-current-consumers-reconciled",
+      "status": "triaged-deferred-kv-consumer-migration",
       "evidence": ["Reconciled stale fixed/no-growth allocator claim against current global growth/shrink and arena identity implementation. Concrete remaining consumers: non-VMM chunk-local base-pointer execution, active DMS dense_pool transient storage, and legacy-only session factories. Ledger now names replacement work and focused clearing command, not a missing-evidence refusal. Global/device binding/prefix unit bundle, docs and audit pass. Worklog: worklog/entries/20261027T171236.772115Z-cleanup-refactor-r0207-b69c32.md."],
       "subitems": [
         {
@@ -5435,18 +5435,19 @@
         {
           "line": 4568,
           "text": "- `DeviceChunkedKVPool` and base-pointer identity binding remain as explicit",
-          "status": "partial-concrete-consumers-recorded",
+          "status": "deferred-concrete-kv-consumers",
           "evidence": "DMS dense_pool, non-VMM chunk storage and legacy-only factories remain implemented consumers; do not delete allocator or identity safety checks before replacing them."
         },
         {
           "line": 4572,
           "text": "- Shared-slot physical c4/c8 were first held unregistered after their old",
-          "status": "pending"
+          "status": "historical-repair-width-policy-r0206"
         },
         {
           "line": 4582,
           "text": "- Removal trigger: after BF16 long-context and artifact-qualified no-mirror INT8",
-          "status": "pending"
+          "status": "deferred-kv-consumer-migration",
+          "evidence": "Bottom R0207 restores original cross-backend gates and preserves concrete consumers. Docs/audit pass. worklog/entries/20261030T092658.121683Z-cleanup-cleanup-r0207-final-490bc3.md."
         }
       ]
     },

@@ -2290,36 +2290,6 @@ category and control/ownership gates before closing this entry.
   cancellation/cleanup checks. CPU transition-order and provider tests preserve
   the refactor contract but do not establish public GPU execution.
 
-## Generation-1 GGUF single-backing KV compatibility path
-
-- Ordinary resident serving selects `create_global_device_kv_pool` when the
-  session implements it. Its `GlobalDeviceKVPool` wraps `GlobalKVPoolSet` and
-  stable per-plane page tables. The pool grows on demand and releases wholly
-  idle grown tails; it is not a fixed allocation with no growth or shrink.
-- With working HIP virtual memory, growth extends stable per-plane arenas and
-  rebuilt backing objects retain their arena identity. Without that capability,
-  the same global adapter appends ordinary device chunks. Base-pointer consumers
-  then need each allocation within one backing chunk; pointer tables alone do
-  not remove that execution constraint. Unsupported VMM symbols or a driver
-  returning `hipErrorNotSupported` select this implemented fallback.
-- `DeviceChunkedKVPool` also has an active DMS `dense_pool` consumer: the session
-  allocates transient dense prefill storage before compact KV is built. DMS
-  `layer_outer` does not use that pool. The generation runner retains a
-  legacy-factory branch for session providers that implement only
-  `create_device_kv_pool`.
-- Removal work: migrate remaining base-pointer consumers to page-table storage
-  views across appended chunks, replace the DMS transient-pool owner, and then
-  remove unused legacy factory and identity branches. Preserve same-arena checks
-  until snapshot restore can establish equivalent storage ownership. Missing
-  benchmark coverage does not prevent these paths from running.
-- Validate replacements with
-  `uv run pytest tests/test_unit_kvcache_global_device_pool.py
-  tests/test_unit_gguf_vmm_kv_pool.py tests/test_unit_gguf_global_pool_growth.py
-  tests/test_unit_gguf_device_kv_binding.py
-  tests/test_unit_gguf_prefix_cache_runner.py -q`, then real ordinary and DMS
-  public requests covering growth, prefix reuse, cancellation and teardown.
-  Keep registered strict/serial numerical fallbacks independently of allocator
-  cleanup. Shared-slot width selection is tracked separately above.
 
 ## C2-6 production oracle process-partition seam
 
@@ -9879,3 +9849,28 @@ ladders, require clean actual-server direct/masked/composed c1-c32 telemetry,
 counterbalanced same-shape D2-versus-ceiling goodput and TTFT/ITL, refill/cancel,
 memory and drain checks. Preserve ceiling fallback throughout migration. No
 planner default, width capability or primitive selection changes in this triage.
+
+### R0207 — Migrate remaining chunk-local KV consumers before allocator retirement
+
+Global resident pools already grow and release wholly idle tails. VMM growth
+preserves arena identity; unavailable VMM symbols or `hipErrorNotSupported` use
+ordinary appended chunks. Base-pointer consumers still require allocation within
+one backing chunk. `DeviceChunkedKVPool` also serves DMS `dense_pool` transient
+prefill (not `layer_outer`), and legacy-only session factories remain supported.
+
+**Deferred storage migration:** replace base-pointer execution with page-table
+views across chunks and replace DMS transient ownership before removing unused
+legacy factories, chunk allocation or identity branches. Keep same-arena checks
+until snapshot restore proves equivalent ownership; missing benchmark coverage
+is not a refusal reason. Historical c4/c8 sentinel restrictions were already
+superseded by packed-state/head repair; R0206 owns current width selection.
+
+Clearing tests: `uv run pytest tests/test_unit_kvcache_global_device_pool.py
+ tests/test_unit_gguf_vmm_kv_pool.py tests/test_unit_gguf_global_pool_growth.py
+ tests/test_unit_gguf_device_kv_binding.py tests/test_unit_gguf_prefix_cache_runner.py -q`.
+Then exercise real ordinary/DMS growth, prefix reuse, cancellation and teardown.
+Preserve the original BF16 long-context and no-mirror INT8 global-adapter gates
+on both gfx1100 and gfx1151: graph-pointer, lifecycle, cancellation, pressure,
+SLO and production load. Only after remaining registered packages migrate may
+compatibility fixtures retire. Registered strict/unfused/serial numerical
+fallbacks remain independent of allocator cleanup. No runtime changes here.
