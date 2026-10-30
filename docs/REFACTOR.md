@@ -3544,25 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-11 MTP verify-journal allocation cost on gfx1100
-
-- `Qwen35GGUFTransactionalVerifier` now allocates a row-capable rollback
-  journal whenever any reachable decode position selects the serial row
-  route. On gfx1100 the native target context limit is 95, so every session
-  with `scratch.max_positions + budget + 1 > 95` (all of them, since the
-  resident scratch rounds to a 256-position floor) keeps
-  `max_rows + 1 = 5` rollback rows per linear-attention layer instead of one:
-  measured **+606 MiB** for candidate budget 3 on Qwen3.8-27B
-  (5 x 151.50 MiB vs 1 x 151.50 MiB). gfx1151 is unaffected because its
-  65,544-token limit admits the initial-state-only journal.
-- Recover that memory only with a design that keeps the route contract sound:
-  reuse the session-owned multi-row `_verify_linear_*_state_rows` buffers for
-  serial rollback, or re-allocate the journal at the top of `prepare()` before
-  `capture_initial` when the route first becomes serial. Do not re-enable the
-  initial-state-only journal for a session whose position range can reach the
-  serial route, and do not widen the capability value without the
-  corresponding native-target qualification.
-
 ## 2026-09-11 U6 — UD MTP scope pin is withheld
 
 - `_UD_MTP_PRESET_FINGERPRINTS` (`hipengine/loading/qwen35_gguf_admission.py`)

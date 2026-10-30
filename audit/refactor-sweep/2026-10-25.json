@@ -13240,18 +13240,18 @@
       "start_line": 11139,
       "end_line": 11157,
       "sha256": "46d12cc70c68eb77a742d7d06d5af73857b3197899ff30c5c788d98e9ea72fa3",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Lazy consumer-owned serial journal already implemented; prepare selects before capture/mutation, native pointers remain owned, close releases both. Removed stale eager-allocation claim. Focused156 passed. worklog/entries/20261030T023830.095483Z-cleanup-cleanup-r0472-167ac2.md."],
       "subitems": [
         {
           "line": 11141,
           "text": "- `Qwen35GGUFTransactionalVerifier` now allocates a row-capable rollback",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11150,
           "text": "- Recover that memory only with a design that keeps the route contract sound:",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
