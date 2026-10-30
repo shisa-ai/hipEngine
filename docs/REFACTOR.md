@@ -2228,27 +2228,6 @@ should be removed or collapsed.
   restoration before retiring the variable; do not substitute a process-global
   boolean or infer this arithmetic choice from the backend alone.
 
-## SPECDEC2 MoE request-local C2 prototype
-
-- Added 2026-08-27 as the first functional physical-C2 seam in
-  `Qwen35GGUFMoEMTP2Adapter`. Multi-slot model-plugin construction selects
-  the architecture-shaped `Qwen35GGUFMTP2Adapter` with a batched MoE NextN
-  executor, so the prototype C2 proposal/accept implementation in the old MoE
-  adapter is unreachable through the factory; capacity 1 still uses its
-  complete-cycle implementation. Factory coverage includes capacities 2, 4 and 8
-  and fails if any of them constructs the old adapter.
-- The legacy adapter no longer advertises staged C2 capability or claim fit.
-  Its obsolete C2 proposal body is removed; the required lifecycle method now
-  reports that this adapter owns complete C1 cycles. Multi-slot production
-  proposals continue through the generalized adapter.
-- The obsolete staged target body, provider repair, batch-accept workspace and
-  upload helpers are removed. Required staged interface methods explicitly
-  refuse direct calls; the complete C1 cycle, shared slab accounting, failure
-  recovery and release remain. Upload contiguity/capacity coverage exercises the
-  generalized adapter now used by multi-slot MoE.
-- Remaining validation: exercise the batched provider through public C2 serving
-  with cancellation, rejection and resource cleanup before closing this entry.
-
 ## SPECDEC2 MoE physical-C2 numerical scope
 
 - Added 2026-08-27 for the gfx1100 35B MoE physical-C2 campaign. The request-
@@ -9889,3 +9868,20 @@ kernel attribution before retiring the context. The original final three-repeat
 performance gate still governs a claimed promotion or rejection; no such result
 is supplied here. A losing candidate may be removed only after checking live
 consumers and preserving strict fallbacks. No arithmetic or default changes.
+
+### R0192 — Public validation after obsolete MoE C2 prototype removal
+
+The legacy MoE adapter's staged C2 proposal/target bodies, repair code, private
+accept workspace and upload helpers were removed. Required lifecycle methods
+refuse direct staged calls; complete C1 cycles, slab accounting, recovery and
+release remain. Multi-slot factory construction selects the generalized
+`Qwen35GGUFMTP2Adapter` and batched MoE NextN executor; capacity 2/4/8 factory
+and upload contiguity/capacity tests cover that selection.
+
+**Deferred validation:** exercise that generalized batched provider through
+public C2 serving with cancellation, rejected proposals and resource cleanup.
+Confirm actual physical grouping and selected adapter, independent peer progress,
+request reuse and balanced teardown. Preserve explicit direct-call refusals on
+the old adapter and its working C1 path. Do not count factory or mocked lifecycle
+tests as the missing public result. The prototype deletion is complete; this
+validation is not, and no new public result is claimed by moving the entry.

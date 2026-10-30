@@ -5069,7 +5069,7 @@
       "start_line": 4279,
       "end_line": 4290,
       "sha256": "42662421d0d85842bb3a3bf57b37f1ae774d024a56284154c2709dcd73259cc3",
-      "status": "partial",
+      "status": "triaged-deferred-public-c2-validation",
       "evidence": ["Removed legacy C2 proposal/target bodies, physical repair, private accept workspace/uploads and dead proposal fields. Required lifecycle refusal methods preserve interface validation; C1 cycle/recovery/slabs and generalized multi-slot factory remain. Full MoE/sampled/upload/provider/lifetime/generalized seam tests and docs/audit pass. Public C2 rejection/cancellation/cleanup remains open. Worklogs: worklog/entries/20261027T153516.382904Z-cleanup-refactor-r0192-proposal-94bb75.md; worklog/entries/20261027T154355.850123Z-cleanup-refactor-r0192-target-b8828a.md."],
       "subitems": [
         {
@@ -5080,7 +5080,8 @@
         {
           "line": 4287,
           "text": "- Removal trigger: after the batched provider passes complete C2 production and",
-          "status": "deferred-public-validation"
+          "status": "deferred-public-validation",
+          "evidence": "Relocated to bottom R0192 without claiming public validation. Docs/audit pass. worklog/entries/20261030T090514.792951Z-cleanup-cleanup-r0192-final-05810f.md."
         }
       ]
     },
