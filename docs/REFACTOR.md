@@ -968,33 +968,6 @@ multi-column engagement evidence, so it stays.
 
 
 
-## Per-token reused-prefix suffix prefill (found 2026-09-18)
-
-Resolved during the upstream prefix-cache campaign and integrated into the
-local MTP branch during the merge. The historical observation below explains the
-original work; it no longer describes the default suffix route. Upstream's
-`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX` switch owns the serial fallback, and
-single-token suffixes intentionally stay serial. The overlapping task #20
-`HIPENGINE_GGUF_PREFIX_SUFFIX_PACKED` helper and switch are removed during
-integration; the preservation commit `0f3bd43dc` keeps their history.
-
-- `hipengine/generation/qwen35_gguf.py` `_prefill_native_chunk` and
-  `_prefill_processed_argmax_chunk` both take an `if row.prefix_reused_tokens:`
-  branch that prefills the suffix after the matched prefix with one
-  `session.step(token_id)` per token, where the miss path calls the batched
-  prefill. A step costs a decode step, so a hit prefills at **82.1 ms per
-  executed token against 3.3 ms** on the miss rows (24.9x) and 28.9x the TTFT,
-  which made a realistic multi-turn load decode 3.47 tok/s with
-  `--prefix-cache radix` against 46.52 with it off. The route stays default-off
-  and is not promotable until this branch is replaced by the batched entry; the
-  retained 11.8x prefix win is a p256+s1 packet, where the loop costs one step.
-  Evidence:
-  `benchmarks/results/2026-09-18-gfx1151-qwen38-prefix-hit-multiturn-rejected.json`.
-- The branch also has to go before MTP can be admitted on a hit: it is the same
-  per-token processing that a draft-provider checkpoint would need to skip, and
-  measuring the checkpoint against a decode-speed suffix would attribute the
-  suffix's cost to the checkpoint.
-
 ## `prefix_reuse_k0` prompt-sink refusal (found 2026-09-18) — RESOLVED
 
 Capture and restore now supply provider state for usable prefix hits. The
