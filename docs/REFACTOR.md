@@ -701,41 +701,6 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`, and worklog
   `20260930T031044` (the measured scope table).
 
-## Disabled-Selector Sweep Harness Duplication (2026-10-04)
-
-Cleanup status (2026-10-26, R0037): the duplication is real and both harnesses
-are still present. The removal condition below is unmet, and the choice it
-describes is a record-retention decision rather than an engineering blocker:
-both 2026-09-16 artifacts still name
-`scripts/qwen4exp_disabled_family_sweep.py` as their driver, so it remains their
-reproduction path and stays. The arm sets drifted since this section was
-written: the family sweep's `Q8_IU8_WMM` arm went with the rejected generic
-dense Q8 iu8-WMMA route (`e108d110f`), and the arms the ranking harness lacks
-are `Q8_DENSE_WIDE_16_47`, the three `Q8_WMMA_LAYERS_*` scopes, `Q4_DP4A64` and
-a no-op override control. Nothing here changes a production route.
-
-- **Two harnesses answer the same question and only one was ever run.**
-  `scripts/qwen4exp_disabled_family_sweep.py` produced the 2026-09-16
-  recoverable-time artifacts; `scripts/qwen4exp_disabled_selector_ranking.py`
-  (written 2026-09-15, with unit guards in
-  `tests/test_unit_qwen4exp_disabled_selector_ranking.py`) had never been run
-  until 2026-10-04. They carry different arm sets and different report schemas
-  (`qwen4exp_profile_gap_window` children vs a `ranking.json` roll-up).
-- The ranking harness is the one now used, because it records the per-arm
-  `effective_route` and `effective_route_missing_keys` and writes a roll-up
-  report; the family sweep writes per-arm JSON only. Retain the family sweep
-  while the two 2026-09-16 packets depend on it. Remove it only after those
-  packets are no longer cited or a replacement harness covers its extra arms
-  and reproduction contract. Do not edit historical driver rows: they record
-  what ran.
-- **The 2026-09-16 ranking must not be read as an opportunity list.** Its
-  fallback was 23.648 s against 15.544 s today, and its ordering inverted:
-  `Q8_MMQ_PREFILL` 1.203x -> **0.9665x**, `Q4_IU8_PREFILL` 0.997x ->
-  **0.8463x**, the GDN pair 1.010x/1.005x -> 0.9988x/0.9960x. Its top entry
-  `Q8_IU8_WMM` (1.388x) is closed independently. The artifact's 2026-09-30
-  correction already says the savings are "the difference between the recovery
-  profile and the production profile", which is the same warning.
-
 ## Journey Multi-Column GDN
 
 Cleanup status (2026-10-26, R0039): the multi-column route is a registered
@@ -910,6 +875,25 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0037 — Consolidate selector harnesses without losing reproduction
+
+`scripts/qwen4exp_disabled_family_sweep.py` remains the named driver of two
+September16 packets. `scripts/qwen4exp_disabled_selector_ranking.py` records
+route engagement and roll-up reports, but its arms and schema differ. The older
+sweep includes `Q8_DENSE_WIDE_16_47`, three `Q8_WMMA_LAYERS_*` scopes,
+`Q4_DP4A64` and a no-op override control absent from the ranking harness;
+its rejected `Q8_IU8_WMM` arm is already removed.
+
+**Deferred retention decision:** keep the family sweep while cited packets
+need it, or provide a successor covering its extra arms, per-arm JSON and
+reproduction contract before removal. Preserve historical driver rows unchanged.
+Retain `effective_route`/`effective_route_missing_keys` reporting and
+`tests/test_unit_qwen4exp_disabled_selector_ranking.py` contracts when merging.
+Historical rankings describe their source/profile, not a current opportunity
+list; matched current measurements are required before tuning from them. No
+harness or production route changes accompany this relocation.
+
 
 ### R0036 — Reconcile historical recovery-cost attribution if reused
 

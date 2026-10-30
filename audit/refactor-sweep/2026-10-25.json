@@ -1188,7 +1188,7 @@
       "start_line": 1213,
       "end_line": 1238,
       "sha256": "09964978423483cd720fcc60f16f9f944553a48d64c393f26d296e60a0bed7f3",
-      "status": "not-debt-retained",
+      "status": "triaged-harness-reproduction-retention-deferred",
       "evidence": [
         "Current recovery and GDN ownership verified; script-local diagnostics and source-pinned family harness retained under their existing conditions. Worklog:worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md. No runtime/default change."
       ],
