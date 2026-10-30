@@ -2385,100 +2385,6 @@ should be removed or collapsed.
   restoration before retiring the variable; do not substitute a process-global
   boolean or infer this arithmetic choice from the backend alone.
 
-## 2026-08-21 codebase simplification review
-
-This review covers the tracked tree at `a9419949d`. The main conclusion is that
-strict fallbacks are not the primary complexity problem. Complexity is coming
-from experiment ownership living beside production ownership, policy being
-re-resolved throughout runtime code, importable benchmark programs being shipped
-as a product package, and historical evidence remaining in active source and
-this active ledger.
-
-### Historical inventory
-
-The original measured inventory describes `a9419949d`, not the current tree.
-Its counts and methodology are preserved in this section at commit `c5ded0003`.
-They are triage signals, not line-count targets or evidence that a path is unused.
-Review RF-1 through RF-12 and each deletion candidate independently against
-current consumers. RF-2 removed `scripts` from the wheel and moved shared
-benchmark helpers into `hipengine.benchmark`; source commands remain available.
-Removing this historical summary does not complete other architectural migrations.
-
-These counts are triage signals, not line-count targets to game. A pure move that
-creates more files but one clear owner is a win; a generic abstraction that
-hides kernel ABI, numerical boundaries, or fallback ownership is not.
-
-### Non-negotiable keep set
-
-Do not delete these merely to reduce counts:
-
-1. registered strict fused/unfused fallback chains;
-2. complete-`KVLiveSpans` generic attention/KV-write routes and unsupported-
-   shape/backend fallbacks;
-3. scalar c1, segmented arbitrary-length, and transactional verifier oracles
-   while optimized routes are compared against them;
-4. `kernels/cpu_reference/`, strict fixtures, lifecycle/isolation gates, and
-   compact negative-decision evidence;
-5. explicit fallbacks still named by an open production-profile or hardware
-   qualification gap.
-
-The simplification rule is: remove **selection and production reachability**
-for a rejected experiment first; retain a low-level primitive only when a named
-fallback, active test oracle, or current research campaign consumes it.
-
-### Target organization
-
-The intended direction is a collection of stable façades over cohesive modules,
-not a new framework:
-
-```text
-hipengine/runtime/qwen35_gguf/
-  policy.py        # immutable model/backend/quant/profile plan
-  scratch.py       # byte plans, owners, views, lifecycle
-  full_attention.py
-  linear_attention.py
-  moe.py
-  verify.py        # journal/commit/rollback; no server policy
-  session.py       # thin public façade
-hipengine/server/
-  routes.py        # HTTP translation only
-  streaming.py     # SSE and token accounting
-  structured.py    # JSON schema/guided output
-  tools.py
-  metrics.py
-hipengine/kernels/hip_gfx1151/policy/
-  qwen35.py
-  qwen38.py
-  laguna.py
-```
-
-Apply the same split to PARO only after the GGUF extraction pattern proves it
-avoids import cycles. Keep primitive launch wrappers near their kernel family;
-do not centralize raw pointers into an untyped universal launcher.
-
-### Refactor execution rules
-
-1. Remove ready rejected branches before moving production code; otherwise a
-   mechanical split preserves the very complexity we want to eliminate.
-2. One logical unit is either deletion, policy extraction, or file movement —
-   never combine it with tuning, arithmetic, or default changes.
-3. Before deleting a path, prove current default and strict fallback ownership,
-   search runtime/tests/docs/benchmark protocols, and name the focused gate.
-4. Preserve import compatibility during module splits, then remove re-exports
-   after one compatibility window rather than creating permanent duplicate APIs.
-5. Update PLAN only when a proposed target boundary becomes implemented
-   architecture. This review is the cleanup queue, not permission for a big-bang
-   rewrite.
-
-### Completion signals
-
-The refactor campaign is materially complete when production runtime modules no
-longer read experiment env flags directly, backend/model/profile policy resolves
-once, `scripts` is not part of the default wheel, rejected experiments are not
-runtime-reachable, active refactor debt is a bounded indexed document, and the
-server/model runners have one scheduler plus one state/KV commit owner. Strict
-fallback count is not a success metric.
-
 ## SPECDEC2 whole-request compatibility seam
 
 - Added 2026-08-24 for the approved [`SPECDEC2.md`](reference/SPECDEC2.md) campaign.
@@ -9963,3 +9869,33 @@ clear distinction between measured code and historical roadmap estimates. Add
 growth checks only after meaningful module boundaries exist, not arbitrary
 limits that reward moving code without changing ownership. Neither test splitting
 nor budget refresh is implemented by this triage.
+
+### R0187 — Simplification umbrella: preservation rules and deferred scope
+
+RF-2's wheel ownership repair is implemented. The remaining RF decisions above
+are deferred, not completed migrations. The original inventory and illustrative
+directory tree remain in `docs/REFACTOR.md` at `c5ded0003`; current architecture
+belongs to PLAN and the subsystem contracts, not those proposed filenames.
+
+Preserve registered strict fused/unfused chains, complete-KVLiveSpans generic
+attention/KV-write and unsupported-shape/backend fallbacks, scalar/segmented/
+transactional oracles still used for comparisons, CPU-reference kernels, strict
+fixtures, lifecycle/isolation gates and compact negative evidence. Preserve
+explicit fallbacks required by an open numerical or hardware gap. Counts alone
+are not grounds to delete any of these.
+
+Remove ready rejected production selectors before mechanical moves, retaining
+primitives only for named fallbacks, active oracles or current research. Search
+runtime, tests and published protocols before deletion and name its focused gate.
+Keep deletion, policy extraction and movement separate from tuning, arithmetic
+and default changes. Preserve imports during migration, then retire temporary
+re-exports after their compatibility window. Update PLAN when boundaries are
+implemented. Keep primitive wrappers near their families; do not introduce an
+untyped universal pointer launcher. Prove GGUF boundaries avoid import cycles
+before applying them to PARO.
+
+Implementation completion still requires owner-bound policy, removal of rejected
+production reachability, a bounded indexed ledger and one scheduler/state/KV
+commit owner per request. RF-2 alone satisfies only wheel exclusion. A completed
+triage manifest does not establish those implementation outcomes; the user's
+current sweep allows these named decisions to remain deferred for later review.

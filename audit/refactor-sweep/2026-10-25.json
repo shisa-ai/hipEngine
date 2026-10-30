@@ -4735,8 +4735,9 @@
       "start_line": 4075,
       "end_line": 4220,
       "sha256": "cadbb0bc1896b98e7b7a17c3c225cdbbb31591b1e34d6547d1ce512ddecb2a18",
-      "status": "partial-inventory-reconciled",
-      "evidence": ["Historical count inventory preserved atc5ded0003 and removed from active prose. RF1–RF12/deletion/keep-set review remains open; scripts packaging/import debt confirmed. Docs/audit pass. worklog/entries/20261030T073342.870846Z-cleanup-cleanup-r0187-inventory-e08286.md."],
+      "status": "triaged-with-deferred-rf-decisions",
+      "evidence": [
+        "RF1-RF12 and deletion rows individually dispositioned; keep-set, execution rules and completion distinction preserved in bottom R0187. Illustrative paths archived at c5ded0003; no deferred migration claimed complete.","Historical count inventory preserved atc5ded0003 and removed from active prose. RF1–RF12/deletion/keep-set review remains open; scripts packaging/import debt confirmed. Docs/audit pass. worklog/entries/20261030T073342.870846Z-cleanup-cleanup-r0187-inventory-e08286.md."],
       "subitems": [
         {
           "line": 4084,
@@ -4766,7 +4767,7 @@
         {
           "line": 4102,
           "text": "- `scripts/` contains **577 tracked Python programs / 289,396 lines** and is",
-          "status": "resolved-history-preserved-rf2-open"
+          "status": "resolved-history-preserved-rf2-fixed"
         },
         {
           "line": 4109,
@@ -4781,47 +4782,47 @@
         {
           "line": 4122,
           "text": "### Non-negotiable keep set",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4126,
           "text": "1. registered strict fused/unfused fallback chains;",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4127,
           "text": "2. complete-`KVLiveSpans` generic attention/KV-write routes and unsupported-",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4129,
           "text": "3. scalar c1, segmented arbitrary-length, and transactional verifier oracles",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4131,
           "text": "4. `kernels/cpu_reference/`, strict fixtures, lifecycle/isolation gates, and",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4133,
           "text": "5. explicit fallbacks still named by an open production-profile or hardware",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4140,
           "text": "### Priority architecture work",
-          "status": "pending"
+          "status": "structural-heading-rows-dispositioned"
         },
         {
           "line": 4142,
           "text": "| ID | Priority | Problem | Target design / completion gate |",
-          "status": "pending"
+          "status": "structural-table-header"
         },
         {
           "line": 4143,
           "text": "| --- | --- | --- | --- |",
-          "status": "pending"
+          "status": "structural-table-separator"
         },
         {
           "line": 4144,
@@ -4898,17 +4899,17 @@
         {
           "line": 4157,
           "text": "### Verified deletion queue",
-          "status": "pending"
+          "status": "structural-heading-rows-dispositioned"
         },
         {
           "line": 4162,
           "text": "| Scope | Why it is ready | What to remove / what to keep |",
-          "status": "pending"
+          "status": "structural-table-header"
         },
         {
           "line": 4163,
           "text": "| --- | --- | --- |",
-          "status": "pending"
+          "status": "structural-table-separator"
         },
         {
           "line": 4164,
@@ -4931,42 +4932,42 @@
         {
           "line": 4168,
           "text": "### Target organization",
-          "status": "pending"
+          "status": "archived-proposal-rf6-rf7-rf8-own-decisions"
         },
         {
           "line": 4198,
           "text": "### Refactor execution rules",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4200,
           "text": "1. Remove ready rejected branches before moving production code; otherwise a",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4202,
           "text": "2. One logical unit is either deletion, policy extraction, or file movement \u2014",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4204,
           "text": "3. Before deleting a path, prove current default and strict fallback ownership,",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4206,
           "text": "4. Preserve import compatibility during module splits, then remove re-exports",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4208,
           "text": "5. Update PLAN only when a proposed target boundary becomes implemented",
-          "status": "pending"
+          "status": "preserved-bottom-r0187"
         },
         {
           "line": 4212,
           "text": "### Completion signals",
-          "status": "pending"
+          "status": "preserved-implementation-not-triage-completion"
         }
       ]
     },
