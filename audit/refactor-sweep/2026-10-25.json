@@ -4856,7 +4856,8 @@
         {
           "line": 4149,
           "text": "| RF-6 | P1 | GGUF/PARO runners combine policy, allocation, all layer families, verification, graph capture, and session lifecycle in giant classes. | Extract pure policy/shape planning first, then scratch/state ownership, full attention, linear attention, MoE, verification, and session fa\u00e7ade modules. Preserve public imports through thin compatibility fa\u00e7ades during migration. No numerical or dispatch change may share a move-only commit. |",
-          "status": "pending"
+          "status": "deferred-remaining-runner-boundaries",
+          "evidence": ["Completed GGUF prefill/state/layer/diagnostic extractions reconciled with current imports and October25 completion record. Remaining bulk/verification/graph/PARO design deferred. 177 tests/docs/audit pass. worklog/entries/20261030T080625.130661Z-cleanup-cleanup-r0187-rf6-743062.md."]
         },
         {
           "line": 4150,

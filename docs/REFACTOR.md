@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-6 | P1 | GGUF/PARO runners combine policy, allocation, all layer families, verification, graph capture, and session lifecycle in giant classes. | Extract pure policy/shape planning first, then scratch/state ownership, full attention, linear attention, MoE, verification, and session façade modules. Preserve public imports through thin compatibility façades during migration. No numerical or dispatch change may share a move-only commit. |
 | RF-7 | P1 | `server/api.py` combines unrelated protocol and execution concerns; `create_app()` is a 4K-line closure tree. | Split OpenAI request/response schemas, tool/structured validation, SSE/stream accounting, metrics, model lifecycle, and route handlers. `create_app()` should compose routers/services rather than define the implementation. The server must call one typed generation service; it must not become a second scheduler. |
 | RF-8 | P1 | Backend package `__init__.py` files are capability databases, alias registrars, and implementation code. | Split backend policy by model/quant/subsystem into immutable manifest modules, with one package aggregator and validation. Keep the four-axis registry; do not replace it with backend conditionals. Generate or declaratively register repetitive aliases only when source-lineage and exact-key tests remain readable. |
 | RF-9 | P1 | `laguna_kv_attention.hip` (18,799 lines), its Python wrapper (11,275), and 768-line registration function mix production and rejected geometry ladders. | Partition KV write, global decode/prefill, SWA decode/prefill, and experiment-only families. Delete unwrapped rejected bodies; move retained negative controls to explicit test-only builds where practical. Keep production kernel names and lineage stable during mechanical splits. |
@@ -9816,3 +9815,26 @@ Only then remove duplicated captures from tracked storage. Preserve historical
 bytes and decisions; do not rewrite measured results to fit a size target.
 This triage removes the stale directory-size claim, not artifacts, and does not
 claim the schema or storage migration is implemented.
+
+### RF-6 / R0187 — Finish runner boundaries without duplicating extracted owners
+
+GGUF already delegates prefill planning, canonical/provisional state storage,
+prefix snapshots, scalar attention/shared feed-forward execution, and diagnostic
+capture/timing to `qwen35_gguf_*` modules. Their integrated validation is recorded
+in `worklog/entries/20261025T121408.652145Z-cleanup-qwen-refactor-validation-6f9090.md`;
+`docs/reference/QWEN-GGUF-RUNTIME.md` describes the implemented boundaries.
+Do not recreate these owners inside the historical proposed package tree.
+
+**Deferred boundary design:** split remaining bulk attention orchestration,
+full-stack verification and graph lifetime only with explicit inputs and one
+session/transaction owner. Decide which GGUF boundaries are reusable by PARO
+before decomposing `qwen35_paro.py`; a whole-runner proxy or implicit-session
+mixin is not an ownership split. Preserve import compatibility through thin
+facades during migration and give each compatibility export a removal plan.
+
+Clearing checks: separate move-only units from numerical/dispatch changes;
+compare selected operations and output/state against the pre-move control,
+exercise failure cleanup, graph lifetime, prefix restore and cancellation/reuse,
+and verify public ordinary and speculative requests. Update PLAN only for
+implemented boundaries. The prior bounded GGUF extraction is complete; this
+remaining GGUF/PARO decomposition is not.
