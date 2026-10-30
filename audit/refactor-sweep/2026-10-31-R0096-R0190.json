@@ -1,0 +1,2874 @@
+{
+ "schema": 1,
+ "kind": "refactor-sweep-triage",
+ "source": "docs/REFACTOR.md",
+ "inventory": "audit/refactor-sweep/2026-10-25.json",
+ "inventory_base_commit": "cfe1987b41ba99d22a8caa4a0bf8c3b9a4bc710e",
+ "current_head": "c7b7e695c",
+ "current_source_sha256": "6d38221277da9d447634c95114c0ee73ef14bb6c46a98ea9e66bf563dd91191e",
+ "scope": "ordinals 96-190",
+ "generated_at": "2026-10-31",
+ "line_reference_note": "file:line citations are current-worktree HEAD line numbers (current_head above), not inventory line numbers. current_source_sha256 identifies the ledger text audited. inventory_refs resolve the heading's R-ids to the frozen 2026-10-25 inventory; headings whose id is not an R-number are sub-items from the ledger's deferred section and have no inventory section.",
+ "method": {
+  "primary_rubric": {
+   "local_implementation": "Specified engineering migration, repair or implementation remains and can start without new product direction.",
+   "measurement_first": "Profiling, evaluation or root-cause investigation must precede a justified implementation choice; no code change is yet warranted by evidence.",
+   "validation_only": "Code work is done; only tests, benchmarks or public-route validation remain.",
+   "product_decision": "A production default, arithmetic composition, storage lifetime, support/admission or public semantic/API trade-off needs direction.",
+   "diagnostic_disposition": "The entry asks whether a diagnostic/comparison/trace/profiler interface is kept or retired; no production default change is at stake.",
+   "missing_input": "The first action requires an absent named artifact, host or fixture.",
+   "completed": "The entry's stated action is done and no subaction prevents removal.",
+   "unclear": "Evidence is insufficient to classify."
+  },
+  "rules": [
+   "Hardware checks after code changes are completion gates, not primary starting blockers.",
+   "A live diagnostic is not retired by this audit; retention/retirement remains an explicit decision.",
+   "Mixed-action entries are classified by the first blocking dependency, not by verb count.",
+   "measurement_first is used when the next step is candidate screening, profiling or root-cause investigation; validation_only is reserved for closing an already-implemented change.",
+   "Historical absence and verified absence are distinguished in missing_inputs."
+  ]
+ },
+ "environment": {
+  "host_gpu": "gfx1151 (AMD RYZEN AI MAX+ 395 / Radeon 8060S; PCI 1002:1586)",
+  "devices": "/dev/kfd and /dev/dri/renderD128 present",
+  "hip_userspace": "A bare shell cannot load libamdhip64.so; that is a default-shell setup gap, not absent hardware. `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh <script.py>` execs therock's python with LD_LIBRARY_PATH/HIP_PATH set; under it hipGetDeviceCount returns 0 with 1 device, rocminfo reports gfx1151 (AMD Radeon 8060S), and rocprofv3 resolves at ~/miniforge3/envs/therock/bin/rocprofv3. The script requires USER in the environment and is not executable, so invoke it with bash.",
+  "gfx1100_xtx": "Absent; no gfx1100 device is visible.",
+  "laguna_weights": "Absent; only a 7 MB Hugging Face config/tokenizer cache exists.",
+  "models_present": [
+   "Qwen3.8-27B-UD-Q4_K_M.gguf",
+   "Qwen3.8-27B-UD-Q4_K_S.gguf",
+   "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+   "~/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16"
+  ],
+  "models_absent": [
+   "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf (R0385 test fixture)",
+   "any Laguna GGUF weights"
+  ]
+ },
+ "corrections": [
+  "R0428 is not completed. The two CLI defects are fixed, but the QK-unroll replay interface and all four removal targets (HIP export, Python wrapper, package export, --qk-variants handling) are live; the retention decision is the remaining blocker.",
+  "R0435 is not completed. Both diagnostics now report an unset bounded-reset flag as 1 (matching the runtime default), but comparison-control ownership and public lifecycle validation remain; the full-clear comparison is still live.",
+  "R0446 is outside this range and was not audited.",
+  "ROCm is not absent from the host. A bare shell fails to load libamdhip64.so, but /tmp/qwen38fn-gufo-20261021/run-hip.sh loads the therock SDK, hipGetDeviceCount succeeds with one device, rocminfo names gfx1151 (AMD Radeon 8060S) and rocprofv3 resolves. Entries that say 'local ROCm/Laguna resources remain unavailable' are only half right: the Laguna weights are verified absent, the ROCm runtime and profiler are available with the right environment.",
+  "The host is gfx1151 (Radeon 8060S), not gfx1100/XTX. R0387 and R0406 genuinely need a gfx1100/XTX host; their missing input is real and cannot be substituted.",
+  "The Laguna artifact blocker in R0313-R0348 blocks public/full-model validation, not the selector, fixture, materializer and resolver-table migrations. Those can start now; the artifact is a later completion gate.",
+  "Every gfx1151-runnable item in this range can be executed today via /tmp/qwen38fn-gufo-20261021/run-hip.sh; only gfx1100/XTX, CUDA and Laguna-weight items are genuinely blocked. Default-shell HIP failure must not be recorded as a hardware or capability miss.",
+  "R0354 is confirmed unfinished implementation: the writer still persists independent 'tiles' payloads and _materialize_q4_t16_dual_pair interleaves them at load time. The versioned paired cache payload does not exist.",
+  "R0312's layout boolean is already removed; the remaining work is common scratch-budget integration for the head-major/gapped resource controls, not re-adding the boolean.",
+  "R0392's route-counter and cursor-handoff defects are already fixed; only the optional marker-free profiler interface remains. No marker-free mode is implemented; the child-mode procedure is documented in docs/RDNA3-TUNING-GUIDE.md.",
+  "R0403's promotion is complete and both alias controls are default-on rollback/comparison interfaces; only the retain/replace/retire disposition remains.",
+  "R0412's and R0415's control migrations are complete (runner-owned H256 mode; published gdn_register_prefill with the retired process selector ignored). Their remaining items are the generic-wave retention decision and future decode optimization, respectively.",
+  "R0425's pre-binder conflict guard is working protection, not stale debt. Removing it before the owner-field migration would remove working protection.",
+  "R0426 is a triage closure, not implementation of the deferred wide-row/census/library/diagnostic interfaces; the R0460 manifest dependency remains open.",
+  "R0432 has historical evaluations and a fixed historical WMMA teacher; it is not awaiting its first gate. The current production-composition decision remains.",
+  "R0434's release-cycle removal condition is invalid because active comparison callers remain; the env control and Gemma4 exact-thread scope are live.",
+  "R0438's retirement condition (wait for historical artifact references to disappear) conflicts with preserving evidence; the WY arm still has a direct recurrence-screen caller.",
+  "No entry in 96-190 is completed. Several entries have completed subitems, but each retains at least one action, decision or validation that prevents whole-entry removal."
+ ],
+ "summary": {
+  "total": 95,
+  "counts": {
+   "diagnostic_disposition": 15,
+   "local_implementation": 69,
+   "product_decision": 5,
+   "measurement_first": 3,
+   "missing_input": 3
+  },
+  "no_entry_is_completed": "Every entry in 96-190 retains at least one action, decision or validation.",
+  "can_start_before_hardware_validation": [
+   "R0281-NATIVE-CYCLE / R0384",
+   "R0281-PARO-NATIVE",
+   "R0281-AR-STREAM",
+   "R0281-MTP-DRAFT-EXECUTOR",
+   "R0281-TARGET-ORACLE",
+   "R0281-TAIL-RMS",
+   "R0281-INT8-POLICY",
+   "R0281-Q8-EXPERIMENTS",
+   "R0281-PARO-INT8-PREFILL",
+   "R0281-SAMPLER / R0508",
+   "R0281-MOE-GRAPH",
+   "R0281-DENSE-Q8",
+   "R0281-DRAFT-DENSE-Q8 / R0303",
+   "R0281-DRAFT-X8 / R0294\u2013R0298",
+   "R0313 / R0314 / R0315 / R0316 / R0318 / R0320",
+   "R0319",
+   "R0375/R0376",
+   "R0373/R0374",
+   "R0371",
+   "R0370",
+   "R0368",
+   "R0367",
+   "R0354",
+   "R0353",
+   "R0349\u2013R0351",
+   "R0343\u2013R0348",
+   "R0341",
+   "R0340",
+   "R0336",
+   "R0333\u2013R0335",
+   "R0331",
+   "R0330",
+   "R0329",
+   "R0327 / R0328",
+   "R0324 / R0325 / R0326",
+   "R0323",
+   "R0322",
+   "R0321",
+   "R0312",
+   "R0311",
+   "R0310",
+   "R0307",
+   "R0306",
+   "R0305",
+   "R0304",
+   "R0302",
+   "R0301",
+   "R0281-SELECTED-X8",
+   "R0281-PARO-PROVIDER",
+   "R0281-TOPK",
+   "R0281-CONTEXT",
+   "R0281-TARGET-POLICY / R0284 / R0299 / R0300",
+   "R0281-CAPTURE",
+   "R0281-METADATA",
+   "R0281-Q8-WAVES",
+   "R0281-ROUTER-TILES",
+   "R0281-PREFILL-DEBUG",
+   "R0281-GDN / R0377",
+   "R0281-SELECTED-PREFILL",
+   "R0281-ROWTILE-CONTROL",
+   "R0281-SELECTED-DP4A / R0283 / R0288",
+   "R0281-DRAFT-CHAIN",
+   "R0282-PREFILL-POLICY",
+   "R0282-DFLASH-DRAFTER",
+   "R0285 / R0286",
+   "R0287",
+   "R0291 / R0293",
+   "R0380",
+   "R0381",
+   "R0382",
+   "R0388",
+   "R0389",
+   "R0392",
+   "R0393-Q6",
+   "R0393-Q5",
+   "R0402",
+   "R0403",
+   "R0407",
+   "R0410",
+   "R0412",
+   "R0415",
+   "R0421",
+   "R0422",
+   "R0425",
+   "R0426",
+   "R0427",
+   "R0428",
+   "R0432",
+   "R0434",
+   "R0435",
+   "R0438"
+  ],
+  "cannot_start": [
+   {
+    "id": "R0385",
+    "ordinal": 166,
+    "why": "the recorded reproduction needs the absent /models/gguf/Qwen3.6-27B-Q4_K_M.gguf fixture"
+   },
+   {
+    "id": "R0387",
+    "ordinal": 167,
+    "why": "the requested profile is a gfx1100 measurement; this host is gfx1151"
+   },
+   {
+    "id": "R0404",
+    "ordinal": 175,
+    "why": "the calibrated evaluator run is specified for a gfx1100 host and an unnamed calibrated artifact"
+   },
+   {
+    "id": "R0406",
+    "ordinal": 176,
+    "why": "the probe measures an RX 7900 XTX context bound; no gfx1100 device is present"
+   }
+  ],
+  "blocked_on_laguna_weights": [
+   "R0313 / R0314 / R0315 / R0316 / R0318 / R0320",
+   "R0319",
+   "R0368",
+   "R0367",
+   "R0354",
+   "R0353",
+   "R0349\u2013R0351",
+   "R0343\u2013R0348",
+   "R0341",
+   "R0340",
+   "R0336",
+   "R0333\u2013R0335",
+   "R0331",
+   "R0330",
+   "R0329",
+   "R0327 / R0328",
+   "R0324 / R0325 / R0326",
+   "R0323",
+   "R0322",
+   "R0321",
+   "R0281-ROUTER-TILES"
+  ],
+  "blocked_on_gfx1100_or_xtx": [
+   "R0387",
+   "R0393-Q6",
+   "R0393-Q5",
+   "R0404",
+   "R0406",
+   "R0407"
+  ],
+  "blocked_on_cuda_host": [
+   "R0370"
+  ]
+ },
+ "entries": [
+  {
+   "id": "R0281-NATIVE-CYCLE / R0384",
+   "ordinal": 96,
+   "title": "Native diagnostic interfaces and graph composition",
+   "inventory_refs": [
+    {
+     "id": "R0384",
+     "start_line": 8623,
+     "end_line": 8638,
+     "sha256": "a313ec7f5080da2a2d4cfab391d34c7a0c7c0cbd3984b752b01b9d6bfaa2bbdd",
+     "inventory_status": "resolved-superseded-routing-blocker-cache-contract-consolidated"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Decide whether the four native diagnostic stages (target cycle, proposal cycle, proposal graph, complete cycle) remain supported interfaces or are replaced by one explicit stage selector; if replacing, preserve route names, effective options, result metadata and profiler comparisons. R0384's blanket long-graph routing blocker was already removed/consolidated (worklog 20261029T071419.173707Z); only the bounded graph-cache contract remains under this entry.",
+   "executed_evidence": [
+    "scripts/gguf_mtp_bench.py:1725-1751 keeps separate native_spec_target_cycle, native_spec_complete_cycle and native_spec_proposal_graph gates",
+    "scripts/gguf_mtp_bench.py:2294-2322 runs the complete-cycle path with native_proposal_graph as an independent argument",
+    "worklog/entries/20261028T024831.513171Z-cleanup-refactor-r0281-native-cycle-170386.md: 'Preserve native-cycle diagnostic interfaces and move their remaining retirement and graph-composition decision to the bottom'"
+   ],
+   "completion_gate": "Run tests/test_unit_gguf_mtp_bench_metrics.py, tests/test_unit_gguf_ar_mtp_suite.py, tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py, tests/test_unit_native_spec_cycle.py, tests/test_unit_mtp_resident_draft_device_commit.py plus native-cycle graph/live nodes; a replacement also needs real diagnostic and public requests confirming stage selection, accepted-row/cursor ownership, B1/B2 and fallback shapes.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (GPU present: gfx1151 Radeon 8060S; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "R0384's blanket long-graph routing blocker was already removed/consolidated (worklog 20261029T071419.173707Z); only the bounded graph-cache contract remains under this entry.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-PARO-NATIVE",
+   "ordinal": 97,
+   "title": "Provider graph and selected-commit control migration",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Replace the two process-wide PARO native target selectors with profile-owned submission/commit variants (or retain them with explicit ownership), preserving provider-specific repair, result metadata and capture bindings. The old release-window trigger and cross-provider speed prerequisite are not requirements. Missing backend registration is an implementation gap, not evidence the wrapper cannot execute.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_paro_runner.py:11216 reads HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH",
+    "hipengine/runtime/qwen35_paro_runner.py:11253 reads HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT",
+    "hipengine/runtime/qwen35_paro_runner.py:11216-11253 are per-call environment reads rather than session/profile fields"
+   ],
+   "completion_gate": "Exercise both variants in tests/test_unit_qwen35_resident_batch_layout.py, tests/test_unit_qwen35_paro_verify_graph_cache.py and provider-launcher nodes in tests/test_gpu_native_spec_cycle_graph.py; migration needs real PARO/DFlash requests confirming selected stages, active/inactive and unsupported shapes, hidden-capture/cursor ownership, buckets, repeat output, fault rollback and teardown.",
+   "hardware_gate": "hip_gfx1100 (PARO native target graph; gfx1151 present, gfx1100 absent)",
+   "missing_inputs": [],
+   "correction": "The old release-window trigger and cross-provider speed prerequisite are not requirements. Missing backend registration is an implementation gap, not evidence the wrapper cannot execute.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-AR-STREAM",
+   "ordinal": 98,
+   "title": "Stream decode control and serial diagnostic migration",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Provide an explicit resolved serial/stream/packed comparison control or a designated serial oracle, then migrate the env reader, writers, route metadata and cleanup tests together.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_gguf.py:573 defines _GGUF_AR_STREAM_DECODE_ENV",
+    "hipengine/generation/qwen35_gguf.py:879 reads it as a boolean default-on control",
+    "scripts/gguf_concurrency_baseline.py, scripts/gguf_live_server_bench.py, scripts/gguf_production_load_gate.py and tests still read the same env name"
+   ],
+   "completion_gate": "Run tests/test_unit_gguf_ar_decode_control.py, tests/test_unit_gguf_concurrency_baseline.py, tests/test_unit_gguf_live_server_bench.py, tests/test_unit_server_f1_concurrency_bench.py, tests/test_integration_gguf_production_load_gate.py and stream/packed/scalar plus above-eight chunk nodes; migration needs real default, explicit serial and stream requests below/above eight and an unrelated width.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": null,
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-MTP-DRAFT-EXECUTOR",
+   "ordinal": 99,
+   "title": "Compatibility draft/verifier worker lifetime",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Decide whether compatibility draft/verifier execution is retired through the existing loop extraction or given a bounded request/owner worker-pool lifetime; do not add another global switch. The env-reader retirement is complete; the remaining item is worker lifetime, not a stale flag. Do not label a compatibility-only worker change as a resident scheduler improvement.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_gguf.py:5568 _try_draft_mtp_serving_slots_streams and :5816 _try_verify_mtp_serving_cycle_chunks_streams still implement per-phase stream workers",
+    "hipengine/generation/qwen35_gguf.py:6049 _close_mtp_serving_slots owns slot teardown",
+    "The two compatibility env readers were removed; HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT/VERIFY now appear only in docs/ENVS.md and tests"
+   ],
+   "completion_gate": "Run stream-draft, chunked-verifier and MTP2 nodes in tests/test_live_generation_qwen35_gguf_sampling.py, tests/test_unit_gguf_mtp_serving_chunk_policy.py and the GGUF MTP2 seam tests; a pool change needs direct compatibility requests plus public LLM.generate()/serving validation recording the actual route, repeat output, shrinking groups, cancellation, drained futures and zero leaked streams.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The env-reader retirement is complete; the remaining item is worker lifetime, not a stale flag. Do not label a compatibility-only worker change as a resident scheduler improvement.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-TARGET-ORACLE",
+   "ordinal": 100,
+   "title": "Scalar row oracle versus native verification",
+   "inventory_refs": [],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Designate Qwen35GGUFResidentSession.step_rows()/verify_rows() as supported diagnostic infrastructure and remove the retirement item, or migrate its full-logit and layer-boundary consumers before deleting it. Strict unfused and independent scalar comparison paths are not duplicate production execution; do not replace them with the faster candidate being checked.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:21972 def step_rows",
+    "hipengine/runtime/qwen35_gguf_runner.py:22135 def verify_rows",
+    "tests/test_unit_gguf_target_rows_oracle.py and tests/test_live_qwen35_gguf_target_rows.py exercise the scalar oracle"
+   ],
+   "completion_gate": "Run tests/test_unit_gguf_target_rows_oracle.py, target-row nodes in tests/test_live_qwen35_gguf_target_rows.py, and native/serial accepted-row/cursor tests in tests/test_unit_qwen35_gguf_mtp2_seam.py; an oracle migration needs real scalar/native boundary and full-logit comparisons plus unsupported-topology refusal with no mutation.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 for the live comparison; none for the disposition itself",
+   "missing_inputs": [],
+   "correction": "Strict unfused and independent scalar comparison paths are not duplicate production execution; do not replace them with the faster candidate being checked.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-TAIL-RMS",
+   "ordinal": 101,
+   "title": "Chained norms and MoE graph diagnostic migration",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Give the per-layer MoE graph comparison an explicit unchained construction policy (or retire that route and its caller coherently) without disabling production norm chaining.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9485 defines HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS",
+    "hipengine/runtime/qwen35_gguf_runner.py:9753 _gguf_moe_tail_next_rms_enabled defaults True",
+    "hipengine/runtime/qwen35_gguf_runner.py:4270 gates chain_next_rms on is_moe and the tail control"
+   ],
+   "completion_gate": "Run tests/test_unit_qwen35_gguf_moe_tail_next_rms_routing.py and tests/test_unit_qwen35_gguf_iq_dispatch.py plus BF16/FP16 fused/unfused parity; a kept graph comparison needs live capture/replay counters, and a reader change needs public short/long/ragged decode with route attribution.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": null,
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-INT8-POLICY",
+   "ordinal": 102,
+   "title": "Legacy context and layout diagnostic controls",
+   "inventory_refs": [],
+   "disposition": "product_decision",
+   "verdict": "Decide the scoped INT8-KV policy that separates a recorded-failure override (HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG) from storage-layout selection (tail4_hadamard_group32), then migrate both generator and resident-runner readers together. Completed mirror-free, graph and MTP implementation plus obsolete evidence-based admission tasks were already removed; the remaining item is the storage/override policy, not a missing implementation.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_gguf.py:577 lists HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG",
+    "hipengine/runtime/qwen35_gguf_runner.py:9149 defines the same env; :10922 handles tail4_hadamard_group32",
+    "scripts/gguf_server_allocation_probe.py and scripts/qwen38_int8_server_context_soak.py still read the override"
+   ],
+   "completion_gate": "Run KV-capability, INT8-policy, packed-verifier-layout, INT8-MTP and per-layer-oracle units across contexts below/above/unrelated to the mirror threshold; exercise public direct/mirrored requests, explicit overrides and genuine capability refusals on both HIP backends.",
+   "hardware_gate": "hip_gfx1100 and hip_gfx1151 (gfx1151 present; gfx1100 absent)",
+   "missing_inputs": [],
+   "correction": "Completed mirror-free, graph and MTP implementation plus obsolete evidence-based admission tasks were already removed; the remaining item is the storage/override policy, not a missing implementation.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-Q8-EXPERIMENTS",
+   "ordinal": 103,
+   "title": "Standalone raw-Q4/Q8_1 comparison retention",
+   "inventory_refs": [],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Keep the standalone raw-Q4/Q8_1 modes as explicit numerical/design controls or archive their performance interfaces while retaining parity references that still serve later work.",
+   "executed_evidence": [
+    "scripts/gguf_q4_k_t16_selected_prefill_microbench.py:168 --mode and :209/:264 mode families (q8-1-ds4-mmq32, selected-wmma, ...)",
+    "tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py exercises the modes",
+    "worklog/entries/20261028T045156.566782Z-cleanup-refactor-r0281-q8-experiments-febc49.md keeps this as a live microbench/numerical decision"
+   ],
+   "completion_gate": "Enumerate each mode's wrapper, symbol, registry key, tests and non-test consumers before removal; run the microbench --help, registry/build-plan, common-wrapper and preview nodes, then affected device parity if kernels change.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 for device parity; none for the disposition",
+   "missing_inputs": [],
+   "correction": null,
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-PARO-INT8-PREFILL",
+   "ordinal": 104,
+   "title": "Oracle/streaming resource-policy ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Move the operator INT8 prefill resource overrides into the resolved prefill/resource plan (or retain them as explicit overrides) and update result metadata, preserving invalid-value errors and oracle/scratch lifetimes.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_paro_runner.py:150-155 defines HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION, _STREAMING_MIN_TOKENS, _LOW_MEMORY_TOTAL_GIB and _ORACLE_RESERVE_MIB",
+    "hipengine/runtime/qwen35_paro_runner.py reads these as ambient environment values during prefill planning"
+   ],
+   "completion_gate": "Migrate ordinary and packed prefill metadata/readers and workspace-policy tests together; run tests/test_unit_qwen35_prefill_workspace_policy.py and tests/test_unit_qwen35_resident_batch_layout.py, then public uniform/mixed requests with oracle/direct selection and resource rejection.",
+   "hardware_gate": "hip_gfx1100 (PARO INT8 prefill; gfx1100 absent, gfx1151 present)",
+   "missing_inputs": [],
+   "correction": null,
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-SAMPLER / R0508",
+   "ordinal": 105,
+   "title": "Native placement rollback and algorithm controls",
+   "inventory_refs": [
+    {
+     "id": "R0508",
+     "start_line": 12085,
+     "end_line": 12111,
+     "sha256": "968afa2c549b44430c451030060e9012f8ab89a9d53de75c9cb4fbd4421304c0",
+     "inventory_status": "deferred-sampler-controls-merged-R0281-SAMPLER"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the host-placement and strict-algorithm sampler controls into a scoped sampler policy (or keep them as supported diagnostics), without broadening forced/dynamic request support. Do not delete working native workspace wiring because an older tool scenario failed. Host/native repeat stability does not mean their RNG streams must match.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_gguf.py:13893 reads HIPENGINE_QWEN35_NATIVE_SAMPLER",
+    "hipengine/generation/qwen35_paro.py, hipengine/server/api.py and scripts/gguf_native_sampler_gate.py also read it",
+    "tests/test_unit_gguf_native_sampler_default.py and tests/test_unit_gguf_sampled_prefill_owner.py pin current behavior"
+   ],
+   "completion_gate": "Migrate profiler, generator and capabilities-endpoint consumers together; run GGUF default/prefill-owner, PARO generator, sampler-contract and capabilities tests plus fixed-seed public requests with packed/staggered rows, forced/dynamic fallback, cancellation/refill and cleanup.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Do not delete working native workspace wiring because an older tool scenario failed. Host/native repeat stability does not mean their RNG streams must match.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-MOE-GRAPH",
+   "ordinal": 106,
+   "title": "Scalar per-layer graph diagnostic ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Migrate HIPENGINE_GGUF_MOE_GRAPH to scoped diagnostic construction (or retire its session wiring and live comparison together), coordinating the tail-RMS migration and keeping standalone graph-cache consumers. Do not silently disable production norm chaining to make the optional graph engage.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9526 defines HIPENGINE_GGUF_MOE_GRAPH",
+    "hipengine/runtime/qwen35_gguf_runner.py:11704 _env_flag default False; :14158 keeps the per-layer graph handle",
+    "tests/test_live_qwen35_gguf_moe_graph_parity.py and tests/test_unit_qwen35_gguf_moe_tail_next_rms_routing.py pin routing"
+   ],
+   "completion_gate": "Coordinate tail-RMS, G5/PM4 off writers, benchmark metadata, session close and whole-step incompatibility; run tail-RMS routing, Qwen4Exp graph-control and graph-cache upload contracts, then the live MoE parity gate with capture/replay/reject counters.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Do not silently disable production norm chaining to make the optional graph engage.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-DENSE-Q8",
+   "ordinal": 107,
+   "title": "Verifier sidecar placement and compatibility controls",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the loose dense-Q8 sidecar/placement controls into one scoped route policy (or keep the named compatibility comparisons), preserving load-time placement and pair/single/triple callers. Retire pair-only/all variants only with their suite/CLI consumers; do not turn a named comparison into a silent default-path rerun.",
+   "executed_evidence": [
+    "hipengine/loading/qwen35_gguf_materialize.py:103-104 defines HIPENGINE_GGUF_Q8_0_RAW_SIDECAR and HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL",
+    "hipengine/loading/qwen35_gguf_materialize.py:1206-1220 parses the sidecar/all policy",
+    "hipengine/runtime/qwen35_gguf_runner.py:9496/9506 and :11193 read DENSE_Q8_DP4A_ALL and VERIFY_F32_LINEAR_PROJECTIONS"
+   ],
+   "completion_gate": "Migrate loader plan/materialization, pair/single/triple callers, bench setup/provenance and suite routes together; run CPU sidecar-scope/row-domain contracts and dense-Q8 routing, then public short/long decode with logits/state oracles and cleanup.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Retire pair-only/all variants only with their suite/CLI consumers; do not turn a named comparison into a silent default-path rerun.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-DRAFT-DENSE-Q8 / R0303",
+   "ordinal": 108,
+   "title": "Resident draft stage-policy migration",
+   "inventory_refs": [
+    {
+     "id": "R0303",
+     "start_line": 6851,
+     "end_line": 6867,
+     "sha256": "9587fe006aff956f7bce820243e5be69de6160749acb05855d38b330e57b907d",
+     "inventory_status": "deferred-existing-legacy-draft-stage-policy"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the resident draft dense-Q8 stage selector to a constructor-owned stage policy (or keep explicit numerical comparison modes), updating bench/profiler and named suite callers together. Do not combine draft and verifier controls, or silently turn a stage-specific comparison into the default float path.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_resident_draft.py:128 defines HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES",
+    "hipengine/speculative/mtp_resident_draft.py:276-296 parses stage names and raises on unknown stages",
+    "scripts/gguf_mtp_bench.py and scripts/gguf_mtp_draft_rocprof.py still write the env"
+   ],
+   "completion_gate": "Run parser precedence/domain, single/dual/triple routing, upload ownership, CLI and suite contracts; exercise changed stages through the live compatibility caller with initial catch-up, proposal, reject/commit, reset/cancellation and cleanup.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Do not combine draft and verifier controls, or silently turn a stage-specific comparison into the default float path.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-DRAFT-X8 / R0294\u2013R0298",
+   "ordinal": 109,
+   "title": "Resident Q6 top-1 arithmetic, layout and sidecar ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the Q6 top-1 draft shape/dp4a/sidecar controls into one owner-local draft-head plan (or preserve explicit layout comparisons), keeping target materialization and the Generation-2 NextN provider separate. The rejected suite presets were removed, but the shape/scratch ownership decision remains; x8_dscale, row, scalehoist, pack8_llama and pack16 comparisons are still live and have different reduction domains.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_resident_draft.py:628 reads HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A",
+    "hipengine/speculative/mtp_resident_draft.py:632 enumerates pack8/pack16/pack8_llama/pack8_scalehoist/row/x8/x8_dscale",
+    "hipengine/loading/qwen35_gguf_materialize.py:105 defines HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"
+   ],
+   "completion_gate": "Migrate draft construction, upload-cache names, top-1 stage/combined callers, bench/profiler fields and suite aliases; run capped-layout round-trip, exact q8_1/Q6 top-1 oracles, staged/combined gather routing and raw-head fallback.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The rejected suite presets were removed, but the shape/scratch ownership decision remains; x8_dscale, row, scalehoist, pack8_llama and pack16 comparisons are still live and have different reduction domains.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0313 / R0314 / R0315 / R0316 / R0318 / R0320",
+   "ordinal": 110,
+   "title": "Laguna legacy MMQ selector migration",
+   "inventory_refs": [
+    {
+     "id": "R0313",
+     "start_line": 7071,
+     "end_line": 7083,
+     "sha256": "1f1cf79b1348f2f51ddf8d338392d697af9d7e63356ec51476b81fa757d9ba98",
+     "inventory_status": "deferred-rowvec-fixture-migration-and-local-public-artifact"
+    },
+    {
+     "id": "R0314",
+     "start_line": 7084,
+     "end_line": 7097,
+     "sha256": "2fb30b5a7341311e505aa8d5944553b75b3b68278c8b28521397cd4c5798beb0",
+     "inventory_status": "deferred-rowvec-fixture-migration-and-local-public-artifact"
+    },
+    {
+     "id": "R0315",
+     "start_line": 7098,
+     "end_line": 7112,
+     "sha256": "fd49179ecdf15dbd3211a304b3725e5721b19fd9ae9fde7a1f50375682ab4cf8",
+     "inventory_status": "deferred-consolidated-laguna-legacy-mmq-migration"
+    },
+    {
+     "id": "R0316",
+     "start_line": 7113,
+     "end_line": 7126,
+     "sha256": "6d9ac9bbf5f6c57e097868cd9d9241eead306edcbb5627dc18b3d8db0caf3ce9",
+     "inventory_status": "deferred-consolidated-laguna-legacy-mmq-migration"
+    },
+    {
+     "id": "R0318",
+     "start_line": 7137,
+     "end_line": 7152,
+     "sha256": "8e51f613af9b9d5573b299f705f37773e319a70dcf89d0a201b4a124a673338d",
+     "inventory_status": "deferred-consolidated-laguna-legacy-mmq-migration"
+    },
+    {
+     "id": "R0320",
+     "start_line": 7167,
+     "end_line": 7192,
+     "sha256": "2f50ad608dd88072979aeac654e1d4810528fffcca3a70d90fb16cbc13ae22c4",
+     "inventory_status": "deferred-consolidated-laguna-legacy-mmq-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the six legacy Laguna MMQ selectors to explicit primitive ownership and validate the user-facing route; provide the Laguna artifact only for the later public validation. The ledger calls the missing artifact a blocker. It blocks the later public/full-model validation, not the selector, fixture and resolver-table migration, which can start now. The Q4/Q6 GPU fixture and tests/_laguna_synthetic.py provide a path for fixture work without weights.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_moe.py:184-206 lists mmq64x32_d4_f32_rowvec, mmq128x32_d8_f32_rowvec, mmq64x32_d4_f32_wavecols_q4, mmq64x32_d4_f32_wavecols_direct_q4 and mmq128x32_d8_f32_wavecols_direct_doublebuf in live mode sets",
+    "hipengine/runtime/laguna_moe.py:4076/4195/4198/4206 still map the legacy names to kernels",
+    "scripts/laguna_prefill_production_publication.py:64/128-139 still references the legacy publication names"
+   ],
+   "completion_gate": "Provide an implemented Laguna artifact for public validation; remove legacy names from resolver/fusion/config tables and migrate the generalized comparison harness default pair; run selected-MMQ, runner, publication and grouped-prefill contracts plus full MoE quant-oracle nodes, then LLM.generate() at short/boundary/unrelated sizes.",
+   "hardware_gate": "hip_gfx1151 present (Radeon 8060S); Laguna weights absent (only a 7 MB HF config/tokenizer cache); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 Q4_K_M / UD-Q2_K_XL GGUF weights",
+     "status": "verified-absent",
+     "note": "~/models/gguf, /models/gguf and the HF cache contain no Laguna weight file; the ledger's 'unavailable' claim is current, not just historical."
+    }
+   ],
+   "correction": "The ledger calls the missing artifact a blocker. It blocks the later public/full-model validation, not the selector, fixture and resolver-table migration, which can start now. The Q4/Q6 GPU fixture and tests/_laguna_synthetic.py provide a path for fixture work without weights.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0319",
+   "ordinal": 111,
+   "title": "Laguna serial compaction comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0319",
+     "start_line": 7153,
+     "end_line": 7166,
+     "sha256": "7250ad72d30198b5159350269debb1b89fc350a84ec8cfbea8d1c05154b0adf6",
+     "inventory_status": "deferred-bottom-laguna-compaction-comparison-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the Laguna serial compaction A/B harness and session setter to explicit primitive ownership before removing the serial override. The Laguna model dependency is a validation input, not a reason to keep the comparison-ownership migration open.",
+   "executed_evidence": [
+    "scripts/laguna_group_compact_parallel_ab.py:28 maps serial_rollback -> serial and :66 calls child.set_group_compact_mode",
+    "hipengine/runtime/laguna_moe.py:397 resolve_laguna_group_compact_mode still accepts serial/parallel"
+   ],
+   "completion_gate": "Migrate the A/B harness, numerical fixtures and session setter together; run compaction comparison, source-default, runner and full MoE numerical contracts, then public LLM.generate() with default selection and metadata/output equality.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required only for the final public-route validation."
+    }
+   ],
+   "correction": "The Laguna model dependency is a validation input, not a reason to keep the comparison-ownership migration open.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0375/R0376",
+   "ordinal": 112,
+   "title": "gfx1151 pack8 comparison-control ownership",
+   "inventory_refs": [
+    {
+     "id": "R0375",
+     "start_line": 8397,
+     "end_line": 8407,
+     "sha256": "815f9003a43b885467d3203f6fd7dd7dfe942e10bf3d7a86a25f1721f126ee26",
+     "inventory_status": "triaged-deferred-comparison-control-migration-harness-fixed"
+    },
+    {
+     "id": "R0376",
+     "start_line": 8408,
+     "end_line": 8418,
+     "sha256": "f869d46d8f19712ae1cec0c460cf6d918f3e8523421260fb447685f3ead86289",
+     "inventory_status": "triaged-deferred-comparison-control-migration-harness-fixed"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the active cumulative/threshold/probe consumers of the two gfx1151 pack8 controls to explicit diagnostic policy before deleting either environment reader. Do not change backend admission or arithmetic as a side effect of retiring comparison controls; broader shape selection is a separate capability task.",
+   "executed_evidence": [
+    "hipengine/runtime/gguf_linear.py reads HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK and HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+    "scripts/qwen35_08b_cumulative_semantic.py and scripts/qwen35_08b_threshold_sweep.py still drive the controls",
+    "tests/test_unit_qwen35_08b_threshold_environment.py and tests/test_unit_qwen35_08b_cumulative_semantic.py pin them"
+   ],
+   "completion_gate": "Run the four unit files named in the ledger, then exercise the migrated policies through the cumulative packet and public LLM.generate() on HIP; check current/older-role engagement, single/paired/fused dispatch, 511/512/513 and unrelated lengths, full logits/state and cleanup.",
+   "hardware_gate": "hip_gfx1151 present (Radeon 8060S); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "Do not change backend admission or arithmetic as a side effect of retiring comparison controls; broader shape selection is a separate capability task.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0373/R0374",
+   "ordinal": 113,
+   "title": "Maple fused decode efficiency and selector retirement",
+   "inventory_refs": [
+    {
+     "id": "R0373",
+     "start_line": 8360,
+     "end_line": 8379,
+     "sha256": "7c709c4d92f920dd9da38b3c89030ebb3bfea4fab24d14138a4ff3362f548e0f",
+     "inventory_status": "triaged-deferred-efficiency-decision-graph-selection-fixed"
+    },
+    {
+     "id": "R0374",
+     "start_line": 8380,
+     "end_line": 8396,
+     "sha256": "6357a4dd3eb1720525a2046768fefd88f5cb43a48e5d90f5539939f4ffb758e3",
+     "inventory_status": "triaged-deferred-efficiency-decision-graph-selection-fixed"
+    }
+   ],
+   "disposition": "measurement_first",
+   "verdict": "Profile and repair the Maple fusion efficiency gap (or remove the experimental runtime routes while preserving primitive references); treat the MoE and QK-attention fusions independently. Do not delete the mandatory unfused primitive chains. Promotion of a replacement arithmetic variant needs its execution-profile gate, not inherited strict bit parity.",
+   "executed_evidence": [
+    "hipengine/runtime/maple.py:100-109 gates HIPENGINE_MAPLE_FUSE_MOE and HIPENGINE_MAPLE_FUSE_QKATTN, both opt-in",
+    "tests/test_gpu_maple_runtime.py and scripts/maple_c1_bench.py exercise both selectors"
+   ],
+   "completion_gate": "Run tests/test_unit_maple_graph_selection.py, tests/test_gpu_maple_runtime.py, tests/test_gpu_maple_ternary_kernels.py and tests/test_gpu_maple_attention_kernels.py; use Maple profiling/c1 tools for same-host eager/graph comparisons and public LLM.generate() engagement with full-logit/state parity.",
+   "hardware_gate": "hip_gfx1151 present (Maple profile backend; confirm the model's profile); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "Do not delete the mandatory unfused primitive chains. Promotion of a replacement arithmetic variant needs its execution-profile gate, not inherited strict bit parity.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0371",
+   "ordinal": 114,
+   "title": "Moonshine top-1 and unfused LM-head route ownership",
+   "inventory_refs": [
+    {
+     "id": "R0371",
+     "start_line": 8330,
+     "end_line": 8346,
+     "sha256": "d5befa2ee8d3a1826f312174da7a40d309bfc4006d842d23c5d09e4f5a8e7ebe",
+     "inventory_status": "triaged-deferred-live-lm-head-selector-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Replace the explicit Moonshine LM-head route selector with caller-owned capability selection plus an explicit numerical reference interface (or keep it as a supported selector), preserving the unfused projection/argmax and W8A16 route. Do not silently downgrade an explicit wave8_top1 request.",
+   "executed_evidence": [
+    "hipengine/runtime/moonshine.py:39-40 defines wave8_argmax/wave8_top1 and the default wave8_top1",
+    "hipengine/runtime/moonshine.py:194/225/290 branches on the route"
+   ],
+   "completion_gate": "Migrate constructor, decoder smoke, leaf benchmark and route gate together; run the five unit/GPU files named in the ledger, then the real-audio route gate and checkpoint eager/graph comparisons on HIP with FP16/default, explicit unfused and selective W8A16 requests.",
+   "hardware_gate": "hip_gfx1151 (Moonshine gfx1151 route); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "Do not silently downgrade an explicit wave8_top1 request.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0370",
+   "ordinal": 115,
+   "title": "Moonshine exact two-region scheduler reference ownership",
+   "inventory_refs": [
+    {
+     "id": "R0370",
+     "start_line": 8318,
+     "end_line": 8329,
+     "sha256": "9ce31bf3e545eb3883f377e36dfc64a4ba3fd836b3bf2300e9baca2990731068",
+     "inventory_status": "triaged-deferred-continuous-exact-reference-retirement"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Keep the explicitly requested continuous exact two-region reference or retire it after confirming no caller needs its hidden-boundary arithmetic and migrating its benchmark/GPU-test consumers. Public Moonshine admission is a separate architecture decision, not part of this benchmark cleanup. The first action (consumer audit) can start without a CUDA host.",
+   "executed_evidence": [
+    "scripts/benchmark_moonshine_cuda_continuous.py:397 offers topology choices uniform-t256/exact-two-region; :434 selects the exact route",
+    "hipengine/runtime/moonshine_cuda_continuous.py:954 records topology exact_two_region"
+   ],
+   "completion_gate": "Audit the class, benchmark selector and dynamic-arrival GPU tests together; run the three test files named in the ledger, then both explicit benchmark topologies on a CUDA host with the same fixtures and static lockstep comparison.",
+   "hardware_gate": "CUDA host for the benchmark comparison (unspecified model; no CUDA device on this host)",
+   "missing_inputs": [
+    {
+     "input": "CUDA host for the two-topology comparison",
+     "status": "verified-absent",
+     "note": "This host is gfx1151/ROCm; the ledger's CUDA-host validation cannot run here."
+    }
+   ],
+   "correction": "Public Moonshine admission is a separate architecture decision, not part of this benchmark cleanup. The first action (consumer audit) can start without a CUDA host.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0368",
+   "ordinal": 116,
+   "title": "LC-D3 global geometry diagnostics and unused repair separation",
+   "inventory_refs": [
+    {
+     "id": "R0368",
+     "start_line": 8233,
+     "end_line": 8303,
+     "sha256": "8aef3f8c782127ba10d842084563d702141d54b02c85d6a11a93f7c50e0ef82f",
+     "inventory_status": "triaged-deferred-geometry-build-and-repair-separation"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Retain the explicit global-geometry comparisons or move them to a diagnostic build, and separate dead repair code/mask reporting from the shared production merge without changing partial-output storage or arithmetic. Strict-parent equality is not a replacement for the profile gate; do not change production arithmetic during cleanup.",
+   "executed_evidence": [
+    "scripts/laguna_global_issue_diagnostic.py:27 comparison_name and :35 global_issue_comparison implement the diagnostic comparison",
+    "tests/test_unit_laguna_global_geometry_references.py and tests/test_unit_laguna_global_issue_comparison.py pin the references",
+    "tests/test_gpu_laguna_kv_attention.py covers the GPU leaf"
+   ],
+   "completion_gate": "Inventory wrapper, registration, leaf and GPU-test consumers before deleting geometry symbols; for repair removal test both compensation modes and normalized/deferred merges, then run the three named test files and public Laguna generation with route attribution, teacher logits and KV metadata.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the public/teacher-logit validation, not for the geometry-symbol audit."
+    }
+   ],
+   "correction": "Strict-parent equality is not a replacement for the profile gate; do not change production arithmetic during cleanup.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0367",
+   "ordinal": 117,
+   "title": "Selected gate/up halfdot and exact-teacher ownership",
+   "inventory_refs": [
+    {
+     "id": "R0367",
+     "start_line": 8217,
+     "end_line": 8232,
+     "sha256": "9bbb7536ef659ff53c3fc603872e3367bf0bf6c37b019422c5eda29514b5d4a5",
+     "inventory_status": "triaged-deferred-exact-teacher-plan-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the selected gate/up halfdot rollback and exact-teacher selectors into an explicit kernel plan (or keep the constructor rollback and diagnostic selectors), preserving both registered implementations. This is not a request to disable the default halfdot path or re-promote its arithmetic; do not remove the wider-row exact fallback.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:3006/3228 accept and store use_selected_halfdot_decode",
+    "hipengine/runtime/laguna_gguf_runner.py:6360 forwards it to the selected projection",
+    "tests/test_unit_laguna_halfdot_reference.py and tests/test_unit_laguna_scalar_q_retirement.py pin the reference"
+   ],
+   "completion_gate": "Migrate the correctness script's candidate/repeat/exact sessions and leaf selectors together; run the six test files named in the ledger, then scripts/laguna_gguf_correctness.py --backend hip_gfx1151 --selected-halfdot and a public default-vs-exact request with aligned teacher logits.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights and oracle",
+     "status": "verified-absent",
+     "note": "Required for the real numerical/public comparison."
+    }
+   ],
+   "correction": "This is not a request to disable the default halfdot path or re-promote its arithmetic; do not remove the wider-row exact fallback.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0354",
+   "ordinal": 118,
+   "title": "Paired expert cache and ordinary-layout migration",
+   "inventory_refs": [
+    {
+     "id": "R0354",
+     "start_line": 7947,
+     "end_line": 7974,
+     "sha256": "c3057ea15bdb3244ff5ce0b770a94923061bb813e6360834d897c5256cee38f2",
+     "inventory_status": "triaged-paired-report-fixed-cache-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Implement the versioned paired Laguna expert cache payload: the writer must persist one interleaved pair instead of two independent tiles payloads, and _materialize_q4_t16_dual_pair must read it, while retaining raw/partial loading. The ledger's claim is confirmed: the writer still persists independent tiles payloads, so this is unfinished implementation, not a stale note. The ordinary seam remains until its callers migrate.",
+   "executed_evidence": [
+    "hipengine/loading/laguna_gguf_materialize.py:1030 still writes a single independent 'tiles' payload for LAYOUT_GGUF_Q4_K_T16",
+    "hipengine/loading/laguna_gguf_materialize.py:1079-1109 reads gate/up 'tiles' and interleaves them at load time",
+    "scripts/laguna_q4_k_mmq_leaf_bench.py:301-304 and scripts/laguna_q4_t16_dense_dual_decode_leaf.py:124 still read manifest entries/ordinary tiles"
+   ],
+   "completion_gate": "Bind writer/open/reload and direct-manifest consumers to paired ownership, validate both cache versions and raw/partial loads, then run paired/ordinary primitive oracles and public LLM.generate() decode/prefill with byte/state/resource checks.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the real numerical/public runs; the writer/materializer work can start now."
+    }
+   ],
+   "correction": "The ledger's claim is confirmed: the writer still persists independent tiles payloads, so this is unfinished implementation, not a stale note. The ordinary seam remains until its callers migrate.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0353",
+   "ordinal": 119,
+   "title": "SWA value-tail reference ownership",
+   "inventory_refs": [
+    {
+     "id": "R0353",
+     "start_line": 7933,
+     "end_line": 7946,
+     "sha256": "b19fccfe0adb06641d1b42f90d2c75ee86f288cfa88072dabdd8273c491f43c9",
+     "inventory_status": "triaged-leaf-cleanup-fixed-build-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Separate diagnostic-only value-tail instantiations/wrappers from the production build without removing the shared template or live predecessor oracles. The ledger says local ROCm/Laguna resources are unavailable. ROCm is available through `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`; only the Laguna weights are verified absent.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4265-4310 exposes set_decode_swa_assume_exp, set_decode_swa_mixed32 and the mixed32_exp4/exp8/exp16/exp32 setters",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py:456-515 registers value-tail and dual-tail SWA variants"
+   ],
+   "completion_gate": "Run value-tail reference, SWA issue and KV attention host contracts; on ROCm execute standalone/local512/V-stage128/dual-tail leaf pairs and primitive oracles including allocation/event failure cleanup, then public LLM.generate() confirming the default compound route.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the real leaf/public runs."
+    }
+   ],
+   "correction": "The ledger says local ROCm/Laguna resources are unavailable. ROCm is available through `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`; only the Laguna weights are verified absent.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0349\u2013R0351",
+   "ordinal": 120,
+   "title": "Global exp/mixed32 diagnostic migration",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Move the public global exp/mixed32 setters, cache-policy ladder and profiler mode/result readers into the diagnostic owner, preserving generic and peer-backend routes. Same correction as R0353: ROCm is present via the vllm SDK; the ledger's combined 'missing local ROCm/Laguna' premise is only half true.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4319-4337 set_decode_global_assume_exp/exp32/mixed32",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py:232-281 registers global mixed32/exp32 variants"
+   ],
+   "completion_gate": "Run global issue, profiler, runner and KV attention contracts; on ROCm exercise each pair against its registered primitive oracle on both sides of split/live4000 and capacity-4096 boundaries, then public LLM.generate() with the default successor and complete state teardown.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the real boundary/public runs."
+    }
+   ],
+   "correction": "Same correction as R0353: ROCm is present via the vllm SDK; the ledger's combined 'missing local ROCm/Laguna' premise is only half true.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0343\u2013R0348",
+   "ordinal": 121,
+   "title": "SWA issue-schedule diagnostic migration",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Consolidate the six public SWA issue-schedule setters, cache ladder and profiler readers into the diagnostic owner, preserving generic shape and peer-backend routes.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4274-4310 set_decode_swa_mixed32/exp4/exp8/exp16/exp32",
+    "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py:387-435 registers SWA mixed32/exp variants"
+   ],
+   "completion_gate": "Run SWA issue-scope, KV attention, runner and profiler contracts; on ROCm execute each repaired pair against its primitive oracle including unsaturated/saturated/wrapped rings, then public LLM.generate() with the default successor route.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the real ring/public runs."
+    }
+   ],
+   "correction": null,
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0341",
+   "ordinal": 122,
+   "title": "Laguna natural tile8 diagnostic ownership",
+   "inventory_refs": [
+    {
+     "id": "R0341",
+     "start_line": 7702,
+     "end_line": 7720,
+     "sha256": "d0f86949065d357f0ca81d20b3253a4c63baf5777ee15008ec4fb22e482fe80a",
+     "inventory_status": "triaged-tile8-comparison-repaired-diagnostic-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the Laguna natural tile8 constructor/setter and profiler comparison to a scoped diagnostic owner before retiring the public tile8 control. Do not silently compare the same interleaved route twice; ordinary natural16/tile8 reference bodies and dual-layout dispatch stay distinct.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4260 set_selected_natural_tile8_decode",
+    "tests/test_unit_laguna_tile8_comparison.py and scripts/laguna_selected_natural_decode_leaf.py:192 exercise the comparison"
+   ],
+   "completion_gate": "Run tile8-comparison, runner, profiler and MoE numerical contracts; execute the repaired paired comparison on a ROCm host with an available Laguna artifact, then public LLM.generate() on default dual residency and ordinary diagnostic residency.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the paired comparison and public route."
+    }
+   ],
+   "correction": "Do not silently compare the same interleaved route twice; ordinary natural16/tile8 reference bodies and dual-layout dispatch stay distinct.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0340",
+   "ordinal": 123,
+   "title": "Source-F16 decode comparison migration and shape validation",
+   "inventory_refs": [
+    {
+     "id": "R0340",
+     "start_line": 7674,
+     "end_line": 7701,
+     "sha256": "14410e74a7767557486310c5dd20854da790f28c9f06850c30490f9ccf146089",
+     "inventory_status": "triaged-shape-repaired-comparison-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Move the process-global source-F16 decode comparison selection into a scoped diagnostic owner and migrate profiler environment restoration/result readers; the shape repair itself is already implemented. The shape repair is not outstanding; the remaining work is comparison ownership plus real validation.",
+   "executed_evidence": [
+    "hipengine/runtime/f16_weight_linear.py:23 defines HIPENGINE_LAGUNA_F16_DECODE",
+    "tests/test_unit_f16_decode_shape_policy.py and tests/test_gpu_laguna_f16_projection.py cover the shape policy and projection",
+    "worklog/entries/20261029... coverage map says shape repaired, comparison migration deferred"
+   ],
+   "completion_gate": "Run shape-policy, F16 projection, backend, runner and profiler tests; on a ROCm host execute generic-K widths below/above/unrelated to the fixed set against the GEMV oracle, then public LLM.generate() with an available artifact.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the real shape/public validation."
+    }
+   ],
+   "correction": "The shape repair is not outstanding; the remaining work is comparison ownership plus real validation.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0336",
+   "ordinal": 124,
+   "title": "Laguna packed-output comparison migration",
+   "inventory_refs": [
+    {
+     "id": "R0336",
+     "start_line": 7600,
+     "end_line": 7623,
+     "sha256": "fe5600637c2c4aada600d77f5ee5c16e0820061f6e0bf4f9b3f363f1a7d4a956",
+     "inventory_status": "triaged-noop-comparison-repaired-diagnostic-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the dedicated Laguna packed-output comparison to an explicit diagnostic owner before retiring the constructor override and script. The ledger correctly separates the local artifact blocker from execution; a user with an artifact can run the path.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:2958/3474 store prefill_attention_hipblaslt_packed_output_gate",
+    "tests/test_unit_laguna_packed_output_comparison.py and scripts/laguna_attention_packed_output_gate_ab.py exercise the comparison"
+   ],
+   "completion_gate": "Run packed-output, producer-retirement, runner and long-context profile host checks; execute the repaired paired comparison with an available Laguna artifact and public LLM.generate() at varied lengths including partial tiles.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the paired/public comparison."
+    }
+   ],
+   "correction": "The ledger correctly separates the local artifact blocker from execution; a user with an artifact can run the path.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0333\u2013R0335",
+   "ordinal": 125,
+   "title": "Laguna Q4 P8 and sum comparison ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Separate Laguna Q4 P8 shape policy from explicit primitive references across resident constructors/setters, generalized comparison, leaf tooling and numerical fixtures, retaining non-P8 bodies for sub-512 chunks. Do not delete the shared leaf harness or silently map an explicit reference request to P8.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:2972/3662/4175 implement q4_precomputed_activation_sums and the P8 path",
+    "tests/test_unit_laguna_q4_p8_policy.py and scripts/laguna_q4_pack8_shape_ab.py exercise the comparisons"
+   ],
+   "completion_gate": "Run Q4 P8 policy, selected-MMQ-mode, generalized-comparison, runner and full MoE numerical contracts; run P8/non-P8 and sums-off/on comparisons with an artifact, then public LLM.generate() across producer chunk sizes.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the real comparisons and public run."
+    }
+   ],
+   "correction": "Do not delete the shared leaf harness or silently map an explicit reference request to P8.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0331",
+   "ordinal": 126,
+   "title": "Laguna Q6 prefetch/sum comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0331",
+     "start_line": 7431,
+     "end_line": 7473,
+     "sha256": "bdebc189846d65eef475d4e33e097b240e73e4dbfb793948246e36c079121dda",
+     "inventory_status": "triaged-sum-policy-repaired-owner-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Replace the three public Q6 prefetch/sum controls with explicit production/reference ownership across constructor, setters, generalized A/B/leaf and numerical fixtures.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4144/4157/4166 are set_q6_wmma_prefetch_weight, set_q6_wmma_prefetch_activation and set_q6_precomputed_activation_sums",
+    "hipengine/runtime/laguna_moe.py:3123-3125 passes q6_wmma_prefetch_weight/activation and q6_precomputed_activation_sums"
+   ],
+   "completion_gate": "Run runtime-mode, WMMA-reference, activation/layout, runner and full MoE numerical contracts; execute the generalized comparison and public LLM.generate() with an artifact, confirming matching sum producer/consumer and exact state.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the generalized/public runs."
+    }
+   ],
+   "correction": null,
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0330",
+   "ordinal": 127,
+   "title": "Laguna Q6 integer-WMMA reference ownership",
+   "inventory_refs": [
+    {
+     "id": "R0330",
+     "start_line": 7397,
+     "end_line": 7430,
+     "sha256": "a2d57adb103a9b3511befd77eefcf70910c87496173d8aa38448fd19fc4e731f",
+     "inventory_status": "deferred-bottom-primitive-reference-owner-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Separate production specialization from explicit reference ownership for integer_wmma/wmma_hoist_activation across the shared wrapper and generalized leaf before collapsing controls. Preserve packed-dot/non-planar bodies and the numerical comparisons; changed arithmetic requires its execution-profile gate.",
+   "executed_evidence": [
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py:690-766 accepts integer_wmma and wmma_hoist_activation with dependency checks",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.hip:6868-7038 registers the integer-WMMA variants"
+   ],
+   "completion_gate": "Migrate reference entry points and leaf callers together; run WMMA reference-control, activation/layout comparison and full Q6 primitive oracles, then the actual-weight generalized leaf and public LLM.generate().",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the actual-weight/public run."
+    }
+   ],
+   "correction": "Preserve packed-dot/non-planar bodies and the numerical comparisons; changed arithmetic requires its execution-profile gate.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0329",
+   "ordinal": 128,
+   "title": "Laguna source-F16 boundary comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0329",
+     "start_line": 7377,
+     "end_line": 7396,
+     "sha256": "d1f3ffb07002314ecedaad1812e63f563594ead031f7af6d8a2089820732e162",
+     "inventory_status": "deferred-bottom-live-f16-comparison-public-resource"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the source-F16 boundary comparison without collapsing its arms, then remove the session setter only after primitive/composite ownership is explicit. Keep the enabled capability and strict unfused chain when retiring the session setter; the artifact blocker does not disable the path.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4202 set_f16_boundary_fusion",
+    "scripts/laguna_f16_boundary_ab.py:78/141/171 drives the comparison",
+    "hipengine/kernels/hip_gfx1151/__init__.py:1259/1264 expose hipblaslt_range_direct and LAGUNA_F16_BOUNDARY_FUSION"
+   ],
+   "completion_gate": "Run F16 boundary-comparison, runner and hipBLASLt contracts plus primitive BF16-boundary equality/full-model oracles, then public LLM.generate() across compatible and fallback projection routes.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the full-model/public validation."
+    }
+   ],
+   "correction": "Keep the enabled capability and strict unfused chain when retiring the session setter; the artifact blocker does not disable the path.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0327 / R0328",
+   "ordinal": 129,
+   "title": "Laguna permute/planar comparison migration",
+   "inventory_refs": [
+    {
+     "id": "R0327",
+     "start_line": 7342,
+     "end_line": 7357,
+     "sha256": "5e0804ad28eb28a1f76f58fbfc09568f46c6ed309c569c9e922725c8689945e4",
+     "inventory_status": "triaged-callers-repaired-layout-migration-deferred"
+    },
+    {
+     "id": "R0328",
+     "start_line": 7358,
+     "end_line": 7376,
+     "sha256": "d5ff6b8850b9337fc22d94402d0842e3c4e2289857f48a06973285c6f761d347",
+     "inventory_status": "triaged-callers-repaired-layout-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Retire the q6_qmicro_permute session/profile selectors only with their live comparison callers and explicit primitive/resident ownership. Keep legacy/interleaved consumers and cache conversion where required; preserve historical result readers when removing old labels.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_moe.py:645/921/1035 carry q6_qmicro_permute through the resident plan",
+    "hipengine/runtime/laguna_moe.py:646/922/1023 carry q6_qmicro_planar",
+    "scripts/laguna_q6_planar_ab.py and tests/test_unit_laguna_q6_planar_comparison.py exercise the callers"
+   ],
+   "completion_gate": "Run planar-comparison, activation-comparison, resident-layout, profiler and runner contracts plus full Q6 numerical oracles; run both owner orders of the A/B and a public LLM.generate() with an artifact.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the A/B and public run."
+    }
+   ],
+   "correction": "Keep legacy/interleaved consumers and cache conversion where required; preserve historical result readers when removing old labels.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0324 / R0325 / R0326",
+   "ordinal": 130,
+   "title": "Laguna Q6 activation comparison migration",
+   "inventory_refs": [
+    {
+     "id": "R0324",
+     "start_line": 7287,
+     "end_line": 7306,
+     "sha256": "6399e224a08da24eaf5873f5ce8f835d573deac6edce3279300cb7a14222ee89",
+     "inventory_status": "triaged-harness-repaired-primitive-migration-deferred"
+    },
+    {
+     "id": "R0325",
+     "start_line": 7307,
+     "end_line": 7323,
+     "sha256": "6d6e4317ccbb235caffb605e0c494f22dae02811d3b16cb2c2212589b499700f",
+     "inventory_status": "triaged-harness-repaired-primitive-migration-deferred"
+    },
+    {
+     "id": "R0326",
+     "start_line": 7324,
+     "end_line": 7341,
+     "sha256": "c1175bd4ae4a1b3e73d5d9feb39ba4cec43795183f8ea4776699a6521a713757",
+     "inventory_status": "triaged-harness-repaired-primitive-migration-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the three Q6 activation comparison controls (compact, half-row, skip-padded) and their numerical/A-B callers to explicit primitive ownership together. Do not delete these distinct comparison arms or registered fallback instantiations with the selectors.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_moe.py:642-644/918-920/983-1006 carry q6_compact_activation, q6_half_row_activation and q6_skip_padded_activation",
+    "scripts/laguna_q6_compact_activation_ab.py, scripts/laguna_q6_half_row_activation_ab.py and scripts/laguna_q6_skip_padded_activation_ab.py drive the comparisons"
+   ],
+   "completion_gate": "Run Q6 activation-comparison, resident-layout, runner, selected-MMQ and full Q4/Q6 MoE oracles, then each repaired harness and public LLM.generate() with an artifact.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the harness/public runs."
+    }
+   ],
+   "correction": "Do not delete these distinct comparison arms or registered fallback instantiations with the selectors.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0323",
+   "ordinal": 131,
+   "title": "Laguna fused selected-SiLU pack comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0323",
+     "start_line": 7267,
+     "end_line": 7286,
+     "sha256": "ed160f1abe799fe0375b82a47ea0054a5802f1c763e23cc130f6723e07d94fd0",
+     "inventory_status": "deferred-bottom-live-comparison-owner-public-resource"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the fused selected-SiLU pack A/B caller to explicit composite/primitive ownership and retain its complete-state comparisons before removing the session setter. Keep the enabled capability and registered strict unfused chain; do not make both arms fused.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4139 set_fused_selected_silu_pack",
+    "scripts/laguna_fused_silu_pack_ab.py drives the comparison"
+   ],
+   "completion_gate": "Run fused-SiLU comparison, selected-MMQ and runner contracts plus primitive and full Q4/Q6 MoE oracles, then public LLM.generate() with compatible and fallback shapes.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the public validation."
+    }
+   ],
+   "correction": "Keep the enabled capability and registered strict unfused chain; do not make both arms fused.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0322",
+   "ordinal": 132,
+   "title": "Laguna Q6 resident-layout comparison migration",
+   "inventory_refs": [
+    {
+     "id": "R0322",
+     "start_line": 7248,
+     "end_line": 7266,
+     "sha256": "1da50345f1c4dd3229e7804b6496e3a612ab653de4502ff390dc244b8889e5d3",
+     "inventory_status": "deferred-bottom-layout-caller-migration-public-resource"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate layout comparison ownership, materializer and session construction together for q6_qmicro/q6_qmicro_planar, retaining the legacy cache adapter and registered non-qmicro consumers. Never reinterpret legacy bytes as planar qmicro.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_moe.py:641/645-646 carry q6_qmicro/q6_qmicro_permute/q6_qmicro_planar",
+    "hipengine/loading/laguna_gguf_materialize.py:1375-1406 materializes qmicro/legacy tiles"
+   ],
+   "completion_gate": "Run Q6 resident-layout, materialization, runner, linear-dispatch and full MoE numerical tests; exercise public LLM.generate() across short/boundary/unrelated lengths, recording resident/consumer agreement.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the public run."
+    }
+   ],
+   "correction": "Never reinterpret legacy bytes as planar qmicro.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0321",
+   "ordinal": 133,
+   "title": "Laguna cached-attention comparison and policy migration",
+   "inventory_refs": [
+    {
+     "id": "R0321",
+     "start_line": 7193,
+     "end_line": 7247,
+     "sha256": "9493dfb8c044e4ba81be5f1b710c7b6582913f1a6f3a9d547c8c86b0f86e423a",
+     "inventory_status": "deferred-bottom-laguna-cached-attention-policy-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate session/cache construction and all three Laguna attention A/B callers together, preserving primitive comparisons and historical readers. gfx1100 already enables role-scoped preappend; the stale July attention ladder was replaced. The remaining item is comparison/policy migration, not a default change.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_gguf_runner.py:4207-4227 set_prefill_attention_hipblaslt, set_prefill_long_attention_hipblaslt, set_prefill_block_attention_hipblaslt, set_prefill_dense_contiguous_cache, set_prefill_swa_attention_hipblaslt",
+    "tests/test_unit_laguna_cached_attention_comparison.py and scripts/laguna_attention_cached_meta_ab.py exercise the comparisons"
+   ],
+   "completion_gate": "Run cached-attention, runner, role-policy and dense-metadata contracts; then GPU global/SWA parity across partial, eviction, wrap and verifier cases plus public LLM.generate() at short/boundary/unrelated lengths.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the GPU parity/public run."
+    }
+   ],
+   "correction": "gfx1100 already enables role-scoped preappend; the stale July attention ladder was replaced. The remaining item is comparison/policy migration, not a default change.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0312",
+   "ordinal": 134,
+   "title": "Head-major K/V resource-budget integration",
+   "inventory_refs": [
+    {
+     "id": "R0312",
+     "start_line": 7050,
+     "end_line": 7070,
+     "sha256": "e9aee1b1cee1372067d653dbeb32d3bbd26b420f200bd62908acf89d73e2b78f",
+     "inventory_status": "resolved-boolean-removed-resource-budget-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Replace the remaining head-major K/V and gapped-gather resource controls with the common scratch budget without dropping requested-context sizing, allocation rounding or partial-allocation cleanup. The layout boolean removal is complete; only common scratch-budget integration remains. This is resource accounting, not a reason to reintroduce the boolean or gate on artifact identity.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9125 _GGUF_GAPPED_GATHER_ENV, :9129-9133 HEAD_MAJOR_KV_MAX_TOKENS/MAX_BYTES",
+    "hipengine/runtime/qwen35_gguf_runner.py:10353 _gguf_aotriton_head_major_kv_scratch_nbytes and :10389 _try_allocate... still compute a private budget",
+    "The retired boolean HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV now appears only in tests"
+   ],
+   "completion_gate": "Migrate planner, contiguous allocator and gapped allocator/admission together; run head-major policy, capacity-route terms, gapped-slot and request-ownership tests plus head-major GPU copy fixtures, then public short/long/gapped requests with allocation-denial fallback.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The layout boolean removal is complete; only common scratch-budget integration remains. This is resource accounting, not a reason to reintroduce the boolean or gate on artifact identity.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0311",
+   "ordinal": 135,
+   "title": "Family-specific AOTriton stream policy",
+   "inventory_refs": [
+    {
+     "id": "R0311",
+     "start_line": 7005,
+     "end_line": 7049,
+     "sha256": "d32520b64745f8118cb7e0faec6f9aa874b03d07744823a95bc25fdad38a557c",
+     "inventory_status": "deferred-family-stream-policy-and-observed-gguf-stability"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate both family readers, the comparison script, bridge ownership and execution metadata to a resolved family-aware stream policy, finishing the recorded GGUF long-prompt stability protocol. Do not delete PARO's default isolation or make GGUF inherit it merely because both read the same env name; the defaults differ.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_paro_runner.py:157/498 reads HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM with default True",
+    "hipengine/runtime/qwen35_gguf_runner.py:9531/10264 reads the same env and falls back to backend capability default False",
+    "scripts/paro_prefill_aotriton_stream_exactness.py:38 uses the same env"
+   ],
+   "completion_gate": "Run stream policy/lifecycle, PARO exactness and decode-state event-order tests; a policy replacement needs public prefill requests below/above/unrelated to the row threshold, state/KV/output comparison, repeated cleanup and long-prompt stability.",
+   "hardware_gate": "hip_gfx1100 and hip_gfx1151 (gfx1151 present; gfx1100 absent)",
+   "missing_inputs": [],
+   "correction": "Do not delete PARO's default isolation or make GGUF inherit it merely because both read the same env name; the defaults differ.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0310",
+   "ordinal": 136,
+   "title": "PARO rowchunk-boundary diagnostic ownership",
+   "inventory_refs": [
+    {
+     "id": "R0310",
+     "start_line": 6987,
+     "end_line": 7004,
+     "sha256": "9e1f98679f9e1275fa54aaae05230c1b652bdabab115cdd09d769676c23ebe81",
+     "inventory_status": "deferred-paro-rowchunk-comparison-ownership"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Keep the named PARO rowchunk-boundary comparison (or replace it with another trace preserving the two-peer distinction); solving the c6 rowchunk cost is separate kernel work. The summary's c1 field is another batched peer, not independent singleton truth. Do not claim the c6 cost closed from host fixtures.",
+   "executed_evidence": [
+    "scripts/qwen35_batch_hidden_bisect.py:5771 --compare-full-attn-rowchunk-boundary; :5961-5991 records native_full_attention_rowchunk_repair and performance_claim false",
+    "tests/test_unit_qwen35_rowchunk_comparison.py pins the comparison"
+   ],
+   "completion_gate": "Migrate parser, dry-run and executed comparison metadata with the replacement; run tests/test_unit_qwen35_rowchunk_comparison.py, hidden-bisect command tests and PARO rowchunk policy/forwarding tests.",
+   "hardware_gate": "hip_gfx1100 (PARO native batch; gfx1100 absent, gfx1151 present)",
+   "missing_inputs": [],
+   "correction": "The summary's c1 field is another batched peer, not independent singleton truth. Do not claim the c6 cost closed from host fixtures.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0307",
+   "ordinal": 137,
+   "title": "Target score and hidden trace ownership",
+   "inventory_refs": [
+    {
+     "id": "R0307",
+     "start_line": 6917,
+     "end_line": 6937,
+     "sha256": "4d36f22cbc5b4f57851888c037de84c0a25ce685154dec27ba44ea2ff7e620ac",
+     "inventory_status": "deferred-target-score-trace-ownership"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Keep the compact cross-engine target score/hidden trace or replace it with a tensor trace before retiring the CLI and result fields. Keep this trace ownership separate from R0301's singleton top-1 arithmetic selector; score capture does not force a full-logit head.",
+   "executed_evidence": [
+    "scripts/gguf_mtp_bench.py:802 _target_lm_head_score_rows and :1345 --record-target-topk-scores",
+    "scripts/gguf_mtp_bench.py:1758 requires --target-block-verify"
+   ],
+   "completion_gate": "Migrate verifier capture, benchmark callers/serialization and attribution consumers together; run benchmark metrics, verifier LM-head, native-state attribution and forced-target probe tests, then real verify/commit/reset plus a separate public NextN preservation request.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Keep this trace ownership separate from R0301's singleton top-1 arithmetic selector; score capture does not force a full-logit head.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0306",
+   "ordinal": 138,
+   "title": "Legacy draft stage-trace replacement",
+   "inventory_refs": [
+    {
+     "id": "R0306",
+     "start_line": 6901,
+     "end_line": 6916,
+     "sha256": "b07236dc723a0a7f21b6722dd698fbc71269593050e9d93dc143daa7770b272e",
+     "inventory_status": "deferred-legacy-draft-trace-replacement"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Keep the explicit host draft stage trace or replace it with a capture-safe graph tensor trace before retiring its CLI/result fields; no implemented graph trace currently substitutes. Host trace time must not be reported as a normal device-chain timing result.",
+   "executed_evidence": [
+    "scripts/gguf_mtp_bench.py:1378 --record-draft-stage-stats and :2268 draft_hidden_state_trace",
+    "scripts/gguf_mtp_bench.py:1710-1712 gate dependent options on the trace flag"
+   ],
+   "completion_gate": "Migrate benchmark argument validation, both proposal callers, stage/cache/attention summaries and draft_hidden_state_trace consumers; run tests/test_unit_mtp_resident_draft_device_commit.py, benchmark parser and profiler contracts, then compare trace metadata for catch-up, multiple depths and commit/reset.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Host trace time must not be reported as a normal device-chain timing result.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0305",
+   "ordinal": 139,
+   "title": "Diagnostic F32 token-embedding seed ownership",
+   "inventory_refs": [
+    {
+     "id": "R0305",
+     "start_line": 6885,
+     "end_line": 6900,
+     "sha256": "4c03a9c46acba4190a3e2e380889a04ea4ec1c5316beed1299ba5359c9436122",
+     "inventory_status": "deferred-host-embedding-diagnostic-ownership"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Retain the host F32 token-embedding precision oracle or replace it with a device-side FP32 embedding implementation before retiring the selector. Keep reader/seed ownership distinct from R0287's broader arithmetic plan; a host-only trace is not an arithmetic gate.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9504 defines HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING",
+    "hipengine/runtime/qwen35_gguf_runner.py:9535/13413 tie the seed to token_embd.weight and _verify_hidden_f32_a",
+    "scripts/gguf_mtp_native_state_attribution.py:122 reads the same env"
+   ],
+   "completion_gate": "Migrate seed construction, F32-residual caller, trace and native-attribution contracts; run tests/test_unit_qwen35_gguf_verify_f32_token_embedding.py, token-embedding parity and attribution tests, then real verify/commit/reset and cleanup.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Keep reader/seed ownership distinct from R0287's broader arithmetic plan; a host-only trace is not an arithmetic gate.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0304",
+   "ordinal": 140,
+   "title": "Legacy selected-SiLU/down comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0304",
+     "start_line": 6868,
+     "end_line": 6884,
+     "sha256": "272e29e32e4bbf375497fddc99447dd52f92a5e47076bc6ee6d7b3840dbc57ce",
+     "inventory_status": "triaged-rejected-presets-removed-comparison-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the legacy selected-SiLU/down comparison into an owner-local legacy composite plan (or keep it as an explicit diagnostic) before removing its env/CLI readers. The rejected siludown/siludown-allsync suite presets were removed; direct benchmark/profiler comparisons remain live. Do not silently run an unfused control under a fused label.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_resident_draft.py:610 reads HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED",
+    "hipengine/speculative/mtp_resident_draft.py:334/350/359 implement selected_silu_down_fused and its stage marker",
+    "scripts/gguf_mtp_bench.py:1654/1935 and scripts/gguf_mtp_draft_rocprof.py:70 write the env"
+   ],
+   "completion_gate": "Migrate constructor capture, helper argument, benchmark/profiler cache/provenance and explicit CLI callers; run selected-down branch/marker/stream ownership and parser contracts, then the fused/unfused numerical comparison.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The rejected siludown/siludown-allsync suite presets were removed; direct benchmark/profiler comparisons remain live. Do not silently run an unfused control under a fused label.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0302",
+   "ordinal": 141,
+   "title": "Resident draft F32 router and shared-gate comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0302",
+     "start_line": 6834,
+     "end_line": 6850,
+     "sha256": "027fea7a98f897492d97dd90faf81127e7e8e3beb8ade193cac103449a83fe23",
+     "inventory_status": "deferred-legacy-draft-projection-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Preserve the explicit two-projection comparison or move its selection into an owner-local legacy draft plan, without removing generic MTP linear or the shared primitive.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_resident_draft.py:50/103 import qwen35_router_logits_f32_f32w and mtp_linear_f32",
+    "hipengine/speculative/mtp_resident_draft.py:2534/2547 and :2642/2655 run both projection branches",
+    "hipengine/speculative/mtp_resident_draft.py:636 reads HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"
+   ],
+   "completion_gate": "Migrate constructor capture, both projection branches, compatibility binding, benchmark/profiler cache/provenance and suite callers; run tests/test_unit_mtp_resident_draft_device_moe.py, weight-upload ownership, parser/profiler and suite contracts, then the F32 router/shared-gate numerical comparisons.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": null,
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0301",
+   "ordinal": 142,
+   "title": "Verifier Q6 top-1 sidecar comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0301",
+     "start_line": 6817,
+     "end_line": 6833,
+     "sha256": "d0d392336d0d8cbf589d7cca8d01c9f3ba07b5d2fe07af006ffc7f255bb96e94",
+     "inventory_status": "triaged-dtype-fixed-head-policy-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Retain the explicit singleton Q6 top-1 comparison or migrate the load-time X8 sidecar and runtime choice into one owner-local head policy; retire/rename multirow aliases only with their consumers. The FP32/BF16 mismatch in the c1-only Q6 direct-top1 diagnostic was fixed. A multirow direct path must still resolve the recorded sentinel failure and pass independent numerical/ownership checks.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9499/11205 read HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A",
+    "hipengine/loading/qwen35_gguf_materialize.py:105/1228 handle HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR",
+    "tests/test_unit_qwen35_gguf_verify_lm_head_top1.py pins singleton behavior"
+   ],
+   "completion_gate": "Migrate materialization, singleton/packed head callers, benchmark setup/provenance and suite routes; run the verifier top-1, mtp-bench metrics, suite and weight-upload contracts, then public MTP requests confirming singleton vs multirow paths and cleanup.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The FP32/BF16 mismatch in the c1-only Q6 direct-top1 diagnostic was fixed. A multirow direct path must still resolve the recorded sentinel failure and pass independent numerical/ownership checks.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-SELECTED-X8",
+   "ordinal": 143,
+   "title": "Selected-expert replacement-layout policy",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Move primary selected-expert layout selection (repack, gate-up X8, gate-up raw precedence) into the loader's explicit plan with coordinated compatibility/bench/profiler callers, or preserve the existing diagnostic selector. Raw placement takes precedence and an environment value changed after load cannot change resident bytes. Do not let a named X8 route silently load a different layout.",
+   "executed_evidence": [
+    "hipengine/loading/qwen35_gguf_materialize.py:97-102 defines SELECTED_X8_REPACK, SELECTED_GATE_UP_X8 and SELECTED_GATE_UP_RAW",
+    "hipengine/loading/qwen35_gguf_materialize.py:1123-1136 parses repack values and precedence",
+    "scripts/gguf_mtp_parity_workbench.py and tests/test_unit_qwen35_gguf_selected_x8_plan.py exercise the callers"
+   ],
+   "completion_gate": "Migrate quant-family parser/precedence, materialization, prerequisite/admission byte plans, selected adapters/workspace, cache identity, CLI/suite provenance and forced-trace replay; run both quant families with repack on/off and raw precedence, then public/compatibility decode.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Raw placement takes precedence and an environment value changed after load cannot change resident bytes. Do not let a named X8 route silently load a different layout.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-PARO-PROVIDER",
+   "ordinal": 144,
+   "title": "Manual provider and private-scorer migration",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Migrate manual provider/profile binding, explicit-chain harness selection, proposal/scoring metadata and private-head allocation ownership to a harness-owned policy, retaining selected-row reseeding, borrowed scoring, strict fallback and stale-owner rejection. Removing private branching needs an explicit replacement or retirement decision, not a release-window expiry. A historical negative speed result does not justify deleting working tree primitives.",
+   "executed_evidence": [
+    "hipengine/speculative/paro_mtp_profiles.py:31 defines HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT",
+    "scripts/mtp_chain_e2e_smoke.py:335 reads the contract flag",
+    "hipengine/runtime/qwen35_paro_runner.py:11199/11205 read HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP and HIPENGINE_VERIFY_GPU_ACCEPT"
+   ],
+   "completion_gate": "Run profile/manual selector and public adapter tests, borrowed/private scoring and lifecycle tests, plus actual strict/production public generation with selector unset/0/1 and reset/close coverage.",
+   "hardware_gate": "hip_gfx1100 (PARO; gfx1100 absent, gfx1151 present)",
+   "missing_inputs": [],
+   "correction": "Removing private branching needs an explicit replacement or retirement decision, not a release-window expiry. A historical negative speed result does not justify deleting working tree primitives.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-TOPK",
+   "ordinal": 145,
+   "title": "GGUF benchmark proposal-policy ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Move the linear/tree and vocabulary-recovery proposal policies into a dedicated experiment harness (or keep them explicit), with coordinated suite and parity-workbench callers. The standalone bench default is not the same as a default-off comparison: root top-40 is active by default. Do not change the standalone root default as a side effect of deleting controls.",
+   "executed_evidence": [
+    "scripts/gguf_mtp_bench.py:637/683 sibling_topk_acceptance_from_target_samples and root_topk_acceptance_from_target_samples",
+    "scripts/gguf_mtp_bench.py:706-708 passes root/sibling/depth policy",
+    "tests/test_unit_gguf_mtp_bench_metrics.py and the parity workbench pin the current policy"
+   ],
+   "completion_gate": "Migrate root/sibling limits, branch redraft and tail gates, vocabulary-recovery runner lifetime and AR-fallback suppression, route aliases and artifact fields; run linear/mismatch/out-of-set and corrective-token boundary tests plus parser/suite/workbench contracts.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The standalone bench default is not the same as a default-off comparison: root top-40 is active by default. Do not change the standalone root default as a side effect of deleting controls.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-CONTEXT",
+   "ordinal": 146,
+   "title": "GGUF benchmark prompt priming and draft KV policy",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Replace the prompt-priming/cache switches with an explicit benchmark context policy across their callers, preserving independent prompt/cache and host/device-seed comparisons. Prompt priming, cache placement and public NextN prompt streaming are different owners; do not replace one with another.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_resident_draft.py:2044 write_kv_rows and :2102 write_kv_rows_from_device_seed_base",
+    "scripts/gguf_mtp_bench.py prompt-priming and device-seed arguments drive these writers"
+   ],
+   "completion_gate": "Migrate all-row prompt capture/shift, resident and legacy KV writers, device-seed staging, native proposal cache ownership, suite/workbench arguments and provenance; retain no-cache/device-only/prompt-primed cases and capacity-exhaustion/reset/close checks.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Prompt priming, cache placement and public NextN prompt streaming are different owners; do not replace one with another.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-TARGET-POLICY / R0284 / R0299 / R0300",
+   "ordinal": 147,
+   "title": "GGUF verifier controls and native naming",
+   "inventory_refs": [
+    {
+     "id": "R0284",
+     "start_line": 6360,
+     "end_line": 6401,
+     "sha256": "ee105a7de8eb47b9128063b361bfb2e5e67a5e6dac15acb83ba11535f9fdfff0",
+     "inventory_status": "fixed-budget-label-drift-deferred-policy-consolidation"
+    },
+    {
+     "id": "R0299",
+     "start_line": 6747,
+     "end_line": 6760,
+     "sha256": "4254d6fc3894c2ef15274453b9e067e29210a6498fdbce2c1196370b30237347",
+     "inventory_status": "deferred-existing-verifier-policy-ownership"
+    },
+    {
+     "id": "R0300",
+     "start_line": 6761,
+     "end_line": 6816,
+     "sha256": "f670091916d0549e7a9f98265603cbd910514ad93cf306a863fd57adecf90de0",
+     "inventory_status": "deferred-existing-verifier-policy-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Consolidate the named verifier comparison controls into an explicit benchmark verifier policy (or keep them), migrating bench parsing, suite/workbench aliases, schedule/commit choices and provenance together; treat the native API/registry rename as a separate naming decision. The R0284 budget-label defect is fixed; the remaining items are policy consolidation and the optional native rename. Do not remove a correct target-only/fallback capability because an old throughput row preferred another route.",
+   "executed_evidence": [
+    "scripts/gguf_mtp_bench.py:932 --target-block-verify-mode and :1728 its native-cycle constraint",
+    "hipengine/runtime/qwen35_gguf_runner.py:20019 verify_target_blocks_batch is the live packed verifier",
+    "worklog 20261028T213858.890855Z fixed the R0284 budget-label defect"
+   ],
+   "completion_gate": "Run parser/suite, snapshot/replay, selected-state commit, dynamic context/position and graph failure/close tests; exercise real reject/partial/full and output-tail cycles, reset/cached-session reuse and public generation.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The R0284 budget-label defect is fixed; the remaining items are policy consolidation and the optional native rename. Do not remove a correct target-only/fallback capability because an old throughput row preferred another route.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-CAPTURE",
+   "ordinal": 148,
+   "title": "GGUF production row-state and diagnostic policy",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Move the six GGUF verifier capture controls into an explicit debug capture policy, separate from the production row-state mechanism (or retain them as named comparisons). The earlier negative experiments are preserved in artifacts; they do not make the live production writers disposable.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9519-9524 defines the six HIPENGINE_GGUF_VERIFY_CAPTURE_* envs",
+    "scripts/gguf_mtp_forced_target_probe.py:62-67 reads all six",
+    "tests/test_unit_gguf_mtp_forced_target_probe.py:576-581 pins their predicates"
+   ],
+   "completion_gate": "Migrate production/profile/gate binding, scratch ownership, FP16 incompatibility errors, scored-boundary readers and probe metadata; test segmented/single capture, deferred/final commit, reject/partial/full acceptance and exception cleanup, then real state-row/public generation.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The earlier negative experiments are preserved in artifacts; they do not make the live production writers disposable.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-METADATA",
+   "ordinal": 149,
+   "title": "Contiguous prefill metadata policy and host oracle",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the host/device contiguous-prefill metadata selector into an explicit prefill diagnostic policy while preserving an independent host oracle; decide automatic long-context selection separately. A release window alone does not migrate the live isolation callers; missing long-context measurements do not make the device path incapable.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9529 defines HIPENGINE_GGUF_PREFILL_DEVICE_METADATA",
+    "scripts/gguf_mtp_verifier_rocprof.py:74 sets it for the profiler",
+    "tests/test_unit_gguf_packed_verify_layout.py:116 and tests/test_unit_qwen35_prefill_kernel_profile.py pin both writers"
+   ],
+   "completion_gate": "Run the four test files in the ledger's command block; exercise both metadata writers through LLM.generate() below, above and away from the old ceiling; verify all six arrays, stream ordering, partial/final chunks and teardown.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "A release window alone does not migrate the live isolation callers; missing long-context measurements do not make the device path incapable.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-Q8-WAVES",
+   "ordinal": 150,
+   "title": "Dense T16 prefill schedule policy",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Move the 2-wave/4-wave dense T16 prefill selectors into an explicit prefill policy while preserving direct numerical oracles; decide any backend ceiling or kernel replacement separately. The historical two-wave long-context regression does not determine the usefulness or current behavior of the four-wave, decoding or f16w siblings.",
+   "executed_evidence": [
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py:39-40 defines HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE/4WAVE",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py:193 documents the 2-wave precedence",
+    "tests/test_gpu_gguf_q8_0_t16_wmma_prefill.py:125-222 pins the schedule behavior"
+   ],
+   "completion_gate": "Run the no-GPU policy/build/wrapper nodes in the four named files; if execution changes, run CPU-reference, two-/four-wave and f16w device parity plus the Gemma range node; exercise Qwen/Gemma through LLM.generate() tracing actual schedules and cleanup.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The historical two-wave long-context regression does not determine the usefulness or current behavior of the four-wave, decoding or f16w siblings.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-ROUTER-TILES",
+   "ordinal": 151,
+   "title": "Laguna/Gemma router comparison ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the Laguna/Gemma router token-tile modes and setter/benchmark interfaces into a scoped diagnostic plan, preserving invalid-mode errors and independent 256/512-thread references. A later default-only refresh cannot decide whether to erase direct tile-16 or Gemma comparison requests. Default, arithmetic and interface retirement are separate decisions.",
+   "executed_evidence": [
+    "hipengine/runtime/laguna_moe.py:213/215 defines token_tile_4/8/16 and the baseline token_tile_4",
+    "hipengine/kernels/hip_gfx1151/__init__.py:1111 LAGUNA_ROUTER_LOGITS_MODE = token_tile_8",
+    "scripts/laguna_router_token_tile_ab.py and tests/test_live_laguna_moe_gpu.py::test_laguna_router_logits_mode_is_exact_and_explicit exercise the modes"
+   ],
+   "completion_gate": "Migrate the session's resolved mode, setter, child-session A/B harness, microbench, plan function table, backend metadata and Gemma caller with provenance; run the router logits mode test, backend alias/canonical-router tests and both script --help routes.",
+   "hardware_gate": "hip_gfx1151 present; Laguna weights absent for the live parity/public run; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [
+    {
+     "input": "Laguna-S-2.1 GGUF weights",
+     "status": "verified-absent",
+     "note": "Required for the live router parity/public run; the mode/setter migration can start now."
+    }
+   ],
+   "correction": "A later default-only refresh cannot decide whether to erase direct tile-16 or Gemma comparison requests. Default, arithmetic and interface retirement are separate decisions.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-PREFILL-DEBUG",
+   "ordinal": 152,
+   "title": "Isolation profiles, progress recording and drains",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Maintain the prefill router-select/isolation/progress controls as explicit diagnostic policies (or retire selected interfaces), deciding observation, execution selection and synchronization separately. None of these is an unused performance flag; do not conflate progress markers with queue drains.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9530 defines HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS",
+    "tests/test_unit_qwen35_gguf_router_select_policy.py:16-25 pins 64/512/32 values",
+    "scripts/qwen35_readme_sweep.py:67 records the default 512"
+   ],
+   "completion_gate": "Migrate session/CLI forwarding, complete selector maps, conflict errors, provenance and shutdown; run router-select, prefill-profile, queue-drain and flight-recorder tests plus bulk prefill hidden-seed/capacity tests and both sweep/decoder --help routes.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "None of these is an unused performance flag; do not conflate progress markers with queue drains.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-GDN / R0377",
+   "ordinal": 153,
+   "title": "Prefill selectors and session-owned scratch",
+   "inventory_refs": [
+    {
+     "id": "R0377",
+     "start_line": 8419,
+     "end_line": 8426,
+     "sha256": "04bec0d7e90eb105b1465b4e3541499a66c3e64cf00e1a8c698314bd89120df9",
+     "inventory_status": "triaged-consolidated-existing-r0281-gdn-decision"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Choose which GGUF GDN prefill comparison interfaces remain and migrate them to a scoped diagnostic plan, preserving the strict unfused fallback and named capability errors; R0377's cluster8 note is consolidated here. chain_k2, register-tree, tiled/LDS and noncompact peer routes have comparison callers; they are not unused merely because another route is automatic. R0377's standalone release-age note was removed, but its ownership decision remains here.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:32251 defines _GGUF_GDN_PREFILL_MODE_ENV; :3614-3682 document/validate the modes",
+    "hipengine/kernels/hip_gfx1151/__init__.py:1594 keeps the explicit override",
+    "tests/test_unit_qwen35_gguf_gdn_session_mode.py and tests/test_unit_qwen35_gguf_gdn_prefill_routing.py pin routing"
+   ],
+   "completion_gate": "Migrate selector parsing, backend metadata, registered prepare/recurrent/segmented siblings, session scratch planning, typed writers and all comparison CLI choices/provenance; run the four comparison harnesses and help routes, then primitive parity and public short/segmented/long prompts.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "chain_k2, register-tree, tiled/LDS and noncompact peer routes have comparison callers; they are not unused merely because another route is automatic. R0377's standalone release-age note was removed, but its ownership decision remains here.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-SELECTED-PREFILL",
+   "ordinal": 154,
+   "title": "Baseline, shared-X and pair32 ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Retain the explicit selected-prefill comparison/rollback interfaces or migrate them into one scoped diagnostic policy while preserving the registered strict fallback and distinct gfx1100/gfx1151 defaults. gfx1151 automatic is pair32 and gfx1100 remains shared-X; retiring shared-X globally would remove gfx1100's automatic route. Changing that default is distinct from retiring diagnostics.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:31861 documents and :32286 reads HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE",
+    "scripts/gguf_q4_t16_prefill_ab.py:35 uses the same selector",
+    "tests/test_unit_qwen35_gguf_compact_moe_wmma_resolver.py and tests/test_unit_qwen35_gguf_compact_moe_wmma_routing.py pin the routes"
+   ],
+   "completion_gate": "Coordinate gate/up and down maps, backend defaults, registration retries, raw/T16 allocation names, replay and isolation-profile callers; run compact-MoE resolver/routing, selected-prefill A/B and profile tests, then raw-bit primitive parity and public short/partial/long generation.",
+   "hardware_gate": "hip_gfx1100 and hip_gfx1151 (gfx1151 present; gfx1100 absent)",
+   "missing_inputs": [],
+   "correction": "gfx1151 automatic is pair32 and gfx1100 remains shared-X; retiring shared-X globally would remove gfx1100's automatic route. Changing that default is distinct from retiring diagnostics.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-ROWTILE-CONTROL",
+   "ordinal": 155,
+   "title": "Scoped comparison ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Keep the scoped q4k_rowtile_session comparison or migrate its module-global state to execution-owner-local configuration; removing the dormant env switch did not make the setter thread-local. Do not delete strict reference kernels or silently alter concurrent calls; WMMA precedence and registered strict fallbacks stay.",
+   "executed_evidence": [
+    "hipengine/runtime/gguf_linear.py:2643-2663 _q4k_rowtile_session_enabled and q4k_rowtile_session",
+    "hipengine/generation/qwen35_gguf.py:763 records the server session override history",
+    "tests/test_unit_runtime_gguf_linear_q4k_rowtile_knob.py and tests/test_gpu_gguf_q4_k_pack8_dual_rowtile_silu.py exercise the control"
+   ],
+   "completion_gate": "Migrate resolver consumers and comparison tests together; exercise nested/exception restoration and concurrent independent owners, plus singleton/pair/fused pair+SiLU dispatch below/within/above row bounds, then public generation with route attribution.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Do not delete strict reference kernels or silently alter concurrent calls; WMMA precedence and registered strict fallbacks stay.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-SELECTED-DP4A / R0283 / R0288",
+   "ordinal": 156,
+   "title": "Explicit activation-adapter ownership",
+   "inventory_refs": [
+    {
+     "id": "R0283",
+     "start_line": 6349,
+     "end_line": 6359,
+     "sha256": "67d42547a9820f6daaa564c78ea5443d26864336753eb1cf2ee47c89c9caafca",
+     "inventory_status": "deferred-existing-selected-adapter-ownership"
+    },
+    {
+     "id": "R0288",
+     "start_line": 6546,
+     "end_line": 6558,
+     "sha256": "33edd4bf37919707ffbdd13250a80d3d940e25306229bb9d07d40ca6da2ecc12",
+     "inventory_status": "deferred-existing-selected-adapter-scheduler-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Replace the ambient selected activation-adapter selectors with an explicit caller-owned adapter plan across compatibility generation, bench/profiler and workbench consumers; preserve the optional raw/T16 capabilities. The binder currently refuses certificates for optional raw/T16 adapters it cannot represent; that limitation is not permission to remove implemented runtime capabilities. The Q5-only thread alias was already retired.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9486-9494 defines Q4K_SELECTED_DUAL_DP4A, T16_SELECTED_DP4A and RAW_SELECTED_DP4A",
+    "hipengine/loading/gguf_selected_contract.py:232-234 reads the three adapters for certificate decisions",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip:311 reads HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS"
+   ],
+   "completion_gate": "Migrate workspace allocation, ordered dual/single operands, BF16/F32 inputs, actual output types, adapter intents and artifact provenance; run selected-call binding/admission, compact-MoE routing, parity-workbench and suite tests, covering raw/T16/X8 layouts and the fused-c1 exception.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The binder currently refuses certificates for optional raw/T16 adapters it cannot represent; that limitation is not permission to remove implemented runtime capabilities. The Q5-only thread alias was already retired.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0281-DRAFT-CHAIN",
+   "ordinal": 157,
+   "title": "Explicit chain policy and host fallback",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Move device-chain selection into one caller-owned proposal plan with its observation/workspace requirements (or keep the explicit host/device comparison), without deleting the host path. The ambient env selector was retired, but the constructor/benchmark/profiler choices remain. Do not delete the host path merely because normal compatibility generation chooses device-chain.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_resident_draft.py:560/637 accept and store device_chain_enabled",
+    "hipengine/speculative/mtp_resident_draft.py:1185/1449 branch on _device_chain_enabled",
+    "hipengine/generation/qwen35_gguf.py:1311 sets device_chain_enabled=True for the compatibility owner"
+   ],
+   "completion_gate": "Coordinate constructor, benchmark cache/provenance, profiler, compatibility owner and native proposal/complete-cycle validation; cover explicit true/false/unspecified, prewarm ownership, probability cutoffs, depth/capacity/top-k boundaries, proposal/commit/reset and teardown.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The ambient env selector was retired, but the constructor/benchmark/profiler choices remain. Do not delete the host path merely because normal compatibility generation chooses device-chain.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0282-PREFILL-POLICY",
+   "ordinal": 158,
+   "title": "Resident prefill diagnostic ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Keep the resident WMMA prefill diagnostic selector or replace it with an explicit session-owned prefill plan, preserving the production WMMA default and working comparison routes. An old negative timing result is not a reason to delete supported GEMV kernels or change another provider's policy.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_gguf.py:753 defines HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL",
+    "scripts/qwen35_gguf_bench.py:258 exposes the override",
+    "tests/test_unit_generation_qwen35_gguf_wmma_prefill_diagnostic.py pins unset/on/off/invalid behavior"
+   ],
+   "completion_gate": "Migrate generator/DMS acquisition, pooled/unpooled sessions, warmup, benchmark precedence and effective-route provenance; cover opposite-choice pool isolation, matching reuse, AR/MTP/DMS owners and the dense speculative exception.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "An old negative timing result is not a reason to delete supported GEMV kernels or change another provider's policy.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0282-DFLASH-DRAFTER",
+   "ordinal": 159,
+   "title": "Dense and post-attention plan ownership",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Preserve the dense and post-attention drafter comparisons or move their selection into caller-owned drafter plans, separating a shared runtime dense policy from a benchmark-only fusion experiment. Dense WMMA is already on; the naive numerical reference and benchmark-only post-attention fusion remain live. Do not make a new model-specific timing row a prerequisite for either route to run.",
+   "executed_evidence": [
+    "hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py:46-57 selects HIPENGINE_DFLASH_DRAFTER_DENSE naive/wmma",
+    "hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py:355-367 selects HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM off/on",
+    "tests/test_unit_dflash_drafter_controls.py pins both"
+   ],
+   "completion_gate": "Migrate the two output-type wrappers, DFlash2 and benchmark consumers, compiler/profile provenance and direct GPU-oracle callers; cover aligned/unaligned widths, output tails, invalid values and fused hidden-width bounds, then real provider requests with variant attribution.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Dense WMMA is already on; the naive numerical reference and benchmark-only post-attention fusion remain live. Do not make a new model-specific timing row a prerequisite for either route to run.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0285 / R0286",
+   "ordinal": 160,
+   "title": "Draft and target synchronized profiling ownership",
+   "inventory_refs": [
+    {
+     "id": "R0285",
+     "start_line": 6402,
+     "end_line": 6415,
+     "sha256": "befedc2bd8fe7c94e7a525f3c14769d1ecb7e5787edc970b69ed85ed14138e5b",
+     "inventory_status": "deferred-explicit-draft-profiling-ownership"
+    },
+    {
+     "id": "R0286",
+     "start_line": 6416,
+     "end_line": 6428,
+     "sha256": "27d678efa947b76f105e6b10d4bfc9a80444ddddf2fa67111cedd3b748a12402",
+     "inventory_status": "deferred-existing-draft-target-profiling-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Retain the explicit synchronized draft/target profiling or replace it with one profiling policy across runners, benchmark cache/provenance, profiler parent/child and draftsync/allsync suite routes. Keep instrumentation off by default; do not infer retirement from a campaign's closed status or promote diagnostic synchronization to remove a switch.",
+   "executed_evidence": [
+    "hipengine/runtime/gguf_native_spec_cycle.py:876/896 and :1604/1637 carry sync_stage_timings",
+    "scripts/gguf_mtp_draft_rocprof.py and scripts/gguf_mtp_verifier_rocprof.py expose the two profilers",
+    "tests/test_unit_scripts_gguf_mtp_draft_rocprof.py and tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py pin behavior"
+   ],
+   "completion_gate": "Demonstrate matching bucket/phase coverage and output under the replacement, including stream zero/nonzero, absent/present sink, multiple depths, Q6 raw/X8 staging and event failure/close; run resident-draft, target timing/selected-MoE, metrics/suite and both profiler unit tests.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Keep instrumentation off by default; do not infer retirement from a campaign's closed status or promote diagnostic synchronization to remove a switch.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0287",
+   "ordinal": 161,
+   "title": "Verifier FP32 arithmetic policy and probe provenance",
+   "inventory_refs": [
+    {
+     "id": "R0287",
+     "start_line": 6429,
+     "end_line": 6545,
+     "sha256": "b4320ccd8516492920dc4175fb9467ebd9ef2fb449d78131dde9966efc3a29d5",
+     "inventory_status": "triaged-provenance-fixed-arithmetic-policy-deferred"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Preserve the explicit per-boundary FP32 comparisons or move them into a runner-owned arithmetic plan with registered-profile bindings and probe serialization; do not enable every boundary to remove flags. Provenance for two active controls was fixed. Candidate promotion and diagnostic retention are separate decisions; an old token-margin slice is not an execution-profile gate.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9500-9518 defines the HIPENGINE_GGUF_VERIFY_F32_* family",
+    "scripts/gguf_mtp_forced_target_probe.py:49-61 reads the controls",
+    "tests/test_unit_qwen35_gguf_verify_f32_*.py cover the individual boundaries"
+   ],
+   "completion_gate": "Migrate buffer materialization, BF16 mirrors, prefix rejoin, layer/FFN consumers, profile binders, physical-C2 context and probe metadata; run the F32 unit family, dense-Q8 routing, profile isolation, invocation-contract and forced-target probe tests, then real strict/production requests with teacher logits.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Provenance for two active controls was fixed. Candidate promotion and diagnostic retention are separate decisions; an old token-margin slice is not an execution-profile gate.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0291 / R0293",
+   "ordinal": 162,
+   "title": "Q8T16 rowtile selection and comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0291",
+     "start_line": 6590,
+     "end_line": 6607,
+     "sha256": "c989aceeca1539669a9cd9bda191aa0e5fd36e4859df1f350b303a7734089335",
+     "inventory_status": "deferred-caller-owned-pair-selection"
+    },
+    {
+     "id": "R0293",
+     "start_line": 6621,
+     "end_line": 6648,
+     "sha256": "6b54c9106174e8020b5ec29a05c22da3b9c0f4f74005db0c72496b76c02fa873",
+     "inventory_status": "deferred-existing-rowtile-policy-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Preserve the Q8T16 pair/column/rowtile-all comparisons or migrate the ambient selectors and session globals into a caller-owned kernel plan across packed decode, profile binders, verifier profiling and the batch-route gate. Both backend packages now set the packed-decode pair floor to eight; the stale gfx1100 transfer blocker was corrected. The caller-owned selection decision remains.",
+   "executed_evidence": [
+    "hipengine/runtime/gguf_linear.py:1236-1238 defines HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE, PAIR_COL8 and ROWTILE_ALL",
+    "hipengine/runtime/gguf_linear.py:2416-2434 set_q8_t16_pair_rowtile_min_rows keeps a module-global session value",
+    "scripts/execution_profile_gguf_batch_route_gate.py:75-79 reads all three"
+   ],
+   "completion_gate": "Migrate the floor, broad-policy interaction, column selection, explicit thread/shape fallback, profile binding and profiler parent/child provenance; run single/pair/triple launch, nested/exception restoration, binder/suite/package/profiler tests, then both backend GPU bit-parity files and public packed generation.",
+   "hardware_gate": "hip_gfx1100 and hip_gfx1151 (gfx1151 present; gfx1100 absent)",
+   "missing_inputs": [],
+   "correction": "Both backend packages now set the packed-decode pair floor to eight; the stale gfx1100 transfer blocker was corrected. The caller-owned selection decision remains.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0380",
+   "ordinal": 163,
+   "title": "Recurrent-state storage controls and speculative writers",
+   "inventory_refs": [
+    {
+     "id": "R0380",
+     "start_line": 8448,
+     "end_line": 8531,
+     "sha256": "a9c6a26f41d9cfb7cb8ccf3c1ddca9ed3b69dfe1403a9163f47cfd48974b04bf",
+     "inventory_status": "triaged-deferred-storage-control-and-speculative-writer-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Retain the FP16 recurrent-state storage override or migrate it into a caller-owned execution plan; separately implement typed speculative selected commit and review the observed native-graph divergence. Storage override and typed speculative commit are separate. Missing benchmark rows are not capability failures; route availability follows capability contracts independently. The env-reference claim that all speculative decoding uses FP32 was corrected.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:11304/11328-11329 read HIPENGINE_GGUF_FP16_RECURRENT_STATE",
+    "hipengine/runtime/qwen35_gguf_runner.py:2961 materializes recurrent_state_dtype fp16/f32",
+    "tests/test_gpu_qwen35_gguf_gdn_fp16_state.py and tests/test_unit_qwen35_gguf_gdn_prefill_routing.py cover the state"
+   ],
+   "completion_gate": "Migrate storage resolution, allocation pricing, all writer selection, profile binding, snapshots and comparison provenance; run the GDN routing/session/scratch/FP16-batch/MTP2-seam tests, then HIP FP16/FP32 public short/segmented/long generation with failure rollback.",
+   "hardware_gate": "hip_gfx1151 present (gfx1151 is the FP16-state target); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "Storage override and typed speculative commit are separate. Missing benchmark rows are not capability failures; route availability follows capability contracts independently. The env-reference claim that all speculative decoding uses FP32 was corrected.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0381",
+   "ordinal": 164,
+   "title": "Short-C1 attention thread comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0381",
+     "start_line": 8532,
+     "end_line": 8544,
+     "sha256": "59a841513dddc34c0054b2b01ddcd2e87fb47a82ce2688d43c48fd65c68324a7",
+     "inventory_status": "triaged-deferred-live-thread-comparison-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Retain the short-C1 attention thread-width comparison or migrate it to an explicit caller-owned diagnostic plan before retiring the env reader/runtime-width entry point. Do not collapse the body to a single constexpr while the numerical gate still selects both widths. The env reader and runtime-width entry point are still live.",
+   "executed_evidence": [
+    "hipengine/kernels/hip_gfx1151/__init__.py:2679 GGUF_SHORT_C1_BATCH_ATTN_THREADS = 1024",
+    "hipengine/runtime/qwen35_gguf_runner.py:2850 defines HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS",
+    "scripts/execution_profile_gguf_c1_threads_gate.py:12/59 drives the comparison"
+   ],
+   "completion_gate": "Migrate resolver, leaf-cache boundaries, gate provenance, strict registration and callers; run tests/test_unit_gguf_c1_threads_control.py, decode-repack-dispatch and layer-execution tests plus the gate --help, then the full thread gate and public short-C1 requests on gfx1151.",
+   "hardware_gate": "hip_gfx1151 present (Radeon 8060S); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "Do not collapse the body to a single constexpr while the numerical gate still selects both widths. The env reader and runtime-width entry point are still live.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0382",
+   "ordinal": 165,
+   "title": "Long-context staged verifier and scalar-reference ownership",
+   "inventory_refs": [
+    {
+     "id": "R0382",
+     "start_line": 8545,
+     "end_line": 8605,
+     "sha256": "aee1016be0e7f60beb64a533661776802c3de7abc4b885fd6c7c53d4c97407c4",
+     "inventory_status": "triaged-deferred-strict-staged-plan-control-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Retain the long-context staged verifier comparison or migrate the selector and row-wise orchestration into one caller-owned strict/staged plan, keeping registered strict primitives and Conv/GDN/KV transaction ownership. The staged long verifier is already promoted; the remaining item is scalar-reference/control ownership, not a first promotion gate. Native graph/submission economics remain separate.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:9139 defines HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG; :32735 _gguf_staged_linear_rows_long_enabled",
+    "hipengine/runtime/qwen35_gguf_runner.py:7465-7472 applies the override to staged selection",
+    "scripts/gguf_mtp_long_context_gate.py:1172 records the env in the gate"
+   ],
+   "completion_gate": "Migrate policy binding, strict registry chain, row-scratch views, initial snapshots, selected-state commit and gate route attribution; run the staged/strict routing nodes and the long-context gate --help, then public generation at split-boundary straddles with staged/scalar call counts.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The staged long verifier is already promoted; the remaining item is scalar-reference/control ownership, not a first promotion gate. Native graph/submission economics remain separate.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0385",
+   "ordinal": 166,
+   "title": "Observed target/proposal sentinel crossing repair",
+   "inventory_refs": [
+    {
+     "id": "R0385",
+     "start_line": 8639,
+     "end_line": 8654,
+     "sha256": "ece3c9a25cdd2ed4f51de8a7a80a95b0b060e799808da4ba1ecb59659e429ab0",
+     "inventory_status": "deferred-observed-sentinel-crossing-isolation-repair"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the skipped 1024-crossing node into a bounded subprocess regression that executes the original body with its HIP/model preconditions, then reproduce and repair the sentinel crossing before removing the skip or handoff guard. Do not unskip this in a shared broad-suite process: the recorded failure can corrupt later GPU work. A failing reproduction must retire before any following health check.",
+   "executed_evidence": [
+    "tests/test_live_qwen35_gguf_mtp_e2e.py:921-930 defines the test and its unconditional skip",
+    "hipengine/runtime/qwen35_gguf_mtp.py:1500 emits target_graph_proposal_handoff_boundary_miss and fails closed at the graph context boundary",
+    "tests/test_unit_qwen35_gguf_mtp_session.py:50-56 pins the boundary miss for B1-B3"
+   ],
+   "completion_gate": "Run the isolated regression against the original local model on both sides of 1024 plus unrelated contexts and B1-B7; compare host/device proposals, every acceptance prefix, payload validity, Conv/GDN/KV/cursors, next-cycle continuity, reset and teardown, then a fresh-process health request.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [
+    {
+     "input": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf (the test's _DENSE_MODEL)",
+     "status": "verified-absent",
+     "note": "The path is absent on this host; Qwen3.8-27B-UD-Q4_K_M.gguf is present but is not the fixture named by the test."
+    }
+   ],
+   "correction": "Do not unskip this in a shared broad-suite process: the recorded failure can corrupt later GPU work. A failing reproduction must retire before any following health check.",
+   "can_start_before_hardware_validation": false,
+   "start_blocker": "the recorded reproduction needs the absent /models/gguf/Qwen3.6-27B-Q4_K_M.gguf fixture"
+  },
+  {
+   "id": "R0387",
+   "ordinal": 167,
+   "title": "Dense gfx1100 packed-step profiling follow-up",
+   "inventory_refs": [
+    {
+     "id": "R0387",
+     "start_line": 8675,
+     "end_line": 8707,
+     "sha256": "afb195b9693e266e201d4cb83179a30fdea9c745b9b50232a0bb1050d97b5462",
+     "inventory_status": "deferred-current-packed-step-profile-history-removed"
+    }
+   ],
+   "disposition": "missing_input",
+   "verdict": "Profile today's dense packed decode step on a gfx1100 host before choosing a kernel, state-transfer or submission change; this host is gfx1151 and cannot supply the requested measurement. The old comparison did not show aggregate scaling but is not a measurement of today's route. Keep default packed execution and its scalar comparison; do not infer a current speed result from the old timing.",
+   "executed_evidence": [
+    "scripts/server_f1_concurrency_bench.py:2985-2989 exposes --engine/--model/--backend/--quant and defaults backend hip_gfx1151",
+    "hipengine/runtime/gguf_linear.py packed decode path remains default; tests/test_unit_server_f1_concurrency_bench.py pins the harness",
+    "worklog 20261029T080300.651186Z removed the historical token-flip narrative and kept the gfx1100 profiling follow-up"
+   ],
+   "completion_gate": "Collect matched current c1/c2/c4 and neighboring/unrelated logical-width requests on one gfx1100 host with model, quant, KV policy, context, sampler, queue count and execution profile recorded; profile warmed cache-only execution with rocprofv3 --kernel-trace and separate capture from replay.",
+   "hardware_gate": "hip_gfx1100 (RX 7900 XTX-class) \u2014 verified absent; host is gfx1151 Radeon 8060S",
+   "missing_inputs": [
+    {
+     "input": "gfx1100 host",
+     "status": "verified-absent",
+     "note": "PCI 1002:1586 and rocminfo report only gfx1151; a gfx1151 measurement cannot substitute for the requested gfx1100 result."
+    }
+   ],
+   "correction": "The old comparison did not show aggregate scaling but is not a measurement of today's route. Keep default packed execution and its scalar comparison; do not infer a current speed result from the old timing.",
+   "can_start_before_hardware_validation": false,
+   "start_blocker": "the requested profile is a gfx1100 measurement; this host is gfx1151"
+  },
+  {
+   "id": "R0388",
+   "ordinal": 168,
+   "title": "Dense budget diagnostic interface ownership",
+   "inventory_refs": [
+    {
+     "id": "R0388",
+     "start_line": 8708,
+     "end_line": 8727,
+     "sha256": "fa4c523bf7047066cd383b42b6d78b83bb8d971bc347d874502be7a744a3e6cc",
+     "inventory_status": "deferred-diagnostic-seam-ownership-controllers-extracted"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Retain the dense-session MTP budget policy seam and CLI diagnostics as supported comparison interfaces, or replace them with a test/benchmark-owned cycle driver. Concrete sequence/adaptive budget controllers were already extracted from runtime imports; the remaining item is the still-live session seam ownership. Public candidate-depth selection is a separate shared-planner contract.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_budget.py:36-51 defines MtpBudgetPolicy with start_request/choose_budget/record_cycle/summary",
+    "scripts/mtp_budget_diagnostics.py drives the CLI diagnostics",
+    "tests/test_unit_mtp_budget_policy.py and tests/test_unit_qwen36_dense_gguf_suite.py cover the seam"
+   ],
+   "completion_gate": "Migrate callers, request-start/choice/post-commit observations, output-tail clipping, cancellation ordering and summary metadata if replacing; run the two unit files and session cancellation/bucket checks, then a complete B1/B2/B3 transition schedule and a public fixed-budget request.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "Concrete sequence/adaptive budget controllers were already extracted from runtime imports; the remaining item is the still-live session seam ownership. Public candidate-depth selection is a separate shared-planner contract.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0389",
+   "ordinal": 169,
+   "title": "Standalone draft-hidden diagnostic ownership",
+   "inventory_refs": [
+    {
+     "id": "R0389",
+     "start_line": 8728,
+     "end_line": 8745,
+     "sha256": "59bfa911f039276d57c0e2f547e53fe584d80d38915e8c523283e2386f591237",
+     "inventory_status": "deferred-standalone-hidden-interface-ownership"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Retain the standalone draft-hidden post-norm diagnostic constructor/CLI interface or migrate the transform into a benchmark-owned adapter; do not let an explicit post-norm request silently use pre-norm. No second model campaign is required to run an explicit implemented convention. Keep the target journal's commit/rollback tap unchanged.",
+   "executed_evidence": [
+    "hipengine/speculative/mtp_resident_draft.py:693/756-757/2531-2548 implement the post-norm transform and buffers",
+    "scripts/qwen36_dense_gguf_suite.py and tests/test_unit_qwen35_gguf_hidden_seed_contract.py exercise the convention"
+   ],
+   "completion_gate": "Migrate constructor, manifest/result metadata, prompt chunk transform, proposal normalization, stream retirement and owned-buffer cleanup; run the four named unit files and both explicit taps in the dense suite across chunk bounds, first/following proposals, repeat/reset and failed priming.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "No second model campaign is required to run an explicit implemented convention. Keep the target journal's commit/rollback tap unchanged.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0392",
+   "ordinal": 170,
+   "title": "Optional marker-free profiler interface",
+   "inventory_refs": [
+    {
+     "id": "R0392",
+     "start_line": 8773,
+     "end_line": 8902,
+     "sha256": "0f21f73cff6d4a1adda96b7973877ad0296201639f3fa102ddf6df5dca1350ed",
+     "inventory_status": "resolved-stale-claims-and-deferred-marker-interface"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Either adopt the documented child-mode procedure as the profiler interface or implement an explicit no-marker mode that records its scope and uses the matching rollup; do not silently replace a marker-scoped result with an unscoped trace. Kernel tracing needs no ROCTX; marker-scoped attribution does. The wrapper's explicit missing-library error is not a runtime model capability restriction. R0392's route-counter/cursor defects were already fixed; only the marker-free interface decision remains.",
+   "executed_evidence": [
+    "docs/RDNA3-TUNING-GUIDE.md:606-614 documents ROCTX requirements and the --child + rocprofv3 --kernel-trace procedure",
+    "scripts/roctx_discovery.py supplies shared discovery; wrappers raise on a missing library",
+    "No --no-marker/marker-free option exists in the wrappers"
+   ],
+   "completion_gate": "Test missing/present libraries, explicit override, child forwarding and trace-marker matching; coordinate shared discovery with R0393; preserve each wrapper's dependency-path and measurement contracts.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 for the profiler; none for the interface implementation",
+   "missing_inputs": [],
+   "correction": "Kernel tracing needs no ROCTX; marker-scoped attribution does. The wrapper's explicit missing-library error is not a runtime model capability restriction. R0392's route-counter/cursor defects were already fixed; only the marker-free interface decision remains.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0393-Q6",
+   "ordinal": 171,
+   "title": "Grouped-Q6 rollback interface and gfx1100 public engagement",
+   "inventory_refs": [],
+   "disposition": "local_implementation",
+   "verdict": "Keep HIPENGINE_C8_Q6_DP4A_GROUPED as a supported production rollback and standalone diagnostic, or replace it with an explicit session/profile interface; remove the env reader only after the replacement preserves those controls. The profile binder no longer writes process-global Q6 selection; capability/geometry selection replaced model-name matching. The remaining items are the rollback-interface disposition and the gfx1100 engagement record.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_dense_gfx1100_profiles.py:31 defines Q6_DP4A_GROUPED_ENV",
+    "hipengine/runtime/qwen35_gguf_runner.py:9528 reads it; :105003-112156 worklogs bind the choice per generator/session",
+    "scripts/qwen38_c8_p4_q6_dp4a_numerics.py:59 uses the env"
+   ],
+   "completion_gate": "Replace the reader with an explicit session/profile interface and run tests/test_unit_q6_grouped_session.py; then a real public packed-C8 request on gfx1100 recording selected Q6 variant, grouped-kernel engagement, repeatability and allocation drain.",
+   "hardware_gate": "hip_gfx1100 for the public engagement (verified absent); gfx1151 present",
+   "missing_inputs": [
+    {
+     "input": "gfx1100 host for the public packed-C8 request",
+     "status": "verified-absent",
+     "note": "The interface migration can start now; the gfx1100 engagement is a validation follow-up, not a runnability gate."
+    }
+   ],
+   "correction": "The profile binder no longer writes process-global Q6 selection; capability/geometry selection replaced model-name matching. The remaining items are the rollback-interface disposition and the gfx1100 engagement record.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0393-Q5",
+   "ordinal": 172,
+   "title": "Optional planar-Q5 sidecar lifecycle",
+   "inventory_refs": [],
+   "disposition": "product_decision",
+   "verdict": "Choose the supported planar-Q5 sidecar interface and allocation lifetime: retain the optional persistent sidecar, replace it with a request-owned allocation policy, or retire the route. Normal loading leaves the additional resident allocation off. This is a persistent-memory tradeoff, not missing numerical evidence; operator non-use has not been established, so the old campaign-cycle deletion condition is not satisfied.",
+   "executed_evidence": [
+    "hipengine/loading/qwen35_gguf_policy.py:51/182/215 defines and gates HIPENGINE_C8_Q5_PLANAR_DP4A",
+    "hipengine/loading/qwen35_gguf_materialize.py:678 documents the env-gated planar-dp4a sidecar",
+    "tests/test_unit_loading_qwen35_gguf_policy.py and tests/test_live_gguf_ud_admission.py pin the route"
+   ],
+   "completion_gate": "If retained, document it at its policy definition and remove the temporary lifecycle entry; if replaced, validate exact planned/converter bytes, insufficient resources, session isolation, R24/R32 selection, repeated public use and complete teardown; if retired, remove the whole route in one unit.",
+   "hardware_gate": "hip_gfx1100 for the public C8 request (verified absent); gfx1151 present",
+   "missing_inputs": [
+    {
+     "input": "gfx1100 host for a future public C8 engagement record",
+     "status": "verified-absent",
+     "note": "The allocation-policy decision does not require it."
+    }
+   ],
+   "correction": "Normal loading leaves the additional resident allocation off. This is a persistent-memory tradeoff, not missing numerical evidence; operator non-use has not been established, so the old campaign-cycle deletion condition is not satisfied.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0402",
+   "ordinal": 173,
+   "title": "Singleton and packed target-verifier ownership",
+   "inventory_refs": [
+    {
+     "id": "R0402",
+     "start_line": 9311,
+     "end_line": 9329,
+     "sha256": "68916e623c63d8eaabf3f5482a6ef906eb990eb6d82fb7de29e6de01cec29221",
+     "inventory_status": "deferred-target-owner-specialization-or-convergence"
+    }
+   ],
+   "disposition": "measurement_first",
+   "verdict": "Keep the singleton target verifier as a supported specialization and document its ownership boundary, or converge on the packed target owner with packed graph capture and a matched C1 route comparison. The existing server benchmark does not expose the C1 route comparison; do not infer convergence from it. This is live duplicate ownership, not a dead dispatch branch.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_gguf_mtp2.py:3439 _ensure_active_singleton_target_verifier and :5447 _execute_target_frontier_batch",
+    "hipengine/runtime/qwen35_gguf_runner.py:20019 verify_target_blocks_batch is the packed owner",
+    "tests/test_unit_qwen35_gguf_mtp2_c1_physical.py pins the singleton path on gfx1151"
+   ],
+   "completion_gate": "Run the three unit files in the ledger, then repeated public LLM.generate()/HTTP requests confirming the intended owner, graph replay, matching outputs and complete allocation drain; convergence also needs a matched C1 route-comparison harness.",
+   "hardware_gate": "hip_gfx1151 present; gfx1100 absent",
+   "missing_inputs": [],
+   "correction": "The existing server benchmark does not expose the C1 route comparison; do not infer convergence from it. This is live duplicate ownership, not a dead dispatch branch.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0403",
+   "ordinal": 174,
+   "title": "DMS and INT8 hidden-plane alias rollback interfaces",
+   "inventory_refs": [
+    {
+     "id": "R0403",
+     "start_line": 9330,
+     "end_line": 9346,
+     "sha256": "788ce74f467bd0c456393aae6266c98af2eb479276e2ced2f22dcced3af234ed",
+     "inventory_status": "deferred-hidden-alias-rollback-interface"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Record the supported DMS/INT8 hidden-plane alias interface, or replace both rollback interfaces with an explicit workspace policy (or retire them together); the INT8 control is also a two-plane comparison arm. R0403's promotion is complete; both controls are default-on and serve separate DMS/non-DMS routes. Missing operator-use records do not establish that either interface is unused.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:30193/30217 define HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS and HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS",
+    "hipengine/runtime/qwen35_gguf_runner.py:9369 _gguf_bulk_prefill_hidden_plane_count and :9393 handle layer_outer_shared_oracle",
+    "scripts/gguf_resumable_prefill_gpu_proof.py:479/716 and scripts/qwen38_int8_alias_realprompt_ab.py use the INT8 control"
+   ],
+   "completion_gate": "If replacing/retiring, update allocator/estimator agreement, capacity/growth tests, DMS/non-DMS isolation, proof configuration and docs/ENVS.md together; run the six unit files in the ledger, then public generation through both routes confirming plane ownership, output agreement and teardown.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "R0403's promotion is complete; both controls are default-on and serve separate DMS/non-DMS routes. Missing operator-use records do not establish that either interface is unused.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0404",
+   "ordinal": 175,
+   "title": "Direct INT8 prefill evaluation after dtype repair",
+   "inventory_refs": [
+    {
+     "id": "R0404",
+     "start_line": 9347,
+     "end_line": 9389,
+     "sha256": "46550bdffb713a7d5013f36ce1bcebc9c4605ba284eb6ef8976ed839dd1a6827",
+     "inventory_status": "repaired-direct-int8-dtype-handoffs-deferred-quality-evaluation"
+    }
+   ],
+   "disposition": "missing_input",
+   "verdict": "Rerun the calibrated same-prefix direct-INT8 evaluator after the dtype repair, then complete the execution-profile category/heldout, shape, repeat/isolation and task gates including separate tail-four coverage. The historical direct-prefill rejection predates these adapters and records an observed failure, not proof of inherent INT8 error. This is an evaluation task, not unfinished code.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:30259 defines HIPENGINE_GGUF_INT8_PREFILL_DIRECT",
+    "scripts/execution_profile_gguf_int8_direct_prefill_gate.py:71 uses the env and :399 passes --backend",
+    "worklog 20261029T143522.416005Z repaired the BF16/FP16 qgate and Hadamard handoffs"
+   ],
+   "completion_gate": "Run the gate command from the ledger with a calibrated GGUF model on a HIP backend, then the execution-profile category/heldout, shape, repeat/isolation and task gates; preserve explicit direct execution and the oracle path while resolving the numerical choice.",
+   "hardware_gate": "hip_gfx1100 (the ledger's gate backend) \u2014 verified absent; host is gfx1151",
+   "missing_inputs": [
+    {
+     "input": "hip_gfx1100 evaluation host",
+     "status": "verified-absent",
+     "note": "The dtype repair is done; the remaining task is the calibrated evaluation, which the ledger specifies for hip_gfx1100."
+    },
+    {
+     "input": "Calibrated GGUF model named only as $GGUF_MODEL",
+     "status": "historically-absent",
+     "note": "Qwen3.8-27B-UD-Q4_K_M.gguf is present, but the ledger does not name the calibrated artifact."
+    }
+   ],
+   "correction": "The historical direct-prefill rejection predates these adapters and records an observed failure, not proof of inherent INT8 error. This is an evaluation task, not unfinished code.",
+   "can_start_before_hardware_validation": false,
+   "start_blocker": "the calibrated evaluator run is specified for a gfx1100 host and an unnamed calibrated artifact"
+  },
+  {
+   "id": "R0406",
+   "ordinal": 176,
+   "title": "RX 7900 XTX server capacity refresh",
+   "inventory_refs": [
+    {
+     "id": "R0406",
+     "start_line": 9408,
+     "end_line": 9433,
+     "sha256": "4ddec3251b04fd2281c50ff4198b447ce72bbdbe8a95526a92943648cf1dc507",
+     "inventory_status": "workspace-repair-complete-deferred-xtx-server-capacity-refresh"
+    }
+   ],
+   "disposition": "missing_input",
+   "verdict": "Refresh the RX 7900 XTX single-request server context bound with a short multi-slab allocation probe, bracketing capacity and then confirming with the full-depth workload. The workspace repair is complete; this entry is only the deferred hardware validation. It cannot start on this host.",
+   "executed_evidence": [
+    "scripts/gguf_server_allocation_probe.py is the named probe and accepts --model/--kv-storage/--kv-scale-*/--speculative-mtp-serving/--prefix-cache/--max-active-requests/--max-context-tokens/--prompt-rows/--decode-tokens/--json",
+    "worklog 20261029T151035.839639Z says the eager full-context lease repair is implemented; only the XTX refresh remains"
+   ],
+   "completion_gate": "On an XTX host, run short probes bracketing the context, record resolved server policy, readiness/capability/response documents, allocation ownership and teardown, then confirm the chosen context with the full-depth workload.",
+   "hardware_gate": "RX 7900 XTX (gfx1100) \u2014 verified absent; host is gfx1151 Radeon 8060S",
+   "missing_inputs": [
+    {
+     "input": "RX 7900 XTX host",
+     "status": "verified-absent",
+     "note": "Substituting a gfx1151 result would not establish the requested XTX bound."
+    }
+   ],
+   "correction": "The workspace repair is complete; this entry is only the deferred hardware validation. It cannot start on this host.",
+   "can_start_before_hardware_validation": false,
+   "start_blocker": "the probe measures an RX 7900 XTX context bound; no gfx1100 device is present"
+  },
+  {
+   "id": "R0407",
+   "ordinal": 177,
+   "title": "Slot-local AOTriton rollback interface",
+   "inventory_refs": [
+    {
+     "id": "R0407",
+     "start_line": 9434,
+     "end_line": 9448,
+     "sha256": "9e971de5c2c7434806cef15d3d0080703889373f0c29f3f191c926feac8e3217",
+     "inventory_status": "aotriton-evaluator-repaired-interface-deferred-timesfm-scores-removed"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Keep the layer-scoped slot-local AOTriton rollback, or replace its native-comparison capability (evaluator manifests/capture and route A/B) before deleting the env reader and helper. The evaluator's slot-local reference arm was repaired after admission became default-on; only rollback-interface removal remains. The TimesFM score-buffer subitem was removed. Changing the flag alone would erase a working comparison arm.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_gguf_runner.py:30283 reads HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON",
+    "scripts/execution_profile_gguf_int8_direct_prefill_gate.py:73 and scripts/gguf_prefill_route_ab.py:26-27 use it",
+    "tests/test_unit_gguf_prefill_route_ab_example.py:21 pins the example"
+   ],
+   "completion_gate": "Update both evaluator manifests/capture and the route A/B example, preserve strict native fallback and backend/row constraints, then run real public generation confirming selection, repeatability and teardown.",
+   "hardware_gate": "hip_gfx1100 (the AOTriton slot-local path) \u2014 verified absent; host is gfx1151",
+   "missing_inputs": [
+    {
+     "input": "hip_gfx1100 host for the public validation",
+     "status": "verified-absent",
+     "note": "The evaluator/interface migration can start now."
+    }
+   ],
+   "correction": "The evaluator's slot-local reference arm was repaired after admission became default-on; only rollback-interface removal remains. The TimesFM score-buffer subitem was removed. Changing the flag alone would erase a working comparison arm.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0410",
+   "ordinal": 178,
+   "title": "Fused grouped-prefill combine adjudication",
+   "inventory_refs": [
+    {
+     "id": "R0410",
+     "start_line": 9481,
+     "end_line": 9500,
+     "sha256": "29839839e3c20a00e55284850f1af1fc362c7b09ba8bba5fa5197a0f6c874ae3",
+     "inventory_status": "deferred-fused-combine-adjudication"
+    }
+   ],
+   "disposition": "product_decision",
+   "verdict": "Adjudicate the fused grouped-prefill combine candidate: retain the explicit interface, promote it after a current same-process comparison, or retire the complete route. The corrected historical artifact records four Python processes and four model residencies, not one residency. It does not establish a binding loss; do not delete the candidate or treat the old timing as a promotion/rejection gate.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen4_exp_runner.py:7134/7439 gate HIPENGINE_QWEN4_EXP_FUSED_COMBINE",
+    "hipengine/runtime/qwen4_exp_runner.py:7138 weighted_lanes_sum_out_bf16_f32w; :7444 shared_gate_combine_f32_shared_out_bf16; :7468 weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w",
+    "tests/test_gpu_qwen4_exp_pf4_lever2_fused_combine.py covers the candidate"
+   ],
+   "completion_gate": "If evaluating promotion, add an engagement-verified fused-combine package to scripts/qwen4exp_halo_box_campaign_ab.py or an equivalent same-process harness; measure both settings in one model residency across the category/shape suite and heldouts, then verify exact outputs/state/KV, repeatability and public LLM.generate() selection.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "The corrected historical artifact records four Python processes and four model residencies, not one residency. It does not establish a binding loss; do not delete the candidate or treat the old timing as a promotion/rejection gate.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0412",
+   "ordinal": 179,
+   "title": "H256 generic-wave diagnostic retirement",
+   "inventory_refs": [
+    {
+     "id": "R0412",
+     "start_line": 9510,
+     "end_line": 9520,
+     "sha256": "375d4266d56f2d942158f063c20b7d445cf36b107116e811feb47e91ccd433fa",
+     "inventory_status": "deferred"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Decide whether the H256 generic-wave bisection comparison remains useful; if retiring it, remove the wave scope value and its campaign/state-gate packages together while preserving page256 and strict_rows_spans. The control migration is complete; only the generic-wave retention decision and separate decode optimization remain. The lead's accepted prefill/decode tradeoff is not reopened.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen4_exp_runner.py:2821 qsa_h256_prefill_mode and :9008 the runner field",
+    "tests/test_unit_qwen4exp_qsa_h256_scope.py and tests/test_unit_qwen4exp_qsa_h256_runtime.py pin the scope",
+    "worklog 20261029T163722.751625Z says the control migration to the owning runner is complete"
+   ],
+   "completion_gate": "Run the H256 scope/runtime tests, existing GPU H256 parity tests and public LLM.generate() with the scalar fallback engaged; any decode optimization must first profile the current path under OPTIMIZATION.md.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "The control migration is complete; only the generic-wave retention decision and separate decode optimization remain. The lead's accepted prefill/decode tradeoff is not reopened.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0415",
+   "ordinal": 180,
+   "title": "Register-state GDN decode follow-up",
+   "inventory_refs": [
+    {
+     "id": "R0415",
+     "start_line": 9539,
+     "end_line": 9552,
+     "sha256": "442a88bb50740b9a9c72344bd314360c6c0b9d40e596797dd6bd377e861dbe56",
+     "inventory_status": "fixed-control-deferred-decode"
+    }
+   ],
+   "disposition": "measurement_first",
+   "verdict": "Profile today's register-state GDN decode path under OPTIMIZATION.md, then choose and validate a decode optimization without reopening the accepted prefill-first decision. The control migration is complete; this is future decode optimization, not unfinished control plumbing. The accepted resource review and rejection of per-column/every8 scheduling barriers still stand.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen4_exp_runner.py:352 gdn_register_prefill setter and :362 qwen4_exp_gdn_register_prefill_selected",
+    "worklog 20261029T172026.382460Z says production publishes gdn_register_prefill=True, strict False, and the retired process selector is ignored",
+    "tests/test_gpu_qwen4exp_gdn_register.py and tests/test_unit_qwen4exp_gdn_register_route.py cover the control"
+   ],
+   "completion_gate": "Run the full profile gate and matched whole-model prefill/decode comparison for any arithmetic or performance candidate, keeping the serial strict fallback; remove the follow-up only after decode work completes or the lead retires it.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "The control migration is complete; this is future decode optimization, not unfinished control plumbing. The accepted resource review and rejection of per-column/every8 scheduling barriers still stand.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0421",
+   "ordinal": 181,
+   "title": "Separate PARO and GGUF attention-key semantics",
+   "inventory_refs": [
+    {
+     "id": "R0421",
+     "start_line": 9619,
+     "end_line": 9647,
+     "sha256": "879b4d3edf0a145058a449ae38ccb1b98a073c771eb4c2dfe996d03448cced6b",
+     "inventory_status": "deferred-paro-gguf-key-separation"
+    }
+   ],
+   "disposition": "product_decision",
+   "verdict": "Define distinct PARO and GGUF attention-key variant semantics, then compare a replacement against the current pin, repeated replacement and per_row arms before removing the gfx1100 registry pin. This is an observed failure, not missing benchmark coverage. Preserve the pin and its regression test; do not substitute the session backend unconditionally. The direct-leaf qwen35_batch_correctness.py harness does not exercise this registry choice.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen35_paro.py:204 _PAGED_KV_REGISTRY_BACKEND = hip_gfx1100",
+    "hipengine/runtime/qwen35_paro.py:2101/2238/3740 use the pinned backend for paged_attn_decode/w4_paro/bf16_context_batch_c1_exact_spans",
+    "worklog 20260912T044256.896835Z recorded deterministic PARO divergence when selecting the gfx1151 override"
+   ],
+   "completion_gate": "Run scripts/qwen35_batch_retained_bench.py --model <PARO-model> --fixture <derived-1024-token-fixture> --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --batch-decode-full-attn-path {per_row,native_batch} on the same gfx1151 host; inspect correctness.generated_token_equality.passed.",
+   "hardware_gate": "hip_gfx1151 present; gfx1100 pin is a registry choice, not a hardware absence",
+   "missing_inputs": [],
+   "correction": "This is an observed failure, not missing benchmark coverage. Preserve the pin and its regression test; do not substitute the session backend unconditionally. The direct-leaf qwen35_batch_correctness.py harness does not exercise this registry choice.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0422",
+   "ordinal": 182,
+   "title": "Automatic context-sizing control policy",
+   "inventory_refs": [
+    {
+     "id": "R0422",
+     "start_line": 9648,
+     "end_line": 9689,
+     "sha256": "e05030e865728bc0f0ac49c3c3fd668400b1a18052fd2dd5f3efb31a3ed74686",
+     "inventory_status": "deferred-sizing-control-policy"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Choose the automatic context-sizing control interface and migrate all five readers and allocation probes together, preserving route pricing, unavailable-geometry fallback, explicit context handling, retry bounds and rollback semantics. The historical flat-default accuracy item is superseded by route-derived pricing, but the five controls remain live and the interface decision is open. A benchmark cycle or unspecified production mileage does not settle it.",
+   "executed_evidence": [
+    "hipengine/generation/qwen35_gguf.py:600-604 define HIPENGINE_GGUF_AUTO_CONTEXT, _ATTEMPTS, KV_CAPACITY_RESERVE_MIB, KV_TRANSIENT_KIB_PER_TOKEN and KV_TRANSIENT_FIXED_MIB",
+    "scripts/gguf_server_allocation_probe.py:103 reads the reserve/context pins",
+    "tests/test_unit_qwen35_gguf_capacity.py and tests/test_unit_gguf_server_allocation_probe.py cover the policy"
+   ],
+   "completion_gate": "Run the two capacity unit files and the server allocation probe; exercise the changed policy through a real server allocation probe checking reported vs allocated context and teardown; recalibrate reserve/transient terms together if changing values.",
+   "hardware_gate": "hip_gfx1100 or hip_gfx1151 (gfx1151 present; HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`)",
+   "missing_inputs": [],
+   "correction": "The historical flat-default accuracy item is superseded by route-derived pricing, but the five controls remain live and the interface decision is open. A benchmark cycle or unspecified production mileage does not settle it.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0425",
+   "ordinal": 183,
+   "title": "Qwen4Exp pre-binder conflict guard",
+   "inventory_refs": [
+    {
+     "id": "R0425",
+     "start_line": 9760,
+     "end_line": 9785,
+     "sha256": "e960ecb6cae0649657fb29fc8f891d6011996daedc24e30461695b1c1cf60f2f",
+     "inventory_status": "deferred-profile-transport-migration"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Finish the explicit owner-field migration for Qwen4Exp profile binding, provide an explicit selected-route getter, and update the layer gate to use it instead of environment ordering; only then remove the conflict map, binder-write tracking and warning/error control. The guard is working protection, not stale debt. Removing it before the owner-field migration would remove working protection; runner-local selector migrations do not eliminate all writes.",
+   "executed_evidence": [
+    "hipengine/generation/qwen4_exp_profiles.py:953 _apply_profile_env still writes process settings; :968 _report_prebinder_conflicts; :893 last_prebinder_conflicts",
+    "hipengine/generation/qwen4_exp_profiles.py:30 _binder_written tracks binder writes",
+    "scripts/execution_profile_q8_wmma_prefill_layers_gate.py reads last_prebinder_conflicts() after construction"
+   ],
+   "completion_gate": "Migrate the remaining binder writes and their dispatch/resource/diagnostic readers together; run tests/test_unit_qwen4_exp_profiles.py -k 'pre_binder or previous_bind', the affected runner ownership tests and a real generation request confirming selected routes and isolation.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "The guard is working protection, not stale debt. Removing it before the owner-field migration would remove working protection; runner-local selector migrations do not eliminate all writes.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0426",
+   "ordinal": 184,
+   "title": "Wide-row prefill controls and diagnostic ownership",
+   "inventory_refs": [
+    {
+     "id": "R0426",
+     "start_line": 9786,
+     "end_line": 10046,
+     "sha256": "fac8980d9d29b72cbb709d977d9a113d66ec17440fe8cbd8f4ac71a49c41ae92",
+     "inventory_status": "triaged-deferred-interfaces-and-diagnostics"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Migrate the Qwen4Exp wide-row dense prefill diagnostic callers and layer-scope gate with R0425's owner-field migration before removing HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE, its layer control or the WMMA control. This is a triage closure, not implementation of the deferred interfaces. The K10240/N320 tail selection does not describe the whole dense-wide layer window; do not revive the obsolete 16-47-only proposal.",
+   "executed_evidence": [
+    "hipengine/generation/qwen4_exp_profiles.py:85 F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS and :108 PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS",
+    "hipengine/runtime/gguf_linear.py:3661/3747/3784 define and dispatch _Q8_DENSE_WIDE_ENV and _q8_dense_wide_dispatch",
+    "scripts/qwen4exp_dense_route_ab.py and scripts/qwen4exp_disabled_family_sweep.py still exercise the alternatives"
+   ],
+   "completion_gate": "Migrate those diagnostic callers and the layer-scope gate with R0425's owner-field migration; run the wide-prefill/dispatch tests, keep the registered exact fallback, and close the R0460 manifest dependency with declared strict/production scopes and binder agreement.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "This is a triage closure, not implementation of the deferred interfaces. The K10240/N320 tail selection does not describe the whole dense-wide layer window; do not revive the obsolete 16-47-only proposal.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0427",
+   "ordinal": 185,
+   "title": "Fixed256 reference and legacy comparison control",
+   "inventory_refs": [
+    {
+     "id": "R0427",
+     "start_line": 10047,
+     "end_line": 10064,
+     "sha256": "deef445c2e4a5c47e23fdbe585111adf45cf828cbf0a3963a886021b24175230",
+     "inventory_status": "triaged-live-shared-leaves-deferred-legacy-control"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Retain or retire HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY, which selects the older Qwen4Exp dense-attention body; if retiring, remove its reader and diagnostic overrides together and remove only the now-unused Qwen4Exp import. The blanket fixed256 deletion condition is obsolete: the fixed-width body still backs gfx1151's exact context-batch registration. This unit was triage only; the legacy comparison decision remains.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen4_exp_runner.py:3968/3974 reads HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY default 0",
+    "hipengine/runtime/qwen4_exp_runner.py:3154-3167 selects fixed256_spans vs fixed256_promoted_spans",
+    "scripts/qwen4exp_fullattn_prefill_microbench.py calls the reference directly and is separate"
+   ],
+   "completion_gate": "If retiring, check the promoted route through public generation and its exact-reference tests; do not remove the shared body, exports or registry entries while independent consumers remain. Review the microbench separately.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "The blanket fixed256 deletion condition is obsolete: the fixed-width body still backs gfx1151's exact context-batch registration. This unit was triage only; the legacy comparison decision remains.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0428",
+   "ordinal": 186,
+   "title": "Full-attention unroll comparison interface",
+   "inventory_refs": [
+    {
+     "id": "R0428",
+     "start_line": 10065,
+     "end_line": 10086,
+     "sha256": "6cf39cbf48fce7befad8e839ca86f2e22fa24957f4f4c5ede9b93625bb528d50",
+     "inventory_status": "fixed-cli-deferred-diagnostic-retirement"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Retain the full-attention QK-unroll replay comparison or retire its replay arms, removing the experimental HIP export, Python wrapper, package export and --qk-variants handling together. NOT completed. The two CLI defects are fixed (help works without libamdhip64.so; --qk-variants without --replay exits 2), but the retention decision and all four removal targets remain live. The user's 'R0428 completed' claim is overstated; the entry cannot be removed as completed.",
+   "executed_evidence": [
+    "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.hip:6514 exports ..._fixed256_experiment_spans",
+    "hipengine/kernels/hip_gfx1100/attention/paged_attn_decode.py:477 defines the wrapper and :33 exports the symbol",
+    "scripts/qwen4exp_fullattn_prefill_microbench.py:205-212 still parses --qk-variants and now rejects it without --replay"
+   ],
+   "completion_gate": "If retiring, remove the four pieces together and run the CLI regressions plus promoted-route GPU parity; historical captures and measurements remain evidence, not callers.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "NOT completed. The two CLI defects are fixed (help works without libamdhip64.so; --qk-variants without --replay exits 2), but the retention decision and all four removal targets remain live. The user's 'R0428 completed' claim is overstated; the entry cannot be removed as completed.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0432",
+   "ordinal": 187,
+   "title": "Dense staged-F32 scope and comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0432",
+     "start_line": 10162,
+     "end_line": 10235,
+     "sha256": "25fe2e0fc50e108962d6a9c24db06cab985af2ae5e88beab5b1557e8eead6a26",
+     "inventory_status": "triaged-deferred-composition-and-interface"
+    }
+   ],
+   "disposition": "product_decision",
+   "verdict": "Choose the dense staged-F32 production composition (or retain the evaluation interface / retire its runtime selector), preserving the empty/unset-off, layer-zero and dispatch-cache-key contracts. The route has historical evaluations; it does not simply await its first gate. Its composed WMMA teacher is a fixed historical configuration, not the current production profile. The composition/interface decision remains.",
+   "executed_evidence": [
+    "hipengine/runtime/gguf_linear.py:3997/4084/4088 define _Q8_STAGED_F32_LAYERS_ENV and _raw_k_staged_f32_dispatch",
+    "hipengine/kernels/hip_gfx1151/__init__.py:111 STAGED_F32_VARIANT = staged_f32_bm128_bn64_bk32",
+    "tests/test_unit_qwen4exp_gr_staged_removal.py and tests/test_gpu_qwen4exp_f16_pair_loan.py cover the interface"
+   ],
+   "completion_gate": "If choosing a new composition, run the staged scope A/B and execution-profile gate; keep empty/unset=off, 0=layer zero, and scope+owning layer in the dispatch cache key; runtime/backend constants must agree without an eager backend import.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "The route has historical evaluations; it does not simply await its first gate. Its composed WMMA teacher is a fixed historical configuration, not the current production profile. The composition/interface decision remains.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0434",
+   "ordinal": 188,
+   "title": "Pack8 GEMV width controls and exact-thread ownership",
+   "inventory_refs": [
+    {
+     "id": "R0434",
+     "start_line": 10269,
+     "end_line": 10311,
+     "sha256": "28a49fd6a11006e227972c98ad4434490fcbaba7c1f23606656ee6f879744eef",
+     "inventory_status": "deferred-comparison-and-exact-thread-ownership"
+    }
+   ],
+   "disposition": "local_implementation",
+   "verdict": "Keep the pack8 GEMV wide/narrow comparison control or migrate scripts/qwen4exp_layer2_profile_gate.py and scripts/qwen4exp_de3_route_probe.py to an explicit launch policy before removing the env reader. The release-cycle removal condition overlooks active comparison callers; the env control and Gemma4 exact-thread scope remain live.",
+   "executed_evidence": [
+    "hipengine/runtime/gguf_linear.py:9784/9808 define and read HIPENGINE_GGUF_PACK8_GEMV_WIDE",
+    "scripts/qwen4exp_layer2_profile_gate.py:731 and scripts/qwen4exp_de3_route_probe.py:55 set the control",
+    "tests/test_unit_gguf_pack8_gemv_wide_threads.py pins the widths"
+   ],
+   "completion_gate": "Preserve per-launch selection, caller geometry precedence, narrow/wide boundaries and default behavior; validate with the wide-threads unit, the migrated gate and public generation confirming selected widths and strict/candidate isolation.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "The release-cycle removal condition overlooks active comparison callers; the env control and Gemma4 exact-thread scope remain live.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0435",
+   "ordinal": 189,
+   "title": "Bounded KV reset comparison ownership",
+   "inventory_refs": [
+    {
+     "id": "R0435",
+     "start_line": 10312,
+     "end_line": 10345,
+     "sha256": "c907700c84ea6d6bd5e78e7054e77f66fbf3d7188e9042838a57be1bbb2c0b67",
+     "inventory_status": "fixed-reporting-deferred-comparison-ownership"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Keep the full/bounded KV-reset comparison interface or migrate scripts/qwen4exp_rt4_kv_compare.py and the layer2 candidate to an explicit reset policy before removing the env reader. NOT completed. The unset-reporting default was corrected in both diagnostics (unset now reports 1, matching runtime), but the comparison-control ownership and lifecycle validation remain. The user's 'R0435 completed' claim is overstated; the entry cannot be removed as completed.",
+   "executed_evidence": [
+    "hipengine/runtime/qwen4_exp_runner.py:926-928 reads HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET default 1",
+    "scripts/qwen4exp_rt4_kv_compare.py:122/126 reads and reports the flag; scripts/qwen4exp_de5_reset_split.py:300 reports it",
+    "tests/test_gpu_qwen4exp_kv_reset_bounded.py keeps the range/reuse contract"
+   ],
+   "completion_gate": "Before retiring the full-clear control, exercise repeated requests, long-to-short reuse, rollback, cancellation and changing widths through public generation/serving, comparing cleared buffers and post-reset outputs; keep the RT-4 synchronization before device-to-host copy.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "NOT completed. The unset-reporting default was corrected in both diagnostics (unset now reports 1, matching runtime), but the comparison-control ownership and lifecycle validation remain. The user's 'R0435 completed' claim is overstated; the entry cannot be removed as completed.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  },
+  {
+   "id": "R0438",
+   "ordinal": 190,
+   "title": "Chunked WY diagnostic retention",
+   "inventory_refs": [
+    {
+     "id": "R0438",
+     "start_line": 10396,
+     "end_line": 10414,
+     "sha256": "b74fbafa32eff4030b65e4d62ddc7038bff9134fe1ebba5ad0d2cf998ab2d508",
+     "inventory_status": "deferred-diagnostic-retention"
+    }
+   ],
+   "disposition": "diagnostic_disposition",
+   "verdict": "Keep the chunked WY comparison reproducible from the working tree, or retire its executable arm while preserving the historical artifact and Git source. Waiting for historical artifact references to disappear is not a useful removal condition. The unregistered WY implementation still has a direct recurrence-screen caller; production profile selection is independent and must not change.",
+   "executed_evidence": [
+    "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip:2036/2250 define hipengine_qwen4_exp_gdn_prefill_wy_f32",
+    "hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.py:802/839 wrap the export",
+    "scripts/qwen4exp_gd3_recurrence_screen.py:64 registers the wy_chunked arm"
+   ],
+   "completion_gate": "If retiring, remove the screen entry, host wrapper, HIP export, WY kernel and private constants together; run screen CLI/consumer checks, rebuild the affected GDN library and run its surviving recurrence tests.",
+   "hardware_gate": "hip_gfx1151 present (Qwen4Exp backend); HIP via `bash /tmp/qwen38fn-gufo-20261021/run-hip.sh`",
+   "missing_inputs": [],
+   "correction": "Waiting for historical artifact references to disappear is not a useful removal condition. The unregistered WY implementation still has a direct recurrence-screen caller; production profile selection is independent and must not change.",
+   "can_start_before_hardware_validation": true,
+   "start_blocker": null
+  }
+ ],
+ "deferred": [
+  {
+   "id": "R0281-INT8-POLICY",
+   "ordinal": 102,
+   "disposition": "product_decision",
+   "reason": "Decide the scoped INT8-KV policy that separates a recorded-failure override (HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG) from storage-layout selection (tail4_hadamard_group32), then migrate both generator and resident-runner readers together. Completed mirror-free, graph and MTP implementation plus obsolete evidence-based admission tasks were already removed; the remaining item is the storage/override policy, not a missing implementation.",
+   "clearing_action": "Run KV-capability, INT8-policy, packed-verifier-layout, INT8-MTP and per-layer-oracle units across contexts below/above/unrelated to the mirror threshold; exercise public direct/mirrored requests, explicit overrides and genuine capability refusals on both HIP backends."
+  },
+  {
+   "id": "R0387",
+   "ordinal": 167,
+   "disposition": "missing_input",
+   "reason": "Profile today's dense packed decode step on a gfx1100 host before choosing a kernel, state-transfer or submission change; this host is gfx1151 and cannot supply the requested measurement. The old comparison did not show aggregate scaling but is not a measurement of today's route. Keep default packed execution and its scalar comparison; do not infer a current speed result from the old timing.",
+   "clearing_action": "Collect matched current c1/c2/c4 and neighboring/unrelated logical-width requests on one gfx1100 host with model, quant, KV policy, context, sampler, queue count and execution profile recorded; profile warmed cache-only execution with rocprofv3 --kernel-trace and separate capture from replay."
+  },
+  {
+   "id": "R0393-Q5",
+   "ordinal": 172,
+   "disposition": "product_decision",
+   "reason": "Choose the supported planar-Q5 sidecar interface and allocation lifetime: retain the optional persistent sidecar, replace it with a request-owned allocation policy, or retire the route. Normal loading leaves the additional resident allocation off. This is a persistent-memory tradeoff, not missing numerical evidence; operator non-use has not been established, so the old campaign-cycle deletion condition is not satisfied.",
+   "clearing_action": "If retained, document it at its policy definition and remove the temporary lifecycle entry; if replaced, validate exact planned/converter bytes, insufficient resources, session isolation, R24/R32 selection, repeated public use and complete teardown; if retired, remove the whole route in one unit."
+  },
+  {
+   "id": "R0404",
+   "ordinal": 175,
+   "disposition": "missing_input",
+   "reason": "Rerun the calibrated same-prefix direct-INT8 evaluator after the dtype repair, then complete the execution-profile category/heldout, shape, repeat/isolation and task gates including separate tail-four coverage. The historical direct-prefill rejection predates these adapters and records an observed failure, not proof of inherent INT8 error. This is an evaluation task, not unfinished code.",
+   "clearing_action": "Run the gate command from the ledger with a calibrated GGUF model on a HIP backend, then the execution-profile category/heldout, shape, repeat/isolation and task gates; preserve explicit direct execution and the oracle path while resolving the numerical choice."
+  },
+  {
+   "id": "R0406",
+   "ordinal": 176,
+   "disposition": "missing_input",
+   "reason": "Refresh the RX 7900 XTX single-request server context bound with a short multi-slab allocation probe, bracketing capacity and then confirming with the full-depth workload. The workspace repair is complete; this entry is only the deferred hardware validation. It cannot start on this host.",
+   "clearing_action": "On an XTX host, run short probes bracketing the context, record resolved server policy, readiness/capability/response documents, allocation ownership and teardown, then confirm the chosen context with the full-depth workload."
+  },
+  {
+   "id": "R0410",
+   "ordinal": 178,
+   "disposition": "product_decision",
+   "reason": "Adjudicate the fused grouped-prefill combine candidate: retain the explicit interface, promote it after a current same-process comparison, or retire the complete route. The corrected historical artifact records four Python processes and four model residencies, not one residency. It does not establish a binding loss; do not delete the candidate or treat the old timing as a promotion/rejection gate.",
+   "clearing_action": "If evaluating promotion, add an engagement-verified fused-combine package to scripts/qwen4exp_halo_box_campaign_ab.py or an equivalent same-process harness; measure both settings in one model residency across the category/shape suite and heldouts, then verify exact outputs/state/KV, repeatability and public LLM.generate() selection."
+  },
+  {
+   "id": "R0421",
+   "ordinal": 181,
+   "disposition": "product_decision",
+   "reason": "Define distinct PARO and GGUF attention-key variant semantics, then compare a replacement against the current pin, repeated replacement and per_row arms before removing the gfx1100 registry pin. This is an observed failure, not missing benchmark coverage. Preserve the pin and its regression test; do not substitute the session backend unconditionally. The direct-leaf qwen35_batch_correctness.py harness does not exercise this registry choice.",
+   "clearing_action": "Run scripts/qwen35_batch_retained_bench.py --model <PARO-model> --fixture <derived-1024-token-fixture> --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --batch-decode-full-attn-path {per_row,native_batch} on the same gfx1151 host; inspect correctness.generated_token_equality.passed."
+  },
+  {
+   "id": "R0432",
+   "ordinal": 187,
+   "disposition": "product_decision",
+   "reason": "Choose the dense staged-F32 production composition (or retain the evaluation interface / retire its runtime selector), preserving the empty/unset-off, layer-zero and dispatch-cache-key contracts. The route has historical evaluations; it does not simply await its first gate. Its composed WMMA teacher is a fixed historical configuration, not the current production profile. The composition/interface decision remains.",
+   "clearing_action": "If choosing a new composition, run the staged scope A/B and execution-profile gate; keep empty/unset=off, 0=layer zero, and scope+owning layer in the dispatch cache key; runtime/backend constants must agree without an eager backend import."
+  }
+ ]
+}
