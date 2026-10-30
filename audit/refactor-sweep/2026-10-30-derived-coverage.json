@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "scope": "Derived subitem requirement audit; not whole-sweep completion",
+  "manifest": "audit/refactor-sweep/2026-10-25.json",
+  "rows": [
+    {"id":"R0412","requirements":["profile selection and strict fallback","score-product boundary and decode parent","rollback and generic-wave disposition","decode follow-up"],"evidence":"worklog/entries/20261029T163722.751625Z-cleanup-refactor-r0412-h256-prefill-2bd929.md","remaining_owner":"R0412"},
+    {"id":"R0413","requirements":["profile-owned bundled selection","exact grouped fallback","accepted tradeoff preserved","diagnostic rollback"],"evidence":"worklog/entries/20261029T165643.836935Z-cleanup-refactor-r0413-q4-bundle-9728bf.md","remaining_owner":null},
+    {"id":"R0414","requirements":["rows/registry guards","small-row and strict parent","manifest selection","rollback and A/B"],"evidence":"worklog/entries/20261029T170807.738254Z-cleanup-refactor-r0414-q51-pair-ba0af2.md","remaining_owner":null},
+    {"id":"R0415","requirements":["geometry/registry guards and unchanged suffix/decode","prefill-first decision and decode follow-up","strict fallback and diagnostic selection","resource and rejected-barrier decisions"],"evidence":"worklog/entries/20261029T172026.382460Z-cleanup-refactor-r0415-gdn-register-f765dd.md","remaining_owner":"R0415"},
+    {"id":"R0416","requirements":["shared activation arithmetic","rows/K/registry guards","small-row/bundled strict fallback","rejected sweep decisions","manifest selection and rollback"],"evidence":"worklog/entries/20261029T172959.150738Z-cleanup-refactor-r0416-q4-pair-6f8630.md","remaining_owner":null},
+    {"id":"R0455","requirements":["direct/norm-inject/scale-only selector retirement","execution-local mirror diagnostics","bounded scale/mirror scratch","publication loan retirement","padded-tail consumer review"],"evidence":"worklog/entries/20261030T000155.979928Z-cleanup-cleanup-refactor-r0455-close-a136cb.md","remaining_owner":null,"qualification":"Padded tail is a demonstrated ordinary-staging fallback, not deleted; closure records public engagement and links implementation units."},
+    {"id":"R0462","requirements":["capacity accounting","manifest selector","direct mask publication","non-dense span capability","per-layer gather cache ownership"],"evidence":"worklog/entries/20261030T012436.140169Z-cleanup-cleanup-r0462-disposition-92a3ce.md","remaining_owner":"R0462","qualification":"Capacity and selector fixed; direct mask already implemented; non-dense semantics and per-layer caching deferred with public shared-scratch observation."}
+  ]
+}
