@@ -965,20 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## Q8_0 T16 f16w tiles are found through a pointer table (added 2026-10-10)
-
-Cleanup status (2026-10-26, R0045): the pointer table and its registration APIs
-are removed. `Gemma4DeviceWeights.ensure_dense_f16w` attaches the converted
-operand to its weight as an owned `f16w` sidecar; resident-byte accounting and
-weight teardown include it. The memory reserve and conversion remain unchanged.
-
-The registered `t16_wmma_prefill_f16w_bf16_bf16_out` variant uses the
-`t16_f16w` launch ABI, passing tiles and the half-weight operand explicitly.
-Dispatch selects it by matching owned-operand shape and registered capability;
-its cache distinguishes operand presence, pointer and shape. Existing `t16`
-callers and weights without a sidecar keep the decoding path. gfx1100 and
-gfx1151 retain their respective two-wave and four-wave wrapper policies.
-
 ## Gemma 4 expert down WMMA rollback lever (added 2026-10-10)
 
 Cleanup status (2026-10-26, R0046): removed. `HIPENGINE_GEMMA4_MOE_DOWN_WMMA`
