@@ -968,43 +968,6 @@ multi-column engagement evidence, so it stays.
 
 
 
-## Reused-suffix prefill has two routes and only one is slow (found 2026-09-18)
-
-- The greedy cumulative lanes prefill a reused row's suffix through
-  `_prefill_native_chunk`'s serial loop, one `session.step()` per token: measured
-  **33.8-35.3 ms per suffix token** (6.2-6.9 s on a hit turn) with **~1,679 extra
-  kernel dispatches per token** against **~0.4 ms/token** for the batched prefill
-  kernels.
-- **Corrected 2026-09-18 (same day): there is no cheap second route.**
-  `_prefill_processed_argmax_chunk`'s reused branch also calls `session.step()`
-  once per token; it simply never recorded the `suffix_prefill` phase (it bumped
-  `processed_argmax_prefix_c1_suffix_*` route counters instead), so the fixture
-  lanes looked like they skipped the serial loop. The phase counter is now
-  recorded on both routes. The sampled lanes' 3-5 s lower walls are therefore not
-  explained by the missing phase and still need per-phase re-attribution against
-  the same lane prompts.
-- **Resolved 2026-09-18 (same day, later): the batched route exists and was
-  gated by policy, not capability.** The packed AR prefill accepts non-zero
-  start positions (`_GGUFPackedVerifySlotBlock.start_position`), seeds per-slot
-  GDN state from the restored session (`_sync_packed_decode_initial_state`),
-  imports prefix KV through page-aligned D2D segments, and commits the suffix
-  back through the session block table. The only blocker was
-  `_validate_packed_ar_prefill_context` refusing `max_live_count >= 1024` on
-  the paged route (a 2026-07-20 policy gate from 84fd737a3, never numerically
-  qualified past 1024 because the slot-local AOTriton route took over there).
-  The gate is removed; the reused branch of both `_prefill_native_chunk` and
-  `_prefill_processed_argmax_chunk` now prefills the suffix batched, with the
-  serial loop kept as the opt-in fallback
-  (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`). Fixture evidence (Qwen3.5-0.8B,
-  18 GDN + 6 full-attention layers): shared-prefix batched extend matches the
-  serial oracle token-for-token with KL <= 0.05 and identical 8-step decode
-  continuations at total contexts 712/1224/2248/4296, with and without
-  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`.
-- Historical note: the mid-day correction ("there is no cheap second route")
-  was right about the sampled route's missing phase counter and wrong about
-  the batched route's reach; the audit entry
-  `worklog/entries/20260918T142514.675878Z-pi-prefix-cache-batched-suffix-audit-73980d.md`
-  records the mechanism.
 
 
 
