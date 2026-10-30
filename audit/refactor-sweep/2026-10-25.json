@@ -10122,7 +10122,7 @@
       "start_line": 7674,
       "end_line": 7701,
       "sha256": "14410e74a7767557486310c5dd20854da790f28c9f06850c30490f9ccf146089",
-      "status": "partial-auto-shape-capability-repaired-bottom-comparison-migration",
+      "status": "triaged-shape-repaired-comparison-migration-deferred",
       "evidence": ["Real single/triple dispatch plus primitive wrapper RED 10 fail/6 pass reproduced automatic fixed-K rejection for generic K and non256 threads. Automatic selection now checks K3072/6144/9216 and threads256; other K use backend generic onebarrier, alternate threads use GEMV. Explicit strategies retain named incompatibility errors. Focused 156 pass/28 HIP skips; kernels/arithmetic unchanged. ENVS corrected; bottom R0340 owns process-global comparison migration and outstanding GPU/public repair validation (local libamdhip64.so unavailable, Laguna artifact absent)."],
       "subitems": [
         {
@@ -10153,7 +10153,7 @@
       "start_line": 7702,
       "end_line": 7720,
       "sha256": "d0f86949065d357f0ca81d20b3253a4c63baf5777ee15008ec4fb22e482fe80a",
-      "status": "partial-shadowed-tile8-comparison-repaired-bottom-diagnostic-migration",
+      "status": "triaged-tile8-comparison-repaired-diagnostic-migration-deferred",
       "evidence": ["Real profiler CLI run/route tests show default dual-interleaved residency ignores tile8 setter; ordinary resident comparison also needs later parallel/fused-SiLU overlays off. Profiler now owns those prerequisites only for tile8 comparison and records explicit basis; unset package defaults unchanged. RED1/1 after test mappingproxy fixture repair; GREEN139 focused plus four multi-row cases, final changed file6 pass (143 combined). Bottom R0341 owns diagnostic constructor/setter migration and unavailable ROCm/Laguna actual-weight/public validation. Runtime/kernels/production residency unchanged."],
       "subitems": [
         {
