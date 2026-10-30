@@ -965,55 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## Gemma flash decode keeps a fallback the current scope cannot reach (found 2026-10-08; kept 2026-10-26)
-
-Cleanup status (2026-10-26, R0052): keep, not debt. The wrapper's admission is
-the route decision for two callers, only one of which goes through a selector,
-so the recorded removal condition could not be executed as written.
-
-`gemma4_attention_decode_flash_bf16`
-(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:1346`) and its
-long-row sibling (`:1395`) share `_decode_flash_bf16` (`:1241`), which asks the
-launcher's own exported admission -- `flash_request_slices` (`:541`) and
-`flash_serves` (`:510`) -- before it requests the flash route (`:1266`, `:1274`)
-and delegates to the staged singleton when that admission rejects the shape.
-The delegate is the chain the decode scope used before flash, and the
-launcher's own fallback -- the owned-scratch class kernel -- is far slower at
-long context: measured 2026-10-08 at a 128K prefix, a global row that left the
-flash route took **225.3 ms** per decode step against the staged singleton's
-**73.4 ms** on the same teacher token and KV prefix
-(`/tmp/gemma4-pv/flashvar-decode-attrib.json`, `baseline-decode-attrib.json`,
-both at `308c4c38c`).
-
-Two callers reach the wrapper. The layer's decode selector
-(`_select_exact_decode_attention`,
-`hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py:880`) resolves it for the
-production decode scope, and nothing that selector admits reaches the fallback:
-for the one-token global scope the fitted slice count always exists and is
-always admitted, which the fitting unit tests pin
-(`tests/test_unit_gemma4_decode_attention_selection.py:536`, `:556`). The MTP
-assistant head calls the long-row wrapper directly, with no selector in front
-of it -- `hipengine/runtime/gemma4_assistant.py:730` and `:1277` launch
-`gemma4_attention_decode_flash_long_bf16` for every draft row -- and its
-geometry comes from the assistant artifact. A packing the flash kernel does not
-instantiate (`flash_admits`, `gemma4_attention.py:579`: head_dim 256 with GQA
-ratio 2, or head_dim 512 with ratio 8) therefore reaches the wrapper with no
-route decision but this one, and would land on the class kernel if the check
-were dropped. The unit battery pins the same contract for a shape no selector
-can admit: `head_dim=128` falls to the staged chain
-(`tests/test_unit_gemma4_decode_attention_selection.py:580`).
-
-The recorded removal condition was also mis-costed. Moving the admission into
-the selector is not a new device-library call on the route-decision path: the
-launcher already makes the same two ctypes calls on the same launch
-(`gemma4_attention.py:1036`), so the move is cost-neutral per launch. The
-reason to keep the wrapper's check is that the selector is one caller among
-two, not that the call is expensive.
-
-Keep the wrapper's check. If the assistant head should share the layer's route
-decision, give that path its own selector call; that is a draft-routing change
-with its own measurement, not a cleanup of this wrapper.
-
 ## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
 
 Cleanup status (2026-10-26, R0053): fixed. The plain prefill block kernel now
