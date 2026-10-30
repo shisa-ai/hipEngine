@@ -3544,26 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Forced-token requests skip the captured-graph sampled accept (open 2026-09-23)
-
-A request with a pending forced token cannot use the captured-graph sampled
-accept, for the same reason logprobs requests cannot: the graph samples on the
-device and the route needs the row's law on the host to substitute the forced
-token for it. `supports_native_gpu_sampling` in
-`hipengine/generation/sampling.py` refuses those requests, so they take the
-eager host accept, where the override is a point mass on the forced token and
-the accept walk corrects to it. `_sampled_accept_summary` in
-`hipengine/generation/qwen35_gguf_mtp2.py` raises rather than silently sampling
-if a forced token ever reaches the native shape. The fallback is exact -- the
-gate compares both arms token for token, including the queue's position in the
-output -- so the decline costs those requests the graph's speed, not their
-correctness.
-
-Remove this once the graph accept can consume a per-row override, which needs
-the device sampler to take a row's forced token as an input the way the host
-path does. The evidence that would justify it is the same gate with the refusal
-removed and the execution path reporting the captured-graph accept.
-
 ## Gemma 4 fused MMQ gate/up prefill is the default; the flag is a rollback lever (open 2026-09-27)
 
 `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` selects a fused int8-dp4a MMQ32 route for
@@ -9828,3 +9808,22 @@ against the autoregressive route, confirming the captured accept actually ran.
 Exercise partial acceptance, full acceptance, rejection, stop truncation and
 blocking/streaming output. Existing eager-path tests are not evidence that the
 graph metadata interface is implemented.
+
+### R0514 — Define device forced-token inputs and queue commit semantics
+
+Pending forced tokens still decline in `supports_native_gpu_sampling` and
+`_device_sampled_accept_plan`. `_sampled_accept_summary` raises if a pending
+override reaches the unsupported native route. The host accept path applies the
+forced token as a point mass; keep that working fallback until device overrides
+are implemented.
+
+**Deferred device interface:** carry per-row forced-token overrides into sampling
+and acceptance, with request-local queue position and graph replay updates.
+Advance the queue only for committed published tokens, not rejected speculative
+rows. Preserve queue state across rollback, partial acceptance, stop truncation
+and cancellation; validate token bounds and interactions with constraints.
+
+Remove the refusal only after the forced-token gate compares output tokens and
+queue positions against the host path while telemetry confirms captured-graph
+accept. Exercise forced sequences spanning cycle boundaries and ordinary rows
+sharing a batch. Host-path test success does not establish device support.

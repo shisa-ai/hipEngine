@@ -13832,8 +13832,8 @@
       "start_line": 12209,
       "end_line": 12228,
       "sha256": "9d25e89787975c65a35e4412d2849284c8bbe68baedea81bb51fb6368210e49a",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Device per-row forced-token override and published-token queue ownership remain unimplemented; deferred with commit/rollback/replay requirements and captured-route gate. Host fallback preserved. worklog/entries/20261030T054704.775988Z-cleanup-cleanup-r0514-dd42dd.md."],
       "subitems": []
     },
     {
