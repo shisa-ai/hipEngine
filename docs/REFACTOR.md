@@ -3544,20 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
-
-The text-prefill tiling bounds the *memory* but not the QK^T arithmetic: every
-tile passes `m=tokens` (the full key range) to the score GEMM and then masks the
-keys beyond its last query, so the tiled prefill does the same ~`nq * tokens^2`
-multiply-adds the dense path did, of which only the lower triangle survives.
-Bounding each tile's keys to `start + bq` would halve the QK^T FLOPs
-(`sum_t bq * (start + bq) ~ tokens^2 / 2`), at the cost of a per-tile `keys`
-argument in `surya_causal_mask_scale_f32` and a per-tile `head_stride` in the
-tile layout (`evie_softmax_rows_f32` already takes `cols` and `tokens`
-separately, so it needs no new argument). Do it when the prefill's score-GEMM
-share is measured to matter; it is a separate change from the memory fix, which
-neither added nor removed QK^T work.
-
 ## 2026-09-12 Surya A4 page has no torch fp32 reference — open
 
 The 300-DPI A4 page is in the transcription ground-truth and reading-order gates
@@ -10069,3 +10055,21 @@ large allocation; shape-to-shape results do not establish dense parity. The
 historical launch-configuration failure did not reproduce at the tested wide
 tiles, so do not add a memory refusal on that basis. Any policy change needs
 the applicable numerical gate and public Surya validation.
+
+### R0492 — Bound Surya causal-prefill keys per tile
+
+`SuryaGpuRunner._attention_packed` still uses `m=tokens` for each score GEMM
+and `k=tokens` for each value GEMM. Tiling bounds scratch memory but computes
+future keys that the causal mask later excludes. A candidate can bound keys
+to `start + bq`, updating the score strides, mask, softmax and value product
+together. This changes matrix shapes and may change reduction arithmetic;
+it is not just a scratch-allocation cleanup.
+
+**Deferred optimization:** the local Surya checkpoint is missing and
+`rocprofv3` is absent from PATH. After restoring both, profile with
+`rocprofv3 --kernel-trace -- python3 scripts/surya_gpu_rocprof_driver.py --phase prefill --repeat 3`.
+Use the driver phase markers to exclude vision/load work. If score computation
+is worth optimizing, implement the bounded-key path and compare against the
+current chain on dense, partial-tail and multi-tile prompts, then run the
+applicable numerical gate and public Surya generation. Keep the current
+working implementation until that replacement is ready.

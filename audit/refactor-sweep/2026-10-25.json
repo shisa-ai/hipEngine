@@ -13514,8 +13514,8 @@
       "start_line": 11616,
       "end_line": 11629,
       "sha256": "09cdca4b1c39990604ca4f49a604a49d4d3b27cfa51e5496a58e60876525adf6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Full-key prefill chain confirmed; checkpoint/tracer-dependent optimization moved to bottom with profiling command. worklog/entries/20261030T043600.047954Z-cleanup-cleanup-r0492-eeda0d.md."],
       "subitems": []
     },
     {
