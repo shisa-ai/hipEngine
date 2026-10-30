@@ -311,6 +311,12 @@ def test_build_variant_manifest_uses_live_runner_and_dispatch_records(
     assert adapter.evidence["variant_manifest"]["manifest_sha256"] == "a" * 64
 
 
+def test_unbuilt_manifest_does_not_advertise_static_identities(fake_adapter):
+    adapter, _owner, _generator = fake_adapter()
+    assert adapter.evidence["variant_manifest"] is None
+    assert adapter.evidence["path_identities"] == []
+
+
 def test_build_variant_manifest_requires_profile_manifest(fake_adapter):
     adapter, _owner, _generator = fake_adapter()
     adapter.open()

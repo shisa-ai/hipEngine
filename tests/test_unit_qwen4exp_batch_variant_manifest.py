@@ -32,7 +32,6 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.runtime import qwen4_exp_batch_manifest as batch_manifest
 from hipengine.runtime.qwen4_exp_batch_runner import Qwen4ExpGGUFBatchRunner
-from scripts.qwen4exp_ar_batch_candidate import batch_manifest_binding
 
 SOURCE_REVISION = "a" * 40
 QUANT = "gguf_ud_q4_k_xl"
@@ -392,12 +391,6 @@ def test_c1_profile_manifest_is_not_a_batch_manifest(profile_manifest):
     result = batch_manifest.validate_batch_variant_manifest(profile_manifest)
     assert result["valid"] is False
     assert any("missing fields" in reason for reason in result["reasons"])
-
-
-def test_legacy_c1_binding_still_reports_missing(profile_manifest):
-    binding = batch_manifest_binding(profile_manifest)
-    assert binding["bound"] is False
-    assert binding["missing"]
 
 
 def test_dispatch_recorder_is_context_local_and_exact():

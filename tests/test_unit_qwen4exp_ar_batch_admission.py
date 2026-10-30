@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.qwen4exp_ar_batch_candidate import batch_manifest_binding
 from scripts.qwen4exp_layer2_profile_gate import (
     BATCH_NORMATIVE_DECODE_STEPS,
     BATCH_NORMATIVE_FREE_RUNS,
@@ -133,83 +132,6 @@ def test_structured_invalid_binding_blocks_admission_even_if_legacy_bound_is_tru
         task_pass=True,
     )
     assert decision["admitted"] is False
-
-
-def test_c1_only_manifest_does_not_bind_the_batch_path():
-    manifest = {
-        "kind": "hipengine_execution_profile_manifest",
-        "selections": [
-            {
-                "layer": "gdn_recurrence_norm_gate",
-                "scope": "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128",
-                "selected_variant": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
-            },
-            {
-                "layer": "qsa_sparse_attention",
-                "scope": "qwen4exp_c1_h256_indexed_sparse_decode",
-                "selected_variant": "strict_ordered_three_pass_spans",
-            },
-            {
-                "layer": "paged_attn_decode",
-                "scope": "qwen4exp_multirow_dense_qsa",
-                "selected_variant": "wmma_f16_masked_prefill_f32",
-            },
-        ]
-    }
-    binding = batch_manifest_binding(manifest)
-    assert binding["bound"] is False
-    roles = {row["role"] for row in binding["missing"]}
-    assert "gdn_recurrence_norm_gate" in roles
-    assert "gdn_conv_indexed" in roles
-    assert "qsa_mixed_mixer" in roles
-    assert "qsa_paged_kv_write" in roles
-    assert "qsa_paged_decode" in roles
-    assert "batch_ple" in roles
-
-    eligibility = batch_admission_eligibility(
-        **eligibility_kwargs(manifest_binding=binding)
-    )
-    assert eligibility["eligible"] is False
-    assert any("batch_manifest" in reason for reason in eligibility["reasons"])
-
-
-def test_manifest_with_batch_scopes_is_bound():
-    manifest = {
-        "selections": [
-            {
-                "layer": "gdn_recurrence_norm_gate",
-                "scope": "decode_rowsplit_indexed",
-                "selected_variant": "rowsplit_indexed_f32",
-            },
-            {
-                "layer": "gdn_conv_indexed",
-                "scope": "decode_conv_decode_indexed",
-                "selected_variant": "conv_decode_indexed_f32",
-            },
-            {
-                "layer": "qsa_sparse_attention",
-                "scope": "decode_mixed_token_mixer",
-                "selected_variant": "mixed_token_mixer",
-            },
-            {
-                "layer": "paged_attn_decode",
-                "scope": "decode_batch_spans",
-                "selected_variant": "batch_spans",
-            },
-            {
-                "layer": "batch_ple",
-                "scope": "decode_batch_ple",
-                "selected_variant": "batch_ple",
-            },
-        ]
-    }
-    binding = batch_manifest_binding(manifest)
-    assert binding["bound"] is True
-    assert binding["missing"] == []
-    eligibility = batch_admission_eligibility(
-        **eligibility_kwargs(manifest_binding=binding)
-    )
-    assert eligibility["eligible"] is True
 
 
 # -- decision ---------------------------------------------------------------

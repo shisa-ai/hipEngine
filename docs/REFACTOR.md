@@ -3537,14 +3537,12 @@ it would narrow the supported shapes. Both kernel bodies are unchanged.
 
 ## Batch manifest legacy substring binding
 
-`scripts/qwen4exp_ar_batch_candidate.py:batch_manifest_binding` and
-`BATCH_PATH_IDENTITIES` remain only for the legacy admission unit tests. The
-layer-2 gate now validates the structured
-`hipengine.runtime.qwen4_exp_batch_manifest` artifact: live direct identities,
-registry keys, projection dispatch keys, step widths, and the profile/source
-binding. Delete the substring helper, its identity table, and the fake-scope
-tests in `tests/test_unit_qwen4exp_ar_batch_admission.py` once the structured
-manifest is committed and no older evidence needs the legacy binding.
+Resolved: removed the substring helper, static identity table and legacy
+fake-scope tests. Adapter evidence reports no path identities until the
+structured manifest is built. The layer-2 gate continues to validate live
+identities, registry and dispatch keys, step widths, and profile/source binding
+through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
+and identity-tampering tests remain.
 
 ## 2026-09-07 UD-U1 F3 — raw rank-3 Q4_K selected-expert consumer is not registry-mediated
 

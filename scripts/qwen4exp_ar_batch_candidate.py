@@ -46,96 +46,6 @@ BATCH_WIDTHS = (1, 2, 4, 8)
 #: Label that states prefill is not part of the batch claim.
 BATCH_PREFILL_SOURCE = "c1_qwen4_exp_gguf_resident_model_runner"
 
-#: Direct-call identities the batch decode path uses. The generator's c1
-#: profile manifest is not evidence for these kernels: each row must be named
-#: by a manifest selection before the candidate is admission-eligible.
-BATCH_PATH_IDENTITIES: tuple[Mapping[str, Any], ...] = (
-    {
-        "role": "gdn_conv_indexed",
-        "identity": "qwen4_exp_linear_attn_conv_decode_indexed_f32",
-        "source": "hipengine/runtime/qwen4_exp_batch_gdn.py",
-        "manifest_match": "conv_decode_indexed",
-    },
-    {
-        "role": "gdn_recurrence_norm_gate",
-        "identity": "qwen4_exp_gdn_decode_rowsplit_indexed_f32",
-        "source": "hipengine/runtime/qwen4_exp_batch_gdn.py",
-        "manifest_match": "rowsplit_indexed",
-    },
-    {
-        "role": "qsa_mixed_mixer",
-        "identity": "run_qwen4_exp_batch_qsa_mixed_token_mixer",
-        "source": "hipengine/runtime/qwen4_exp_batch_qsa.py",
-        "manifest_match": ("mixed_token_mixer", "qsa_mixed"),
-    },
-    {
-        "role": "qsa_paged_kv_write",
-        "identity": "qwen35_write_paged_kv_f32_batch_spans",
-        "source": "hipengine/runtime/qwen4_exp_batch_qsa.py",
-        "manifest_match": ("batch_spans", "batch_decode"),
-    },
-    {
-        "role": "qsa_paged_decode",
-        "identity": "qwen35_paged_full_attn_decode_context_bf16_batch_spans",
-        "source": "hipengine/runtime/qwen4_exp_batch_qsa.py",
-        "manifest_match": ("batch_spans", "batch_decode"),
-    },
-    {
-        "role": "batch_ple",
-        "identity": "run_qwen4_exp_batch_ple_stage",
-        "source": "hipengine/runtime/qwen4_exp_batch_ple.py",
-        "manifest_match": ("batch_ple",),
-    },
-)
-
-
-def batch_path_identities() -> tuple[dict[str, Any], ...]:
-    """Return the batch path's direct-call identities as fresh dicts."""
-
-    return tuple(dict(identity) for identity in BATCH_PATH_IDENTITIES)
-
-
-def batch_manifest_binding(manifest: Mapping[str, Any]) -> dict[str, Any]:
-    """Check whether a profile manifest names the batch decode path.
-
-    A match is a manifest selection whose layer, scope, selected variant, or
-    strict fallback contains the identity's distinctive token. The c1 profile
-    names prefill GDN and c1 sparse-decode scopes, so it does not bind the batch
-    rowsplit-indexed recurrence, the mixed QSA mixer, the batch-span paged
-    attention, or the batch PLE stage. Missing bindings are reported
-    individually and make the candidate ineligible for admission.
-    """
-
-    selections = manifest.get("selections", ())
-    if not isinstance(selections, Sequence) or isinstance(selections, (str, bytes)):
-        selections = ()
-    fields: list[str] = []
-    for selection in selections:
-        if not isinstance(selection, Mapping):
-            continue
-        fields.extend(
-            str(selection.get(key, ""))
-            for key in ("layer", "scope", "selected_variant", "strict_fallback_variant")
-        )
-    haystack = " ".join(fields).lower()
-    identities = []
-    for identity in BATCH_PATH_IDENTITIES:
-        row = dict(identity)
-        tokens = row["manifest_match"]
-        if isinstance(tokens, str):
-            tokens = (tokens,)
-        row["manifest_match"] = list(tokens)
-        row["bound"] = any(str(token).lower() in haystack for token in tokens)
-        identities.append(row)
-    missing = [dict(row) for row in identities if not row["bound"]]
-    return {
-        "bound": not missing,
-        "identities": identities,
-        "missing": missing,
-        "manifest_selection_count": len(selections),
-    }
-
-
 @dataclass(frozen=True)
 class BatchCandidateRequest:
     """One fixture row's prompt, teacher-forced schedule, and request id."""
@@ -498,7 +408,7 @@ class Qwen4ExpARBatchCandidate:
                     for entry in manifest["entries"]
                 ]
                 if manifest is not None
-                else list(batch_path_identities())
+                else []
             ),
             "variant_manifest": dict(manifest) if manifest is not None else None,
             "dispatch_record_count": len(self._dispatch_records),
@@ -835,11 +745,8 @@ def batch_state_gate(
 
 __all__ = [
     "BATCH_CANDIDATE_MODE",
-    "BATCH_PATH_IDENTITIES",
     "BATCH_PREFILL_SOURCE",
     "BATCH_WIDTHS",
-    "batch_manifest_binding",
-    "batch_path_identities",
     "BatchCandidateRequest",
     "BatchCompositionGroup",
     "BatchGroupRun",
