@@ -701,50 +701,6 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`, and worklog
   `20260930T031044` (the measured scope table).
 
-## Unconsumed GR Gate Publication
-
-- `Qwen4ExpGRReadDeviceResult` has four fields and only `normalized`, `mixed`
-  and `inject_logits` are consumed: no reader of `.gate` exists in the runner,
-  the scripts, or the tests. The fused GR up kernel nevertheless stores the full
-  `rows x branches x hidden` f32 gate plane - 167.8 MB per read at 4096 rows,
-  roughly 43% of that kernel's per-read traffic - as a pure publication.
-- The store is `gate[index] = sigmoid_gate` in
-  `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`
-  (`hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip`). The strict unfused
-  path still needs the plane: its sigmoid and gated-mean epilogue consumes it.
-- A runtime null check is not viable - HIP rejects a null kernel pointer
-  argument with `hipErrorInvalidValue` (measured), and the launcher already
-  validates `gate != nullptr`. The removal path is a template instantiation
-  (`template <bool WAVE_SCALE, bool WRITE_GATE>`) with a new `Q8_GR_SCALE_ENTRY`
-  symbol plus a wrapper; the status below records what actually landed.
-- Remove the publication once such an instantiation lands and no diagnostic
-  still reads the plane; size the win with a kernel microbenchmark first, since
-  the kernel achieves only ~15 GB/s effective on this shape and is therefore not
-  bandwidth-bound. Context:
-  `benchmarks/results/2026-09-22-gr-drift-localization/`.
-- **Status 2026-10-04: the instantiation landed and the microbenchmark was run; the
-  store stays.** `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`
-  now takes `WRITE_GATE` as a template parameter, and
-  `Q8_GR_SCALE_ENTRY(..., false, false, 4)` exports the single
-  `WRITE_GATE=false` instantiation - `ROW_BATCH` 4, no wave scale - as
-  `hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32`,
-  with a Python wrapper and a GPU test
-  (`tests/test_gpu_qwen4exp_gr_no_gate.py`). **No registry key
-  exists for it**: the variant is a direct-call export rather than a dispatch
-  variant. Its callers
-  are that test and `scripts/qwen4exp_gr_projection_screen.py`; the fused GR up
-  the runner dispatches resolves through the registered
-  `coltile2_branch4_rowbatch4_f32_exact` key, which is the gate-writing parent.
-  Measured: `mixed` is bit-identical at four shapes, and the variant is
-  **6.6551 ms against 6.5198 ms, 0.9797x, a 2% regression** (ledger `HC-3`). So the
-  42 MB/layer publication is retained deliberately, and the no-gate export stays
-  available as the strict comparison rather than as the default. The "not
-  bandwidth-bound" framing above is now measured rather than inferred: widening
-  this kernel's row reuse to halve its weight re-read is 16% *slower* (ledger §7D).
-- Removal condition: none. Keep both instantiations - the gate-writing one as the
-  production default and the no-gate one as the strict comparison - and do not
-  re-open the store removal without a differently-scheduled body.
-
 ## GR-Up Widened Row Reuse Exports (2026-10-04)
 
 - `gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32`,
