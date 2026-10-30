@@ -1,34 +1,35 @@
 {
   "schema": 1,
   "kind": "source_to_current_coverage_inventory",
-  "claim": "Mechanical mapping only; final semantic audit remains required.",
+  "claim": "Requested item-by-item triage sweep audited complete; deferred implementations and public validations are not claimed complete.",
+  "completion_audit": "worklog/entries/20261030T131338.134121Z-cleanup-cleanup-final-audit-e949aa.md",
   "source_commit": "cfe1987b41ba99d22a8caa4a0bf8c3b9a4bc710e",
   "ledger_sha256": "5a28d3a634c899de2b872b51f416cc8710ff689f94d9f85b79af6e04d91ac493",
   "requirements": [
     {
       "requirement": "Review every original item and subitem",
-      "evidence": "2026-10-25.json original text, hashes, dispositions and worklogs",
-      "audit": "in_progress"
+      "evidence": "2026-10-25.json original text, hashes, dispositions and worklogs; derived-coverage.json and final audit",
+      "audit": "passed"
     },
     {
       "requirement": "Fix or remove actionable items, preserve supported fallbacks",
-      "evidence": "Per-unit implementation/test/public-route worklogs",
-      "audit": "in_progress"
+      "evidence": "Per-unit implementation/test/public-route worklogs and direct-evidence audit records; outstanding work explicitly deferred",
+      "audit": "passed-for-triage-scope"
     },
     {
       "requirement": "Move decisions and blocked work to ledger bottom",
       "evidence": "All current item headings below deferred section; mapping rows below",
-      "audit": "mechanically_checked"
+      "audit": "passed"
     },
     {
       "requirement": "Preserve requirements and evidence; do not equate triage with implementation",
-      "evidence": "Current entries, immutable history and derived-coverage.json",
-      "audit": "in_progress"
+      "evidence": "Current entries, immutable history and derived-coverage.json; residual-obligation review recorded in final audit",
+      "audit": "passed"
     },
     {
       "requirement": "Run final repository gates and completion audit",
-      "evidence": null,
-      "audit": "pending"
+      "evidence": "Final audit worklog: documentation, audit, worklog, whitespace checks and 116 focused tests passed",
+      "audit": "passed"
     }
   ],
   "rows": [
