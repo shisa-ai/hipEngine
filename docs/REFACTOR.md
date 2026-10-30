@@ -3495,8 +3495,10 @@ and forwarded to `run_qwen4_exp_qsa_prefill_token_mixer`; the process selector
 The route
 gathers the whole context's paged BF16 K/V into contiguous F16 scratch rows
 for every QSA layer on every prefill chunk (`wmma_k_f16`, `wmma_v_f16` on the
-QSA scratch), and builds a per-query block bitmask (`wmma_mask`) from the
-selected-position lists the existing top-k expand kernel writes.
+QSA scratch). With batched selection and the default direct selector, top-k
+writes the per-query bitmask (`wmma_mask`) directly from scores. Only the last
+sparse row expands selected positions, which are copied to the index state for
+decode. Other selection paths build the mask from selected-position lists.
 
 The gather wrapper takes a `KVLiveSpans` and rejects anything but uniform
 BF16 spans; the kernel reads the page table those spans carry. The three
@@ -3509,9 +3511,16 @@ Removal conditions: (0) a variable-span gather (`live_counts`,
 non-dense KV policy; scratch accounting is implemented;
 (1) gather only the positions a chunk appended and keep
 the F16 rows per layer once multi-chunk prefill at long context makes the
-full regather measurable; (2) have the block selection write the bitmask
-directly, which also removes the expand-to-positions kernel from this route.
-The selector is now manifest-bound runner state; condition (3) is complete.
+full regather measurable. The F16 scratch is shared across layers, so an
+append-only gather requires per-layer ownership, matching capacity accounting,
+and invalidation on reset, restore and prefix changes; changing only the gather's
+`first_position` would reuse another layer's K/V.
+
+Condition (2), direct mask writing, is implemented for the direct-selection
+route. The final-row expansion is a decode-state handoff, not redundant mask
+construction; removing it requires an equivalent selected-position/count
+publication. The selector is manifest-bound runner state, completing condition
+(3). The direct-selector rollback is tracked in the next entry.
 
 
 ## Qwen4Exp direct QSA prefill selection (`HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT`)
