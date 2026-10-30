@@ -13442,8 +13442,8 @@
       "start_line": 11508,
       "end_line": 11517,
       "sha256": "347bd33a584d7457d7b85bcb8a2181f68f663f9264d9d299c1c0005d89304df4",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Rejected hypothesis, not a live route. Removed history from ledger; preserved wavefront planner and even diagnostic field. worklog/entries/20261030T042210.522734Z-cleanup-cleanup-r0489-d0efd8.md."],
       "subitems": []
     },
     {

@@ -3544,16 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 Surya tile shape: grid divisibility was tested and rejected
-
-Grid divisibility was the other candidate shape rule and it was tested: the
-sweep records `even` (full last tile) per row, and even division wins at 256 and
-6400 patches and loses at 1024 and 4096, so it does not predict the curve. The
-rule uses the wavefront multiple instead, which does separate on the A4 page
-(where no measured block divides the grid, so the separation is not a tail
-effect). If a future rule wants to use divisibility, the data to re-check is
-already in the artifacts.
-
 ## 2026-09-13 Surya tile shape: 4096-patch spikes have no mechanism — open
 
 The 4096-patch shape curve is reproducibly non-monotone, confirmed by four
