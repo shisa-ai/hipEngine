@@ -4429,22 +4429,6 @@ direct-control retirement. Compare selected operations, operands and fallback re
 threshold-straddling and unrelated shapes; test owner isolation, graph reuse, scratch invalidation
 and public commit/rollback lifecycle.
 
-### RF-12 / R0187 — Retire the legacy server-test helper shim
-
-Owner: `tests/test_integration_server_api.py`.
-
-Scope: `tests/test_integration_server_api.py`, `tests/test_integration_server_split_contract.py`.
-
-The legacy module is now a test-free helper compatibility surface for external importers; all
-in-tree consumers use `tests/support/`. Remove the shim and its compatibility-only assertions when
-external import compatibility is no longer needed. Check with
-`rg -n 'tests[.]test_integration_server_api' tests scripts`; only the shim and its contract check
-may remain before deletion.
-
-Done when: run the split-module and consumer bundles in ordinary and audit-first orders, confirm
-no duplicate collection or fixture/global-state leakage, and preserve the support ownership checks
-without the deleted compatibility assertions. Do not re-export tests from a replacement facade.
-
 ### R0189 — Packed-PARO transaction storage after journal integration
 
 Owner: `hipengine/generation/qwen35_paro_mtp2.py`.

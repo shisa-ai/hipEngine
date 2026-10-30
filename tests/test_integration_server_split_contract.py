@@ -4,8 +4,7 @@ The server API tests were one 25,807-line module. They now live in
 behavior-named ``test_integration_server_*`` modules with shared doubles and
 builders under ``tests.support``. These checks keep the split from regressing
 into a re-export chain: support modules stay test-free, split modules do not
-import other test modules, the legacy helper import surface still resolves,
-and pytest collects each identity exactly once.
+import other test modules, and pytest collects each identity exactly once.
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ SUPPORT_MODULES = (
     "tests/support/server_api_fakes.py",
     "tests/support/server_api_support.py",
 )
-LEGACY_MODULE = "tests/test_integration_server_api.py"
 
 
 def _tree(path: str) -> ast.Module:
@@ -85,49 +83,16 @@ def test_support_modules_are_test_free_and_fixture_free() -> None:
             )
 
 
-def test_only_the_split_contract_imports_the_legacy_shim() -> None:
+def test_no_test_or_script_imports_the_legacy_module() -> None:
     offenders = []
     for root in (REPO_ROOT / "tests", REPO_ROOT / "scripts"):
         for path in sorted(root.rglob("*.py")):
-            if path.name in {
-                "test_integration_server_split_contract.py",
-                "test_integration_server_api.py",
-            }:
+            if path.name == "test_integration_server_split_contract.py":
                 continue
             if "tests.test_integration_server_api" in path.read_text(encoding="utf-8"):
                 offenders.append(str(path.relative_to(REPO_ROOT)))
-    assert offenders == [], "move consumers to tests.support before deleting the shim"
-
-
-def test_legacy_helper_import_surface_still_resolves() -> None:
-    from tests.support.server_api_fakes import SpeculativeMTPFakeLLM as moved
-    from tests.test_integration_server_api import SpeculativeMTPFakeLLM as legacy
-
-    assert legacy is moved
-    engine = legacy()
-    assert engine.speculative_candidate_budget == 3
-    assert engine.speculative_candidate_budget_source == "model_plugin_evidence"
-
-
-def test_legacy_module_collects_no_tests() -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            LEGACY_MODULE,
-            "--collect-only",
-            "-q",
-            "-o",
-            "addopts=",
-        ],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    assert result.returncode == 5, result.stdout + result.stderr
-    assert "::test_" not in result.stdout
+    assert offenders == [], "test helpers belong to tests.support, not a test module"
+    assert not (REPO_ROOT / "tests/test_integration_server_api.py").exists()
 
 
 def test_split_modules_collect_each_identity_once() -> None:

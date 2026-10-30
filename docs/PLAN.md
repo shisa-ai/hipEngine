@@ -1916,11 +1916,10 @@ embedded native source are not interchangeable budget categories.
 | --- | ---: | ---: | ---: |
 | Behavior-owned modules | 26,065 | 523 | 698 |
 | Shared Python support | 1,623 | 0 | 0 |
-| Legacy helper shim | 77 | 0 | 0 |
-| Boundary contract | 170 | 7 | 22 |
+| Boundary contract | 135 | 5 | 20 |
 
-The target is one owner per behavior, no tests in support or compatibility
-modules, no cross-test imports in the split modules, and no duplicate
+The target is one owner per behavior, no tests in support modules, no
+cross-test imports in the split modules, and no duplicate
 collection. There is no arbitrary per-file line ceiling. The pre-split module
 had 25,807 physical lines and the same 523 functions / 698 cases; repeated
 import headers mean this ownership split does not reduce total lines.
@@ -1940,7 +1939,6 @@ names = next(ast.literal_eval(node.value) for node in tree.body
 groups = {
     'behavior': [Path('tests') / name for name in names],
     'support': sorted(Path('tests/support').glob('*.py')),
-    'shim': [Path('tests/test_integration_server_api.py')],
     'contract': [contract],
 }
 for label, paths in groups.items():
