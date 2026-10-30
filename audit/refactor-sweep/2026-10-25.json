@@ -4256,28 +4256,28 @@
       "start_line": 3820,
       "end_line": 3835,
       "sha256": "b694367ec61ce5f8f13674f4cafb14cd9984ff643afb32f55e25e7a9faf968a7",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-graph-owner-cleanup",
+      "evidence": ["Removed obsolete diagnostic-only admission; R0077 screening and shared-depth cleanup closed. Preserve target provenance and defer graph-owner consolidation.4 seam tests/docs/audit pass. worklog/entries/20261030T072350.381050Z-cleanup-cleanup-r0164-1e1b78.md."],
       "subitems": [
         {
           "line": 3822,
           "text": "- The physical-provider C1 route previously installed a legacy singleton",
-          "status": "pending"
+          "status": "resolved-provenance-preserved"
         },
         {
           "line": 3825,
           "text": "- Keep the repaired route diagnostic-only until packed C1 K1-K7, native N=1,",
-          "status": "pending"
+          "status": "resolved-obsolete-admission-removed"
         },
         {
           "line": 3829,
           "text": "- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` remains a test-only admission aid,",
-          "status": "pending"
+          "status": "resolved-removed-r0077"
         },
         {
           "line": 3832,
           "text": "- Consolidate the duplicated implementation-depth tuples and B1-B7 graph-cache",
-          "status": "pending",
+          "status": "deferred-graph-owner-cleanup",
           "evidence": ["Consolidated private/public MTP2 depth aliases onto MTP2_MAX_CANDIDATE_DEPTH with unchanged bound7; dynamic bound tests and CPU288 pass. Remaining graph-field consolidation still open. Worklog: worklog/entries/20261026T233233.859722Z-cleanup-refactor-r0164-depth-bound-ca1a20.md."]
         }
       ]

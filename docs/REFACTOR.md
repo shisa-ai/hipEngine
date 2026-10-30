@@ -2341,23 +2341,6 @@ should be removed or collapsed.
 
 
 
-## 2026-09-07 W7900 packed C1 target qualification — open
-
-- The physical-provider C1 route previously installed a legacy singleton
-  target during preparation. Review prevents that substitution; its old C1
-  rates are not packed-target evidence. Public C1 rows are withdrawn.
-- Keep the repaired route diagnostic-only until packed C1 K1-K7, native N=1,
-  N=2/8 slots/transitions, numerical/task, lifecycle and repeated-economics
-  gates pass. Then register exact evidence keys; do not restore old rows by
-  copying their legacy-target measurements.
-- The screening environment variable was removed in the R0077 cleanup above.
-  Runtime row-injection probes remain diagnostic tools, not public capability
-  declarations or evidence of the packed target's behavior.
-- The MTP2 structural depth bound now has one public constant,
-  `MTP2_MAX_CANDIDATE_DEPTH`; its value remains seven and backend/profile cell
-  admission is unchanged. Consolidate any remaining duplicated B1-B7 graph-cache
-  fields after lifecycle coverage proves the cleanup. Shared capacity is not
-  permission to widen Qwen3.6/gfx1151 public evidence.
 
 ## 2026-09-02 gfx1100 periodic-strict fused Q4 R28 rollback — open
 
@@ -9733,3 +9716,31 @@ and long histories for any replacement. Exercise public AR and packed MTP with
 storage attribution and lifecycle checks. The original inventory's file-type
 bullets were reconciled under R0139; its planar-Q6 environment item was resolved
 under R0398. Neither is reopened here. Runtime and defaults are unchanged.
+
+### R0164 — Separate packed-target provenance from graph-cache consolidation
+
+The historical singleton substitution means its timings cannot be relabelled as
+packed-target measurements. New claims must identify the actual target and
+exercise numerical/task, lifecycle, slot-transition and repeated timing gates.
+That evidence obligation does not make an implemented route diagnostic-only:
+R0077 removed screening admission, and explicit requests follow declared
+capability. Do not restore an evidence-key allowlist.
+
+`MTP2_MAX_CANDIDATE_DEPTH` already centralizes the structural bound in
+`hipengine/generation/qwen35_gguf_mtp2.py`. Its cleanup is recorded in
+`worklog/entries/20261026T233233.859722Z-cleanup-refactor-r0164-depth-bound-ca1a20.md`.
+The obsolete screening and duplicated-depth work are closed. Runtime injection
+probes remain diagnostics, not proof of public dispatch.
+
+**Deferred graph-owner cleanup:** identify any remaining duplicated depth-specific
+cache fields and consolidate only equivalent ownership/lifetime behavior. A
+single bound does not imply every graph has identical shape or capture operands.
+Preserve uncached eager execution, singleton versus packed target identity,
+refill transitions, cancellation and teardown. Do not merge graph ownership
+solely because depths fit the same numeric range.
+
+Clearing checks: run MTP2 seam tests for declared depth, uncached eager execution
+and singleton/refill behavior; test every affected cache lifecycle before removing
+fields. Exercise public generation with target attribution and all acceptance
+prefixes. Historical claims remain in the ledger at `b2f30e52c`; this triage
+changes no runtime and adds no packed-target measurement.
