@@ -336,30 +336,6 @@ pins the F16 re-admission. These tests cover binder behavior, not the prose here
   can be re-admitted on its evidence
   (`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/`).
 
-## Isolated GR-Down IU8
-
-Cleanup status (2026-10-25, R0027): no runtime cleanup. `GR_IU8_DOWN` binds
-`"1" if production` and is zeroed for `gguf_ud_q4_k_xl` by the same recovery
-sweep; `gguf_q4_k_m` production falls back to strict, so it is off in every
-production binding. The binding stays as the record of intent.
-
-- `GR_IU8_DOWN` independently fails the 780-row gate with GR-up, generic dense
-  and MMQ off: mean KL 1.313e-3, p95 6.835e-3, top-1 769/780. All 6,912 direct
-  calls are K10240/N320. Evidence:
-  `benchmarks/results/2026-09-15-journey-gr-down/`.
-- This is an independent arithmetic failure, not a general prohibition on GR
-  optimization; the up leg and the exact fusions are separate decisions.
-- Localization (2026-09-22): prefill-boundary KL 4.32e-8 against the ~5e-9
-  cliff. Its compensated correction reached 8.48e-9 - the closest any measured
-  GR candidate has come, 1.9x above the passing bracket - while leaving the
-  gate metric unchanged, which is the measurement that identifies the cliff.
-  That correction is removed; its evidence stays in
-  `benchmarks/results/2026-09-15-journey-gr-corrections/`.
-- Repair condition: a further ~2x prefill-KL reduction (below ~5e-9), screened
-  with one prefill per arm before a 780-row run.
-- The selector docstring and binder comment now record the depth-gate failure
-  and separate repair condition.
-
 ## GR-Up Wide Tile (`HIPENGINE_QWEN4_EXP_GR_WIDE`)
 
 Cleanup status (2026-10-25, R0028): the route is not default-off. The
@@ -747,6 +723,23 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0027 — Repair isolated GR-down IU8 drift independently
+
+GR_IU8_DOWN documentation records its standalone depth-gate failure; recovery
+still suppresses its production intent binding. The failure is independent of
+GR-up, generic dense and MMQ selection, not a prohibition on exact GR fusions.
+Evidence remains in `benchmarks/results/2026-09-15-journey-gr-down/`.
+
+**Deferred numerical repair:** reduce prefill-boundary KL below the recorded
+approximately 5e-9 cliff, screening one prefill per arm before the complete
+780-row evaluation. The prior compensated correction did not cross the passing
+bracket and was removed; preserve its evidence in
+`benchmarks/results/2026-09-15-journey-gr-corrections/`. Do not restore it merely
+because it improved one boundary metric. Keep GR-up and exact-fusion decisions
+separate and retain R0023 binding precedence. Historical numeric detail remains
+at `67584bb3f`; no correction, default or runtime change is made here.
+
 
 ### R0026 — Repair isolated GR-up IU8 projection drift
 
