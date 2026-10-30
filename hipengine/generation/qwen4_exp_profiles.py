@@ -81,15 +81,8 @@ _F16_ROUTE_SCOPES = {
     ("paged_attn_decode", "qwen4exp_multirow_dense_qsa", "w4_paro"):
         _QSA_WMMA_VARIANT,
 }
-# Binder-owned route windows of the composition: the F16 dense wide route runs
-# at every layer (13-47 on a quant without the composition), which also
-# carries the hyper-connection down projection.
+# The composition window is declared by _DENSE_WIDE_COMPOSITION_SCOPE.
 F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(48))
-_F16_ROUTE_BINDER_ENV = {
-    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
-        map(str, F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS)
-    ),
-}
 # Profile-owned composition selectors: profiles without the composition disable
 # them even when a caller set them before binding, keeping dispatch and manifest aligned.
 _F16_ROUTE_SELECTORS = {
@@ -258,6 +251,18 @@ _DENSE_WIDE_TAIL_SCOPE = "prefill_rows_512_4096_k10240_n320_dense_wide_layers13_
 _DENSE_WIDE_TAIL_EVIDENCE = (
     "benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md"
 )
+
+
+_DENSE_WIDE_COMPOSITION_SCOPE = "prefill_rows_ge257_k_multiple64_dense_wide_layers0_47"
+
+
+def _dense_wide_composition_selection(*, production: bool) -> VariantSelection:
+    return _selection(
+        "linear", _DENSE_WIDE_COMPOSITION_SCOPE,
+        "dense_wide256_f32_f32_out" if production else "coltile8_rowbatch4_f32_f32_out",
+        "coltile8_rowbatch4_f32_f32_out", "gguf_q8_0",
+        evidence=_F16_ROUTE_EVIDENCE if production else None,
+    )
 
 
 _GDN_COMPOSITION_SCOPE = "prefill_rows_ge2_d128_tiled_gdn_layers0_47"
@@ -525,7 +530,8 @@ def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...
         return _recovery_gdn_scopes(
             selections, variant="qwen4exp_sigmoid_strict_prefill", evidence=None,
         ) + (_dense_wide_tail_selection(production=False),
-             _gdn_composition_selection(production=False))
+             _gdn_composition_selection(production=False),
+             _dense_wide_composition_selection(production=False))
     return selections
 
 
@@ -920,7 +926,8 @@ def _f16_route_selections(
         raise RuntimeError(
             f"Qwen4Exp F16 route plan lost scopes: {sorted(missing)!r}"
         )
-    return tuple(result) + (_gdn_composition_selection(production=True),)
+    return tuple(result) + (_gdn_composition_selection(production=True),
+                            _dense_wide_composition_selection(production=True))
 
 
 def _apply_profile_env(values: dict[str, str]) -> None:
@@ -1514,7 +1521,15 @@ def _bind(
     if f16_routes:
         # Every key here is written by each bind, so a later bind without the
         # composition in the same process restores its own value.
-        _apply_profile_env(_F16_ROUTE_BINDER_ENV)
+        dense = next(row for row in resolved.manifest["selections"]
+                     if row["scope"].startswith("prefill_rows_ge257_k_multiple64_dense_wide_layers"))
+        first, last = map(int, dense["scope"].rsplit("layers", 1)[1].split("_"))
+        _apply_profile_env({
+            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": (
+                "1" if dense["selected_variant"] == "dense_wide256_f32_f32_out" else "0"
+            ),
+            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(first, last + 1))),
+        })
         gdn = next(row for row in resolved.manifest["selections"]
                    if row["scope"].startswith("prefill_rows_ge2_d128_tiled_gdn_layers"))
         first, last = map(int, gdn["scope"].rsplit("layers", 1)[1].split("_"))

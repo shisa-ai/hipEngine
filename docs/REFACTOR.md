@@ -3493,14 +3493,16 @@ The UD composition's tiled GDN route is now declared by
 strict names the sigmoid recurrence, and the binder reads the leaf and layer
 window from that manifest row. Serial fallback scopes remain separate.
 
-Two composition controls still lack manifest rows: the F16 dense wide route's
-layer window (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`, 0-47) and the
-hyper-connection up projection (`HIPENGINE_QWEN4_EXP_GR_WIDE`). Only the
-K10240/N320 tail leaf of dense wide has a declared scope.
+The dense wide route is declared by
+`prefill_rows_ge257_k_multiple64_dense_wide_layers0_47`, with the exact
+coltile parent as strict fallback. Its enablement and layer window come from
+that row; the K10240/N320 tail remains a separate scope.
 
-Removal condition: add strict scopes for the dense wide layer window and the
-hyper-connection up projection, then publish their controls from the manifest
-rather than the composition's separate environment tables.
+The hyper-connection up projection (`HIPENGINE_QWEN4_EXP_GR_WIDE`) still
+lacks a manifest row.
+
+Removal condition: declare the hyper-connection up projection and publish its
+control from the manifest rather than the composition's environment table.
 
 ## The small-matrix F16 GEMM selector
 
@@ -10469,7 +10471,7 @@ Invalidation repair and validation:
 ### R0459 — Row-split GDN recurrence removal decision
 
 The UD production composition binder selects row-split from its tiled GDN
-manifest scope. R0460 still owns the dense-wide and GR manifest bindings.
+manifest scope. R0460 still owns the GR manifest binding.
 The Q4_K_M production plan
 still names multi-column but resolves to strict due to its recorded numerical
 failure; it is not evidence of a live default multi-column execution.
