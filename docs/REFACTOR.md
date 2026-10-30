@@ -1861,53 +1861,6 @@ a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
   every reused row as never priming a provider are gone. The `prefix_reuse_k0`
   label now names only a hit row whose checkpoint is absent, stale, lacks its
   boundary row, or cannot be restored.
-## Prefix snapshot eviction destroys the retained entry it just served (found 2026-09-18)
-
-- `_capture_prefix_snapshot` trims with `while len(self._prefix_state_snapshots) >
-  self._prefix_snapshot_limit: self._evict_prefix_snapshot(next(iter(...)))`,
-  which takes the oldest entry whether or not it is retained. The resident loop's
-  limit is 1 (`snapshot_limit: 1` in the 2026-09-18 gfx1151 serving run), and one
-  request captures twice: once at its decode boundary and once at its completion
-  prompt boundary (`_refresh_prefix_cache_at_prompt_boundary`). The second
-  capture therefore always evicts the entry that served the current request,
-  releasing its pool pin and its `cache.release_entry`. The next request finds an
-  empty trie and reports the engine reason `miss`.
-- Measured consequence on gfx1151 (41 served turns per arm, one arm per process):
-  33 captures, 32 evictions, 6 hits, `unusable_hits: 0`. Every lane with reusable
-  content hits **at most once**, on the turn after its first capture. Every
-  missed eligible turn had at least 2048 tokens of verbatim resent prefix
-  (`prompt_lcp_reusable_tokens`), so the tokens were matchable; the failure is
-  retention, not structure. Artifact:
-  `benchmarks/results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json`.
-- Fix direction: make the trim prefer unretained entries and never evict a
-  retained entry while an unretained one exists, and size the retained working
-  set for several conversations rather than for the loop capacity. RED test
-  target: with `_prefix_snapshot_limit == 1`, capture for request A, promote it,
-  capture for request B, then assert A's entry is still resolvable.
-- Fixed 2026-09-18: transient and retained entries are now trimmed by separate
-  budgets (`_prefix_snapshot_limit` for the current request's captures,
-  `_prefix_retained_limit` plus a 1 GiB state-byte ceiling for retained ones).
-  `_prefix_retained_evictions_by_reason` and `retained_snapshot_state_bytes`
-  expose both budgets through `/ready`.
-- The retained count defaults to the pre-fix effective budget
-  `max(1, capacity)`: the wider working set is opt-in via
-  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` (16 covers the 14-lane serving
-  protocol, where a conversation's next turn arrives after up to 13 other lanes
-  have captured and retained their own boundaries) and
-  `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` (default 1 GiB). The old
-  opt-in reason — the +11%/+308% serial-suffix regression — is gone: the
-  batched suffix prefill and the gapped-page gather route landed on
-  2026-09-19/20, and retained 16 has been the strongest configuration measured
-  on every protocol since (14-lane campaign -18.4% wall vs -17.8% default on
-  merged main; real-session replay lane -64.2% vs -44.1%, 30/32 hits, worklog
-  `20260919T202013.823662Z-lhl-agentic-session-replay-e8a2c9`). The narrow count
-  limits retained state and pinned KV residency. The state-byte ceiling may
-  reduce the effective entry count, and it does not include retained KV pages.
-  Missing concurrent-load measurements do not gate execution of the wider set.
-  Changing the default memory/reuse trade-off is a product decision, not an
-  unfinished eviction repair; the remaining decision is listed below under
-  deferred work.
-
 ## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18) — NOT A LOOKUP DEFECT
 
 The resident cache stores complete 256-token pages and requires an unmatched
@@ -2341,8 +2294,11 @@ do not replace it with a process-global boolean or infer arithmetic from backend
 The eviction repair is complete. Dense prefix retention defaults to
 `max(1, capacity)` snapshots, bounded separately by the state-byte ceiling;
 retained KV pages also consume memory outside that ceiling. Wider retention
-is implemented and explicitly selectable. DMS uses its own wider count and
-host-state budget.
+is implemented and explicitly selectable through
+`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS`; the independent state-byte limit is
+`HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES`. Retire either override only when
+its replacement owner preserves explicit operator control and memory accounting.
+DMS uses its own wider count and host-state budget.
 
 **Decision needed:** whether the dense default should favor a wider reuse
 working set at the cost of additional pinned memory. This is not blocked on
