@@ -3920,8 +3920,9 @@ def test_packed_prompt_hidden_sinks_consume_post_output_norm_rows(monkeypatch) -
 
 
 @pytest.mark.parametrize("released_bulk", [False, True])
+@pytest.mark.parametrize("split_finish", [False, True])
 def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
-    monkeypatch, released_bulk,
+    monkeypatch, released_bulk, split_finish,
 ) -> None:
     class Runtime:
         pass
@@ -4073,7 +4074,14 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
         "gguf_mtp2.prompt_rows": 4,
         "gguf_mtp2.provider_request_slots": 2,
     }
-    adapter.finish_prompt_streaming((7, 8), success=True, stream=0)
+    if split_finish:
+        claim = adapter._active_prompt_claims
+        adapter.finish_prompt_streaming((7,), success=True, stream=0)
+        assert adapter._active_prompt_claims is claim
+        assert set(adapter._prompt_streaming_sinks) == {8}
+        adapter.finish_prompt_streaming((8,), success=True, stream=0)
+    else:
+        adapter.finish_prompt_streaming((7, 8), success=True, stream=0)
 
     assert adapter._active_prompt_claims is None
     assert tuple(sink.request_id for sink in sinks) == (7, 8)
@@ -4093,6 +4101,27 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.observe_prefill_result(7, rows[7].prompt_ids, SimpleNamespace(token_id=9))
     assert adapter._states[7].root_hidden_buffer is carried[7]
     assert released_pool == []
+
+
+@pytest.mark.parametrize("first_ids", [(7,), (8,), (7, 8)])
+def test_prompt_abort_holds_claim_until_last_sink_closes(first_ids):
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    closed = []
+    adapter._prompt_streaming_sinks = {
+        rid: SimpleNamespace(close=lambda rid=rid: closed.append(rid))
+        for rid in (7, 8)
+    }
+    adapter._prompt_streaming_group_keys = {}
+    adapter._provider_groups = {}
+    claim = object()
+    adapter._active_prompt_claims = claim
+    adapter._abort_prompt_streaming(first_ids, stream=0)
+    remaining = set((7, 8)) - set(first_ids)
+    assert set(adapter._prompt_streaming_sinks) == remaining
+    assert adapter._active_prompt_claims is (claim if remaining else None)
+    adapter._abort_prompt_streaming(tuple(remaining), stream=0)
+    assert adapter._active_prompt_claims is None
+    assert sorted(closed) == [7, 8]
 
 
 def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> None:

@@ -2065,7 +2065,8 @@ class Qwen35GGUFMTP2Adapter:
                 if sink is not None:
                     sink.close()
                 self._free_prompt_streaming_norm_buffer(request_id, target=None)
-            self._active_prompt_claims = None
+            if not self._prompt_streaming_sinks:
+                self._active_prompt_claims = None
 
     def _free_prompt_streaming_norm_buffer(
         self,
@@ -2125,7 +2126,8 @@ class Qwen35GGUFMTP2Adapter:
                     group.provider_pool_key,
                     group.provider,
                 )
-        self._active_prompt_claims = None
+        if not self._prompt_streaming_sinks:
+            self._active_prompt_claims = None
 
     def observe_prefill_result(self, request_id: int, prompt_ids: Sequence[int], result: Any) -> None:
         rid = int(request_id)

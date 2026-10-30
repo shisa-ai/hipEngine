@@ -3544,44 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Concurrent prompt activation is refused instead of overlapped (open 2026-09-17)
-
-`Qwen35GGUFMTP2Adapter.begin_prompt_streaming` allows one prompt activation at a
-time: the activation primes shared provider state (prompt rows, carried hidden
-rows, provider request slots), and the claim that guards it is released only at
-the request's final prefill chunk. A prompt longer than
-`max_prefill_chunk_tokens` (256 by default) therefore holds the claim across
-ticks, so a second request starting its prefill is refused with
-`prompt_activation_in_flight` and decodes without a draft provider. Before
-2026-09-17 that condition raised inside the driver thread and closed the whole
-engine service, which is what made the concurrency pass at c>=4 unmeasurable.
-
-The provider side looks ready for overlap: every priming structure is keyed by
-request (`_request_slots`, `_prompt_prime_rows`, `_prompt_priming_staging`) and
-hidden rows land in a per-slot region, and
-`GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES` already admits prompt-streaming
-widths 1-4 on gfx1151. The refusal is therefore conservative, not a hardware
-limit.
-
-**Half replaced 2026-09-18 by scheduling, not overlap.** The scheduler now
-consults `prefill_activation_ready` and `prefill_needs_activation`, so a fresh
-speculative row's first chunk is deferred until the claim is free and at most one
-claim-opening chunked row is admitted per prefill item. A concurrent arrival
-keeps its provider instead of being refused; activations still serialize, which
-costs the waiting request prefill-start latency. What remains owed is the
-overlap path itself: co-activating several chunked rows in one activation, which
-needs the exactness gate below (generated-token equality plus non-collapsed
-acceptance against independent c=1 runs) and a claim that stays held until every
-co-activated sink finishes (`finish_prompt_streaming` currently clears
-`_active_prompt_claims` as soon as any one row finishes).
-
-**Intent no longer dies with the refusal (2026-09-19).** The refusal now records
-the row in `_streaming_refused_requests` and leaves `mtp2_candidate_budget`
-alone, because whether a refused row can still speculate is decided by its
-priming source (`_priming_source`: live provider state, a complete and current
-prompt buffer, or neither) rather than by the refusal. Zeroing the budget there
-was the blanket disable this entry was really paying for.
-
 ## Priming-source refusals that still zero the budget (open 2026-09-19)
 
 The unsupported priming classes -- `prefix_reuse_k0`, `target_profile_k0`,
@@ -9918,3 +9880,19 @@ disconnects and errors through HTTP streaming. Then compare a streaming MTP
 request before/after with chunk telemetry enabled; do not reuse the old overhead
 estimate as a measurement of this implementation. Keep the existing bounded
 mailboxes until the replacement contract is implemented.
+
+### R0504 — Evaluate overlapping chunked prompt activations
+
+The scheduler still serializes new prompt activations through
+`prefill_activation_ready`/`prefill_needs_activation`. In-flight refusal preserves
+speculative intent; priming-source availability decides subsequent speculation.
+Partial success or abort now retains the activation claim until every remaining
+sink has finished, rather than releasing it after the first row.
+
+**Deferred scheduler work:** implement co-activation of chunked rows while
+preserving provider-slot ownership and failure isolation. Exercise unequal
+prompt lengths, different finish orders, partial failures and cancellation.
+Compare generated tokens and acceptance against independent single-request runs
+through the public generation surface; check that waiting requests keep their
+provider and that all claims and sink buffers are released. The lifecycle fix
+alone does not enable overlap or establish its numerical/acceptance behavior.

@@ -13719,8 +13719,8 @@
       "start_line": 11906,
       "end_line": 11943,
       "sha256": "913dfd4e6e30cc42d187f8d2bbf70a7c1e89a31fd0f96838186de6d30a7a1fd6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Fixed premature activation-claim release on partial completion/abort; co-activation scheduler work remains deferred at ledger bottom. worklog/entries/20261030T051533.852365Z-cleanup-cleanup-r0504-1a0a4a.md."],
       "subitems": []
     },
     {
