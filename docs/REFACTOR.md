@@ -701,26 +701,6 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`, and worklog
   `20260930T031044` (the measured scope table).
 
-## GR-Up Widened Row Reuse Exports (2026-10-04)
-
-- `gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32`,
-  `..._rowbatch8_wave_scale_f32` and `..._rowbatch16_wave_scale_f32` are three
-  retained exports of `ROW_BATCH` 8/16 instantiations of the same kernel body. They
-  are bit-identical to the `ROW_BATCH` 4 parent at every shape and **measured slower
-  at every shape** (0.833-0.844x and 0.430-0.437x against the production wave-scale
-  parent, occupancy-bound: 130 and 256 VGPR against the parent's 72, i.e. 15 and 8
-  waves per CU against 28). Evidence:
-  `benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/`.
-- They are deliberately **not registered**: a registry key would make a
-  measured-dead path reachable from dispatch, and
-  `tests/test_gpu_qwen4exp_gr_row_batch8.py` scans the whole registry to assert that
-  no key resolves to one of them.
-- Removal condition: drop the three exports, their wrappers, the `_row_batch`
-  parameter and this section together, once the ledger's §7D reopen condition is
-  either met or formally retired - i.e. when a machine class with enough registers
-  per wave has been measured, or when the GR up cost model has been replaced and the
-  retile no longer needs a checked starting point.
-
 ## Q8 Block-Scale Restoration
 
 - UD-Q4_K_XL now selects guarded block-scale WMMA through the profile-owned
@@ -1028,6 +1008,23 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0034 — Decide retention of unregistered GR row-reuse comparisons
+
+The GR-up rowbatch8, rowbatch8-wave-scale and rowbatch16-wave-scale exports are
+unregistered comparison instantiations, not production dispatch variants.
+Historical exactness and negative timing are recorded in
+`benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/`; they are not fresh
+measurements or universal hardware conclusions.
+
+**Deferred retention decision:** evaluate a machine class with sufficient
+register resources, or formally retire the checked retile starting point after
+replacing the GR-up cost model. Then remove the three exports, Python wrappers
+and exclusive `_row_batch` plumbing together, checking other instantiations
+before deleting shared parameters. Preserve
+`tests/test_gpu_qwen4exp_gr_row_batch8.py` registry-exclusion coverage while the
+references remain. No registrations, kernels or defaults change here.
+
 
 ### R0060 — Bind historical dense serving evidence when its artifact is available
 

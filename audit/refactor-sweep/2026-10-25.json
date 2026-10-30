@@ -1084,7 +1084,7 @@
       "start_line": 1131,
       "end_line": 1150,
       "sha256": "037fb89e36bb75582870cd6cd5784380b36f8cf60c278b67c9bb09f6e9863877",
-      "status": "resolved",
+      "status": "triaged-unregistered-gr-comparison-retention-deferred",
       "evidence": [
         "Verified current warp selectors, direct-call no-gate export, unregistered row-reuse diagnostics and guarded blockscale routing; obsolete prose/ENVS corrected. Worklog:worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md. Runtime/defaults unchanged; historical reopen conditions preserved."
       ],
