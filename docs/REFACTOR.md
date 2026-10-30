@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-9 | P1 | `laguna_kv_attention.hip` (18,799 lines), its Python wrapper (11,275), and 768-line registration function mix production and rejected geometry ladders. | Partition KV write, global decode/prefill, SWA decode/prefill, and experiment-only families. Delete unwrapped rejected bodies; move retained negative controls to explicit test-only builds where practical. Keep production kernel names and lineage stable during mechanical splits. |
 | RF-10 | P1 | GGUF linear launchers and generation owners encode a combinatorial decision tree in large functions; direct controls remain callable from production modules. | Replace repeated pair/triple/residual branching with typed launch-plan records resolved before launch. Move direct AR/MTP control loops to explicit oracle helpers once `SubmitPollTextGenerator` owns the same gates. Keep unsupported-shape fallbacks, but give each request exactly one scheduler/commit owner. |
 | RF-11 | P1 | Whole-file SHA tests pin unrelated evolving files, including this ledger and backend package initializers. | Replace whole-file hashes with semantic assertions over the capability/registry owner and hashes of immutable artifacts or localized frozen blocks. A documentation edit must not require refreshing an unrelated kernel-source qualification test. |
 | RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_integration_generation_batch_scheduler.py` is 28K lines; `test_integration_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
@@ -9881,3 +9880,26 @@ backend isolation. Keep source-lineage mapping and alias ownership readable;
 generate repetitive registrations only when those checks remain explicit.
 Verify public dispatch for affected families before declaring a migration done.
 No policy values, registrations or defaults change in this triage.
+
+### RF-9 / R0187 — Partition Laguna attention with explicit build ownership
+
+`hipengine/kernels/hip_gfx1100/attention/laguna_kv.py` still builds the shared
+`laguna_kv_attention` library from one source and exposes KV-write, global and
+sliding-window decode/prefill families. Earlier rejected-route removals do not
+prove that remaining wrappers or bodies are unused. Historical file-size counts
+are not deletion criteria.
+
+**Deferred build-boundary decision:** define separate family ownership for KV
+write, global attention, sliding-window attention and test-only experiments.
+Inventory each exported symbol, registration, runtime caller and oracle before
+moving or deleting it. A body without a public Python wrapper may still be a
+native helper or exported test control. Preserve registered strict fallback
+chains and active negative controls; archive only genuinely unconsumed code.
+
+Clearing checks: preserve production names, raw-pointer and KVLiveSpans ABIs,
+source lineage and exact registry mappings. Explicitly account for build-cache
+keys, cached-only operation, library lifetime and graph-held symbols after any
+source split. Run affected family parity/lifecycle tests and public generation
+with selected-symbol attribution; keep mechanical movement separate from
+arithmetic or default changes. No source split or kernel deletion is implemented
+by this triage.

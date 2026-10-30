@@ -4874,7 +4874,8 @@
         {
           "line": 4152,
           "text": "| RF-9 | P1 | `laguna_kv_attention.hip` (18,799 lines), its Python wrapper (11,275), and 768-line registration function mix production and rejected geometry ladders. | Partition KV write, global decode/prefill, SWA decode/prefill, and experiment-only families. Delete unwrapped rejected bodies; move retained negative controls to explicit test-only builds where practical. Keep production kernel names and lineage stable during mechanical splits. |",
-          "status": "pending"
+          "status": "deferred-laguna-build-boundaries",
+          "evidence": ["Shared build and wrapper families inspected; require symbol/caller/oracle inventory and cache/lifetime/ABI checks before partition. 94 tests/docs/audit pass. worklog/entries/20261030T081633.553369Z-cleanup-cleanup-r0187-rf9-027c83.md."]
         },
         {
           "line": 4153,
