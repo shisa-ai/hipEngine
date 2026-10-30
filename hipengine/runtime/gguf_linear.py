@@ -5809,6 +5809,69 @@ def launch_gguf_q4_t16_sidecar_decode(
     return False
 
 
+_GGUF_RESIDUAL_OPERATION_DENSE_WMMA_BULK = "dense_wmma_bulk"
+_GGUF_RESIDUAL_OPERATION_REGISTERED_ROWS1 = "registered_rows1"
+_GGUF_RESIDUAL_OPERATION_SIDECAR = "sidecar"
+_GGUF_RESIDUAL_OPERATION_REGISTERED_SMALL = "registered_small"
+_GGUF_RESIDUAL_FALLBACK_INVALID_ROWS = "invalid_rows"
+_GGUF_RESIDUAL_FALLBACK_UNSUPPORTED_BULK_LAYOUT = "unsupported_bulk_layout"
+_GGUF_RESIDUAL_FALLBACK_WMMA_PREFILL_DECLINED = "wmma_prefill_declined"
+_GGUF_RESIDUAL_FALLBACK_BULK_DISABLED = "bulk_residual_disabled"
+_GGUF_RESIDUAL_FALLBACK_REGISTERED_DECODE_REQUIRED = "registered_decode_required"
+_GGUF_RESIDUAL_FALLBACK_NATIVE_DECODE_DISABLED = "native_decode_disabled"
+_GGUF_RESIDUAL_FALLBACK_UNSUPPORTED_DISPATCH_ABI = "unsupported_dispatch_abi"
+_GGUF_RESIDUAL_FALLBACK_WORKSPACE_MISSING = "workspace_missing"
+_GGUF_RESIDUAL_FALLBACK_OWNER_UNAVAILABLE = "owner_unavailable"
+
+
+@dataclass(frozen=True)
+class _GGUFResidualLaunchPlan:
+    """Typed, pointer-free, launch-local plan for one rounded-BF16 residual.
+
+    The plan owns the selected operation, registry keys and exact resident
+    weight object. Device pointer values, tile-allocation choices, resolved
+    callables and scratch are bound only during execution. The plan is private
+    and launch-local: the public launcher resolves and executes it immediately,
+    without caching it across launches or execution-profile changes.
+    """
+
+    backend: str
+    rows: int
+    in_features: int
+    out_features: int
+    layout: str
+    quant_key: str
+    owner_slot: str | None
+    owner_weight: GGUFDeviceWeight
+    operation: str | None
+    normal_key: KernelKey | None
+    fused_key: KernelKey | None
+    abi: str | None
+    allocation_name: str | None
+    sidecar_variant: str | None
+    fallback_reason: str | None
+    registry_generation: int
+
+    def __post_init__(self) -> None:
+        backend = str(self.backend)
+        if not backend.strip():
+            raise ValueError("GGUF residual plan backend must be non-empty")
+        if self.operation is None:
+            if self.fallback_reason is None:
+                raise ValueError("GGUF residual plan fallback needs a reason")
+        elif self.normal_key is None or self.fused_key is None:
+            raise ValueError("GGUF residual plan operation needs owner keys")
+        object.__setattr__(self, "backend", backend)
+        object.__setattr__(self, "rows", int(self.rows))
+        object.__setattr__(self, "in_features", int(self.in_features))
+        object.__setattr__(self, "out_features", int(self.out_features))
+        object.__setattr__(self, "layout", str(self.layout))
+        object.__setattr__(self, "quant_key", str(self.quant_key))
+        if self.owner_slot is not None:
+            object.__setattr__(self, "owner_slot", str(self.owner_slot))
+        object.__setattr__(self, "registry_generation", int(self.registry_generation))
+
+
 def _linear_residual_variant(variant: str) -> str | None:
     """Return the same-ABI rounded-BF16 residual sibling name."""
 
@@ -5895,26 +5958,16 @@ def _resolve_registered_linear_residual(
     return fused_key, fn
 
 
-def _launch_registered_linear_residual(
+def _residual_launch_kwargs(
+    fused_key: KernelKey,
     normal_key: KernelKey,
-    weight_ptr: int,
-    x_ptr: int,
-    residual_ptr: int,
-    out_ptr: int,
-    rows: int,
-    in_features: int,
-    out_features: int,
     *,
     stream: int,
     libraries: Mapping[str, ctypes.CDLL] | None,
     runtime,
-) -> bool:
-    """Launch one exact composite only when its primitive owner also exists."""
+) -> dict[str, Any]:
+    """Build the composite launch kwargs without caching a library choice."""
 
-    resolved = _resolve_registered_linear_residual(normal_key, rows=rows)
-    if resolved is None:
-        return False
-    fused_key, fn = resolved
     kwargs = {"stream": stream, "runtime": runtime}
     if libraries is not None:
         library = libraries.get(
@@ -5926,14 +5979,417 @@ def _launch_registered_linear_residual(
         )
         if library is not None:
             kwargs["library"] = library
+    return kwargs
+
+
+def _resolve_gguf_linear_residual_plan(
+    weight: GGUFDeviceWeight,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    backend: str | None = None,
+    registered_decode: bool = False,
+) -> _GGUFResidualLaunchPlan:
+    """Resolve one private, pointer-free residual launch plan.
+
+    Resolution owns the shape/resource decision: the bulk dense-BF16 WMMA
+    gate, the explicit rows-1 admission, sidecar priority, and the registered
+    small-row fallback. It reads weight metadata and allocation presence only;
+    pointers, allocations, and resolved callables stay with execution.
+    """
+
+    rows = int(rows)
+    in_features = int(in_features)
+    out_features = int(out_features)
+    if rows < 1:
+        plan_backend = (
+            str(backend)
+            if backend is not None
+            else str(getattr(weight, "backend", None) or "hip_gfx1100")
+        )
+        return _GGUFResidualLaunchPlan(
+            backend=plan_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            layout="",
+            quant_key="",
+            owner_slot=None,
+            owner_weight=weight,
+            operation=None,
+            normal_key=None,
+            fused_key=None,
+            abi=None,
+            allocation_name=None,
+            sidecar_variant=None,
+            fallback_reason=_GGUF_RESIDUAL_FALLBACK_INVALID_ROWS,
+            registry_generation=generation(),
+        )
+
+    layout = str(weight.spec.layout)
+    quant_key = str(weight.spec.quant_key)
+    owner_slot = getattr(getattr(weight, "spec", None), "slot_path", None)
+    if owner_slot is not None:
+        owner_slot = str(owner_slot)
+    resolved_backend = _weight_backend(weight, backend=backend)
+
+    def _plan(
+        *,
+        operation: str | None = None,
+        normal_key: KernelKey | None = None,
+        fused_key: KernelKey | None = None,
+        abi: str | None = None,
+        allocation_name: str | None = None,
+        sidecar_variant: str | None = None,
+        fallback_reason: str | None = None,
+    ) -> _GGUFResidualLaunchPlan:
+        return _GGUFResidualLaunchPlan(
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            layout=layout,
+            quant_key=quant_key,
+            owner_slot=owner_slot,
+            owner_weight=weight,
+            operation=operation,
+            normal_key=normal_key,
+            fused_key=fused_key,
+            abi=abi,
+            allocation_name=allocation_name,
+            sidecar_variant=sidecar_variant,
+            fallback_reason=fallback_reason,
+            registry_generation=generation(),
+        )
+
+    if rows > 4:
+        # Bulk residual fusion is currently a dense-BF16 WMMA composite. Fail
+        # closed before registry/capability work for pack8/raw/T16 owners; their
+        # primitive chain remains the route and pays no candidate dispatch tax.
+        if layout != LAYOUT_DENSE_BF16:
+            return _plan(
+                fallback_reason=_GGUF_RESIDUAL_FALLBACK_UNSUPPORTED_BULK_LAYOUT
+            )
+        if not _resolve_use_wmma_prefill(None):
+            return _plan(
+                fallback_reason=_GGUF_RESIDUAL_FALLBACK_WMMA_PREFILL_DECLINED
+            )
+        if os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", "1") == "0":
+            return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_BULK_DISABLED)
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        dispatch = _dense_bf16_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            enabled=(
+                os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
+                and bool(
+                    backend_package_capability(
+                        resolved_backend,
+                        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
+                        False,
+                    )
+                )
+                and _backend_prefill_shape_is_qualified(
+                    resolved_backend,
+                    "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+            ),
+        )
+        resolved = _resolve_registered_linear_residual(
+            dispatch.key,
+            rows=rows,
+        )
+        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
+        if resolved is None or launcher is None:
+            return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_OWNER_UNAVAILABLE)
+        fused_key, _ = resolved
+        return _plan(
+            operation=_GGUF_RESIDUAL_OPERATION_DENSE_WMMA_BULK,
+            normal_key=dispatch.key,
+            fused_key=fused_key,
+            abi=dispatch.abi,
+        )
+
+    if rows == 1:
+        # ``registered_decode`` is an explicit model/backend/shape admission.
+        # A session's independent WMMA-prefill axis must not suppress that
+        # rows-1 GEMV composite in mixed prefill+decode workloads.
+        if not registered_decode:
+            return _plan(
+                fallback_reason=_GGUF_RESIDUAL_FALLBACK_REGISTERED_DECODE_REQUIRED
+            )
+        dispatch = resolve_gguf_linear_dispatch(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+        )
+        # E6c-2: raw slots must composite under the parent production runs
+        # (session-redirected local32 vs pinned/no-policy strict), never the
+        # bare contract key.
+        dispatch = _residual_rows1_decode_dispatch(
+            dispatch, weight, out_features=out_features
+        )
+        resolved = _resolve_registered_linear_residual(
+            dispatch.key,
+            rows=rows,
+        )
+        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
+        if resolved is None or launcher is None:
+            return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_OWNER_UNAVAILABLE)
+        fused_key, _ = resolved
+        return _plan(
+            operation=_GGUF_RESIDUAL_OPERATION_REGISTERED_ROWS1,
+            normal_key=dispatch.key,
+            fused_key=fused_key,
+            abi=dispatch.abi,
+        )
+
+    if _resolve_use_wmma_prefill(None):
+        return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_WMMA_PREFILL_DECLINED)
+    if not _native_batch_decode_session_enabled:
+        return _plan(
+            fallback_reason=_GGUF_RESIDUAL_FALLBACK_NATIVE_DECODE_DISABLED
+        )
+
+    # Legacy compact-Q4 weights expose T16 as a sidecar. Try those registered
+    # sibling keys first; sole-T16 owners continue through the canonical route.
+    for variant in _q4_t16_sidecar_decode_variants(
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    ):
+        sidecar = _q4_t16_sidecar_allocation(
+            weight,
+            rows=rows,
+            allow_r3plus_at_row2=(
+                variant == "dense_rowtile_col4_bf16_bf16_out"
+            ),
+        )
+        if sidecar is None:
+            continue
+        normal_key = KernelKey(
+            resolved_backend,
+            "linear",
+            "gguf_q4_k_t16_v1",
+            variant,
+        )
+        resolved = _resolve_registered_linear_residual(normal_key, rows=rows)
+        if resolved is None:
+            continue
+        fused_key, _ = resolved
+        return _plan(
+            operation=_GGUF_RESIDUAL_OPERATION_SIDECAR,
+            normal_key=normal_key,
+            fused_key=fused_key,
+            sidecar_variant=variant,
+        )
+
+    # Sole-resident T16 owners derive the composite from the same registry key
+    # selected by native small-row linear dispatch.
+    dispatch = resolve_gguf_linear_dispatch(
+        weight,
+        backend=resolved_backend,
+        rows=rows,
+    )
+    dispatch = _q4_t16_dense_native_dispatch(
+        dispatch,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    dispatch = _native_batch_decode_dispatch(
+        dispatch,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    allocation_name = {"t16": "tiles"}.get(dispatch.abi)
+    if allocation_name is None:
+        return _plan(
+            fallback_reason=_GGUF_RESIDUAL_FALLBACK_UNSUPPORTED_DISPATCH_ABI
+        )
+    try:
+        weight.allocation(allocation_name)
+    except KeyError:
+        return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_WORKSPACE_MISSING)
+    resolved = _resolve_registered_linear_residual(dispatch.key, rows=rows)
+    if resolved is None:
+        return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_OWNER_UNAVAILABLE)
+    fused_key, _ = resolved
+    return _plan(
+        operation=_GGUF_RESIDUAL_OPERATION_REGISTERED_SMALL,
+        normal_key=dispatch.key,
+        fused_key=fused_key,
+        abi=dispatch.abi,
+        allocation_name=allocation_name,
+    )
+
+
+def _bind_residual_plan_owner(
+    plan: _GGUFResidualLaunchPlan,
+    weight: GGUFDeviceWeight,
+) -> None:
+    """Reject a plan reused with a different weight object or identity."""
+
+    if plan.owner_weight is not weight:
+        raise ValueError(
+            "GGUF residual launch plan owner weight is different; the plan is "
+            "bound to one weight and must be re-resolved for this weight"
+        )
+    layout = str(weight.spec.layout)
+    quant_key = str(weight.spec.quant_key)
+    if layout != plan.layout or quant_key != plan.quant_key:
+        raise ValueError(
+            "GGUF residual launch plan is incompatible: expected "
+            f"layout={plan.layout!r} quant={plan.quant_key!r}, got "
+            f"layout={layout!r} quant={quant_key!r}"
+        )
+    weight_backend = getattr(weight, "backend", None)
+    if weight_backend is not None and str(weight_backend) != plan.backend:
+        raise ValueError(
+            f"GGUF residual launch plan backend {plan.backend!r} does not match "
+            f"resident weight backend {str(weight_backend)!r}"
+        )
+    if plan.owner_slot is not None:
+        current_slot = getattr(getattr(weight, "spec", None), "slot_path", None)
+        if current_slot is None or str(current_slot) != plan.owner_slot:
+            raise ValueError(
+                f"GGUF residual launch plan owner slot {current_slot!r} does not "
+                f"match plan owner {plan.owner_slot!r}"
+            )
+
+
+def _resolve_residual_plan_owner(
+    plan: _GGUFResidualLaunchPlan,
+) -> tuple[KernelKey, Callable[..., Any]]:
+    """Resolve the plan's current composite owner without caching it in the plan."""
+
+    if plan.normal_key is None or plan.fused_key is None:
+        raise ValueError("GGUF residual launch plan operation has no owner keys")
+    if not is_registered(plan.normal_key):
+        raise ValueError(
+            f"GGUF residual launch plan owner {plan.normal_key!r} is no longer "
+            "registered; re-resolve the plan"
+        )
+    if not is_registered(plan.fused_key):
+        raise ValueError(
+            f"GGUF residual launch plan composite {plan.fused_key!r} is no longer "
+            "registered; re-resolve the plan"
+        )
+    fn = resolve(
+        backend=plan.fused_key.backend,
+        layer=plan.fused_key.layer,
+        quant=plan.fused_key.quant,
+        variant=plan.fused_key.variant,
+    )
+    return plan.fused_key, fn
+
+
+def _execute_gguf_linear_residual_plan(
+    plan: _GGUFResidualLaunchPlan,
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    *,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+) -> bool:
+    """Bind pointers and allocations for one private residual plan.
+
+    The plan retains its weight owner, but does not copy pointers, allocations
+    or resolved callables from it. Execution checks the registry generation and
+    owner slot before fetching the current allocation and binding pointers.
+    """
+
+    if plan.operation is None:
+        return False
+    current_generation = generation()
+    if int(plan.registry_generation) != current_generation:
+        raise ValueError(
+            "GGUF residual launch plan is stale: registry generation changed "
+            f"from {plan.registry_generation} to {current_generation}; "
+            "re-resolve the plan"
+        )
+    _bind_residual_plan_owner(plan, weight)
+
+    if plan.operation in {
+        _GGUF_RESIDUAL_OPERATION_DENSE_WMMA_BULK,
+        _GGUF_RESIDUAL_OPERATION_REGISTERED_ROWS1,
+    }:
+        fused_key, fn = _resolve_residual_plan_owner(plan)
+        launcher = _LAUNCH_RESIDUAL_ABI.get(plan.abi)
+        if launcher is None:
+            return False
+        kwargs = _residual_launch_kwargs(
+            fused_key,
+            plan.normal_key,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+        )
+        launcher(
+            fn,
+            weight,
+            x_ptr,
+            residual_ptr,
+            out_ptr,
+            plan.rows,
+            plan.in_features,
+            plan.out_features,
+            kwargs,
+        )
+        return True
+
+    if plan.operation == _GGUF_RESIDUAL_OPERATION_SIDECAR:
+        allocation = _q4_t16_sidecar_allocation(
+            weight,
+            rows=plan.rows,
+            allow_r3plus_at_row2=(
+                plan.sidecar_variant == "dense_rowtile_col4_bf16_bf16_out"
+            ),
+        )
+        if allocation is None:
+            return False
+    elif plan.operation == _GGUF_RESIDUAL_OPERATION_REGISTERED_SMALL:
+        if plan.allocation_name is None:
+            raise ValueError(
+                "GGUF residual launch plan small operation has no allocation name"
+            )
+        try:
+            allocation = weight.allocation(plan.allocation_name)
+        except KeyError:
+            return False
+    else:
+        raise ValueError(f"unsupported GGUF residual operation {plan.operation!r}")
+
+    fused_key, fn = _resolve_residual_plan_owner(plan)
+    kwargs = _residual_launch_kwargs(
+        fused_key,
+        plan.normal_key,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+    )
     fn(
         x_ptr,
-        int(weight_ptr),
+        int(allocation.tensor.ptr),
         residual_ptr,
         out_ptr,
-        rows,
-        in_features,
-        out_features,
+        plan.rows,
+        plan.in_features,
+        plan.out_features,
         **kwargs,
     )
     return True
@@ -6094,204 +6550,20 @@ def launch_gguf_linear_residual(
     closed to the ordinary projection plus ``gguf_bf16_add`` chain.
     """
 
-    if rows < 1:
-        return False
-    resolved_backend = _weight_backend(weight, backend=backend)
-    if rows > 4:
-        # Bulk residual fusion is currently a dense-BF16 WMMA composite. Fail
-        # closed before registry/capability work for pack8/raw/T16 owners; their
-        # primitive chain remains the route and pays no candidate dispatch tax.
-        if weight.spec.layout != LAYOUT_DENSE_BF16:
-            return False
-        if (
-            not _resolve_use_wmma_prefill(None)
-            or os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", "1") == "0"
-        ):
-            return False
-        dispatch = resolve_gguf_linear_dispatch(
-            weight,
-            backend=resolved_backend,
-            rows=rows,
-        )
-        dispatch = _dense_bf16_wmma_dispatch(
-            dispatch,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
-            enabled=(
-                os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
-                and bool(
-                    backend_package_capability(
-                        resolved_backend,
-                        "GGUF_DENSE_BF16_WMMA_BULK_PREFILL",
-                        False,
-                    )
-                )
-                and _backend_prefill_shape_is_qualified(
-                    resolved_backend,
-                    "GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES",
-                    rows=rows,
-                    in_features=in_features,
-                    out_features=out_features,
-                )
-            ),
-        )
-        resolved = _resolve_registered_linear_residual(
-            dispatch.key,
-            rows=rows,
-        )
-        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
-        if resolved is None or launcher is None:
-            return False
-        fused_key, fn = resolved
-        kwargs = {"stream": stream, "runtime": runtime}
-        if libraries is not None:
-            library = libraries.get(
-                f"{fused_key.quant}:{fused_key.variant}",
-                libraries.get(
-                    f"{dispatch.key.quant}:{dispatch.key.variant}",
-                    libraries.get(fused_key.quant),
-                ),
-            )
-            if library is not None:
-                kwargs["library"] = library
-        launcher(
-            fn,
-            weight,
-            x_ptr,
-            residual_ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            kwargs,
-        )
-        return True
-    if rows == 1:
-        # ``registered_decode`` is an explicit model/backend/shape admission.
-        # A session's independent WMMA-prefill axis must not suppress that
-        # rows-1 GEMV composite in mixed prefill+decode workloads.
-        if not registered_decode:
-            return False
-        dispatch = resolve_gguf_linear_dispatch(
-            weight,
-            backend=resolved_backend,
-            rows=rows,
-        )
-        # E6c-2: raw slots must composite under the parent production runs
-        # (session-redirected local32 vs pinned/no-policy strict), never the
-        # bare contract key.
-        dispatch = _residual_rows1_decode_dispatch(
-            dispatch, weight, out_features=out_features
-        )
-        resolved = _resolve_registered_linear_residual(
-            dispatch.key,
-            rows=rows,
-        )
-        launcher = _LAUNCH_RESIDUAL_ABI.get(dispatch.abi)
-        if resolved is None or launcher is None:
-            return False
-        fused_key, fn = resolved
-        kwargs = {"stream": stream, "runtime": runtime}
-        if libraries is not None:
-            library = libraries.get(
-                f"{fused_key.quant}:{fused_key.variant}",
-                libraries.get(
-                    f"{dispatch.key.quant}:{dispatch.key.variant}",
-                    libraries.get(fused_key.quant),
-                ),
-            )
-            if library is not None:
-                kwargs["library"] = library
-        launcher(
-            fn,
-            weight,
-            x_ptr,
-            residual_ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            kwargs,
-        )
-        return True
-    if _resolve_use_wmma_prefill(None):
-        return False
-    if not _native_batch_decode_session_enabled:
-        return False
-
-    # Legacy compact-Q4 weights expose T16 as a sidecar. Try those registered
-    # sibling keys first; sole-T16 owners continue through the canonical route.
-    for variant in _q4_t16_sidecar_decode_variants(
-        rows=rows,
-        in_features=in_features,
-        out_features=out_features,
-    ):
-        sidecar = _q4_t16_sidecar_allocation(
-            weight,
-            rows=rows,
-            allow_r3plus_at_row2=(
-                variant == "dense_rowtile_col4_bf16_bf16_out"
-            ),
-        )
-        if sidecar is None:
-            continue
-        normal_key = KernelKey(
-            resolved_backend,
-            "linear",
-            "gguf_q4_k_t16_v1",
-            variant,
-        )
-        if _launch_registered_linear_residual(
-            normal_key,
-            sidecar.tensor.ptr,
-            x_ptr,
-            residual_ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            stream=stream,
-            libraries=libraries,
-            runtime=runtime,
-        ):
-            return True
-
-    # Sole-resident T16 owners derive the composite from the same registry key
-    # selected by native small-row linear dispatch.
-    dispatch = resolve_gguf_linear_dispatch(
+    plan = _resolve_gguf_linear_residual_plan(
         weight,
-        backend=resolved_backend,
-        rows=rows,
-    )
-    dispatch = _q4_t16_dense_native_dispatch(
-        dispatch,
         rows=rows,
         in_features=in_features,
         out_features=out_features,
+        backend=backend,
+        registered_decode=registered_decode,
     )
-    dispatch = _native_batch_decode_dispatch(
-        dispatch,
-        rows=rows,
-        in_features=in_features,
-        out_features=out_features,
-    )
-    allocation_name = {"t16": "tiles"}.get(dispatch.abi)
-    if allocation_name is None:
-        return False
-    try:
-        allocation = weight.allocation(allocation_name)
-    except KeyError:
-        return False
-    return _launch_registered_linear_residual(
-        dispatch.key,
-        allocation.tensor.ptr,
+    return _execute_gguf_linear_residual_plan(
+        plan,
+        weight,
         x_ptr,
         residual_ptr,
         out_ptr,
-        rows,
-        in_features,
-        out_features,
         stream=stream,
         libraries=libraries,
         runtime=runtime,
