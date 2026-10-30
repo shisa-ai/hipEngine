@@ -1951,38 +1951,38 @@
       "start_line": 2257,
       "end_line": 2303,
       "sha256": "b2f6f518a801ee6fbb9417f10cd03b49514d043e19ca234d74748b4eb79a4f8f",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-cost-policy",
+      "evidence": ["Current guard bypasses contiguous and fast-gather hits; fallback populations still use suffix budget. Deferred policy independently of R0312/R0506; history preserved at884e51fa4. 39 prefix unit tests/docs/audit pass. worklog/entries/20261030T062458.861841Z-cleanup-cleanup-r0074-f8bd1a.md."],
       "subitems": [
         {
           "line": 2259,
           "text": "- A shared-prefix allocation whose pages are contiguous keeps the slot-local",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 2268,
           "text": "- That single ratio explained the served regression. At",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 2274,
           "text": "- Two changes, both measured: admission asks for a contiguous placement first",
-          "status": "pending"
+          "status": "deferred-cost-policy"
         },
         {
           "line": 2283,
           "text": "- Result: retained 16 goes from +9.5% to **-11.0%** wall with `suffix_prefill`",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 2285,
           "text": "- **Update 2026-09-19 (gapped gather route):** the cost model's premise is now",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 2296,
           "text": "- Removal scope: the threshold and the decline path, once the paged prefill",
-          "status": "pending"
+          "status": "deferred-cost-policy"
         }
       ]
     },

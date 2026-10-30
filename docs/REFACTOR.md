@@ -2216,52 +2216,6 @@ the allocation repair. The observations and proposal below are historical.
   `tests/test_unit_gguf_global_pool_growth.py` and
   `tests/test_unit_gguf_vmm_kv_pool.py`.
 
-## Placement decides the prefill route, and the routes are far apart (found 2026-09-19)
-
-- A shared-prefix allocation whose pages are contiguous keeps the slot-local
-  prefill route. A gapped one makes `_gguf_device_kv_contiguous_base_row`
-  return None, `slot_local_full_prefill` false, and the suffix prefills through
-  the packed paged route. Measured on Qwen3.5-0.8B with the source deliberately
-  held so placement is gapped, an 8234-token prompt reusing 2048: the paged
-  suffix costs **6.5 ms/token against 0.39 ms/token** for the full prefill it
-  replaces, one call or twenty-five - chunking is not the driver, and stubbing
-  the whole-history KV import changes it by 0.1%, so the cost is in the paged
-  prefill compute itself.
-- That single ratio explained the served regression. At
-  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`, pinned retained pages fragment
-  the arena, 8 of 18 admissions were gapped, and one lane spent **114 s**
-  prefilling a 6,186-token suffix that a plain miss does in ~15 s. Phase
-  attribution: `suffix_prefill` 5.8 s at the default retention against
-  **125-135 s** at retained 16.
-- Two changes, both measured: admission asks for a contiguous placement first
-  and accepts a gapped one rather than refusing (15 of 16 hits are contiguous
-  at the default retention, so most hits already took the fast route by the
-  allocator's adjacency preference - this makes it explicit); and a gapped
-  placement is only accepted when the suffix is at most
-  `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` tokens, default 512. Past that the
-  hit is declined into the full prefill it would have replaced. Crossover
-  measured at 2048 and 4096 token boundaries: a gapped hit costs 0.63x and
-  0.87x the miss at a 512-token suffix and 1.07x and 1.22x at 768.
-- Result: retained 16 goes from +9.5% to **-11.0%** wall with `suffix_prefill`
-  down from 134.9 s to 6.8 s; the default retention is unchanged at -18.6%.
-- **Update 2026-09-19 (gapped gather route):** the cost model's premise is now
-  gone where the gather route serves. A gapped BF16 slot swaps its identity
-  spans for its real chunk-local block table and runs the same AOTriton
-  attention over gathered head-major buffers the contiguous route uses, so a
-  gapped hit pays contiguous cost at any suffix length (the 35B lane's forced
-  gapped suffix prefill went 134,511 ms -> 8,306 ms against 8,226 ms
-  contiguous). The suffix budget now binds only when the fast gapped route is
-  unavailable - `HIPENGINE_GGUF_GAPPED_GATHER=0`, a backend without
-  head-major KV, or a context beyond the validated head-major allocation
-  class - where the paged-route costs above still hold. Removal scope below
-  is unchanged for those populations.
-- Removal scope: the threshold and the decline path, once the paged prefill
-  route is no longer several times slower per token than the slot-local one
-  on every backend. Gapped gfx1100 BF16 slots now resolve the registered copy
-  kernel independently of the optional contiguous head-major-layout default;
-  explicit rollback and allocation limits still retain the guard.
-  Fixing that is the real prize - it would make every hit pay and let the
-  retained working set grow.
 
 ## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
 
@@ -9609,3 +9563,34 @@ with positive contract coverage only after the repair, and extend
 `test_batched_suffix_extend_is_bit_exact_against_recompute` where that exactness
 contract applies. Do not treat passing a test that requires inequality as proof
 of numerical correctness or remove it merely to clear the ledger.
+
+### R0074 — Decide when to remove the slow-route gapped-prefix cost guard
+
+`HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` remains a live admission cost policy
+in `hipengine/generation/qwen35_gguf.py`, defaulting to 512. It declines a
+long-suffix gapped cache hit into private full prefill only when
+`_gguf_prefix_gapped_fast_route_available` is false. Contiguous hits and gapped
+hits with the fast gather route bypass this threshold. This is selection
+between executable routes, not refusal to generate or an artifact allowlist.
+
+The fast-route predicate checks gather enablement, a registered BF16
+`head_major_spans` copy kernel, and context/byte allocation bounds. R0312 owns
+scratch-budget integration; R0506 owns the gather rollback-switch decision.
+Completing either does not by itself eliminate all slow-route populations.
+Historical placement and gather measurements remain in `docs/REFACTOR.md` at
+commit `884e51fa4`, under “Placement decides the prefill route”. They do not
+establish a current crossover on every backend.
+
+**Deferred policy decision:** retain the cost guard for reachable slow-route
+configurations, replace it with a measured cost policy, or remove it after
+improving those routes. Before an optimization-driven removal, profile the
+actual fallback populations against private recomputation with fragmented
+placement, short and long suffixes, and allocation-boundary cases. Preserve
+resource checks and cache ownership regardless of the policy selected.
+
+Clearing checks: run `tests/test_unit_gguf_prefix_cache_runner.py`, covering
+slow-route decline, short-suffix reuse and long-suffix fast-gather reuse;
+exercise public generation with forced fragmentation and continuation, and
+verify route telemetry and correctness against independent recomputation.
+Retire the environment knob and decline branch together only when the selected
+policy no longer needs them. This triage adds no timing or quality result.
