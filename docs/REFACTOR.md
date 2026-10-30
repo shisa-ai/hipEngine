@@ -2854,7 +2854,7 @@ Done when: run the isolated regression at
 against the original local model and both sides of 1024, plus unrelated contexts and
 B1–B7, before removing the handoff guard. The parent process runs the original guarded body in a
 bounded child and starts a fresh-process health request only after that child exits successfully;
-failure or timeout starts no further GPU work automatically. Compare host/device proposals, every acceptance
+failure or timeout exits the test session before any following GPU case. Compare host/device proposals, every acceptance
 prefix, payload validity, Conv/GDN/KV/cursors, next-cycle continuity, reset, cancellation and
 teardown; follow it with a fresh-process health request. Then run the complete MTP E2E,
 long-context, lifecycle/API/load packet and an actual `LLM.generate()` request confirming the

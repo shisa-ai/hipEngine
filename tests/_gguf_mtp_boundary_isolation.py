@@ -36,13 +36,16 @@ def run_context_crossing_isolated(*, timeout_seconds: float = 600) -> None:
                 timeout=timeout_seconds, check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            pytest.fail(
+            pytest.exit(
                 f"{function} timed out after {timeout_seconds}s; child retired. "
-                f"No following health request was started. stdout={exc.stdout!r} stderr={exc.stderr!r}"
+                f"Stopping the test session before any later GPU case. "
+                f"stdout={exc.stdout!r} stderr={exc.stderr!r}", returncode=1,
             )
         if result.returncode == 77:
             pytest.skip(result.stdout.strip() or result.stderr.strip())
-        assert result.returncode == 0, (
-            f"{function} exited {result.returncode}; no further GPU work started.\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
+        if result.returncode != 0:
+            pytest.exit(
+                f"{function} exited {result.returncode}; stopping the test session "
+                f"before any later GPU case.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                returncode=1,
+            )

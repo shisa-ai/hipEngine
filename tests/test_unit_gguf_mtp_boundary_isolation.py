@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -31,7 +32,7 @@ def test_failed_or_skipped_crossing_never_runs_health(monkeypatch, code):
         calls.append(args)
         return SimpleNamespace(returncode=code, stdout="child explanation", stderr="details")
     monkeypatch.setattr(isolation.subprocess, "run", run)
-    expected = pytest.skip.Exception if code == 77 else AssertionError
+    expected = pytest.skip.Exception if code == 77 else pytest.exit.Exception
     with pytest.raises(expected):
         isolation.run_context_crossing_isolated()
     assert len(calls) == 1
@@ -43,9 +44,33 @@ def test_timed_out_crossing_never_runs_health(monkeypatch):
         calls.append(command)
         raise subprocess.TimeoutExpired(command, kwargs["timeout"])
     monkeypatch.setattr(isolation.subprocess, "run", run)
-    with pytest.raises(pytest.fail.Exception, match="child retired"):
+    with pytest.raises(pytest.exit.Exception, match="child retired"):
         isolation.run_context_crossing_isolated(timeout_seconds=1)
     assert len(calls) == 1
+
+
+def test_failed_gpu_child_stops_the_pytest_session_before_next_case(tmp_path):
+    marker = tmp_path / "later-gpu-case"
+    script = tmp_path / "test_session_stop.py"
+    script.write_text(
+        "from types import SimpleNamespace\n"
+        "from tests import _gguf_mtp_boundary_isolation as isolation\n"
+        "def test_failed_child(monkeypatch):\n"
+        "    monkeypatch.setattr(isolation.subprocess, 'run', lambda *a, **k: "
+        "SimpleNamespace(returncode=1, stdout='sentinel', stderr=''))\n"
+        "    isolation.run_context_crossing_isolated()\n"
+        "def test_later_gpu_case():\n"
+        "    from pathlib import Path\n"
+        f"    Path({str(marker)!r}).write_text('ran')\n"
+    )
+    result = subprocess.run(
+        [isolation.sys.executable, "-m", "pytest", str(script), "-q", "-o", "addopts="],
+        cwd=isolation.ROOT, capture_output=True, text=True, timeout=30,
+        env={**os.environ, "PYTHONPATH": str(isolation.ROOT)},
+    )
+    assert result.returncode == 1
+    assert "stopping the test session" in result.stdout + result.stderr
+    assert not marker.exists()
 
 
 def test_live_node_uses_isolation_instead_of_skipping_original_body():
