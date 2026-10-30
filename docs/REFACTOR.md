@@ -2308,18 +2308,6 @@ the allocation repair. The observations and proposal below are historical.
   60-second transition, recording-reset and post-join-noise tests pass.
 
 
-## Qwen4Exp context capacity policy
-
-- `native_context_length` is now consumed by public memory admission, bounded
-  by artifact context metadata. Keep `qsa_dense_equivalent_max_tokens` and
-  selected-position capacity independent and unchanged.
-- Public admission reserves the larger of the4GiB per-runner floor and mandatory
-  runner scratch plus cast staging for the requested context/chunk, with a
-  separate4GiB reserve and vision payload. Optional MMQ/graph/verification
-  growth still needs composed accounting before it exceeds that envelope;
-  never silently over-admit.
-- Device-position-owned QSA remains dense-regime probe-only; promotion requires
-  native sparse selection support, not raising or bypassing the2051 guard.
 
 ## Qwen4Exp prepacked Q8 MMQ admission
 
@@ -9608,3 +9596,36 @@ Clearing checks: run `tests/test_unit_grammar_masks.py` and
 and mixed-request isolation tests for any replacement, then exercise public
 required/named tool generation with streaming, MTP and cancellation. Confirm
 the intended selection route actually ran before removing host-only machinery.
+
+### R0128 — Compose optional resource accounting and implement sparse device-position selection
+
+`resolve_qwen4_exp_context` bounds native context by artifact metadata and
+rejects explicit requests that do not fit. With a supplied prefill chunk, it
+reserves the larger of the per-runner scratch floor and mandatory scratch plus
+wide-F16 staging and QSA WMMA scratch. It also rounds physical KV storage to
+page boundaries. These are implemented checks, not remaining cleanup.
+The prior unused index estimate and obsolete full-reset note were already
+removed; see
+`worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md`.
+
+**Deferred resource-design work:** compose optional MMQ sidecars, graph and
+verification allocations with admission and their actual owner lifetimes.
+Identify which allocations are already covered before adding reservations;
+avoid double counting as well as over-admission. Preserve explicit-request
+errors and keep native context, QSA dense-equivalent limits and selected-position
+capacity independent. The scratch floor is not proof that every optional
+combination fits.
+
+**Separate missing capability:** device-position-owned QSA still rejects a
+position beyond the dense-equivalent limit in the decode path. Implement native
+sparse selection and its graph ownership before removing that guard; increasing
+the limit does not supply sparse selection. This does not restrict the separate
+host-position sparse route.
+
+Clearing checks: run the scratch-plan, QSA-scratch-reserve and chunk-memory-ladder
+unit tests, then exercise public admission with optional resources alone and in
+combination, including failure cleanup and requests around allocation limits.
+For device-position sparse support, compare selection, logits and state against
+the declared oracle across the dense/sparse boundary and unrelated lengths,
+then exercise public continuation and graph replay. Neither follow-up is claimed
+implemented by this triage.

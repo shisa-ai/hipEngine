@@ -3431,18 +3431,18 @@
       "start_line": 3175,
       "end_line": 3191,
       "sha256": "90e7244a762d064fa188e84461515853c3e950c8aeb6259fa5bd104d2d0d935e",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-resource-and-sparse-work",
+      "evidence": ["Verified QSA WMMA reserve and rounded KV tail in planner; optional resource composition and device-position sparse selection remain distinct deferred work. 22 focused tests/docs/audit pass. worklog/entries/20261030T063106.056374Z-cleanup-cleanup-r0128-3c41be.md."],
       "subitems": [
         {
           "line": 3177,
           "text": "- `native_context_length` is now consumed by public memory admission, bounded",
-          "status": "pending"
+          "status": "resolved-contract-preserved"
         },
         {
           "line": 3180,
           "text": "- Public admission uses4GiB per resident runner for scratch including current",
-          "status": "pending",
+          "status": "deferred-resource-composition",
           "evidence": ["Corrected fixed-floor description: resolve_qwen4_exp_context uses max(floor, mandatory scratch + staging). Optional resource composition remains open; see worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md."]
         },
         {
@@ -3454,7 +3454,7 @@
         {
           "line": 3187,
           "text": "- Device-position-owned QSA remains dense-regime probe-only; promotion requires",
-          "status": "pending"
+          "status": "deferred-sparse-implementation"
         },
         {
           "line": 3189,
