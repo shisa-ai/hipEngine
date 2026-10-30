@@ -2331,23 +2331,6 @@ should be removed or collapsed.
 
 
 
-## 2026-09-07 UD cleanup — reduce authorization surface
-
-- Removed generic profile qualifiers, custom-factory rollback and the cancelled
-  profile-application prototype. Preserve ordinary profile plugin composition
-  and the shared header-identity helper; do not recreate a transaction or
-  file-replacement defense around model loading. Model files are immutable
-  during a session.
-- Existing GGUF binders still write process-wide settings. Initial UD bring-up
-  uses a fresh process without a named profile. If multiple model/profile owners
-  must coexist, replace the needed settings with explicit owner fields at their
-  actual consumers; do not wrap every method in implicit profile context.
-- Removed per-call native physical-operand authorization and recursive scans.
-  Native routes qualify at construction and use session-owned fixed allocations.
-  Private pointer/geometry mutation is not a supported reconfiguration API.
-  Closed-owner, row, token and context bounds remain runtime checks.
-- Next: simplify reusable admission certificates. Keep loader shape/dtype checks
-  and shared dispatch contracts; do not replace them with a second framework.
 
 ## 2026-09-07 GGUF native execution authorization — bounded cleanup
 
@@ -9631,3 +9614,35 @@ native-context state/logit gates across affected geometries, KV layouts and
 boundary-straddling rows. Verify public generation, every accepted-prefix state,
 continuation, rollback and graph/eager route attribution before consolidating
 bounds. This triage changes documentation only, not the surviving cap.
+
+### R0137 — Move profile settings to owners without duplicating admission checks
+
+GGUF profile binders still write process-wide environment settings, including
+`qwen35_dense_gfx1100_profiles.py`, `qwen35_dense_gfx1151_profiles.py` and
+`qwen35_moe_gfx1151_profiles.py` under `hipengine/generation/`. Separate model
+owners can therefore share mutable configuration rather than independent
+resolved settings.
+
+**Deferred ownership design:** move settings needed by coexisting owners into
+explicit fields consumed by those owners. Inventory each actual consumer and
+its binding lifetime; do not surround every method with an implicit environment
+context. Preserve ordinary profile plugin composition and header identity.
+
+`Qwen35GGUFAdmissionCertificate` is still consumed by the loader, which checks
+that a supplied certificate covers the intended plan. Simplification must name
+specific redundant work and preserve shape/dtype, operation, slot and resident
+plan checks. Source identity binds a supplied result to its source; it must not
+become an allowlist of measured artifacts. An unspecified replacement framework
+is not a clearing action.
+
+The removed generic qualifiers, profile prototype and recursive per-call operand
+scans are history, preserved in the ledger at `e30addbd5`. Do not recreate them
+to defend unsupported private pointer mutation. Keep closed-owner and request
+bounds, and add invalidation only for actual supported reconfiguration.
+
+Clearing checks: test two differently configured owners in both construction
+orders and interleaved execution, confirm no settings leak, then exercise public
+model generation and teardown. For certificate changes, run intended-plan,
+partial-slot and supplied-certificate loader tests in
+`tests/test_live_gguf_ud_admission.py`. Keep construction checks separate from
+per-token execution; this triage changes neither mechanism.
