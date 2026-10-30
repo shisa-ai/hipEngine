@@ -4311,10 +4311,8 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 Scope: `qwen35_gguf_*`.
 
 **Remaining boundary work:** split bulk attention orchestration and full-stack verification
-with explicit inputs and one session/transaction owner. Migrate the graph lifetime compatibility
-containers (`_decode_graphs`, `_device_kv_graph_handles`, `_decode_graph_submission_contexts`) to
-owner methods before removing their runner properties; preserve pin/close and slot-isolation
-semantics. Decide which GGUF boundaries are reusable by PARO before decomposing `qwen35_paro.py`;
+with explicit inputs and one session/transaction owner. Decide which GGUF boundaries are reusable
+by PARO before decomposing `qwen35_paro.py`;
 a whole-runner proxy or implicit-session mixin is not an ownership split. Give each compatibility
 export a concrete removal condition.
 

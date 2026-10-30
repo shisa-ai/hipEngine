@@ -12,6 +12,10 @@ from hipengine.runtime.gguf_packed_decode_graph import (
     Qwen35GGUFPackedDecodeGraph,
     build_qwen35_gguf_packed_decode_graph_key,
 )
+from hipengine.runtime.qwen35_gguf_graph_lifetime import (
+    Qwen35GGUFGraphLifetime,
+    graph_lifetime_of,
+)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
@@ -309,7 +313,6 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
     peer = object.__new__(Qwen35GGUFResidentSession)
     owner.runner = SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100")
     owner.runtime = object()
-    owner._decode_graph_submission_contexts = {}
     pins: list[tuple[str, object]] = []
     owner._pin_device_kv_graph = lambda graph: pins.append(("owner", graph))
     peer._pin_device_kv_graph = lambda graph: pins.append(("peer", graph))
@@ -382,7 +385,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
     )
     owner = SimpleNamespace(
         runtime=runtime,
-        _decode_graphs=[],
+        _graph_lifetime=Qwen35GGUFGraphLifetime(),
         _packed_decode_session_ids=(),
         _packed_decode_positions=(),
         _packed_decode_last_layout=None,
@@ -425,7 +428,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
         },
         submission=FakeSubmission(),
     )
-    owner._decode_graphs.append(graph)
+    graph_lifetime_of(owner).register(graph)
     monkeypatch.setattr(packed_graph, "_final_transition_layout", lambda _graph: "layout")
 
     graph.replay(1)
@@ -450,7 +453,7 @@ def test_packed_decode_graph_replays_and_closes_registered_submission(monkeypatc
     assert ("graph_destroy", 0xA0) in calls
     assert ("stream_destroy", 0xB0) in calls
     assert graph.graph_exec == 0
-    assert graph not in owner._decode_graphs
+    assert graph not in graph_lifetime_of(owner).decode_graphs()
     assert not any(call[0].startswith("unexpected") for call in calls)
 
 

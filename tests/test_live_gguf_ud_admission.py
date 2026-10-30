@@ -3862,6 +3862,7 @@ def test_capture_decode_graph_callers_thread_resident_qualification(monkeypatch)
     import hipengine.runtime.gguf_packed_decode_graph as packed_graph_module
     import hipengine.runtime.qwen35_gguf_runner as runner_module
     from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     geometry = GGUFModelGeometry.try_from_config(_config((LINEAR_ATTENTION,)))
@@ -3902,7 +3903,7 @@ def test_capture_decode_graph_callers_thread_resident_qualification(monkeypatch)
                 ),
             ),
             runtime=object(),
-            _decode_graph_submission_contexts={},
+            _graph_lifetime=Qwen35GGUFGraphLifetime(),
             _pin_device_kv_graph=lambda graph: None,
         )
 

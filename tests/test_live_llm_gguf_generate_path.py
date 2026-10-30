@@ -7,6 +7,7 @@ import pytest
 import hipengine.generation.qwen35_gguf as qwen35_gguf
 from hipengine import LLM, SamplingParams
 from hipengine.models import resolve_model
+from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
 
 MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
@@ -34,8 +35,7 @@ def _fake_session_type(calls, *, include_step: bool):
         def __init__(self, model_path, **kwargs):
             self.closed = False
             self.position = 0
-            self._decode_graphs = []
-            self._device_kv_graph_handles = {}
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
             calls.append(("init", str(model_path), dict(kwargs)))
 
         def resident_slot_view(self, slot_index):

@@ -11,6 +11,7 @@ from hipengine.runtime import qwen35_gguf_runner as runner
 from hipengine.runtime.qwen35_gguf_graph_lifetime import (
     Qwen35GGUFGraphLifetime,
     close_graph_handles,
+    graph_lifetime_of,
 )
 
 
@@ -152,6 +153,54 @@ def test_graph_lifetime_unpin_after_detach_raises_and_keeps_the_pin() -> None:
     assert pool.unpins == []
 
 
+def test_owner_registration_is_idempotent_and_preserves_capture_order() -> None:
+    owner = Qwen35GGUFGraphLifetime()
+    first = SimpleNamespace(closed=False)
+    second = SimpleNamespace(closed=False)
+
+    owner.register(first)
+    owner.register(second)
+    owner.register(first)
+
+    assert owner.decode_graphs() == (first, second)
+
+
+def test_owner_unregister_removes_only_the_named_handle() -> None:
+    owner = Qwen35GGUFGraphLifetime()
+    first = SimpleNamespace(closed=False)
+    second = SimpleNamespace(closed=False)
+    owner.register(first)
+    owner.register(second)
+
+    assert owner.unregister(second) is True
+    assert owner.unregister(second) is False
+    assert owner.decode_graphs() == (first,)
+
+
+def test_owner_enumerations_put_pinned_handles_before_decode_graphs() -> None:
+    owner = Qwen35GGUFGraphLifetime()
+    pool = _Pool()
+    first = SimpleNamespace(closed=False)
+    second = SimpleNamespace(closed=False)
+    owner.register(first)
+    owner.register(second)
+    owner.pin(second, allocation=SimpleNamespace(block_ids=(4,)), pool=pool)
+
+    assert owner.decode_graphs() == (first, second)
+    assert owner.pinned_graphs() == (second,)
+    assert owner.graphs() == (second, first)
+
+
+def test_graph_lifetime_of_accepts_a_resolver_or_an_attached_owner() -> None:
+    owner = Qwen35GGUFGraphLifetime()
+
+    assert graph_lifetime_of(SimpleNamespace(_graph_lifetime=lambda: owner)) is owner
+    assert graph_lifetime_of(SimpleNamespace(_graph_lifetime=owner)) is owner
+
+    with pytest.raises(TypeError, match="explicit graph lifetime owner"):
+        graph_lifetime_of(SimpleNamespace())
+
+
 def test_graph_lifetime_closes_pinned_handles_first_and_each_handle_once() -> None:
     owner = Qwen35GGUFGraphLifetime()
     pool = _Pool()
@@ -175,7 +224,8 @@ def test_graph_lifetime_closes_pinned_handles_first_and_each_handle_once() -> No
 
     owner.pin(shared, allocation=allocation, pool=pool)
     owner.pin(handle_only, allocation=allocation, pool=pool)
-    owner.decode_graphs.extend((shared, already_closed, no_close))
+    for graph in (shared, already_closed, no_close):
+        owner.register(graph)
 
     assert owner.close_live_graphs() == 2
     assert events == ["shared", "handle"]
@@ -202,7 +252,8 @@ def test_graph_lifetime_close_decode_graphs_keeps_the_registry_for_retry() -> No
     second = _SessionGraph("second", SimpleNamespace(_unpin_device_kv_graph=lambda _g: None))
     first.trace = trace
     second.trace = trace
-    owner.decode_graphs.extend((first, second))
+    owner.register(first)
+    owner.register(second)
 
     def fail() -> None:
         raise RuntimeError("close failed")
@@ -212,12 +263,12 @@ def test_graph_lifetime_close_decode_graphs_keeps_the_registry_for_retry() -> No
         owner.close_decode_graphs()
 
     assert trace == ["first"]
-    assert owner.decode_graphs == [first, second]
+    assert owner.decode_graphs() == (first, second)
 
     second.close = lambda: trace.append("second")  # type: ignore[method-assign]
     assert owner.close_decode_graphs() == 2
     assert trace == ["first", "second"]
-    assert owner.decode_graphs == []
+    assert owner.decode_graphs() == ()
 
 
 def test_graph_lifetime_retains_one_submission_context_per_transport() -> None:
@@ -234,52 +285,42 @@ def test_graph_lifetime_retains_one_submission_context_per_transport() -> None:
     assert first is second
     assert len(created) == 1
     assert owner.submission_context("hipgraph", lambda: None) is None
-    assert set(owner.submission_contexts) == {"pm4"}
+    assert owner.submission_context_names() == ("pm4",)
 
 
 def test_graph_lifetime_submission_context_teardown_returns_before_after_proof() -> None:
     owner = Qwen35GGUFGraphLifetime()
     context = _Context()
-    owner.submission_contexts["pm4"] = context
+    owner.register_submission_context("pm4", context)
 
     proofs = owner.close_submission_contexts()
 
     assert proofs == {
         "pm4": {"before": {"closed": False}, "after": {"closed": True}}
     }
-    assert owner.submission_contexts == {}
+    assert owner.submission_context_names() == ()
 
-    owner.submission_contexts["bad"] = object()
+    owner.register_submission_context("bad", object())
     with pytest.raises(RuntimeError, match="invalid lifecycle ABI"):
         owner.close_submission_contexts()
 
 
-def test_resident_session_graph_aliases_share_one_lifetime_owner() -> None:
+def test_session_no_longer_exposes_legacy_graph_containers() -> None:
     session = object.__new__(runner.Qwen35GGUFResidentSession)
-    lifetime = session._graph_lifetime()
 
-    assert session._decode_graphs is lifetime.decode_graphs
-    assert session._device_kv_graph_handles is lifetime.kv_pins
-    assert session._decode_graph_submission_contexts is lifetime.submission_contexts
-
-    graph = SimpleNamespace(closed=False)
-    session._decode_graphs = [graph]
-    session._device_kv_graph_handles = {id(graph): graph}
-    session._decode_graph_submission_contexts = {"pm4": graph}
-
-    assert lifetime.decode_graphs == [graph]
-    assert lifetime.kv_pins == {id(graph): graph}
-    assert lifetime.submission_contexts == {"pm4": graph}
+    assert not hasattr(session, "_decode_graphs")
+    assert not hasattr(session, "_device_kv_graph_handles")
+    assert not hasattr(session, "_decode_graph_submission_contexts")
 
 
 def test_two_sessions_keep_independent_graph_lifetimes() -> None:
     first = object.__new__(runner.Qwen35GGUFResidentSession)
     second = object.__new__(runner.Qwen35GGUFResidentSession)
-    first._decode_graphs.append(SimpleNamespace(closed=False))
+    first._graph_lifetime().register(SimpleNamespace(closed=False))
 
     assert first._graph_lifetime() is not second._graph_lifetime()
-    assert len(first._decode_graphs) == 1
-    assert second._decode_graphs == []
+    assert len(first._graph_lifetime().decode_graphs()) == 1
+    assert second._graph_lifetime().decode_graphs() == ()
 
 
 def test_two_sessions_hold_independent_pins_over_one_pool() -> None:
@@ -288,8 +329,8 @@ def test_two_sessions_hold_independent_pins_over_one_pool() -> None:
     second = _make_session(pool, block_ids=(3, 4))
     first_graph = _SessionGraph("first", first)
     second_graph = _SessionGraph("second", second)
-    first._decode_graphs.append(first_graph)
-    second._decode_graphs.append(second_graph)
+    first._graph_lifetime().register(first_graph)
+    second._graph_lifetime().register(second_graph)
 
     first._pin_device_kv_graph(first_graph)
     second._pin_device_kv_graph(second_graph)
@@ -297,12 +338,12 @@ def test_two_sessions_hold_independent_pins_over_one_pool() -> None:
 
     assert first.invalidate_device_kv_graphs() == 1
     assert pool.unpins == [(1, 2)]
-    assert first._device_kv_graph_handles == {}
+    assert first._graph_lifetime().pinned_graphs() == ()
     assert second._graph_lifetime().pinned_count == 1
 
     assert second.invalidate_device_kv_graphs() == 1
     assert pool.unpins == [(1, 2), (3, 4)]
-    assert second._device_kv_graph_handles == {}
+    assert second._graph_lifetime().pinned_graphs() == ()
 
 
 def test_session_invalidation_returns_each_pool_pin_once() -> None:
@@ -310,7 +351,7 @@ def test_session_invalidation_returns_each_pool_pin_once() -> None:
     session = _make_session(pool)
     trace: list[str] = []
     graph = _SessionGraph("graph", session, trace=trace)
-    session._decode_graphs.append(graph)
+    session._graph_lifetime().register(graph)
 
     session._pin_device_kv_graph(graph)
     session._pin_device_kv_graph(graph)
@@ -320,7 +361,7 @@ def test_session_invalidation_returns_each_pool_pin_once() -> None:
     assert session.invalidate_device_kv_graphs() == 1
     assert trace == ["graph"]
     assert pool.unpins == [(1, 2)]
-    assert session._device_kv_graph_handles == {}
+    assert session._graph_lifetime().pinned_graphs() == ()
     assert session.invalidate_device_kv_graphs() == 0
 
 
@@ -329,7 +370,7 @@ def test_unbind_waits_for_graph_pins_and_succeeds_after_invalidation(monkeypatch
     pool = _Pool()
     session = _make_session(pool)
     graph = _SessionGraph("graph", session)
-    session._decode_graphs.append(graph)
+    session._graph_lifetime().register(graph)
     session._pin_device_kv_graph(graph)
 
     with pytest.raises(RuntimeError, match="graphs remain pinned"):
@@ -345,16 +386,13 @@ def test_unbind_waits_for_graph_pins_and_succeeds_after_invalidation(monkeypatch
 
 
 def test_packed_invalidation_closes_decode_graphs_before_pins() -> None:
-    session = object.__new__(runner.Qwen35GGUFResidentSession)
+    pool = _Pool()
+    session = _make_session(pool)
     trace: list[str] = []
-    decode_graph = SimpleNamespace(
-        closed=False, close=lambda: trace.append("decode")
-    )
-    pinned_graph = SimpleNamespace(
-        closed=False, close=lambda: trace.append("pin")
-    )
-    session._decode_graphs = [decode_graph]
-    session._device_kv_graph_handles = {id(pinned_graph): pinned_graph}
+    decode_graph = _SessionGraph("decode", session, trace=trace)
+    pinned_graph = _SessionGraph("pin", session, trace=trace)
+    session._graph_lifetime().register(decode_graph)
+    session._pin_device_kv_graph(pinned_graph)
 
     assert session._invalidate_live_packed_decode_graphs() == 2
     assert trace == ["decode", "pin"]
@@ -363,9 +401,9 @@ def test_packed_invalidation_closes_decode_graphs_before_pins() -> None:
 def test_session_closes_retained_submission_contexts_through_the_owner() -> None:
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     context = _Context()
-    session._decode_graph_submission_contexts["pm4"] = context
+    session._graph_lifetime().register_submission_context("pm4", context)
 
     assert session.close_decode_graph_submission_contexts() == {
         "pm4": {"before": {"closed": False}, "after": {"closed": True}}
     }
-    assert session._decode_graph_submission_contexts == {}
+    assert session._graph_lifetime().submission_context_names() == ()

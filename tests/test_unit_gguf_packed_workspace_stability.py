@@ -87,8 +87,6 @@ def _make_owner(recorder: _AllocRecorder) -> gguf_runner.Qwen35GGUFResidentSessi
     owner._packed_decode_state_dirty = False
     owner._packed_decode_session_ids = ()
     owner._packed_decode_positions = ()
-    owner._decode_graphs = []
-    owner._device_kv_graph_handles = {}
 
     def fake_free(self, *, runtime):
         for workspace in (
@@ -212,7 +210,7 @@ def test_packed_workspace_growth_invalidates_live_graph_first(monkeypatch) -> No
     )
     graph = SimpleNamespace(closed=False)
     graph.close = lambda: setattr(graph, "closed", True)
-    owner._decode_graphs.append(graph)
+    owner._graph_lifetime().register(graph)
 
     # Growth beyond the default union capacity closes the binding graph and
     # proceeds (the scheduler re-captures); it never frees while it is open.
@@ -228,7 +226,7 @@ def test_packed_workspace_growth_invalidates_live_graph_first(monkeypatch) -> No
 
     # A graph that cannot be closed still fails the resize closed.
     uncloseable = SimpleNamespace(closed=False)
-    owner._decode_graphs.append(uncloseable)
+    owner._graph_lifetime().register(uncloseable)
     with pytest.raises(RuntimeError, match="close"):
         owner._ensure_packed_verify_workspace(
             slot_count=64, rows=128, max_sequence_length=1024, runtime=runtime
@@ -284,8 +282,6 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
     view._packed_decode_state_dirty = False
     view._packed_decode_session_ids = ()
     view._packed_decode_positions = ()
-    view._decode_graphs = []
-    view._device_kv_graph_handles = {}
     view._resident_batch_owner = owner
 
     view._ensure_packed_verify_workspace(
@@ -302,10 +298,9 @@ def test_slot_view_graph_invalidation_delegates_to_batch_owner() -> None:
     owner.use_iq_dense_mmq = False
     owner._resident_batch_owner = None
     owner._resident_slot_views = []
-    owner._device_kv_graph_handles = {}
     graph = SimpleNamespace(closed=False)
     graph.close = lambda: setattr(graph, "closed", True)
-    owner._decode_graphs = [graph]
+    owner._graph_lifetime().register(graph)
 
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     view.use_iq_dense_mmq = False
@@ -322,7 +317,6 @@ def test_packed_prefill_invalidates_graph_before_flush_and_slot_reuse() -> None:
     owner.use_iq_dense_mmq = False
     owner._packed_decode_state_dirty = True
     owner._resident_batch_owner = None
-    owner._device_kv_graph_handles = {}
     events: list[object] = []
     result = [SimpleNamespace(token_id=7)]
     graph = SimpleNamespace(closed=False)
@@ -332,7 +326,7 @@ def test_packed_prefill_invalidates_graph_before_flush_and_slot_reuse() -> None:
         graph.closed = True
 
     graph.close = close_graph
-    owner._decode_graphs = [graph]
+    owner._graph_lifetime().register(graph)
 
     def flush(self, *, stream=0):
         assert graph.closed is True
@@ -1083,7 +1077,7 @@ def test_wide_to_narrow_long_resize_is_lifecycle_safe(monkeypatch) -> None:
     )
     graph = SimpleNamespace(closed=False)
     graph.close = lambda: (events.append("graph-close"), setattr(graph, "closed", True))
-    owner._decode_graphs.append(graph)
+    owner._graph_lifetime().register(graph)
     owner._packed_decode_state_dirty = True
 
     def fake_flush(self, *, stream=0):
@@ -1354,12 +1348,14 @@ def test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner() -> N
     # The self-owning case is the regression: the callback must close its own
     # graphs rather than treat the missing attribute as "nothing to do".
     closed: list[str] = []
-    session._decode_graphs = [
+    session._graph_lifetime().register(
         SimpleNamespace(closed=False, close=lambda: closed.append("packed")),
-    ]
-    session._device_kv_graph_handles = {
-        "bucket": SimpleNamespace(closed=False, close=lambda: closed.append("device")),
-    }
+    )
+    session._graph_lifetime().pin(
+        SimpleNamespace(closed=False, close=lambda: closed.append("device")),
+        allocation=SimpleNamespace(block_ids=(1,)),
+        pool=SimpleNamespace(pin=lambda _ids: None, unpin=lambda _ids: None),
+    )
     assert session._invalidate_live_packed_decode_graphs() == 2
     assert closed == ["packed", "device"]
 

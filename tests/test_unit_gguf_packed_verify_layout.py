@@ -626,15 +626,13 @@ def test_gguf_resident_release_idle_packed_workspace_requires_safe_lifecycle(
     session._packed_decode_state_dirty = True
     session._packed_decode_session_ids = (33,)
     session._packed_decode_positions = (5,)
-    session._decode_graphs = []
-    session._device_kv_graph_handles = {}
 
     with pytest.raises(RuntimeError, match="unflushed packed state"):
         session.release_idle_packed_workspace()
 
     session._packed_decode_state_dirty = False
     live_graph = SimpleNamespace(closed=False)
-    session._decode_graphs = [live_graph]
+    session._graph_lifetime().register(live_graph)
     with pytest.raises(RuntimeError, match="live graph"):
         session.release_idle_packed_workspace()
 

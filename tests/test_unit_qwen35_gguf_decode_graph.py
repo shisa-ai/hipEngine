@@ -16,6 +16,10 @@ from hipengine.runtime.gguf_decode_graph import (
     _decode_graph_kv_layout_admitted,
     build_qwen35_gguf_decode_graph_key,
 )
+from hipengine.runtime.qwen35_gguf_graph_lifetime import (
+    Qwen35GGUFGraphLifetime,
+    graph_lifetime_of,
+)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
@@ -145,7 +149,6 @@ def test_resident_session_reselects_shape_scoped_default_per_graph(
         weights=SimpleNamespace(geometry=identity[0], file_type_name=identity[1]),
     )
     session.runtime = object()
-    session._decode_graph_submission_contexts = {}
     session._pin_device_kv_graph = lambda graph: None
 
     short = session.capture_decode_graph(position=4, max_replay_steps=159)
@@ -377,7 +380,7 @@ def test_decode_graph_close_releases_device_kv_pin_after_destroy() -> None:
         graph_destroy=lambda handle: calls.append(("graph", int(handle))),
         stream_destroy=lambda handle: calls.append(("stream", int(handle))),
     )
-    session = SimpleNamespace(runtime=runtime, _decode_graphs=[])
+    session = SimpleNamespace(runtime=runtime, _graph_lifetime=Qwen35GGUFGraphLifetime())
     session._unpin_device_kv_graph = lambda graph: unpinned.append(graph)
     graph = Qwen35GGUFDecodeGraph(
         session=session,
@@ -395,13 +398,13 @@ def test_decode_graph_close_releases_device_kv_pin_after_destroy() -> None:
         attention_max_context_len=1,
         capture_hidden_seed_fp32=False,
     )
-    session._decode_graphs.append(graph)
+    graph_lifetime_of(session).register(graph)
 
     graph.close()
     graph.close()
 
     assert graph.closed is True
-    assert session._decode_graphs == []
+    assert graph_lifetime_of(session).decode_graphs() == ()
     assert unpinned == [graph]
     assert calls == [("exec", 12), ("graph", 11), ("stream", 13)]
 
@@ -437,7 +440,7 @@ def test_decode_graph_delegates_replay_provenance_and_close_to_submission_owner(
         _position=0,
         runtime=runtime,
         scratch=scratch,
-        _decode_graphs=[],
+        _graph_lifetime=Qwen35GGUFGraphLifetime(),
     )
     session._unpin_device_kv_graph = lambda graph: unpinned.append(graph)
     graph = Qwen35GGUFDecodeGraph(
@@ -457,7 +460,7 @@ def test_decode_graph_delegates_replay_provenance_and_close_to_submission_owner(
         capture_hidden_seed_fp32=False,
         submission=FakeSubmission(),
     )
-    session._decode_graphs.append(graph)
+    graph_lifetime_of(session).register(graph)
 
     graph.replay(1)
     provenance = graph.transport_provenance()
@@ -665,7 +668,6 @@ def test_resident_session_reuses_one_submission_context_across_graph_generations
     session = object.__new__(Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100")
     session.runtime = object()
-    session._decode_graph_submission_contexts = {}
     session._pin_device_kv_graph = lambda graph: calls.append(("pin", graph.name))
 
     first = session.capture_decode_graph(position=4, submission_transport="pm4")

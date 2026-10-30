@@ -90,6 +90,7 @@ from hipengine.runtime.qwen35_gguf_state import (
 from hipengine.runtime.qwen35_gguf_graph_lifetime import (
     Qwen35GGUFGraphLifetime,
     close_graph_handles,
+    graph_lifetime_of,
 )
 from hipengine.runtime.qwen35_gguf_planning import (
     Qwen35GGUFKVCapacityEstimate,
@@ -13462,35 +13463,6 @@ class Qwen35GGUFResidentSession:
             self.__dict__["_graph_lifetime_state"] = lifetime
         return lifetime
 
-    # Compatibility accessors for existing capture sites and scripts. The
-    # containers remain ordinary list/dict objects so in-place appends keep
-    # working; Qwen35GGUFGraphLifetime owns their pin/close semantics.
-    # Remove these properties after capture sites, scripts and tests use the
-    # explicit lifetime owner's methods instead of mutating these containers.
-    @property
-    def _decode_graphs(self) -> list[object]:
-        return self._graph_lifetime().decode_graphs
-
-    @_decode_graphs.setter
-    def _decode_graphs(self, value: list[object]) -> None:
-        self._graph_lifetime().decode_graphs = value
-
-    @property
-    def _device_kv_graph_handles(self) -> dict[int, object]:
-        return self._graph_lifetime().kv_pins
-
-    @_device_kv_graph_handles.setter
-    def _device_kv_graph_handles(self, value: dict[int, object]) -> None:
-        self._graph_lifetime().kv_pins = value
-
-    @property
-    def _decode_graph_submission_contexts(self) -> dict[str, object]:
-        return self._graph_lifetime().submission_contexts
-
-    @_decode_graph_submission_contexts.setter
-    def _decode_graph_submission_contexts(self, value: dict[str, object]) -> None:
-        self._graph_lifetime().submission_contexts = value
-
     def _packed_workspace_state(self) -> _PackedWorkspaceState:
         state = self.__dict__.get("_packed_ws_state")
         if state is None:
@@ -15257,9 +15229,8 @@ class Qwen35GGUFResidentSession:
         view._position = 0
         view._device_kv_pool = None
         view._device_kv_allocation = None
-        view._decode_graphs = []
-        view._decode_graph_submission_contexts = {}
-        view._device_kv_graph_handles = {}
+        # The fresh lifetime holder above owns empty graph, pin and submission
+        # context registries; slot views never inherit the batch owner's.
         view._int8_prefill_oracle_buffers = {}
         view._gapped_slot_block_table_cache = None
         view._gapped_head_major_cache = None
@@ -15656,7 +15627,7 @@ class Qwen35GGUFResidentSession:
             raise ValueError("GGUF prefix clone destination must be reset")
         if bool(getattr(self, "_packed_decode_state_dirty", False)):
             raise RuntimeError("GGUF prefix clone destination has unflushed packed state")
-        if self._graph_lifetime().blocks_kv_rebind():
+        if graph_lifetime_of(self).blocks_kv_rebind():
             raise RuntimeError("GGUF prefix clone destination still owns live graphs")
         allocation = self._device_kv_allocation
         if allocation is None:
@@ -15784,7 +15755,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF current-state clone source has unflushed state")
         if bool(getattr(self, "_packed_decode_state_dirty", False)):
             raise RuntimeError("GGUF current-state clone destination has unflushed state")
-        if self._graph_lifetime().blocks_kv_rebind():
+        if graph_lifetime_of(self).blocks_kv_rebind():
             raise RuntimeError(
                 "GGUF current-state clone destination still owns live graphs"
             )
@@ -15975,7 +15946,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF prefix clone source has unflushed packed state")
         if bool(getattr(self, "_packed_decode_state_dirty", False)):
             raise RuntimeError("GGUF prefix clone destination has unflushed packed state")
-        if self._graph_lifetime().blocks_kv_rebind():
+        if graph_lifetime_of(self).blocks_kv_rebind():
             raise RuntimeError("GGUF prefix clone destination still owns live graphs")
 
         source_allocation = source._device_kv_allocation
@@ -16077,7 +16048,7 @@ class Qwen35GGUFResidentSession:
     def invalidate_device_kv_graphs(self) -> int:
         """Close every graph that pins this session's current KV allocation."""
 
-        return self._graph_lifetime().close_live_graphs()
+        return graph_lifetime_of(self).close_live_graphs()
 
     def unbind_device_kv_allocation(self) -> DeviceKVPoolAllocation:
         """Detach scheduler-owned KV after all graph pins have been invalidated."""
@@ -16087,7 +16058,7 @@ class Qwen35GGUFResidentSession:
         allocation = self._device_kv_allocation
         if allocation is None:
             raise RuntimeError("GGUF resident session has no device KV allocation")
-        if self._graph_lifetime().pinned_count:
+        if graph_lifetime_of(self).pinned_count:
             raise RuntimeError("cannot detach GGUF device KV while graphs remain pinned")
         empty = tuple(None for _ in self.scratch.full_key_caches)
         self.scratch = replace(
@@ -16112,14 +16083,14 @@ class Qwen35GGUFResidentSession:
         return allocation
 
     def _pin_device_kv_graph(self, graph: object) -> None:
-        self._graph_lifetime().pin(
+        graph_lifetime_of(self).pin(
             graph,
             allocation=self._device_kv_allocation,
             pool=self._device_kv_pool,
         )
 
     def _unpin_device_kv_graph(self, graph: object) -> None:
-        self._graph_lifetime().unpin(
+        graph_lifetime_of(self).unpin(
             graph,
             allocation=self._device_kv_allocation,
             pool=self._device_kv_pool,
@@ -25989,7 +25960,7 @@ class Qwen35GGUFResidentSession:
 
         if bool(getattr(self, "_packed_decode_state_dirty", False)):
             raise RuntimeError("cannot release idle workspace with unflushed packed state")
-        if self._graph_lifetime().live_graphs():
+        if graph_lifetime_of(self).live_graphs():
             raise RuntimeError("cannot release idle workspace while a live graph still binds it")
         released_bytes = self.packed_workspace_nbytes()
         self._free_packed_verify_workspace(runtime=self.runtime or get_hip_runtime())
@@ -26111,10 +26082,9 @@ class Qwen35GGUFResidentSession:
             sessions.extend(views)
         candidates: list[object] = []
         for session in sessions:
-            candidates.extend(getattr(session, "_decode_graphs", ()))
-            handles = getattr(session, "_device_kv_graph_handles", None)
-            if isinstance(handles, dict):
-                candidates.extend(handles.values())
+            lifetime = graph_lifetime_of(session)
+            candidates.extend(lifetime.decode_graphs())
+            candidates.extend(lifetime.pinned_graphs())
         return close_graph_handles(
             candidates,
             require_close=True,
@@ -29525,7 +29495,7 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 requested=submission_transport,
             )
-        submission_context = self._graph_lifetime().submission_context(
+        submission_context = graph_lifetime_of(self).submission_context(
             selected_transport,
             lambda: create_graph_submission_context(
                 backend=str(self.runner.backend),
@@ -29599,7 +29569,7 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 requested=submission_transport,
             )
-        submission_context = self._graph_lifetime().submission_context(
+        submission_context = graph_lifetime_of(self).submission_context(
             selected_transport,
             lambda: create_graph_submission_context(
                 backend=str(self.runner.backend),
@@ -29633,7 +29603,7 @@ class Qwen35GGUFResidentSession:
     def close_decode_graph_submission_contexts(self) -> dict[str, dict[str, object]]:
         """Close idle retained submission contexts and return teardown proof."""
 
-        return self._graph_lifetime().close_submission_contexts()
+        return graph_lifetime_of(self).close_submission_contexts()
 
     def _check_state_capture_released(self) -> None:
         if self._verify_linear_initial_snapshot_users:
@@ -29733,7 +29703,7 @@ class Qwen35GGUFResidentSession:
             self._t16_f16_rocblas.close()
             self._t16_f16_rocblas = None
         self._t16_f16_rocblas_prefill_library = None
-        self._graph_lifetime().close_decode_graphs()
+        graph_lifetime_of(self).close_decode_graphs()
         self.close_decode_graph_submission_contexts()
         if self.runner is not None and self.runner.__dict__.get("_dms_decode_owner") is self:
             self.runner.__dict__.pop("_dms_decode_owner", None)

@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import numpy as np
 
 import hipengine.runtime.gguf_packed_decode_graph as packed_graph
+from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
 from hipengine.core.memory import DeviceBuffer
 
 _BLOCK_TABLE_PTR = 0x401
@@ -277,7 +278,7 @@ def _capture(
             "_runtime_state_library": object(),
             "_last_packed_lm_head_decode_path": "stub",
             "_last_packed_sampler_decode_path": "stub",
-            "_decode_graphs": [],
+            "_graph_lifetime": Qwen35GGUFGraphLifetime(),
             "_normalize_layer_output_capture": lambda self, value: tuple(value),
             "_sync_packed_decode_initial_state": lambda self, *a, **k: (),
             "_ensure_verify_lm_head_buffers": lambda self, *a, **k: None,

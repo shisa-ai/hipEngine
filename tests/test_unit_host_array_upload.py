@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from hipengine.core import memory
+from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
 
 
 QWEN4_EXP_AUXILIARY_UPLOAD_MODULES = (
@@ -1611,7 +1612,7 @@ def _fake_decode_graph_session(runtime):
         _lm_out_value=buffer(107),
         _lm_head_threads=128,
         _lm_head_stage1_blocks=970,
-        _decode_graphs=[],
+        _graph_lifetime=Qwen35GGUFGraphLifetime(),
         _set_full_attention_position_device=lambda position, *, stream: None,
         _iq_dense_mmq_context=contextlib.nullcontext,
     )
@@ -1792,7 +1793,7 @@ def test_gguf_packed_decode_graph_capture_uploads_owning_inputs_in_order(
         _runtime_state_library=object(),
         _last_packed_lm_head_decode_path="stub",
         _last_packed_sampler_decode_path="stub",
-        _decode_graphs=[],
+        _graph_lifetime=Qwen35GGUFGraphLifetime(),
         _normalize_layer_output_capture=lambda value: tuple(value),
         _sync_packed_decode_initial_state=lambda *args, **kwargs: (),
         _ensure_verify_lm_head_buffers=lambda *args, **kwargs: None,

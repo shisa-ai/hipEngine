@@ -4,8 +4,13 @@ A resident session historically exposed three bookkeeping attributes that every
 capture site mutated in place: ``_decode_graphs`` (replay handles),
 ``_device_kv_graph_handles`` (handles that pin the current KV allocation) and
 ``_decode_graph_submission_contexts`` (transport contexts reused across
-captures). The session keeps those names as compatibility properties, but this
-module is the only code that pins, unpins, closes or enumerates the handles.
+captures). This module is the only code that registers, pins, unpins, closes or
+enumerates those resources.
+
+Every capture, close, slot-view and invalidation site now resolves this owner
+through ``graph_lifetime_of`` and uses ``register``/``unregister`` and the
+enumeration methods. The session no longer exposes mutable graph, pin or
+submission-context containers.
 
 Every entry point receives its resources explicitly: graph handles, the current
 ``DeviceKVPoolAllocation`` and the ``DeviceChunkedKVPool``. The owner never
@@ -22,6 +27,23 @@ from typing import Callable, Iterable
 
 def _is_closed(graph: object) -> bool:
     return bool(getattr(graph, "closed", False))
+
+
+def graph_lifetime_of(host: object) -> "Qwen35GGUFGraphLifetime":
+    """Resolve the explicit owner attached to a session or packed owner.
+
+    Capture, close and enumeration sites receive a session/owner; this is their
+    only coupling to its graph storage. A resident session resolves through its
+    ``_graph_lifetime()`` accessor. Tests may attach a real owner directly so
+    they exercise the same protocol instead of a compatibility container.
+    """
+
+    owner = getattr(host, "_graph_lifetime", None)
+    if owner is None:
+        raise TypeError(
+            "GGUF graph capture/close requires an explicit graph lifetime owner"
+        )
+    return owner() if callable(owner) else owner
 
 
 def close_graph_handles(
@@ -59,9 +81,35 @@ def close_graph_handles(
 class Qwen35GGUFGraphLifetime:
     """One session's decode graphs, KV pins and submission contexts."""
 
-    decode_graphs: list[object] = field(default_factory=list)
-    kv_pins: dict[int, object] = field(default_factory=dict)
-    submission_contexts: dict[str, object] = field(default_factory=dict)
+    _decode_graphs: list[object] = field(default_factory=list)
+    _kv_pins: dict[int, object] = field(default_factory=dict)
+    _submission_contexts: dict[str, object] = field(default_factory=dict)
+
+    def register(self, graph: object) -> None:
+        """Register one decode-graph handle exactly once, in capture order."""
+
+        if any(existing is graph for existing in self._decode_graphs):
+            return
+        self._decode_graphs.append(graph)
+
+    def unregister(self, graph: object) -> bool:
+        """Remove one registered decode-graph handle; idempotent."""
+
+        for index, existing in enumerate(self._decode_graphs):
+            if existing is graph:
+                del self._decode_graphs[index]
+                return True
+        return False
+
+    def decode_graphs(self) -> tuple[object, ...]:
+        """Registered decode graphs in capture order."""
+
+        return tuple(self._decode_graphs)
+
+    def pinned_graphs(self) -> tuple[object, ...]:
+        """Handles that currently hold a device-KV pin, in pin order."""
+
+        return tuple(self._kv_pins.values())
 
     def pin(self, graph: object, *, allocation: object | None, pool: object | None) -> bool:
         """Pin the allocation's pages for ``graph``, once per graph identity."""
@@ -69,34 +117,34 @@ class Qwen35GGUFGraphLifetime:
         if allocation is None or pool is None:
             return False
         key = id(graph)
-        if key in self.kv_pins:
+        if key in self._kv_pins:
             return False
         pool.pin(allocation.block_ids)
-        self.kv_pins[key] = graph
+        self._kv_pins[key] = graph
         return True
 
     def unpin(self, graph: object, *, allocation: object | None, pool: object | None) -> bool:
         """Release one pin, or raise if the binding disappeared while pinned."""
 
         key = id(graph)
-        if key not in self.kv_pins:
+        if key not in self._kv_pins:
             return False
         if allocation is None or pool is None:
             raise RuntimeError("GGUF device KV graph pin outlived its allocation")
         pool.unpin(allocation.block_ids)
-        self.kv_pins.pop(key, None)
+        self._kv_pins.pop(key, None)
         return True
 
     @property
     def pinned_count(self) -> int:
-        return len(self.kv_pins)
+        return len(self._kv_pins)
 
     def graphs(self) -> tuple[object, ...]:
         """Every registered handle, pinned handles first, deduped by identity."""
 
         seen: set[int] = set()
         graphs: list[object] = []
-        for graph in (*self.kv_pins.values(), *self.decode_graphs):
+        for graph in (*self._kv_pins.values(), *self._decode_graphs):
             key = id(graph)
             if key in seen:
                 continue
@@ -115,8 +163,8 @@ class Qwen35GGUFGraphLifetime:
         unassignable until ``unpin`` runs.
         """
 
-        return bool(self.kv_pins) or any(
-            not _is_closed(graph) for graph in self.decode_graphs
+        return bool(self._kv_pins) or any(
+            not _is_closed(graph) for graph in self._decode_graphs
         )
 
     def close_live_graphs(self) -> int:
@@ -133,10 +181,10 @@ class Qwen35GGUFGraphLifetime:
         """
 
         closed = 0
-        for graph in tuple(self.decode_graphs):
+        for graph in tuple(self._decode_graphs):
             graph.close()
             closed += 1
-        self.decode_graphs.clear()
+        self._decode_graphs.clear()
         return closed
 
     def submission_context(
@@ -146,18 +194,35 @@ class Qwen35GGUFGraphLifetime:
     ) -> object | None:
         """Return the retained context for ``transport``, creating it once."""
 
-        context = self.submission_contexts.get(transport)
+        context = self._submission_contexts.get(transport)
         if context is None:
             context = factory()
             if context is not None:
-                self.submission_contexts[transport] = context
+                self._submission_contexts[transport] = context
         return context
+
+    def register_submission_context(
+        self,
+        transport: str,
+        context: object | None,
+    ) -> object | None:
+        """Retain a caller-provided context for ``transport``.
+
+        This is the explicit replacement for direct writes to the retired
+        ``_decode_graph_submission_contexts`` compatibility container.
+        """
+
+        self._submission_contexts[str(transport)] = context
+        return context
+
+    def submission_context_names(self) -> tuple[str, ...]:
+        return tuple(self._submission_contexts)
 
     def close_submission_contexts(self) -> dict[str, dict[str, object]]:
         """Close idle retained contexts and return teardown proof per transport."""
 
         proofs: dict[str, dict[str, object]] = {}
-        for name, context in tuple(self.submission_contexts.items()):
+        for name, context in tuple(self._submission_contexts.items()):
             provenance = getattr(context, "provenance", None)
             close = getattr(context, "close", None)
             if not callable(provenance) or not callable(close):
@@ -168,8 +233,12 @@ class Qwen35GGUFGraphLifetime:
             close()
             after = provenance()
             proofs[str(name)] = {"before": before, "after": after}
-        self.submission_contexts.clear()
+        self._submission_contexts.clear()
         return proofs
 
 
-__all__ = ["Qwen35GGUFGraphLifetime", "close_graph_handles"]
+__all__ = [
+    "Qwen35GGUFGraphLifetime",
+    "close_graph_handles",
+    "graph_lifetime_of",
+]

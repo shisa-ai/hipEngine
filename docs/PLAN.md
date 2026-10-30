@@ -1232,6 +1232,8 @@ kernel orchestration, graph synchronization and KV/cursor publication. Decode-gr
 handles, KV pins and retained submission-context teardown live in
 `hipengine/runtime/qwen35_gguf_graph_lifetime.py`; pin operations receive the current
 allocation and pool explicitly, and resident slot views own independent bookkeeping.
+Capture, close and enumeration use the lifetime owner's methods; the session exposes no mutable
+graph, pin or submission-context containers.
 Diagnostic snapshots and host readback live in `qwen35_gguf_capture.py`; timing
 resources live in `qwen35_gguf_timing.py`; the standalone projection probe lives in
 `qwen35_gguf_probe.py`. Stateful capture setup and profiling interval placement

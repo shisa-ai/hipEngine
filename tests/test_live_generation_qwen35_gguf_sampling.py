@@ -30,6 +30,7 @@ from hipengine.generation.batch_scheduler import GeneratedTokenEvent
 from hipengine.generation.sampling import SampleResult, SamplingMode, ToolCallConstraintSpec
 from hipengine.kvcache import DeviceChunkedKVPool
 from hipengine.models.qwen35 import Qwen35GGUFModel
+from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
 
 
 class _FakeTokenizer:
@@ -2125,6 +2126,7 @@ def test_gguf_submit_poll_sampled_rows_use_packed_model_ticks(monkeypatch) -> No
             FakeSession.next_slot += 1
             self.runtime = kwargs["runtime"]
             self.runner = kwargs["shared_runner"]
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
             self.position = 0
             self._packed_decode_state_dirty = False
             self._packed_decode_sessions = ()
@@ -2385,6 +2387,7 @@ def test_gguf_submit_poll_stochastic_rows_use_batched_native_sampler_without_log
             FakeSession.next_slot += 1
             self.runtime = kwargs["runtime"]
             self.runner = kwargs["shared_runner"]
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
             self.position = 0
             self._packed_decode_state_dirty = False
             self._packed_decode_sessions = ()
@@ -2932,6 +2935,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
             FakeSession.next_slot += 1
             self.runtime = kwargs["runtime"]
             self.runner = kwargs["shared_runner"]
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
             self.position = 0
             self._packed_decode_state_dirty = False
             self._packed_decode_sessions = ()
@@ -3726,6 +3730,7 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     class FakeSession:
         def __init__(self, slot_id: int) -> None:
             self.slot_id = int(slot_id)
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
             self.scratch = SimpleNamespace(max_positions=513)
             self.allocation = None
             self.pool = None
@@ -3873,8 +3878,6 @@ def test_gguf_resident_runner_retains_packed_workspace_across_reclaim() -> None:
     events: list[str] = []
 
     class FakeSession:
-        _decode_graphs: list[object] = []
-        _device_kv_graph_handles: dict[int, object] = {}
 
         def invalidate_device_kv_graphs(self) -> int:
             events.append("invalidate")
@@ -4062,7 +4065,7 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
     class FakeSession:
         def __init__(self, position: int) -> None:
             self.position = int(position)
-            self._decode_graphs = []
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
             self.step_batch_native = lambda *args, **kwargs: pytest.fail(
                 "eager packed decode ran after graph admission"
             )
@@ -4084,7 +4087,7 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
         capture_kwargs["token_ids"] = tuple(token_ids)
         capture_kwargs.update(kwargs)
         for session in sessions:
-            session._decode_graphs.append(graph)
+            session._graph_lifetime.register(graph)
         return graph
 
     sessions[0].capture_packed_decode_graph = capture
@@ -4242,18 +4245,15 @@ def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -
             self.steps_per_replay = 2
             self.closed = False
 
+        def close(self) -> None:
+            self.closed = True
+
     class FakeSession:
         def __init__(self) -> None:
-            self._decode_graphs = []
-            self._device_kv_graph_handles = {}
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
 
         def invalidate_device_kv_graphs(self) -> int:
-            invalidated = 0
-            for handle in self._decode_graphs:
-                if not handle.closed:
-                    handle.closed = True
-                    invalidated += 1
-            return invalidated
+            return self._graph_lifetime.close_live_graphs()
 
         def reset(self) -> None:
             pass
@@ -4283,7 +4283,7 @@ def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -
     owner = FakeOwner()
     runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=1)
     handle = FakeGraph()
-    owner.session._decode_graphs.append(handle)
+    owner.session._graph_lifetime.register(handle)
 
     captured = runner.observability_snapshot()["graph_buckets"]
     assert captured["entries"] == 1
@@ -4324,6 +4324,32 @@ def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -
     assert invalidated["invalidations_total"] == 1
     assert invalidated["buckets"]["bucket-c2"]["invalidations"] == 1
     runner.close()
+
+
+def test_gguf_resident_runner_enumerates_graphs_through_the_owner() -> None:
+    class FakeSession:
+        def __init__(self) -> None:
+            self._graph_lifetime = Qwen35GGUFGraphLifetime()
+
+    runner = object.__new__(qwen35_gguf.Qwen35GGUFResidentModelRunner)
+    session = FakeSession()
+    decode_graph = SimpleNamespace(closed=False)
+    pinned_graph = SimpleNamespace(closed=False)
+    pool = SimpleNamespace(pin=lambda _ids: None, unpin=lambda _ids: None)
+    allocation = SimpleNamespace(block_ids=(1,))
+    session._graph_lifetime.register(decode_graph)
+    session._graph_lifetime.pin(
+        decode_graph, allocation=allocation, pool=pool
+    )
+    session._graph_lifetime.pin(
+        pinned_graph, allocation=allocation, pool=pool
+    )
+
+    # Decode order first, then pins not already listed; identity-deduped.
+    assert runner._graph_handles_for_sessions((session,)) == (
+        decode_graph,
+        pinned_graph,
+    )
 
 
 def test_gguf_resident_runner_skips_sampling_for_nonfinal_prefill_chunks() -> None:

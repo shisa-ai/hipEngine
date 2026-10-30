@@ -15,6 +15,7 @@ from hipengine.generation.qwen35_gguf import (
 from hipengine.generation.registry import GenerationRequest
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.kvcache import DeviceChunkedKVPool
+from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
 
 
 class _FakePrefixSnapshot:
@@ -32,6 +33,7 @@ class _FakePrefixSnapshot:
 class _FakePrefixSession:
     def __init__(self, slot_id: int) -> None:
         self.slot_id = int(slot_id)
+        self._graph_lifetime = Qwen35GGUFGraphLifetime()
         self.scratch = SimpleNamespace(max_positions=1024)
         self.position = 0
         self.allocation = None
@@ -1759,6 +1761,7 @@ class _FakeGlobalPoolSession:
 
     def __init__(self, slot_id: int) -> None:
         self.slot_id = int(slot_id)
+        self._graph_lifetime = Qwen35GGUFGraphLifetime()
         # 768-token scratch: 3 pages per request, below the packed workspace's
         # 1024-token (4-page) per-slot union floor.
         self.scratch = SimpleNamespace(max_positions=768)

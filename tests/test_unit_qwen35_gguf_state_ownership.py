@@ -197,8 +197,6 @@ def _minimal_session(**overrides: object) -> gguf_runner.Qwen35GGUFResidentSessi
         max_sequence_length=256,
     )
     session._owns_runner = False
-    session._decode_graphs = []
-    session._device_kv_graph_handles = {}
     session._buffers = ()
     session._prefill_f16_staging_buf = None
     session._iq_dense_mmq_buf = None

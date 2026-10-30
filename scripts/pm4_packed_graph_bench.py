@@ -399,7 +399,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if timestamp_context is None:
                     raise RuntimeError("PM4 timestamp profiling context was not created")
                 timestamp_context.timestamps = True
-                owner._decode_graph_submission_contexts["pm4"] = timestamp_context
+                owner._graph_lifetime().register_submission_context(
+                    "pm4", timestamp_context
+                )
             memory["after_load"] = _memory_snapshot("after_load", runtime)
 
             for config_index, name in enumerate(names):

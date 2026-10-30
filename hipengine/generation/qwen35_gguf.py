@@ -106,6 +106,7 @@ from hipengine.speculative.accounting import (
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
 from hipengine.runtime.memory_admission import MemoryAdmissionRefused
+from hipengine.runtime.qwen35_gguf_graph_lifetime import graph_lifetime_of
 from hipengine.runtime.qwen35_gguf_planning import estimate_qwen35_gguf_kv_capacity
 from hipengine.runtime.qwen35_gguf_runner import (
     PACKED_AR_PREFILL_CONTEXT_LIMIT,
@@ -7368,12 +7369,11 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
     def _graph_handles_for_sessions(self, sessions: Sequence[Any]) -> tuple[Any, ...]:
         handles: dict[int, Any] = {}
         for session in sessions:
-            for handle in tuple(getattr(session, "_decode_graphs", ())):
+            lifetime = graph_lifetime_of(session)
+            for handle in lifetime.decode_graphs():
                 handles[id(handle)] = handle
-            device_handles = getattr(session, "_device_kv_graph_handles", {})
-            if isinstance(device_handles, Mapping):
-                for handle in device_handles.values():
-                    handles[id(handle)] = handle
+            for handle in lifetime.pinned_graphs():
+                handles[id(handle)] = handle
         return tuple(handles.values())
 
     def _graph_bucket_label(self, handle: Any) -> str:

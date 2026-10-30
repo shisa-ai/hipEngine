@@ -43,6 +43,7 @@ from hipengine.kernels.hip_gfx1100.sampling.sampler import build_sampler
 from hipengine.runtime.native_sampler import NativeSamplerChainWorkspace
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
+from hipengine.runtime.qwen35_gguf_graph_lifetime import graph_lifetime_of
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative.buffers import TargetVerifyBufferOwner, TargetVerifyBufferSpec
 from hipengine.speculative.interfaces import (
@@ -1549,9 +1550,7 @@ class Qwen35GGUFNativeB2TargetGraph:
                             self.sampled_workspace.close()
                     finally:
                         self.workspace.free()
-        graphs = getattr(self.session, "_decode_graphs", None)
-        if isinstance(graphs, list) and self in graphs:
-            graphs.remove(self)
+        graph_lifetime_of(self.session).unregister(self)
         unpin = getattr(self.session, "_unpin_device_kv_graph", None)
         if callable(unpin):
             unpin(self)
@@ -2239,7 +2238,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
             binding_signature=_native_target_binding_signature(session),
             capture_wall_ms=(time.perf_counter() - capture_start) * 1000.0,
         )
-        session._decode_graphs.append(handle)
+        graph_lifetime_of(session).register(handle)
         pin = getattr(session, "_pin_device_kv_graph", None)
         if callable(pin):
             pin(handle)

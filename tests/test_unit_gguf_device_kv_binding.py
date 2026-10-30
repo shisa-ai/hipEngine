@@ -242,7 +242,6 @@ def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch
     session.runtime = object()
     session._device_kv_pool = None
     session._device_kv_allocation = None
-    session._device_kv_graph_handles = {}
     pool = object.__new__(DeviceChunkedKVPool)
 
     session.bind_device_kv_allocation(pool, allocation)
@@ -377,9 +376,15 @@ def test_resident_slot_view_shares_owner_but_resets_slot_local_bookkeeping() -> 
         vocab_size=16,
         max_sequence_length=256,
     )
-    session._decode_graphs = [object()]
-    session._decode_graph_submission_contexts = {"old": object()}
-    session._device_kv_graph_handles = {1: object()}
+    owner_graph = object()
+    owner_lifetime = session._graph_lifetime()
+    owner_lifetime.register(owner_graph)
+    owner_lifetime.pin(
+        owner_graph,
+        allocation=SimpleNamespace(block_ids=(1,)),
+        pool=SimpleNamespace(pin=lambda _ids: None, unpin=lambda _ids: None),
+    )
+    owner_lifetime.register_submission_context("old", object())
     session._int8_prefill_oracle_buffers = {1: (object(), object())}
     session._linear_state_snapshot_backups = (object(),)
     session._packed_verify_state = object()
@@ -396,8 +401,14 @@ def test_resident_slot_view_shares_owner_but_resets_slot_local_bookkeeping() -> 
     assert view._target_layout.max_batch_size == 1
     assert view._buffers == ()
     assert view._position == 0
-    assert view._decode_graphs == []
-    assert view._device_kv_graph_handles == {}
+    view_lifetime = view._graph_lifetime()
+    assert view_lifetime is not owner_lifetime
+    assert view_lifetime.decode_graphs() == ()
+    assert view_lifetime.pinned_graphs() == ()
+    assert view_lifetime.submission_context_names() == ()
+    assert owner_lifetime.decode_graphs() == (owner_graph,)
+    assert owner_lifetime.pinned_count == 1
+    assert owner_lifetime.submission_context_names() == ("old",)
     # Views share the batch owner's packed workspace bookkeeping instead of
     # owning a private allocation (serving-load stability contract).
     assert view._packed_verify_state is session._packed_verify_state
@@ -424,9 +435,6 @@ def test_resident_slot_view_releases_view_local_verify_buffers() -> None:
         vocab_size=16,
         max_sequence_length=256,
     )
-    session._decode_graphs = []
-    session._decode_graph_submission_contexts = {}
-    session._device_kv_graph_handles = {}
     session._int8_prefill_oracle_buffers = {}
     session._linear_state_snapshot_backups = ()
     session._packed_verify_state = object()
@@ -557,8 +565,6 @@ def test_gguf_prefix_state_clone_copies_exact_current_hybrid_boundary(monkeypatc
         session.kv_storage_layout = "uniform"
         session._device_kv_allocation = allocation
         session._device_kv_pool = object()
-        session._device_kv_graph_handles = {}
-        session._decode_graphs = []
         session._packed_decode_state_dirty = False
         session._runtime_state_library = object()
         session._position = 0
@@ -661,8 +667,6 @@ def test_gguf_current_state_clone_copies_private_kv_at_arbitrary_boundary(
             backing=object(),
         )
         session._device_kv_pool = object()
-        session._device_kv_graph_handles = {}
-        session._decode_graphs = []
         session._packed_decode_state_dirty = False
         session._packed_decode_sessions = ()
         session._packed_decode_session_ids = ()
@@ -730,8 +734,6 @@ def test_gguf_prefix_state_snapshot_outlives_source_session_and_restores_boundar
         session.kv_storage_layout = "uniform"
         session._device_kv_allocation = allocation
         session._device_kv_pool = object()
-        session._device_kv_graph_handles = {}
-        session._decode_graphs = []
         session._packed_decode_state_dirty = False
         session._runtime_state_library = object()
         session._position = 0
@@ -853,8 +855,6 @@ def test_prefix_snapshot_clone_accepts_a_rebuilt_vmm_backing(monkeypatch) -> Non
         session.kv_storage_layout = "uniform"
         session._device_kv_allocation = allocation
         session._device_kv_pool = object()
-        session._device_kv_graph_handles = {}
-        session._decode_graphs = []
         session._packed_decode_state_dirty = False
         session._runtime_state_library = object()
         session._position = 0

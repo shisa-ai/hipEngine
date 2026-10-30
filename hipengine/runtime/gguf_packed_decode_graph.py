@@ -29,6 +29,7 @@ from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
+from hipengine.runtime.qwen35_gguf_graph_lifetime import graph_lifetime_of
 
 
 def _sha256_json(payload: Any) -> str:
@@ -885,7 +886,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         submission=submission,
     )
     manifest["graph"]["transport"] = handle.transport_provenance()
-    owner._decode_graphs.append(handle)
+    graph_lifetime_of(owner).register(handle)
     return handle
 
 
@@ -1106,9 +1107,7 @@ class Qwen35GGUFPackedDecodeGraph:
             if buffer is not None:
                 free(buffer, runtime=runtime)
                 setattr(self, name, None)
-        graphs = getattr(self.owner, "_decode_graphs", None)
-        if isinstance(graphs, list) and self in graphs:
-            graphs.remove(self)
+        graph_lifetime_of(self.owner).unregister(self)
         for session in self.sessions:
             if session is None:
                 continue

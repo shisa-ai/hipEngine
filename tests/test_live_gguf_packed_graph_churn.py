@@ -270,4 +270,4 @@ def test_close_invalidates_every_live_graph(session) -> None:
     assert graph.closed, "session close left a replayable graph behind"
     with pytest.raises(RuntimeError, match="closed"):
         graph.replay(1)
-    assert session._decode_graphs == []
+    assert session._graph_lifetime().decode_graphs() == ()

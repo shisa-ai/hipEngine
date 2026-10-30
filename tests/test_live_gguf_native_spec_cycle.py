@@ -20,6 +20,7 @@ from hipengine.core.tensor import Tensor
 
 from hipengine.runtime import qwen35_gguf_layer_attn as layer_attn
 from hipengine.runtime import gguf_native_spec_cycle as native_cycle_mod
+from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
 from hipengine.runtime.gguf_native_spec_cycle import (
     NativeSpecTargetGraphUnsupportedError,
     Qwen35GGUFNativeAcceptCommitResult,
@@ -346,6 +347,7 @@ def test_build_native_b2_target_batch_uses_root_prefixed_chain_layout() -> None:
 class _FallbackSession:
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[int, ...], dict[str, object]]] = []
+        self._graph_lifetime = Qwen35GGUFGraphLifetime()
 
     def verify_target_block(self, input_token_ids, **kwargs):
         self.calls.append((tuple(int(token) for token in input_token_ids), dict(kwargs)))
@@ -925,6 +927,55 @@ def test_device_proposal_handoff_requires_and_launches_only_a_cached_n2_graph() 
             request_id=7,
             remaining_decode=9,
         )
+
+
+def test_native_target_graph_close_unregisters_before_unpin() -> None:
+    events: list[object] = []
+
+    class Pool:
+        def pin(self, block_ids) -> None:
+            events.append(("pin", tuple(block_ids)))
+
+        def unpin(self, block_ids) -> None:
+            events.append(("unpin", tuple(block_ids)))
+
+    allocation = SimpleNamespace(block_ids=(1, 2))
+    pool = Pool()
+    session = SimpleNamespace(
+        runtime=SimpleNamespace(
+            graph_exec_destroy=lambda handle: events.append(("graph_exec_destroy", handle)),
+            graph_destroy=lambda handle: events.append(("graph_destroy", handle)),
+            stream_destroy=lambda handle: events.append(("stream_destroy", handle)),
+        ),
+        _graph_lifetime=Qwen35GGUFGraphLifetime(),
+    )
+    session._unpin_device_kv_graph = lambda graph: session._graph_lifetime.unpin(
+        graph, allocation=allocation, pool=pool
+    )
+    graph = object.__new__(native_cycle_mod.Qwen35GGUFNativeB2TargetGraph)
+    graph.session = session
+    graph.graph_exec = 0xA0
+    graph.graph = 0xB0
+    graph.stream = 0xC0
+    graph.sampled_workspace = None
+    graph.workspace = SimpleNamespace(free=lambda: events.append("workspace.free"))
+    graph.closed = False
+    session._graph_lifetime.register(graph)
+    session._graph_lifetime.pin(graph, allocation=allocation, pool=pool)
+    events.clear()
+
+    graph.close()
+
+    assert graph.closed is True
+    assert session._graph_lifetime.decode_graphs() == ()
+    assert session._graph_lifetime.pinned_graphs() == ()
+    assert events == [
+        ("graph_exec_destroy", 0xA0),
+        ("graph_destroy", 0xB0),
+        ("stream_destroy", 0xC0),
+        "workspace.free",
+        ("unpin", (1, 2)),
+    ]
 
 
 @pytest.mark.parametrize("failure", ["graph_launch", "graph_readback"])

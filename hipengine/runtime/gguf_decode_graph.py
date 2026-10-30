@@ -40,6 +40,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     record_i64_scalar_indexed,
 )
 from hipengine.runtime.gguf_linear import gemv_decode_session
+from hipengine.runtime.qwen35_gguf_graph_lifetime import graph_lifetime_of
 
 
 def _sha256_json(payload: Any) -> str:
@@ -507,7 +508,7 @@ def capture_qwen35_gguf_decode_graph(
         capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32 or record_hidden_seeds),
         submission=submission,
     )
-    session._decode_graphs.append(handle)
+    graph_lifetime_of(session).register(handle)
     return handle
 
 
@@ -663,9 +664,7 @@ class Qwen35GGUFDecodeGraph:
             if buffer is not None:
                 free(buffer, runtime=runtime)
                 setattr(self, name, None)
-        graphs = getattr(self.session, "_decode_graphs", None)
-        if isinstance(graphs, list) and self in graphs:
-            graphs.remove(self)
+        graph_lifetime_of(self.session).unregister(self)
         unpin = getattr(self.session, "_unpin_device_kv_graph", None)
         if callable(unpin):
             unpin(self)

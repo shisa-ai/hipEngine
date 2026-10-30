@@ -102,9 +102,9 @@ def test_pool_growth_closes_a_self_owning_session_graphs(monkeypatch):
     assert not hasattr(session, '_resident_batch_owner')
 
     closed: list[str] = []
-    session._decode_graphs = [
+    session._graph_lifetime().register(
         SimpleNamespace(closed=False, close=lambda: closed.append('packed')),
-    ]
+    )
 
     pool = session.create_global_device_kv_pool(page_capacity=2, generation=1)
     try:
