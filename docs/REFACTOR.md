@@ -1901,28 +1901,6 @@ a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
 
 
 
-## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
-
-- The three shadowed physical-cell rows were removed after checking resolver
-  selection and default depths:
-  `qwen38-q4km-gfx1151-production-bf16-c1-b3-context128`,
-  `qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24`, and
-  `qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24`. Their artifact links remain
-  on surviving evidence rows. Sampled c1–c4 declarations now derive from the
-  automatic cap4-realized row; their physical axes and default depth are
-  unchanged. The explicit-versus-automatic resolver test uses a synthetic
-  duplicate instead of requiring a redundant production declaration.
-- `scripts/gguf_mtp_c1c8_server_bench.py::_diagnostic_plan` and
-  `scripts/qwen38_packet5_k4_watchdog_probe.py::_inject_k4_evidence_row` keep
-  their own diagnostic scopes. The watchdog probe injects a row for the width
-  it screens; if a future probe needs a *distinct* authorization on a cell that
-  a registered row already covers, it must say which row wins rather than rely
-  on declaration order.
-- Campaign documents written before 2026-09-17 (`docs/CONCURRENCY2-*.md`,
-  `docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md`, `docs/MTP-*.md`) describe the admission
-  scope in shape/horizon/manifest terms. They are historical records and were
-  left intact; only `docs/API.md`, `docs/EXECUTION-PROFILES.md`, and
-  `docs/archive/COMPARISON-vs-atlas.md` state the current contract.
 
 
 
