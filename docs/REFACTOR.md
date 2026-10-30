@@ -3544,41 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 Surya tile shape: 4096-patch spikes have no mechanism — open
-
-The 4096-patch shape curve is reproducibly non-monotone, confirmed by four
-independent measurements (two full sweeps, a one-runner probe with a mutated
-budget, and a fresh-runner probe; all on a quiet GPU, all with the block
-asserted):
-
-| rows | 16 | 32 | 64 | 96 | 128 | 160 | 192 | 256 | 341 | 512 | 1024 | 2048 | 2730 | 4096 |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ms | 1575 | 1089 | 939 | 894 | 881 | 909 | 1102 | 1168 | 1175 | 1667 | 1327 | 1137 | 1118 | 1040 |
-
-192/256/341/512/1024 rows are 24-89% slower than 128, and 512 -- a multiple of
-32 -- is the worst shape on the grid, 1.6x the dense tile. Nothing measured
-explains where the spikes fall; rocBLAS kernel selection at particular
-`(M, N, K)` triples is the leading candidate, and a `rocprofv3 --kernel-trace`
-over one fast shape (128) and one slow shape (512) at 4096 patches would settle
-whether the score-scale or softmax kernel changes or a GEMM switches tiles.
-Worth doing before anyone adds another shape rule: the envelope's floor of 128
-happens to land on a spike-free value here, which is luck, not design.
-
-Two related consequences, both already applied:
-
-- Rounding down to a multiple of 32 is a memory-neutral tie-break justified by
-the A4 page's clean separation, not a guarantee. 512 rows at 4096 patches is a
-multiple of 32 and the slowest shape measured on that grid.
-- A shape probe that varies the block from outside
-  `scripts/surya_vision_tiling_cost.py` must lift `SHAPE_TILE_ROWS` /
-  `SHAPE_TILE_DIVISOR` / `SHAPE_TILE_MULTIPLE`, or the production cap overrides
-  the requested block and the probe reports one block for every shape. That
-  happened here and produced a flat, plausible curve that looked like evidence
-  the sweep was wrong. The vision envelope applies whenever it is narrower than
-  the tile the byte budget admits, so on any grid where the budget's own tile is
-  wider a probe must lift all three constants; lifting unconditionally stays the
-  rule.
-
 ## 2026-09-13 Surya attention tile shape: the vision envelope's mid-size anomaly — open
 
 `plan_score_tiles` takes a per-path shape policy. The vision tower consults the
@@ -10126,3 +10091,21 @@ first divergent state, and require every combined row to pass before
 publishing a replacement comparison. Preserve historical artifact provenance;
 remove any still-applicable scoreboard isolation caveat only when the new
 comparison no longer needs it. No runtime change or numerical fix is claimed.
+
+### R0490 — Explain the Surya vision tile-shape spikes
+
+The historical 4096-patch curve is non-monotone; the cause is unresolved.
+Keep the existing planner rather than infer another shape rule. The recorded
+sweeps remain in `benchmarks/results/2026-09-13-gfx1151-surya-vision-tiling-cost*.json`.
+Wavefront rounding is a measured tie-break, not a guarantee that every multiple
+is fast. The probe already lifts all three `SHAPE_TILE_*` constants for explicit
+blocks and asserts that the selected block matches the request; preserve this
+protection against accidentally measuring the production cap repeatedly.
+
+**Deferred profiling:** make the Surya checkpoint available and provide
+`rocprofv3` in the HIP environment (it is absent from the current shell's PATH).
+Compare kernel traces for the 128-row and 512-row shapes at 4096 patches, using
+`rocprofv3 --kernel-trace -- python3 scripts/surya_vision_tiling_cost.py --pages page_ja.png --blocks 128,512 --reps 3 --out /tmp/surya-4096-shapes.json`.
+Attribute any shape-dependent latency to the actual kernels before changing
+the policy; a rocBLAS selection change is still only a hypothesis. A policy
+change requires the applicable numerical gate and public Surya validation.

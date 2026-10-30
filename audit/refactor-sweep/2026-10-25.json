@@ -13452,33 +13452,33 @@
       "start_line": 11518,
       "end_line": 11552,
       "sha256": "d4482395ab91e0aabaa0a78cb6f05ce27428c8f813c24cbadb288d47adffa630",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Profiling requires missing checkpoint and kernel tracer; moved to bottom with command. Planner unchanged. worklog/entries/20261030T042438.639602Z-cleanup-cleanup-r0490-74bcf9.md."],
       "subitems": [
         {
           "line": 11525,
           "text": "| rows | 16 | 32 | 64 | 96 | 128 | 160 | 192 | 256 | 341 | 512 | 1024 | 2048 | 2730 | 4096 |",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 11526,
           "text": "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 11527,
           "text": "| ms | 1575 | 1089 | 939 | 894 | 881 | 909 | 1102 | 1168 | 1175 | 1667 | 1327 | 1137 | 1118 | 1040 |",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 11540,
           "text": "- Rounding down to a multiple of 32 is a memory-neutral tie-break justified by",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11543,
           "text": "- A shape probe that varies the block from outside",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
