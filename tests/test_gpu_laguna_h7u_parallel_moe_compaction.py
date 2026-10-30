@@ -34,6 +34,10 @@ from hipengine.kernels.hip_gfx1100.moe import (
 from hipengine.kernels.registry import resolve
 from hipengine.runtime.laguna_moe import resolve_laguna_group_compact_mode
 from tests._laguna_policy_pin import assert_laguna_policy_pinned
+from tests._laguna_source_contracts import (
+    assert_h7u_group_compact_resolver,
+    assert_h7u_live_mode_red,
+)
 
 _ROOT = Path(__file__).parents[1]
 _ARTIFACT = (
@@ -77,16 +81,8 @@ _SOURCE_SYMBOL_SHA256 = {
         ),
     },
 }
-_POST_MERGE_SOURCE_SHA256 = {
-    "hipengine/runtime/laguna_moe.py": (
-        "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"
-    ),
-    "tests/test_live_laguna_moe_gpu.py": (
-        # db6144a2e appends the scratch-poison regression; release validation
-        # adds its HIP guard. The frozen serial/parallel assertions are unchanged.
-        "b11fd38a907b6ab97cb9338f22ae6089feeb0013de142523c0ee23f3fbbba464"
-    ),
-}
+_MOE_SOURCE = _ROOT / "hipengine/runtime/laguna_moe.py"
+_LIVE_MOE_RED_SOURCE = _ROOT / "tests/test_live_laguna_moe_gpu.py"
 _H7U_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_H7U_MODE"
 _SOURCE_CAPABILITY = "LAGUNA_MOE_GROUP_COMPACT_MODE"
 _H7U_PACKAGE_BLOCK = (
@@ -100,14 +96,6 @@ _H7U_SOURCE_BLOCK = (
     "# standalone, bounded-runtime, fixed, length, and source-trace qualification.\n"
     "# Explicit serial remains the registered rollback; peer backends stay local.\n"
     'LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"\n'
-)
-_OLD_MODE_TEST_BLOCK = (
-    '    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "serial"\n'
-)
-_SOURCE_MODE_TEST_BLOCK = (
-    '    assert resolve_laguna_group_compact_mode("hip_gfx1100") == "parallel"\n'
-    '    assert resolve_laguna_group_compact_mode("hip_gfx1100", "serial") == "serial"\n'
-    '    assert resolve_laguna_group_compact_mode("hip_gfx1100", "parallel") == "parallel"\n'
 )
 _EXPERTS = 256
 _TOP_K = 10
@@ -141,10 +129,6 @@ _TIMING_CONTRACT = {
     "allow_retune": False,
     "allow_favorable_rerun": False,
 }
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _sha256_text(text: str) -> str:
@@ -503,21 +487,28 @@ def test_h7u_frozen_target_source_physical_trace_and_timing_contract() -> None:
                 relative
             ]
             continue
+        if relative == "hipengine/runtime/laguna_moe.py":
+            # RF-11: shared with H8B, H8C and every MoE campaign. The whole-file
+            # hash failed on the unrelated H8B pack-reuse landing; assert the
+            # H7U compaction resolver it was standing in for.
+            assert_h7u_group_compact_resolver(_MOE_SOURCE.read_text())
+            continue
         if relative == "tests/test_live_laguna_moe_gpu.py":
-            test_source = path.read_text()
-            old_count = test_source.count(_OLD_MODE_TEST_BLOCK)
-            source_count = test_source.count(_SOURCE_MODE_TEST_BLOCK)
-            assert (old_count, source_count) in ((1, 0), (0, 1))
-            normalized = test_source.replace(
-                _SOURCE_MODE_TEST_BLOCK, _OLD_MODE_TEST_BLOCK
-            )
-            assert hashlib.sha256(normalized.encode()).hexdigest() == (
-                _POST_MERGE_SOURCE_SHA256.get(relative, expected)
-            )
+            # RF-11: the normalized whole-file hash covered the live MoE RED,
+            # which later gained the unrelated scratch-poison regression and a
+            # HIP guard. Assert the backend-qualified mode contract instead.
+            assert_h7u_live_mode_red(_LIVE_MOE_RED_SOURCE.read_text())
             continue
-        if relative != "hipengine/kernels/hip_gfx1100/__init__.py":
-            assert _sha256(path) == _POST_MERGE_SOURCE_SHA256.get(relative, expected)
+        if relative == "tests/test_gpu_qwen35_moe_group_scatter_plan.py":
+            # Artifact-recorded source, byte-identical since the 2026-08-02
+            # target. This pin is outside RF-11's `_POST_MERGE_SOURCE_SHA256`
+            # scope; it is the recorded provenance of the plan oracle H7U
+            # registers against, not a re-baselined shared file.
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
             continue
+        assert relative == "hipengine/kernels/hip_gfx1100/__init__.py", (
+            f"unaccounted H7U artifact source: {relative}"
+        )
         package_source = path.read_text()
         bounded_count = package_source.count(_H7U_PACKAGE_BLOCK)
         source_count = package_source.count(_H7U_SOURCE_BLOCK)

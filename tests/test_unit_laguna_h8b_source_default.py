@@ -10,8 +10,14 @@ from pathlib import Path
 import pytest
 
 from tests._laguna_policy_pin import assert_laguna_policy_pinned
+from tests._laguna_source_contracts import (
+    assert_h8b_shared_pack_scope,
+    assert_h8b_unit_red,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
+_MOE_SOURCE = "hipengine/runtime/laguna_moe.py"
+_H8B_RED_SOURCE = "tests/test_unit_laguna_h8b_scoped_activation_pack_reuse.py"
 _RUNTIME_ARTIFACT = _ROOT / (
     "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-"
     "scoped-activation-pack-reuse-runtime-candidate.json"
@@ -19,19 +25,14 @@ _RUNTIME_ARTIFACT = _ROOT / (
 _RUNTIME_ARTIFACT_SHA256 = (
     "ed3ee363ceb8b095b38fd28c0ebd1eb692d22dce61a4ce4ebd9e14be25cd73e7"
 )
-_PEER_PACKAGE = "hipengine/kernels/hip_gfx1151/__init__.py"
-_SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
-_REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
-_RUNTIME_ARTIFACT_RUNNER_SHA256 = (
-    "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
-)
-_RUNTIME_ARTIFACT_H8B_TEST_SHA256 = (
-    "710bcdc740ac691c2ac4f0fa5e9fa81f55be939b1582be78a9d62c6218ff06ff"
-)
 _RUNTIME_ARTIFACT_REFACTOR_SHA256 = (
     "3de213a389e980e7b84393acdae64e81eed0c93356ab10fac63605fbd2fcee71"
 )
-_SOURCE_SHA256 = {
+_SOURCE_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE"
+_REMOVED_SUPPORTED_CAPABILITY = "LAGUNA_ACTIVATION_PACK_REUSE_SUPPORTED"
+_ARTIFACT_SOURCE_SHA256 = {
+    # Every hash the 2026-08-03 artifact recorded. Immutable evidence: these
+    # describe the measured tree, not today's tree.
     "hipengine/kernels/activation_pack.py": (
         "2b10234b49ee19417e439fa598b0b069ae4b832eebb3751357c7819891072f67"
     ),
@@ -45,30 +46,26 @@ _SOURCE_SHA256 = {
         "a5838ffc8fd8df367cd828f397e701f94f2268c7992d0a5e143c8d7e2b8ba3b3"
     ),
     "hipengine/runtime/laguna_gguf_runner.py": (
-        "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654"
+        "2f505e84319e7a3f8eecc6df69d521d8d0d66b47f6571f67a185629de86a6bbf"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "0507c0ab9bcabddfda9d0390c66d46f80aaaf7c42357a58dfa24c692d43414fd"
     ),
     "tests/test_unit_laguna_h8b_scoped_activation_pack_reuse.py": (
-        "c8c7c949f9ca314aa3048e90f4d34481e486d5bc0f0cf307fb7fcf54200398e8"
+        "710bcdc740ac691c2ac4f0fa5e9fa81f55be939b1582be78a9d62c6218ff06ff"
     ),
 }
-_POST_MERGE_SOURCE_SHA256 = {
-    # Later Qwen3.8, execution-profile, and raw-K rowbatch policies do not
-    # alter H8B's owner. The 2026-10-27 R0250 cleanup removed the public
-    # `use_activation_pack_reuse` opt-out, so the runner and the scoped-reuse
-    # test move again while the owner itself is unchanged.
-    "hipengine/runtime/laguna_gguf_runner.py": (
-        # R0355/R0357 retire only dense/shared T16 setters; H8B pack ownership is unchanged.
-        "87fdb718f4ac9575f711fae5c274b25318d2fb34e9c675900a07394b5f650377"
+_LIVE_SOURCE_SHA256 = {
+    # H8B's own pack-reuse module and the campaign-owned Q5 kernel sources.
+    # Shared runner/MoE files and the sibling RED are scoped contracts instead.
+    "hipengine/kernels/activation_pack.py": (
+        "2b10234b49ee19417e439fa598b0b069ae4b832eebb3751357c7819891072f67"
     ),
-    "hipengine/runtime/laguna_moe.py": (
-        # R0270 retires only the unused one-plane D4 gate selector; H8B scopes stay.
-        "127c6ce8654d9c03e939f500161f0f2dafcd877e10c66b39a15cc8082ecfb0c0"
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
+        "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e"
     ),
-    "tests/test_unit_laguna_h8b_scoped_activation_pack_reuse.py": (
-        "a29b0a01d50e4a0ef590465cdb5dfe4054d3218d2cfa21f3437ec2f3eba9a266"
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": (
+        "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110"
     ),
 }
 _SOURCE_TOPOLOGY = {
@@ -214,26 +211,14 @@ def test_h8b_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert artifact["source_sha256"]["docs/REFACTOR.md"] == (
         _RUNTIME_ARTIFACT_REFACTOR_SHA256
     )
-    for relative, expected in _SOURCE_SHA256.items():
-        artifact_expected = {
-            "hipengine/runtime/laguna_gguf_runner.py": (
-                _RUNTIME_ARTIFACT_RUNNER_SHA256
-            ),
-            "tests/test_unit_laguna_h8b_scoped_activation_pack_reuse.py": (
-                _RUNTIME_ARTIFACT_H8B_TEST_SHA256
-            ),
-        }.get(relative, expected)
-        assert artifact["source_sha256"].get(relative, artifact_expected) == (
-            artifact_expected
-        )
-        if relative == _PEER_PACKAGE:
-            # gfx1151 is a peer backend shared with every other campaign. H8B's
-            # contract there is that it owns no H8B capability, asserted above;
-            # the whole-file hash only pinned unrelated gfx1151 policy churn.
-            continue
-        assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
-            relative, expected
-        )
+    for relative, expected in _ARTIFACT_SOURCE_SHA256.items():
+        assert artifact["source_sha256"].get(relative, expected) == expected
+    for relative, expected in _LIVE_SOURCE_SHA256.items():
+        assert _sha256(_ROOT / relative) == expected
+    # RF-11: the shared MoE launcher and the H8B unit RED were whole-file
+    # pinned here. Assert the pack-reuse owner and the RED coverage instead.
+    assert_h8b_shared_pack_scope((_ROOT / _MOE_SOURCE).read_text())
+    assert_h8b_unit_red((_ROOT / _H8B_RED_SOURCE).read_text())
 
 
 def test_h8b_source_default_selects_complete_owner_and_preserves_rollback(

@@ -10,8 +10,14 @@ from pathlib import Path
 import pytest
 
 from tests._laguna_policy_pin import assert_laguna_policy_pinned
+from tests._laguna_source_contracts import (
+    assert_h8a_gpu_red,
+    assert_h8a_runner_owner,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
+_RUNNER_SOURCE = "hipengine/runtime/laguna_gguf_runner.py"
+_GPU_RED_SOURCE = "tests/test_gpu_laguna_h8a_resident_q5_global_cache.py"
 _RUNTIME_ARTIFACT = _ROOT / (
     "benchmarks/results/2026-08-03-gfx1100-laguna-q2-xl-"
     "resident-q5-global-f32-cache-runtime-candidate.json"
@@ -59,20 +65,14 @@ _SOURCE_ADMISSION = {
     "no_subset_or_favorable_rerun": True,
 }
 _SOURCE_SHA256 = {
+    # H8A's own Q5 kernel implementation. These are campaign-owned arithmetic
+    # sources, not shared files that other campaigns edit; the pin covers the
+    # measured kernel, not registry or runtime churn.
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
         "fb9b2ae1a88300ac1e754b8c3214310db65d3e2343598b7631ac185ec141f33e"
     ),
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.hip": (
         "1a06011ea6e7bda8e0b48fd357cbcbadaff76793a1b5c49bd217cc83d32b7110"
-    ),
-    "hipengine/runtime/laguna_gguf_runner.py": (
-        "edea1fc2df3c8ca46fe3396663ac14f9000b4ee0cc967ebafb55208afad50654"
-    ),
-    "tests/test_gpu_laguna_h8a_resident_q5_global_cache.py": (
-        # The 2026-09-12 tier migration renamed this module from
-        # tests/test_laguna_h8a_resident_q5_global_cache.py and rewrote three of
-        # its test imports. The kernel-facing body is unchanged.
-        "4ac3cc55f9153d6fe437aa7f259b0c23139a5754f925ae037849bc975092d6d1"
     ),
 }
 _LINEAR_SYMBOL_SHA256 = {
@@ -85,21 +85,6 @@ _LINEAR_SYMBOL_SHA256 = {
     ),
     "_launch_raw_k_f32_resident_activation_tile_k_row": (
         "17d53949d155612e2cede25a90140860751c6d2f62449b748549ea2d2240f129"
-    ),
-}
-_POST_MERGE_SOURCE_SHA256 = {
-    # Later Qwen3.8, execution-profile, and raw-K rowbatch policies do not
-    # alter H8A's owner. The 2026-10-27 R0249 cleanup removed the public
-    # `use_q5_f32_resident_global_cache` opt-out, so the runner and this GPU
-    # test move again while the owner itself is unchanged.
-    "hipengine/runtime/laguna_gguf_runner.py": (
-        # R0355/R0357 retire only dense/shared T16 setters; H8A cache ownership is unchanged.
-        "87fdb718f4ac9575f711fae5c274b25318d2fb34e9c675900a07394b5f650377"
-    ),
-    # This GPU test renamed the shared ordered-F32 prefill session manager and
-    # then dropped the retired R0249 opt-out assertions.
-    "tests/test_gpu_laguna_h8a_resident_q5_global_cache.py": (
-        "2f8943f422ad7551bf1b820d113c5051d704b57d2b78e6caf020626e858403ad"
     ),
 }
 
@@ -197,9 +182,12 @@ def test_h8a_source_red_pins_qualified_owner_and_promotion_contract() -> None:
     assert "self.use_q5_f32_resident_global_cache" in session_source
     assert "and self._owns_weights" in session_source
     for relative, expected in _SOURCE_SHA256.items():
-        assert _sha256(_ROOT / relative) == _POST_MERGE_SOURCE_SHA256.get(
-            relative, expected
-        )
+        assert _sha256(_ROOT / relative) == expected
+    # RF-11: the shared runner and the H8A GPU RED were whole-file pinned here.
+    # Those hashes failed on unrelated Qwen3.8/execution-profile/rowbatch edits
+    # and on test-tier renames. Assert the owner they protected instead.
+    assert_h8a_runner_owner((_ROOT / _RUNNER_SOURCE).read_text())
+    assert_h8a_gpu_red((_ROOT / _GPU_RED_SOURCE).read_text())
     from hipengine.runtime import gguf_linear
 
     for name, expected in _LINEAR_SYMBOL_SHA256.items():

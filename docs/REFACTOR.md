@@ -4506,27 +4506,6 @@ direct-control retirement. Compare selected operations, operands and fallback re
 threshold-straddling and unrelated shapes; test owner isolation, graph reuse, scratch invalidation
 and public commit/rollback lifecycle.
 
-### RF-11 / R0187 — Replace remaining broad live-source pins with scoped contracts
-
-Owner: `tests/_laguna_policy_pin.py`.
-
-Scope: `_POST_MERGE_SOURCE_SHA256` in `tests/test_unit_laguna_h8a_source_default.py`,
-`tests/test_unit_laguna_h8b_source_default.py` and
-`tests/test_gpu_laguna_h7u_parallel_moe_compaction.py`.
-Use the scoped policy assertions in `tests/_laguna_policy_pin.py` as an existing
-replacement pattern, not as a whole-file hash to retire.
-
-**Deferred contract decision:** identify the semantic owner or frozen block each remaining broad
-live-source pin protects, then replace it with assertions over capabilities, exact registry keys,
-call boundaries and relevant source blocks. Keep hashes of immutable evidence unchanged. Do not
-delete a hash merely to get a passing test, and do not refresh it as evidence that behavior was
-preserved.
-
-Done when: inventory each migrated pin and its replacement contract; prove that an unrelated
-source edit is accepted while mutations of the protected policy, dispatch or ownership behavior
-fail. Run the associated focused runtime and evidence-validator tests. Preserve numerical gates
-independently of source provenance.
-
 ### RF-12 / R0187 — Split integration fixtures and refresh measured budgets
 
 Owner: `tests/test_integration_server_api.py`.
