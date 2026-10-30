@@ -2309,27 +2309,6 @@ the allocation repair. The observations and proposal below are historical.
 
 
 
-## Qwen4Exp prepacked Q8 MMQ admission
-
-- Separate prepacked registry candidate retains an exact raw-Q8 fallback.
-  Production binds `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1`, but sidecar
-  preparation also requires the prefill MMQ library. Arithmetic recovery keeps
-  `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL=0`, so the shipped recovery path allocates
-  no prepacked sidecars. When prefill MMQ is enabled, runner-owned sidecars for
-  GDN QKV/SSM shapes are exposed only through the bounded prefill MMQ session.
-  The historical enabled-path five full logits/state/KV cases and lifecycle
-  pass; full12-case72-trajectory timing improves every prefill case. Strict
-  binds0. Retain rollback through the next owner refresh and one release
-  window; then remove redundant positive experiment selection.
-- CPU reference packer lives only in the test/screen. The registered GPU
-  `weight_pack/gguf_q8_0/mmq_kmajor76` API is now byte-exact and available
-  for admission and used by runtime; do not import tests from runtime. Raw weights remain necessary
-  for decode and risk repair, so account for the full additional sidecar.
-- Keep the measured mixed512 request-wall regression0.14% and1.67GiB additional
-  memory explicit for the enabled prepacked path under the prefill-first
-  retention decision; that sidecar cost is not paid while prefill MMQ is off.
-  GR remains excluded
-  until an independent positive complete-chain/model gate.
 
 This file tracks cleanup work that should happen after the fast/correct path is
 proven. During optimization, temporary flags and fallback paths are useful for
@@ -9629,3 +9608,33 @@ For device-position sparse support, compare selection, logits and state against
 the declared oracle across the dense/sparse boundary and unrelated lengths,
 then exercise public continuation and graph replay. Neither follow-up is claimed
 implemented by this triage.
+
+### R0129 — Decide when to retire Q8 MMQ prepack rollback
+
+Runner-owned `Q8MMQWeightSidecars` already uses the registered
+`weight_pack/gguf_q8_0/mmq_kmajor76` packer, publishes buffers after preparation,
+and releases them on close or preparation failure. The runner prepares sidecars
+only with prepack enabled and a prefill MMQ library present, and exposes them
+through its bounded prefill session. A prepack setting alone does not allocate
+sidecars. Keep CPU reference packing in tests, not runtime.
+
+**Deferred rollback decision:** retain `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK`
+until the enabled prepacked route passes assessment after an owner refresh and
+release window, then remove redundant experiment selection.
+Preserve the strict raw-Q8 route and raw weights needed by decode and risk
+repair. Removing the rollback setting is distinct from changing the prefill
+MMQ arithmetic profile; do not infer either from the other. R0128 owns composed
+optional-resource admission, including the full additional sidecar allocation.
+
+Historical enabled-path correctness, timings, mixed-request regression and
+additional memory are preserved in `docs/REFACTOR.md` at commit `25e43b7ff`,
+under “Qwen4Exp prepacked Q8 MMQ admission”. They describe that enabled
+configuration, not a fresh measurement or a cost paid while no sidecars exist.
+GR expansion remains separate and needs its own complete-chain/model gate.
+
+Clearing checks: run sidecar lifecycle and execution-profile unit tests, GPU
+packer byte parity and full logits/state/KV comparisons for the selected route.
+Exercise public prefill with sidecars enabled and disabled, verify owner memory
+and cleanup, and check mixed prefill/decode requests before a performance-driven
+retirement. Preserve explicit resource and arithmetic failures rather than
+silently falling back. No runtime selection changes in this triage.

@@ -3470,23 +3470,23 @@
       "start_line": 3192,
       "end_line": 3213,
       "sha256": "86271e58c58c094e2f4502e52dfaacb7847ac55b50d3fcfa6eefff4b4d538afe",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-rollback-decision",
+      "evidence": ["Verified implemented sidecar owner, GPU packer and MMQ-library prerequisite; rollback retirement deferred separately from arithmetic and resource accounting. History preserved at25e43b7ff. 66 tests/docs/audit pass. worklog/entries/20261030T063541.745116Z-cleanup-cleanup-r0129-c07699.md."],
       "subitems": [
         {
           "line": 3194,
           "text": "- Separate prepacked registry candidate retains an exact raw-Q8 fallback.",
-          "status": "pending"
+          "status": "deferred-rollback-decision"
         },
         {
           "line": 3201,
           "text": "- CPU reference packer lives only in the test/screen. The registered GPU",
-          "status": "pending"
+          "status": "resolved-contract-preserved"
         },
         {
           "line": 3205,
           "text": "- Keep the measured mixed512 request-wall regression0.14% and1.67GiB additional",
-          "status": "pending"
+          "status": "deferred-rollback-decision"
         }
       ]
     },
