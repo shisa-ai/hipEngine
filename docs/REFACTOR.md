@@ -159,107 +159,6 @@ private selector or the timing path's full donor no longer describe current code
     capacity probe. See
     `worklog/entries/20261003T152924.135144Z-lhl-correction-the-round-budget-does-not-bound-the-d-67c4d6.md`, which corrects the mechanism in `worklog/entries/20261003T152724.639601Z-lhl-rt-1-chunk-4096-is-gated-on-the-round-prefill-bu-3e7462.md`.
 
-## GR Staged-F32 Selector (HC-1)
-
-Cleanup status (2026-10-25, R0021): the whole-route gate rejected this candidate
-with `measurement_valid: true`. The GR selector, runtime dispatch branch,
-`production_gr_up_staged` candidate, and recovery sensitivity arm are removed.
-The shared wrapper and its direct kernel tests remain because the separate
-dense staged-F32 registration uses that implementation. The strict GR fallback
-is unchanged. Historical gate commands require their source-pinned revision.
-
-The following records the investigation before removal, not open selector work.
-
-- `HIPENGINE_QWEN4_EXP_GR_STAGED` selects
-  `coltile2_branch4_rowbatch4_staged_f32` for the GR up projection
-  (`linear+gr_gated_mean`). The tile keeps the `dense_wide256` tiling and LDS
-  staging but multiplies in f32 FMA on f32 operands, so its only arithmetic
-  difference from the fused exact parent is the summation order. Screened at
-  **2.388x** with the arithmetic intact
-  (`benchmarks/results/2026-09-29-gr-staged-f32-screen/`), and its numerical
-  contract test pins it within the f32 summation-order floor (relative L2 <=
-  1e-6) of the exact fused kernel at five shapes.
-- **Default-off, and it must stay off until the production gate passes.** The
-  variant is not bit-exact with the parent, so under
-  `docs/EXECUTION-PROFILES.md` it is a T1/T2 arithmetic change needing the
-  calibrated mean/tail/max KL, top-1 by category, determinism, isolation and
-  task gates. The fused exact parent remains the registered fallback.
-- **Concrete blocker, not "needs more evidence":** the gate cannot be run for
-  this route yet. Every route in
-  `scripts/execution_profile_q8_wmma_prefill_layers_gate.py` is *layer-scoped* -
-  its `Route.env_for` formats `{layers}` into the selector - but
-  `run_qwen4_exp_gr_read` takes **no layer index**, so a layer-scoped GR
-  selector cannot be expressed without threading a layer argument through the GR
-  call chain. Without that, a gate run would engage the staged tile on **every**
-  layer rather than the named scope, which is not the comparison the gate's
-  scope checks are built to certify.
-- Related but distinct: the *dense linear* staged tile
-  (`HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS`,
-  `staged_f32_bm128_bn64_bk32`, `KernelKey(..., "linear", ...)`) is a different
-  kernel on a different layer. Its gate has already run and reaches
-  `status=complete, canonical=True` on layers 16-47 and 14-47
-  (`benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/`).
-  That result does not transfer to this route: different layer, different
-  epilogue, and the GR dispatch records its own prefill-boundary KL cliff.
-- **Disposition:** keep the selector and its unit test while the layer-scoped
-  gate is built; remove the flag and the dispatch branch if that gate rejects
-  the route, or promote it (and delete the flag) if it passes.
-- **`20260929T`: the blocker above is specific to the LAYER-SCOPED gate and does
-  not block the whole-route gate, which already qualifies GR candidates.**
-  `scripts/qwen4exp_layer2_profile_gate.py` compares a whole-profile candidate
-  against its strict parent over 18 prompts x prefill-last plus 24 c1 rows (450
-  full-vocabulary rows, three candidate repeats, state fingerprints, free
-  outputs) and already carries `production_gr_up_restore` and
-  `production_gr_up_wide` for this exact route - both bind GR selectors with no
-  layer scope, because the layer2 gate's scope is the route, not a layer range.
-  The `run_qwen4_exp_gr_read`-takes-no-layer-index objection therefore applies
-  to `execution_profile_q8_wmma_prefill_layers_gate.py` only. The staged-f32
-  route is now registered as `production_gr_up_staged` in the layer2 gate and
-  its production gate is runnable; the dense sibling's layer-scoped result still
-  does not transfer to this route.
-- **Registration trap, recorded because it silently turns a gate into a control:**  the GR staged variant is registered only by the module-level
-  `register_gr_staged_f32_kernel()` call in
-  `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_gr_staged_f32.py`, and
-  `register_gfx1151_kernels` reaches that module through `import_module`, which
-  is a no-op once the module is imported. `hip_gfx1100/__init__.py` exposes no
-  `register_backend_kernels`, so no backend-package entry point can re-create
-  the key either. Consequence: after `tests/conftest.py` restores the registry
-  to its collection-time baseline, neither `register_gfx1151_kernels` nor
-  `load_backend_kernel_package` can restore the gfx1151 alias. Production is
-  unaffected (the registry is never wiped) and the gate is fail-closed
-  (`count_candidate_dispatch` raises `ValueError` when the key is unregistered),
-  but it makes registration order-dependent. This is the same root cause as the
-  pre-existing cross-file failure
-  `tests/test_unit_qwen4exp_gr_staged_dispatch.py` +
-  `tests/test_unit_qwen4exp_layer2_profile_gate.py`
-  (`test_gfx1151_registry_contains_layer2_candidate_and_strict_fallback` fails
-  when both files run together, and passes when the layer2 file runs alone -
-  reproduced at `2812d8789` with no other changes). Cleanup: give the staged GR
-  module a registration hook the gfx1100 and gfx1151 packages call explicitly,
-  as `gguf_k_gemv` already does via `register_gguf_k_gemv_kernels`.
-- **`20260929T`: the layer2 gate's DEFAULT prompt suites cannot engage any GR
-  route, and this is the second half of the blocker above.** All four GR
-  selectors (`_qwen4_exp_gr_up_sigmoid_mean_enabled`, `_qwen4_exp_gr_iu8_enabled`,
-  `_qwen4_exp_gr_wide_enabled`, `_qwen4_exp_gr_staged_enabled`) require
-  `rows > 256`, but `qwen4exp_layer2_profile_gate.py`'s default suites
-  (`mtpbench-code-general-ja.jsonl` plus `gdn-prefill-category-heldouts.jsonl`)
-  produce 18 prompts of **39-71 tokens**, so the prefill is a single 39-71 row
-  call and every GR route declines. Measured: the first `production_gr_up_staged`
-  run returned `candidate_dispatch_calls: 0` with `measurement_valid: false` and
-  `status: failed` while every individual quality gate read `true` and all 18
-  trajectories were bit-identical - a green-looking artifact describing a
-  comparison of one configuration against itself. **The gate is fail-closed and
-  caught it**: `measurement_valid` requires `counter["calls"] > 0` whenever the
-  candidate declares a dispatch target, so the false pass was refused rather
-  than certified. The fix is to pass the long-form suite as well:
-  `--prompts benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl`
-  (438/508/424/512 chat-formatted tokens covering all four required categories,
-  written for exactly this row floor). Consequence for the record: the two
-  pre-existing GR candidates (`production_gr_up_restore`,
-  `production_gr_up_wide`) have **no gate artifact in `benchmarks/results/`**, and
-  a default-suite run of either would be a control for the same reason - so
-  neither route has measured numerical qualification from this gate.
-
 ## MoE Decode warp256 GEMV Pair - REMOVED 2026-09-30
 
 > 2026-10-14: the two kernels this section retained are selected again for
@@ -6052,7 +5951,8 @@ cleanup item. Current review and command-contract checks:
 
 `staged_f32_bm128_bn64_bk32` remains registered for gfx1151 dense Q8_0.
 `_raw_k_staged_f32_dispatch` can replace an exact raw parent within the
-explicit layer scope; the production binder does not select this variant.
+explicit layer scope from `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS`; the
+production binder does not select this variant.
 This is distinct from the removed GR selector in R0021. The shared module
 also has direct diagnostic and GPU-test consumers, so rejecting one GR or
 dense scope does not justify deleting the whole module.
