@@ -3544,27 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Compact scoreboard: 2-line headroom at 498/500
-
-- `benchmarks/README.md` was returned to its documented shape on 2026-09-13
-  (1962 -> 494 lines). The Qwen4Exp/Framework optimization journal, the
-  Qwen3.8-Flash-Next implementation-first status, the Surya planner/kernel
-  internals, the harness catalog that duplicates `benchmarks/HARNESSES.md`, and
-  the per-campaign delta prose moved verbatim to `benchmarks/HISTORY.md`; no
-  line was dropped and every current row stayed.
-- What remains is current by construction (Surya topline, root-README export
-  block, the `## Current ...` sections, evidence status, reading, maintenance).
-  Two lines of headroom absorbs nothing; the next unit must move a section.
-- When the next substantial lane lands, either raise the line budget in
-  `tests/test_benchmark_readme_sync.py` under the 2026-09-06 rationale
-  ("guardrails against worklog-style prose, not a content budget"), or move the
-  next-least-current section to `HISTORY.md`. The closest calls this time were
-  the harness catalog (already duplicated in `HARNESSES.md`) and the
-  Maple-Preview retained backend comparison (Maple still has concurrency rows
-  in the scoreboard).
-- Do not let the file re-grow: the line/byte/link gate is the ratchet, and the
-  failure mode was silent drift, not a single large addition.
-
 ## VibeVoice-TTS semantic encoder `rows=1` GEMV dispatch (rejected on quality)
 
 `kernels/hip_gfx1100/vibevoice/registered.py`'s `frontend_gemm` routes every row

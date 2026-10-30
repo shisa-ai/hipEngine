@@ -13575,28 +13575,28 @@
       "start_line": 11694,
       "end_line": 11714,
       "sha256": "ce1270fb8f8909221b861a187799e47374bf03ff00b31aacd3b9811c5df2ffef",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Retired historical 498/500 note; current compact-scoreboard test passes and maintenance contract remains. worklog/entries/20261030T045357.669211Z-cleanup-cleanup-r0497-7d3514.md."],
       "subitems": [
         {
           "line": 11696,
           "text": "- `benchmarks/README.md` was returned to its documented shape on 2026-09-13",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11702,
           "text": "- What remains is current by construction (Surya topline, root-README export",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11705,
           "text": "- When the next substantial lane lands, either raise the line budget in",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11712,
           "text": "- Do not let the file re-grow: the line/byte/link gate is the ratchet, and the",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
