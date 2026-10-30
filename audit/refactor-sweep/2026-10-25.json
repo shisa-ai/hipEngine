@@ -5368,23 +5368,24 @@
       "start_line": 4507,
       "end_line": 4529,
       "sha256": "5b21f0e6d0ed1a9a2b8985871d7830e43079c8f2f3746a3b668faeb5194c061e",
-      "status": "partial",
+      "status": "triaged-deferred-profile-plan-coverage",
       "evidence": ["Corrected stale ledger default semantics: registered pair production, recorded failure strict, missing plan legacy fallback. Full defaults/runtime/quarantine units and docs/audit pass. No runtime change; missing plugin plans and public fallback validation remain open. Worklog: worklog/entries/20261027T163113.595877Z-cleanup-refactor-r0205-b877a7.md."],
       "subitems": [
         {
           "line": 4509,
           "text": "- Implemented for campaign P3: public `strict|production|batch_invariant`",
-          "status": "pending"
+          "status": "verified-profile-infrastructure"
         },
         {
           "line": 4518,
           "text": "- 2026-09-12 (v0.5.0): an omitted profile now resolves to `production` for",
-          "status": "pending"
+          "status": "reconciled-default-failure-missing-plan-cases"
         },
         {
           "line": 4523,
           "text": "- Removal trigger for the remaining legacy path: after P4 re-certifies or",
-          "status": "pending"
+          "status": "deferred-profile-plan-coverage",
+          "evidence": "Bottom R0205 preserves missing-plan compatibility, arithmetic and release/public gates.22 tests/docs/audit pass. worklog/entries/20261030T092102.571592Z-cleanup-cleanup-r0205-final-cceec4.md."
         }
       ]
     },

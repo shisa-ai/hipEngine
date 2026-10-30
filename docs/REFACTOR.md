@@ -2290,29 +2290,6 @@ category and control/ownership gates before closing this entry.
   cancellation/cleanup checks. CPU transition-order and provider tests preserve
   the refactor contract but do not establish public GPU execution.
 
-## Execution-profile migration seam
-
-- Implemented for campaign P3: public `strict|production|batch_invariant`
-  selection resolves to an immutable variant manifest through
-  model/backend/quant plugin plans, with per-scope strict fallback and exact-key
-  registry validation. `LLM.execution_profile_manifest_sha256` and server model
-  discovery expose the resolution. `HIPENGINE_EXECUTION_PROFILE` is the sole
-  environment adapter; explicit API/CLI values win.
-- An omitted profile resolves to `production` when both strict and production
-  plans are registered, or to `strict` when that production plan records a
-  qualification failure. If either plan is missing, resolution returns `None`
-  and preserves pre-profile package selection. This compatibility path is not
-  a fourth named profile and does not prevent the implemented model from running.
-  `tests/test_unit_execution_profile_defaults.py` and the runtime/quarantine
-  tests cover these distinct cases; do not replace the fallback with blanket
-  production selection for combinations without plans.
-- Removal trigger for the remaining legacy path: after P4 re-certifies or
-  replaces every current non-exact default so that every shipped
-  model/backend/quant has a registered plan, and one release window confirms
-  strict fallback and batch-invariant behavior. Then remove omitted-profile
-  legacy selection and any duplicate env-to-profile adapter. Keep registered
-  strict fallbacks.
-
 ## Generation-2 GGUF width-selection hardcoding
 
 - Resident shared-slot AR widths come from the backend's
@@ -9887,3 +9864,24 @@ wider-frontier campaign, preserving cache/harness research references and
 permanent ordinary MTP/AR miss/failure fallbacks. Do not conflate this candidate
 with other request-local prompt lookup implementations. No new promotion,
 performance claim or runtime change is made here.
+
+### R0205 — Finish profile-plan coverage before retiring compatibility selection
+
+Public `strict|production|batch_invariant` resolves through immutable plugin
+manifests with per-scope strict fallback and exact registry-key validation.
+`LLM.execution_profile_manifest_sha256` and model discovery expose resolution;
+explicit API/CLI inputs override `HIPENGINE_EXECUTION_PROFILE`.
+
+An omitted profile selects production when strict and production plans exist,
+or strict for a recorded production qualification failure. Missing either plan
+returns `None` and preserves pre-profile package selection, not a fourth profile
+or a model admission failure. Keep this distinction covered by defaults,
+runtime and quarantine tests; do not substitute blanket production selection.
+
+**Deferred plan-coverage migration:** register plans for every shipped
+model/backend/quant, re-certifying or replacing non-exact defaults under their
+arithmetic gates. After a release window verifies strict fallback and
+batch-invariant behavior, retire omitted-profile legacy selection and duplicate
+environment adapters, retaining registered strict fallbacks. Verify public
+resolution and fallback attribution across registered, failed and missing-plan
+cases before removing compatibility. No runtime default or capability changes.
