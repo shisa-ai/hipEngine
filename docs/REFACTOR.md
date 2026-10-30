@@ -2290,35 +2290,6 @@ category and control/ownership gates before closing this entry.
   cancellation/cleanup checks. CPU transition-order and provider tests preserve
   the refactor contract but do not establish public GPU execution.
 
-## Generation-2 GGUF width-selection hardcoding
-
-- Resident shared-slot AR widths come from the backend's
-  `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS` declaration; the process-wide width
-  override is removed. The lifecycle diagnostic reads the same declaration.
-  The standard non-resident implementation supports widths 1 through 8.
-- The artifact-backed D2 cost resolver is an explicit planner experiment through
-  `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`; ceiling remains the production default.
-  Its earlier promotion sweep used eager resident sessions, not the server,
-  and recorded a dirty composed-c13 lifecycle result. A new D2 promotion
-  campaign is optional performance work, not a capability or integration gate.
-- Primitive selection is spread across quant/layout capability maps and
-  per-width `CASE(N)` launchers. Q5T16 and planar-qmicro Q6T16 were promoted to
-  true rowtiles through 8 (2026-08-20,
-  `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
-  `[gguf_q6_k_t16_qmicro_planar_v1]=8`); the planar-Q6 export no longer falls
-  to per-row for rows 5+. The separate FP32 LM-head rowtiles publish their own
-  primitive bounds (standard Q6=6, planar-qmicro=8), which the chunk planner
-  intersects with backend package policy (8 on both HIP backends). Remaining
-  generic fallback ladders still demonstrate why one model-wide max-row value
-  or variant name is not honest coverage.
-- Removal trigger: compact D1/D2 schemas, strict group-cost map, and direct
-  c3/c5/c6/c7 lifecycle are present. Still required: clean actual-server
-  direct/masked/composed c1-c32 route telemetry; counterbalanced same-shape D2-
-  vs-ceiling goodput and TTFT/ITL; refill/cancel, memory, and drain; then cold
-  package resolution to ordinary registry/plugin evidence. Keep registered
-  strict kernels and ceiling fallback until those gates pass; only afterward
-  remove duplicate sidecar cases, generic row caps, and manual ladders.
-
 ## Generation-1 GGUF single-backing KV compatibility path
 
 - Ordinary resident serving selects `create_global_device_kv_pool` when the
@@ -9885,3 +9856,26 @@ batch-invariant behavior, retire omitted-profile legacy selection and duplicate
 environment adapters, retaining registered strict fallbacks. Verify public
 resolution and fallback attribution across registered, failed and missing-plan
 cases before removing compatibility. No runtime default or capability changes.
+
+### R0206 — Per-primitive width planning and optional D2 promotion
+
+The ambient width override is removed: resident execution and its lifecycle
+diagnostic use `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`. Ceiling remains the
+production planner; `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT` explicitly selects the
+D2 experiment. Its earlier eager-session sweep was not server evidence and had
+a dirty composed-c13 lifecycle result. D2 promotion is optional performance
+work, not a condition for running implemented widths.
+
+**Deferred planner design:** consolidate capability maps, sidecar cases and
+manual ladders through cold registry/plugin resolution without flattening
+per-primitive limits into one model-wide bound. Q5T16 and planar-qmicro Q6T16
+rowtiles cover through eight rows; FP32 LM-head standard-Q6 and planar-qmicro
+bounds differ and must still intersect backend policy. Keep shape/layout misses
+and registered strict kernels explicit.
+
+Compact D1/D2 schemas, strict group costs and direct c3/c5/c6/c7 lifecycle are
+already present. Before retiring duplicate sidecars, generic row caps or manual
+ladders, require clean actual-server direct/masked/composed c1-c32 telemetry,
+counterbalanced same-shape D2-versus-ceiling goodput and TTFT/ITL, refill/cancel,
+memory and drain checks. Preserve ceiling fallback throughout migration. No
+planner default, width capability or primitive selection changes in this triage.
