@@ -4886,7 +4886,8 @@
         {
           "line": 4154,
           "text": "| RF-11 | P1 | Whole-file SHA tests pin unrelated evolving files, including this ledger and backend package initializers. | Replace whole-file hashes with semantic assertions over the capability/registry owner and hashes of immutable artifacts or localized frozen blocks. A documentation edit must not require refreshing an unrelated kernel-source qualification test. |",
-          "status": "pending"
+          "status": "deferred-remaining-live-source-contracts",
+          "evidence": ["Ledger/peer-package repairs and scoped Laguna policy distinguished from remaining H8B runner/MoE whole-file pins. Per-pin semantic/mutation replacement required. 7 tests/docs/audit pass. worklog/entries/20261030T082234.245003Z-cleanup-cleanup-r0187-rf11-b7e4ec.md."]
         },
         {
           "line": 4155,

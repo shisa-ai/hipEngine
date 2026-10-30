@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-11 | P1 | Whole-file SHA tests pin unrelated evolving files, including this ledger and backend package initializers. | Replace whole-file hashes with semantic assertions over the capability/registry owner and hashes of immutable artifacts or localized frozen blocks. A documentation edit must not require refreshing an unrelated kernel-source qualification test. |
 | RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_integration_generation_batch_scheduler.py` is 28K lines; `test_integration_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
 
 ### Target organization
@@ -9926,3 +9925,24 @@ For direct-control retirement verify public staged request selection, exact
 commit/rollback state, cancellation, late admission and provider fallback;
 each request must keep one scheduler and commit owner. Neither migration is
 implemented by this triage.
+
+### RF-11 / R0187 — Replace remaining broad live-source pins with scoped contracts
+
+`tests/_laguna_policy_pin.py` already checks Laguna policy assignments instead
+of hashing the shared gfx1100 initializer. The H8B source-default test preserves
+historical ledger provenance inside its immutable artifact but no longer hashes
+the live ledger or the peer initializer. It still hashes whole live runner and
+MoE files through `_POST_MERGE_SOURCE_SHA256`; unrelated edits can still force
+pin updates. Do not describe the earlier ledger/backend fix as the whole task.
+
+**Deferred contract decision:** identify the semantic owner or frozen block each
+remaining broad live-source pin protects, then replace it with assertions over
+capabilities, exact registry keys, call boundaries and relevant source blocks.
+Keep hashes of immutable evidence unchanged. Do not delete a hash merely to get
+a passing test, and do not refresh it as evidence that behavior was preserved.
+
+Clearing checks: inventory each migrated pin and its replacement contract; prove
+that an unrelated source edit is accepted while mutations of the protected
+policy, dispatch or ownership behavior fail. Run the associated focused runtime
+and evidence-validator tests. Preserve numerical gates independently of source
+provenance. Remaining runner/MoE pins are not migrated by this triage.
