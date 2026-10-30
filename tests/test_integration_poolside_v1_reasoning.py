@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from hipengine import SamplingParams
 from hipengine.generation import GenerationOutput
 from hipengine.server import ServerConfig, create_app
-from hipengine.server.api import _ReasoningSplitter
+from hipengine.server.chat_output import _ReasoningSplitter
 from hipengine.chat.poolside_v1 import (
     PoolsideV1ReasoningParser,
     render_poolside_v1_chat,

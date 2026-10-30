@@ -61,8 +61,6 @@ from hipengine.models.qwen35 import Qwen35GGUFModel
 from hipengine.speculative.policy import DEFAULT_AUTO_DEPTH_POLICY
 from hipengine.speculative.serving import SpeculativeMTPServingKey
 from hipengine.server.api import (
-    ChatCompletionRequest,
-    CompletionRequest,
     OpenAIHTTPError,
     StartupFailure,
     _AGENTIC_REPLAY_FAILURE_REASONS,
@@ -77,7 +75,6 @@ from hipengine.server.api import (
     _generation_route_for_request,
     _GenerationBatcher,
     _MTPCircuitBreaker,
-    _parse_chat_tool_calls,
     _QueuedBatchResult,
     _QueuedGeneration,
     _SPECULATIVE_MTP_AUTO_ROUTE,
@@ -92,12 +89,14 @@ from hipengine.server.api import (
     _sampling_for_realized_generation_route,
     _sampling_key,
     _serving_plan_route_decision,
-    _ServerMetrics,
     _log_pretty_startup_summary,
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
     _mtp_response_summary,
 )
+from hipengine.server.chat_output import _parse_chat_tool_calls
+from hipengine.server.metrics import _ServerMetrics
+from hipengine.server.schemas import ChatCompletionRequest, CompletionRequest
 from tests.support.server_api_fakes import (
     ArtifactScopedSpeculativeMTPFakeLLM,
     C2OnlyArtifactScopedSpeculativeMTPFakeLLM,

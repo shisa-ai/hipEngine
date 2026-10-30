@@ -4,9 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hipengine.server.api import (
-    ChatCompletionRequest, OpenAIHTTPError, ServerConfig,
+    OpenAIHTTPError, ServerConfig,
     _thinking_budget_sampling_kwargs, create_app,
 )
+from hipengine.server.schemas import ChatCompletionRequest
 from tests.support.server_api_fakes import FakeLLM
 
 

@@ -79,7 +79,8 @@ def test_structured_json_is_not_mistaken_for_bare_tool():
 def test_reasoning_effort_reaches_embedded_template():
     from hipengine.chat.qwen4_exp import render_qwen4_exp_chat
     from hipengine.server.api import (
-        ChatCompletionRequest,_thinking_control_from_request,_render_chat_prompt_with_model_protocol)
+        _thinking_control_from_request,_render_chat_prompt_with_model_protocol)
+    from hipengine.server.schemas import ChatCompletionRequest
     request=ChatCompletionRequest(model="test",messages=[{"role":"user","content":"Hi"}],reasoning_effort="low")
     engine=SimpleNamespace(chat_template_reasoning_effort=True,
         render_chat_prompt=lambda messages,**kwargs: render_qwen4_exp_chat(TEMPLATE,messages,**kwargs))
@@ -93,7 +94,8 @@ def test_reasoning_effort_reaches_embedded_template():
 def test_lazy_engine_loads_model_protocol_before_first_render():
     from hipengine.chat.qwen4_exp import render_qwen4_exp_chat
     from hipengine.server.api import (
-        ChatCompletionRequest,_thinking_control_from_request,_render_chat_prompt_with_model_protocol)
+        _thinking_control_from_request,_render_chat_prompt_with_model_protocol)
+    from hipengine.server.schemas import ChatCompletionRequest
     request=ChatCompletionRequest(model="test",messages=[{"role":"user","content":"Hi"}],tools=TOOLS)
     owner=SimpleNamespace(render_chat_prompt=lambda messages,**kwargs:
                           render_qwen4_exp_chat(TEMPLATE,messages,**kwargs))

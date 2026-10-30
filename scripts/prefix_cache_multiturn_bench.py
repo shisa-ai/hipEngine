@@ -84,10 +84,8 @@ from hipengine.benchmark.session_replay import (  # noqa: E402
     session_replay_turn_count,
 )
 from hipengine.server import ServerConfig, create_app  # noqa: E402
-from hipengine.server.api import (  # noqa: E402
-    ChatCompletionRequest,
-    _render_prepared_chat_prompt_for_request,
-)
+from hipengine.server.api import _render_prepared_chat_prompt_for_request  # noqa: E402
+from hipengine.server.schemas import ChatCompletionRequest  # noqa: E402
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_SHAREGPT = REPO_ROOT / "benchmarks/prompts/qwen38-sharegpt-soak-v1.json"

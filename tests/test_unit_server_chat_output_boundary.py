@@ -8,8 +8,8 @@ move depends on:
 * the owner imports only the standard library and neither the HTTP application
   nor any engine, model, runtime, dispatch or loading module;
 * every moved symbol keeps the exact pre-move AST (the hashes below were taken
-  from ``hipengine/server/api.py`` at the move base), and
-  ``hipengine.server.api`` re-exports the identical objects;
+  from ``hipengine/server/api.py`` at the move base), and the parser names the
+  application references resolve to the identical objects;
 * the parsers keep the byte-level results captured from the pre-move
   implementation: reasoning splits and source spans, chunk-split reasoning and
   terminal markers, prompt-open reasoning, terminal-marker stripping, JSON and
@@ -59,8 +59,7 @@ BLOCKED_IMPORT_PREFIXES = (
     "hipengine.quant",
 )
 
-# Names ``hipengine.server.api`` imported before the move and must keep
-# resolving to the same objects after it.
+# Every parser symbol the move put under the owner's ownership.
 MOVED_NAMES = (
     "_CHAT_TEMPLATE_RESIDUE_MARKERS",
     "_CHAT_TEMPLATE_RESIDUE_ROLES",
@@ -103,6 +102,24 @@ MOVED_NAMES = (
 
 # Owner-internal implementation detail; never imported from ``api``.
 OWNER_ONLY_NAMES = ("_XML_FUNCTION_ENVELOPE_RE", "_XML_PARAMETER_RE")
+
+# The subset ``hipengine.server.api`` imports for its own request handling.
+# Consumers import every other owner symbol from this module directly.
+API_APPLICATION_NAMES = (
+    "_ParsedChatOutput",
+    "_ParsedToolCall",
+    "_ReasoningSplitter",
+    "_TOOL_CALL_END_MARKER",
+    "_TOOL_CALL_START_MARKER",
+    "_classify_chat_length_phase",
+    "_find_marker",
+    "_parse_chat_tool_calls",
+    "_split_reasoning",
+    "_strip_chat_terminal_markers",
+    "_tool_arguments_json",
+    "_valid_tool_call_blocks",
+    "_xml_parameter_is_string_typed",
+)
 
 # sha256(ast.dump(node, include_attributes=False))[:16] captured from
 # ``hipengine/server/api.py`` before the move.
@@ -262,13 +279,14 @@ def test_owner_ast_matches_pre_move_api_ast(name: str, expected: str) -> None:
     assert _ast_hash(node) == expected
 
 
-def test_api_imports_moved_names_from_owner_and_defines_none_of_them() -> None:
+def test_api_imports_the_parser_names_its_application_uses() -> None:
     tree = ast.parse(API_PATH.read_text(encoding="utf-8"))
     imported: set[str] = set()
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module == "hipengine.server.chat_output":
             imported.update(alias.name for alias in node.names)
-    assert imported == set(MOVED_NAMES)
+    assert imported == set(API_APPLICATION_NAMES)
+    assert imported <= set(MOVED_NAMES)
 
     defined = {
         name
@@ -278,7 +296,7 @@ def test_api_imports_moved_names_from_owner_and_defines_none_of_them() -> None:
     assert defined.isdisjoint(set(MOVED_NAMES) | set(OWNER_ONLY_NAMES))
 
 
-@pytest.mark.parametrize("name", MOVED_NAMES)
+@pytest.mark.parametrize("name", API_APPLICATION_NAMES)
 def test_api_reexports_the_identical_object(name: str) -> None:
     import hipengine.server.api as api
 

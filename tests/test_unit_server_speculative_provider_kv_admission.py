@@ -17,11 +17,10 @@ from hipengine import SamplingParams
 from hipengine.server import ServerConfig
 from hipengine.server.__main__ import build_parser
 from hipengine.server.api import (
-    ChatCompletionRequest,
-    CompletionRequest,
     OpenAIHTTPError,
     _speculative_provider_route_for_request,
 )
+from hipengine.server.schemas import ChatCompletionRequest, CompletionRequest
 
 _CLI_KV_ARGS = (
     "--speculative-provider",

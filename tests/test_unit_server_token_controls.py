@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.server import api
+from hipengine.server.schemas import CompletionRequest
 
 
 @pytest.mark.parametrize('wrapped', [False, True])
@@ -11,7 +12,7 @@ from hipengine.server import api
 def test_min_tokens_resolves_model_eos(wrapped, eos):
     target = SimpleNamespace(tokenizer=SimpleNamespace(eos_token_id=eos))
     engine = SimpleNamespace(_text_generator=target) if wrapped else target
-    request = api.CompletionRequest(prompt='x', min_tokens=2)
+    request = CompletionRequest(prompt='x', min_tokens=2)
     assert api._request_eos_token_id(request, engine) == eos
 
 
@@ -20,20 +21,20 @@ def test_eos_resolution_preserves_override_and_fast_path(min_tokens, explicit, e
     def forbidden():
         raise AssertionError('must not initialize tokenizer')
     engine = SimpleNamespace(_get_text_generator=forbidden)
-    request = api.CompletionRequest(prompt='x', min_tokens=min_tokens, eos_token_id=explicit)
+    request = CompletionRequest(prompt='x', min_tokens=min_tokens, eos_token_id=explicit)
     assert api._request_eos_token_id(request, engine) == expected
 
 
 def test_min_tokens_initializes_lazy_metadata():
     target = SimpleNamespace(tokenizer=SimpleNamespace(eos_token_id=19))
     engine = SimpleNamespace(_get_text_generator=lambda: target)
-    request = api.CompletionRequest(prompt='x', min_tokens=2)
+    request = CompletionRequest(prompt='x', min_tokens=2)
     assert api._request_eos_token_id(request, engine) == 19
 
 
 def test_min_tokens_without_any_eos_fails_with_named_parameter():
     with pytest.raises(api.OpenAIHTTPError) as exc:
-        api._request_eos_token_id(api.CompletionRequest(prompt='x', min_tokens=2), object())
+        api._request_eos_token_id(CompletionRequest(prompt='x', min_tokens=2), object())
     assert exc.value.param == 'min_tokens'
     assert 'eos_token_id' in str(exc.value)
 

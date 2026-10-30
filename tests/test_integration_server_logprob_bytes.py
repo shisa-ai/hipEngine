@@ -10,8 +10,9 @@ from hipengine.generation.registry import GenerationOutput, GenerationStreamChun
 from hipengine.server.api import (
     ServerConfig, create_app, _chat_logprobs, _chat_visible_content_logprobs,
     _completion_logprobs, _coerce_token_logprobs, _stream_token_logprobs_for_text_span,
-    _trim_token_logprobs, _strip_chat_terminal_markers,
+    _trim_token_logprobs,
 )
+from hipengine.server.chat_output import _strip_chat_terminal_markers
 from tests.support.server_api_fakes import FakeLLM
 from tests.support.server_api_support import _sse_payloads
 from tests.test_unit_token_logprob_bytes import fragments

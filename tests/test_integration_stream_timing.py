@@ -3,6 +3,7 @@ import json
 
 from hipengine.generation.registry import FinishDetails, GenerationStreamChunk
 from hipengine.server import api
+from hipengine.server.chat_output import _ParsedChatOutput
 
 
 def clock(monkeypatch, values):
@@ -56,7 +57,7 @@ def test_precomputed_chat_fragments_do_not_claim_model_decode_rate():
     tracker = api._StreamTimingTracker.start()
     accounting = api._StreamTokenAccounting(lambda text: len(text))
     events = list(api._chat_stream_parsed(
-        "id", 0, "model", api._ParsedChatOutput("<think>why</think>yes", ()), "stop",
+        "id", 0, "model", _ParsedChatOutput("<think>why</think>yes", ()), "stop",
         token_accounting=accounting, include_hipengine=True, stream_started_at=tracker))
     payloads = [json.loads(event.removeprefix("data: ").strip()) for event in events]
     done = payloads[-1]["hipengine"]["timing"]

@@ -105,10 +105,10 @@ def test_server_protocol_uses_the_artifact_template(enable_thinking) -> None:
 
     from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
     from hipengine.server.api import (
-        ChatCompletionRequest,
         _render_chat_prompt_with_model_protocol,
         _thinking_control_from_request,
     )
+    from hipengine.server.schemas import ChatCompletionRequest
 
     generator = Gemma4GGUFGenerator("/unused.gguf", object(), object())
     generator._tokenizer = SimpleNamespace(chat_template=_TEMPLATE)
@@ -130,7 +130,7 @@ def test_server_protocol_uses_the_artifact_template(enable_thinking) -> None:
 
 @pytest.mark.parametrize("split", range(60))
 def test_server_splits_gemma_thought_channels_across_chunks(split) -> None:
-    from hipengine.server.api import _ReasoningSplitter, _strip_chat_terminal_markers
+    from hipengine.server.chat_output import _ReasoningSplitter, _strip_chat_terminal_markers
 
     text = "<|channel>thought\nLet me check.<channel|>Paris.<turn|>"
     parser = _ReasoningSplitter()
@@ -149,9 +149,10 @@ def test_server_tools_fail_with_the_missing_parser_capability() -> None:
         generator.render_chat_prompt(_MESSAGES, tools=[{"type": "function"}])
 
     from hipengine.server.api import (
-        ChatCompletionRequest, OpenAIHTTPError,
+        OpenAIHTTPError,
         _render_chat_prompt_with_model_protocol, _thinking_control_from_request,
     )
+    from hipengine.server.schemas import ChatCompletionRequest
     request = ChatCompletionRequest(
         model="test", messages=_MESSAGES,
         tools=[{"type": "function", "function": {
@@ -168,7 +169,8 @@ def test_server_tools_fail_with_the_missing_parser_capability() -> None:
 
 
 def test_gemma_reasoning_spans_and_length_phase_agree() -> None:
-    from hipengine.server.api import _classify_chat_length_phase, _reasoning_text_segments
+    from hipengine.server.api import _reasoning_text_segments
+    from hipengine.server.chat_output import _classify_chat_length_phase
 
     text = "<|channel>thought\nCheck.<channel|>Paris."
     segments = _reasoning_text_segments(text)

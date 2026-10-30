@@ -23,9 +23,9 @@ from __future__ import annotations
 import pytest
 
 from hipengine.server.api import (
-    ChatCompletionRequest,
     _chat_live_many_streaming_allowed,
 )
+from hipengine.server.schemas import ChatCompletionRequest
 
 _TOOLS = [
     {

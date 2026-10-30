@@ -61,8 +61,6 @@ from hipengine.models.qwen35 import Qwen35GGUFModel
 from hipengine.speculative.policy import DEFAULT_AUTO_DEPTH_POLICY
 from hipengine.speculative.serving import SpeculativeMTPServingKey
 from hipengine.server.api import (
-    ChatCompletionRequest,
-    CompletionRequest,
     OpenAIHTTPError,
     StartupFailure,
     _AGENTIC_REPLAY_FAILURE_REASONS,
@@ -77,7 +75,6 @@ from hipengine.server.api import (
     _generation_route_for_request,
     _GenerationBatcher,
     _MTPCircuitBreaker,
-    _parse_chat_tool_calls,
     _QueuedBatchResult,
     _QueuedGeneration,
     _SPECULATIVE_MTP_AUTO_ROUTE,
@@ -92,12 +89,14 @@ from hipengine.server.api import (
     _sampling_for_realized_generation_route,
     _sampling_key,
     _serving_plan_route_decision,
-    _ServerMetrics,
     _log_pretty_startup_summary,
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
     _mtp_response_summary,
 )
+from hipengine.server.chat_output import _parse_chat_tool_calls
+from hipengine.server.metrics import _ServerMetrics
+from hipengine.server.schemas import ChatCompletionRequest, CompletionRequest
 from tests.support.server_api_fakes import (
     FakeLLM,
     SchedulerChunkRowsFakeLLM,
@@ -898,7 +897,7 @@ def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:
 @pytest.mark.parametrize("result_count", [1, 2, 3])
 @pytest.mark.parametrize("typed_messages", [False, True])
 def test_render_chat_prompt_groups_consecutive_tool_results(result_count, typed_messages) -> None:
-    from hipengine.server.api import ChatMessage
+    from hipengine.server.schemas import ChatMessage
 
     contents = ["first result", "", "line one\nline two"][:result_count]
     calls = [
@@ -3275,7 +3274,8 @@ def test_xml_parallel_default_matches_sampling_and_streaming(parallel) -> None:
         }}}],
         **({} if parallel is None else {'parallel_tool_calls': parallel}),
     }
-    from hipengine.server.api import ChatCompletionRequest, _tool_call_sampling_constraint
+    from hipengine.server.api import _tool_call_sampling_constraint
+    from hipengine.server.schemas import ChatCompletionRequest
     constraint = _tool_call_sampling_constraint(
         ChatCompletionRequest(**body), fake, chat_default_max_tokens=None,
     )

@@ -483,13 +483,12 @@ def test_lazy_server_exports_resolve_to_api_owned_objects() -> None:
     assert result.stdout.strip() == "SERVER_LAZY_EXPORT_OK"
 
 
-def test_api_compatibility_exports_are_the_schema_classes() -> None:
+def test_api_imports_the_schema_classes_its_request_handling_uses() -> None:
     from hipengine.server import api
 
     for name in schemas.__all__:
         assert getattr(api, name) is getattr(schemas, name), name
         assert getattr(api, name).__module__ == "hipengine.server.schemas"
-    assert api._OpenAIBaseModel is schemas._OpenAIBaseModel
 
 
 @pytest.mark.parametrize("name", tuple(EXPECTED_FIELDS))

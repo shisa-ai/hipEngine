@@ -429,16 +429,17 @@ consumers and the generic backend adapters that are not universal entry points.
 
 OpenAI request models live in `hipengine/server/schemas.py`, independently of
 application composition. Schema imports stay free of FastAPI, generation and
-runtime imports. The server package lazily resolves its existing public app
-exports; `server.api` keeps aliases to the same request-model classes.
+runtime imports. The server package lazily resolves its public app exports;
+application code, tests and scripts import request models directly from their owner.
 Pure JSON Schema subset and value validation lives in
-`hipengine/server/json_schema.py`, with only standard-library dependencies;
-`server.api` preserves its existing helper aliases. Request error translation,
+`hipengine/server/json_schema.py`, with only standard-library dependencies.
+Request error translation,
 tool-result handling and stream accounting remain in HTTP composition. Pure
 reasoning-tag splitting, terminal-marker handling and legacy JSON/XML tool-output
 parsing live in `hipengine/server/chat_output.py`, with standard-library
 imports only. The application owns model-protocol adaptation, request errors
-and response shaping, and preserves its existing parser helper aliases.
+and response shaping. Consumers import pure parser helpers directly from their
+owner; the application imports only entry points used by its request handling.
 Prometheus counters, metric normalization and text exposition live in
 `hipengine/server/metrics.py`, with only standard-library dependencies. The
 application collects one live snapshot per scrape, normalizes consumed fields

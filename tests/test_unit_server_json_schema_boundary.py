@@ -3,7 +3,7 @@
 The validators were moved out of ``hipengine/server/api.py`` unchanged into
 ``hipengine/server/json_schema.py``. These checks pin the three properties the
 move depends on: the module has no HTTP application or engine/model/runtime
-dependency, the ``hipengine.server.api`` private names still resolve to the
+dependency, the validator names the application references still resolve to the
 same objects, and the validators keep byte-identical error tuples, messages,
 numeric and boolean rules, local JSON Pointer resolution (including cycle
 detection), JSON-value equality and regular-expression semantics.
@@ -45,6 +45,14 @@ BLOCKED_IMPORT_PREFIXES = (
     "hipengine.dispatch",
     "hipengine.loading",
     "hipengine.quant",
+)
+
+# The subset ``hipengine.server.api`` imports for its own request handling.
+# Consumers import every other validator from this module directly.
+API_APPLICATION_NAMES = (
+    "_JSON_SCHEMA_ANNOTATION_KEYWORDS",
+    "_validate_json_schema_subset",
+    "_validate_json_schema_value",
 )
 
 PRIVATE_NAMES = (
@@ -1431,22 +1439,23 @@ def test_package_import_of_the_module_stays_schema_only() -> None:
     assert result.stdout.strip() == "JSON_SCHEMA_PACKAGE_IMPORT_OK"
 
 
-def test_api_private_names_are_the_json_schema_objects() -> None:
+def test_api_application_names_are_the_json_schema_objects() -> None:
     from hipengine.server import api
 
-    for name in PRIVATE_NAMES:
+    for name in API_APPLICATION_NAMES:
         assert getattr(api, name) is getattr(json_schema, name), name
         if callable(getattr(json_schema, name)):
             assert getattr(api, name).__module__ == "hipengine.server.json_schema", name
 
 
-def test_api_still_imports_the_moved_names_from_the_owner_module() -> None:
+def test_api_imports_the_validator_names_its_application_uses() -> None:
     tree = ast.parse(API_PATH.read_text(encoding="utf-8"), filename=str(API_PATH))
     imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "hipengine.server.json_schema":
             imported.update(alias.name for alias in node.names)
-    assert imported == set(PRIVATE_NAMES), sorted(set(PRIVATE_NAMES) - imported)
+    assert imported == set(API_APPLICATION_NAMES), sorted(set(API_APPLICATION_NAMES) - imported)
+    assert imported <= set(PRIVATE_NAMES)
     api_text = API_PATH.read_text(encoding="utf-8")
     for name in PRIVATE_NAMES:
         assert f"def {name}(" not in api_text, name

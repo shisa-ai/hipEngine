@@ -5,11 +5,10 @@ import logging
 import pytest
 
 from hipengine.server.api import (
-    ChatCompletionRequest,
-    CompletionRequest,
     ServerConfig,
     _log_request_info,
 )
+from hipengine.server.schemas import ChatCompletionRequest, CompletionRequest
 
 _LOGGER_NAME = "uvicorn.error"
 

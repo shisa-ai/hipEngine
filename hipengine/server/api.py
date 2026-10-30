@@ -83,10 +83,9 @@ from hipengine.server.multimodal import (
     vision_max_side,
     vision_prompt_markers,
 )
-# Request schemas live in their own boundary module; re-export them here so the
-# existing ``hipengine.server.api`` import surface keeps working unchanged.
+# Request schemas live in their own boundary module; this application imports
+# the request classes it handles.
 from hipengine.server.schemas import (
-    _OpenAIBaseModel,
     ChatCompletionRequest,
     ChatMessage,
     CompletionRequest,
@@ -98,69 +97,29 @@ from hipengine.server.schemas import (
     TokenDiagnosticRequest,
     TokenizeRequest,
 )
-# JSON Schema subset/value validation lives in its own boundary module; the
-# private aliases below keep the existing ``hipengine.server.api`` names and
-# object identities unchanged.
+# JSON Schema subset/value validation lives in its own boundary module; this
+# application imports the validators it applies.
 from hipengine.server.json_schema import (
     _JSON_SCHEMA_ANNOTATION_KEYWORDS,
-    _JSON_SCHEMA_SUPPORTED_KEYS,
-    _JSON_SCHEMA_SUPPORTED_TYPES,
-    _json_schema_pointer_token,
-    _json_schema_resolve_local_ref,
-    _json_schema_type_matches,
-    _primary_json_schema_type,
-    _schema_array_items_unique,
-    _schema_decimal_number,
-    _schema_finite_number,
-    _schema_json_value_kind,
-    _schema_json_values_equal,
-    _schema_nonnegative_int,
-    _schema_number_is_multiple_of,
-    _schema_positive_finite_number,
     _validate_json_schema_subset,
     _validate_json_schema_value,
 )
-# Chat reasoning/tool-output parsing lives in its own pure boundary module; the
-# private aliases below keep the existing ``hipengine.server.api`` names and
-# object identities unchanged.
+# Chat reasoning/tool-output parsing lives in its own pure boundary module;
+# this application imports the parser entry points it drives.
 from hipengine.server.chat_output import (
-    _CHAT_TEMPLATE_RESIDUE_MARKERS,
-    _CHAT_TEMPLATE_RESIDUE_ROLES,
-    _CHAT_TEMPLATE_TERMINAL_MARKERS,
     _ParsedChatOutput,
     _ParsedToolCall,
-    _REASONING_CLOSE_TAGS,
-    _REASONING_OPEN_TAGS,
-    _ReasoningPart,
-    _ReasoningSplit,
     _ReasoningSplitter,
     _TOOL_CALL_END_MARKER,
     _TOOL_CALL_START_MARKER,
-    _ToolCallBlock,
     _classify_chat_length_phase,
     _find_marker,
-    _find_valid_tool_call_block,
-    _has_unclosed_tool_call,
-    _is_chat_template_control_residue,
-    _is_incomplete_duplicate_tool_prefix_control_residue,
-    _json_schema_resolves_to_string,
-    _looks_like_partial_json,
     _parse_chat_tool_calls,
-    _parsed_tool_call_from_block_body,
-    _parsed_tool_call_from_function_xml,
-    _parsed_tool_call_from_json,
-    _parsed_tool_call_from_mapping,
     _split_reasoning,
-    _strip_chat_template_terminal_edges,
     _strip_chat_terminal_markers,
-    _strip_duplicate_tool_call_start,
-    _tag_suffix_len,
     _tool_arguments_json,
-    _tool_call_name_prefix_text,
-    _tool_parameter_property_schema,
     _valid_tool_call_blocks,
     _xml_parameter_is_string_typed,
-    _xml_parameter_value,
 )
 # Metric normalization and exposition take collected data in the metrics owner;
 # engine reads and capability discovery stay in this module.

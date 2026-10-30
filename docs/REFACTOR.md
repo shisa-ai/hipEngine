@@ -4206,10 +4206,8 @@ metrics inputs contain normalized consumed values, not raw engine objects or bor
 Preserve transport backpressure and queue admission while keeping device scheduling,
 request state and commit ownership in the generation engine. Separate remaining tool/structured
 request and result handling and SSE accounting without changing public errors or response shapes.
-Migrate application call sites, tests and scripts from the parser compatibility exports in
-`api.py` to `chat_output.py`, then remove the compatibility import block once no consumer
-imports those names through the application. Keep model-protocol adaptation at its engine seam;
-do not pull engine or HTTP state into the pure parser owner.
+Keep model-protocol adaptation at its engine seam; do not pull engine or HTTP state into the
+pure parser owners or reintroduce unused application re-exports.
 
 Done when: preserve public/import compatibility during move-only units; exercise HTTP
 ordinary/streamed requests, tool and structured responses, disconnect/cancel, queue saturation,

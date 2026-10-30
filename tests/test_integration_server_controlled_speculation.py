@@ -176,7 +176,8 @@ def test_queue_does_not_coalesce_hard_and_hint_policies():
 
 @pytest.mark.parametrize('text', ['', 'Calling tools now.'])
 def test_buffered_tool_logprobs_publish_once_across_calls_and_fragments(text):
-    from hipengine.server.api import _chat_stream_parsed, _ParsedChatOutput, _ParsedToolCall
+    from hipengine.server.api import _chat_stream_parsed
+    from hipengine.server.chat_output import _ParsedChatOutput, _ParsedToolCall
     logs = {'content': [{'token': '<tool_call>', 'bytes': list(b'<tool_call>'), 'logprob': 0.0}]}
     calls = tuple(_ParsedToolCall(f'call_{i}', 'ping', json.dumps({'data': 'x' * 3000})) for i in range(2))
     events = list(_chat_stream_parsed('id', 0, 'model', _ParsedChatOutput(text, calls), 'stop', logprobs=logs))

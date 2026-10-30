@@ -123,7 +123,8 @@ def test_http_pins_both_routes_and_retains_request_intent(mtp):
     payloads = []
 
     def post(url, *, json):
-        from hipengine.server.api import ChatCompletionRequest, ServerConfig, _validate_generation_request
+        from hipengine.server.api import ServerConfig, _validate_generation_request
+        from hipengine.server.schemas import ChatCompletionRequest
 
         _validate_generation_request(ServerConfig(model="m"), ChatCompletionRequest(**json))
         payloads.append(json)

@@ -65,7 +65,8 @@ def test_xml_tool_schema_and_independent_matchers():
 
 
 def test_server_schema_does_not_use_json_tool_prefix_for_xml_engine():
-    from hipengine.server.api import ChatCompletionRequest,_grammar_sampling_spec,_required_tool_sampling_forced_prefix
+    from hipengine.server.api import _grammar_sampling_spec,_required_tool_sampling_forced_prefix
+    from hipengine.server.schemas import ChatCompletionRequest
     engine=SimpleNamespace(supports_grammar=True,model_owned_tool_grammar=True)
     req=ChatCompletionRequest(model="test",messages=[{"role":"user","content":"x"}],
                               response_format={"type":"json_schema","json_schema":{"name":"x","schema":{

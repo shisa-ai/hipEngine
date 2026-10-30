@@ -6,10 +6,11 @@ import pytest
 from hipengine import SamplingParams
 from hipengine.server import ServerConfig
 from hipengine.server.api import (
-    CompletionRequest, OpenAIHTTPError, _speculative_mtp_capability,
+    OpenAIHTTPError, _speculative_mtp_capability,
     _speculative_mtp_route_for_request, _speculative_provider_capability,
     _speculative_provider_route_for_request, _resolve_realized_generation_route,
 )
+from hipengine.server.schemas import CompletionRequest
 from tests.test_unit_qwen4exp_mtp_resident_sampling import driver
 
 
