@@ -13699,8 +13699,8 @@
       "start_line": 11870,
       "end_line": 11887,
       "sha256": "6fa3615a7c5c134e37c32668f0868026e105cd1c4664aa97ff5f1a2728d82ebb",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Default solver remains device-resident; broader quality coverage remains open in model card. worklog/entries/20261030T050810.297700Z-cleanup-cleanup-r0502-631aff.md."],
       "subitems": []
     },
     {

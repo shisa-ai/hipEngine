@@ -3544,24 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## VibeVoice-TTS: per-step diffusion D2H readback (resolved 2026-09-16)
-
-The default diffusion loop keeps CFG and DPM-Solver++ state on device. The fused
-step preserves the reference rounding points, and timestep/condition invariants
-are cached. The host path remains the diagnostic oracle used by parity tests.
-
-The device solver measured a 14.9% diffusion-stage reduction and approximately
-3.5% warm-request reduction in a same-session A/B under host load. The invariant
-cache separately measured a 12.2% diffusion-stage reduction and 3.4% warm-request
-reduction on an idle host. These percentages are separate measurements, not an
-established combined speedup. Fresh ten-seed quality evaluation reproduces 58/60;
-broader TTS quality qualification remains pending.
-
-Evidence: `worklog/entries/20260916T033657.511650Z-lhl-vibevoice-tts-device-solver-loop-bd1697.md`
-and `worklog/entries/20260916T042339.511052Z-lhl-vibevoice-tts-diffusion-cache-measurement-90ed57.md`.
-Desktop gfx1151 measurements must establish a new physical-host baseline before
-claiming further gains over torch or the previous implementation.
-
 ## Streaming consumer pays one threadpool round trip per chunk (open 2026-09-17)
 `hipengine/server/api.py` pulls each streamed chunk with a separate
 `await run_in_threadpool(_next_stream_item, iterator)` call, and
