@@ -2228,24 +2228,6 @@ should be removed or collapsed.
   restoration before retiring the variable; do not substitute a process-global
   boolean or infer this arithmetic choice from the backend alone.
 
-## SPECDEC2 dense prompt-activation fallback
-
-- Added 2026-08-25 with SPECDEC2-PERF P2. Fresh strict C1/C2/C4 requests stream
-  pre-output-norm target chunks directly into NextN and retain only one 10 KiB
-  carried BF16 row per request. The process-wide
-  `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT` forced-K0 override is removed;
-  adapter capability and prefix-restoration checks remain. The older prompt-sized FP32 hidden
-  capture plus post-prefill F32→BF16 replay remains only as an internal strict
-  oracle for providers without the streaming prompt ABI while P2 is qualified.
-- Removal trigger: qualify streamed prefix restore/COW and every supported
-  incremental-prefill/context transition with exact provider fingerprints,
-  cancellation/failure cleanup, and complete same-suite non-regression. Then
-  remove `_prompt_hidden_rows` and `_catch_up_provider{,_batch}` from production
-  selection while retaining a focused test oracle if still useful. Verify the
-  default streaming route through `hipengine serve`, including restored prefixes,
-  incremental prefill, cancellation and provider cleanup; unit adapter routing
-  alone does not close this requirement.
-
 ## SPECDEC2 MoE physical-C2 Q4 pair-reuse scope
 
 - Added 2026-08-27 after actual R5/R6 microbench and full-suite evidence. The
@@ -9885,3 +9867,24 @@ direct controls and registered strict/eager/serial kernel fallbacks. Verify
 staged providers never enter whole-request compatibility and unsupported modes
 fail explicitly. Exercise migrated providers through public generation before
 retiring their adapter; no provider support or runtime behavior changes here.
+
+### R0190 — Retire prompt replay after provider lifecycle migration
+
+The `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT` forced-K0 override is removed.
+Streaming-capable requests feed target chunks into NextN; adapter capability
+and prefix-restoration checks remain. The adapter still owns
+`_prompt_hidden_rows` and catch-up replay for non-streaming paths. Do not delete
+these buffers merely because the normal fresh-request path streams.
+
+**Deferred provider/lifecycle migration:** verify streamed prefix restore and
+copy-on-write, every supported incremental-prefill/context transition, exact
+provider fingerprints, cancellation/failure cleanup and complete same-suite
+non-regression. Then remove `_prompt_hidden_rows` and
+`_catch_up_provider{,_batch}` from production selection, preserving a focused
+oracle where useful. Inventory all replay consumers before removing storage.
+
+The clearing gate must exercise `hipengine serve` with restored prefixes,
+incremental prefill, cancellation and provider cleanup and confirm streaming
+actually ran. Unit adapter routing alone does not close it. Keep explicit
+capability failures and strict replay semantics until consumers migrate. No
+runtime path or fallback is removed by this triage.
