@@ -968,32 +968,6 @@ multi-column engagement evidence, so it stays.
 
 
 
-## `prefix_reuse_k0` prompt-sink refusal (found 2026-09-18) — RESOLVED
-
-Capture and restore now supply provider state for usable prefix hits. The
-observations below describe the original refusal; the remaining label identifies
-a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
-
-- `hipengine/generation/qwen35_gguf_mtp2.py` `_open_prompt_streaming_sinks`
-  returns `None` as soon as any row in the group has `prefix_reused_tokens > 0`
-  (`mtp2_prompt_fallback_reason = "prefix_reuse_k0"`), so the provider never
-  receives the prompt's hidden rows and every decode cycle reports
-  `no_provider`: measured 127 events and 0 draft cycles on hit rows against 126
-  of 128 tokens from speculation on the matching miss rows. It is a correct
-  refusal for the current target route (a reused prefix never ran the target in
-  this request, so there are no hidden rows to stream) and a dead end for MTP.
-- Remove it by supplying the provider's missing state instead of refusing: batch
-  the suffix (entry above), then capture the provider's recurrent state at each
-  256-aligned boundary during the catch-up it already performs and restore it on
-  a matching hit. Rebuilding the target's hidden rows for a reused prefix is the
-  rejected alternative, because it re-runs the target over the whole reused
-  prefix.
-- Capture (2026-09-19) and the restore (2026-09-20) are both in place, so the
-  `restored_checkpoint_suffix_unavailable_k0` reason and the runner-side
-  `prefill_activation_ready` / `prefill_needs_activation` shortcut that treated
-  every reused row as never priming a provider are gone. The `prefix_reuse_k0`
-  label now names only a hit row whose checkpoint is absent, stale, lacks its
-  boundary row, or cannot be restored.
 ## Reused-suffix prefill has two routes and only one is slow (found 2026-09-18)
 
 - The greedy cumulative lanes prefill a reused row's suffix through
