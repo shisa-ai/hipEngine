@@ -3544,21 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Provider Prefix Checkpoint Rollback
-
-`HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` defaults to four bounded provider
-snapshots when radix caching is enabled, and allocates none with prefix caching
-off. Zero is an explicit memory/bisection rollback. A target prefix hit alone
-cannot reconstruct the draft provider's recurrent state and KV; capture and
-restore must travel together.
-
-Keep the rollback until provider snapshots share the target cache's byte budget
-and eviction lifecycle. Then remove the independent entry-count control while
-retaining the bounded cache policy. Validate the composed user path with
-`scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: it requires
-real prefix hits, compact INT8, speculative cycles and parity with the same
-prefix-reusing AR route. A cache miss or an AR-only response is not a pass.
-
 ## Startup scratch probe warms the packed route only when N sessions fit (open 2026-09-21)
 
 The startup scratch probe acquires one resident session per probe slot, and each of
@@ -9823,3 +9808,24 @@ Do not broaden the raw verifier's sampling constants: sampled acceptance belongs
 to the staged adapter. Validate blocking and streaming public requests, sampled
 and greedy requests, cancellation, and non-staged fallback before removing the
 raw implementation or its guards. No new sampling or GPU result is claimed here.
+
+### R0509 — Choose shared target/provider checkpoint memory accounting
+
+`HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` defaults to four bounded provider
+snapshots with prefix caching enabled and none with caching off; zero is the
+memory/bisection rollback. `PrefixCheckpointStore` owns release callbacks and
+entry-count LRU eviction. Target `_evict_prefix_snapshot` already calls
+`discard_prefix_checkpoint`, so target snapshot eviction does invalidate its
+provider checkpoint. Token-prefix and block-id checks protect restore identity.
+
+**Deferred budget decision:** define how provider recurrent-state/KV snapshot
+bytes count against the target cache budget, including shared allocations,
+replacement, failed capture and pressure-driven eviction. Then replace the
+independent entry-count control with bounded shared accounting. Do not remove
+the bound before that owner exists, or remove capture without restore.
+
+Keep the rollback until shared accounting and coordinated eviction are tested.
+Run `scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: require real
+prefix hits, compact INT8, speculative cycles and parity with the same
+prefix-reusing AR route. A cache miss or AR-only response is not a pass. Include
+budget pressure, overwrite, target eviction and shutdown release tests.

@@ -13782,8 +13782,8 @@
       "start_line": 12112,
       "end_line": 12126,
       "sha256": "4eb793b726dde2b298bd7ffa6cb06318d00ef1a8978368f6802b43a9c216361c",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Target snapshot eviction already invalidates provider checkpoints. Deferred shared byte accounting/pressure policy while preserving entry bound, rollback and public prefix gate. worklog/entries/20261030T053120.997595Z-cleanup-cleanup-r0509-ac7268.md."],
       "subitems": []
     },
     {
