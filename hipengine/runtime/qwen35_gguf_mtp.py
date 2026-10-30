@@ -2737,6 +2737,7 @@ class Qwen35GGUFMTPDecodeSession:
             transform_hidden_rows = _transform
         sink: _StreamingNextNPromptSink | None = None
         completed = False
+        operational_error: BaseException | None = None
         try:
             sink = _StreamingNextNPromptSink(
                 request_id=int(request_id),
@@ -2756,18 +2757,55 @@ class Qwen35GGUFMTPDecodeSession:
             )
             completed = True
             return result
+        except BaseException as error:
+            operational_error = error
+            raise
         finally:
+            # Attempt every owned release. An operational prefill or
+            # cancellation error stays primary; cleanup failures ride along as
+            # notes. With no operational error, the first cleanup failure
+            # propagates and later ones become notes on it.
+            cleanup_errors: list[BaseException] = []
             finish_prompt_priming = getattr(executor, "finish_prompt_priming", None)
             if callable(finish_prompt_priming):
-                finish_prompt_priming(
-                    int(request_id),
-                    stream=0,
-                    synchronize=not completed,
-                )
+                try:
+                    finish_prompt_priming(
+                        int(request_id),
+                        stream=0,
+                        synchronize=not completed,
+                    )
+                except BaseException as error:  # noqa: BLE001 - release every owner
+                    error.add_note(
+                        "GGUF MTP prompt priming cleanup: finish_prompt_priming"
+                    )
+                    cleanup_errors.append(error)
             if sink is not None:
-                sink.close()
+                try:
+                    sink.close()
+                except BaseException as error:  # noqa: BLE001 - release every owner
+                    error.add_note("GGUF MTP prompt priming cleanup: sink.close")
+                    cleanup_errors.append(error)
             if transformed_rows is not None:
-                free(transformed_rows, runtime=self.target.runtime)
+                try:
+                    free(transformed_rows, runtime=self.target.runtime)
+                except BaseException as error:  # noqa: BLE001 - release every owner
+                    error.add_note(
+                        "GGUF MTP prompt priming cleanup: transformed rows"
+                    )
+                    cleanup_errors.append(error)
+            if cleanup_errors:
+                if operational_error is not None:
+                    for error in cleanup_errors:
+                        operational_error.add_note(
+                            f"GGUF MTP prompt priming cleanup: {error!r}"
+                        )
+                else:
+                    primary = cleanup_errors[0]
+                    for error in cleanup_errors[1:]:
+                        primary.add_note(
+                            f"GGUF MTP prompt priming cleanup: {error!r}"
+                        )
+                    raise primary
 
     def _register_kv_policy(self, request_id: int) -> FixedPagedKVPolicy:
         owner = self.target._target_scratch_owner

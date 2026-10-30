@@ -2848,27 +2848,6 @@ timing-adaptive default needs its own declared policy and comparison against fix
 extraction does not change or promote one. Keep the named diagnostic controls until their owner is
 decided.
 
-### R0389 — Standalone draft-hidden diagnostic ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
-
-Scope: `Qwen35GGUFMTPDecodeSession`, `scripts/qwen36_dense_gguf_suite.py --draft-hidden-variant`; `tests/test_unit_qwen35_gguf_mtp_session.py`; `tests/test_unit_qwen35_gguf_hidden_seed_contract.py`; `tests/test_unit_qwen35_gguf_mtp2_seam.py`.
-
-**Decision needed:** retain this supported diagnostic constructor/CLI interface or migrate the
-post-norm transform into a benchmark-owned adapter. No second model campaign is required to run an
-explicit implemented convention. Do not remove the manifest or let an explicit post-norm request
-silently use pre-norm. A public model/provider convention must bind its actual hidden contract, not
-select from prompt text or observed acceptance.
-
-Done when: migrate constructor, manifest/result metadata, prompt chunk transform, proposal
-normalization, stream retirement and owned-buffer cleanup together. Keep the target journal's
-commit/rollback tap unchanged. Run `tests/test_unit_qwen35_gguf_mtp_session.py`,
-`tests/test_unit_qwen35_gguf_hidden_seed_contract.py`, `tests/test_unit_qwen35_gguf_mtp2_seam.py`
-and `tests/test_unit_qwen36_dense_gguf_suite.py`; exercise both explicit taps in the dense suite,
-prompt chunks on both sides of the chunk bound and unrelated lengths, first/following proposals,
-repeat/reset, failed priming, cancellation and teardown. Verify the public fixed contract
-separately.
-
 ### R0393-Q6 — Grouped-Q6 rollback interface and gfx1100 public engagement
 
 Owner: `hipengine/generation/qwen35_dense_gfx1100_profiles.py`.

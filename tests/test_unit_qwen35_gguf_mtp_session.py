@@ -1657,3 +1657,629 @@ def test_sink_records_a_boundary_that_no_chunk_ends_on(monkeypatch) -> None:
 
     assert captures == []
     assert sink._capture_missed is True
+
+
+class _PrimingOracle:
+    """Byte-backed target/draft stream oracle for decoder priming tests."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.hidden_size = 4
+        self.hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        self.source_base = 0x5000
+        self.output_norm_ptr = 0x3000
+        self.memory: dict[int, bytes] = {}
+        self.allocations: list[tuple[int, int]] = []
+        self.freed: list[int] = []
+        self.queue: list = []
+        self.normalize_calls: list[tuple[int, int, int, int, int, int]] = []
+        self.consumed: list[tuple[int, int, bytes]] = []
+        self.finish_calls: list[tuple[int, int, bool]] = []
+        self.prefill_calls: list[tuple[tuple[int, ...], object]] = []
+        self.syncs: list[str] = []
+        self._next_ptr = 0x1000
+        self.runtime = _PrimingRuntime(self)
+        monkeypatch.setattr(mtp_module, "malloc", self._malloc)
+        monkeypatch.setattr(mtp_module, "free", self._free)
+        monkeypatch.setattr(
+            mtp_module,
+            "gguf_rmsnorm_bf16_f32_weight",
+            self._normalize,
+        )
+
+    def _malloc(self, nbytes: int, *, runtime) -> DeviceBuffer:
+        ptr = self._next_ptr
+        self._next_ptr += 0x100
+        self.allocations.append((ptr, int(nbytes)))
+        return DeviceBuffer(ptr, int(nbytes))
+
+    def _free(self, buffer: DeviceBuffer, *, runtime) -> None:
+        # Model a synchronous device free: all queued stream work retires first.
+        self.drain()
+        self.freed.append(int(buffer.ptr))
+
+    def write(self, ptr: int, data: bytes) -> None:
+        self.memory[int(ptr)] = bytes(data)
+
+    def read(self, ptr: int, nbytes: int) -> bytes:
+        return self.memory.get(int(ptr), b"\x00" * int(nbytes))[: int(nbytes)]
+
+    def _normalize(self, src, weight, dst, **kwargs) -> None:
+        rows = int(kwargs["rows"])
+        hidden_size = int(kwargs["hidden_size"])
+        stream = int(kwargs["stream"])
+        self.normalize_calls.append(
+            (
+                int(src),
+                int(weight),
+                int(dst),
+                rows,
+                hidden_size,
+                stream,
+            )
+        )
+
+        def _run() -> None:
+            for row in range(rows):
+                source = self.read(
+                    int(src) + row * self.hidden_nbytes,
+                    self.hidden_nbytes,
+                )
+                self.write(
+                    int(dst) + row * self.hidden_nbytes,
+                    bytes((value + 100) % 256 for value in source),
+                )
+
+        self.queue.append(_run)
+
+    def drain(self) -> None:
+        while self.queue:
+            self.queue.pop(0)()
+
+    def source_row(self, row: int) -> bytes:
+        return bytes((row * 17 + index) % 251 for index in range(self.hidden_nbytes))
+
+    def seed_source(self, prompt_length: int) -> None:
+        for row in range(prompt_length):
+            self.write(
+                self.source_base + row * self.hidden_nbytes,
+                self.source_row(row),
+            )
+
+
+def _source_row_bytes(row: int, nbytes: int) -> bytes:
+    return bytes((row * 17 + index) % 251 for index in range(nbytes))
+
+
+class _PrimingRuntime:
+    def __init__(self, oracle: _PrimingOracle) -> None:
+        self.oracle = oracle
+
+    def memset(self, ptr, value, nbytes) -> None:
+        self.oracle.write(ptr, bytes([int(value)]) * int(nbytes))
+
+    def memcpy(self, dst, src, nbytes, kind) -> None:
+        self.oracle.write(dst, self.oracle.read(src, int(nbytes)))
+
+    def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+        def _run() -> None:
+            self.oracle.write(dst, self.oracle.read(src, int(nbytes)))
+
+        self.oracle.queue.append(_run)
+
+    def device_synchronize(self) -> None:
+        self.oracle.syncs.append("device")
+
+    def stream_synchronize(self, stream) -> None:
+        self.oracle.syncs.append(f"stream:{int(stream)}")
+
+
+class _PrimingExecutor:
+    def __init__(self, oracle: _PrimingOracle) -> None:
+        self.oracle = oracle
+
+    def enqueue_prompt_rows(self, request_id, token_ids, **kwargs) -> None:
+        ptr = int(kwargs["target_hidden_base_ptr"])
+        stride = int(kwargs["hidden_stride_bytes"])
+        position = int(kwargs["position_start"])
+        tokens = tuple(int(token) for token in token_ids)
+
+        def _run() -> None:
+            for index, token in enumerate(tokens):
+                self.oracle.consumed.append(
+                    (
+                        position + index,
+                        token,
+                        self.oracle.read(
+                            ptr + index * stride,
+                            self.oracle.hidden_nbytes,
+                        ),
+                    )
+                )
+
+        self.oracle.queue.append(_run)
+
+    def finish_prompt_priming(self, request_id, *, stream, synchronize) -> None:
+        self.oracle.finish_calls.append(
+            (int(request_id), int(stream), bool(synchronize))
+        )
+
+
+class _PrimingTarget:
+    def __init__(self, oracle: _PrimingOracle, *, fail_after_chunks=None) -> None:
+        self.oracle = oracle
+        self.fail_after_chunks = fail_after_chunks
+        self.runner = SimpleNamespace(
+            hidden_size=oracle.hidden_size,
+            weights=SimpleNamespace(
+                root=lambda name: SimpleNamespace(
+                    allocation=lambda: SimpleNamespace(
+                        tensor=SimpleNamespace(ptr=oracle.output_norm_ptr)
+                    )
+                ),
+                config=SimpleNamespace(
+                    ssm_conv_kernel=4,
+                    rms_norm_eps=1.0e-6,
+                ),
+            ),
+        )
+        self.runtime = oracle.runtime
+        self._prefill_hidden_a = DeviceBuffer(
+            0x8000,
+            4 * oracle.hidden_nbytes,
+        )
+
+    def prefill(self, prompt, **kwargs):
+        self.oracle.prefill_calls.append((tuple(prompt), kwargs["use_bulk"]))
+        sink = kwargs["target_hidden_chunk_sink"]
+        self.oracle.seed_source(len(prompt))
+        bulk = kwargs["use_bulk"] is True or (
+            kwargs["use_bulk"] is None and len(prompt) >= 4
+        )
+        chunk_rows = 4 if bulk else 1
+        for chunk_index, start in enumerate(range(0, len(prompt), chunk_rows)):
+            if (
+                self.fail_after_chunks is not None
+                and chunk_index >= self.fail_after_chunks
+            ):
+                raise RuntimeError("injected target failure")
+            count = min(chunk_rows, len(prompt) - start)
+            sink.consume(
+                request_id=kwargs["target_hidden_request_id"],
+                chunk_start=start,
+                hidden_ptr=self.oracle.source_base
+                + start * self.oracle.hidden_nbytes,
+                rows=count,
+                stream=3,
+            )
+        sink.finish(
+            request_id=kwargs["target_hidden_request_id"],
+            total_rows=len(prompt),
+            stream=3,
+        )
+        return SimpleNamespace(token_id=91)
+
+
+def _new_priming_decoder(
+    oracle: _PrimingOracle,
+    *,
+    variant: str,
+    target: _PrimingTarget | None = None,
+) -> Qwen35GGUFMTPDecodeSession:
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = target or _PrimingTarget(oracle)
+    decoder.draft_provider = SimpleNamespace(executor=_PrimingExecutor(oracle))
+    decoder.draft_hidden_policy = mtp_module.Qwen35GGUFDraftHiddenPolicy(
+        target_hidden_variant=variant
+    )
+    return decoder
+
+
+@pytest.mark.parametrize("variant", ["pre_output_norm", "post_output_norm"])
+@pytest.mark.parametrize("prompt_length", [3, 5, 7, 8, 9])
+def test_decoder_prefill_hidden_convention_across_chunk_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+    prompt_length: int,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    prompt = tuple(range(11, 11 + prompt_length))
+    decoder = _new_priming_decoder(oracle, variant=variant)
+
+    result = decoder._prefill_target_and_draft(
+        prompt,
+        request_id=7,
+        use_bulk=None,
+    )
+
+    assert result.token_id == 91
+    assert oracle.prefill_calls == [(prompt, None)]
+    assert oracle.finish_calls == [(7, 0, False)]
+    chunk_rows = 4 if prompt_length >= 4 else 1
+    chunks = [
+        (start, min(chunk_rows, prompt_length - start))
+        for start in range(0, prompt_length, chunk_rows)
+    ]
+
+    pending_ptr = oracle.allocations[-1][0]
+    if variant == "post_output_norm":
+        transform_ptr = oracle.allocations[0][0]
+        assert oracle.normalize_calls == [
+            (
+                oracle.source_base + start * oracle.hidden_nbytes,
+                oracle.output_norm_ptr,
+                transform_ptr,
+                count,
+                oracle.hidden_size,
+                3,
+            )
+            for start, count in chunks
+        ]
+        assert oracle.freed == [pending_ptr, transform_ptr]
+    else:
+        assert oracle.normalize_calls == []
+        assert oracle.freed == [pending_ptr]
+
+    zero = b"\x00" * oracle.hidden_nbytes
+    expected_rows = []
+    for index, token in enumerate(prompt):
+        if index == 0:
+            hidden = zero
+        else:
+            source = _source_row_bytes(index - 1, oracle.hidden_nbytes)
+            hidden = (
+                bytes((value + 100) % 256 for value in source)
+                if variant == "post_output_norm"
+                else source
+            )
+        expected_rows.append((index, token, hidden))
+    assert oracle.consumed == expected_rows
+
+
+def test_post_output_norm_prefill_failure_releases_transform_and_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    target = _PrimingTarget(oracle, fail_after_chunks=1)
+    decoder = _new_priming_decoder(
+        oracle,
+        variant="post_output_norm",
+        target=target,
+    )
+
+    with pytest.raises(RuntimeError, match="injected target failure"):
+        decoder._prefill_target_and_draft(
+            tuple(range(11, 19)),
+            request_id=7,
+            use_bulk=True,
+        )
+
+    transform_ptr, pending_ptr = (ptr for ptr, _ in oracle.allocations)
+    assert oracle.finish_calls == [(7, 0, True)]
+    assert oracle.normalize_calls == [
+        (
+            oracle.source_base,
+            oracle.output_norm_ptr,
+            transform_ptr,
+            4,
+            oracle.hidden_size,
+            3,
+        )
+    ]
+    assert oracle.freed == [pending_ptr, transform_ptr]
+
+
+def test_post_output_norm_prefill_cancellation_retires_stream_and_buffers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    decoder = _new_priming_decoder(oracle, variant="post_output_norm")
+    checkpoints = 0
+
+    def checkpoint() -> None:
+        nonlocal checkpoints
+        checkpoints += 1
+        if checkpoints == 2:
+            raise GenerationCancelled()
+
+    with pytest.raises(GenerationCancelled):
+        decoder._prefill_target_and_draft(
+            tuple(range(11, 19)),
+            request_id=7,
+            use_bulk=True,
+            checkpoint=checkpoint,
+        )
+
+    transform_ptr, pending_ptr = (ptr for ptr, _ in oracle.allocations)
+    assert oracle.finish_calls == [(7, 0, True)]
+    assert oracle.normalize_calls == [
+        (
+            oracle.source_base,
+            oracle.output_norm_ptr,
+            transform_ptr,
+            4,
+            oracle.hidden_size,
+            3,
+        )
+    ]
+    assert oracle.freed == [pending_ptr, transform_ptr]
+
+
+def test_post_output_norm_prefill_finish_failure_on_success_cleans_and_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    decoder = _new_priming_decoder(oracle, variant="post_output_norm")
+    finish_calls: list[tuple[int, int, bool]] = []
+
+    def fail_finish(request_id, *, stream, synchronize) -> None:
+        finish_calls.append((int(request_id), int(stream), bool(synchronize)))
+        raise RuntimeError("injected finish failure")
+
+    decoder.draft_provider.executor.finish_prompt_priming = fail_finish
+
+    with pytest.raises(RuntimeError, match="injected finish failure"):
+        decoder._prefill_target_and_draft(
+            tuple(range(11, 19)),
+            request_id=7,
+            use_bulk=True,
+        )
+
+    transform_ptr, pending_ptr = (ptr for ptr, _ in oracle.allocations)
+    assert finish_calls == [(7, 0, False)]
+    assert oracle.normalize_calls == [
+        (
+            oracle.source_base + start * oracle.hidden_nbytes,
+            oracle.output_norm_ptr,
+            transform_ptr,
+            4,
+            oracle.hidden_size,
+            3,
+        )
+        for start in (0, 4)
+    ]
+    assert oracle.freed == [pending_ptr, transform_ptr]
+    assert len(oracle.consumed) == 8
+
+
+def test_post_output_norm_prefill_finish_failure_does_not_mask_operational_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    target = _PrimingTarget(oracle, fail_after_chunks=1)
+    decoder = _new_priming_decoder(
+        oracle,
+        variant="post_output_norm",
+        target=target,
+    )
+    finish_calls: list[tuple[int, int, bool]] = []
+
+    def fail_finish(request_id, *, stream, synchronize) -> None:
+        finish_calls.append((int(request_id), int(stream), bool(synchronize)))
+        raise RuntimeError("injected finish failure")
+
+    decoder.draft_provider.executor.finish_prompt_priming = fail_finish
+
+    with pytest.raises(RuntimeError) as excinfo:
+        decoder._prefill_target_and_draft(
+            tuple(range(11, 19)),
+            request_id=7,
+            use_bulk=True,
+        )
+
+    transform_ptr, pending_ptr = (ptr for ptr, _ in oracle.allocations)
+    assert "injected target failure" in str(excinfo.value)
+    notes = "\n".join(getattr(excinfo.value, "__notes__", ()))
+    assert "injected finish failure" in notes
+    assert finish_calls == [(7, 0, True)]
+    assert oracle.freed == [pending_ptr, transform_ptr]
+
+
+def test_post_output_norm_prefill_sink_close_failure_still_frees_transform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    decoder = _new_priming_decoder(oracle, variant="post_output_norm")
+    close_attempts: list[int] = []
+
+    def fail_close(sink) -> None:
+        close_attempts.append(int(sink._pending_hidden.ptr))
+        raise RuntimeError("injected sink close failure")
+
+    monkeypatch.setattr(
+        mtp_module._StreamingNextNPromptSink,
+        "close",
+        fail_close,
+    )
+
+    with pytest.raises(RuntimeError, match="injected sink close failure"):
+        decoder._prefill_target_and_draft(
+            tuple(range(11, 19)),
+            request_id=7,
+            use_bulk=True,
+        )
+
+    transform_ptr, pending_ptr = (ptr for ptr, _ in oracle.allocations)
+    assert close_attempts == [pending_ptr]
+    assert oracle.freed == [transform_ptr]
+
+
+def test_post_output_norm_prefill_sink_close_failure_does_not_mask_operational_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    target = _PrimingTarget(oracle, fail_after_chunks=1)
+    decoder = _new_priming_decoder(
+        oracle,
+        variant="post_output_norm",
+        target=target,
+    )
+    close_attempts: list[int] = []
+
+    def fail_close(sink) -> None:
+        close_attempts.append(int(sink._pending_hidden.ptr))
+        raise RuntimeError("injected sink close failure")
+
+    monkeypatch.setattr(
+        mtp_module._StreamingNextNPromptSink,
+        "close",
+        fail_close,
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        decoder._prefill_target_and_draft(
+            tuple(range(11, 19)),
+            request_id=7,
+            use_bulk=True,
+        )
+
+    transform_ptr, pending_ptr = (ptr for ptr, _ in oracle.allocations)
+    assert "injected target failure" in str(excinfo.value)
+    notes = "\n".join(getattr(excinfo.value, "__notes__", ()))
+    assert "injected sink close failure" in notes
+    assert close_attempts == [pending_ptr]
+    assert oracle.freed == [transform_ptr]
+
+
+def test_post_output_norm_proposal_repeat_and_commit_tap(monkeypatch) -> None:
+    calls: list[tuple[int, int, int, int, int]] = []
+    syncs: list[str] = []
+    first_hidden = Tensor.from_handle(0x1000, (1, 4), DType.BF16, Device("hip", 0))
+    second_hidden = Tensor.from_handle(0x1100, (1, 4), DType.BF16, Device("hip", 0))
+    output_norm = SimpleNamespace(
+        allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000))
+    )
+    target = SimpleNamespace(
+        last_target_hidden=first_hidden,
+        runner=SimpleNamespace(
+            hidden_size=4,
+            weights=SimpleNamespace(
+                root=lambda name: output_norm,
+                config=SimpleNamespace(rms_norm_eps=1.0e-6),
+            ),
+        ),
+        runtime=SimpleNamespace(device_synchronize=lambda: syncs.append("sync")),
+    )
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = target
+    decoder.draft_hidden_policy = mtp_module.Qwen35GGUFDraftHiddenPolicy(
+        target_hidden_variant="post_output_norm"
+    )
+    decoder._draft_post_norm_hidden = DeviceBuffer(0x3000, 8)
+    monkeypatch.setattr(
+        mtp_module,
+        "gguf_rmsnorm_bf16_f32_weight",
+        lambda src, weight, dst, **kwargs: calls.append(
+            (
+                int(src),
+                int(weight),
+                int(dst),
+                int(kwargs["rows"]),
+                int(kwargs["hidden_size"]),
+            )
+        ),
+    )
+
+    first = decoder._proposal_target_hidden()
+    target.last_target_hidden = second_hidden
+    second = decoder._proposal_target_hidden()
+
+    assert first.ptr == second.ptr == 0x3000
+    assert target.last_target_hidden is second_hidden
+    assert calls == [
+        (0x1000, 0x2000, 0x3000, 1, 4),
+        (0x1100, 0x2000, 0x3000, 1, 4),
+    ]
+    assert syncs == ["sync", "sync"]
+    assert decoder.draft_hidden_manifest["target_commit_hidden"] == "pre_output_norm"
+
+    decoder.draft_hidden_policy = mtp_module.Qwen35GGUFDraftHiddenPolicy()
+    strict = decoder._proposal_target_hidden()
+
+    assert strict.ptr == 0x1100
+    assert target.last_target_hidden is second_hidden
+    assert calls == [
+        (0x1000, 0x2000, 0x3000, 1, 4),
+        (0x1100, 0x2000, 0x3000, 1, 4),
+    ]
+    assert decoder.draft_hidden_manifest["target_commit_hidden"] == "pre_output_norm"
+
+
+def test_post_output_norm_prefill_repeat_keeps_owned_row_and_frees_temporaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oracle = _PrimingOracle(monkeypatch)
+    decoder = _new_priming_decoder(oracle, variant="post_output_norm")
+    decoder._draft_post_norm_hidden = DeviceBuffer(0x9000, 8)
+    decoder.owns_verifier = False
+    decoder.verifier = SimpleNamespace(close=lambda: None)
+
+    assert decoder._prefill_target_and_draft(
+        tuple(range(11, 19)),
+        request_id=7,
+        use_bulk=True,
+    ).token_id == 91
+    assert decoder._prefill_target_and_draft(
+        tuple(range(21, 24)),
+        request_id=8,
+        use_bulk=None,
+    ).token_id == 91
+
+    assert decoder._draft_post_norm_hidden.ptr == 0x9000
+    assert 0x9000 not in oracle.freed
+    assert len(oracle.allocations) == 4
+    assert sorted(oracle.freed) == sorted(ptr for ptr, _ in oracle.allocations)
+
+    decoder.close()
+    assert oracle.freed[-1] == 0x9000
+
+
+def test_post_output_norm_constructor_allocates_and_releases_owned_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    allocations: list[tuple[int, object]] = []
+    freed: list[int] = []
+
+    def _malloc(nbytes: int, *, runtime) -> DeviceBuffer:
+        allocations.append((int(nbytes), runtime))
+        return DeviceBuffer(0x3000, int(nbytes))
+
+    monkeypatch.setattr(mtp_module, "malloc", _malloc)
+    monkeypatch.setattr(
+        mtp_module,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+    target = SimpleNamespace(
+        runner=SimpleNamespace(hidden_size=4),
+        runtime=object(),
+    )
+    verifier = SimpleNamespace(close=lambda: None)
+
+    decoder = Qwen35GGUFMTPDecodeSession(
+        target,
+        object(),
+        verifier=verifier,
+        owns_verifier=False,
+        draft_hidden_variant="post_output_norm",
+    )
+
+    assert allocations == [(8, target.runtime)]
+    assert decoder._draft_post_norm_hidden is not None
+    assert decoder._draft_post_norm_hidden.ptr == 0x3000
+    assert decoder.draft_hidden_manifest["prompt_target_hidden"] == "post_output_norm"
+    assert decoder.draft_hidden_manifest["target_commit_hidden"] == "pre_output_norm"
+
+    decoder.close()
+    assert freed == [0x3000]
+
+    strict = Qwen35GGUFMTPDecodeSession(
+        target,
+        object(),
+        verifier=verifier,
+        owns_verifier=False,
+    )
+
+    assert strict._draft_post_norm_hidden is None
+    assert strict.draft_hidden_manifest["prompt_target_hidden"] == "pre_output_norm"
+    strict.close()
+    assert freed == [0x3000]

@@ -196,6 +196,17 @@ internal call passes through a compatibility method.
 
 ## Diagnostics and timing
 
+`Qwen35GGUFMTPDecodeSession(draft_hidden_variant=...)` and
+`scripts/qwen36_dense_gguf_suite.py --draft-hidden-variant` support explicit
+`pre_output_norm` and `post_output_norm` diagnostic conventions. The immutable
+manifest names the prompt and proposal taps; post-norm transforms use owned,
+bounded buffers and never change the target journal's pre-output-norm commit tap.
+Prompt cleanup attempts stream retirement, sink release and transform release
+independently. An operational error stays primary, with cleanup failures attached
+as notes; without an operational error, the first cleanup error propagates.
+This standalone choice does not change the public serving adapter's normalized
+prompt contract.
+
 `qwen35_gguf_capture.py` owns diagnostic snapshots, their summary dictionaries and
 host readback over explicit configuration, dimensions, pointers, scratch and copy
 operations. It does not import the runner, launch kernels or mutate a session.
