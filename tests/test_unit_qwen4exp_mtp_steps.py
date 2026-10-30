@@ -679,8 +679,9 @@ def test_scheduler_depth_is_validated_before_model_mutation(budget):
     assert draft.propose_calls == target.runner.step_calls == 0
 
 
-def test_iter_generate_batched_verify_commits_the_bonus_row(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY", "1")
+@pytest.mark.parametrize("legacy", ["0", "false", "1"])
+def test_iter_generate_batched_verify_commits_the_bonus_row(monkeypatch, legacy) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY", legacy)
     runner = _BatchedTargetRunner(truth=(10, 11, 12, 13, 14))
     draft = _DraftRunner(proposals=((11, 12), (14, 15)))
     provider, _target, _draft = _provider(runner=runner, draft=draft)

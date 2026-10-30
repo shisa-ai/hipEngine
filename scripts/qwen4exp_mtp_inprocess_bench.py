@@ -274,7 +274,6 @@ def main(argv=None) -> int:
             "repetitions": args.repetitions, "pair_order": "alternate by case index plus repetition",
             "warmup": "unmeasured complete AR/MTP pairs per prompt; excluded from rows",
             "timing_scope": "whole-request wall including target prefill and MTP prompt catch-up",
-            "batched_verify_env": os.environ.get("HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY"),
         },
         "rows": rows, "summary": summary,
     }

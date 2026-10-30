@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-import os
 from pathlib import Path
 import time
 from typing import Any, Generator
@@ -355,13 +354,9 @@ class Qwen4ExpMTPTextProvider:
             token_logprobs=tuple(token_logprobs),
         )
 
-        # One prefill-shaped verify pass per cycle, committing the accepted
-        # rows' states (no replay); otherwise serial target steps.
-        batched_verify = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY", "1"
-        ) not in {"", "0", "false", "False"} and hasattr(
-            target_runner, "verify_target_block_state_rows"
-        )
+        # One prefill-shaped verify pass per cycle when supported; serial
+        # steps remain necessary for external runners and single-token tails.
+        batched_verify = hasattr(target_runner, "verify_target_block_state_rows")
         while finish is None:
             step_start = len(generated)
             raise_if_generation_deadline_expired(request)

@@ -13164,8 +13164,8 @@
       "start_line": 11057,
       "end_line": 11065,
       "sha256": "ed10db92ca647224a691d4045fc2e2f674bfaa7e981c869f8fbd53767aa680bd",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Retired MTP batched verification rollback; preserved serial capability fallback and single-token tails. RED2 GREEN46; public bg885 confirms batched state rows with stale key0; CPU886 and docs/audit pass. worklog/entries/20261030T015445.646838Z-cleanup-cleanup-r0467-2a1d03.md."],
       "subitems": []
     },
     {

@@ -3522,12 +3522,11 @@ change, not a prerequisite for retiring the switch.
 
 ## Qwen4Exp MTP batched verify (`HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY`)
 
-Default on in the Qwen4Exp MTP provider (itself opt-in). A cycle verifies
-`[root, c1 .. c(n-1)]` in one prefill-shaped pass that keeps each row's GDN
-and conv state (`verify_target_block_state_rows`), then
-`commit_target_block_rows` keeps the accepted rows without a replay. `=0`
-restores serial target steps. Remove the serial verify path once the
-batched path is the gated production MTP route.
+Resolved: the environment rollback is removed. Runners implementing
+`verify_target_block_state_rows` use batched verification and commit accepted
+state rows without replay. Serial verification remains functional for a
+single-token tail and external runners without that interface; it is not dead
+code and must not be removed with the switch.
 
 ## Eight-column pack8 kernel behind the row-tile launcher (`HIPENGINE_GGUF_K_PACK8_ROWS`)
 

@@ -737,7 +737,7 @@ use.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
-| `HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY` | `1` | MTP verifies a candidate chain in one prefill-shaped target pass; `0` steps the target serially per candidate (rollback/bisection). |
+| `HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY` | retired; ignored | MTP uses batched target verification when the runner implements it. Single-token tails and external runners without that interface use serial steps. |
 | `HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL` | retired | No longer read. Text MTP proposals return token IDs through device-resident chaining, as mixed serving already does. The runner's explicit full-output interface remains available for diagnostics. |
 | `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` | `1` | Runner reset clears only the K/V a request wrote; `0` restores the full-capacity clear. |
 | `HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY` | `0` | `1` measures the pre-promotion fixed-256 full-attention context route against the promoted one (A/B only). |
