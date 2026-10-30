@@ -4903,7 +4903,8 @@
         {
           "line": 4164,
           "text": "| Rejected MTP/llama-compat flag zoo | Multiple Q6 top-1 shapes, shared-Q8, selected X8/raw gate-up, fused rotate, accept-position, and overlap routes are explicitly rejected but still runtime-selectable. | After the final named llama-compat transaction policy is chosen, retain one named compat composition plus the strict control; remove loose env/CLI combinations and demote useful leaf oracles to tests. Do not remove an option still consumed by that named composition before the decision. |",
-          "status": "pending"
+          "status": "reconciled-r0281-owners",
+          "evidence": ["Prior selector/alias removals reconciled; live layout and verifier decisions remain in R0281-DRAFT-X8, R0281-SELECTED-X8 and R0281-TARGET-POLICY. 643 tests and docs/audit passed. worklog/entries/20261030T075419.074178Z-cleanup-cleanup-r0187-compat-6e7e6b.md."]
         },
         {
           "line": 4165,
