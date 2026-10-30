@@ -4202,13 +4202,13 @@ Scope: `hipengine/server/multimodal.py`, `hipengine/server/tool_stream.py`,
 
 **Remaining boundary design:** define explicit application-state dependencies for routers, model
 lifecycle, metrics and stream translation, then extract cohesive units so `create_app()` composes
-them. Request schemas have the independent `hipengine/server/schemas.py` owner; importing them
-does not load the application. Pure JSON Schema subset/value validation lives in
-`hipengine/server/json_schema.py`; error translation and result handling stay in the application.
-Preserve transport backpressure and queue admission while keeping
-device scheduling, request state and commit ownership in the generation engine. Separate remaining
-tool/structured request and result handling and SSE accounting without changing public errors or
-response shapes.
+them. Preserve transport backpressure and queue admission while keeping device scheduling,
+request state and commit ownership in the generation engine. Separate remaining tool/structured
+request and result handling and SSE accounting without changing public errors or response shapes.
+Migrate application call sites, tests and scripts from the parser compatibility exports in
+`api.py` to `chat_output.py`, then remove the compatibility import block once no consumer
+imports those names through the application. Keep model-protocol adaptation at its engine seam;
+do not pull engine or HTTP state into the pure parser owner.
 
 Done when: preserve public/import compatibility during move-only units; exercise HTTP
 ordinary/streamed requests, tool and structured responses, disconnect/cancel, queue saturation,

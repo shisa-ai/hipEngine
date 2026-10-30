@@ -434,7 +434,11 @@ exports; `server.api` keeps aliases to the same request-model classes.
 Pure JSON Schema subset and value validation lives in
 `hipengine/server/json_schema.py`, with only standard-library dependencies;
 `server.api` preserves its existing helper aliases. Request error translation,
-tool-result handling and stream accounting remain in HTTP composition.
+tool-result handling and stream accounting remain in HTTP composition. Pure
+reasoning-tag splitting, terminal-marker handling and legacy JSON/XML tool-output
+parsing live in `hipengine/server/chat_output.py`, with standard-library
+imports only. The application owns model-protocol adaptation, request errors
+and response shaping, and preserves its existing parser helper aliases.
 
 ### Layer Diagram
 
