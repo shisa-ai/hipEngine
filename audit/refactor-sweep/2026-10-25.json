@@ -4650,23 +4650,24 @@
       "start_line": 4025,
       "end_line": 4041,
       "sha256": "1bbb981106fe57d145567820960b4602d6ddc64a788e43a40f1ba92da071909d",
-      "status": "partial",
+      "status": "triaged-deferred-wide-q6-shape-decision",
       "evidence": ["Removed process-wide environment fallback that overrode disabled diagnostic scopes. Existing ContextVar, leaves and default-off candidate disposition preserved; no promotion. RED/GREEN nested/error restoration and full linear/numerics/MTP2 units, CPU fixtures/smoke and docs/audit pass. Final candidate disposition remains pending. Worklog: worklog/entries/20261027T150535.683495Z-cleanup-refactor-r0183-2620b0.md."],
       "subitems": [
         {
           "line": 4027,
           "text": "- `target_verifier_wide_q6_shared4_session()` and the temporary",
-          "status": "partial"
+          "status": "scope-repaired-candidate-deferred"
         },
         {
           "line": 4033,
           "text": "- Synchronization resolved the historical symbol collision: gfx1151 retains",
-          "status": "pending"
+          "status": "preserved-backend-symbol-contract"
         },
         {
           "line": 4037,
           "text": "- Remove the candidate context after complete C6/C8 strict-teacher,",
-          "status": "pending"
+          "status": "deferred-wide-q6-shape-decision",
+          "evidence": "Full gates and no-promotion artifacts preserved at bottom R0183; scope/docs/audit pass. worklog/entries/20261030T085428.295833Z-cleanup-cleanup-r0183-final-5b577a.md."
         }
       ]
     },

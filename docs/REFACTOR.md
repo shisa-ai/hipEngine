@@ -2208,28 +2208,6 @@ should be removed or collapsed.
 
 
 
-## 2026-09-01 W1 wide-Q6 shared-weight candidate context — open
-
-- `target_verifier_wide_q6_shared4_session()` exposes exact Q4 shared-b2w2
-  and standard/planar-Q6 shared-weight owners at physical R20/R24/R32 for W1.
-  The process-wide `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` fallback is retired;
-  nested disabled diagnostic scopes now remain disabled. The screened Q5 WMMA
-  addition is excluded after its complete target stage regressed 0.25%. The
-  context defaults off; current chunk/direct owners remain strict fallbacks,
-  and automatic C6/C8 stays K0.
-- The recorded no-promotion decisions are in
-  `benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-shared4-candidate.json`
-  and `benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q4-existing-candidate.json`.
-  Removing the environment fallback does not promote either candidate.
-- Synchronization resolved the historical symbol collision: gfx1151 retains
-  its measured two-wave/two-tile `shared4` ABI while gfx1100 uses a distinct
-  four-wave/three-tile `shared4_gfx1100` symbol. Do not collapse these
-  backend-qualified geometries into one global symbol.
-- Remove the candidate context after complete C6/C8 strict-teacher,
-  determinism/isolation/task, full-suite performance, and profiler gates either
-  promote or reject the shape policy. A promotion should leave one immutable
-  profile/capability selection plus registered strict fallbacks.
-
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
 - `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved
@@ -9880,3 +9858,28 @@ standalone evaluation must remain runnable before promotion.
 buffer ownership, failed-call cleanup and public transcription with the selected
 route before retiring host storage. No kernels, defaults or storage change in
 this triage; historical raw-block speed estimates are not renewed.
+
+### R0183 — Decide wide-Q6 shared-weight shape policy
+
+The process-wide `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` fallback was removed;
+`target_verifier_wide_q6_shared4_session()` now uses nested, restorable diagnostic
+scope. That repair is complete, not a promotion. The scope exposes Q4
+shared-b2w2 and standard/planar-Q6 shared-weight candidates at physical
+R20/R24/R32; chunk/direct strict owners remain available.
+
+**Deferred candidate decision:** complete the C6/C8 strict-teacher,
+determinism/isolation/task, full-suite performance and profiler gates before
+promoting or retiring the shape policy. Preserve the recorded no-promotion
+results in
+`benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-shared4-candidate.json`
+and `benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q4-existing-candidate.json`;
+the separately regressing Q5 addition is not included by this reconciliation.
+Candidate scope remains explicit; current automatic admission belongs to model
+capability declarations, not the old W1 automatic-K0 description.
+
+Preserve the distinct two-wave/two-tile gfx1151 `shared4` and
+four-wave/three-tile gfx1100 `shared4_gfx1100` symbols and ABIs. A future promotion
+must leave one immutable profile/capability selection and registered strict
+fallbacks; a rejection must remove only unconsumed candidate selection. Verify
+nested disabled scopes and exception restoration as well as public selected
+routes. No candidate, backend geometry or runtime default changes here.
