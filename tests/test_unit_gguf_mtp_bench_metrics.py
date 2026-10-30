@@ -1429,14 +1429,21 @@ def test_benchmark_preserves_explicit_silu_down_comparison(monkeypatch, option, 
     assert bench.os.environ.get(name) == ("1" if option == "--resident-mtp-draft-selected-silu-down-fused" else ambient)
 
 
-def test_benchmark_draft_runner_cache_key_separates_selected_silu_down(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    "option,control_env",
+    [
+        ("--resident-mtp-draft-selected-silu-down-fused", "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"),
+        ("--resident-mtp-draft-router-row-parallel", "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"),
+    ],
+)
+def test_benchmark_draft_runner_cache_key_separates_comparisons(monkeypatch, tmp_path, option, control_env):
     from hipengine.loading import gguf as gguf_module
     from hipengine.quant import gguf as quant_module
     from hipengine.runtime import qwen35_gguf_runner as runner_module
     from hipengine.speculative import mtp_resident_draft as draft_module
     from hipengine.tokenization import gguf as tokenizer_module
 
-    name = "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
+    name = control_env
     monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HIPENGINE_MTP_BENCH_CACHE_SESSION", "1")
     monkeypatch.setattr(bench, "_hip_available", lambda: True)
@@ -1548,7 +1555,7 @@ def test_benchmark_draft_runner_cache_key_separates_selected_silu_down(monkeypat
             "--root-topk-accept", "1",
         ]
         if fused:
-            argv.append("--resident-mtp-draft-selected-silu-down-fused")
+            argv.append(option)
         with pytest.raises(ReachedRunnerCache):
             bench.main(argv)
 

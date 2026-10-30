@@ -164,9 +164,16 @@ def test_selected_silu_down_comparison_keeps_device_owned_combine(monkeypatch, f
                            "draft_run_moe_combine_cast_inputs", "draft_run_moe_weighted_combine"]
 
 
+@pytest.mark.parametrize(
+    "control_env",
+    [
+        "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED",
+        "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL",
+    ],
+)
 @pytest.mark.parametrize("enabled", [False, True])
-def test_constructor_captures_selected_silu_down_comparison(monkeypatch, enabled):
-    name = "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
+def test_constructor_captures_explicit_comparison(monkeypatch, control_env, enabled):
+    name = control_env
     monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A", raising=False)
     monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES", raising=False)
     monkeypatch.delenv("HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A", raising=False)
@@ -198,11 +205,20 @@ def test_constructor_captures_selected_silu_down_comparison(monkeypatch, enabled
 
     runner.__post_init__()
 
-    assert runner._selected_silu_down_fused is enabled
+    captured = (
+        runner._selected_silu_down_fused
+        if control_env.endswith("SELECTED_SILU_DOWN_FUSED")
+        else runner._router_row_parallel_enabled
+    )
+    assert captured is enabled
     # The comparison is a construction choice; later environment changes do not
     # retarget an existing runner.
     monkeypatch.setenv(name, "0" if enabled else "1")
-    assert runner._selected_silu_down_fused is enabled
+    assert (
+        runner._selected_silu_down_fused
+        if control_env.endswith("SELECTED_SILU_DOWN_FUSED")
+        else runner._router_row_parallel_enabled
+    ) is enabled
 
 
 def test_constructor_has_no_retired_device_moe_selector():

@@ -209,6 +209,13 @@ host proposal chain; cache-history rows and attention debug report the visible
 draft context without changing acceptance or commit selection. These controls
 perform host readbacks and are not normal device-chain timing routes.
 
+The legacy router/shared-gate comparison remains explicit through
+`HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL` and its benchmark/profiler
+CLI options. The draft runner captures one choice for both projections at
+construction; benchmark runner caches separate the choices and profiler artifacts
+identify the branch. Both `qwen35_router_logits_f32_f32w` and generic
+`mtp_linear_f32` remain supported shared primitives.
+
 The legacy selected-SiLU/down comparison remains explicit through
 `HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED` and the benchmark/profiler
 CLI options. The draft runner captures it at construction and forwards it to the

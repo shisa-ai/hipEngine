@@ -117,11 +117,18 @@ def test_draft_profiler_preserves_explicit_silu_down_comparison(monkeypatch, ena
     assert os.environ.get(name) == ("1" if enabled else ambient)
 
 
+@pytest.mark.parametrize(
+    "field,option,control_env",
+    [
+        ("selected_silu_down_fused", "--selected-silu-down-fused", "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"),
+        ("router_row_parallel", "--router-row-parallel", "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL"),
+    ],
+)
 @pytest.mark.parametrize("enabled", [False, True])
-def test_draft_profiler_artifact_labels_selected_silu_down_honestly(
-    monkeypatch, tmp_path, enabled
+def test_draft_profiler_artifact_labels_comparisons_honestly(
+    monkeypatch, tmp_path, field, option, control_env, enabled
 ):
-    name = "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED"
+    name = control_env
     monkeypatch.delenv(name, raising=False)
     compiler_version_file = tmp_path / "hipcc.txt"
     compiler_version_file.write_text("hipcc\n", encoding="utf-8")
@@ -145,7 +152,7 @@ def test_draft_profiler_artifact_labels_selected_silu_down_honestly(
         q6_top1_dp4a=False,
         dense_q8_dp4a=False,
         dense_q8_dp4a_stages="",
-        selected_silu_down_fused=enabled,
+        selected_silu_down_fused=False,
         router_row_parallel=False,
         record_stage_timings=False,
         sync_stage_timings=False,
@@ -154,6 +161,7 @@ def test_draft_profiler_artifact_labels_selected_silu_down_honestly(
         out=output,
         top=1,
     )
+    setattr(args, field, enabled)
     monkeypatch.setattr(
         profiler, "_prepare_roctx_override", lambda sdk: tmp_path / "roctx"
     )
@@ -168,9 +176,7 @@ def test_draft_profiler_artifact_labels_selected_silu_down_honestly(
                 json.dumps(
                     {
                         "host_ms": ["1.0"],
-                        "selected_silu_down_fused": (
-                            "--selected-silu-down-fused" in command
-                        ),
+                        field: option in command,
                     }
                 ),
                 encoding="utf-8",
@@ -194,13 +200,13 @@ def test_draft_profiler_artifact_labels_selected_silu_down_honestly(
     assert profiler._run_parent(args) == 0
 
     artifact = json.loads(output.read_text(encoding="utf-8"))
-    assert artifact["selected_silu_down_fused"] is enabled
+    assert artifact[field] is enabled
     assert artifact["status"] == "diagnostic_retained"
     assert artifact["performance_claim"] is False
     assert "host/GPU split" in artifact["purpose"]
-    assert artifact["child"]["selected_silu_down_fused"] is enabled
+    assert artifact["child"][field] is enabled
     rocprof_command, = commands
-    assert ("--selected-silu-down-fused" in rocprof_command) is enabled
+    assert (option in rocprof_command) is enabled
 
 
 @pytest.mark.parametrize("retired", [None, "0", "false", "1", "true"])

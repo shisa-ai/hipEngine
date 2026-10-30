@@ -2214,24 +2214,6 @@ families. A changed GGUF isolation design must finish the recorded long-prompt p
 same-stream controls before replacing its default; timing claims need copy/queue-inclusive
 end-to-end evidence, not a clean short focus leg.
 
-### R0302 — Resident draft F32 router and shared-gate comparison ownership
-
-Owner: `hipengine/speculative/mtp_resident_draft.py`.
-
-Scope: `qwen35_router_logits_f32_f32w`, `mtp_linear_f32`;
-`HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL`.
-
-**Decision needed:** preserve the explicit two-projection comparison or move its selection into an
-owner-local legacy draft plan. Do not remove generic MTP linear, a shared primitive, merely because
-this caller selects another projection.
-
-Done when: migrate constructor capture, both projection branches, compatibility binding,
-benchmark/profiler cache/provenance and suite callers together. Run
-`tests/test_unit_mtp_resident_draft_device_moe.py`,
-`tests/test_unit_mtp_weight_upload_ownership.py`, benchmark/parser/profiler and suite contracts,
-then the independent F32 router/shared-gate numerical comparisons. A runtime change needs real
-legacy proposal/commit/reset and teardown plus a separate public NextN preservation request.
-
 ### R0301 — Verifier Q6 top-1 sidecar comparison ownership
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
