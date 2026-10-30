@@ -9946,6 +9946,203 @@ def launch_gguf_linear_triple(
     )
 
 
+@dataclass(frozen=True)
+class _GGUFConcatPairOperand:
+    """One exact operand for the concatenated pair launcher."""
+
+    weight: GGUFDeviceWeight
+
+
+@dataclass(frozen=True)
+class _GGUFConcatPairPlan:
+    """Private, pointer-free, single-use plan for one concatenated pair."""
+
+    rows: int
+    in_features: int
+    out_features: int
+    operands: tuple[_GGUFConcatPairOperand, _GGUFConcatPairOperand]
+    operation: str | None
+    threads: int
+    fallback_reason: str | None
+
+
+def _resolve_gguf_linear_pair_concat_plan(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    backend: str | None = None,
+    use_wmma_prefill: bool | None = None,
+    threads: int = 0,
+) -> _GGUFConcatPairPlan:
+    """Resolve one private, pointer-free, launch-local concat plan."""
+
+    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
+    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
+    dispatch_a = resolve_gguf_linear_dispatch(
+        weight_a, backend=resolved_backend, rows=rows
+    )
+    dispatch_b = resolve_gguf_linear_dispatch(
+        weight_b, backend=resolved_backend, rows=rows
+    )
+    operands = (
+        _GGUFConcatPairOperand(weight_a),
+        _GGUFConcatPairOperand(weight_b),
+    )
+
+    def _plan(
+        operation: str | None,
+        *,
+        resolved_threads: int = 0,
+        fallback_reason: str | None = None,
+    ) -> _GGUFConcatPairPlan:
+        return _GGUFConcatPairPlan(
+            rows=int(rows),
+            in_features=int(in_features),
+            out_features=int(out_features),
+            operands=operands,
+            operation=operation,
+            threads=int(resolved_threads),
+            fallback_reason=fallback_reason,
+        )
+
+    q8_t16_dual = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "t16_dual_gate_up_gemv_decode_bf16_bf16_out",
+    )
+    if (
+        dispatch_a.abi == "t16"
+        and dispatch_b.abi == "t16"
+        and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
+        and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
+        and is_registered(q8_t16_dual)
+    ):
+        if use_wmma and rows > 1 and (
+            _dispatch_can_use_t16_wmma_prefill(
+                dispatch_a, rows=rows, in_features=in_features
+            )
+            or _dispatch_can_use_t16_wmma_prefill(
+                dispatch_b, rows=rows, in_features=in_features
+            )
+        ):
+            return _plan(None, fallback_reason="wmma_prefill_declined")
+        resolved_threads = _resolve_q8_t16_threads(threads)
+        if rows == 1:
+            return _plan(
+                "q8_t16_dual_split_rows1",
+                resolved_threads=resolved_threads,
+            )
+        return _plan(
+            "q8_t16_dual_concat_rows_gt1",
+            resolved_threads=resolved_threads,
+        )
+
+    if not use_wmma or rows <= 1:
+        return _plan(None, fallback_reason="unsupported_concat_dispatch")
+
+    q8_prefill_raw = KernelKey(
+        resolved_backend, "linear", "gguf_q8_0", "prefill_bf16_bf16_out"
+    )
+    q8_dual = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q8_0",
+        "wmma_prefill_dual_gate_up_bf16_bf16_out",
+    )
+    if (
+        dispatch_a.abi == "raw"
+        and dispatch_b.abi == "raw"
+        and dispatch_a.key == q8_prefill_raw
+        and dispatch_b.key == q8_prefill_raw
+        and _wmma_prefill_shape_supported("gguf_q8_0", in_features)
+        and is_registered(q8_dual)
+    ):
+        return _plan("q8_wmma_prefill_dual_gate_up")
+    return _plan(None, fallback_reason="unsupported_concat_dispatch")
+
+
+def _execute_gguf_linear_pair_concat_plan(
+    plan: _GGUFConcatPairPlan,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    *,
+    stream: int = 0,
+    runtime=None,
+) -> bool:
+    """Execute one private concat plan, resolving pointers and callables now."""
+
+    operation = plan.operation
+    if operation is None:
+        return False
+    for index, (weight, operand) in enumerate(
+        zip((weight_a, weight_b), plan.operands)
+    ):
+        if operand.weight is not weight:
+            raise ValueError(f"GGUF concat pair operand {index} owner changed")
+
+    rows = plan.rows
+    in_features = plan.in_features
+    out_features = plan.out_features
+
+    if operation == "q8_t16_dual_split_rows1":
+        gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            out_ptr + out_features * DType.BF16.itemsize,
+            rows,
+            in_features,
+            out_features,
+            out_features,
+            threads=plan.threads,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if operation == "q8_t16_dual_concat_rows_gt1":
+        gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features,
+            threads=plan.threads,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    if operation == "q8_wmma_prefill_dual_gate_up":
+        gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features,
+            tile_m=16,
+            tile_n=32,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
+
+    raise ValueError(f"unknown GGUF concat pair plan operation {operation!r}")
+
+
 def launch_gguf_linear_pair_concat(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
@@ -9972,111 +10169,25 @@ def launch_gguf_linear_pair_concat(
     decode so the two Q8_0 projections share one T16 kernel launch family.
     """
 
-    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
-    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
-    dispatch_a = resolve_gguf_linear_dispatch(weight_a, backend=resolved_backend, rows=rows)
-    dispatch_b = resolve_gguf_linear_dispatch(weight_b, backend=resolved_backend, rows=rows)
-    q8_t16_dual = KernelKey(
-        resolved_backend,
-        "linear",
-        "gguf_q8_0_t16_v1",
-        "t16_dual_gate_up_gemv_decode_bf16_bf16_out",
+    plan = _resolve_gguf_linear_pair_concat_plan(
+        weight_a,
+        weight_b,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        backend=backend,
+        use_wmma_prefill=use_wmma_prefill,
+        threads=threads,
     )
-    if (
-        dispatch_a.abi == "t16"
-        and dispatch_b.abi == "t16"
-        and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
-        and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
-        and is_registered(q8_t16_dual)
-    ):
-        # P10.B4: decline the Q8T16 dual-gate-up GEMV fusion at rows>1 when
-        # WMMA prefill is opted in, so the caller falls back through
-        # ``launch_gguf_linear_pair`` (which itself declines T16 fusion when
-        # WMMA prefill is on) all the way down to two singletons that each
-        # take the dense Q8T16 WMMA prefill path.
-        if use_wmma and rows > 1 and (
-            _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
-            or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
-        ):
-            return False
-        if rows == 1:
-            # The resident rows==1 decode pair runs the wave-strided-loop
-            # ``q8_0_t16_dual_split_gemv_kernel`` instead of the thread-strided
-            # ``q8_0_t16_dual_gemv_kernel``. Both map the same (thread, K)
-            # partition -- lane = tid & 31, block_idx = tid/32 + waves*j -- so
-            # the FP32 accumulation and reduction are byte-identical, but the
-            # wave loop strength-reduces the tile address and measured ~21%
-            # faster on the gfx1151 shared gate+up shape (118 -> 143 GB/s at
-            # grid (64,1)). The split ABI takes two output pointers, so the
-            # two halves of the concatenated buffer are written directly. At
-            # rows>1 the concat kernel stays because its single-buffer layout
-            # is required for the row-strided output. See
-            # benchmarks/results/2026-10-03-gfx1151-35b-a3b-gufo-reconciliation.
-            gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out(
-                x_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_ptr,
-                out_ptr + out_features * DType.BF16.itemsize,
-                rows,
-                in_features,
-                out_features,
-                out_features,
-                threads=_resolve_q8_t16_threads(threads),
-                stream=stream,
-                runtime=runtime,
-            )
-            return True
-        gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features,
-            threads=_resolve_q8_t16_threads(threads),
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-
-    if not use_wmma or rows <= 1:
-        return False
-    q8_prefill_raw = KernelKey(
-        resolved_backend, "linear", "gguf_q8_0", "prefill_bf16_bf16_out"
+    return _execute_gguf_linear_pair_concat_plan(
+        plan,
+        weight_a,
+        weight_b,
+        x_ptr,
+        out_ptr,
+        stream=stream,
+        runtime=runtime,
     )
-    q8_dual = KernelKey(
-        resolved_backend,
-        "linear",
-        "gguf_q8_0",
-        "wmma_prefill_dual_gate_up_bf16_bf16_out",
-    )
-    if (
-        dispatch_a.abi == "raw"
-        and dispatch_b.abi == "raw"
-        and dispatch_a.key == q8_prefill_raw
-        and dispatch_b.key == q8_prefill_raw
-        and _wmma_prefill_shape_supported("gguf_q8_0", in_features)
-        and is_registered(q8_dual)
-    ):
-        gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features,
-            tile_m=16,
-            tile_n=32,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-    return False
 
 
 def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
