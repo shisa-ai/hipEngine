@@ -13749,8 +13749,8 @@
       "start_line": 12051,
       "end_line": 12084,
       "sha256": "78658d9b9f5c9263b424ba671ec3aa58149db03fbb210ff347e3f87b72084aef",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Public LLM routes through submit/poll and EngineService staged submission; raw greedy entry remains a compatibility fallback. Deferred its retirement/ownership decision without broadening raw-top1 verifier semantics. worklog/entries/20261030T052802.377239Z-cleanup-cleanup-r0507-9a0a9a.md."],
       "subitems": [
         {
           "line": 12059,
