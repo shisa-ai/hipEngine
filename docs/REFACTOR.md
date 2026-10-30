@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-10 | P1 | GGUF linear launchers and generation owners encode a combinatorial decision tree in large functions; direct controls remain callable from production modules. | Replace repeated pair/triple/residual branching with typed launch-plan records resolved before launch. Move direct AR/MTP control loops to explicit oracle helpers once `SubmitPollTextGenerator` owns the same gates. Keep unsupported-shape fallbacks, but give each request exactly one scheduler/commit owner. |
 | RF-11 | P1 | Whole-file SHA tests pin unrelated evolving files, including this ledger and backend package initializers. | Replace whole-file hashes with semantic assertions over the capability/registry owner and hashes of immutable artifacts or localized frozen blocks. A documentation edit must not require refreshing an unrelated kernel-source qualification test. |
 | RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_integration_generation_batch_scheduler.py` is 28K lines; `test_integration_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
 
@@ -9903,3 +9902,27 @@ source split. Run affected family parity/lifecycle tests and public generation
 with selected-symbol attribution; keep mechanical movement separate from
 arithmetic or default changes. No source split or kernel deletion is implemented
 by this triage.
+
+### RF-10 / R0187 — Separate launch planning from direct-control migration
+
+`hipengine/runtime/gguf_linear.py` still resolves pair and fused projection
+choices through launch-time branches. **Deferred plan design:** resolve typed
+launch records at the owning shape/resource boundary, reusing RF-1 profile
+infrastructure rather than caching decisions across incompatible owners. Keep
+unsupported-shape fallbacks and explicit capability errors; do not bake device
+pointers or stale scratch generations into reusable policy records.
+
+`SubmitPollTextGenerator.submit_speculative_many_detailed()` already chooses
+staged submission when supported. Its whole-request compatibility branch still
+serves providers without staged support. The existing “SPECDEC2 whole-request
+compatibility seam” item owns that provider migration; direct control code is
+not dead merely because it is callable from a production module. Move independent
+oracles only after identifying all live callers and preserving their contracts.
+
+Clearing checks: compare exact selected operations, arguments and fallback
+reasons across scalar/pair/triple/residual shapes, both sides of thresholds and
+unrelated shapes. Exercise owner isolation, graph reuse and scratch invalidation.
+For direct-control retirement verify public staged request selection, exact
+commit/rollback state, cancellation, late admission and provider fallback;
+each request must keep one scheduler and commit owner. Neither migration is
+implemented by this triage.

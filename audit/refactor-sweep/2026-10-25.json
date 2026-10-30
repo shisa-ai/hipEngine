@@ -4880,7 +4880,8 @@
         {
           "line": 4153,
           "text": "| RF-10 | P1 | GGUF linear launchers and generation owners encode a combinatorial decision tree in large functions; direct controls remain callable from production modules. | Replace repeated pair/triple/residual branching with typed launch-plan records resolved before launch. Move direct AR/MTP control loops to explicit oracle helpers once `SubmitPollTextGenerator` owns the same gates. Keep unsupported-shape fallbacks, but give each request exactly one scheduler/commit owner. |",
-          "status": "pending"
+          "status": "deferred-launch-plan-and-provider-migration",
+          "evidence": ["Launch policy separated from existing SPECDEC2 compatibility seam; staged selection already implemented, non-staged providers preserved. 334 tests/docs/audit pass. worklog/entries/20261030T081927.582883Z-cleanup-cleanup-r0187-rf10-ba7ee9.md."]
         },
         {
           "line": 4154,
