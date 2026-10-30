@@ -4892,7 +4892,8 @@
         {
           "line": 4155,
           "text": "| RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_integration_generation_batch_scheduler.py` is 28K lines; `test_integration_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |",
-          "status": "pending"
+          "status": "deferred-fixture-boundaries-and-budget-refresh",
+          "evidence": ["Cross-module fixture consumers remain; preserve collection/marks/guards/parameters and measure budgets explicitly. 16 tests/docs/audit pass. worklog/entries/20261030T082515.754258Z-cleanup-cleanup-r0187-rf12-81bd4c.md."]
         },
         {
           "line": 4157,

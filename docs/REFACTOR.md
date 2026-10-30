@@ -2426,12 +2426,6 @@ The simplification rule is: remove **selection and production reachability**
 for a rejected experiment first; retain a low-level primitive only when a named
 fallback, active test oracle, or current research campaign consumes it.
 
-### Priority architecture work
-
-| ID | Priority | Problem | Target design / completion gate |
-| --- | --- | --- | --- |
-| RF-12 | P2 | Test and architecture documentation mirror the same monoliths (`test_integration_generation_batch_scheduler.py` is 28K lines; `test_integration_server_api.py` exceeds 20K), and PLAN budgets are stale. | Split tests by behavior while retaining shared fixtures, then refresh PLAN's measured current/target budgets. Add lightweight growth checks only after module boundaries exist; do not enforce arbitrary line limits on the present monoliths. |
-
 ### Target organization
 
 The intended direction is a collection of stable façades over cohesive modules,
@@ -9946,3 +9940,26 @@ that an unrelated source edit is accepted while mutations of the protected
 policy, dispatch or ownership behavior fail. Run the associated focused runtime
 and evidence-validator tests. Preserve numerical gates independently of source
 provenance. Remaining runner/MoE pins are not migrated by this triage.
+
+### RF-12 / R0187 — Split integration fixtures and refresh measured budgets
+
+The scheduler and server integration modules remain broad behavior collections.
+Other integration tests import `FakeLLM`, `SpeculativeMTPFakeLLM` and stream
+helpers from `tests/test_integration_server_api.py`; moving test bodies without
+extracting these shared fixtures would preserve or break that coupling.
+
+**Deferred test-boundary design:** extract shared fixtures into explicit test
+support, then split tests by behavior and ownership. Preserve parametrizations,
+marks, HIP guards, setup/teardown and import compatibility during migration.
+Follow the tier naming/discovery rules in `docs/TESTING.md`; do not silently move
+expensive integration cases into default unit collection or duplicate cases
+through compatibility re-exports.
+
+Clearing checks: compare collected test identities and parameter coverage before
+and after the split, exercise affected bundles in both ordinary and audit-first
+collection orders, and verify no fixture/global-state leakage. Refresh PLAN's
+current/target budgets with an executed, reproducible counting command and a
+clear distinction between measured code and historical roadmap estimates. Add
+growth checks only after meaningful module boundaries exist, not arbitrary
+limits that reward moving code without changing ownership. Neither test splitting
+nor budget refresh is implemented by this triage.
