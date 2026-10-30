@@ -3486,20 +3486,6 @@ Resolved: the reduction-order choices have explicit manifest scopes and
 runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
-## The small-matrix F16 GEMM selector
-
-`HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` (default off) is published by the
-`gguf_ud_q4_k_xl` production binder and read by `_dense_f16_gemm_dispatch` in
-`runtime/gguf_linear.py`; it is part of the dispatch-resolve cache key. The
-96-column floor in that function is a measured setting for this model's
-shapes, not a general policy.
-
-Removal condition: replace the selector with a manifest scope for the
-indexer projections when the linear launcher's dense-weight dispatch becomes
-manifest-driven; revisit the column floor if a kernel variant with a
-narrower column tile is added for the 48-column GDN gate projections and the
-4-column hyper-connection inject.
-
 ## The WMMA QSA attention selector and its F16 K/V gather
 
 `HIPENGINE_QWEN4_EXP_QSA_WMMA` (default off) is published by the

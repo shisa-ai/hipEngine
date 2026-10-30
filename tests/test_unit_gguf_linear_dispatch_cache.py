@@ -55,6 +55,34 @@ def _fake_weight(*, layout: str, quant_key: str, slot_path: str | None = None, r
     return Weight()
 
 
+def test_dense_f16_manifest_scope_partitions_the_cache(monkeypatch):
+    from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_F32
+
+    gl.clear_gguf_linear_dispatch_cache()
+    weight = _fake_weight(layout=LAYOUT_DENSE_F32, quant_key="f32")
+    fired = []
+    keys = [KernelKey("hip_gfx1100", "dense_gemv", "f32", variant)
+            for variant in ("f32_hidden_f32_out", "f16_wmma_f32_hidden_f32_out")]
+    saved = {key: _KERNELS.get(key) for key in keys}
+    for key in keys:
+        register(key, lambda *a, _variant=key.variant, **kw: fired.append(_variant), replace=True)
+    try:
+        for variant in (keys[0].variant, keys[1].variant, keys[0].variant):
+            with gl.dense_f16_gemm_session((("f32", variant),)):
+                for _ in range(2):
+                    launch_gguf_linear(weight, x_ptr=1, out_ptr=2, rows=64,
+                                       in_features=64, out_features=48,
+                                       activation_dtype="f32", output_dtype="f32", runtime="rt")
+        assert fired == [keys[0].variant] * 2 + [keys[1].variant] * 2 + [keys[0].variant] * 2
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                _KERNELS.pop(key, None)
+            else:
+                register(key, value, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
+
+
 def test_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeypatch) -> None:
     gl.clear_gguf_linear_dispatch_cache()
     calls = {"n": 0}

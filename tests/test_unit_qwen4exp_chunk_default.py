@@ -247,7 +247,8 @@ def _profile(production):
         fell_back_to_strict=False, manifest={
             "quant": "gguf_ud_q4_k_xl", "selections": [
                 {"layer": r.layer, "scope": r.scope,
-                 "selected_variant": r.selected_variant}
+                 "selected_variant": r.selected_variant,
+                 "registry_quant": r.registry_quant}
                 for r in rows
             ],
         },

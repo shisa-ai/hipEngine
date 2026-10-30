@@ -2775,7 +2775,20 @@ def _dense_bf16_wmma_dispatch(
     return GGUFLinearDispatch(key, dispatch.abi)
 
 
-_DENSE_F16_GEMM_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM"
+_dense_f16_gemm_variants: ContextVar[tuple[tuple[str, str], ...]] = ContextVar(
+    "dense_f16_gemm_variants", default=(),
+)
+
+
+@contextlib.contextmanager
+def dense_f16_gemm_session(variants: tuple[tuple[str, str], ...]):
+    """Bind dense projection variants from the owning runner's manifest."""
+    token = _dense_f16_gemm_variants.set(variants)
+    try:
+        yield
+    finally:
+        _dense_f16_gemm_variants.reset(token)
+
 _DENSE_F16_GEMM_MIN_ROWS = 64
 # A 4-column matrix stays on the scalar GEMV: its cost is the activation
 # read, which the F32-input tile does not reduce (4096 rows, K=10240: 1.95 ms
@@ -2794,13 +2807,13 @@ def _dense_f16_gemm_dispatch(
 ) -> GGUFLinearDispatch:
     """Route multi-row FP32 projections over uncompressed weights to F16 WMMA.
 
-    Selected only by the fast profile's binder. The scalar FP32 GEMV owner
+    Selected by the owning runner's manifest. The scalar FP32 GEMV owner
     stays the dispatch for every other profile, for decode-shaped rows, and
     for K extents the WMMA stage cannot tile.
     """
 
     if (
-        os.environ.get(_DENSE_F16_GEMM_ENV, "0") in {"", "0", "false", "False"}
+        dict(_dense_f16_gemm_variants.get()).get(dispatch.key.quant) != _DENSE_F16_GEMM_VARIANT
         or dispatch.abi != "dense_bf16"
         or dispatch.key.layer != "dense_gemv"
         or dispatch.key.variant != "f32_hidden_f32_out"
@@ -4931,7 +4944,7 @@ def launch_gguf_linear(
         raw_weight_ptr,
         has_raw_weight_sidecar,
         f16w_sidecar,
-        os.environ.get(_DENSE_F16_GEMM_ENV, "0"),
+        _dense_f16_gemm_variants.get(),
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:

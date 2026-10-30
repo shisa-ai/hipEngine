@@ -1374,6 +1374,28 @@ def test_fast_is_opt_in_and_registered_only_for_the_in_envelope_quant() -> None:
     assert unregistered.source_profile is ExecutionProfile.STRICT
 
 
+def test_dense_f16_projection_binding_is_runner_owned() -> None:
+    from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    first = SimpleNamespace(runner=SimpleNamespace())
+    second = SimpleNamespace(runner=SimpleNamespace())
+    production.binder(first, production)
+    strict.binder(second, strict)
+    expected = (("bf16", "f16_wmma_f32_hidden_f32_out"),
+                ("f32", "f16_wmma_f32_hidden_f32_out"))
+    assert first.dense_f16_gemm_variants == expected
+    assert first.runner.dense_f16_gemm_variants == expected
+    assert dict(second.runner.dense_f16_gemm_variants) == {
+        "bf16": "f32_hidden_f32_out", "f32": "f32_hidden_f32_out"}
+    clone = SimpleNamespace()
+    _inherit_lane_decisions(first, clone)
+    assert clone.dense_f16_gemm_variants == expected
+
+
 def test_ud_gr_wide_projection_binding_matches_manifest() -> None:
     from dataclasses import replace
 
@@ -1466,7 +1488,6 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     selectors = (
         "HIPENGINE_QWEN4_EXP_GR_WIDE",
-        "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM",
         "HIPENGINE_QWEN4_EXP_QSA_WMMA",
     )
     all_layers = ",".join(map(str, range(48)))

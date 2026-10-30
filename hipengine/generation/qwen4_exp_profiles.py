@@ -86,9 +86,6 @@ F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(48))
 # Profile-owned composition selectors: profiles without the composition disable
 # them even when a caller set them before binding, keeping dispatch and manifest aligned.
 _F16_ROUTE_SELECTORS = {
-    # Multi-row FP32 projections over uncompressed weights (the indexer
-    # projections) on the small-matrix F16 WMMA GEMM.
-    "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
     # QSA prefill attention on the WMMA kernel.
     "HIPENGINE_QWEN4_EXP_QSA_WMMA": "1",
 }
@@ -249,6 +246,18 @@ _DENSE_WIDE_TAIL_SCOPE = "prefill_rows_512_4096_k10240_n320_dense_wide_layers13_
 _DENSE_WIDE_TAIL_EVIDENCE = (
     "benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md"
 )
+
+
+_DENSE_F16_GEMM_SCOPE = "prefill_rows_ge64_n_ge16_k_multiple32_dense_projection"
+
+
+def _dense_f16_gemm_selections(*, production: bool) -> tuple[VariantSelection, ...]:
+    return tuple(_selection(
+        "dense_gemv", f"{_DENSE_F16_GEMM_SCOPE}_{quant}",
+        "f16_wmma_f32_hidden_f32_out" if production else "f32_hidden_f32_out",
+        "f32_hidden_f32_out", quant,
+        evidence=_F16_ROUTE_EVIDENCE if production else None,
+    ) for quant in ("bf16", "f32"))
 
 
 _GR_WIDE_PROJECTION_SCOPE = "prefill_rows_ge257_branch4_k_multiple64_gr_up_projection"
@@ -545,7 +554,8 @@ def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...
         ) + (_dense_wide_tail_selection(production=False),
              _gdn_composition_selection(production=False),
              _dense_wide_composition_selection(production=False),
-             _gr_wide_projection_selection(production=False))
+             _gr_wide_projection_selection(production=False),
+             *_dense_f16_gemm_selections(production=False))
     return selections
 
 
@@ -942,7 +952,8 @@ def _f16_route_selections(
         )
     return tuple(result) + (_gdn_composition_selection(production=True),
                             _dense_wide_composition_selection(production=True),
-                            _gr_wide_projection_selection(production=True))
+                            _gr_wide_projection_selection(production=True),
+                            *_dense_f16_gemm_selections(production=True))
 
 
 def _apply_profile_env(values: dict[str, str]) -> None:
@@ -1406,6 +1417,11 @@ def _bind(
         if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
         else _DENSE_WIDE_TAIL_PARENT
     )
+    generator.dense_f16_gemm_variants = tuple(
+        (row["registry_quant"], row["selected_variant"])
+        for row in resolved.manifest["selections"]
+        if row["scope"].startswith(_DENSE_F16_GEMM_SCOPE + "_")
+    )
     generator.dense_f16_pair_enabled = dp2_pair_enabled
     generator.dense_mmq_token64_enabled = dense_mmq_token64_enabled
     generator.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
@@ -1480,6 +1496,7 @@ def _bind(
     generator.q8_mapped_down = q8_mapped_down
     runner = getattr(generator, "runner", None)
     if runner is not None:
+        runner.dense_f16_gemm_variants = generator.dense_f16_gemm_variants
         runner.dense_wide_tail_variant = generator.dense_wide_tail_variant
         runner.dense_f16_pair_enabled = dp2_pair_enabled
         runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled

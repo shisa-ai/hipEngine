@@ -13104,8 +13104,8 @@
       "start_line": 10966,
       "end_line": 10979,
       "sha256": "e23a860c47a5e4126b59448ab3e52e81bce502d67d9575d969c6e2fb59197e65",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Replaced process selector with runner-owned BF16/F32 manifest scopes and context-local dispatch/cache selection. Shape limits unchanged (ledger96-column floor was stale; actual16). RED/GREEN, public bg865 route confirmed with legacy env0, broad CPU bg866 plus isolated fixture repair122 passed, fixture/smoke/docs/audit gates pass. worklog/entries/20261030T005613.683397Z-cleanup-cleanup-r0461-0ba6aa.md."],
       "subitems": []
     },
     {

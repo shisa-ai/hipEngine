@@ -173,6 +173,7 @@ from hipengine.runtime.gguf_linear import (
     _invalidate_wide_f16_pair,
     _q8_dense_wide_enabled,
     _wide_f16_consumer_key,
+    dense_f16_gemm_session,
     dense_wide_tail_session,
     wide_f16_activation_pair,
     wide_f16_activation_enabled,
@@ -9014,6 +9015,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # runner; an unbound runner keeps the parent route. This is the request's
     # own decision, not the effective one: a diagnostic scope may outrank it.
     dense_f16_pair_enabled: bool = False
+    dense_f16_gemm_variants: tuple[tuple[str, str], ...] = ()
     dense_wide_tail_variant: str | None = None
     # Same shape for the Q8 MMQ lane: the profile publishes which variant
     # siblings this runner's prefill may select. Publication is independent of
@@ -9447,14 +9449,15 @@ class Qwen4ExpGGUFResidentModelRunner:
 
     @contextlib.contextmanager
     def _wide_f16_pair_scopes(self, workspace_scope, *, enabled: bool):
-        """Bind this runner's pair decision around the workspace it owns.
+        """Bind this runner's projection decisions around its workspace.
 
-        Both scopes open on ``__enter__`` and unwind in reverse order, so a
-        context that is constructed and dropped leaves no workspace or pair
-        state behind, and an exception inside the body restores both.
+        The scopes open on ``__enter__`` and unwind in reverse order, so a
+        context that is constructed and dropped leaves no workspace or route
+        state behind, and an exception inside the body restores each scope.
         """
 
         with (workspace_scope, wide_f16_pair_session(enabled),
+              dense_f16_gemm_session(self.dense_f16_gemm_variants),
               dense_wide_tail_session(self.dense_wide_tail_variant)):
             yield
 

@@ -753,7 +753,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | retired | Ignored. The execution profile declares the one-row D128 GDN variant and publishes `gdn_decode_rowsplit` on the owning runner. Diagnostics use its scoped control. |
 | `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` | retired | No longer read. Named profile registration selects the serial GDN variant; the binder publishes it to the owning runner. |
 | `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` | profile-selected | Replaces the multi-column tile-16 GDN prefill body (for example with the row-split recurrence). |
-| `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` | unset (F16 route sets `1`) | Multi-row FP32 indexer projections on the small-matrix F16 WMMA GEMM. |
+| `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` | retired | No longer read. The runner binds the manifest's BF16/F32 dense projection variants within its prefill scope; the dispatch cache includes that selection. Existing limits remain: at least 64 rows, at least 16 columns, and K divisible by 32. |
 | `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` | retired | No longer read. Whether the dense-wide F16 projections share one activation is a request-local decision the execution profile publishes to the runner that owns the prefill; regression tests assert this switch cannot enable it. |
 | `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` | retired | Ignored. Supported one-row hyper-connection reads use the exact three-launch fusion; unsupported geometry or weight layout uses the strict chain. |
 | `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
