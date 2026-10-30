@@ -967,81 +967,6 @@ multi-column engagement evidence, so it stays.
 
 
 
-## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
-
-The merge qualification at p1024+s200 on Qwen3.8-27B Q4_K_M / gfx1151
-compares active and completed prefix reuse against both private batched
-recomputation and the gate's one-shot-prefix/serial-suffix oracle. All four
-category probes have byte-identical prefix and post-suffix state versus
-private batched recomputation, exact clone metadata, and correct lifecycle.
-The serial oracle is not numerically equivalent: English and mixed-category
-mean KL exceed the production envelope, and completed-source Japanese fails
-even the outer numerical smoke. Do not call this full production numerical
-qualification or hide it behind the passing clone/ownership checks.
-The identical Japanese probe on untouched upstream `1de470e21` reproduces
-the complete numerical and state-comparison records exactly; this discrepancy
-predates the merge.
-
-Next: localize the one-shot-prefix versus batched-prefix divergence using
-matched teacher rows and real category/heldout prompts; then run the calibrated
-production envelope and task gate. Preserve the batched HIT/MISS state check
-separately from that investigation. This ledger item does not justify
-prompt-conditioned routing or a blanket strict bit-equality requirement.
-Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-mtp-merge-qualification.json`.
-
-**Resolution.** The prescribed localization and envelope run are done, and the
-finding above describes the comparison rather than the candidate. The gate's
-reference is itself built by a prefix prefill, and the packed wave and the
-single-session path persist different final-state arithmetic, so a reference
-built through the single-session path made every numerical term a cross-route
-comparison. `--reference-prefill-mode` now defaults to `packed`
-(`prefill_batch_native`), sharing the candidate's and the served engine's route
-family; `native` and the plugin's certified bulk scheduler remain as
-diagnostics. That the identical Japanese probe reproduced exactly on untouched
-upstream is what a comparison artifact looks like, not a merge regression.
-
-On the same-route reference the gate passes all eight suites -- four natural
-categories and four heldout suites, 1,024 teacher-forced rows, 2 top-1 flips,
-0 state mismatches -- with the worst scope (`heldout-general_en`) at least 2.5x
-inside every binding term of the calibrated envelope. `general_ja` moves from
-`kl_mean` 0.6811212740489249 / `kl_max` 1.7583460667891433 / top-1 0.75 over 4
-teacher-forced rows to 0.0001940 / 0.0050300 / 1.00 over 128. The batched
-HIT/MISS state check was preserved separately as instructed.
-Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json`;
-source: `worklog/entries/20260920T054514.573459Z-lhl-prefix-gate-packed-reference-1024rows-40a28f.md`.
-
-**W7900 BF16 resolution (2026-09-20).** Gapped prefix-hit pages selected native
-attention because their required gather inherited the optional contiguous
-head-major-layout default. Resolving the registered gather independently removes
-all 120 scheduler state mismatches. Contiguous defaults do not change.
-The remaining completed-source KL failure also occurs for private batched
-recomputation compared with token-serial suffix replay. The gate now compares
-independent private batched-prefix/batched-suffix recomputation, applies the
-unchanged canonical mean/p95/p99/max KL and top-1 envelope, and retains the
-serial-suffix comparison against both candidate and private recomputation.
-All four categories and four heldouts, both source lifecycles, pass with zero
-KL and exact state over 2,048 teacher-forced rows. This is cache-hit fidelity,
-not certification that distinct prefill schedules have identical arithmetic.
-Evidence: `benchmarks/results/2026-09-20-w7900-prefix-bf16-layout-repair.json`.
-
-HTTP and in-process prefix caching default to radix. `hipengine serve
---prefix-cache off` or `HIPENGINE_PREFIX_CACHE=off` is the rollback.
-Eligibility fallbacks record `prefix_fallback_reason`; they do not detect
-numerical divergence. The separate no-mirror INT8 suffix ownership repair is
-also complete: resumed prefill reads retained INT8 payload and scales rather
-than a transient BF16 oracle whose prefix was never written. The current
-`tests/test_unit_gguf_prefix_int8_attention_source.py` pins the source choice,
-gapped pages, mirrored fallback, and unsupported-layout rejection before writes.
-
-The RX 7900 XTX packet records suffix/reclaim/pressure checks and public prefix
-hits, including actual INT8/FP32 storage with no mirrors:
-`benchmarks/results/2026-09-20-rx7900xtx-prefix-int8-ownership-repair.json` and
-`worklog/entries/20260920T214917.189511Z-lhl-close-int8-radix-prefix-ownership-validation-0f1633.md`.
-Its claim is cache-hit fidelity against independent same-schedule recomputation,
-not cross-schedule identity with a cold BF16-oracle prefill. The earlier open
-paragraph was superseded by that validation but left unchanged during
-shared-file coordination.
-
 ## Three qwen36-dense serving rows carry no execution identity (found 2026-09-20)
 
 The three `qwen36-dense-q4km-gfx1100-*` rows in
@@ -1313,6 +1238,17 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0059 — Prefix-cache rollback interface
+
+The prefix oracle and no-mirror INT8 suffix ownership repairs are complete.
+`HIPENGINE_PREFIX_CACHE=off` and `hipengine serve --prefix-cache off` remain
+explicit rollback controls for the default radix cache. Eligibility reasons do
+not detect numerical divergence. **Deferred interface decision:** retain this
+control or replace it with an equivalent explicit cache policy before retiring
+the environment adapter; preserve caller intent and cache-disabled comparison
+coverage. No default or cache ownership changes accompany this ledger cleanup.
+
 
 ### R0058 — Decide dormant ordered-pair redesign and Q3/Q3 capability
 

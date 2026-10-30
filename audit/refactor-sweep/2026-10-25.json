@@ -1549,7 +1549,7 @@
       "start_line": 1782,
       "end_line": 1847,
       "sha256": "4ebc772129b7a175ae64adb29f02d4efccd56d1ece9b4bf5cfb801c71d12cf09",
-      "status": "resolved",
+      "status": "triaged-oracle-repaired-cache-interface-deferred",
       "evidence": [
         "Original packed-reference oracle issue and separate INT8 suffix ownership repair both already closed. Verified current tests and September public/device closure; corrected shared-file stale paragraph. Worklog:worklog/entries/20261026T071359.781748Z-cleanup-refactor-r0059-569bbc.md."
       ],
