@@ -13909,8 +13909,8 @@
       "start_line": 12462,
       "end_line": 12482,
       "sha256": "4df3fbb77d3ea9dd26ab13daacda4f8dc20ca14e427439df96fc44d542cfc66f",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Narrowed compensated-WMMA numerical decision; preserved exact comparison modes and current automatic routing rather than deleting shared selector. worklog/entries/20261030T060330.593271Z-cleanup-cleanup-r0519-9919bb.md."],
       "subitems": []
     },
     {

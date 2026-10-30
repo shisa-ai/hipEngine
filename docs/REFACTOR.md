@@ -3544,27 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## `HIPENGINE_GEMMA4_MOE_PREFILL` selects a prefill route that fails an absolute bar (open 2026-09-26)
-
-The Gemma 4 prefill MoE has two WMMA owner variants per projection that are 2.7x
-faster than the exact routes: a compensated form (fp16 high part plus fp16 residual
-per weight, two WMMA ops per k-tile) and the plain uncompensated form kept only as
-the diagnostic that isolates the fp16 weight-rounding term. `auto` runs neither.
-The compensated form passes every aggregate logits bar with 10-200x margin and
-leaves top-1 unchanged on all 1023 scored rows, but breaches the campaign's absolute
-`kl_max` bar at 0.060867 against 0.05 on 1 of 1023 rows. The breach is reduction
-association, not a defect; a two-way accumulator split moved it to 0.081599 rather
-than reducing it. See the iteration-59 diagnostic in
-`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`.
-
-Remove this once the lead rules on whether an absolute `kl_max` applies to a
-reordering-class change. If it does not apply, delete `_PREFILL_MODE_ENV`,
-`_prefill_mode`, `_prefill_route_flags` and the exact-route default, make the
-compensated variants the prefill route unconditionally, and delete the plain
-variants and the diagnostic modes with them. If it does apply, delete the Gemma
-wiring for both WMMA owner variants and their `compensated` plumbing instead, and
-keep the kernels registered for callers that only need their own parity contract.
-
 ## Gemma 4 gate/up split allocation (resolved 2026-09-27)
 
 `materialize_gemma4_gguf_device_weight` used to upload the fused
@@ -9661,3 +9640,23 @@ with the applicable gates. A leaf result alone does not establish end-to-end gai
 If deleting it, preserve the shared `KSUB` machinery and narrow implementation.
 Historical screens remain in ledger history at `d82800038`; they are not new
 production-geometry results.
+
+### R0519 — Decide the compensated Gemma WMMA candidate independently of selectors
+
+`HIPENGINE_GEMMA4_MOE_PREFILL` supports `auto`, `wmma`, `wmma_plain`, `mmq`,
+`grouped` and `selected`. Compensated WMMA is an explicit candidate; plain WMMA
+isolates weight-rounding effects. The exact modes remain useful comparison
+routes. Automatic routing has evolved beyond the old exact-only description,
+so the historical proposal to delete the selector wholesale is not appropriate.
+
+**Deferred candidate decision:** evaluate the compensated route under the current
+applicable execution-profile contract, then promote, repair or retire its Gemma
+wiring. The old absolute-tail discussion is historical evidence, not permission
+to weaken the current gate or to change unrelated defaults. Preserve exact
+comparison modes, independently useful kernels and current automatic dispatch.
+If retiring candidate modes, inventory their harness callers and remove only
+candidate-specific wiring/tests after preserving the required comparisons.
+
+Iteration 59 in `docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md` and ledger history
+at `0bc3556f2` preserve the original numerical investigation. No new numerical
+verdict is established by this triage.
