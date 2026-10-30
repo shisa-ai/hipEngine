@@ -10053,17 +10053,6 @@ def _gguf_norm_residual_decode_kernel(
             policies = backend_package_capability(backend, capability, {})
         except (ImportError, ValueError):
             return fallback
-        if isinstance(policies, Mapping):
-            enabled_env = policies.get("enabled_env")
-            if isinstance(enabled_env, str) and enabled_env:
-                raw = os.environ.get(enabled_env)
-                enabled = (
-                    bool(policies.get("enabled_default", False))
-                    if raw is None
-                    else raw.strip().lower() not in {"0", "false", "no", "off"}
-                )
-                if not enabled:
-                    return fallback
         shapes = policies.get(identity, {}) if isinstance(policies, Mapping) else {}
         variant = shapes.get(shape) if isinstance(shapes, Mapping) else None
         try:

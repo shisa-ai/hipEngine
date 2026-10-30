@@ -553,8 +553,6 @@ GGUF_NORM_RESIDUAL_DECODE_POLICIES = {
 # reproduces the generic tree level for level. Rows 1 is excluded because the
 # rounded entry point's declared envelope is 2 <= rows <= 8.
 GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES = {
-    "enabled_env": "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120",
-    "enabled_default": True,
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (rows, 5_120): "rounded_bf16_out_fixed5120_wave256"
         for rows in range(2, 9)

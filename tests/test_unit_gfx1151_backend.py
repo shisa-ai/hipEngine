@@ -2249,8 +2249,6 @@ def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES", {}
     ) == {
-        "enabled_env": "HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120",
-        "enabled_default": True,
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): rounded_rows,
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): rounded_rows,
         (

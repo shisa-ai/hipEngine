@@ -468,37 +468,24 @@ def test_fixed5120_norm_residual_decode_kernel_is_exactly_scoped(
     assert len(resolved) == 4
 
 
-def test_rounded_norm_residual_fixed5120_leaf_has_a_bisection_switch(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize('stale_value', ('0', '1', 'invalid'))
+@pytest.mark.parametrize('rows', (2, 3, 7, 8))
+def test_rounded_norm_residual_fixed5120_ignores_retired_switch(
+    monkeypatch: pytest.MonkeyPatch, stale_value: str, rows: int,
 ) -> None:
-    """The rounded layer must honour its enabled_env and fall back when off."""
-
-    monkeypatch.delenv("HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120", stale_value)
     runner = _fake_dense_qwen36_runner()
     runner.backend = "hip_gfx1100"
     selected = gguf_runner._gguf_norm_residual_decode_kernel(
-        runner, layer="add+rmsnorm", rows=3, hidden_size=5_120
+        runner, layer="add+rmsnorm", rows=rows, hidden_size=5_120
     )
     assert selected.func.__name__ == (
         "gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256"
     )
-
-    monkeypatch.setenv("HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120", "0")
-    disabled = _fake_dense_qwen36_runner()
-    disabled.backend = "hip_gfx1100"
-    assert gguf_runner._gguf_norm_residual_decode_kernel(
-        disabled, layer="add+rmsnorm", rows=3, hidden_size=5_120
-    ) is gguf_runner.gguf_rounded_add_rmsnorm_bf16_f32_weight
-
-    monkeypatch.setenv("HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120", "1")
-    enabled = _fake_dense_qwen36_runner()
-    enabled.backend = "hip_gfx1100"
-    selected = gguf_runner._gguf_norm_residual_decode_kernel(
-        enabled, layer="add+rmsnorm", rows=4, hidden_size=5_120
-    )
-    assert selected.func.__name__ == (
-        "gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256"
-    )
+    for outside_rows, hidden in ((1, 5_120), (9, 5_120), (3, 1_024)):
+        assert gguf_runner._gguf_norm_residual_decode_kernel(
+            runner, layer="add+rmsnorm", rows=outside_rows, hidden_size=hidden
+        ) is gguf_runner.gguf_rounded_add_rmsnorm_bf16_f32_weight
 
 
 def test_attention_norm_rows_uses_fixed1024_registry_selection(

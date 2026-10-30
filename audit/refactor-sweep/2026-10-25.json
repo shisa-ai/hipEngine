@@ -13362,8 +13362,8 @@
       "start_line": 11315,
       "end_line": 11336,
       "sha256": "5b09ec78acb9c6e07f8fa9601f6034229f8bac3c4bdc9ff2613c26fe6b67b551",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed rounded-norm rollback flag and norm selector environment branch; shape policy and generic fallback preserved. 113 focused tests and CPU/docs/audit gates passed. Public gfx1100 route blocked by gfx1151-only hardware. worklog/entries/20261030T035526.442545Z-cleanup-cleanup-r0481-08a608.md."],
       "subitems": []
     },
     {
