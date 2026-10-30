@@ -2290,22 +2290,6 @@ category and control/ownership gates before closing this entry.
   cancellation/cleanup checks. CPU transition-order and provider tests preserve
   the refactor contract but do not establish public GPU execution.
 
-## SPECDEC2 P4 device-chain qualification oracle
-
-- Added 2026-08-25 with SPECDEC2-PERF P4. The promoted C1/C2/C4 cycle keeps
-  proposal and target IDs device-resident through GPU accept and selected
-  commit, then reads only bounded committed output/status. Explicit diagnostic
-  construction with `device_chain_qualification_oracle=True` adds post-commit
-  candidate/target-ID materialization and CPU acceptance comparison. The
-  environment read is removed; default adapter instances remain unaffected.
-  This option enables checks, not model admission or certification.
-- Removal trigger: after P4 reject/every-partial/full, following-AR,
-  cancellation/failure, profile, and full category gates are retained with
-  GPU/CPU accept agreement and cache-only traces prove no pre-accept D2H in the
-  default route, move the oracle body to a test/qualification adapter. Keep the
-  explicit diagnostic constructor route until that replacement is available,
-  the pure CPU acceptance implementation, and strict eager fallback.
-
 ## SPECDEC2 request-local ngram-mod experiment
 
 - Added 2026-08-28 for the coding/repetition composition spike.
@@ -9888,3 +9872,21 @@ trajectories, native groups, trace identity and drain checks. Preserve backend
 policy and the registered one-wave fallback. Prior direct numerical parity does
 not establish public engagement; this relocation supplies no new public result
 and does not close the repeat requirement.
+
+### R0203 — Extract the explicit device-chain diagnostic oracle
+
+The environment read is removed. Explicit construction with
+`device_chain_qualification_oracle=True` adds post-commit candidate/target-ID
+materialization and CPU acceptance comparison; default adapters do not enable
+it. This is a diagnostic check, not admission or certification. The normal
+cycle keeps IDs device-resident through accept and selected commit, then reads
+bounded committed output/status.
+
+**Deferred oracle extraction:** move the comparison body to a test/qualification
+adapter only after a replacement explicit diagnostic route exists. Preserve
+pure CPU acceptance and strict eager fallback. Retain P4 reject/every-partial/
+full, following-AR, cancellation/failure, profile and full-category checks with
+GPU/CPU accept agreement. Cache-only traces must show no pre-accept D2H in the
+default route. Public acceptance and lifecycle verification remain required;
+constructor isolation tests alone do not establish them. No diagnostic body or
+runtime behavior changes in this triage.
