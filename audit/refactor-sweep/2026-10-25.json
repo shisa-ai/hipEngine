@@ -13791,12 +13791,12 @@
         {
           "line": 12059,
           "text": "- `hipengine/generation/qwen35_gguf.py::_generate_speculative_mtp_detailed`",
-          "status": "pending"
+          "status": "deferred-raw-compatibility-owner-r0507"
         },
         {
           "line": 12063,
           "text": "- The transactional verify work that path drives",
-          "status": "pending"
+          "status": "preserved-greedy-verifier-contract-r0507"
         }
       ]
     },
@@ -13904,17 +13904,17 @@
         {
           "line": 12384,
           "text": "### What was removed",
-          "status": "pending"
+          "status": "resolved-layout-removal-history"
         },
         {
           "line": 12400,
           "text": "### What deliberately remains",
-          "status": "pending"
+          "status": "preserved-distinct-selected-pack8-gemv"
         },
         {
           "line": 12411,
           "text": "### Why the default-off was legitimate while it lasted",
-          "status": "pending"
+          "status": "archived-settlement-evidence"
         }
       ]
     },
@@ -13930,12 +13930,12 @@
         {
           "line": 12453,
           "text": "- **Re-measure at the production geometry.** The bench could not reach `out_features` 1408",
-          "status": "pending"
+          "status": "fixture-fixed-evaluation-deferred-r0518"
         },
         {
           "line": 12456,
           "text": "- **Wire it and take an end-to-end number.** That requires an `in_features % 128 == 0`",
-          "status": "pending"
+          "status": "deferred-wide-k-selection-or-removal-r0518"
         }
       ]
     },
