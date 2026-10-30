@@ -4,53 +4,6 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## Flash-Next shared decode batch: rollback lever and remaining gaps
-
-The full-model AR batch is the default serving path for Flash-Next
-(`Qwen4ExpARBatchOwner` in `hipengine/generation/qwen4_exp_ar_batch.py`). Plain
-AR requests are prefilled on one of two c1 staging runners and imported into a
-batch slot; the slots share one paged K/V and index-key block pool sized from
-free device memory. In-process step time on gfx1151 after the graph-segment and
-upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
-71.4 ms, width 8 88.5 ms
-(`worklog/entries/20261019T132824.038407Z-lhl-qwen4exp-batch-decode-host-overhead-bce862.md`).
-
-- **Metadata upload consolidation is complete.** The batch runner stages one
-  packed metadata buffer per step, and the output head has graph capture/replay.
-  The earlier per-step upload count is historical. Any further width-one tuning
-  must profile the current PLE/hash and launch path rather than repeat this work.
-- **A batch slot holds at most 65,536 positions**
-  (`QWEN4_EXP_BATCH_SLOT_POSITIONS`). Each slot keeps per-position index slabs
-  (pooled keys, member map, scores) outside the shared pool, about 100 MiB per
-  slot at that cap and 400 MiB at 262K, so a longer request decodes on its c1
-  staging runner instead. Page the pooled index keys through the same block
-  table to remove the cap.
-- **Decoding requests slow down while another request prefills a long
-  prompt.** The token-budget round runs one full prefill chunk, then one decode
-  step, so each decode token waits behind a chunk: two short requests beside a
-  122,076-token prompt finished their 18-22 tokens in 31-38 s (they waited
-  about 170 s for the whole prefill under `fair`). Bound the prefill share of a
-  round by time instead of by one chunk, or split the chunk while rows are
-  decoding, then re-measure inter-token latency beside a long prefill.
-- **Decode-active prefill budget override.**
-  `HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET` lets operators change the model's
-  active-decode token bound independently of its idle prefill budget. It defaults
-  to the production policy rather than disabling time sharing. Remove the extra
-  control once the model's measured layer-time policy chooses a token bound
-  without operator tuning; preserve `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET` as
-  the ordinary explicit override. Clearing check: run
-  `scripts/qwen38fn_prefill_interference.py` through `hipengine serve` over
-  short, medium and long prompts with zero, one and multiple decoding peers,
-  and meet the campaign's frozen latency and prompt-cost criteria without this
-  override.
-- **Q8 WMMA down selection control remains.** The tile-count readback is gone:
-  the owner builds a current map and launches its static upper bound. The
-  separate `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` branch still selects
-  between implemented arithmetic routes. Remove it after profile-owned registry
-  selection expresses both production WMMA and strict grouped/GEMV comparison
-  without a global switch. Preserve the map rebuild and capacity checks; verify
-  `tests/test_unit_qwen4exp_q8_wmma_down_tile_map.py` and public profile selection.
-
 ## Flash-Next batch decode runner: hand-off copies and owner reset duplication
 
 - `import_prefilled` copies a prefilled c1 request into a slot with a host loop
@@ -9898,3 +9851,34 @@ full-token-ID remapping for singleton and physical batches, and public MTP
 selection/teardown. Preserve strict-profile arithmetic behavior and distinguish
 proposal changes from target correctness. No selector or runtime behavior changes
 in this triage; the interface migration remains unimplemented.
+
+### R0006 — Remaining Flash-Next batch capacity and scheduling decisions
+
+The AR batch rollback selector, per-step metadata consolidation and WMMA tile
+count readback cleanup are complete. Mixed AR/MTP target execution is owned by
+R0010. Historical width-one timing is recorded in
+`worklog/entries/20261019T132824.038407Z-lhl-qwen4exp-batch-decode-host-overhead-bce862.md`;
+further tuning must profile current PLE/hash and launch work, not repeat the
+completed upload changes.
+
+**Deferred capacity design:** `QWEN4_EXP_BATCH_SLOT_POSITIONS` still caps batch
+slot extent at 65,536 positions. Page per-position index storage through the
+shared block table before removing that cap; preserve the c1 longer-request
+path until the replacement storage supports it. Check below/at/above the cap,
+resource refusal, reuse and public route selection.
+
+**Deferred scheduling policy:** choose a measured layer-time/chunk policy that
+bounds active-decode prefill interference without operator tuning. The live
+`HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET` control remains distinct from idle
+prefill and the ordinary `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET` override.
+Before retiring it, run `scripts/qwen38fn_prefill_interference.py` through
+`hipengine serve` over short, medium and long prompts with zero, one and multiple
+decoding peers; satisfy the campaign's frozen latency and prompt-cost criteria.
+Historical interference measurements are not fresh results for current code.
+
+**Deferred arithmetic selector ownership:** replace
+`HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` with profile-owned registry
+selection preserving production WMMA and strict grouped/GEMV comparisons.
+Keep map rebuild and capacity checks, run
+`tests/test_unit_qwen4exp_q8_wmma_down_tile_map.py`, and verify public selected
+routes. No capacity limit, scheduler policy or arithmetic choice changes here.

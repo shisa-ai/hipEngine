@@ -61,8 +61,9 @@
       "start_line": 96,
       "end_line": 153,
       "sha256": "c4fcb07f2dad5ac3c7d43a1c2764c3312e800f85ef8f9deecfcbafdaf81b9b96",
-      "status": "partial-current-source-reconciled",
-      "evidence": ["Current source has packed per-step metadata and head graph replay; focused owner tests pass. Q8 WMMA down rebuilds its map and passes a validated static tile upper bound, with no count D2H readback; test_unit_qwen4exp_q8_wmma_down_tile_map.py passes. Removed stale readback debt; current width-one retiming and other serving/capacity items remain open."],
+      "status": "triaged-deferred-capacity-scheduling-selector",
+      "evidence": [
+        "Remaining decisions moved to bottom R0006;24 tests/docs/audit pass. worklog/entries/20261030T084224.018548Z-cleanup-cleanup-r0006-final-b079f1.md.","Current source has packed per-step metadata and head graph replay; focused owner tests pass. Q8 WMMA down rebuilds its map and passes a validated static tile upper bound, with no count D2H readback; test_unit_qwen4exp_q8_wmma_down_tile_map.py passes. Removed stale readback debt; current width-one retiming and other serving/capacity items remain open."],
       "subitems": [
         {
           "line": 107,
@@ -73,12 +74,12 @@
         {
           "line": 111,
           "text": "- **A lone request pays about 7% against the c1 runner** (48.9 vs 45.6 ms). The",
-          "status": "partial-implementation-done-retiming-open"
+          "status": "deferred-current-width-one-profiling"
         },
         {
           "line": 116,
           "text": "- **A batch slot holds at most 65,536 positions**",
-          "status": "pending"
+          "status": "deferred-index-storage-capacity"
         },
         {
           "line": 122,
@@ -89,17 +90,17 @@
         {
           "line": 131,
           "text": "- **Decoding requests slow down while another request prefills a long",
-          "status": "pending"
+          "status": "deferred-measured-prefill-policy"
         },
         {
           "line": 138,
           "text": "- **Decode-active prefill budget override.**",
-          "status": "pending"
+          "status": "deferred-measured-prefill-policy"
         },
         {
           "line": 149,
           "text": "- **The Q8_0 expert-down layers read a tile count back to the host at two or",
-          "status": "partial-readback-resolved-selector-open"
+          "status": "deferred-profile-wmma-selector"
         }
       ]
     },
