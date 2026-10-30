@@ -3902,13 +3902,13 @@
       "start_line": 3536,
       "end_line": 3545,
       "sha256": "3678c15a1d321931dc0160099ad623e1cb9d22f30e6e21ba08d84b342303c493",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-selector-consolidation",
+      "evidence": ["Verified live one-shape policy extension, independent of MMQ resources/plane selector. Repaired state history distinct from performance rejection; consolidation decision moved to bottom.60 tests/docs/audit pass. worklog/entries/20261030T070320.872724Z-cleanup-cleanup-r0147-9a0b4e.md."],
       "subitems": [
         {
           "line": 3538,
           "text": "- `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted",
-          "status": "pending"
+          "status": "deferred-selector-consolidation"
         }
       ]
     },

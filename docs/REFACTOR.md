@@ -2334,19 +2334,6 @@ should be removed or collapsed.
 
 
 
-## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
-
-- `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
-  K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
-  policy. The original state-repeat failure was fixed; the later complete
-  correctness packet passed. The subsequent five-pair comparison was rejected
-  for noisy performance, not state divergence. Both strict and named production
-  bind this scope off. Revisit the selector only with stabilized five-pair
-  evidence, or consolidate it into an operation-complete dense/GR owner; remove
-  the separate selector when that owner replaces it. Exact raw-Q8
-  coltile8/rowbatch4 remains fallback. See
-  `worklog/entries/20260901T220425.712695Z-lhl-qwen4exp-p3-q8-mmq-attn-gate-current-blocked-4fa414.md`
-  and `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
 
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
@@ -9668,3 +9655,30 @@ and selected tile16/columnwarp routes. Run the applicable lineage, kernel,
 registry and public-generation checks for that change. If retained, keep its
 exact-parity diagnostic contract; historical RED-first prose is not evidence
 that the implemented symbol is absent.
+
+### R0147 — Consolidate the Q8 MMQ attention-gate candidate selector
+
+`HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE` extends an existing Q8 MMQ prefill
+policy with K2560/N6144 at a minimum of 64 rows. It does not create the policy
+or allocate MMQ resources, and strict/production profile bindings still set it
+to zero. Plane-count selection in the same helper is a separate control.
+
+The recorded state-repeat failure was repaired; the subsequent comparison was
+rejected for noisy performance, not state divergence. Preserve that distinction
+and the original evidence:
+`worklog/entries/20260901T220425.712695Z-lhl-qwen4exp-p3-q8-mmq-attn-gate-current-blocked-4fa414.md`
+and `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
+These are historical results, not fresh measurements of today's composition.
+
+**Deferred selector decision:** preserve the explicit comparison or replace it
+with an operation-complete dense/GR policy owner. Remove the separate setting
+once that owner represents the same shape and lifetime requirements. Preserve
+exact raw-Q8 fallback and keep this scope independent of prepack/resource
+selection. A performance-driven default change needs stabilized comparisons;
+a changed-arithmetic default also needs its execution-profile gate.
+
+Clearing checks: run attention-gate policy and profile unit tests, then exercise
+the enabled route through public prefill and confirm actual dispatch. Check full
+logits/state, repeatability and cleanup before retiring the comparison. Do not
+silently claim engagement from setting this flag while the MMQ owner is absent.
+This triage changes no runtime or default.
