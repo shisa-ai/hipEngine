@@ -336,34 +336,6 @@ pins the F16 re-admission. These tests cover binder behavior, not the prose here
   can be re-admitted on its evidence
   (`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/`).
 
-## Isolated GR-Up IU8
-
-Cleanup status (2026-10-25, R0026): no runtime cleanup. `GR_IU8` still binds
-`"1" if production` in `hipengine/generation/qwen4_exp_profiles.py`, but
-`PRODUCTION_ARITHMETIC_RECOVERY_FLAGS` zeroes it for `gguf_ud_q4_k_xl`, and
-`gguf_q4_k_m` production falls back to strict, so the flag is off in every
-production binding. The binding stays as the record of intent described in
-"Withdrawn Routes That Stay Bound In The Production Plan".
-
-- The unchanged `GR_IU8` restoration fails the 780-row production numerical
-  gate independently: mean KL 1.402e-3, p95 7.402e-3, top-1 772/780. All 6,912
-  direct calls are K320/N10240. Evidence:
-  `benchmarks/results/2026-09-15-journey-gr-up/`.
-- Localization is done (2026-09-22): the drift enters only at the Q8_0
-  projection boundary (1-3 fp32 ulp, 1.12e-7 to 3.69e-7 relative L2), and the
-  strict projection plus standalone sigmoid and gated-mean kernels reproduce
-  the fused parent bit-exactly on actual inputs, so the epilogue is not a
-  source. This route's prefill-boundary KL is 1.48e-8 against a ~5e-9 cliff,
-  and all 8 of its top-1 flips are decode rows.
-  Evidence: `benchmarks/results/2026-09-22-gr-drift-localization/`.
-- Repair condition: a correction whose prefill-boundary KL is below ~5e-9,
-  screened with one prefill per arm using
-  `scripts/qwen4exp_gr_iu8_logits_probe.py` before spending a 780-row run. An
-  unchanged flag retry does not qualify. The exact fusions and GR-down are
-  separate decisions.
-- The selector docstring now records the standalone depth-gate failure and
-  repair requirement rather than claiming production qualification.
-
 ## Isolated GR-Down IU8
 
 Cleanup status (2026-10-25, R0027): no runtime cleanup. `GR_IU8_DOWN` binds
@@ -775,6 +747,24 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0026 — Repair isolated GR-up IU8 projection drift
+
+The selector documentation is corrected; recovery still overrides the GR_IU8
+production intent binding. R0023 owns binding precedence. The unchanged
+restoration failed the standalone depth gate; localization attributed drift to
+Q8 projection, not the sigmoid/gated-mean epilogue. Evidence remains in
+`benchmarks/results/2026-09-15-journey-gr-up/` and
+`benchmarks/results/2026-09-22-gr-drift-localization/`.
+
+**Deferred numerical repair:** screen a changed correction below the recorded
+approximately 5e-9 prefill-boundary KL cliff with one prefill per arm through
+`scripts/qwen4exp_gr_iu8_logits_probe.py`, then run the complete 780-row gate.
+Do not retry unchanged flag settings or mistake the localized prefill boundary
+for proof of decode correctness. Preserve independent exact-fusion and GR-down
+decisions. Historical numeric details remain at `681d44f88`; no new numerical
+result or production selection changes here.
+
 
 ### R0039 — Separate multi-column GDN capability from composition task review
 
