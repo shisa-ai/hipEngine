@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-1 | P0 | Environment variables, backend capabilities, and registry variants are repeatedly resolved inside runtime methods. | Add a typed immutable `ResolvedRuntimePlan` assembled by model/backend/quant/profile plugins at model or session construction. Environment parsing stays in CLI/API/benchmark adapters. Hot runner methods consume the plan and do not reread environment or package maps. Keep registry-key misses mapped to strict fallback. |
 | RF-2 | P0 | `scripts` is both a 289K-line research workspace and a shipped/importable package. | Move reusable metrics, schemas, fixtures, and artifact validators to `hipengine.benchmark` or `tests/support`; remove the `hipengine -> scripts` import; package only `hipengine` plus explicitly supported tool entry points. Keep source-only experiments outside the wheel. Do not delete a script referenced by an active benchmark protocol until its replacement command exists. |
 | RF-3 | P0 | Rejected/default-off runtime experiments remain intertwined with production methods. | Execute the verified deletion queue below as small behavior-preserving units. A removed runtime selector may leave a focused kernel parity test; a production module must not retain an unrouted experiment solely because historical evidence exists. |
 | RF-4 | P0 | This active ledger is itself an unbounded historical journal. | Keep `REFACTOR.md` as a compact active index with stable IDs, owner/scope, state (`ready`, `blocked`, `keep-fallback`), exact removal gate, and affected paths. Move closed narrative to `REFACTOR-HISTORY.md` or immutable worklogs. Add a check that rejects duplicate active IDs and closed entries in the active table. |
@@ -9733,3 +9732,31 @@ in both owner construction orders, then verify exact-layer schedule and public
 R28 dispatch with full-output/state and lifecycle checks. Any changed arithmetic
 selection requires its profile gate. This triage changes no runtime or default
 and does not renew the historical performance claim.
+
+### RF-1 / R0187 — Finish owner-bound policy resolution using existing profile infrastructure
+
+`ResolvedRuntimeProfile` in `hipengine/execution_profiles.py` already carries
+an immutable profile manifest and plugin construction/binding hooks. It does not
+resolve all launch decisions: `gguf_linear.py` still reads environment settings
+and backend policies, and profile binders can write process-global state.
+Do not introduce a parallel profile framework merely to satisfy the old proposed
+`ResolvedRuntimePlan` name.
+
+**Deferred ownership design:** extend the existing plugin-owned construction
+boundary with typed resolved decisions and explicit resource/shape-dependent
+plans. Identify which values belong to a model, session or request and which
+must vary with live shape. Parse user environment input at adapters, not in hot
+methods; preserve explicit scoped diagnostics without ambient-state leakage.
+R0137 and R0149 own concrete GGUF/Qwen4Exp transport migrations under this goal.
+
+Registry misses may use only a declared fallback that supports the requested
+semantics. A missing capability must remain an explicit error, not silently
+select unrelated strict behavior. Keep four-axis registry ownership and strict
+arithmetic contracts; graph capture must bind the same decisions as eager work.
+
+Clearing checks: test independently configured owners in both construction
+orders, interleaved requests, strict/production selection and unsupported keys.
+Verify migrated hot methods no longer reread their moved settings and exercise
+public generation with selected-route attribution. Existing profile unit tests
+cover the current abstraction, not completion of this migration. This triage
+changes no runtime or architecture.

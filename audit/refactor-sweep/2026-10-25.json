@@ -4826,7 +4826,8 @@
         {
           "line": 4144,
           "text": "| RF-1 | P0 | Environment variables, backend capabilities, and registry variants are repeatedly resolved inside runtime methods. | Add a typed immutable `ResolvedRuntimePlan` assembled by model/backend/quant/profile plugins at model or session construction. Environment parsing stays in CLI/API/benchmark adapters. Hot runner methods consume the plan and do not reread environment or package maps. Keep registry-key misses mapped to strict fallback. |",
-          "status": "pending"
+          "status": "deferred-owner-policy-design",
+          "evidence": ["Existing ResolvedRuntimeProfile inspected; global runtime policy reads remain. Deferred migration reuses existing infrastructure and restricts fallback to capable declared chains.11 tests/docs/audit pass. worklog/entries/20261030T073808.525463Z-cleanup-cleanup-r0187-rf1-67f7d5.md."]
         },
         {
           "line": 4145,
