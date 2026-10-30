@@ -920,19 +920,26 @@ def rounded_next_rms_calls() -> Iterator[list[tuple[int, int]]]:
 
 @pytest.mark.skipif(not _DENSE_MODEL.exists(), reason=f"local GGUF fixture not found: {_DENSE_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.skip(
-    reason=(
-        "origin/main RF1 pre-existing: the 1024 target/proposal boundary can "
-        "publish an int32 sentinel and poison the following GPU case; keep "
-        "automatic long-context MTP fail-closed pending the dedicated repair"
-    )
-)
 def test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback() -> None:
-    """A cached short graph never strands an in-flight proposal at 1024."""
+    """The original sentinel-crossing body must never share a GPU process."""
+    from tests._gguf_mtp_boundary_isolation import run_context_crossing_isolated
 
+    run_context_crossing_isolated()
+
+
+def _require_dense_mtp_boundary_inputs() -> None:
+    if not _DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {_DENSE_MODEL}")
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
     if resolve_backend("auto") not in {"hip_gfx1100", "hip_gfx1151"}:
-        pytest.skip("dense native MTP context crossing requires a qualified gfx11 backend")
+        pytest.skip("dense native MTP context crossing requires a gfx11 backend")
     _require_free_vram(19.0)
+
+
+def _run_dense_mtp_context_crossing() -> None:
+    """Run the original reproducer, guarded inside its isolated process."""
+    _require_dense_mtp_boundary_inputs()
     seed = (
         7734,
         264,
@@ -1016,6 +1023,21 @@ def test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback() -> None:
         target.reset()
         health = target.prefill(seed, use_bulk=False, return_logits=False)
         assert int(health.token_id) >= 0
+        assert int(target.position) == len(seed)
+
+
+def _run_dense_mtp_fresh_health() -> None:
+    """Check GPU liveness only after a successful retired crossing child."""
+    _require_dense_mtp_boundary_inputs()
+    seed = (7734, 264, 12654, 709, 421, 4523, 279, 307)
+    with Qwen35GGUFResidentSession(
+        _DENSE_MODEL,
+        max_sequence_length=64,
+        require_cached_build=os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD") == "1",
+    ) as target:
+        target.select_prefill_quant("gguf_q4_k_m")
+        result = target.prefill(seed, use_bulk=False, return_logits=False)
+        assert int(result.token_id) >= 0
         assert int(target.position) == len(seed)
 
 
