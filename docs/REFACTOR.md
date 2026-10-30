@@ -2404,21 +2404,6 @@ should be removed or collapsed.
   before removing its compatibility adapter; preserve explicit unsupported-mode
   errors and verify staged providers never execute the whole-request path.
 
-## SPECDEC2 gfx1100 packed-PARO C1 bring-up debt
-
-- Added 2026-08-25 for S7 P1. The staged provider streams target prompt hidden
-  rows directly into NextN, pools the heavy proposer, and P4 now carries the K1
-  candidate as a stable borrowed-W8A16 device scalar through target accept.
-  Bounded candidate readback follows target synchronization. Target backup still
-  copies canonical slot 0 into spare slot 1 each cycle, and complete production
-  wall remains below AR/direct, so explicit/default-off and automatic K0 bind.
-- Removal/promotion trigger: move target result/accept/selected-commit/provider-
-  update metadata and hot backup to stable claim-backed slabs, prove exact
-  rollback/lifecycle engagement, and pass complete same-suite wall against the
-  qualified direct fast B1 control. C2/C4
-  additionally requires physical multi-request PARO proposal/target ownership;
-  do not broaden the singleton adapter.
-
 ## SPECDEC2 dense prompt-activation fallback
 
 - Added 2026-08-25 with SPECDEC2-PERF P2. Fresh strict C1/C2/C4 requests stream
@@ -9899,3 +9884,27 @@ production reachability, a bounded indexed ledger and one scheduler/state/KV
 commit owner per request. RF-2 alone satisfies only wheel exclusion. A completed
 triage manifest does not establish those implementation outcomes; the user's
 current sweep allows these named decisions to remain deferred for later review.
+
+### R0189 — Packed-PARO transaction storage after journal integration
+
+The shared checkpoint journal now owns PARO target/provider rollback.
+`_checkpoint_target` in `hipengine/generation/qwen35_paro_mtp2.py` copies mutable
+recurrent/hidden state to the spare slot with `kv_rows=0`, records its cursor,
+and restores through the same journal. It does not copy the live KV prefix.
+The implementation and separate gfx1151 validation are recorded in
+`worklog/entries/20261024T114318.665675Z-mtp-speculative-state-journal-c81b36.md`;
+that evidence is not a fresh gfx1100 result or an MTP-versus-AR comparison.
+
+**Deferred storage design:** decide whether remaining target result, acceptance,
+selected-commit and provider-update metadata and mutable backups should share
+stable claim-backed slabs. Preserve one journal and explicit buffer lifetimes;
+do not replace the working rollback with a second coordinator. Verify exact
+state/cursors/live KV on rejected, partial and full acceptance, capture/restore
+failure, cancellation and request reuse before retiring the spare-slot path.
+
+Any multi-request expansion must implement physical proposal and target
+ownership rather than broaden the singleton adapter's admission. Compare full
+request wall time with matched AR/direct controls when claiming a performance
+benefit. The old automatic-K0/default-off statement was a historical bring-up
+result, not a current admission rule; current model/provider capability and
+selection policy remain authoritative. No runtime defaults change here.

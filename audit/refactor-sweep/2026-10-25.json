@@ -4998,18 +4998,18 @@
       "start_line": 4239,
       "end_line": 4253,
       "sha256": "b1d006b969996e9455ffa58975e999f4eeb726cee1c99bf10081a78ac843b44c",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-remaining-paro-transaction-storage",
+      "evidence": ["Journal owns target/provider rollback; mutable-only spare backup uses kv_rows=0. Remaining slabs and physical multi-request ownership deferred; historical K0 is not current admission. 47 tests/docs/audit pass. worklog/entries/20261030T083229.132480Z-cleanup-cleanup-r0189-9318f6.md."],
       "subitems": [
         {
           "line": 4241,
           "text": "- Added 2026-08-25 for S7 P1. The staged provider streams target prompt hidden",
-          "status": "pending"
+          "status": "reconciled-journal-and-historical-policy"
         },
         {
           "line": 4247,
           "text": "- Removal/promotion trigger: move target result/accept/selected-commit/provider-",
-          "status": "pending"
+          "status": "deferred-remaining-paro-transaction-storage"
         }
       ]
     },
