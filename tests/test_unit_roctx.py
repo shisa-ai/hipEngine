@@ -70,8 +70,12 @@ def test_wrapper_default_uses_shared_discovery(monkeypatch, tmp_path, name):
     module = importlib.import_module(f"scripts.{name}")
     sdk = tmp_path / "selected.so"
     sdk.touch()
-    monkeypatch.setattr(roctx, "sdk_candidates", lambda: [sdk])
-    monkeypatch.setattr(roctx, "profiler_prefix", lambda: None)
+    # Cache-owner wrappers use the packaged implementation; standalone wrappers
+    # load the same source without binding hipengine before child setup.
+    from hipengine.benchmark import roctx_discovery as packaged_roctx
+    for discovery in (roctx, packaged_roctx):
+        monkeypatch.setattr(discovery, "sdk_candidates", lambda: [sdk])
+        monkeypatch.setattr(discovery, "profiler_prefix", lambda: None)
     assert module._default_roctx_sdk() == sdk
 
 

@@ -23,7 +23,7 @@ from hipengine.execution_profiles import (
     manifest_sha256,
     validate_variant_manifest,
 )
-from scripts.quant_quality.metrics import per_row_metrics, summarize_diagnostics
+from hipengine.benchmark.quant_quality_metrics import per_row_metrics, summarize_diagnostics
 
 
 EXECUTION_PROFILE_EVALUATION_KIND = "hipengine_execution_profile_evaluation"

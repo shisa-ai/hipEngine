@@ -76,7 +76,7 @@ artifacts = [
 
 [tool.hatch.build.targets.wheel]
 core-metadata-version = "2.4"
-packages = ["hipengine", "scripts"]
+packages = ["hipengine"]
 
 [tool.hatch.build.targets.sdist]
 core-metadata-version = "2.4"

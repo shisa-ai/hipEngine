@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from scripts.roctx_discovery import (
+from hipengine.benchmark.roctx_discovery import (
     default_sdk as _default_roctx_sdk,
     prepare_override,
     sdk_dependency_paths,

@@ -4832,7 +4832,8 @@
         {
           "line": 4145,
           "text": "| RF-2 | P0 | `scripts` is both a 289K-line research workspace and a shipped/importable package. | Move reusable metrics, schemas, fixtures, and artifact validators to `hipengine.benchmark` or `tests/support`; remove the `hipengine -> scripts` import; package only `hipengine` plus explicitly supported tool entry points. Keep source-only experiments outside the wheel. Do not delete a script referenced by an active benchmark protocol until its replacement command exists. |",
-          "status": "pending"
+          "status": "fixed-product-wheel-ownership",
+          "evidence": ["Shared metrics and ROCTX discovery moved to hipengine.benchmark; source adapters preserved; isolated built wheel imports pass without scripts. Focused tests and default suite with isolated stale history assertion repair recorded in worklog/entries/20261030T074356.603690Z-cleanup-cleanup-r0187-rf2-432ef8.md."]
         },
         {
           "line": 4146,
