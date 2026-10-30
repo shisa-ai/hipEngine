@@ -549,7 +549,7 @@ fallbacks. If retained, record its diagnostic owner and close the cleanup.
 The recorded integer-MMQ numerical failure is in
 `benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json`.
 
-### 2026-09-02 Qwen4Exp P9 load drop-behind
+### R0143 — Qwen4Exp P9 load drop-behind
 
 R0143 disposition: deferred product decision.
 
@@ -2696,7 +2696,7 @@ a normal public MTP request as a separate provider-preservation check. Any
 changed-arithmetic default still needs its execution-profile numerical/task
 gates; historical throughput is not that evidence.
 
-### R0281-DRAFT-X8 — Resident Q6 top-1 arithmetic, layout and sidecar ownership
+### R0281-DRAFT-X8 / R0294–R0298 — Resident Q6 top-1 arithmetic, layout and sidecar ownership
 
 The compatibility generator still selects Q6 top-1 dp4a with draft shape
 `x8`; bench/profiler and named `x8top1` suite routes also consume it. The
