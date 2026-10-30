@@ -79,7 +79,10 @@ def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cov
     del session
     from hipengine import execution_profiles
     from hipengine.kernels import registry
-    from hipengine.kernels.hip_gfx1151 import import_gfx1100_kernel_modules
+    from hipengine.kernels.hip_gfx1151 import (
+        import_gfx1100_kernel_modules,
+        register_gfx1151_kernels,
+    )
 
     # Several gfx1100 kernel modules register their kernels at module import
     # time, and test modules import hipengine lazily inside test bodies. Import
@@ -99,6 +102,14 @@ def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cov
 
     for module in pkgutil.walk_packages(hip_gfx1100.__path__, f"{hip_gfx1100.__name__}."):
         import_module(module.name)
+
+    # gfx1151 aliases the gfx1100 key space at its own import time. A test
+    # module that imports the backend before these source modules (the
+    # backend-before-test_unit_gguf_linear_dispatch collection order) leaves the
+    # later source keys unaliased, and the snapshot below would restore that
+    # incomplete set after every test. Re-run the alias pass once all source
+    # modules are imported so the baseline is complete for any collection order.
+    register_gfx1151_kernels()
 
     global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS
     global _BASELINE_PROFILE_ENV, _BASELINE_HIPENGINE_ENV
