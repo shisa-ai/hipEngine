@@ -395,7 +395,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE` | unset | Diagnostic route | T16 selected pair-reuse route selector (batch-route gate). |
 | `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected-down pair-reuse route selector. |
 | `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected Q6-down pair-reuse route selector. |
-| `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN` | unset | Rollback seam | IQ dense row-slab rule: unset picks the smallest slab at or above the row count (measured default); `1` restores the largest slab at or below it. |
+| `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN` | retired | No runtime reader | Dense IQ uses the smallest covering slab through eight rows and slab eight above that. Explicit `row_batch` kernel arguments remain available for parity tests. |
 | `HIPENGINE_GGUF_IQ_GROUPED_PREFILL` | retired | No runtime reader | Grouped raw-IQ prefill is selected by assignment count and registered kernel capability. Stale values have no effect; direct selected fallback remains. |
 | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS` | true | Retained default with rollback opt-out | Fuses the MoE tail with the next layer's input RMSNorm; `0` restores the separate chain (set to `0` in the MoE-graph parity test). |
 | `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` | retired | No runtime reader | Target verification follows the execution profile: production without strict fallback uses prefill-band owners; strict, absent profile context and strict fallback keep GEMV. Stale values have no effect. |

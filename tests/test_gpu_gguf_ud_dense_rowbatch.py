@@ -108,20 +108,12 @@ def test_default_slab_is_the_smallest_one_that_covers_the_prompt(rows, expected)
     assert _row_batch(rows) == expected
 
 
-@pytest.mark.parametrize('rows,expected', [(1, 1), (2, 2), (3, 2), (4, 4), (7, 4),
+@pytest.mark.parametrize('rows,expected', [(1, 1), (2, 2), (3, 4), (4, 4), (7, 8),
                                            (8, 8), (9, 8), (512, 8)])
-def test_row_batch_round_down_switch_restores_the_old_rule(
-    rows, expected, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize('stale_value', ('1', 'maybe'))
+def test_row_batch_ignores_retired_switch(
+    rows, expected, stale_value, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN=1`` restores the old rule."""
-
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import _row_batch
-    monkeypatch.setenv('HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN', '1')
+    monkeypatch.setenv('HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN', stale_value)
     assert _row_batch(rows) == expected
-
-
-def test_row_batch_rejects_a_non_boolean_switch(monkeypatch: pytest.MonkeyPatch) -> None:
-    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import _row_batch
-    monkeypatch.setenv('HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN', 'maybe')
-    with pytest.raises(ValueError):
-        _row_batch(3)

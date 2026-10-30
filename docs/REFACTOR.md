@@ -3544,23 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 strict dense IQ row slab covers the prompt rows — env kill switch
-
-**State.** `_row_batch()` in `hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py`
-returns the smallest slab in `(1, 2, 4, 8)` at or above the row count, so
-`grid.y` is one and each weight slice is read once. `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN`
-overrides it for bisection; setting it to `1` restores the largest slab at or
-below the row count.
-
-**Why it is retained.** The two rules differ only for `rows` in 3, 5, 6 and 7,
-where the old rule left `grid.y > 1`. The kernel declares every `R`
-bit-identical, so the switch exists to bisect a launch-geometry suspicion, not
-to preserve an arithmetic variant.
-
-**Removal trigger.** Once no artifact or test needs the round-down comparison,
-delete `_row_batch_round_down()`, `_ROW_BATCH_DOWN_ENV` and the switch test, and
-keep the covering rule alone.
-
 ## 2026-09-13 rounded add+rmsnorm fixed-5120 leaf — env kill switch
 
 **State.** `GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES` in
