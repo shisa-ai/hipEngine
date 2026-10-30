@@ -2208,67 +2208,6 @@ should be removed or collapsed.
 
 
 
-## gfx1100 dense SPECDEC2 C8 physical-width rollback
-
-The maximum-request environment override is removed from server admission and
-adapter construction together. Backend width/depth policy, actual owner capacity,
-derived buffer bounds and strict-profile fallback remain unchanged.
-
-**Remaining validation:** exercise `hipengine serve` at C5/C8 using production
-D1/D24 workloads, confirming physical grouping, deterministic/isolation behavior,
-allocation-failure cleanup and cancellation. Preserve the original complete
-category and control/ownership gates before closing this entry.
-
-## Server default-AR ready-cohort rollback
-
-- Added 2026-08-31 with task #29. Default-route HTTP items already inside the
-  configured generation batch window now enter one
-  `EngineService.submit_request_batches` command, so every child is admitted
-  before the next model poll while retaining its own collector, cancellation,
-  completion, backpressure, and reclaim lifecycle. Dynamically arriving items
-  use free capacity in a later cohort. The environment bypass is removed;
-  generators without the ready-cohort API retain independent submission.
-  Non-independent generators, MTP and streaming routes are unchanged.
-- Remaining validation: repeated C1-C3 public server runs must confirm full
-  native-prefill groups, exact outputs, independent early completion/failure/
-  cancellation and no C1 regression. The atomic EngineService cohort seam and
-  per-child handles remain; integration lifecycle tests alone do not establish
-  public native-prefill engagement.
-
-## gfx1100 fused Q4-T16 prefill row-retile bisection
-
-- Added 2026-08-31 with task #37. The separately registered standard-Q4
-  gate/up+SiLU row48, row64 and row128 siblings preserve the 256-row parent's
-  K16 WMMA, FP32 accumulation, BF16 projection boundary, and SiLU association.
-  Backend policy selects row48 at rows33-48, row64 at rows49-64 and row128
-  at rows65-128; rows129+ and every quant/shape/backend miss retain the
-  parent. The environment lookup/cache is removed; the diagnostic prefill
-  comparison uses a scoped selector override restored in `finally`.
-- Remaining validation: defaults-only repeated C1-C3 public serving gate,
-  preserving the bounded shape/range policy and permanent 256-row parent.
-  Route tests and direct numerical checks do not establish public engagement.
-
-## gfx1100 Q4-T16 row64 down-projection bisection
-
-- Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-192 owner is
-  selected by backend shape/range policy; the separately registered 256-row
-  shared-B parent remains the strict fallback.
-  The redundant environment cap and cache are removed; admission still follows
-  the backend's shape and row-range declarations.
-- Remaining validation: a defaults-only same-protocol public repeat, preserving
-  shape/range policy and explicit registered parent fallback. Direct row64/parent
-  GPU parity and dispatch tests do not close public serving validation.
-
-## SPECDEC2 dense NextN host/device proposal duplication
-
-- Host-materialized and device-top1 batch entry points now call
-  `_enqueue_batch_hidden_transition` for embedding, normalization, fusion and
-  backbone execution. Each adapter retains token staging, synchronization/scoring
-  options, cursor publication and result materialization. The host oracle remains
-  callable without a duplicate model-launch body.
-- Remaining validation: public device accept/commit, graph/eager agreement and
-  cancellation/cleanup checks. CPU transition-order and provider tests preserve
-  the refactor contract but do not establish public GPU execution.
 
 
 
@@ -2390,6 +2329,69 @@ through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback
+
+The maximum-request environment override is removed from server admission and
+adapter construction together. Backend width/depth policy, actual owner capacity,
+derived buffer bounds and strict-profile fallback remain unchanged.
+
+**Remaining validation:** exercise `hipengine serve` at C5/C8 using production
+D1/D24 workloads, confirming physical grouping, deterministic/isolation behavior,
+allocation-failure cleanup and cancellation. Preserve the original complete
+category and control/ownership gates before closing this entry.
+
+### R0198 — Server default-AR ready-cohort rollback
+
+- Added 2026-08-31 with task #29. Default-route HTTP items already inside the
+  configured generation batch window now enter one
+  `EngineService.submit_request_batches` command, so every child is admitted
+  before the next model poll while retaining its own collector, cancellation,
+  completion, backpressure, and reclaim lifecycle. Dynamically arriving items
+  use free capacity in a later cohort. The environment bypass is removed;
+  generators without the ready-cohort API retain independent submission.
+  Non-independent generators, MTP and streaming routes are unchanged.
+- Remaining validation: repeated C1-C3 public server runs must confirm full
+  native-prefill groups, exact outputs, independent early completion/failure/
+  cancellation and no C1 regression. The atomic EngineService cohort seam and
+  per-child handles remain; integration lifecycle tests alone do not establish
+  public native-prefill engagement.
+
+### R0199 — gfx1100 fused Q4-T16 prefill row-retile bisection
+
+- Added 2026-08-31 with task #37. The separately registered standard-Q4
+  gate/up+SiLU row48, row64 and row128 siblings preserve the 256-row parent's
+  K16 WMMA, FP32 accumulation, BF16 projection boundary, and SiLU association.
+  Backend policy selects row48 at rows33-48, row64 at rows49-64 and row128
+  at rows65-128; rows129+ and every quant/shape/backend miss retain the
+  parent. The environment lookup/cache is removed; the diagnostic prefill
+  comparison uses a scoped selector override restored in `finally`.
+- Remaining validation: defaults-only repeated C1-C3 public serving gate,
+  preserving the bounded shape/range policy and permanent 256-row parent.
+  Route tests and direct numerical checks do not establish public engagement.
+
+### R0200 — gfx1100 Q4-T16 row64 down-projection bisection
+
+- Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-192 owner is
+  selected by backend shape/range policy; the separately registered 256-row
+  shared-B parent remains the strict fallback.
+  The redundant environment cap and cache are removed; admission still follows
+  the backend's shape and row-range declarations.
+- Remaining validation: a defaults-only same-protocol public repeat, preserving
+  shape/range policy and explicit registered parent fallback. Direct row64/parent
+  GPU parity and dispatch tests do not close public serving validation.
+
+### R0202 — SPECDEC2 dense NextN host/device proposal duplication
+
+- Host-materialized and device-top1 batch entry points now call
+  `_enqueue_batch_hidden_transition` for embedding, normalization, fusion and
+  backbone execution. Each adapter retains token staging, synchronization/scoring
+  options, cursor publication and result materialization. The host oracle remains
+  callable without a duplicate model-launch body.
+- Remaining validation: public device accept/commit, graph/eager agreement and
+  cancellation/cleanup checks. CPU transition-order and provider tests preserve
+  the refactor contract but do not establish public GPU execution.
+
 
 ### R0184 — Production verifier-Q4 construction handoff
 
