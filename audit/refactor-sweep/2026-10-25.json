@@ -13852,8 +13852,8 @@
       "start_line": 12296,
       "end_line": 12371,
       "sha256": "2274e26f274d52c6c32dd4975fc7b0acca08dd0fa16ce9721bd63f09cdef9882",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Preserved observed continuation-failure repair and unchanged clearing command; removed conflicting superseded default-on retirement history. Runtime unchanged. worklog/entries/20261030T055331.626666Z-cleanup-cleanup-r0516-efe8c6.md."],
       "subitems": []
     },
     {

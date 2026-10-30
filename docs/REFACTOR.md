@@ -3544,82 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Gemma 4 expert down MMQ: exact automatic default after continuation failure (open 2026-10-03)
-
-Automatic selection does not use the MMQ down; since 2026-10-10 it runs the
-grouped WMMA owner (see the WMMA rollback lever entry at the top of this
-ledger), and before that the registered exact down owner. The existing one-plane
-MMQ route failed nine of ten generated-history screens; three-plane feedback
-failed seven. The exact-down control matched all 610 paired strict logits.
-Explicit `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1` and pinned `mmq` selection remain
-runnable; neither the representation nor the evaluator thresholds changed.
-
-Clearing command (use the same artifact for both arms):
-
-```bash
-HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1 .venv/bin/python scripts/gemma4_generated_history_gate.py \
-  --model <artifact>.gguf --output-dir /tmp/gemma4-down-mmq-repair
-```
-
-Remove the lever after a repaired MMQ owner passes this unchanged continuation
-screen and the full applicable execution-profile gate, with selected-route,
-repeatability and isolation evidence. See
-`worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md`.
-
-The following measurements describe the earlier 2026-09-28 decision, not the
-current default.
-
-`HIPENGINE_GEMMA4_MOE_DOWN_MMQ` selects the Q5_1 DS4 DP4A MMQ route for Gemma 4's
-expert down projection. Before it, Q5_1 had no MMQ path at all --
-`gemma4_project_experts_gate_up_mmq` accepts only `gguf_q4_k` and `gguf_q5_k` -- so
-the down projection ran the fp32 grouped family at **8.6 GB/s** where the Q4_K
-gate/up MMQ on the same layer ran at **67 GB/s**, 11.8x per FLOP. It measures
-**7.191 s -> 5.213 s on the 2048-token prefill (+38.0%)**, and the expert share of
-prefill falls from 43.4% to 11.0%. On the loop's 512/128 shape the prefill goes
-from 1.52 s to 1.01 s.
-
-**Historical default (2026-09-28).** The route defaulted on, and
-`HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` restored the FP32 grouped route.
-`tests/test_unit_gemma4_expert_route.py` and
-`tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py` test the implementation.
-
-**Why the width constraint had to be lifted, not worked around.** The Q5_1 MMQ
-kernel tiled `in_features` in 128-wide DS4 blocks and computed
-`ds4_blocks = in_features / 128` with integer division, so a width that is not a
-multiple of 128 silently dropped its tail; its `in_features % 128` guard existed to
-prevent exactly that. Gemma 4 26B-A4B's expert down width is **704**, which is
-`5 x 128 + 64`. The route now rounds `ds4_blocks` up and skips the Q5_1 sub-blocks
-a trailing group does not have, and the DS4 activation pack rounds `blocks_per_row`
-up and reads `0.0` past `hidden`. **This is exact, not an approximation:** the
-elements past `hidden` are zero, and a zero cannot raise a `max_abs` or move a sum,
-so the scale the real elements get is the one they would have got without the
-padding.
-
-**Numerical envelope, measured.** At the model's own geometry -- 4096 compact rows,
-128 experts, 704 -> 2816, one plane -- against the fp32 grouped owner and against an
-exact dequant oracle: grouped vs oracle max 0.00789 / mean 0.000712; MMQ vs oracle
-max 0.01297 / mean 0.001336; MMQ vs grouped max 0.01218 / mean 0.001110. That is the
-same envelope the Q4_K gate/up route above already runs at, and it uses the same
-plane count (`_MMQ_ACTIVATION_PASSES = 1`) for the same reason.
-
-**It is over the 0.05 `kl_max` bar on the 2048/1024 teacher-forced gate, and that
-over-bar is not this route's.** Measured 2026-09-28 against
-`/tmp/gemma4-gate-strict-gfx1151.npz`: all routes on gives `kl_max` 0.137246 with
-`kl_mean` 0.000317, `kl_p99` 0.000179, `top1_rate` 1.0 and 0 flips; with this route
-off it is **0.170633**; with the WMMA dense prefill off it is 0.167806; with both off
-it is 0.156917. Every configuration fails the bar and turning this route off makes it
-*worse*, so the over-bar is the pre-existing property of the Q4_K gate/up MMQ route
-recorded in the section above -- over the bar at 7 of 13 frozen-campaign prefill
-lengths -- and not something this route introduced. All-on also reproduces to six
-decimal places across runs, so the result is deterministic rather than a tail draw.
-
-Remove it once a teacher-forced gate against the campaign's frozen evaluator
-has been recorded for the new default and its verdict is on file. Note that
-`capture` must run with `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` to freeze the incumbent
-fp32 path, for the same reason the gate/up entry gives. The implementation, its
-registered launch path, and its correctness tests stay in place. Evidence:
-`benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json`.
-
 ## Gemma 4's pack8 expert layout is deleted (settled and removed 2026-09-28)
 
 **RESOLVED 2026-09-28: the layout was measured never ahead, and the flag and its
@@ -9780,3 +9704,27 @@ Historical attribution and short-prefill results remain in
 `benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
 The original narrative is preserved in ledger history at `4b08b80fd`; do not
 substitute that history or unit routing tests for the frozen-evaluator verdict.
+
+### R0516 — Repair Gemma 4 down-MMQ continuation before retiring its lever
+
+Automatic selection does not choose down MMQ. Explicit
+`HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1` and pinned `mmq` remain runnable. The recorded
+continuation failure, not missing benchmark coverage, is the reason to preserve
+this distinction. Keep the current default and registered implementation.
+
+**Deferred numerical repair:** diagnose and repair the MMQ owner's generated-history
+failure, then run the unchanged continuation screen and full applicable
+execution-profile gate, including selected-route, repeatability and isolation
+checks. Use the same model artifact for both arms:
+
+```bash
+HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1 .venv/bin/python scripts/gemma4_generated_history_gate.py \
+  --model <artifact>.gguf --output-dir /tmp/gemma4-down-mmq-repair
+```
+
+Retire the lever only after that repair passes; an earlier teacher-forced result
+or the superseded default-on decision does not close the continuation failure.
+See `worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md`.
+Historical route attribution remains in
+`benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json`
+and ledger history at `43477a865`.
