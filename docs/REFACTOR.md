@@ -4357,10 +4357,15 @@ Owner: `hipengine/kernels/policy.py`.
 
 Scope: `hipengine/kernels/policy.py`, `hipengine/kernels/hip_gfx1151/__init__.py`.
 
-**Deferred boundary design:** divide immutable capability/policy declarations by subsystem and
-quantization, retaining one backend package aggregator and explicit validation. Reuse existing
-geometry types; do not invent a second registry or move backend/quant conditionals into engine
-dispatch. Model names and artifact stamps remain provenance, not admission keys.
+**Remaining boundary work:** partition GGUF quant/runtime declarations and backend identity/capability
+declarations in `hipengine/kernels/hip_gfx1151/__init__.py`. Keep the package aggregator, existing
+geometry types and explicit validation; do not invent a second registry or move backend/quant
+conditionals into engine dispatch. Model names and artifact stamps remain provenance, not admission
+keys. Migrate consumers of the explicit Laguna package compatibility exports before removing them.
+
+The extracted Laguna policy owner still needs a public Laguna generation/serving check with
+selected prefill/decode/MoE attribution; the local checkpoint is absent (see R0273). Static registry
+identity does not replace that model-backed check.
 
 Done when: compare the exact `(backend, layer, quant, variant)` key set, implementations,
 declared fallbacks and capability values before and after each move. Cover cold import, repeated

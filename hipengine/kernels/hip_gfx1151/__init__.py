@@ -102,6 +102,164 @@ from hipengine.kernels.registry import (
     registered_keys,
     resolve,
 )
+from hipengine.kernels.hip_gfx1151 import policy_laguna as _policy_laguna
+
+# Compatibility exports for the Laguna capability/policy declarations that
+# now live in ``policy_laguna``. Each name is re-bound explicitly; this is
+# not a module proxy, and ``policy_laguna`` remains the single source of
+# truth for the values and their provenance comments.
+#
+# Removal condition: delete this block once no caller imports these names
+# from ``hipengine.kernels.hip_gfx1151`` and the gfx1100/gfx1151 capability
+# ledger derives its assigned-name set from the owning policy modules. The
+# module-level assignments also keep
+# ``test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads`` stable
+# while that check still reads this package initializer.
+LAGUNA_ARGMAX_CONTROL_PUBLISH = _policy_laguna.LAGUNA_ARGMAX_CONTROL_PUBLISH
+LAGUNA_DENSE_Q4_PREFILL_MODE = _policy_laguna.LAGUNA_DENSE_Q4_PREFILL_MODE
+LAGUNA_F16_ATTENTION_QUAD_DECODE = _policy_laguna.LAGUNA_F16_ATTENTION_QUAD_DECODE
+LAGUNA_F16_BOUNDARY_FUSION = _policy_laguna.LAGUNA_F16_BOUNDARY_FUSION
+LAGUNA_F16_DECODE_FIXEDK = _policy_laguna.LAGUNA_F16_DECODE_FIXEDK
+LAGUNA_F16_DECODE_ONEBARRIER = _policy_laguna.LAGUNA_F16_DECODE_ONEBARRIER
+LAGUNA_F16_NONTEMPORAL_DECODE = _policy_laguna.LAGUNA_F16_NONTEMPORAL_DECODE
+LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE = _policy_laguna.LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE
+LAGUNA_F16_PREFILL_MIN_ROWS = _policy_laguna.LAGUNA_F16_PREFILL_MIN_ROWS
+LAGUNA_F16_PREFILL_MODE = _policy_laguna.LAGUNA_F16_PREFILL_MODE
+LAGUNA_F16_PREFILL_STRATEGY = _policy_laguna.LAGUNA_F16_PREFILL_STRATEGY
+LAGUNA_F16_PROJECTION_HEAD_KV_DECODE = _policy_laguna.LAGUNA_F16_PROJECTION_HEAD_KV_DECODE
+LAGUNA_FUSED_SELECTED_SILU_PACK = _policy_laguna.LAGUNA_FUSED_SELECTED_SILU_PACK
+LAGUNA_GLOBAL_DENSE_PREFIX = _policy_laguna.LAGUNA_GLOBAL_DENSE_PREFIX
+LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER = _policy_laguna.LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER
+LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_FUSED_FIXEDSHAPE
+LAGUNA_GLOBAL_GQA2_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_GQA2_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_GQA2_VSTAGE64_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_GQA2_VSTAGE64_FIXEDSHAPE
+LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_FIXEDSHAPE
+LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_FIXEDSHAPE
+LAGUNA_GLOBAL_LOCAL1024 = _policy_laguna.LAGUNA_GLOBAL_LOCAL1024
+LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_MIXED32_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_MIXED32_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = _policy_laguna.LAGUNA_GLOBAL_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE
+LAGUNA_GLOBAL_PREFILL_VARIANT = _policy_laguna.LAGUNA_GLOBAL_PREFILL_VARIANT
+LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE
+LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX
+LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX_MIN_LIVE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX_MIN_LIVE
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_ALLWAVE_SCORE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_ALLWAVE_SCORE
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE
+LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4 = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4
+LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64 = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64
+LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64 = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64 = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80 = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH8_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH8_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE
+LAGUNA_GLOBAL_SPLIT_MIN_LIVE = _policy_laguna.LAGUNA_GLOBAL_SPLIT_MIN_LIVE
+LAGUNA_GROUPED_IQ_DOWN_VARIANTS = _policy_laguna.LAGUNA_GROUPED_IQ_DOWN_VARIANTS
+LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = _policy_laguna.LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS
+LAGUNA_HEAD_KV_FUSION = _policy_laguna.LAGUNA_HEAD_KV_FUSION
+LAGUNA_MOE_BRANCH_CONCURRENCY = _policy_laguna.LAGUNA_MOE_BRANCH_CONCURRENCY
+LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY = _policy_laguna.LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY
+LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY = _policy_laguna.LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY
+LAGUNA_MOE_GROUP_COMPACT_MODE = _policy_laguna.LAGUNA_MOE_GROUP_COMPACT_MODE
+LAGUNA_MOE_SHARED_AFTER_ROUTER = _policy_laguna.LAGUNA_MOE_SHARED_AFTER_ROUTER
+LAGUNA_MOE_SHARED_LOW_PRIORITY = _policy_laguna.LAGUNA_MOE_SHARED_LOW_PRIORITY
+LAGUNA_MOE_TAIL_WAVE0_TREE = _policy_laguna.LAGUNA_MOE_TAIL_WAVE0_TREE
+LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE = _policy_laguna.LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE
+LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE = _policy_laguna.LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT = _policy_laguna.LAGUNA_PREFILL_ATTENTION_HIPBLASLT
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE = _policy_laguna.LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES = _policy_laguna.LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER = _policy_laguna.LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER
+LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX = _policy_laguna.LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX
+LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT = _policy_laguna.LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT
+LAGUNA_PREFILL_CACHED_META = _policy_laguna.LAGUNA_PREFILL_CACHED_META
+LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE = _policy_laguna.LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE
+LAGUNA_PREFILL_DENSE_INITIAL = _policy_laguna.LAGUNA_PREFILL_DENSE_INITIAL
+LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS = _policy_laguna.LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS
+LAGUNA_PREFILL_GLOBAL_QROW6 = _policy_laguna.LAGUNA_PREFILL_GLOBAL_QROW6
+LAGUNA_PREFILL_KV_PREAPPEND = _policy_laguna.LAGUNA_PREFILL_KV_PREAPPEND
+LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT = _policy_laguna.LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT
+LAGUNA_PREFILL_MATRIX_ROWS = _policy_laguna.LAGUNA_PREFILL_MATRIX_ROWS
+LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT = _policy_laguna.LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT
+LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED = _policy_laguna.LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED
+LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR = _policy_laguna.LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR
+LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED = _policy_laguna.LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED
+LAGUNA_Q4_PACK8_DUAL_SILU_DECODE = _policy_laguna.LAGUNA_Q4_PACK8_DUAL_SILU_DECODE
+LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS = _policy_laguna.LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS
+LAGUNA_Q4_SHARED_DOWN_T16_DECODE = _policy_laguna.LAGUNA_Q4_SHARED_DOWN_T16_DECODE
+LAGUNA_Q6_COMPACT_ACTIVATION = _policy_laguna.LAGUNA_Q6_COMPACT_ACTIVATION
+LAGUNA_Q6_HALF_ROW_ACTIVATION = _policy_laguna.LAGUNA_Q6_HALF_ROW_ACTIVATION
+LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS = _policy_laguna.LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS
+LAGUNA_Q6_QMICRO = _policy_laguna.LAGUNA_Q6_QMICRO
+LAGUNA_Q6_QMICRO_PERMUTE = _policy_laguna.LAGUNA_Q6_QMICRO_PERMUTE
+LAGUNA_Q6_QMICRO_PLANAR = _policy_laguna.LAGUNA_Q6_QMICRO_PLANAR
+LAGUNA_Q6_SKIP_PADDED_ACTIVATION = _policy_laguna.LAGUNA_Q6_SKIP_PADDED_ACTIVATION
+LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1 = _policy_laguna.LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1
+LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION = _policy_laguna.LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION
+LAGUNA_Q6_WMMA_PREFETCH_WEIGHT = _policy_laguna.LAGUNA_Q6_WMMA_PREFETCH_WEIGHT
+LAGUNA_ROUTER_LOGITS_MODE = _policy_laguna.LAGUNA_ROUTER_LOGITS_MODE
+LAGUNA_ROUTER_PROJECTION_WAVE0_TREE = _policy_laguna.LAGUNA_ROUTER_PROJECTION_WAVE0_TREE
+LAGUNA_SELECTED_DOWN_MODE = _policy_laguna.LAGUNA_SELECTED_DOWN_MODE
+LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE = _policy_laguna.LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE
+LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE = _policy_laguna.LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE
+LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE = _policy_laguna.LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE
+LAGUNA_SELECTED_GATE_UP_MODE = _policy_laguna.LAGUNA_SELECTED_GATE_UP_MODE
+LAGUNA_SELECTED_HALFDOT_DECODE = _policy_laguna.LAGUNA_SELECTED_HALFDOT_DECODE
+LAGUNA_SELECTED_NATURAL_DECODE = _policy_laguna.LAGUNA_SELECTED_NATURAL_DECODE
+LAGUNA_SELECTED_NATURAL_TILE8_DECODE = _policy_laguna.LAGUNA_SELECTED_NATURAL_TILE8_DECODE
+LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE = _policy_laguna.LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE
+LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE = _policy_laguna.LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE
+LAGUNA_SHARED_DOWN_MOE_TAIL_HOST_BATCH = _policy_laguna.LAGUNA_SHARED_DOWN_MOE_TAIL_HOST_BATCH
+LAGUNA_SPLIT_GATE_FUSION = _policy_laguna.LAGUNA_SPLIT_GATE_FUSION
+LAGUNA_SWA_DENSE_RING = _policy_laguna.LAGUNA_SWA_DENSE_RING
+LAGUNA_SWA_FUSED_FIXED512 = _policy_laguna.LAGUNA_SWA_FUSED_FIXED512
+LAGUNA_SWA_GQA3_LOCAL384_FIXED512 = _policy_laguna.LAGUNA_SWA_GQA3_LOCAL384_FIXED512
+LAGUNA_SWA_GQA3_VSTAGE64_FIXED512 = _policy_laguna.LAGUNA_SWA_GQA3_VSTAGE64_FIXED512
+LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_FIXED512 = _policy_laguna.LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_FIXED512
+LAGUNA_SWA_GQA3_VSTAGE64_VEC16_FIXED512 = _policy_laguna.LAGUNA_SWA_GQA3_VSTAGE64_VEC16_FIXED512
+LAGUNA_SWA_LOCAL1024 = _policy_laguna.LAGUNA_SWA_LOCAL1024
+LAGUNA_SWA_MIXED32_EXP16_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP16_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_EXP8_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_EXP8_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = _policy_laguna.LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512
+LAGUNA_SWA_OUTPUT_SHARDED_PROBABILITY_DPP_QK = _policy_laguna.LAGUNA_SWA_OUTPUT_SHARDED_PROBABILITY_DPP_QK
+LAGUNA_SWA_PREFILL_ROLE_VARIANTS = _policy_laguna.LAGUNA_SWA_PREFILL_ROLE_VARIANTS
+LAGUNA_SWA_PREFILL_VARIANT = _policy_laguna.LAGUNA_SWA_PREFILL_VARIANT
+LAGUNA_SWA_SPLIT_FIXED512_REDUCE = _policy_laguna.LAGUNA_SWA_SPLIT_FIXED512_REDUCE
+LAGUNA_SWA_SPLIT_GQA3_SCORES = _policy_laguna.LAGUNA_SWA_SPLIT_GQA3_SCORES
+LAGUNA_SWA_SPLIT_MIN_LIVE = _policy_laguna.LAGUNA_SWA_SPLIT_MIN_LIVE
+LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = _policy_laguna.LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE
+LAGUNA_SWA_SPLIT_WAVE_LOCAL = _policy_laguna.LAGUNA_SWA_SPLIT_WAVE_LOCAL
+
 
 BACKEND = "hip_gfx1151"
 
@@ -897,301 +1055,6 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
     )
 
 
-# Clean AR-O2 three-repeat category/quality gates admit compensated source-F16
-# WMMA only for SWA QKV/gate/O from 16 rows. Full-attention layers and M2-15
-# retain the exact LPF-1 tile; decode retains the separately registered GEMV.
-LAGUNA_F16_PREFILL_STRATEGY = "wmma_comp_swa"
-LAGUNA_F16_PREFILL_MIN_ROWS = 16
-# Exact rows==1 source-F16 single/triple siblings keep the local256 grid and
-# reduction order while removing the generic reducer's second broadcast
-# barrier. All six natural roles improve at the gfx1151 leaf; exact production
-# A/B and cache-only tracing admit automatic selection.
-LAGUNA_F16_DECODE_ONEBARRIER = True
-# Compile-time K3072/K6144/K9216 specializations retain the one-barrier
-# arithmetic/grid while removing dynamic loop/address machinery. Seven exact
-# p512/d128 pairs and cache-only tracing admit them over the generic
-# one-barrier owner; the latter remains the explicit rollback.
-LAGUNA_F16_DECODE_FIXEDK = True
-# Exact c=1 source-F16 Q/K/V/gate launch contraction preserves every
-# output column's fixed-K reduction order. Seven same-resident p512/d128 pairs
-# are exact and all positive; triple-plus-single remains the unfused fallback.
-LAGUNA_F16_ATTENTION_QUAD_DECODE = True
-# Exact last-producer projection/head/KV fusion keeps every fixed-K dot and
-# head RMSNorm/RoPE association, removes another 48 launches/token, and is
-# byte-exact on global/SWA state. The seven-pair gate is throughput-flat but
-# mechanically positive; the quad plus registered head/KV remains rollback.
-LAGUNA_F16_PROJECTION_HEAD_KV_DECODE = True
-# Exact last-producer attention-output fusion preserves the fixed-K projection
-# and standalone local256 add/RMSNorm trees while removing 48 launches/token.
-# Seven exact same-resident pairs are all positive.
-LAGUNA_F16_OUTPUT_ADD_RMSNORM_DECODE = True
-# Exact source-F16 decode streams each weight once. Cache-bypassing loads cut
-# the complete six-role leaf family 3.36%, and all seven same-resident
-# p512/d128 pairs improve without changing arithmetic or resident bytes.
-# Explicit false and peer backends retain the cached-load owner.
-LAGUNA_F16_NONTEMPORAL_DECODE = True
-# The greedy argmax winner also owns the next embedding token and scratch/KV
-# positions. The following exact autoregressive step validates the host token
-# and consumes those device-published scalars without three synchronous H2D
-# copies; forced-token and peer-backend paths retain ordinary publication.
-LAGUNA_ARGMAX_CONTROL_PUBLISH = True
-# Exact Q6T16 LM-head producer tile maxima remove the full-logit argmax scan
-# and one model launch. The actual-weight leaf, seven-pair p512/d128 gate, and
-# cache-only trace admit it on gfx1151; constructor false keeps exact rollback.
-LAGUNA_Q6_T16_LM_HEAD_TOP1_STAGE1 = True
-# Exact c=1 router projection wave-level reduction. Seven same-resident
-# p512/d128 pairs are exact and win 6/7; the scalar local256 tree remains the
-# registered rollback.
-LAGUNA_ROUTER_PROJECTION_WAVE0_TREE = True
-# gfx11 any-order dispatch lets the exact router projection wait on the ordered
-# output/add/RMSNorm producer without holding the queue at that boundary.
-LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE_AVAILABLE = True
-LAGUNA_OUTPUT_ROUTER_ANYORDER_DECODE = True
-# Exact D9 wave-0 RMS reduction preserves the local256 partials and complete
-# FP32 addition tree while removing seven workgroup barriers. The gfx1151
-# production-shape leaf improves 3.66%; the scalar tree remains rollback.
-LAGUNA_MOE_TAIL_WAVE0_TREE = True
-# Exact K3072/N1024 gate/up and K1024/N3072 down siblings preserve the
-# production local128 grid and reduction order while compile-time-specializing
-# only Laguna's c=1/top-10 shape. All three actual-weight roles improve, and
-# seven exact p512/d128 pairs admit the combined owner.
-LAGUNA_SELECTED_NATURAL_DECODE = True
-# The exact selected-down sibling distributes the final 16 ordered wave sums
-# across lanes 0..15. All seven resident p512/d128 pairs are exact and
-# positive; the serial owner remains registered rollback.
-LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_DECODE = True
-# Exact tile-local completion preserves all ten route-parallel weight streams,
-# every BF16 projection boundary, and the slot-order weighted FMA chain while
-# removing the standalone reducer launch. Seven same-resident pairs all win.
-LAGUNA_SELECTED_DOWN_NATURAL_PARALLEL_WEIGHTED_DECODE = True
-# Reuse each adjacent Q4 selected-down nibble byte and aligned coefficient
-# pair. Exact p512/d128 wins 5/7 pairs at +0.1365%; explicit false retains the
-# preceding scalar-payload weighted route for rollback.
-LAGUNA_SELECTED_DOWN_Q4_PAIRCOEFF_WEIGHTED_DECODE = True
-# Preserve the production Q4/Q6 shared-down grids and D9 local256 tree while
-# enqueueing both unchanged launch wrappers inside one native host call. Seven
-# exact same-resident p512/d128 pairs win 7/7; peer backends retain separate
-# Python calls until independently measured.
-LAGUNA_SHARED_DOWN_MOE_TAIL_HOST_BATCH = True
-# Exact gate/up owner that splits each resident T16 tile across two 8-column
-# workgroups, halving live accumulators. The actual-weight leaf improves
-# 5.35-7.13%; seven exact p512/d128 pairs are all positive.
-LAGUNA_SELECTED_NATURAL_TILE8_DECODE = True
-# The exact tile8 parallel-tail sibling preserves every column's arithmetic.
-# All seven resident p512/d128 pairs are exact and positive.
-LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_DECODE = True
-# Promoted exact fusion: the qualified parallel tile8 owner materializes the
-# BF16 SiLU intermediate directly; all seven resident pairs are positive.
-LAGUNA_SELECTED_NATURAL_TILE8_PARALLEL_SILU_DECODE = True
-# Convert BF16 activations and dequantized Q4 gate/up pairs to FP16 in
-# registers, then use gfx1151's native adjacent-K dot2 with FP32 accumulation.
-# The byte-neutral interleaved resident layout is unchanged. The actual-weight
-# leaf improves 17.99%, all seven p512/d128 pairs improve, and recurrent
-# candidate-vs-exact quality stays at max KL 0.00820 / top-1 93.75%.
-# Constructor false retains the exact pair-coefficient owner.
-LAGUNA_SELECTED_HALFDOT_DECODE = True
-# Exact dense/shared Q4 pair fusion preserves the two BF16 projection
-# boundaries in registers before applying the existing SiLU-product
-# expression. Seven resident p512/d128 pairs are exact and all positive.
-LAGUNA_Q4_PACK8_DUAL_SILU_DECODE = True
-# Exact decode-only T16 consumers stream compact Q4 coefficients beside the
-# retained pack8 prefill layout. Actual shared/dense leaves are BF16 bit-exact
-# and improve 19.0%/60.2%; admission accounts for the bounded auxiliary bytes.
-LAGUNA_Q4_DENSE_DECODE_T16_SIDECAR = True
-# Exact byte-neutral gate/up interleave plus two-column wave ownership cuts
-# the actual dense/shared leaf family by 6.50% before the resident gate.
-LAGUNA_Q4_DENSE_DECODE_T16_DUAL_INTERLEAVED = True
-# Exact standalone Q4T16 shared-down owner streams 22.9% fewer resident bytes
-# than expanded pack8 and is bit-identical across all 24 actual matrices.
-LAGUNA_Q4_SHARED_DOWN_T16_DECODE = True
-# The selected gate/up decoder and the production D8 prefill owner now share
-# one exact byte-neutral paired T16 allocation. Natural prefill leaves improve
-# at M55+ and are effectively flat at M32; c=1 decode improves 5.70%.
-LAGUNA_Q4_EXPERT_T16_DUAL_INTERLEAVED = True
-# Clean post-350 repeated M512/M1024/M2048 timing and full-logit quality admit
-# 2048-row projection/MoE transactions while attention and physical KV writes
-# remain independently tiled at 128. M2048 is byte-identical at pp512, keeps
-# top-1 at 512/1K/4K, and has max relative KL 1.25e-5 versus M512.
-# Other backends retain the 128-row runtime fallback until measured independently.
-LAGUNA_PREFILL_MATRIX_ROWS = 2048
-# The post-350 LAP-7 screen reuses each streamed BF16 K/V row across four
-# adjacent queries. It is byte-identical to the admitted online-qrow2 arithmetic
-# on the wrap/eviction oracle and improves matched pp512 production by 3.23%.
-# Qrow2/exact variants remain explicit rollback; unmeasured backends are unchanged.
-LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow4_m128_online_spans"
-LAGUNA_SWA_PREFILL_VARIANT = "swa_context_rows_qrow4_m128_online_spans"
-# WPF-H5M source-qualified exact qrow4 ownership is W7900-only pending an
-# independent gfx1151 exactness/resource/performance gate.
-LAGUNA_SWA_PREFILL_ROLE_VARIANTS = {}
-# Exact pre-append scheduling lets complete M128 global tiles and pre-wrap SWA
-# tiles consume one BF16 cache source. Wrapped SWA, residual rows, verifier
-# transactions, and other backends retain attend-then-append.
-LAGUNA_PREFILL_KV_PREAPPEND = True
-# Once a safe tile is pre-appended, complete KVLiveSpans metadata can decide
-# visibility without selecting between current-row and cache sources inside
-# the dot-product loop. Measured admission keeps the slower global start-0
-# slice on the source-qualified cached kernel while enabling metadata-only SWA
-# and global tiles beginning at position 128.
-LAGUNA_PREFILL_CACHED_META = True
-# Exact global-only qrow6 reuses each streamed BF16 K/V row across six adjacent
-# queries. Leaf admission is limited to complete preappended global M128 tiles
-# beginning at position 128; global start 0 and every SWA tile retain qrow4.
-LAGUNA_PREFILL_GLOBAL_QROW6 = True
-# Complete initial no-wrap preappended tiles have identity token positions and
-# no eviction. The separately registered dense-initial attention variants
-# preserve the full KVLiveSpans ABI while skipping per-token metadata loads.
-# Partial, wrapped, explicitly evicted, and verifier routes retain exact
-# cached-metadata/current-source fallbacks.
-LAGUNA_PREFILL_DENSE_INITIAL = True
-# Dense-initial M128 tiles beginning at position 128 widen the resident BF16
-# K/V prefix exactly once, then use zero-workspace F32 hipBLASLt QK/PV
-# contractions around a KVLiveSpans-qualified causal softmax. The complete
-# pp512 route wins 6/7 paired runs (602.52 versus 576.08 tok/s median), keeps
-# top-1 2930, and lowers all-exact full-logit KL from 0.003246 to 0.002214.
-# Start-0, partial, wrapped, evicted, verifier, and decode routes stay on the
-# established attention kernels.
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT = True
-# Packing the 4.7-MB query/output tile into head-major order allows one
-# eight-way wide QK and one wide PV batch without replicating K/V. It improves
-# the qualified 48-layer leaf model 5.08% and the seven-pair pp512 median
-# 0.87%, while all-exact KL improves from 0.002214 to 0.002097.
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERIES = True
-# Write the three qualified M128 query tiles directly in head-major order from
-# the fused RMSNorm/RoPE producer. This removes 144 standalone query-transpose
-# launches at pp512; eleven complete-state pairs improve the median 0.532% and
-# every token/logit/hidden/KV hash remains exact.
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER = True
-# One wave32 owns one causal-score row, replacing the former 256-thread
-# block reduction and its LDS barriers. The qualified 48-layer attention leaf
-# improves 13.72%; paired pp512 improves 0.574% and all-exact KL falls from
-# 0.002097 to 0.001796.
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_WAVE_ROWS_SOFTMAX = True
-# Keep the three qualified library-attention output tiles in their native
-# head-major order and consume that mixed layout directly in the exact
-# softplus gate. This removes 144 standalone output-transpose launches at
-# pp512. Eleven complete-state pairs improve the median 0.338%; the stronger
-# admission signal is the exact removal of the traced transpose sub-window.
-LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE = True
-# Contexts above 4K route only the 12 global-attention layers through a
-# capacity-sized 48-head packed-F32 owner. Same-session complete-model gates
-# preserve the 4K path and improve 16K/64K/128K by 7.93%/16.94%/22.09%;
-# SWA, decode, partial, wrapped, evicted, and verifier paths remain unchanged.
-LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT = True
-# Exact 4K key blocks carry online row max/sum/output state across tensorized
-# QK/PV calls. This cuts 128K scratch 4.298 GB -> 143.753 MB and improves the
-# complete-model long route another 12.52% while preserving its >4K gate.
-LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT = True
-# Dense-initial global cache blocks are allocated in identity physical order.
-# Direct addressing removes per-element span checks/remaps from the exact 4K
-# BF16 widen; the full KVLiveSpans route remains the rollback/fallback.
-LAGUNA_PREFILL_DENSE_CONTIGUOUS_CACHE = True
-# Reuse each exact 4K global K/V block across a complete M2048 matrix chunk.
-# SWA and partial matrix tails remain on the independently retained M128
-# routes. LC-3 complete-model gates improve 4K/16K/64K/128K by
-# 4.89%/20.48%/39.11%/44.59%.
-LAGUNA_PREFILL_GLOBAL_ATTENTION_ROWS = 2_048
-# Rolling M128 SWA gathers the exact 511 historical BF16 ring rows plus 128
-# current BF16-rounded rows into one 639-key tensorized QK/PV union. The
-# complete 4K/16K/64K/128K gate improves every shape and remains bounded.
-LAGUNA_PREFILL_SWA_ATTENTION_HIPBLASLT = True
-# Clean LAP-3/LAP-4 full-category admission quantizes gate/up in same-byte
-# 16-value groups and uses the resident-T16 128x32 integer-dot consumer.
-# The post-350 wave-column screen keeps row-vector D8 activation staging, maps
-# one 32-column output slice to each wave, holds decoded T16 weights in
-# registers, and ping-pongs the activation tile to remove one barrier per K32.
-# For chunks of at least 512 rows, prefetch the next K32's eight raw nibble
-# words while current packed dots execute; smaller chunks keep the rollback.
-# Packed-dot arithmetic and K order remain bit-for-bit unchanged.
-# Other backends retain exact.
-LAGUNA_SELECTED_GATE_UP_MODE = (
-    "mmq128x32_d8_f32_wavecols_direct_doublebuf_rawprefetch_ge512"
-)
-# Exact eight-token router tiling preserves every token/expert's K traversal
-# and reduction tree while reusing each F32 weight row twice as long.
-LAGUNA_ROUTER_LOGITS_MODE = "token_tile_8"
-# The post-350 down screen maps Q4 output columns across two wave32s and lets
-# the Q6 row-vector consumer reuse one decoded tile across 64 routed rows.
-# Range-safe D4 resident-T16 integer-dot arithmetic is unchanged; 32-row Q6,
-# scalar-staged, and exact routes remain rollbacks. At producer rows >=512,
-# Q4 down also carries the next K32 raw nibble payload in registers.
-LAGUNA_SELECTED_DOWN_MODE = (
-    "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
-)
-# Exact scratch reuse writes packed gate/up into the larger selected-down
-# output allocation, then folds the standalone BF16 SiLU boundary into the
-# range-safe down pack. Seven paired pp512 runs are exact and win 7/7; the
-# standalone SiLU plus ordinary pack remain the explicit rollback chain.
-LAGUNA_FUSED_SELECTED_SILU_PACK = True
-# Byte-neutral Q6 qmicro keeps the resident T16 metadata but groups each
-# four-column K4 quant quartet into one aligned 12-byte record. Exact c1 and
-# selected-prefill gates both improve on gfx1151; peer backends retain legacy
-# Q6 T16 bytes until independently measured.
-LAGUNA_Q6_QMICRO = True
-# Q6 has no minimum term, so selected-down never consumes the Q8_1 activation
-# sum metadata. The compact activation tile also narrows each bounded K16
-# quant sum to int16, reducing the production 64-row kernel's LDS footprint
-# from 5,632 to 5,120 bytes without changing dot or accumulation order.
-LAGUNA_Q6_COMPACT_ACTIVATION = True
-# Split each compact Q6 activation row across two threads so all 128 threads
-# stage one 16-byte half and one K16 quant sum. The exact all-layer screen
-# improves 21/23 real Q6 layers without changing resources or output bytes.
-LAGUNA_Q6_HALF_ROW_ACTIVATION = True
-# Padded rows are never consumed by the guarded dot/store loops. Avoid writing
-# zero Q8 bytes and recomputing zero K16 sums for those slots.
-LAGUNA_Q6_SKIP_PADDED_ACTIVATION = True
-# Two byte-permute gathers replace the scalar four-column qmicro unpack while
-# preserving the byte-neutral resident layout and exact integer-dot order.
-# The actual-weight leaf improves 2.67%, the complete model wins 5/7 matched
-# pairs, and cached tracing reduces the selected Q6 body with no spills.
-LAGUNA_Q6_QMICRO_PERMUTE = True
-# Byte-neutral planar qmicro removes two prefill byte gathers and lowers exact
-# decode register pressure. The actual leaf wins, while two owner-order
-# full-model blocks are aggregate-neutral with complete state exact.
-LAGUNA_Q6_QMICRO_PLANAR = True
-# Prefetch the next planar-qmicro weight record into registers while the
-# current integer-WMMA fragment consumes LDS, then recycle the same 5,120-byte
-# shared tile. This preserves every Q6 dot/FP32 boundary and adds no sidecar.
-LAGUNA_Q6_WMMA_PREFETCH_WEIGHT = True
-# Pipeline the next compact Q8 activation half-row beside the retained next
-# weight record. The current K32 WMMA hides the global read, and the following
-# iteration publishes the exact bytes into the unchanged shared activation
-# tile. The complete-state pp512 A/B is exact and improves the median.
-LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION = True
-# Reuse Q6's otherwise-unused D4 sum field for two exact K16 quant sums.
-# Computing them once in the packer removes repeated sum dots from every
-# selected-down output-column workgroup without changing activation bytes.
-LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS = True
-# D8 gate/up stores exact K16 activation sums in a bounded scratch sidecar so
-# each output-column workgroup can skip rebuilding them with integer dots.
-# Resident weights, D8 bytes/scales, arithmetic, and BF16 output are unchanged.
-LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS = True
-# Stable expert-major count/prefix/scatter uses one workgroup per expert instead
-# of one workgroup serially scanning all 5,120 routed lanes twice.
-LAGUNA_MOE_GROUP_COMPACT_MODE = "parallel"
-# The always-on shared expert is independent of router selection and routed
-# gate/up/down until the final combine. A nonblocking secondary stream plus
-# two dependency events overlaps 99.16% of its measured pp512 kernel time;
-# complete-state A/B is exact and wins all seven queue-matched pairs.
-LAGUNA_MOE_BRANCH_CONCURRENCY = True
-# The same exact event schedule is profitable at c=1 once the specialized
-# T16 selected and shared decode kernels are active. Seven counterbalanced
-# p512/d128 pairs win 7/7, and tracing observes 94 secondary kernels/token.
-LAGUNA_MOE_DECODE_BRANCH_CONCURRENCY = True
-# Protect router logits/selection before releasing the concurrent shared
-# branch. Matched complete-state pp512 is +0.073% with 5/7 wins, and cached
-# tracing verifies a 0.310-ms kernel-span reduction.
-LAGUNA_MOE_SHARED_AFTER_ROUTER = True
-# gfx1151 exposes least/greatest HIP stream priorities +1/-1. Running the
-# after-router shared branch at +1 improves exact pp512 0.494% (6/7 wins) and
-# cuts cached kernel span 7.255 ms while keeping 99.75% of shared work hidden.
-LAGUNA_MOE_SHARED_LOW_PRIORITY = True
-# Decode benefits from equal scheduling priority after its exact selected and
-# shared paths became closely balanced. Keep prefill at +1, but use a separate
-# priority-0 shared stream for c=1; the same-session gate wins all seven pairs.
-LAGUNA_MOE_DECODE_SHARED_NORMAL_PRIORITY = True
-# Clean LAP-5 admission selects resident pack8-Q4/raw-Q6 64x16 WMMA consumers
-# for dense/shared rows while preserving the exact low-row fallback.
-LAGUNA_DENSE_Q4_PREFILL_MODE = "wmma_pack8"
 # D08-X (2026-08-15): on Qwen3.5-0.8B dense-FFN pack8 shapes the registered
 # pack8 WMMA bulk consumer measures 1.97x ([3584,1024], 16x32) and 2.33x
 # ([1024,3584], 64x16) versus the exact tile8x8 leaf at rows=512, within one
@@ -1252,278 +1115,6 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
     "gguf_iq2_xs": 1,
     "bf16": 512,
 }
-# The attention-RMSNorm source range is statically bounded from resident F32
-# norm weights, so Q/K/V/gate use direct BF16-to-FP16 and omit identity output
-# restores. Attention output retains power-of-two row scaling; decode is
-# unchanged.
-LAGUNA_F16_PREFILL_MODE = "hipblaslt_range_direct"
-# Exact producer-boundary variants write FP16(BF16(value)) directly from the
-# attention RMSNorm and softplus-gate kernels. This removes the two standalone
-# BF16-to-FP16 casts per layer while preserving the established source-F16
-# input bits; the runtime setter remains the explicit rollback.
-LAGUNA_F16_BOUNDARY_FUSION = True
-# The gfx1100 current-P4 body is shape-identical for Laguna S 2.1 and compiles
-# from the shared gfx11 source as a native gfx1151 code object. The
-# architecture-local bit-exact and p512/d128 gates admit automatic selection;
-# explicit False retains the registered fallback chain for rollback.
-LAGUNA_HEAD_KV_FUSION = True
-# The complete gfx11 exact split-attention bundle wins the clean gfx1151
-# p512/d128 gate. Keep the thresholds and reducer capabilities inseparable:
-# explicit use_split_attention=False retains serial global/SWA attention.
-LAGUNA_GLOBAL_SPLIT_MIN_LIVE = 127
-# The exact natural 48Q/8KV/D128/capacity-4096 reducer preserves the retained
-# dynamic-live score ABI and local256 arithmetic. Three production live points
-# and seven exact p512/d128 pairs admit it on gfx1151 only.
-LAGUNA_GLOBAL_SPLIT_FIXEDSHAPE_REDUCE = True
-# Above the fused kernel's LDS-resident score limit, replace the per-query score
-# producer and scalar sixfold-V reducer with an exact GQA6 producer, exp32
-# normalizer, and dimension-sharded shared-V owner. The live16,448 leaf is
-# byte-exact and 80.94% faster than the generic split path.
-LAGUNA_GLOBAL_SPLIT_GQA6_DIM32_VSTAGE64 = True
-# Defer the exact normalization product into each shared-probability load,
-# removing one full score-plane pass without changing its F32 bits.
-LAGUNA_GLOBAL_SPLIT_GQA6_DEFERREDNORM_DIM32_VSTAGE64 = True
-# Keep six query vectors resident while one exact wave scores four consecutive
-# KV tokens. The natural-depth leaf is byte-exact and 8.6-9.6% faster from
-# 4K through 128K on gfx1151.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE64 = True
-# V80 keeps the same chronological FMA chain while reducing exact-PV staging
-# barriers by 20%. It wins all four natural depths; V92/V96 lose at long
-# context, so the V64 specialization remains the explicit rollback.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80 = True
-# Dense initial caches do not need the physical-slot plane in the exact V80
-# owner. Preserve the complete spans ABI and fall back after explicit eviction.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX = True
-# Keep the old cache-policy crossover for the prefetch4 rollback. Deeper
-# operand-prefetch owners hide the bypass latency and select combined
-# non-temporal K/V across the dense V80 band above the 6,000-live fused owner.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_MIN_LIVE = 65_536
-# Once the long-context cache bypass is active, bypass K as well as V. The
-# incremental exact leaf wins 3.26-3.58% at the admitted 64K/128K shapes.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = True
-# Deeper ordered operand prefetch becomes a 6.84-6.94% exact leaf win after
-# non-temporal K/V increases the latency each output wave must cover.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH8_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = True
-# Prefetch16 preserves the chronological FMA chain and wins a further
-# 1.69-2.25% over prefetch8 from 4K through 128K on gfx1151.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE80_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = True
-# V128 keeps two 512-thread workgroups resident while reducing exact-PV stage
-# rounds by 37.5%. It wins 2.15-2.37% over V80 at every natural long depth;
-# V160 loses the gain at 64K/128K and is not retained.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = True
-# Vectorize contiguous FP32 probability loads/stores into the shared V128
-# stage. This remains byte-exact and improves every natural long depth.
-LAGUNA_GLOBAL_SPLIT_GQA6_TOKENLOOP4_DEFERREDNORM_DIM32_VSTAGE128_PROBABILITY_VEC4_PREFETCH16_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = True
-LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX = True
-LAGUNA_GLOBAL_SPLIT_GQA6_ALLWAVE_TILE1024_DENSE_PREFIX_MIN_LIVE = 32_768
-# Ordered-prefetch4 moved the exact/context-PV crossover above 64K. Keep the
-# quality-scoped layer schedule only at the measured deep-context band; shorter
-# long contexts use exact deferred-normalization GQA6.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LAYER = 32
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_LAYER = 28
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_MIN_LIVE = 98_304
-# Share each staged probability/value tile across two output-dimension waves.
-# D64 is byte-identical to D32 and reduces the active long-context leaf by
-# 17.3%/10.7%/10.9% at 16K/64K/128K on gfx1151.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DIM_TILE = 64
-# The quality-scoped D64 context-split owners reuse the same exact score plane
-# as the V80 path. Four-token ownership cuts their score grid by 4x while the
-# admitted partial-PV/merge arithmetic remains unchanged.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_TOKENLOOP4 = True
-# Keep the exact exp32 reciprocal but apply it in the context-PV probability
-# loader, avoiding one normalized-score write/read pass.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DEFERREDNORM = True
-# Dense initial caches have identity logical-to-physical metadata. Let the
-# long-context token-loop owner bypass those metadata streams while retaining
-# the full KVLiveSpans ABI and the generic fallback after any explicit eviction.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_SCORE = True
-# The deep ctx4096 route streams each K/V line once. Bypass the cache only for
-# that dense-prefix owner; the formal 128K leaf wins 8.47% ordinary and 6.13%
-# compensated without changing F32 or BF16 output bits.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE = True
-# Ordinary PV reaches its 128K minimum with four ordered operands in flight;
-# deeper prefetch is tied but consumes more registers.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH = 4
-# Kahan PV has a longer dependent chain and continues improving through p16.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_COMPENSATED_DENSE_PREFIX_NONTEMPORAL_KEY_VALUE_PREFETCH = 16
-# Reuse the exact 1,024-token all-wave QK owner in the five quality-scoped
-# ctx4096 layers. The partial-PV and merge association remain unchanged; the
-# serial formal leaf improves 128K by 2.16% ordinary / 2.07% compensated.
-LAGUNA_GLOBAL_SPLIT_GQA6_CTX4096_ALLWAVE_SCORE = True
-# The exact dynamic-scan fused one-head owner keeps all 48 workgroups and
-# removes the score plane/launch while preserving reduction association.
-LAGUNA_GLOBAL_FUSED_FIXEDSHAPE = True
-# Pair adjacent global query heads and reuse each staged 64-slot V tile.
-# The exact natural-live leaf and seven resident-model pairs admit it.
-LAGUNA_GLOBAL_GQA2_VSTAGE64_FIXEDSHAPE = True
-# Preserve global GQA2 arithmetic while widening each padded V-stage copy to
-# one aligned 16-byte transaction.
-LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_FIXEDSHAPE = True
-# Avoid the compiler-generated 32-byte private scratch aggregate used by the
-# retained vec16 copy and write each valid vector directly into the V tile.
-LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_FIXEDSHAPE = True
-# Exact score-domain sibling passes the seven-pair resident-model wall gate.
-LAGUNA_GLOBAL_GQA2_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Issue each wave's independent exact global-softmax exponentials across
-# wave32 while retaining lane-0 token-order summation.
-LAGUNA_GLOBAL_GQA2_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Raise the exact global-attention grid from 24 to 32 workgroups by assigning
-# each 6-query GQA group as 2+2+1+1 owners. Singleton-owner idle waves retain
-# staged-V barrier participation while active heads preserve every operation.
-LAGUNA_GLOBAL_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Exact score-producer maxima remove the global score reread and one barrier.
-# Seven resident p512/d128 pairs admit the qualified gfx1151 route.
-LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Preserve the producer-max QK tree while replacing ds_bpermute transport with
-# permlanex16 plus DPP moves. Seven resident pairs admit the exact sibling.
-LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Exact aligned float4 replay of the normalized global probability plane.
-# All seven resident p512/d128 pairs win with exact generated state.
-LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Normalize each global probability once in LDS before the exact PV replay.
-# Seven resident p512/d128 pairs admit the exact gfx1151 sibling.
-LAGUNA_GLOBAL_MIXED32_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Preserve the local256 eight-wave denominator tree while all sixteen waves
-# share independent QK and value transport. Every natural global leaf wins.
-LAGUNA_GLOBAL_MIXED32_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Use all 40 gfx1151 CUs by assigning each six-query GQA group as
-# 2+1+1+1+1 exact owners. All three natural global leaves and all seven
-# resident p512/d128 model pairs win against mixed32-local512.
-LAGUNA_GLOBAL_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_DPP_QK_PROBABILITY_VEC4_PRENORM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXEDSHAPE = True
-# Sequential global decode before an explicit eviction has a visible identity
-# prefix. Compile out token/base/eviction metadata and the physical-slot LDS
-# plane while preserving the exact mixed40 arithmetic and the full span ABI.
-# All natural leaves and seven resident p512/d128 pairs win byte-exactly.
-LAGUNA_GLOBAL_DENSE_PREFIX = True
-# Overlap the next dense-prefix global V64 load with exact scalar PV work by
-# assigning it to otherwise-idle query-owner waves. All natural leaves and
-# seven resident p512/d128 pairs win byte-exactly.
-LAGUNA_GLOBAL_DENSE_PREFIX_IDLE_DOUBLE_BUFFER = True
-# Preserve the eight-wave denominator while widening dense-prefix QK/value
-# transport. All seven exact same-resident p512/d128 candidate runs win.
-LAGUNA_GLOBAL_LOCAL1024 = True
-LAGUNA_SWA_SPLIT_MIN_LIVE = 65
-LAGUNA_SWA_SPLIT_TILE16_MIN_LIVE = 257
-LAGUNA_SPLIT_GATE_FUSION = True
-LAGUNA_SWA_SPLIT_WAVE_LOCAL = True
-# Exact GQA3 score ownership reuses each streamed SWA K row across three query
-# heads while retaining the 72-head score plane and wave-local value reducer.
-# The 24 x token/tile grid preserves gfx1151 breadth; peer backends keep the
-# one-query score owners until independently measured.
-LAGUNA_SWA_SPLIT_GQA3_SCORES = True
-# The saturated 512-slot SWA reducer preserves the retained 72-workgroup /
-# 288-wave grid and every scalar/FMA operation while specializing the natural
-# 72Q/8KV/D128 ring. Exact leaf and seven-pair production gates admit it.
-LAGUNA_SWA_SPLIT_FIXED512_REDUCE = True
-# The exact local256 GQA2 fused owner keeps 320 waves, reuses each K row across
-# adjacent query heads, and removes the global score plane. Seven resident
-# p512/d128 pairs admit it only at the saturated natural 512-slot shape.
-LAGUNA_SWA_FUSED_FIXED512 = True
-# The exact local384 GQA3 sibling keeps all 288 query/dimension waves active
-# while reducing saturated K-cache owners per KV head from five to three.
-# Seven resident p512/d128 pairs admit it only for the natural gfx1151 shape.
-LAGUNA_SWA_GQA3_LOCAL384_FIXED512 = True
-# The exact local384 sibling stages 64 contiguous V rows in LDS and reuses
-# each load across the three owned query heads. The seven-pair p512/d128 gate
-# is bit-identical and promotes it only at the saturated natural shape.
-LAGUNA_SWA_GQA3_VSTAGE64_FIXED512 = True
-# Replace scalar BF16 staging copies with aligned 16-byte transactions while
-# preserving the retained local384 compute and every output operation.
-LAGUNA_SWA_GQA3_VSTAGE64_VEC16_FIXED512 = True
-# Avoid the compiler-generated per-thread LDS aggregate used by the retained
-# vec16 copy and write each valid vector directly into the real V tile.
-LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_FIXED512 = True
-# The exact compiler-expf sibling exposes the finite non-positive
-# score-minus-maximum domain and removes generic exponential guard work.
-LAGUNA_SWA_GQA3_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
-# Balance each KV head's nine queries as 2+2+2+3 across 32 local384 blocks.
-# Exact seven-pair resident decode admits the one-phase mixed owner.
-LAGUNA_SWA_MIXED32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
-# Issue each four-slot exact softmax batch across lanes 0..3, then shuffle the
-# weights back into the unchanged ordered denominator/PV chains. Seven
-# resident pairs admit the resource-neutral sibling at saturated SWA512.
-LAGUNA_SWA_MIXED32_EXP4_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
-# Extend the same exact lane-parallel issue schedule to eight softmax weights.
-# The leaf, cached trace, and all seven resident pairs improve without a
-# resource or arithmetic-order change.
-LAGUNA_SWA_MIXED32_EXP8_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
-# Extend the exact lane-parallel schedule to sixteen softmax weights. The
-# default remains subject to the resident p512/d128 gate.
-LAGUNA_SWA_MIXED32_EXP16_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
-# Complete the bounded issue-width screen with one exact softmax weight per
-# wave32 lane. Resident decode decides whether this becomes the final owner.
-LAGUNA_SWA_MIXED32_EXP32_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = True
-# Exact score-producer partial maxima remove four redundant 512-score scans
-# per query. Seven exact resident p512/d128 pairs admit the specialization.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Compute each owned query's softplus gate once. All seven byte-exact resident
-# p512/d128 pairs improve, so gfx1151 promotes the specialization.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Reuse each exact softmax weight across all four V-output waves through the
-# V-stage publication barrier already paid by production. Seven exact resident
-# pairs improve with unchanged VGPRs, so gfx1151 promotes the specialization.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Replay the published K64 probability tile through sixteen aligned float4 LDS
-# reads while preserving the 64 ordered denominator adds. All seven exact
-# resident p512/d128 pairs improve at unchanged kernel resources.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Read each published K64 probability row through sixteen aligned float4 LDS
-# vectors while preserving the 64 ordered PV FMAs. All seven resident pairs
-# improve at unchanged kernel resources.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# On pair-owner blocks, move the unchanged vectorized denominator replay onto
-# idle waves 8/9 so all eight active output waves can execute PV concurrently.
-# Seven exact resident p512/d128 pairs improve with complete separation.
-LAGUNA_SWA_MIXED32_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Fill all 40 gfx1151 CUs with one 2+2+2+2+1 owner grid. Seven exact resident
-# pairs improve with complete separation despite 25% more K/V-owner traffic.
-LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Separate mixed40 tail exp producers from idle denominator and active PV
-# waves. Six of seven exact resident pairs improve and the sole loss is
-# smaller than the median paired gain.
-LAGUNA_SWA_MIXED40_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Raise the exact mixed40 workgroup from 12 to 16 wave32s while retaining all
-# 40 owners. All seven resident p512/d128 pairs improve with identical
-# 128-token trajectories; the kernel also drops from 104 to 32 VGPRs.
-LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Let the two exact tail-probability waves copy the final 64 staged-V vectors.
-# The local512 combination wins all seven resident p512/d128 pairs while
-# preserving the complete generated trajectory and allocation lifecycle.
-LAGUNA_SWA_MIXED40_LOCAL512_EXP32_PRODUCER_MAX_GATE_STAGE_PCACHE_TAIL_PRODUCER_VALUE_TAIL_IDLE_VEC4_DENOM_PROBABILITY_VSTAGE64_VEC16_DIRECT_ASSUME_EXP_FIXED512 = (
-    True
-)
-# Replace the retained wave32 QK shuffle transport with the association-
-# identical permlanex16/DPP sequence inside the final local512/V128 tile.
-# The leaf improves 5.35% and all seven resident p512/d128 pairs win.
-LAGUNA_SWA_OUTPUT_SHARDED_PROBABILITY_DPP_QK = True
-# Saturated sequential SWA has an identity physical ring with every slot
-# visible. The exact dense-ring sibling compiles out token/base/eviction
-# metadata traffic and its 2-KiB LDS physical-slot plane. Explicit eviction,
-# pre-saturation, and non-standard states retain the generic DPP owner.
-# The byte-exact leaf improves 25.55% and all seven resident pairs win.
-LAGUNA_SWA_DENSE_RING = True
-# gfx1151 exposes 32 wave32 slots and 1024 work-items per CU. The exact
-# local1024 dense-ring owner fills that natural limit while preserving all 40
-# workgroups; all seven same-resident p512/d128 pairs improve.
-LAGUNA_SWA_LOCAL1024 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -2645,10 +2236,6 @@ GGUF_Q6_F32_ORDERED_PREFILL = False
 GGUF_Q6_F32_ORDERED_PREFILL_POLICY = {}
 GGUF_F32_ORDERED_PREFILL_QUANTS = frozenset()
 GGUF_F32_ORDERED_PREFILL_POLICIES = {}
-# WPF-H5J/H5Q's K1024 IQ row owners are W7900-only until an independent gfx1151
-# actual-layer and complete-runtime transfer gate exists.
-LAGUNA_GROUPED_IQ_DOWN_VARIANTS = {}
-LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {}
 # SH9-D1 independently admits LCP-2B's exact routing-independent compact-WMMA
 # row bound on gfx1151 through 4,096 selected rows. Larger shapes and explicit
 # opt-out retain the scalar total-row read.

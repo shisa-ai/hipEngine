@@ -1240,6 +1240,11 @@ boundaries and the orchestration that remains in the runner.
 
 ### Backend Plugin
 
+`hipengine/kernels/hip_gfx1151/policy_laguna.py` owns the gfx1151 Laguna
+capability declarations without kernel imports or registration side effects.
+The backend package keeps explicit compatibility exports and owns registration
+and architecture overrides; non-Laguna policy declarations still live there.
+
 ```python
 # hipengine/kernels/registry.py
 @dataclass(frozen=True)
