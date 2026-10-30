@@ -701,53 +701,6 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   `benchmarks/results/2026-09-30-qwen4exp-de1-dual-vs-strict/`, and worklog
   `20260930T031044` (the measured scope table).
 
-## Journey Multi-Column GDN
-
-Cleanup status (2026-10-26, R0039): the multi-column route is a registered
-fallback, not the production default, and no removal follows from that. The
-`gguf_ud_q4_k_xl` production binder names `qwen4exp_gdn_rowsplit_prefill` in
-`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` (`_F16_ROUTE_BINDER_ENV`, applied
-after the recovery sweep), and the runner resolves that variant inside the open
-column-warp gate. The non-recovery selection table still declares
-`qwen4exp_gdn_tiled16_multi_prefill` for the 27-47 window, but the recovery pass
-replaces the GDN rows with the wave-norm narrow/wide owners, and `gguf_q4_k_m`
-production is quarantined to strict, which closes the gate: multi does not
-dispatch in a running production profile. Multi and DPP both stay registered in
-`hipengine/kernels/hip_gfx1151/__init__.py`. Do not remove the multi-column
-path: no numerical or performance gate rejected it.
-
-- `qwen4_exp_gdn_multi` / `HIPENGINE_QWEN4_GDN_MULTI_COLUMN` and registry
-  `qwen4exp_gdn_tiled16_multi_prefill` became the production default on
-  `20260930T`: measured 1.34x-1.68x faster than the DPP route it replaced
-  across 512/1024/2048/4096 tokens at Hk16/Hv48/Dk=Dv=128 on gfx1151, at NMSE
-  ~1.8e-14 (fp32 round-off), with the production numerical gates passing. It
-  superseded the DPP route as the production GDN prefill selection; DPP stayed
-  registered for bisection and gate arms, and the serial strict owner remains
-  the strict fallback. The 2026-10-14 composition superseded this selection
-  without rejecting the route. Evidence:
-  `benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/`.
-- The earlier "gate rejected it" premise was a misattribution, which is why the
-  removal never fired. The rejection was read from the ledger's section-7 row,
-  which combined `R01` (tiled/DPP) and `R02` (multi-column) under `R01`'s
-  evidence entry.
-  `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md` shows
-  `R02` passing the full 594-row short gate (593/594 top-1) and the canonical
-  depth gate at every declared limit (mean KL 8.92215e-05, max 4.4548289e-03,
-  top-1 777/780), and states that it does not reproduce the single-column
-  Japanese error that blocked `R01`. Its own finding is a different prompt
-  (`heldout_general_en_quant`) that the artifact scopes as "not proof of worse
-  expected quality or a GDN kernel defect".
-- Historical old-stack 594-row scope failures remain evidence, but are not the
-  current blocker. Over corrected Q8/QSA production, short 594-row and canonical
-  780-row numerical gates pass. The complete quantization task introduces a
-  materially misleading native-INT8 support explanation; the current
-  per-prompt task rule does not admit this composition. See
-  `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/task-review.json`.
-  One Japanese-plan pair remains truncated; no extension or timing is spent
-  after the separate task finding. This is not a numerical rejection or proof
-  of worse expected quality. Do not rerun the unchanged composition or promote
-  it merely because its numerical envelope passes.
-
 
 
 
@@ -855,6 +808,31 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0039 — Separate multi-column GDN capability from composition task review
+
+`qwen4exp_gdn_tiled16_multi_prefill` and DPP remain registered reference/fallback
+owners; the UD production composition selects row-split prefill instead. A
+superseded selection is not a numerical or performance rejection of the kernel.
+Historical promotion is recorded in
+`benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/`.
+
+**Deferred composition decision:** preserve the distinct R02 task finding in
+`benchmarks/results/2026-09-15-journey-gdn-multi-restoration/task-review.json`.
+Its numerical passes do not clear the misleading native-INT8 explanation under
+the recorded per-prompt rule. Do not conflate it with R01's Japanese failure or
+claim proof of worse expected quality/a kernel defect. The truncated Japanese
+pair is not completed evidence. Do not rerun the unchanged composition or promote
+it solely from its numerical envelope; any revised composition needs complete
+numerical, task and depth gates with accurate route attribution.
+
+Preserve multi-column, DPP and serial strict registered owners, profile-bound
+selection and diagnostic comparisons. `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`
+still transports profile selection; retire that environment handoff only when
+an owner-bound construction input preserves all profile and diagnostic callers.
+Original detailed route/history remains
+at `3af849481`; no selector, kernel or production default changes here.
+
 
 ### R0037 — Consolidate selector harnesses without losing reproduction
 

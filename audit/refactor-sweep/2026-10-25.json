@@ -1232,7 +1232,7 @@
       "start_line": 1246,
       "end_line": 1286,
       "sha256": "06547af481457e64e9507aeb23406900a7585acc06b0045850c4dd8c99c1c279",
-      "status": "resolved",
+      "status": "triaged-gdn-capability-kept-composition-review-deferred",
       "evidence": [
         "Current recovery and GDN ownership verified; script-local diagnostics and source-pinned family harness retained under their existing conditions. Worklog:worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md. No runtime/default change."
       ],
