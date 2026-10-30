@@ -3728,13 +3728,13 @@
       "start_line": 3398,
       "end_line": 3414,
       "sha256": "495488518310a18d1ec82ce277e2e6d2c72fe3b923ad5359f4dbb9db1ccb5f6f",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-adapter-contract",
+      "evidence": ["Corrected blanket host embedding refusal: graph admission requests device fallback; expert sidecar restriction remains distinct. Prior diagnostic removal preserved.26 integration tests/docs/audit pass. worklog/entries/20261030T065251.618480Z-cleanup-cleanup-r0138-e87e5e.md."],
       "subitems": [
         {
           "line": 3400,
           "text": "- The experimental `NativeInvocationContext`, index-publication receipts and",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 3407,
@@ -3745,7 +3745,7 @@
         {
           "line": 3410,
           "text": "- Host/deferred embedding and optional expert-sidecar native adapters have no",
-          "status": "pending"
+          "status": "deferred-adapter-contract"
         }
       ]
     },

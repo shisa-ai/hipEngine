@@ -2332,19 +2332,6 @@ should be removed or collapsed.
 
 
 
-## 2026-09-07 GGUF native execution authorization — bounded cleanup
-
-- The experimental `NativeInvocationContext`, index-publication receipts and
-  recursive physical inventories are removed. They defended against arbitrary
-  private-field mutation rather than a supported caller. Construction-time
-  resident checks and shared kernel ABI descriptions stay. Do not restore
-  per-layer full-model validation; add narrow invalidation at an actual public
-  reconfiguration API if one is introduced. No GPU timing claim accompanies
-  this host-only cleanup.
-- Host/deferred embedding and optional expert-sidecar native adapters have no
-  complete pre-allocation contract. Keep those route refusals until the actual
-  registered/executed adapter and every resident/physical owner are represented
-  in the shared call plan. Eager/c1 placement behavior is separate and unchanged.
 
 ## 2026-09-04 Qwen4Exp PF-5 GDN w32 prefill variant — retained rejected lever
 
@@ -9646,3 +9633,32 @@ model generation and teardown. For certificate changes, run intended-plan,
 partial-slot and supplied-certificate loader tests in
 `tests/test_live_gguf_ud_admission.py`. Keep construction checks separate from
 per-token execution; this triage changes neither mechanism.
+
+### R0138 — Complete native adapter ownership without blanket embedding refusal
+
+Native target graph admission in `gguf_native_spec_cycle.py` requests
+`_device_token_embedding_weight(reason="native_mtp_graph")` when host embedding
+is enabled and that fallback exists. It refuses when no fallback is callable;
+it does not categorically reject every host-embedding configuration. Expert
+sidecars are separately refused because that graph requires resident replacement
+expert layouts. Keep graph capture constraints distinct from eager execution.
+
+**Deferred adapter work:** represent any additional embedding staging or expert
+sidecar route in the actual shared call plan, including pre-allocation shape,
+dtype, physical operands, lifetime and capture behavior. Remove only the
+corresponding refusal once that implementation exists. Do not remove the working
+device-resident embedding fallback or infer support from a nominal adapter name.
+
+The legacy diagnostic was already removed with authoritative execution-report
+coverage in
+`worklog/entries/20261026T222549.230606Z-cleanup-refactor-r0138-native-diagnostic-12a5fc.md`.
+The old invocation context, receipts and recursive inventories are completed
+history, not mechanisms to resurrect. Preserve construction-time checks and
+runtime owner/request bounds; supported reconfiguration needs narrow invalidation,
+not per-layer full-model validation.
+
+Clearing checks: extend `tests/test_integration_gguf_execution_authorization.py`
+and `tests/test_integration_gguf_native_physical_operands.py` for each added
+adapter, then test graph capture/replay, allocation failure and teardown. Exercise
+public generation with the intended layout and confirm graph versus eager route
+selection and numerical/state parity. This triage changes no runtime behavior.
