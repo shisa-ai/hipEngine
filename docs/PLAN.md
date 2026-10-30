@@ -439,6 +439,11 @@ reasoning-tag splitting, terminal-marker handling and legacy JSON/XML tool-outpu
 parsing live in `hipengine/server/chat_output.py`, with standard-library
 imports only. The application owns model-protocol adaptation, request errors
 and response shaping, and preserves its existing parser helper aliases.
+Prometheus counters, metric normalization and text exposition live in
+`hipengine/server/metrics.py`, with only standard-library dependencies. The
+application collects one live snapshot per scrape, normalizes consumed fields
+before freezing them, and supplies an immutable metrics snapshot. Engine/stat
+lookup, capability discovery and readiness attribution stay in the application.
 
 ### Layer Diagram
 

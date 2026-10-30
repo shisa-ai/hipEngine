@@ -831,7 +831,7 @@ def test_metrics_endpoint_filters_malformed_kv_pool_scalars() -> None:
 def test_string_value_counts_counts_paths_and_keeps_unset_visible() -> None:
     """The executor-mode export counts which path ran, not how much was used."""
 
-    from hipengine.server.api import _string_value_counts
+    from hipengine.server.metrics import _string_value_counts
 
     assert _string_value_counts(["layer_outer_packed", "layer_outer_packed"]) == {
         "layer_outer_packed": 2.0
@@ -851,7 +851,7 @@ def test_string_value_counts_counts_paths_and_keeps_unset_visible() -> None:
 def test_string_value_counts_escapes_label_values_that_would_break_the_format() -> None:
     """A mode string containing a quote or newline must not corrupt the export."""
 
-    from hipengine.server.api import (
+    from hipengine.server.metrics import (
         _append_labeled_counter_metrics,
         _string_value_counts,
     )
