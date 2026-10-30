@@ -2214,23 +2214,6 @@ families. A changed GGUF isolation design must finish the recorded long-prompt p
 same-stream controls before replacing its default; timing claims need copy/queue-inclusive
 end-to-end evidence, not a clean short focus leg.
 
-### R0306 — Legacy draft stage-trace replacement
-
-Owner: `scripts/gguf_mtp_bench.py`.
-
-Scope: `draft_hidden_state_trace`; `tests/test_unit_mtp_resident_draft_device_commit.py`.
-
-**Decision needed:** keep this explicit host trace or replace it with a capture-safe graph tensor
-trace before retiring its CLI/result fields. No implemented graph trace currently substitutes for
-these summaries.
-
-Done when: migrate benchmark argument validation, both proposal callers,
-stage/cache/attention summaries and `draft_hidden_state_trace` consumers together. Run
-`tests/test_unit_mtp_resident_draft_device_commit.py`, benchmark parser and profiler contracts, then
-compare trace metadata/values for initial catch-up, multiple proposal depths and commit/reset. Any
-replacement needs independent numerical rows plus a public NextN preservation request; host trace
-time must not be reported as a normal device-chain timing result.
-
 ### R0304 — Legacy selected-SiLU/down comparison ownership
 
 Owner: `hipengine/speculative/mtp_resident_draft.py`.

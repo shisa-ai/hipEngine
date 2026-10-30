@@ -196,6 +196,12 @@ internal call passes through a compatibility method.
 
 ## Diagnostics and timing
 
+`scripts/gguf_mtp_bench.py` keeps the explicit legacy host trace in
+`cycles[].draft_hidden_state_trace`. Hidden and stage-stat controls select the
+host proposal chain; cache-history rows and attention debug report the visible
+draft context without changing acceptance or commit selection. These controls
+perform host readbacks and are not normal device-chain timing routes.
+
 `Qwen35GGUFMTPDecodeSession(draft_hidden_variant=...)` and
 `scripts/qwen36_dense_gguf_suite.py --draft-hidden-variant` support explicit
 `pre_output_norm` and `post_output_norm` diagnostic conventions. The immutable
