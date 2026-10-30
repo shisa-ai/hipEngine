@@ -3486,25 +3486,6 @@ Resolved: the reduction-order choices have explicit manifest scopes and
 runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
-## Qwen4Exp routed gate/up without a grouped activation copy (`HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED`)
-
-When the routed F16 expert kernels are selected, the paired gate/up kernel
-reads token-major BF16 activations through the grouped lane map
-(`row_lanes[r] // top_k`) and the runner launches the metadata-only
-`qwen35_moe_group_scatter` instead of `qwen35_moe_group_scatter_gather_lowp`,
-so the `rows * top_k * hidden` grouped BF16 copy is not written. Output bits
-are those of the gathered copy
-(`tests/test_gpu_qwen4exp_routed_f16.py::test_gate_up_reads_token_rows_through_the_lane_map`).
-Measured on `code-p4096`, Radeon 8060S, same process: 1309.7 -> 1338.1
-prefill tok/s; `code-p512` 841.6 -> 855.5; identical output tokens.
-
-`HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED=0` restores the gathered copy for
-bisection. The flag defaults on and has no manifest row; it only takes
-effect under the routed F16 selection.
-
-Removal condition: once a `gguf_ud_q4_k_xl` release has shipped with the
-indexed read, delete the flag and the gathered branch of the routed path.
-
 ## Long-K F16 wide tile without CU mode (`HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K`)
 
 A Q8_0 F16 wide launch with at least 1024 rows, K >= 4096 and N >= 1024

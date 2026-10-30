@@ -748,7 +748,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` | retired | Ignored. Ordered v2 uses the registered three-pass route; the fused experiment is removed. |
 | `HIPENGINE_QWEN4_EXP_QSA_WMMA` | unset (fast/F16 route sets `1`) | QSA prefill attention on the WMMA kernel. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16` | retired | Ignored. The manifest publishes `runner.routed_f16_enabled`; diagnostic tools bind that runner field temporarily. Routed gate/up and down keep their two-row Q4_K and 64-row Q5_K windows, including multi-row decode batches. |
-| `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | `1` | The routed F16 gate/up reads token rows through the lane map; `0` builds the gathered activation copy. |
 | `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; UD production selects the F16 WMMA GEMM, with ordered DPP for small multirow widths and named rollback. Strict/Q4_K_M keep tile4. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | retired | Ignored. The profile publishes conditional gate/up selection in the owning runner's `moe_decode_warp` set. The separate DP4A prerequisite still applies. |
 | `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | retired | Ignored. The execution profile declares the one-row D128 GDN variant and publishes `gdn_decode_rowsplit` on the owning runner. Diagnostics use its scoped control. |
@@ -758,6 +757,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` | retired | No longer read. Whether the dense-wide F16 projections share one activation is a request-local decision the execution profile publishes to the runner that owns the prefill; regression tests assert this switch cannot enable it. |
 | `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` | retired | Ignored. Supported one-row hyper-connection reads use the exact three-launch fusion; unsupported geometry or weight layout uses the strict chain. |
 | `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
+| `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | retired | Ignored. Routed F16 gate/up always reads token rows through the lane map. Other grouped routes still gather activations. |
 | `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` | retired | Ignored. Hyper-connection reads use exact direct F16 launches when the existing geometry, workspace and consumer guards pass. Historical diagnostics use the execution-local `gr_f16_direct` scope. |
 | `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | retired | Ignored. Scale-only GR reads publish half(mixed) by default. Pair diagnostics use the execution-local `gr_f16_mirror` scope without changing environment state. |
 | `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | retired | Ignored. The supported scale-only norm computes inject logits when an inject projection is present. The separate kernel remains available to parity tests and fallback paths. |

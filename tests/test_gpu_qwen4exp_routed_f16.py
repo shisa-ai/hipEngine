@@ -36,9 +36,9 @@ from hipengine.quant.gguf import GGMLQuantizationType
 from tests._gguf_synthetic_weights import (
     make_q4_k_weight,
     make_q5_k_weight,
+    make_q5_1_weight,
     make_q8_0_weight,
 )
-from tests.test_gpu_gguf_q5_1_t16_expert_major_wmma import make_q5_1_weight
 
 _SENTINEL = np.uint16(0x7FC1)
 # Buckets that are empty, shorter than one 16-row tile, exactly one tile, and

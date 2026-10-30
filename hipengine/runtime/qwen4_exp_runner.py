@@ -6408,14 +6408,9 @@ def run_qwen4_exp_moe(
             scratch.group_scatter_offsets.nbytes,
             stream,
         )
-        # The routed gate/up kernel can read token rows through the lane map,
-        # so its grouped copy of the activations (rows * top_k * hidden BF16)
-        # is not built. HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED=0 restores the
-        # gathered copy; see docs/REFACTOR.md.
-        routed_indexed = routed_f16 and os.environ.get(
-            "HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED", "1"
-        ) not in {"", "0", "false", "False"}
-        if routed_indexed:
+        # Routed gate/up reads token rows through the lane map. Other grouped
+        # kernels still require the gathered BF16 activation copy.
+        if routed_f16:
             qwen35_moe_group_scatter(
                 scratch.selected.ptr,
                 scratch.routing.ptr,
@@ -6489,7 +6484,7 @@ def run_qwen4_exp_moe(
                 quant=gate_quant,
                 variant=ROUTED_F16_GATE_UP_VARIANT,
             )(
-                scratch.hidden_bf16.ptr if routed_indexed else scratch.expert_down.ptr,
+                scratch.hidden_bf16.ptr,
                 scratch.group_expert_start.ptr,
                 scratch.group_tile_expert.ptr,
                 scratch.group_wmma_total.ptr,
@@ -6500,7 +6495,7 @@ def run_qwen4_exp_moe(
                 ffn,
                 tile_rows=gate_up_tile_rows,
                 tile_capacity=gate_up_capacity,
-                row_lanes_ptr=scratch.group_sorted_lanes.ptr if routed_indexed else 0,
+                row_lanes_ptr=scratch.group_sorted_lanes.ptr,
                 top_k=top_k,
                 stream=stream,
                 runtime=active_runtime,

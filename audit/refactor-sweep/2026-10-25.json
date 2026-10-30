@@ -13054,8 +13054,8 @@
       "start_line": 10853,
       "end_line": 10871,
       "sha256": "f2cec3723a8160bb16171ca2d325f3df5ae58a8e14c8bd4bdaf7a1f423b0ce5e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Retired indexed process opt-out and routed gathered-pointer branch. Non-routed grouped gather and native parity oracle preserved. RED4/GREEN30, full CPU deterministic bundle, GPU32, and public48 actual indexed launches with stale key0 untouched passed. Repaired GPU test import to shared Q5_1 fixture. Worklog: worklog/entries/20261030T000705.544814Z-cleanup-cleanup-refactor-r0456-bd7f93.md."],
       "subitems": []
     },
     {
