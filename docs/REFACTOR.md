@@ -1861,57 +1861,6 @@ a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
   every reused row as never priming a provider are gone. The `prefix_reuse_k0`
   label now names only a hit row whose checkpoint is absent, stale, lacks its
   boundary row, or cannot be restored.
-## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18) — NOT A LOOKUP DEFECT
-
-The resident cache stores complete 256-token pages and requires an unmatched
-suffix token. A prompt of at most 256 tokens therefore cannot produce a usable
-hit. The current check does not exclude a 400-token prompt with a 256-token
-prefix: that prompt reaches the trie lookup. Boundary coverage in
-`tests/test_unit_gguf_prefix_cache_runner.py::test_prefix_fallback_reasons_are_counted_per_reason`
-checks short prompts, both sides of the page boundary, and a 400-token prompt.
-Supporting sub-page reuse would require a different cache/state ownership
-contract, not removal of this early check. The historical proposal below
-misidentified that capability limit as a lookup-cost policy.
-
-- `_prefix_source_for` returns `prompt_too_short` for `len(row.prompt_ids) <= 256`
-  before any lookup. Every ShareGPT conversation in the serving suite is under
-  that size (30-685 prompt tokens, four turns above 256), so 19 of 41 turns never
-  consult the cache and 0 of 8 lookups hit. Multi-turn chat traffic is exactly
-  the shape this cache exists for.
-- Fix direction: separate the floor from the block size. A lookup can match zero
-  full blocks cheaply and still be worth attempting for a 400-token prompt with a
-  256-token prefix; the current constant conflates "too short to have any block"
-  with "not worth a trie probe". Decide the floor from measured probe cost, not
-  from `block_size_tokens`, and re-measure the ShareGPT lanes.
-
-## Prefix snapshot capture allocates and frees its buffers per capture (found 2026-09-18) — RESOLVED
-
-Snapshot capture now carves state views from one pooled arena, and snapshot
-close returns that arena to the session pool. The capture/close/capture reuse
-contract is covered by
-`tests/test_unit_qwen35_gguf_prefix_state.py::test_capture_reuses_the_pooled_arena_after_close`.
-The original repair is recorded in
-`worklog/entries/20260918T182703.072006Z-lhl-prefix-snapshot-arena-pool-f8942e.md`.
-Capture still synchronizes before publishing the snapshot: the serving caller
-does not supply an independent stream, so replacing that fence is not part of
-the allocation repair. The observations and proposal below are historical.
-
-- `capture_prefix_state_snapshot` allocates two device buffers per linear-state
-  layer, copies the Conv/GDN state into them with `memcpy_async`, and calls
-  `device_synchronize`. `_evict_prefix_snapshot` frees them again. Measured on
-  gfx1151 with rocprofv3 over 4 served requests: **+161 `hipMalloc` and +161
-  `hipFree` calls** (~54 per capture) at **~3.2 ms per malloc**, against state
-  copies of **~25 us each**. The engine's own phase counter puts a capture at
-  **0.18-0.38 s** on the greedy route and up to **1.4 s** on the sampled route,
-  and the prompt-boundary refresh pays it on **every eligible turn, hit or miss**.
-- Fix direction: hold the snapshot buffers in a per-session pool sized to the
-  largest capture (the state size is fixed by the model) instead of malloc/free
-  per capture, and drop the `device_synchronize` to a stream sync when the
-  capture is already on the request's stream. RED test target: capture, evict,
-  capture again and assert the second capture performs no allocation.
-- Evidence: `benchmarks/results/2026-09-18-gfx1151-prefix-cache-cost-attribution.json`
-  (`rocprof.hip_api.radix.hipMalloc`, `ranked_cost[1]`).
-
 ## Reused-suffix prefill has two routes and only one is slow (found 2026-09-18)
 
 - The greedy cumulative lanes prefill a reused row's suffix through
