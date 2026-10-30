@@ -765,7 +765,7 @@ binder is unchanged; the held-off set and each reopen condition live in
   measurement (the cost packet is weighted p512/p1024/p4096 against the
   unrecovered UD composition in one residency; this is one case under
   post-binder overrides on the recovered UD plan), so the discrepancy is
-  **unresolved**, but the recovery baseline itself improved 1.52x since the
+  **unresolved and tracked under deferred R0036**, but the recovery baseline itself improved 1.52x since the
   2026-09-16 sweep (23.648 s -> 15.544 s) and the recovery profile's own
   optimization appears to have closed most of the gap. §2.13 has since been
   re-derived at HEAD. Of the three material wins, `GR_WIDE` is now admitted by
@@ -985,6 +985,26 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0036 — Reconcile historical recovery-cost attribution if reused
+
+The recovery composition documentation and diagnostic-hook cleanup are complete.
+The remaining historical cost discrepancy compares different workloads and
+ownership: the recovery-cost packet weights p512/p1024/p4096 against an
+unrecovered composition in one residency, while the disabled-selector ranking
+uses one post-binder case on a recovered plan. Their percentages are not
+interchangeable and do not identify a defective kernel family.
+
+**Deferred attribution decision:** reconcile the protocols and current route
+composition before reusing either result to explain recovery cost. Preserve
+`benchmarks/results/2026-09-14-q8-prefill-numerics/README.md` and
+`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/` as immutable
+historical evidence. Any new comparison must match workload, residency, profile,
+cache handling and measurement boundary. Do not sum isolated selector timings
+into a composed-plan claim or bypass held-off arithmetic gates to reproduce a
+headline. R0023 owns remaining withdrawn-family repair decisions. No numerical
+promotion, default change or fresh performance result is claimed here.
+
 
 ### R0035 — Supply selected-down variant keys through profile ownership
 
