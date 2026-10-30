@@ -149,13 +149,29 @@ def load_backend_kernel_package(backend: str) -> ModuleType:
 
 
 def backend_package_capability(backend: str, name: str, default=None):
-    """Read backend-package metadata without rerunning kernel registration."""
+    """Read backend-package metadata without rerunning kernel registration.
+
+    A binding on the backend package itself wins, including an explicit
+    ``None`` or ``False``. An unbound name then falls through the backend's
+    declared policy owners (``POLICY_MODULE_NAMES``) in declaration order, and
+    only then to ``default``. Nothing is cached: a replacement on the package
+    is visible to the next read and never mutates the owning module.
+    """
 
     if backend not in HIP_BACKEND_TARGET_ARCH and backend not in CUDA_BACKEND_TARGET_ARCH:
         valid = ", ".join(sorted((*HIP_BACKEND_TARGET_ARCH, *CUDA_BACKEND_TARGET_ARCH)))
         raise ValueError(f"unsupported hardware backend {backend!r}; expected one of: {valid}")
     module = import_module(f"hipengine.kernels.{backend}")
-    return getattr(module, str(name), default)
+    key = str(name)
+    missing = object()
+    value = getattr(module, key, missing)
+    if value is not missing:
+        return value
+    for policy_module in getattr(module, "_POLICY_MODULES", ()):
+        value = getattr(policy_module, key, missing)
+        if value is not missing:
+            return value
+    return default
 
 
 def configure_hip_process_environment(

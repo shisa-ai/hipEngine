@@ -3653,8 +3653,15 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         )
 
     package_root = Path(hipengine.__file__).parent
+    backend_dir = package_root / "kernels" / "hip_gfx1151"
     gfx1100_only = assigned_names(package_root / "kernels" / "hip_gfx1100" / "__init__.py")
-    gfx1100_only -= assigned_names(package_root / "kernels" / "hip_gfx1151" / "__init__.py")
+    # Follow the package's own owner declaration instead of assuming every
+    # capability is re-bound in the initializer. The expected set below is the
+    # proof that the declared-owner union covers the same names the aliases did.
+    declared_on_gfx1151 = assigned_names(backend_dir / "__init__.py")
+    for owner in hipengine.kernels.hip_gfx1151.POLICY_MODULE_NAMES:
+        declared_on_gfx1151 |= assigned_names(backend_dir / f"{owner}.py")
+    gfx1100_only -= declared_on_gfx1151
 
     live_read: set[str] = set()
     for module_path in package_root.rglob("*.py"):

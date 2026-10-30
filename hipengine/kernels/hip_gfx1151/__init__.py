@@ -106,6 +106,16 @@ from hipengine.kernels.hip_gfx1151 import policy_laguna as _policy_laguna
 from hipengine.kernels.hip_gfx1151 import policy_capability as _policy_capability
 from hipengine.kernels.hip_gfx1151 import policy_gguf as _policy_gguf
 
+# Ordered owners of this backend's capability declarations, most specific
+# first. This is the only place the owner list is written down: the module
+# references below are derived from it, and the cold source reader reads the
+# same declaration, so runtime and source ownership cannot drift apart.
+# A name the package binds itself always wins over its owner.
+POLICY_MODULE_NAMES = ("policy_capability", "policy_gguf", "policy_laguna")
+_POLICY_MODULES = tuple(
+    import_module(f"{__name__}.{_owner}") for _owner in POLICY_MODULE_NAMES
+)
+
 # Compatibility exports for the Laguna capability/policy declarations that
 # now live in ``policy_laguna``. Each name is re-bound explicitly; this is
 # not a module proxy, and ``policy_laguna`` remains the single source of

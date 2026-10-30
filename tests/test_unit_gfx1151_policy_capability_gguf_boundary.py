@@ -207,14 +207,154 @@ def test_package_capability_lookup_reads_the_package_aliases(policy, monkeypatch
     assert policy_gguf.GGUF_IQ_DENSE_DECODE_POLICY is not sentinel
 
 
+def test_declared_policy_owner_list_is_one_literal_ordered_declaration(policy) -> None:
+    backend, policy_capability, policy_gguf = policy
+    from hipengine.kernels.hip_gfx1151 import policy_laguna
+
+    # The package's module references are derived from this one literal list,
+    # and the cold source reader reads the same declaration, so the runtime and
+    # source views of ownership cannot drift apart.
+    assert backend.POLICY_MODULE_NAMES == (
+        "policy_capability",
+        "policy_gguf",
+        "policy_laguna",
+    )
+    assert backend._POLICY_MODULES == (
+        policy_capability,
+        policy_gguf,
+        policy_laguna,
+    )
+    assert [module.__name__ for module in backend._POLICY_MODULES] == [
+        f"{backend.__name__}.{name}" for name in backend.POLICY_MODULE_NAMES
+    ]
+
+
+def test_declared_policy_owners_are_collision_free(policy) -> None:
+    backend, _policy_capability, _policy_gguf = policy
+
+    owner: dict[str, object] = {}
+    for module in backend._POLICY_MODULES:
+        for name in vars(module):
+            if not name.isupper():
+                continue
+            if name in owner:
+                # The same declaration may be re-imported by a second owner;
+                # only a divergent second value is an ownership collision.
+                assert getattr(owner[name], name) is getattr(module, name), name
+                continue
+            owner[name] = module
+
+    assert owner
+    # Every declared name is still reachable through the package today, and it
+    # is the owner's own object -- not a copy, wrapper, or second value.
+    for name, module in owner.items():
+        assert getattr(backend, name) is getattr(module, name), name
+
+
+def test_every_owner_declaration_resolves_without_the_package_binding(
+    policy, monkeypatch
+) -> None:
+    backend, _policy_capability, _policy_gguf = policy
+    sentinel = object()
+    checked = 0
+
+    for module in backend._POLICY_MODULES:
+        for name in vars(module):
+            if not name.isupper():
+                continue
+            # Only this one package binding is absent; the owner fallback must
+            # reproduce the exact owner value instead of the caller default.
+            with monkeypatch.context() as scoped:
+                scoped.delattr(backend, name, raising=False)
+                assert (
+                    backend_package_capability("hip_gfx1151", name, sentinel)
+                    is getattr(module, name)
+                ), name
+            checked += 1
+
+    assert checked
+
+
+def test_package_binding_wins_even_when_falsy_or_none(policy, monkeypatch) -> None:
+    backend, _policy_capability, policy_gguf = policy
+    owner_value = policy_gguf.GGUF_IQ_DENSE_DECODE_POLICY
+    assert owner_value
+
+    for override in (False, None):
+        with monkeypatch.context() as scoped:
+            scoped.setattr(backend, "GGUF_IQ_DENSE_DECODE_POLICY", override)
+            assert (
+                backend_package_capability(
+                    "hip_gfx1151", "GGUF_IQ_DENSE_DECODE_POLICY", "default"
+                )
+                is override
+            )
+            # The fallback read never writes back into the owner.
+            assert policy_gguf.GGUF_IQ_DENSE_DECODE_POLICY is owner_value
+
+
+def test_owner_value_mutation_is_visible_without_the_package_binding(
+    policy, monkeypatch
+) -> None:
+    backend, _policy_capability, policy_gguf = policy
+    capability_name = "GGUF_IQ_DENSE_DECODE_POLICY"
+    replacement = {"gguf_iq4_xs": {"variant": "replacement"}}
+
+    with monkeypatch.context() as scoped:
+        scoped.delattr(backend, capability_name, raising=False)
+        assert (
+            backend_package_capability("hip_gfx1151", capability_name)
+            is policy_gguf.GGUF_IQ_DENSE_DECODE_POLICY
+        )
+        scoped.setattr(policy_gguf, capability_name, replacement)
+        # No cache: with the package binding absent, the very next read sees
+        # the owner's current value, not a value captured on the first read.
+        assert backend_package_capability("hip_gfx1151", capability_name) is replacement
+
+    assert (
+        backend_package_capability("hip_gfx1151", capability_name)
+        is policy_gguf.GGUF_IQ_DENSE_DECODE_POLICY
+    )
+    assert backend_package_capability("hip_gfx1151", capability_name) is not replacement
+
+
+def test_unknown_names_and_peer_backends_keep_caller_defaults(policy) -> None:
+    import importlib
+
+    _backend, _policy_capability, _policy_gguf = policy
+    sentinel = object()
+    gfx1100 = importlib.import_module("hipengine.kernels.hip_gfx1100")
+
+    assert (
+        backend_package_capability("hip_gfx1151", "NOT_A_DECLARED_NAME", sentinel)
+        is sentinel
+    )
+    for peer in ("hip_gfx1100", "cuda_sm120a"):
+        module = importlib.import_module(f"hipengine.kernels.{peer}")
+        # No owner declaration is inherited across backend packages.
+        assert not hasattr(module, "_POLICY_MODULES")
+        assert (
+            backend_package_capability(peer, "POLICY_MODULE_NAMES", sentinel)
+            is sentinel
+        )
+    assert (
+        backend_package_capability("hip_gfx1100", "LAGUNA_ACTIVATION_PACK_REUSE")
+        is gfx1100.LAGUNA_ACTIVATION_PACK_REUSE
+    )
+    assert (
+        backend_package_capability("hip_gfx1100", "NOT_A_DECLARED_NAME", sentinel)
+        is sentinel
+    )
+
+
 def test_initializer_keeps_source_assignments_for_capability_ledger(policy) -> None:
     backend, policy_capability, policy_gguf = policy
     assigned = _initializer_assignments(backend)
     moved = set(policy_capability.__all__) | set(policy_gguf.__all__) | GGUF_PRIVATE_NAMES
 
-    # The gfx1100/gfx1151 capability-ledger check derives its assigned-name set
-    # from this initializer's source. Explicit aliases keep that assumption
-    # true without making the policy modules a proxy.
+    # The gfx1100/gfx1151 capability-ledger check unions the package's declared
+    # policy owners, so it no longer depends on these aliases; the aliases stay
+    # because the compatibility surface is frozen for RF-8.1.
     assert moved <= set(assigned)
     for name in moved:
         value = assigned[name]

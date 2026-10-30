@@ -465,6 +465,210 @@ print(json.dumps({
 """
 
 
+def test_reader_merges_constants_owned_by_the_declared_policy_modules(tmp_path):
+    _backend_package(
+        tmp_path,
+        "hip_demo",
+        {
+            "policy_capability": (
+                "GGUF_CONSUMER_LAYERS: frozenset[str] = "
+                "frozenset({\"linear\", \"rmsnorm\"})\n"
+                "_PRIVATE_FLAG = True\n"
+                "helper = 1\n"
+            ),
+            "policy_gguf": (
+                "SHAPES = ((64, 32),)\n"
+                "GGUF_CONSUMER_LAYERS = frozenset({\"embedding\"})\n"
+            ),
+            "": (
+                "POLICY_MODULE_NAMES = (\"policy_capability\", \"policy_gguf\")\n"
+            ),
+        },
+    )
+
+    assignments = read_backend_assignments("hip_demo", root=tmp_path)
+
+    assert assignments["GGUF_CONSUMER_LAYERS"].value == frozenset(
+        {"linear", "rmsnorm"}
+    )
+    assert assignments["GGUF_CONSUMER_LAYERS"].status == LITERAL_STATUS
+    assert assignments["SHAPES"].value == ((64, 32),)
+    assert assignments["_PRIVATE_FLAG"].value is True
+    # Owners contribute their uppercase declarations only; a lower-case helper
+    # is module-internal and never becomes a package capability.
+    assert "helper" not in assignments
+    # Ownership is ordered: the first declared owner wins a shared name.
+    assert backend_gguf_consumer_layers("hip_demo", root=tmp_path) == frozenset(
+        {"linear", "rmsnorm"}
+    )
+
+
+def test_reader_package_binding_wins_over_the_declared_owner(tmp_path):
+    _backend_package(
+        tmp_path,
+        "hip_demo",
+        {
+            "policy_capability": (
+                "GGUF_CONSUMER_LAYERS = frozenset({\"linear\", \"rmsnorm\"})\n"
+                "SHAPES = ((64, 32),)\n"
+            ),
+            "": (
+                "POLICY_MODULE_NAMES = (\"policy_capability\",)\n"
+                "GGUF_CONSUMER_LAYERS = compute_layers()\n"
+                "SHAPES = ((8, 8),)\n"
+            ),
+        },
+    )
+
+    assignments = read_backend_assignments("hip_demo", root=tmp_path)
+
+    # The package's own binding wins even when it is nonliteral: the owner
+    # literal is never promoted past a package declaration the reader cannot
+    # certify. Admission then fails closed exactly as for an absent name.
+    assert assignments["GGUF_CONSUMER_LAYERS"].status == NONLITERAL_STATUS
+    assert backend_gguf_consumer_layers("hip_demo", root=tmp_path) == frozenset()
+    # A literal package binding likewise beats a different owner literal.
+    assert assignments["SHAPES"].value == ((8, 8),)
+
+
+def test_reader_fails_closed_on_malformed_owner_declarations(tmp_path):
+    owner = "GGUF_CONSUMER_LAYERS = frozenset({\"linear\"})\n"
+    cases = {
+        "absent": "OTHER = 1\n",
+        "list": "POLICY_MODULE_NAMES = [\"policy_data\"]\n",
+        "string": "POLICY_MODULE_NAMES = \"policy_data\"\n",
+        "non_string_item": "POLICY_MODULE_NAMES = (\"policy_data\", 3)\n",
+        "path_escape": "POLICY_MODULE_NAMES = (\"../policy_data\",)\n",
+        "nonliteral": "POLICY_MODULE_NAMES = owners()\n",
+        "missing_module": "POLICY_MODULE_NAMES = (\"policy_missing\",)\n",
+    }
+    for case, initializer in cases.items():
+        backend = f"hip_{case}"
+        _backend_package(
+            tmp_path, backend, {"policy_data": owner, "": initializer}
+        )
+        assignments = read_backend_assignments(backend, root=tmp_path)
+        assert backend_gguf_consumer_layers(backend, root=tmp_path) == frozenset(), case
+        if case == "absent":
+            assert "POLICY_MODULE_NAMES" not in assignments, case
+            continue
+        # A well-formed declaration is still reported as the literal it is;
+        # only the merge it would authorize is withheld.
+        assert "POLICY_MODULE_NAMES" in assignments, case
+        if case == "missing_module":
+            assert assignments["POLICY_MODULE_NAMES"].is_literal, case
+
+
+def test_reader_stays_bounded_on_cyclic_owner_declarations(tmp_path):
+    _backend_package(
+        tmp_path,
+        "hip_cycle",
+        {
+            "policy_a": (
+                "from . import policy_b as _b\n"
+                "GGUF_CONSUMER_LAYERS = _b.GGUF_CONSUMER_LAYERS\n"
+            ),
+            "policy_b": (
+                "from . import policy_a as _a\n"
+                "GGUF_CONSUMER_LAYERS = _a.GGUF_CONSUMER_LAYERS\n"
+            ),
+            "": "POLICY_MODULE_NAMES = (\"policy_a\", \"policy_b\")\n",
+        },
+    )
+    assert backend_gguf_consumer_layers("hip_cycle", root=tmp_path) == frozenset()
+
+    # An owner that imports the package declaration is the same cycle seen from
+    # the other side: bounded, fail-closed for the cycle, and the owner's own
+    # literal declarations still merge.
+    _backend_package(
+        tmp_path,
+        "hip_self",
+        {
+            "policy_a": (
+                "from hipengine.kernels.hip_self import POLICY_MODULE_NAMES as _NAMES\n"
+                "SHAPES = ((64, 32),)\n"
+            ),
+            "": "POLICY_MODULE_NAMES = (\"policy_a\",)\n",
+        },
+    )
+    assignments = read_backend_assignments("hip_self", root=tmp_path)
+    assert assignments["SHAPES"].value == ((64, 32),)
+    assert assignments["SHAPES"].status == LITERAL_STATUS
+    assert assignments["POLICY_MODULE_NAMES"].value == ("policy_a",)
+
+
+def test_reader_keeps_duplicate_ordered_owner_names_bounded(tmp_path):
+    _backend_package(
+        tmp_path,
+        "hip_dup",
+        {
+            "policy_data": "GGUF_CONSUMER_LAYERS = frozenset({\"linear\"})\n",
+            "": "POLICY_MODULE_NAMES = (\"policy_data\", \"policy_data\")\n",
+        },
+    )
+
+    assignments = read_backend_assignments("hip_dup", root=tmp_path)
+
+    # A repeated owner is read once per declaration position and the first
+    # merge wins, so a duplicate cannot flip a name to a later value.
+    assert assignments["POLICY_MODULE_NAMES"].value == (
+        "policy_data",
+        "policy_data",
+    )
+    assert assignments["GGUF_CONSUMER_LAYERS"].value == frozenset({"linear"})
+    assert assignments["GGUF_CONSUMER_LAYERS"].status == LITERAL_STATUS
+    assert backend_gguf_consumer_layers("hip_dup", root=tmp_path) == frozenset(
+        {"linear"}
+    )
+
+
+def test_reader_skips_an_unreadable_declared_owner(tmp_path):
+    _backend_package(
+        tmp_path,
+        "hip_broken",
+        {
+            "policy_broken": "def broken(:\n",
+            "policy_ok": "SHAPES = ((64, 32),)\n",
+            "": (
+                "POLICY_MODULE_NAMES = "
+                "(\"policy_broken\", \"policy_missing\", \"policy_ok\")\n"
+            ),
+        },
+    )
+
+    assignments = read_backend_assignments("hip_broken", root=tmp_path)
+
+    # An unparseable or absent owner contributes nothing and does not stop the
+    # remaining owners from merging.
+    assert assignments["SHAPES"].value == ((64, 32),)
+    assert assignments["SHAPES"].status == LITERAL_STATUS
+    assert backend_gguf_consumer_layers("hip_broken", root=tmp_path) == frozenset()
+
+
+def test_reader_package_none_and_false_bindings_win_over_owner_literals(tmp_path):
+    _backend_package(
+        tmp_path,
+        "hip_falsy",
+        {
+            "policy_data": "FLAG = True\nDISABLED = True\n",
+            "": (
+                "POLICY_MODULE_NAMES = (\"policy_data\",)\n"
+                "FLAG = None\n"
+                "DISABLED = False\n"
+            ),
+        },
+    )
+
+    assignments = read_backend_assignments("hip_falsy", root=tmp_path)
+
+    # An explicit None/False package binding is a real declaration, not an
+    # absent one: the owner's truthy literal must not replace it.
+    assert assignments["FLAG"].value is None
+    assert assignments["FLAG"].status == LITERAL_STATUS
+    assert assignments["DISABLED"].value is False
+    assert assignments["DISABLED"].status == LITERAL_STATUS
+
+
 def test_cold_reader_adds_no_backend_package_import():
     # Startup isolation: a fresh interpreter that forbids every GPU backend
     # package (and torch) before any import must still read the declaration.

@@ -34,6 +34,16 @@ an earlier container literal, so that name stops being a literal too.
 Only module-level statements are read. A declaration inside a conditional or
 ``try`` block is not a module constant and is treated as absent, exactly like
 a missing name.
+
+A backend package may also declare the ordered modules that own its capability
+constants (``POLICY_MODULE_NAMES = ("policy_a", ...)``). The root read merges
+those owners' own uppercase module constants, so a name the package no longer
+re-binds still reads as the value its owner declares. The merge is bounded: it
+happens only at the package root, only for a literal tuple of plain module
+identifiers, only for names the package itself does not bind, and only within
+the same cycle and depth limits as every other module read. A missing,
+unreadable, nonliteral, or malformed declaration contributes no owners, and the
+package's own binding wins even when that binding is nonliteral.
 """
 
 from __future__ import annotations
@@ -45,6 +55,7 @@ from pathlib import Path
 __all__ = [
     "LITERAL_STATUS",
     "NONLITERAL_STATUS",
+    "POLICY_MODULE_NAMES_DECLARATION",
     "SourceAssignment",
     "default_source_root",
     "read_backend_assignments",
@@ -53,6 +64,9 @@ __all__ = [
 
 LITERAL_STATUS = "literal"
 NONLITERAL_STATUS = "nonliteral"
+
+# Root declaration naming the ordered modules that own a backend's constants.
+POLICY_MODULE_NAMES_DECLARATION = "POLICY_MODULE_NAMES"
 
 # ``<root>/hipengine/kernels/<backend>`` holds one backend package.
 _PACKAGE_PARENT = ("hipengine", "kernels")
@@ -133,7 +147,34 @@ class _SourceResolver:
         self._cycles = 0
 
     def root_assignments(self) -> dict[str, SourceAssignment]:
-        return self._parse_module(())
+        return self._merge_declared_owners(self._parse_module(()))
+
+    def _merge_declared_owners(
+        self, values: dict[str, SourceAssignment]
+    ) -> dict[str, SourceAssignment]:
+        """Add the uppercase constants owned by the declared policy modules.
+
+        Fail-closed on purpose: an absent, nonliteral, non-tuple, or
+        non-identifier declaration yields no owners, and a name the package
+        already binds is never replaced (the package binding wins even when it
+        is nonliteral). Reads stay cold and bounded by the ordinary module
+        cycle and depth guards.
+        """
+
+        declared = values.get(POLICY_MODULE_NAMES_DECLARATION)
+        if declared is None or not declared.is_literal:
+            return values
+        owners = declared.value
+        if not isinstance(owners, tuple):
+            return values
+        if not all(isinstance(owner, str) and owner.isidentifier() for owner in owners):
+            return values
+        merged = dict(values)
+        for owner in owners:
+            for name, assignment in self._parse_module((owner,)).items():
+                if name.isupper() and name not in merged:
+                    merged[name] = assignment
+        return merged
 
     # -- module files -----------------------------------------------------
 

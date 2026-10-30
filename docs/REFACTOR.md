@@ -4247,11 +4247,13 @@ only mocked route tests.
 
 Owner: `hipengine/kernels/policy.py`.
 
-Scope: `hipengine/kernels/policy.py`, `hipengine/kernels/hip_gfx1151/__init__.py`.
+Scope: `hipengine/kernels/policy.py`, `hipengine/kernels/hip_gfx1151/__init__.py`,
+`hipengine/kernels/backends.py`, `hipengine/loading/backend_source_literals.py`.
 
-**Remaining compatibility migration:** migrate package consumers and the source capability-ledger
-check to the explicit policy owners before removing the package aliases. Preserve runtime
-`backend_package_capability` reads and deliberate package reassignment semantics; do not create a
+**Remaining compatibility migration:** migrate package consumers and source checks to the explicit
+policy owners before removing the package aliases. Runtime capability lookup and the cold source
+reader follow the backend's declared ordered owner modules when a package binding is absent.
+Preserve package override precedence, including explicit `None`/`False`; do not create a
 second registry or move backend/quant conditionals into engine dispatch.
 
 Public generation/serving still needs selected-route attribution for the extracted GGUF and
