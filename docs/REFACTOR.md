@@ -336,68 +336,6 @@ pins the F16 re-admission. These tests cover binder behavior, not the prose here
   can be re-admitted on its evidence
   (`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/`).
 
-## Router ordered DPP production owner
-
-Cleanup status (2026-10-26, R0029): the ownership claim this section used to
-make is superseded, and no runtime cleanup follows from it. The heading records
-the route's DPP history; the current `gguf_ud_q4_k_xl` production owner of
-`router_logits/qwen4exp_multirow_f32_router` is `f32_hidden_f16_wmma_gemm`, the
-small-matrix F16 WMMA GEMM. `f32_hidden_token_tile4_dpp_exact` is the
-arithmetic-recovery plan's default producer and the named rollback; strict and
-`gguf_q4_k_m` production keep the tile4 parent. The selector comment, the
-selector docstring and the runner's launch-time docstring now say so. The
-reader stays, because the gate harnesses drive their arms through it.
-
-Precedence at HEAD, in the order that decides which producer runs:
-
-- The plan is built when the profiles are registered, and the selector is read
-  at that point. `_f16_route_selections` in
-  `hipengine/generation/qwen4_exp_profiles.py` starts from
-  `_production_selections(recovery=True)`, whose router row is
-  `_ROUTER_UD_LOGITS_SELECTED_VARIANT` - ordered DPP when nothing is named -
-  and replaces DPP with the F16 GEMM unless the caller named a producer before
-  the module was imported. A named producer replaces the F16 GEMM in the
-  production plan only; the strict plan keeps tile4 either way.
-- The production binder then publishes the resolved manifest row into
-  `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`, so the runner's launch-time reader
-  starts from the same name the manifest declares. That is the same
-  publication channel that keeps strict from inheriting a production override.
-- At launch, `_qwen4_exp_router_producer_variant` in
-  `hipengine/runtime/qwen4_exp_runner.py` takes the linear GGUF path below two
-  rows, the published producer from two rows, and ordered DPP instead of the
-  F16 GEMM below 64 rows, because the GEMM stages 128-row tiles. That width
-  fallback is the only place the running producer differs from the manifest
-  row. An empty variable falls back to tile4, which a bound run reaches only by
-  clearing the variable after the bind.
-
-- The DPP producer's own record stands and is not a production claim: complete
-  operation screen improves 1.135–1.172x on layer0/22/47 weights; canonical
-  model prefill improves +0.553%/+0.486%/+0.589% at p512/1K/4K. D128
-  full-state/KV, 576 natural-router calls and four GPU row-isolation/ownership
-  tests pass. Its raw-pointer/selection ABI and per-thread FMA/reduction
-  association are unchanged: one LDS publication, register inter-wave folds,
-  DPP finish. Exact tile4 remains registered as strict fallback.
-- `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` is the named rollback and bisection
-  lever; the rollback set is the three non-production names
-  `f32_hidden_token_tile4_dense_exact`, `f32_hidden_token_tile4_dpp_exact` and
-  `f32_hidden_warp_reduce_dense_exact`. The recorded "remove the launch-time
-  reader after one production checkpoint" condition was overtaken by the F16
-  composition: the reader is now both the named rollback and the binder's
-  publication channel.
-- Removal condition: a plan-level producer-selection API the gate harnesses
-  can drive (`scripts/qwen4exp_layer2_profile_gate.py`,
-  `scripts/qwen4exp_profile_gap.py`, `scripts/qwen4exp_row4_state_gate.py` and
-  `scripts/qwen4exp_halo_box_campaign_ab.py` set the variable directly today),
-  then delete the launch-time reader and the binder's publication of it.
-  Replacing the reader without that API would leave those arms measuring the
-  production producer twice, so it is a design decision rather than cleanup.
-- The historical warp-per-token sibling remains registered for diagnostics,
-  unselected by default; its failed arithmetic gate does not qualify it.
-  The DPP producer replaces neither its reduction association nor selection
-  policy. Original model-wall evidence preserves a p4096 decode outlier and
-  does not claim decode-speed or all-case request-wall non-regression.
-- Evidence: `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.
-
 ## Router Producer Variant (`HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`)
 
 Cleanup status (2026-10-26, R0030): no runtime cleanup. The closing ownership
@@ -659,6 +597,31 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0029 — Replace router producer handoff with a plan-level diagnostic API
+
+`HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` carries the resolved profile row and named
+rollback/bisection selection. The UD composition selects F16 WMMA GEMM; ordered
+DPP remains a recovery/width fallback and tile4 remains strict. Preserve profile
+registration-time selection, strict isolation, linear GGUF below two rows and
+DPP fallback below 64 rows for the F16 GEMM request. Do not mistake a manifest
+name for proof that every width launches that producer.
+
+**Deferred API design:** give gate harnesses a plan-level producer option before
+removing the launch-time reader and binder environment publication. Migrate
+`scripts/qwen4exp_layer2_profile_gate.py`, `scripts/qwen4exp_profile_gap.py`,
+`scripts/qwen4exp_row4_state_gate.py` and
+`scripts/qwen4exp_halo_box_campaign_ab.py` together. Verify each comparison arm
+actually selects its named producer rather than measuring production twice.
+Preserve explicit tile4, ordered-DPP and warp-reduce diagnostic choices and
+registered strict fallback; diagnostic availability is not arithmetic promotion.
+
+Historical DPP operation/model evidence, including its decode outlier, remains
+in `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`. It does not
+claim decode-speed or universal request-wall improvement. Validate owner/profile
+isolation and public selected routes before retiring transport. No ABI,
+reduction association, default or runtime behavior changes here.
+
 
 ### R0028 — GR-wide profile handoff and engagement checks
 

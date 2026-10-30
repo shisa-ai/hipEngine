@@ -858,7 +858,7 @@
       "start_line": 915,
       "end_line": 936,
       "sha256": "25fb371f53b595d4a505eda41a7f4ede3373ffbfcb565bb5980a8d627bdd2265",
-      "status": "resolved",
+      "status": "triaged-router-ownership-corrected-api-migration-deferred",
       "evidence": [
         "Router ownership corrected; explicit F16 import KeyError fixed with RED/GREEN fresh-process test.63 focused tests, CPU suite, explicit-selector production HTTP and docs/audit passed. Intentional rollback/publication reader preserved. Worklog:worklog/entries/20261025T212633.831377Z-cleanup-refactor-r0029-r0030-router-ownership-bd9ddc.md."
       ],
