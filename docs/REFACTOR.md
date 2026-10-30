@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-4 | P0 | This active ledger is itself an unbounded historical journal. | Keep `REFACTOR.md` as a compact active index with stable IDs, owner/scope, state (`ready`, `blocked`, `keep-fallback`), exact removal gate, and affected paths. Move closed narrative to `REFACTOR-HISTORY.md` or immutable worklogs. Add a check that rejects duplicate active IDs and closed entries in the active table. |
 | RF-5 | P0 | Compact benchmark decisions and raw captures share one 225.7-MiB directory. | Define a size-bounded decision-artifact schema (default ceiling 256 KiB); keep only current/linked compact decisions in `benchmarks/results/`. Raw tensor traces/logs go to ignored local storage or external/LFS storage with SHA-256 plus retrieval metadata. Inventory references before deleting any existing evidence. |
 | RF-6 | P1 | GGUF/PARO runners combine policy, allocation, all layer families, verification, graph capture, and session lifecycle in giant classes. | Extract pure policy/shape planning first, then scratch/state ownership, full attention, linear attention, MoE, verification, and session façade modules. Preserve public imports through thin compatibility façades during migration. No numerical or dispatch change may share a move-only commit. |
 | RF-7 | P1 | `server/api.py` combines unrelated protocol and execution concerns; `create_app()` is a 4K-line closure tree. | Split OpenAI request/response schemas, tool/structured validation, SSE/stream accounting, metrics, model lifecycle, and route handlers. `create_app()` should compose routers/services rather than define the implementation. The server must call one typed generation service; it must not become a second scheduler. |
@@ -9773,3 +9772,25 @@ and aliases were handled under R0281; live layout/verifier decisions remain at
 R0281-DRAFT-X8, R0281-SELECTED-X8 and R0281-TARGET-POLICY. Native-XL loading is
 capability-based and its provenance constants have active verifier/test users.
 This triage does not complete the source-script consolidation.
+
+### RF-4 / R0187 — Migrate the ledger after coverage reconciliation
+
+**Deferred dependency:** complete the current sweep's original-item and subitem
+coverage audit before replacing the ledger structure. The manifest under
+`audit/refactor-sweep/` preserves original text and dispositions; it is not yet
+proof that every current heading and remaining decision has an owner.
+
+The migration must produce a compact active index with stable IDs, affected
+paths, owner/scope, state (`ready`, `blocked`, `keep-fallback`), and an exact
+clearing condition. Preserve still-binding numerical and lifecycle conditions
+in linked current contracts rather than archive them as history. Move only
+closed narrative to immutable worklogs or a separately indexed history page;
+keep existing evidence links resolvable. Do not generate IDs from mutable line
+numbers or silently merge distinct subitems.
+
+Add a semantic checker for duplicate active IDs, closed entries in the active
+table, required fields and dangling detail links; wire it into
+`scripts/docs/check_all.py` and test malformed as well as valid ledgers. The
+existing documentation gates validate indexes, environment coverage, benchmark
+exports and published commands, not this ledger schema. No such checker or
+format migration is claimed by this triage.

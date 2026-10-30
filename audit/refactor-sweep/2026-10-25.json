@@ -4844,7 +4844,8 @@
         {
           "line": 4147,
           "text": "| RF-4 | P0 | This active ledger is itself an unbounded historical journal. | Keep `REFACTOR.md` as a compact active index with stable IDs, owner/scope, state (`ready`, `blocked`, `keep-fallback`), exact removal gate, and affected paths. Move closed narrative to `REFACTOR-HISTORY.md` or immutable worklogs. Add a check that rejects duplicate active IDs and closed entries in the active table. |",
-          "status": "pending"
+          "status": "deferred-ledger-schema-after-coverage",
+          "evidence": ["Current documentation gates lack ledger semantics; migrate after original-item/subitem coverage reconciliation with binding-contract and link preservation. Docs/audit passed. worklog/entries/20261030T080032.001837Z-cleanup-cleanup-r0187-rf4-fc6644.md."]
         },
         {
           "line": 4148,
