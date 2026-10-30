@@ -1214,12 +1214,15 @@ a signed route selector; graph workspace reservation uses the same route policy.
 ### Qwen hybrid GGUF runtime ownership
 
 The `qwen35`/`qwen35moe` architecture family keeps full-stack composition and resident
-session orchestration in `hipengine/runtime/qwen35_gguf_runner.py`. Scalar attention
-and shared row feed-forward execution live in `qwen35_gguf_layer_attn.py` and
+session orchestration in `hipengine/runtime/qwen35_gguf_runner.py`. Scalar attention,
+bulk prefill attention and shared row feed-forward execution live in
+`qwen35_gguf_layer_attn.py`, `qwen35_gguf_full_attention_bulk.py` and
 `qwen35_gguf_layer_ffn.py` under the same runtime directory. Their inputs are resolved
-layer weights, configuration, geometry, scratch and selected operations, not a
-runner or session. Registry policy and bulk attention orchestration stay in the
-runner. Physical KV
+layer weights, configuration, geometry, borrowed views and selected operations, not a
+runner or session. The bulk prefill adapter retains the feed-forward call; the caller
+owns KV planes, DMS capture, stream bridges and split-buffer growth. Native attention
+reads the current split views returned after growth. Registry policy, decode-batch
+attention and full-stack composition stay in the runner. Physical KV
 layout, backing, byte accounting and allocation/release live in
 `hipengine/runtime/qwen35_gguf_kv.py`, which consumes model configuration rather than an
 executor. Shared scratch sizing, resident byte breakdown and capacity search live

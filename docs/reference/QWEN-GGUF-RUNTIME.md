@@ -165,9 +165,12 @@ speculative journal interfaces are unchanged.
 ## Layer execution inputs
 
 `qwen35_gguf_layer_attn.py` owns scalar linear and full attention, including the
-shared attention-norm and alpha/beta projection leaves. `qwen35_gguf_layer_ffn.py`
-owns the feed-forward schedule used by scalar decode, bulk prefill and verifier
-rows. Dense, scalar MoE and multi-row MoE keep their separate execution schedules.
+shared attention-norm and alpha/beta projection leaves.
+`qwen35_gguf_full_attention_bulk.py` owns the attention half of bulk full-attention
+prefill, from norm/QKV through KV write, attention, gate and output projection.
+`qwen35_gguf_layer_ffn.py` owns the feed-forward schedule used by scalar decode,
+bulk prefill and verifier rows. Dense, scalar MoE and multi-row MoE keep their
+separate execution schedules.
 
 The functions receive resolved layer weights, model configuration, geometry,
 scratch or per-layer views, runtime, and selected operations. They do not receive
@@ -179,8 +182,12 @@ copy of their arithmetic.
 Full-attention position updates and split-workspace growth remain explicit
 operations over borrowed session scratch. DMS-owned attention is selected before
 ordinary full-attention views are built. The session still owns that DMS route,
-KV publication and graph lifetime. Bulk attention and layer composition remain in
-the runner; moving the shared feed-forward half does not move those schedules.
+KV publication and graph lifetime. For bulk prefill, the runner adapter supplies
+explicit views and lazy operations, then calls the feed-forward owner. Split growth
+returns current buffers and counts after allocation; the attention owner neither
+keeps stale pointer snapshots nor frees the caller's growth buffers. DMS capture and
+AOTriton stream-bridge callbacks preserve their launch order without transferring
+ownership. Decode-batch attention and layer composition remain in the runner.
 
 Profiler markers for nested MoE calls wrap the execution module's functions.
 The runner's outer attention methods remain the scalar attention marker boundary.
@@ -217,8 +224,8 @@ source audit raises an error if that required source is missing.
 
 ## Scope of the remaining runner
 
-Bulk attention orchestration and full-stack composition remain in the runner;
-their distinct schedules are not folded into scalar attention. Session mutation,
+Decode-batch attention orchestration and full-stack composition remain in the runner;
+their distinct schedules are not folded into scalar or bulk-prefill attention. Session mutation,
 graph capture/replay, production hidden-seed sinks and diagnostic execution setup
 remain beside the state they control. These are not replaced with a diagnostic
 proxy or mixins that share implicit session attributes.

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.dtype import DType
+from hipengine.runtime import qwen35_gguf_full_attention_bulk as bulk_mod
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
 
 
@@ -115,28 +116,34 @@ def test_direct_int8_prefill_converts_gate_and_output_at_kernel_boundary(
         consumed.append(True)
 
     noop = lambda *_args, **_kwargs: None
+
+    def patch(name, value):
+        monkeypatch.setattr(runner_mod, name, value)
+        if hasattr(bulk_mod, name):
+            monkeypatch.setattr(bulk_mod, name, value)
+
     for name in (
         "gguf_rmsnorm_bf16_f32_weight", "bf16_to_f32",
         "qwen35_write_paged_kv_mixed_value_bf16_prompt_spans",
         "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
     ):
-        monkeypatch.setattr(runner_mod, name, noop)
-    monkeypatch.setattr(runner_mod, "launch_gguf_linear_triple", lambda *_a, **_k: True)
-    monkeypatch.setattr(runner_mod, "qwen35_split_qgate_bf16", split)
-    monkeypatch.setattr(runner_mod, "_gguf_int8_kv_prompt_write_fn", lambda _m: noop)
-    monkeypatch.setattr(runner_mod, "_gguf_int8_prefill_kernel", lambda **_k: kernel)
-    monkeypatch.setattr(runner_mod, "_ensure_full_attn_split_rows", noop)
-    monkeypatch.setattr(runner_mod, "_try_launch_dense_q8_single_dp4a", lambda *_a, **_k: False)
-    monkeypatch.setattr(runner_mod, "launch_gguf_linear", linear)
-    monkeypatch.setattr(runner_mod, "bf16_to_fp16", bf16_to_fp16, raising=False)
-    monkeypatch.setattr(runner_mod, "fp16_to_bf16", fp16_to_bf16, raising=False)
+        patch(name, noop)
+    patch("launch_gguf_linear_triple", lambda *_a, **_k: True)
+    patch("qwen35_split_qgate_bf16", split)
+    patch("_gguf_int8_kv_prompt_write_fn", lambda _m: noop)
+    patch("_gguf_int8_prefill_kernel", lambda **_k: kernel)
+    patch("_ensure_full_attn_split_rows", noop)
+    patch("_try_launch_dense_q8_single_dp4a", lambda *_a, **_k: False)
+    patch("launch_gguf_linear", linear)
+    patch("bf16_to_fp16", bf16_to_fp16)
+    patch("fp16_to_bf16", fp16_to_bf16)
     for name in (
         "qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans",
         "qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans",
         "qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans",
         "qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans",
     ):
-        monkeypatch.setattr(runner_mod, name, attention)
+        patch(name, attention)
     runner = SimpleNamespace(
         weights=SimpleNamespace(config=cfg, layer=lambda _i: layer), runtime=runtime,
         backend="hip_gfx1100", hidden_size=5120, q_width=heads * dim,

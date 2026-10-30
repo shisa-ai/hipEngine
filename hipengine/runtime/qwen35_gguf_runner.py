@@ -491,6 +491,7 @@ from hipengine.runtime.prefill_flight_recorder import (
     PrefillFlightRecorder,
 )
 from hipengine.runtime import qwen35_gguf_layer_attn as _layer_attn
+from hipengine.runtime import qwen35_gguf_full_attention_bulk as _bulk_attn
 from hipengine.runtime import qwen35_gguf_layer_ffn as _layer_ffn
 
 # ---------------------------------------------------------------------------
@@ -661,6 +662,103 @@ def _layer_full_attention_views(scratch, layer_id: int) -> _layer_attn.FullAtten
         layer_append_spans=scratch.append_spans_for_layer(layer_id),
         layer_decode_spans=scratch.decode_spans_for_layer(layer_id),
         bf16_mirror_cache=bf16_mirror_cache,
+    )
+
+
+def _bulk_full_attention_views(scratch) -> _bulk_attn.BulkFullAttentionViews:
+    """Attention-half buffers, KV planes and split-growth state for bulk prefill."""
+
+    return _bulk_attn.BulkFullAttentionViews(
+        norm=scratch.norm,
+        full_q=scratch.full_q,
+        full_k=scratch.full_k,
+        full_v=scratch.full_v,
+        full_query_raw=scratch.full_query_raw,
+        full_key_raw=scratch.full_key_raw,
+        full_query=scratch.full_query,
+        full_key=scratch.full_key,
+        full_query_bf16=getattr(scratch, "full_query_bf16", None),
+        full_gate=scratch.full_gate,
+        full_gated=scratch.full_gated,
+        full_attn_bf16=getattr(scratch, "full_attn_bf16", None),
+        attn_out=scratch.attn_out,
+        positions_tensor=scratch.positions_tensor,
+        key_cache=scratch.key_cache,
+        value_cache=scratch.value_cache,
+        retained_key_cache=getattr(scratch, "retained_key_cache", None),
+        retained_value_cache=getattr(scratch, "retained_value_cache", None),
+        append_spans=scratch.append_spans,
+        prefill_spans=scratch.prefill_spans,
+        retained_append_spans=getattr(scratch, "retained_append_spans", None),
+        block_size=scratch.block_size,
+        max_positions=scratch.max_positions,
+        int8_kv_value_bf16=bool(getattr(scratch, "int8_kv_value_bf16", False)),
+        cu_q=getattr(scratch, "cu_q", None),
+        cu_k=getattr(scratch, "cu_k", None),
+        softmax_lse=getattr(scratch, "softmax_lse", None),
+        atomic=getattr(scratch, "atomic", None),
+        head_major_key_cache=getattr(scratch, "head_major_key_cache", None),
+        head_major_value_cache=getattr(scratch, "head_major_value_cache", None),
+        head_major_kv_capacity=int(getattr(scratch, "head_major_kv_capacity", 0)),
+        head_major_kv_dense_prefix=bool(
+            getattr(scratch, "head_major_kv_dense_prefix", False)
+        ),
+        full_attn_split_batch_rows=scratch.full_attn_split_batch_rows,
+    )
+
+
+def _bulk_full_attention_selectors(
+    runner,
+    scratch,
+    runtime: Any,
+) -> _bulk_attn.BulkFullAttentionSelectors:
+    """Lazy selected operations for one bulk prefill attention call."""
+
+    def ensure_split_rows(rows: int) -> _bulk_attn.BulkFullAttentionSplitView:
+        _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
+        return _bulk_attn.BulkFullAttentionSplitView(
+            partial=scratch.full_attn_split_partial,
+            m=scratch.full_attn_split_m,
+            l=scratch.full_attn_split_l,
+            batch_rows=scratch.full_attn_split_batch_rows,
+            count=scratch.full_attn_split_count,
+        )
+
+    return _bulk_attn.BulkFullAttentionSelectors(
+        cast_library=partial(_layer_runner_method, runner, "_cast_library"),
+        paged_kv_write_library=partial(
+            _layer_runner_method, runner, "_paged_kv_write_library"
+        ),
+        paged_attn_decode_library=partial(
+            _layer_runner_method, runner, "_paged_attn_decode_library"
+        ),
+        aotriton_prefill_library=partial(
+            _layer_runner_method, runner, "_aotriton_prefill_library"
+        ),
+        int8_kv_prompt_write_fn=_gguf_int8_kv_prompt_write_fn,
+        try_launch_dense_q8_single_dp4a=lambda weight, x_ptr, out_ptr, **kwargs: (
+            _try_launch_dense_q8_single_dp4a(
+                weight, x_ptr, out_ptr, scratch, **kwargs
+            )
+        ),
+        native_prefill_fn=partial(
+            _layer_runner_method, runner, "_full_attn_prefill_native_fn"
+        ),
+        head_major_buffers=lambda views, *, context_len: (
+            _gguf_aotriton_head_major_buffers(scratch, context_len=context_len)
+        ),
+        paged_kv_copy_resolve=resolve,
+        ensure_split_rows=ensure_split_rows,
+    )
+
+
+def _bulk_full_attention_policy() -> _bulk_attn.BulkFullAttentionPolicy:
+    """Current backend and kernel-choice predicates for bulk prefill attention."""
+
+    return _bulk_attn.BulkFullAttentionPolicy(
+        aotriton_prefill_allowed=_gguf_aotriton_prefill_allowed,
+        aotriton_prefill_mode=_gguf_aotriton_prefill_mode,
+        int8_prefill_kernel=_gguf_int8_prefill_kernel,
     )
 
 
@@ -4488,585 +4586,48 @@ class Qwen35GGUFFullStackRunner:
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
         rows = scratch.rows
-        cast_library = self._cast_library()
-        kv_write_library = self._paged_kv_write_library()
-        gguf_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            layer.weight("attn_norm").allocation().tensor.ptr,
-            scratch.norm.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            eps=cfg.rms_norm_eps,
-            stream=stream,
-            runtime=runtime,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_attn_norm")
-        if not launch_gguf_linear_triple(
-            layer.weight("attn_q"),
-            layer.weight("attn_k"),
-            layer.weight("attn_v"),
-            scratch.norm.ptr,
-            scratch.full_q.ptr,
-            scratch.full_k.ptr,
-            scratch.full_v.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=2 * self.q_width,
-            out_features_b=self.kv_width,
-            out_features_c=self.kv_width,
-            stream=stream,
-            runtime=runtime,
-        ):
-            launch_gguf_linear(
-                layer.weight("attn_q"),
-                scratch.norm.ptr,
-                scratch.full_q.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=2 * self.q_width,
-                stream=stream,
-                runtime=runtime,
-            )
-            if not launch_gguf_linear_pair(
-                layer.weight("attn_k"),
-                layer.weight("attn_v"),
-                scratch.norm.ptr,
-                scratch.full_k.ptr,
-                scratch.full_v.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=self.kv_width,
-                stream=stream,
-                runtime=runtime,
-            ):
-                launch_gguf_linear(
-                    layer.weight("attn_k"),
-                    scratch.norm.ptr,
-                    scratch.full_k.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=self.kv_width,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("attn_v"),
-                    scratch.norm.ptr,
-                    scratch.full_v.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=self.kv_width,
-                    stream=stream,
-                    runtime=runtime,
-                )
-        qwen35_split_qgate_bf16(
-            scratch.full_q.ptr,
-            scratch.full_query_raw.ptr,
-            scratch.full_gate.ptr,
-            rows,
-            cfg.head_count,
-            cfg.key_length,
-            stream=stream,
-            runtime=runtime,
-        )
-        bf16_to_f32(
-            scratch.full_k.ptr,
-            scratch.full_key_raw.ptr,
-            rows * self.kv_width,
-            stream=stream,
-            library=cast_library,
-            runtime=runtime,
-        )
-        gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
-            scratch.full_query_raw.ptr,
-            scratch.full_key_raw.ptr,
-            layer.weight("attn_q_norm").allocation().tensor.ptr,
-            layer.weight("attn_k_norm").allocation().tensor.ptr,
-            cos_table_ptr,
-            sin_table_ptr,
-            scratch.positions_tensor.ptr,
-            scratch.full_query.ptr,
-            scratch.full_key.ptr,
-            cfg.rms_norm_eps,
-            rows,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.rope_dimension_count,
-            max_positions,
-            stream=stream,
-            runtime=runtime,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_qkv_head_norm_rope")
+
+        capture_qk = None
         if dms_capture is not None:
-            self._capture_dms_full_attention_prefill_chunk(
-                layer_id=layer_id,
-                scratch=scratch,
-                sink=dms_capture,
-                stream=stream,
-                runtime=runtime,
-            )
-        if scratch.key_cache is None or scratch.value_cache is None:
-            raise RuntimeError(
-                "GGUF full-attention prefill requires cache-backed key/value buffers; "
-                "resident bulk prefill should provide either retained BF16 caches or a BF16 oracle cache for INT8 retention"
-            )
-        append_metadata = scratch.append_spans.scale_metadata
-        direct_hadamard_int8 = (
-            scratch.append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
-            and append_metadata is not None
-            and append_metadata.granularity == "hadamard_group32"
-        )
-        direct_per_token_int8 = (
-            scratch.append_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
-            and append_metadata is not None
-            and append_metadata.granularity == "per_token_head"
-            and scratch.prefill_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
-        )
-        direct_int8_prefill = direct_hadamard_int8 or direct_per_token_int8
-        if direct_int8_prefill:
-            if (
-                scratch.prefill_spans.storage_dtype != DType.INT8_PER_TOKEN_HEAD
-                or scratch.prefill_spans.scale_metadata is not append_metadata
-            ):
-                raise RuntimeError("GGUF direct INT8 prefill requires matching append/attention metadata")
-            bf16_to_f32(
-                scratch.full_v.ptr,
-                scratch.full_key_raw.ptr,
-                rows * self.kv_width,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
-            int8_prompt_write_fn = _gguf_int8_kv_prompt_write_fn(append_metadata)
-            int8_prompt_write_fn(
-                scratch.full_key.ptr,
-                scratch.full_key_raw.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                append_metadata.k_scale.ptr,
-                append_metadata.v_scale.ptr,
-                scratch.append_spans,
-                rows,
-                scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
-        else:
-            qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
-                scratch.full_key.ptr,
-                scratch.full_v.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                scratch.append_spans,
-                rows,
-                scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
-            if scratch.retained_key_cache is not None or scratch.retained_value_cache is not None:
-                if scratch.retained_key_cache is None or scratch.retained_value_cache is None:
-                    raise RuntimeError("GGUF INT8 retained prefill requires both key and value caches")
-                retained_spans = scratch.retained_append_spans
-                if retained_spans is None or retained_spans.scale_metadata is None:
-                    raise RuntimeError("GGUF INT8 retained prefill requires append spans with scale metadata")
-                bf16_to_f32(
-                    scratch.full_v.ptr,
-                    scratch.full_key_raw.ptr,
-                    rows * self.kv_width,
+
+            def capture_qk() -> None:
+                self._capture_dms_full_attention_prefill_chunk(
+                    layer_id=layer_id,
+                    scratch=scratch,
+                    sink=dms_capture,
                     stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
-                if getattr(scratch, "int8_kv_value_bf16", False):
-                    qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
-                        scratch.full_key.ptr,
-                        scratch.full_key_raw.ptr,
-                        scratch.retained_key_cache.ptr,
-                        scratch.retained_value_cache.ptr,
-                        retained_spans.scale_metadata.k_scale.ptr,
-                        retained_spans,
-                        rows,
-                        scratch.block_size,
-                        cfg.head_count_kv,
-                        cfg.key_length,
-                        stream=stream,
-                        library=kv_write_library,
-                        runtime=runtime,
-                    )
-                else:
-                    int8_prompt_write_fn = _gguf_int8_kv_prompt_write_fn(retained_spans.scale_metadata)
-                    int8_prompt_write_fn(
-                        scratch.full_key.ptr,
-                        scratch.full_key_raw.ptr,
-                        scratch.retained_key_cache.ptr,
-                        scratch.retained_value_cache.ptr,
-                        retained_spans.scale_metadata.k_scale.ptr,
-                        retained_spans.scale_metadata.v_scale.ptr,
-                        retained_spans,
-                        rows,
-                        scratch.block_size,
-                        cfg.head_count_kv,
-                        cfg.key_length,
-                        stream=stream,
-                        library=kv_write_library,
-                        runtime=runtime,
-                    )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_kv_write")
-        threshold = int(
-            PrefillConfig().attn_aotriton_min_tokens
-            if aotriton_min_tokens is None
-            else aotriton_min_tokens
-        )
-        if threshold < 0:
-            raise ValueError("aotriton_min_tokens must be non-negative")
-        use_aotriton = bool(
-            allow_aotriton
-            and not direct_int8_prefill
-            and threshold > 0
-            and rows >= threshold
-            and _gguf_aotriton_prefill_allowed(self.backend)
-        )
-        paged_attn_library = self._paged_attn_decode_library()
-        end = scratch.start + rows
-        paged_context_len = end if paged_max_context_len is None else int(paged_max_context_len)
-        if paged_context_len <= 0 or paged_context_len > int(scratch.max_positions):
-            raise ValueError(
-                "paged_max_context_len must be positive and within the prefill scratch capacity"
-            )
-
-        if direct_int8_prefill:
-            # Direct INT8 leaves consume an FP16 gate; GGUF projections and
-            # qgate splitting produce BF16. This row-local buffer is dead
-            # after attention, so adapt it in place without new workspace.
-            bf16_to_fp16(
-                scratch.full_gate.ptr,
-                scratch.full_gate.ptr,
-                rows * cfg.head_count * cfg.key_length,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
-        if direct_hadamard_int8:
-            qwen35_paged_attn_prefill_int8_hadamard_group32_gqa_gate_fp16_spans(
-                scratch.full_query.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                append_metadata.k_scale.ptr,
-                append_metadata.v_scale.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                scratch.prefill_spans,
-                rows,
-                end,
-                scratch.block_size,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length,
-                1,
-                cfg.key_length ** -0.5,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
-        elif direct_per_token_int8:
-            # GQA-grouped flash kernel by default (cooperative LDS tile
-            # staging, online softmax in registers); the sequential
-            # online-softmax kernel stays selectable for A/B and as the
-            # numerics reference.
-            kernel_choice = _gguf_int8_prefill_kernel(
-                geometry=(cfg.head_count, cfg.head_count_kv, cfg.key_length),
-                scale_dtype=append_metadata.scale_dtype,
-            )
-            if kernel_choice == "sequential":
-                qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
-                    scratch.full_query.ptr,
-                    scratch.key_cache.ptr,
-                    scratch.value_cache.ptr,
-                    append_metadata.k_scale.ptr,
-                    append_metadata.v_scale.ptr,
-                    scratch.full_gate.ptr,
-                    scratch.full_gated.ptr,
-                    scratch.prefill_spans,
-                    rows,
-                    end,
-                    scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length,
-                    1,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-            elif kernel_choice == "wmma":
-                qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_wmma_spans(
-                    scratch.full_query.ptr,
-                    scratch.key_cache.ptr,
-                    scratch.value_cache.ptr,
-                    append_metadata.k_scale.ptr,
-                    append_metadata.v_scale.ptr,
-                    scratch.full_gate.ptr,
-                    scratch.full_gated.ptr,
-                    scratch.prefill_spans,
-                    rows,
-                    end,
-                    scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length,
-                    1,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-            else:
-                qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_flash_spans(
-                    scratch.full_query.ptr,
-                    scratch.key_cache.ptr,
-                    scratch.value_cache.ptr,
-                    append_metadata.k_scale.ptr,
-                    append_metadata.v_scale.ptr,
-                    scratch.full_gate.ptr,
-                    scratch.full_gated.ptr,
-                    scratch.prefill_spans,
-                    rows,
-                    end,
-                    scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length,
-                    1,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-        elif use_aotriton:
-            aotriton_library = self._aotriton_prefill_library()
-
-            # Keep pre/post work on the caller stream. Only the high-scratch
-            # AOTriton dispatch moves to the event-linked isolated queue.
-            aotriton_stream = stream
-
-            # Convert FP32 query to BF16 for AOTriton
-            f32_to_bf16(
-                scratch.full_query.ptr,
-                scratch.full_query_bf16.ptr,
-                rows * self.q_width,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
-
-            kv_key_ptr = scratch.key_cache.ptr
-            kv_value_ptr = scratch.value_cache.ptr
-            kv_strides = (self.kv_width * end, cfg.key_length, self.kv_width, 1)
-            head_major_buffers = _gguf_aotriton_head_major_buffers(
-                scratch,
-                context_len=end,
-            )
-            if head_major_buffers is not None:
-                head_major_key, head_major_value, head_major_capacity = head_major_buffers
-                copy_variant = (
-                    "head_major_dense_prefix_spans"
-                    if bool(getattr(scratch, "head_major_kv_dense_prefix", False))
-                    else "head_major_spans"
-                )
-                copy_head_major = resolve(
-                    backend=scratch.backend,
-                    layer="paged_kv_copy",
-                    quant="bf16",
-                    variant=copy_variant,
-                    missing="none",
-                )
-                if copy_head_major is not None:
-                    copy_head_major(
-                        scratch.key_cache.ptr,
-                        scratch.value_cache.ptr,
-                        head_major_key.ptr,
-                        head_major_value.ptr,
-                        scratch.prefill_spans,
-                        end,
-                        head_major_capacity,
-                        scratch.block_size,
-                        cfg.head_count_kv,
-                        cfg.key_length,
-                        stream=stream,
-                        library=kv_write_library,
-                        runtime=runtime,
-                    )
-                    kv_key_ptr = head_major_key.ptr
-                    kv_value_ptr = head_major_value.ptr
-                    kv_strides = (
-                        self.kv_width * head_major_capacity,
-                        cfg.key_length * head_major_capacity,
-                        cfg.key_length,
-                        1,
-                    )
-
-            k_tensor = aotriton_tensor4(
-                kv_key_ptr,
-                (1, cfg.head_count_kv, end, cfg.key_length),
-                kv_strides,
-                DType.BF16,
-            )
-            v_tensor = aotriton_tensor4(
-                kv_value_ptr,
-                (1, cfg.head_count_kv, end, cfg.key_length),
-                kv_strides,
-                DType.BF16,
-            )
-
-            q_tensor = aotriton_tensor4(
-                scratch.full_query_bf16.ptr,
-                (1, cfg.head_count, rows, cfg.key_length),
-                (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1),
-                DType.BF16,
-            )
-            cu_q_tensor = aotriton_tensor1(scratch.cu_q.ptr, (2,), (1,), DType.INT32)
-            cu_k_tensor = aotriton_tensor1(scratch.cu_k.ptr, (2,), (1,), DType.INT32)
-            lse_tensor = aotriton_tensor2(scratch.softmax_lse.ptr, (cfg.head_count, rows), (rows, 1), DType.FP32)
-            out_tensor = aotriton_tensor4(
-                scratch.full_attn_bf16.ptr,
-                (1, cfg.head_count, rows, cfg.key_length),
-                (cfg.head_count * cfg.key_length * rows, cfg.key_length, cfg.head_count * cfg.key_length, 1),
-                DType.BF16,
-            )
-            if aotriton_bridge is not None:
-                aotriton_bridge.wait_for_inputs(runtime, stream)
-                aotriton_stream = aotriton_bridge.stream
-            aotriton_mode = _gguf_aotriton_prefill_mode(scratch.start, rows, end)
-            if aotriton_mode == "v2":
-                aotriton_attn_fwd_compact_varlen(
-                    q_tensor,
-                    k_tensor,
-                    v_tensor,
-                    cu_q_tensor,
-                    cu_k_tensor,
-                    lse_tensor,
-                    out_tensor,
-                    max_seqlen_q=rows,
-                    max_seqlen_k=end,
-                    sm_scale=cfg.key_length ** -0.5,
-                    is_causal=True,
-                    stream=aotriton_stream,
-                    library=aotriton_library,
-                    runtime=runtime,
-                )
-            else:
-                aotriton_attn_fwd_v3_compact_varlen(
-                    q_tensor,
-                    k_tensor,
-                    v_tensor,
-                    cu_q_tensor,
-                    cu_k_tensor,
-                    lse_tensor,
-                    out_tensor,
-                    persistent_atomic_counter_ptr=scratch.atomic.ptr,
-                    max_seqlen_q=rows,
-                    max_seqlen_k=end,
-                    sm_scale=cfg.key_length ** -0.5,
-                    is_causal=True,
-                    stream=aotriton_stream,
-                    library=aotriton_library,
                     runtime=runtime,
                 )
 
-            if aotriton_bridge is not None:
-                aotriton_bridge.release_output(runtime, stream)
-            qwen35_full_attn_gate_mul_bf16_to_bf16(
-                scratch.full_attn_bf16.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                rows * cfg.head_count * cfg.key_length,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
-        else:
-            # Native fallback path: grow the demand-driven split-K partials
-            # to the prefill batch-row count before the launch.
-            _ensure_full_attn_split_rows(
-                scratch, scratch.full_attn_split_batch_rows, runtime=runtime
-            )
-            self._full_attn_prefill_native_fn()(
-                scratch.full_query.ptr,
-                scratch.key_cache.ptr,
-                scratch.value_cache.ptr,
-                scratch.full_gate.ptr,
-                scratch.full_gated.ptr,
-                scratch.prefill_spans,
-                rows,
-                paged_context_len,
-                scratch.block_size,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.key_length,
-                1,
-                cfg.key_length ** -0.5,
-                split_partial_out_ptr=scratch.full_attn_split_partial.ptr,
-                split_partial_m_ptr=scratch.full_attn_split_m.ptr,
-                split_partial_l_ptr=scratch.full_attn_split_l.ptr,
-                split_batch_rows=scratch.full_attn_split_batch_rows,
-                split_count=scratch.full_attn_split_count,
-                stream=stream,
-                library=paged_attn_library,
-                runtime=runtime,
-            )
-        if direct_hadamard_int8:
-            # The Hadamard leaf also returns FP16, unlike the per-token
-            # BF16-output leaves and the following GGUF projection consumer.
-            fp16_to_bf16(
-                scratch.full_gated.ptr,
-                scratch.full_gated.ptr,
-                rows * cfg.head_count * cfg.key_length,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_core_gate")
-        used_aotriton = use_aotriton
-        if not _try_launch_dense_q8_single_dp4a(
-            layer.weight("attn_output"),
-            scratch.full_gated.ptr,
-            scratch.attn_out.ptr,
-            scratch,
-            rows=rows,
-            in_features=self.q_width,
-            out_features=self.hidden_size,
-            stream=stream,
+        used_aotriton = _bulk_attn.run_full_attention_prefill_attn_rows(
+            layer_id,
+            layer,
+            hidden_ptr,
+            _bulk_full_attention_views(scratch),
+            cfg=cfg,
+            geometry=_layer_attn.AttentionGeometry(
+                hidden_size=self.hidden_size,
+                q_width=self.q_width,
+                kv_width=self.kv_width,
+            ),
+            backend=self.backend,
             runtime=runtime,
-        ):
-            launch_gguf_linear(
-                layer.weight("attn_output"),
-                scratch.full_gated.ptr,
-                scratch.attn_out.ptr,
-                rows=rows,
-                in_features=self.q_width,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_output")
+            rows=rows,
+            start=scratch.start,
+            selectors=_bulk_full_attention_selectors(self, scratch, runtime),
+            policy=_bulk_full_attention_policy(),
+            cos_table_ptr=cos_table_ptr,
+            sin_table_ptr=sin_table_ptr,
+            max_positions=max_positions,
+            stream=stream,
+            allow_aotriton=allow_aotriton,
+            aotriton_min_tokens=aotriton_min_tokens,
+            paged_max_context_len=paged_max_context_len,
+            aotriton_bridge=aotriton_bridge,
+            capture_qk=capture_qk,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
+        )
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
@@ -5078,7 +4639,6 @@ class Qwen35GGUFFullStackRunner:
             expert_sidecar=expert_sidecar,
             stage_prefix=f"{stage_prefix}_ffn",
             gpu_stage_recorder=gpu_stage_recorder,
-            # Prefill: a one-row chunk must not switch to the decode schedule.
             force_bulk_rows=True,
         )
         return used_aotriton
