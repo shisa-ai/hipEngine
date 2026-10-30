@@ -1756,22 +1756,6 @@ which does not require evidence rows. The
 `qwen36-dense` and `qwen38` rows cannot be conflated by a byte-digest match
 because the artifact axis is the execution identity, not the SHA-256.
 
-## MTP admission no longer reads the artifact's byte digest (2026-09-20)
-
-`SpeculativeMTPServingKey.artifact_sha256` and `artifact_size_bytes` are
-provenance fields. Evidence matching uses `artifact_execution_fingerprint`
-(`hipengine/loading/gguf.py`), while execution admission uses implementation
-capabilities and does not require a matching evidence identity. The two Qwen3.8
-plain builds differ by 1,024 metadata bytes and share one identity, and the
-resident file's SHA-256 is no longer computed on the serving path because no
-row reads it.
-
-Consequence to be aware of: a `KVCapabilityKey`'s `capability_id` covers its key
-payload, so it changed for every int8-KV contract. The two 2026-09-11 W7900
-int8-KV artifacts under `benchmarks/results/` record the pre-change id
-(`4b0e936f…` for the gfx1100 direct-c4 contract); they are frozen measurements
-and are not rewritten.
-
 ## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
 
 Resolved in three steps. (1) The `(8, 3)` cell left
@@ -2133,21 +2117,6 @@ the allocation repair. The observations and proposal below are historical.
   to choose the depth. An unregistered provider still fails by name.
   The generic config default remains for direct provider construction.
 
-## MTP output attribution: two AR-in-plan paths and a duplicated telemetry write (found 2026-09-17)
-
-- Resident dense and MoE MTP adapters attribute AR-in-plan output through one
-  counter and one AR-step function, including depth-zero cycle commits.
-  `ar_output_tokens_in_cycles` keeps its public meaning; no zero-token call is
-  needed to avoid double attribution.
-- Resident streaming and blocking outputs publish draft counts once in
-  `diagnostics.specdec2_mtp2`. Server usage, metrics and response summaries read
-  this per-request record independently of batch timing ownership. The public
-  `output_accounting` block still separates MTP and AR output.
-- Legacy providers still publish provider diagnostics or scalar `mtp_*` timing.
-  These remain compatibility readers, not duplicate resident publication.
-  Remove each fallback when its provider publishes the common per-request
-  diagnostics contract and its streaming and blocking consumers are migrated.
-
 ## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
 
 - The three shadowed physical-cell rows were removed after checking resolver
@@ -2329,6 +2298,21 @@ through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0081 — Finish legacy provider telemetry migration
+
+Resident dense/MoE AR-in-plan accounting and duplicate draft publication are
+repaired: one AR-step counter includes depth-zero commits, while
+`diagnostics.specdec2_mtp2` publishes draft counts once. Preserve
+`ar_output_tokens_in_cycles` and public MTP/AR `output_accounting` semantics.
+
+**Deferred provider migration:** legacy provider diagnostics and scalar `mtp_*`
+timing remain compatibility readers. Remove each fallback only after its
+provider publishes the common per-request diagnostics contract and both blocking
+and streaming consumers migrate. Validate server usage, metrics and summaries
+independently of batch timing, with no duplicate attribution or zero-token
+workaround. The resident repair is complete; legacy migration is not.
+
 
 ### R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback
 
