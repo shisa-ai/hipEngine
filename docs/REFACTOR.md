@@ -2208,26 +2208,6 @@ should be removed or collapsed.
 
 
 
-## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
-
-- `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved
-  Qwen3.8 production-profile decision from the cold-path binder into resident
-  sessions. The session freezes it once; hot verifier methods consume only the
-  typed boolean and never reread the environment.
-- Remove the environment handoff when `ResolvedRuntimePlan` (RF-1) carries
-  profile scope selections directly into `Qwen35GGUFResidentSession`. Preserve
-  the profile manifest selections, strict WMMA fallbacks, qualified
-  R6/R8/R9/R12 actual-shape bounds, and benchmark rollback evidence.
-- R0184 prerequisite audit: `qwen35_dense_gfx1151_profiles._binder` still writes
-  the environment handoff, and `Qwen35GGUFResidentSession` freezes it after
-  resolving its backend. `_configure_session` is not a universal construction
-  hook: direct generation and NextN also construct resident sessions. Replace
-  the handoff with one typed construction input propagated through shared,
-  direct, batch and NextN paths, plus explicit strict/candidate inputs in the
-  numerical harness. Test two interleaved profile owners and nested diagnostic
-  restoration before retiring the variable; do not substitute a process-global
-  boolean or infer this arithmetic choice from the backend alone.
-
 ## gfx1100 dense SPECDEC2 C8 physical-width rollback
 
 The maximum-request environment override is removed from server admission and
@@ -2410,6 +2390,23 @@ through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0184 — Production verifier-Q4 construction handoff
+
+`HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` carries the profile decision from
+the cold binder to resident construction; sessions freeze it and hot methods
+consume the typed boolean. **Deferred construction migration:** carry this
+selection through RF-1's existing profile infrastructure rather than a global
+environment value. Preserve manifest selections, strict WMMA fallback,
+R6/R8/R9/R12 actual-shape bounds and benchmark rollback evidence.
+
+`qwen35_dense_gfx1151_profiles._binder` still writes the handoff.
+`_configure_session` is not universal: direct generation and NextN construct
+sessions too. Propagate one typed input through shared, direct, batch and NextN
+paths and explicit strict/candidate harness construction. Test interleaved
+profile owners and nested diagnostic restoration before removing the variable;
+do not replace it with a process-global boolean or infer arithmetic from backend.
+
 
 ### R0067 — Dense prefix retention budget
 
