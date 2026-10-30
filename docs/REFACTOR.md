@@ -2339,14 +2339,6 @@ should be removed or collapsed.
 
 
 
-## 2026-08-26 speculative-MTP default capability migration
-
-- September 12 gfx1151 dense Q4_K_M correction: the named production binder
-  now forces FP32 recurrent state after C1/packed D128 max-KL failures.
-  FP16 kernels and legacy Q4_K_S policy remain separate. Remove or replace
-  the unbounded FP16 experiment only after a geometry/profile/horizon-owned
-  storage plan passes the full long-horizon numerical and serving gates.
-  Do not re-enable it by copying the historical D24 verifier manifest.
 
 
 ## 2026-09-07 W7900 packed C1 target qualification — open
@@ -9718,3 +9710,26 @@ family overrides and parent selection. For an implementation change, verify
 full-output/state parity, independent owners, public prefill, cancellation and
 graph replay with the selected route observed. Any kernel deletion also needs
 lineage/registry checks. No arithmetic or runtime change is made by this triage.
+
+### R0163 — Decide the scope of the FP16 recurrent-storage experiment
+
+Both strict and production binders in
+`hipengine/generation/qwen35_dense_gfx1151_profiles.py` select FP32 recurrent
+state. The recorded long-horizon C1/packed failure is not cleared by short
+verifier evidence. FP16 kernels and legacy Q4_K_S selection remain separate;
+R0139 owns the file-type policy migration and R0137 owns process-global binding.
+The misleading speculative-MTP migration heading is retired.
+
+**Deferred storage decision:** retire the unbounded FP16 experiment or replace
+it with a geometry/profile/horizon-owned storage plan. A replacement must pass
+full long-horizon numerical and serving gates before changing the arithmetic
+default. Do not re-enable it by copying the historical D24 verifier manifest.
+Keep registered FP32 execution and distinguish other configurations from the
+recorded failing scope rather than treating all FP16 routes as failed.
+
+Clearing checks: run dense gfx1151 profile unit tests, then compare complete
+recurrent state, logits, continuation and accepted-prefix rollback across short
+and long histories for any replacement. Exercise public AR and packed MTP with
+storage attribution and lifecycle checks. The original inventory's file-type
+bullets were reconciled under R0139; its planar-Q6 environment item was resolved
+under R0398. Neither is reopened here. Runtime and defaults are unchanged.

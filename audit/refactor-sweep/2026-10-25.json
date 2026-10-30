@@ -4203,13 +4203,13 @@
       "start_line": 3756,
       "end_line": 3819,
       "sha256": "dc38454613d528768ea2e6dbab1859dedc650128e2a6ea2527c64fbef5381598",
-      "status": "pending",
-      "evidence": ["Ownership correction: only base-line3758 and3764 bullets belong to this speculative-MTP section. Base-line3770,3777,3780,3786,3798,3817 bullets belong to R0139; its orphaned heading was restored above them. Original inventory text is preserved below for coverage, and those pending subitems must be reviewed under R0139."],
+      "status": "deferred-storage-decision",
+      "evidence": ["Remaining FP16 storage decision moved under accurate heading; both dense gfx1151 binders select FP32. R0139 and R0398 subitems remain reconciled.2 tests/docs/audit pass. worklog/entries/20261030T072024.486941Z-cleanup-cleanup-r0163-c27a4c.md.","Ownership correction: only base-line3758 and3764 bullets belong to this speculative-MTP section. Base-line3770,3777,3780,3786,3798,3817 bullets belong to R0139; its orphaned heading was restored above them. Original inventory text is preserved below for coverage, and those pending subitems must be reviewed under R0139."],
       "subitems": [
         {
           "line": 3758,
           "text": "- September 12 gfx1151 dense Q4_K_M correction: the named production binder",
-          "status": "pending"
+          "status": "deferred-storage-decision"
         },
         {
           "line": 3764,
