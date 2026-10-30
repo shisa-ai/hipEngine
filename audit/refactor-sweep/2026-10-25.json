@@ -13402,8 +13402,8 @@
       "start_line": 11410,
       "end_line": 11437,
       "sha256": "75561a260b2532b73cf9f6af0c452b30e2dd88cab90735d4a4e99176ad517fbe",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Completed tiled vision scratch fix; removed historical ledger section only. Planner, tests and benchmark artifacts preserved. worklog/entries/20261030T041609.617680Z-cleanup-cleanup-r0485-r0487-fc59cc.md."],
       "subitems": []
     },
     {
@@ -13412,8 +13412,8 @@
       "start_line": 11438,
       "end_line": 11465,
       "sha256": "a0c77781e75b5e2f76f82a8a1f16ea27407eb4e6bcb18b18041fe28adea98b52",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Completed fixture-clipping fix; removed historical ledger section only. Text-fit guard, regression tests and recut artifact preserved. worklog/entries/20261030T041609.617680Z-cleanup-cleanup-r0485-r0487-fc59cc.md."],
       "subitems": []
     },
     {
@@ -13422,8 +13422,8 @@
       "start_line": 11466,
       "end_line": 11491,
       "sha256": "b57fdc77f6c4c2d6da0dd5e549cdf6196906da30757f73891133ca9fd8f66e13",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Completed tiled prefill scratch fix; removed historical ledger section only. Shared planner, absolute causal offsets, tests and artifact preserved. worklog/entries/20261030T041609.617680Z-cleanup-cleanup-r0485-r0487-fc59cc.md."],
       "subitems": []
     },
     {
