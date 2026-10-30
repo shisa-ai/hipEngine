@@ -124,18 +124,18 @@ def test_scope_is_rederived_from_the_artifact_bytes(built):
         assert record["scope"]["ggml_types_present"] == sorted(present)
         assert record["scope"]["tensors"] == tensor_count
 
-        registry_records, consumer_records = _scoped_records(present)
+        registry_records = _scoped_records(present)
         assert (
             record["scope"]["coverage_records_named_by_registry_key"]
             == len(registry_records)
         )
         assert (
             record["scope"]["coverage_records_named_by_consumer_module"]
-            == len(consumer_records)
+            == 0
         )
         assert record["scope"]["coverage_records_in_scope"] == len(
             registry_records
-        ) + len(consumer_records)
+        )
 
 
 def test_certification_carries_the_manifest_bundle(built):

@@ -265,14 +265,12 @@
         }
       ],
       "status": "complete_exact",
-      "strict_manifest_bundle_sha256": "8940119e41f2fe8653c7129f9e31711f608da4a8dc4c68186e22497f83162109",
+      "strict_manifest_bundle_sha256": "3cea4876cbf818254a90519574da670e5a873f32041d2ac32eea9ac95bab59b1",
       "strict_manifest_scope": {
-        "consumer_modules": [
-          "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv"
-        ],
+        "consumer_modules": [],
         "coverage_records_in_scope": 249,
-        "coverage_records_named_by_consumer_module": 4,
-        "coverage_records_named_by_registry_key": 245,
+        "coverage_records_named_by_consumer_module": 0,
+        "coverage_records_named_by_registry_key": 249,
         "coverage_records_total": 327,
         "ggml_types_present": [
           "F32",
@@ -316,10 +314,10 @@
           "gguf_qwen35",
           "w4_paro"
         ],
-        "selections": 102,
+        "selections": 105,
         "source": "artifact GGUF tensor types x CERTIFIED_OPERATION_COVERAGE",
         "tensors": 866,
-        "variants_verified_registered": 152
+        "variants_verified_registered": 155
       },
       "strict_manifests": [
         {
@@ -925,6 +923,50 @@
             ]
           },
           "strict_manifest_sha256": "346ae76ae58e38a33a78881e06d30e4cb90340670bac5c164be52620eeffa1c5"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_m",
+            "quant": "gguf_ud_q4_k_m",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "f63623dd03d709228a996323c825d8431d17faea41fe55de99b4a19fe1d4e6e5"
         },
         {
           "alternate_output_dtype_owners": {},
@@ -2232,14 +2274,12 @@
         }
       ],
       "status": "correctness_failed",
-      "strict_manifest_bundle_sha256": "8e0741e0fbf6f136abbaa842caeec92c2ce501fff6ff0abeb558a959380a284f",
+      "strict_manifest_bundle_sha256": "72ddcb15ea0b2fca2db0f5c6ba958b8c4620d284809883261c1dedf7b0643995",
       "strict_manifest_scope": {
-        "consumer_modules": [
-          "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv"
-        ],
+        "consumer_modules": [],
         "coverage_records_in_scope": 297,
-        "coverage_records_named_by_consumer_module": 4,
-        "coverage_records_named_by_registry_key": 293,
+        "coverage_records_named_by_consumer_module": 0,
+        "coverage_records_named_by_registry_key": 297,
         "coverage_records_total": 327,
         "ggml_types_present": [
           "F32",
@@ -2289,10 +2329,10 @@
           "gguf_qwen35",
           "w4_paro"
         ],
-        "selections": 117,
+        "selections": 120,
         "source": "artifact GGUF tensor types x CERTIFIED_OPERATION_COVERAGE",
         "tensors": 866,
-        "variants_verified_registered": 182
+        "variants_verified_registered": 185
       },
       "strict_manifests": [
         {
@@ -3130,6 +3170,50 @@
             ]
           },
           "strict_manifest_sha256": "2ac391f967973d7d36c918b1c79a35d6743e3843b5b42435e59b00e72279b63c"
+        },
+        {
+          "alternate_output_dtype_owners": {},
+          "coverage_records": 4,
+          "output_dtype_preference": "_bf16_out",
+          "owner_class": "selected",
+          "registry_quant": "gguf_q4_k",
+          "strict_manifest": {
+            "backend": "hip_gfx1100",
+            "execution_profile": "strict",
+            "graph_policy": "serial_c1",
+            "kind": "hipengine_execution_profile_manifest",
+            "kv_policy": "paged_bf16",
+            "model": "gguf_ud_q4_k_s",
+            "quant": "gguf_ud_q4_k_s",
+            "schema_version": 1,
+            "selections": [
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "prefill_rows",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_1_8_row_local",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              },
+              {
+                "evidence_artifact": null,
+                "layer": "linear",
+                "registry_quant": "gguf_q4_k",
+                "scope": "rows_2_8_native",
+                "selected_variant": "selected_gemv_bf16_bf16_out",
+                "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+              }
+            ]
+          },
+          "strict_manifest_sha256": "119bdb7b16621244a8a85d39e78f4bb976f15b3f6a3f941cda3eb8157f5a7e47"
         },
         {
           "alternate_output_dtype_owners": {},

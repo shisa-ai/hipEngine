@@ -3,12 +3,10 @@
   "gguf_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
   "quant_identity": "gguf_ud_q4_k_m",
   "scope": {
-    "consumer_modules": [
-      "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv"
-    ],
+    "consumer_modules": [],
     "coverage_records_in_scope": 249,
-    "coverage_records_named_by_consumer_module": 4,
-    "coverage_records_named_by_registry_key": 245,
+    "coverage_records_named_by_consumer_module": 0,
+    "coverage_records_named_by_registry_key": 249,
     "coverage_records_total": 327,
     "ggml_types_present": [
       "F32",
@@ -52,12 +50,12 @@
       "gguf_qwen35",
       "w4_paro"
     ],
-    "selections": 102,
+    "selections": 105,
     "source": "artifact GGUF tensor types x CERTIFIED_OPERATION_COVERAGE",
     "tensors": 866,
-    "variants_verified_registered": 152
+    "variants_verified_registered": 155
   },
-  "strict_manifest_bundle_sha256": "8940119e41f2fe8653c7129f9e31711f608da4a8dc4c68186e22497f83162109",
+  "strict_manifest_bundle_sha256": "3cea4876cbf818254a90519574da670e5a873f32041d2ac32eea9ac95bab59b1",
   "strict_manifests": [
     {
       "alternate_output_dtype_owners": {
@@ -662,6 +660,50 @@
         ]
       },
       "strict_manifest_sha256": "346ae76ae58e38a33a78881e06d30e4cb90340670bac5c164be52620eeffa1c5"
+    },
+    {
+      "alternate_output_dtype_owners": {},
+      "coverage_records": 4,
+      "output_dtype_preference": "_bf16_out",
+      "owner_class": "selected",
+      "registry_quant": "gguf_q4_k",
+      "strict_manifest": {
+        "backend": "hip_gfx1100",
+        "execution_profile": "strict",
+        "graph_policy": "serial_c1",
+        "kind": "hipengine_execution_profile_manifest",
+        "kv_policy": "paged_bf16",
+        "model": "gguf_ud_q4_k_m",
+        "quant": "gguf_ud_q4_k_m",
+        "schema_version": 1,
+        "selections": [
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k",
+            "scope": "prefill_rows",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k",
+            "scope": "rows_1_8_row_local",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          },
+          {
+            "evidence_artifact": null,
+            "layer": "linear",
+            "registry_quant": "gguf_q4_k",
+            "scope": "rows_2_8_native",
+            "selected_variant": "selected_gemv_bf16_bf16_out",
+            "strict_fallback_variant": "selected_gemv_bf16_bf16_out"
+          }
+        ]
+      },
+      "strict_manifest_sha256": "f63623dd03d709228a996323c825d8431d17faea41fe55de99b4a19fe1d4e6e5"
     },
     {
       "alternate_output_dtype_owners": {},

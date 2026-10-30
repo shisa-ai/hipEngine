@@ -373,7 +373,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_quantize_f32_q8_1,
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
-    gguf_q4_k_selected_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
@@ -34903,7 +34902,10 @@ def _launch_selected_raw_gguf_moe_linear(
         fn = gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
     elif quant_key == "gguf_q4_k":
-        fn = gguf_q4_k_selected_gemv_bf16_bf16_out
+        fn = resolve(
+            backend=resolve_backend(backend), layer="linear", quant=quant_key,
+            variant="selected_gemv_bf16_bf16_out",
+        )
     elif quant_key == "gguf_q5_k" and out_features % 8 == 0:
         fn = gguf_q5_k_selected_pack8_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k":

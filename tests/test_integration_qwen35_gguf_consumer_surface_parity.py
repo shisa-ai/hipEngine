@@ -231,14 +231,26 @@ def test_declared_layers_have_registered_gguf_consumers(production_registry, bac
 _ALL_RECORDS = (*CERTIFIED_OPERATION_COVERAGE, *CERTIFIED_F32_INPUT_OPERATION_COVERAGE)
 
 
+def test_raw_q4_selected_coverage_has_no_module_symbol_escape_hatch():
+    from dataclasses import fields
+
+    records = [record for record in _ALL_RECORDS
+               if record.role_class == "moe_experts"
+               and record.kernel_quant == "gguf_q4_k"]
+    assert records
+    for record in records:
+        assert {"consumer_module", "consumer_symbol"}.isdisjoint(
+            field.name for field in fields(record)
+        )
+        assert record.kernel_layer == "linear"
+        assert record.kernel_variant == "selected_gemv_bf16_bf16_out"
+
+
 def test_every_coverage_record_names_a_concrete_consumer():
     for record in _ALL_RECORDS:
         assert record.kernel_layer, record
         assert record.kernel_variant, record
-        if record.consumer_module is None:
-            assert record.kernel_quant, record
-        else:
-            assert record.consumer_symbol, record
+        assert record.kernel_quant, record
         # Row-mode contract: when rows>1 resolves a different variant, the
         # record names both concrete variants.
         if record.kernel_variant_rows_many is not None:
@@ -249,8 +261,7 @@ def test_every_coverage_record_names_a_concrete_consumer():
 def test_every_certified_consumer_key_is_registered(production_registry, backend):
     """No skips: every concrete consumer named by every certified record
     (default and F32-input override sets) must exist on every backend that
-    declares GGUF consumers — registry keys exactly registered, direct
-    wrapper consumers present as module symbols."""
+    declares GGUF consumers — registry keys exactly registered."""
 
     is_registered, _registered_keys = production_registry
     from hipengine.kernels.registry import KernelKey
@@ -261,10 +272,6 @@ def test_every_certified_consumer_key_is_registered(production_registry, backend
         variants = [record.kernel_variant]
         if record.kernel_variant_rows_many is not None:
             variants.append(record.kernel_variant_rows_many)
-        if record.consumer_module is not None:
-            module = importlib.import_module(record.consumer_module)
-            assert hasattr(module, str(record.consumer_symbol)), (backend, record)
-            continue
         for variant in variants:
             key = KernelKey(backend, record.kernel_layer, record.kernel_quant, variant)
             assert is_registered(key), (

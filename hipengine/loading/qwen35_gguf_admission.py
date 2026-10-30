@@ -918,12 +918,7 @@ class Qwen35GGUFOperationCoverage:
     the shared production dispatch owner or concrete auxiliary wrapper
     descriptors.  Placeholder quant/variant components (``<from-weight>``,
     ``None``) are not certification and no longer appear in the certified
-    sets.  The single exception to registry mediation is documented
-    explicitly: when the production runtime consumes a weight through a
-    direct module wrapper that is not registered under its own key (raw
-    rank-3 Q4_K selected experts), ``consumer_module``/``consumer_symbol``
-    name that wrapper and the parity test proves the symbol exists on every
-    declaring backend.
+    sets. Every certified record names a registered consumer key.
 
     These records describe the qualified primitive/resident surface. Actual
     authorization uses resolved ``InvocationContract`` and ``BoundSelectedCall``
@@ -943,8 +938,6 @@ class Qwen35GGUFOperationCoverage:
     kernel_quant: str | None = None
     kernel_variant: str | None = None
     kernel_variant_rows_many: str | None = None
-    consumer_module: str | None = None
-    consumer_symbol: str | None = None
     strict_fallback: str | None = None
     note: str = ""
 
@@ -977,7 +970,6 @@ class Qwen35GGUFOperationCoverage:
             consumer = linear_consumer_contract(row) if row is not None else auxiliary_consumer_contract(
                 self.role_class, layout=spec.layout, layer=self.kernel_layer,
                 quant=self.kernel_quant, variant=self.kernel_variant,
-                module=self.consumer_module, symbol=self.consumer_symbol,
             )
         adapters = ()
         if self.input_dtype == "f32" and self.output_dtype == "f32" and self.role_class in {"projection", "recurrent_alpha_beta"}:
@@ -1116,8 +1108,7 @@ def _bf16_linear_records(
 
 
 # Selected-expert consumers per concrete source format and resident layout
-# (rank-3 experts).  Every entry names the concrete registered key (or, for
-# raw rank-3 Q4_K, the production module wrapper the runtime calls).
+# (rank-3 experts). Every entry names the concrete registered key.
 _SELECTED_EXPERT_STRICT_FALLBACK = (
     "rank-3 raw selected-expert consumers (gguf_q*_k raw / gguf_iq* selected "
     "moe_linear registrations)"
@@ -1130,14 +1121,13 @@ def _selected_expert_records(
     raw: bool,
 ) -> list[Qwen35GGUFOperationCoverage]:
     records: list[Qwen35GGUFOperationCoverage] = []
-    entries: list[tuple[str, str, str, str, str, str | None, str | None]] = []
+    entries: list[tuple[str, str, str, str, str]] = []
     if raw:
-        for source_type, layer, quant, variant, module, symbol in _RAW_SELECTED_CONSUMERS:
-            entries.append((LAYOUT_RAW_GGUF, source_type, layer, quant, variant, module, symbol))
+        for source_type, layer, quant, variant in _RAW_SELECTED_CONSUMERS:
+            entries.append((LAYOUT_RAW_GGUF, source_type, layer, quant, variant))
     else:
-        for layout, source_type, layer, quant, variant in _REPACKED_SELECTED_CONSUMERS:
-            entries.append((layout, source_type, layer, quant, variant, None, None))
-    for layout, source_type, layer, quant, variant, module, symbol in entries:
+        entries.extend(_REPACKED_SELECTED_CONSUMERS)
+    for layout, source_type, layer, quant, variant in entries:
         for operation in operations:
             records.append(
                 Qwen35GGUFOperationCoverage(
@@ -1155,8 +1145,6 @@ def _selected_expert_records(
                     kernel_layer=layer,
                     kernel_quant=quant,
                     kernel_variant=variant,
-                    consumer_module=module,
-                    consumer_symbol=symbol,
                     strict_fallback=_SELECTED_EXPERT_STRICT_FALLBACK,
                     note="Selected-expert consumers require expert IDs and rank-3 metadata.",
                 )

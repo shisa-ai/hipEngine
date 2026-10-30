@@ -26,6 +26,29 @@ def _weight(quant_key: str):
     return Weight()
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_raw_q4_single_resolves_registered_backend(monkeypatch, backend):
+    calls = []
+    monkeypatch.setattr(qgr, "_resolve_exact_selected_moe_kernel", lambda *args: None)
+    monkeypatch.setattr(qgr, "_validate_raw_rank3_expert_weight", lambda *args, **kwargs: None)
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "0")
+
+    def resolve(**key):
+        calls.append(key)
+        return lambda *args, **kwargs: calls.append((args, kwargs))
+
+    monkeypatch.setattr(qgr, "resolve", resolve)
+    qgr._launch_selected_raw_gguf_moe_linear(
+        _weight("gguf_q4_k"), 100, 200, 300,
+        x_rows=2, rows=4, num_experts=8, in_features=256,
+        out_features=7, stream=7, runtime=_Runtime(), backend=backend,
+    )
+    assert calls[0] == dict(backend=backend, layer="linear", quant="gguf_q4_k",
+                            variant="selected_gemv_bf16_bf16_out")
+    assert calls[1][0][:4] == (100, 200, 12, 300)
+    assert calls[1][1]["stream"] == 7
+
+
 @pytest.mark.parametrize("kind", ["pair_exact", "pair_dp4a", "linear_dp4a"])
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("record", [False, True])

@@ -1044,8 +1044,7 @@ def test_coverage_records_use_existing_registry_layer_names():
         # certification.
         assert record.kernel_layer in known_layers
         assert record.kernel_variant
-        if record.consumer_module is None:
-            assert record.kernel_quant
+        assert record.kernel_quant
 
 
 def test_lm_head_logits_require_an_f32_output_consumer():
@@ -1869,11 +1868,6 @@ def test_coverage_families_are_registered_consumers_not_just_valid_keys():
     registered = set(registered_keys())
     checked = 0
     for record in CERTIFIED_OPERATION_COVERAGE:
-        if record.consumer_module is not None:
-            module = importlib.import_module(record.consumer_module)
-            assert hasattr(module, str(record.consumer_symbol)), record
-            checked += 1
-            continue
         for variant in (
             record.kernel_variant,
             *( [record.kernel_variant_rows_many] if record.kernel_variant_rows_many else [] ),

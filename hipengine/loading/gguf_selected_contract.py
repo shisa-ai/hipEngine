@@ -22,14 +22,13 @@ from hipengine.loading.qwen35_gguf_materialize import (
 
 # Existing concrete resident qualification rows, no inferred variant substrings.
 RAW_SELECTED_CONSUMERS = (
-    ("Q3_K", "moe_linear", "gguf_q3_k", "selected_gemv_decode_bf16_bf16_out", None, None),
-    ("Q4_K", "linear", "gguf_q4_k", "selected_gemv_bf16_bf16_out",
-     "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv", "gguf_q4_k_selected_gemv_bf16_bf16_out"),
-    ("Q5_K", "linear", "gguf_q5_k", "selected_gemv_bf16_bf16_out", None, None),
-    ("Q6_K", "linear", "gguf_q6_k", "selected_gemv_bf16_bf16_out", None, None),
-    ("IQ2_XS", "moe_linear", "gguf_iq2_xs", "selected_gemv_decode_bf16_bf16_out", None, None),
-    ("IQ3_XXS", "moe_linear", "gguf_iq3_xxs", "selected_gemv_decode_bf16_bf16_out", None, None),
-    ("IQ4_XS", "moe_linear", "gguf_iq4_xs", "selected_gemv_decode_bf16_bf16_out", None, None),
+    ("Q3_K", "moe_linear", "gguf_q3_k", "selected_gemv_decode_bf16_bf16_out"),
+    ("Q4_K", "linear", "gguf_q4_k", "selected_gemv_bf16_bf16_out"),
+    ("Q5_K", "linear", "gguf_q5_k", "selected_gemv_bf16_bf16_out"),
+    ("Q6_K", "linear", "gguf_q6_k", "selected_gemv_bf16_bf16_out"),
+    ("IQ2_XS", "moe_linear", "gguf_iq2_xs", "selected_gemv_decode_bf16_bf16_out"),
+    ("IQ3_XXS", "moe_linear", "gguf_iq3_xxs", "selected_gemv_decode_bf16_bf16_out"),
+    ("IQ4_XS", "moe_linear", "gguf_iq4_xs", "selected_gemv_decode_bf16_bf16_out"),
 )
 REPACKED_SELECTED_CONSUMERS = (
     (LAYOUT_GGUF_Q4_K_T16, "Q4_K", "moe_linear", "gguf_q4_k_t16_v1", "selected_t16_gemv_decode_bf16_bf16_out"),

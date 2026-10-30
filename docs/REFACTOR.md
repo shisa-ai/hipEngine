@@ -3544,28 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-07 UD-U1 F3 — raw rank-3 Q4_K selected-expert consumer is not registry-mediated
-
-The F3 concrete-consumer qualification (UD-QUANTS U1 round 6) binds every
-certified admission coverage record to a concrete four-axis registry key,
-except one documented escape hatch: the raw rank-3 Q4_K selected-expert
-consumer. The production runtime (`_launch_selected_raw_gguf_moe_linear` in
-`runtime/qwen35_gguf_runner.py`) calls the direct module wrapper
-`hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv:gguf_q4_k_selected_gemv_bf16_bf16_out`,
-which is not registered under its own registry key (only the
-`selected_dual_gemv_bf16_bf16_out`/`selected_pack8_gemv_bf16_bf16_out`
-siblings are). The admission record therefore names the module symbol
-(`consumer_module`/`consumer_symbol`) and the parity test proves the symbol
-exists on both HIP backends.
-
-Removal trigger: register the single selected wrapper under
-`(backend, "linear", "gguf_q4_k", "selected_gemv_bf16_bf16_out")` in
-`register_gguf_q4_k_gemv_kernels` (the Q5_K/Q6_K/Q8_0 raw selected singles are
-already registered this way by `register_gguf_k_gemv_kernels`), switch the
-runtime call site to registry resolution, and drop the
-`consumer_module`/`consumer_symbol` fields plus their parity branch from
-`hipengine/loading/qwen35_gguf_admission.py`.
-
 ## UD-U1 invocation ownership follow-up
 
 - The linear-table mirror and admission-side selected variant-substring ABI
@@ -3592,10 +3570,9 @@ runtime call site to registry resolution, and drop the
   never treat a nearby BF16 record as that proof. Likewise baseline GDN
   prefill cannot certify FP16 state by borrowing its F32-state contract.
 - Direct caller boundaries and registered primitive availability are distinct.
-  The ordered dual helper owns its two-single fallback; raw Q4 singleton
-  registry mediation remains the item above. F1 entry/dependency enforcement
-  and F5 profile-binder authorization remain open, not implicit benefits of
-  the new immutable metadata.
+  The ordered dual helper owns its two-single fallback. F1 entry/dependency
+  enforcement and F5 profile-binder authorization remain open, not implicit
+  benefits of the new immutable metadata.
 
 ## 2026-09-11 MTP verify-journal allocation cost on gfx1100
 

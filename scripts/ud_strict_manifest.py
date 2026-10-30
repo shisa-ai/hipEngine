@@ -144,27 +144,17 @@ def _present_ggml_types(path: Path) -> tuple[set[str], int]:
 
 
 def _scoped_records(present: set[str]):
-    """Coverage records the artifact's declared GGML types put in scope.
-
-    Records split two ways, matching how the admission table itself is checked:
-    a record with ``consumer_module`` is certified by the presence of a symbol in
-    that module rather than by a registry key, so it contributes provenance but
-    cannot appear as a manifest selection.
-    """
+    """Coverage records selected by the artifact's declared GGML types."""
 
     from hipengine.loading.qwen35_gguf_admission import CERTIFIED_OPERATION_COVERAGE
 
     registry_records = []
-    consumer_records = []
     for record in CERTIFIED_OPERATION_COVERAGE:
         declared = record.source_ggml_types
         if not declared or not (set(declared) & present):
             continue
-        if record.consumer_module is not None:
-            consumer_records.append(record)
-        else:
-            registry_records.append(record)
-    return registry_records, consumer_records
+        registry_records.append(record)
+    return registry_records
 
 
 SERVING_OUTPUT_SUFFIX = "_bf16_out"
@@ -301,8 +291,8 @@ def build(artifact: str) -> dict[str, object]:
     path, quant_identity = table[artifact]
 
     present, tensor_count = _present_ggml_types(path)
-    records, consumer_records = _scoped_records(present)
-    if not records and not consumer_records:
+    records = _scoped_records(present)
+    if not records:
         raise SystemExit(f"{artifact}: no coverage record declares any of {sorted(present)}")
 
     per_quant = []
@@ -354,12 +344,10 @@ def build(artifact: str) -> dict[str, object]:
             "source": "artifact GGUF tensor types x CERTIFIED_OPERATION_COVERAGE",
             "tensors": tensor_count,
             "ggml_types_present": sorted(present),
-            "coverage_records_in_scope": len(records) + len(consumer_records),
+            "coverage_records_in_scope": len(records),
             "coverage_records_named_by_registry_key": len(records),
-            "coverage_records_named_by_consumer_module": len(consumer_records),
-            "consumer_modules": sorted(
-                {str(record.consumer_module) for record in consumer_records}
-            ),
+            "coverage_records_named_by_consumer_module": 0,
+            "consumer_modules": [],
             "coverage_records_total": len(
                 __import__(
                     "hipengine.loading.qwen35_gguf_admission",

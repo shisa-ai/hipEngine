@@ -13194,8 +13194,8 @@
       "start_line": 11086,
       "end_line": 11107,
       "sha256": "b647f1243cfd23965302b837eee3a5ac664c65dd092725debf4f81f789574cb0",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Removed obsolete module-symbol coverage escape hatch and resolved existing raw Q4 singleton registry key at runtime. Updated generated strict manifest metadata only; certification measurements unchanged. CPU bg892, public isolated fallback bg895, focused tests, live manifest5, docs/audit pass. worklog/entries/20261030T021925.750802Z-cleanup-cleanup-r0470-5c83ca.md."],
       "subitems": []
     },
     {
