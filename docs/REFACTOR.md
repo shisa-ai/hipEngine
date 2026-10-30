@@ -3544,19 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-12 Only Surya reports `GenerationOutput.prompt_tokens` — open
-
-The server prefers a generator-reported `prompt_tokens` and falls back to
-`engine.count_tokens(prompt)` when none is reported. Only the Surya generators
-set it, because only they build a prompt whose length a tokenizer cannot
-recover (text plus image tokens). Every text-only generator still takes the
-fallback path.
-
-Set it in the text-only generators when the fallback is wanted gone: it removes
-a `count_tokens` call per request and one branch in `chat_completions`. There is
-no correctness reason to hurry, since for a text-only prompt the tokenizer count
-is already exact.
-
 ## 2026-09-13 Surya vision admission is GPU-only and reports runner errors — open
 
 `SuryaGpuRunner.check_vision_capacity` enforces three budgets before any device
@@ -10077,3 +10064,21 @@ Move A4 into the implementation-parity test cases only after examining the
 capture and running the comparison. Preserve quality coverage throughout;
 use coordinate-tolerant comparison only if observed bbox-digit variation
 justifies it, not merely to make a failure pass.
+
+### R0494 — Choose one prompt-count output contract
+
+Prompt counts are no longer Surya-only: Gemma image generation sets
+`GenerationOutput.prompt_tokens`, while Qwen multimodal generation publishes
+`telemetry.usage.prompt_tokens`. The multimodal server route now prefers the
+explicit field, then telemetry, then one tokenizer fallback; zero is a valid
+reported count. It no longer overwrites a telemetry count with a text estimate.
+
+**Deferred interface decision:** choose whether the output field or telemetry
+owns prompt usage before removing either representation or the compatibility
+fallback. `GenerationOutput.prompt_tokens` remains optional, and text usage
+also counts prepared prompt inputs through `_usage`. A complete migration must
+cover ordinary, empty, batch, speculative and multimodal outputs, plus legacy
+plugins that return no count. Keep the fallback until those producers have an
+explicit replacement contract; do not infer image-token counts from raw text.
+Validate migration with the Qwen/Gemma/Surya server multimodal modules,
+`tests/test_unit_server_prefix_cache_usage.py` and public requests.

@@ -13534,8 +13534,8 @@
       "start_line": 11645,
       "end_line": 11657,
       "sha256": "4be44255a30d366f1dbbba2859bc9d59014ccb0226a65acb4d71bf34ef0c9934",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Fixed server overwrite of exact telemetry prompt counts and redundant fallback; broader field/telemetry ownership migration deferred at bottom. worklog/entries/20261030T044326.320397Z-cleanup-cleanup-r0494-d10065.md."],
       "subitems": []
     },
     {

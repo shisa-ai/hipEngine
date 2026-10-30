@@ -9098,15 +9098,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 reasoning_initially_open=False,
             )
             message, _parsed_reason = _chat_message_from_parsed(parsed)
-            telemetry_usage = getattr(getattr(detail, "telemetry", None), "usage", None) or {}
-            prompt_tokens = int(
-                telemetry_usage.get("prompt_tokens") or engine.count_tokens(prompt)
-            )
-            # The generator knows the exact prompt length when it built the
-            # prompt (a vision prompt is text plus image tokens, which a text
-            # tokenizer count cannot recover). Fall back to the tokenizer for
-            # the text-only generators that report nothing.
+            # Prefer the exact multimodal count over a text-only tokenizer
+            # estimate. Both output metadata forms can report a valid zero.
             reported_prompt_tokens = getattr(detail, "prompt_tokens", None)
+            if reported_prompt_tokens is None:
+                telemetry_usage = getattr(getattr(detail, "telemetry", None), "usage", None) or {}
+                reported_prompt_tokens = telemetry_usage.get("prompt_tokens")
             if reported_prompt_tokens is None:
                 reported_prompt_tokens = int(await asyncio.to_thread(engine.count_tokens, prompt))
             prompt_tokens = int(reported_prompt_tokens)

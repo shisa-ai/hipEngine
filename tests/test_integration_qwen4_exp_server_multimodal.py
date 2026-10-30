@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hipengine import SamplingParams
-from hipengine.generation import FinishDetails, GenerationOutput
+from hipengine.generation import DecodeState, FinishDetails, GenerationOutput, GenerationTelemetry
 from hipengine.server import ServerConfig, create_app
 from hipengine.server.__main__ import build_parser
 from hipengine.server.multimodal import (
@@ -79,15 +79,23 @@ def test_qwen4_exp_chat_media_extracts_image_and_video_in_order() -> None:
     assert media["items"][1]["data"].shape == (2, 32, 32, 3)
 
 
-def test_qwen4_exp_chat_completions_accepts_bounded_png_multimodal_input() -> None:
+@pytest.mark.parametrize(
+    "reported,telemetry_count", [(None, None), (None, 17), (None, 0), (11, 17), (0, 17)]
+)
+def test_qwen4_exp_chat_completions_accepts_bounded_png_multimodal_input(
+    reported, telemetry_count,
+) -> None:
     class VisionLLM:
         max_sequence_length = 1024
         supports_vision = True
 
         def __init__(self):
             self.calls = []
+            self.post_generation_counts = 0
 
         def count_tokens(self, text):
+            if self.calls:
+                self.post_generation_counts += 1
             return len(str(text).split())
 
         def generate_multimodal_detailed(self, prompt, media, sampling):
@@ -95,6 +103,11 @@ def test_qwen4_exp_chat_completions_accepts_bounded_png_multimodal_input() -> No
             self.calls.append((prompt, media, sampling))
             return GenerationOutput(
                 text="vision-ok",
+                prompt_tokens=reported,
+                telemetry=GenerationTelemetry(
+                    decode_state=DecodeState(),
+                    usage={} if telemetry_count is None else {"prompt_tokens": telemetry_count},
+                ),
                 generated_token_ids=(7, 8),
                 finish_details=FinishDetails(
                     reason="length", length_limit=2, sampler_mode="greedy"
@@ -139,6 +152,12 @@ def test_qwen4_exp_chat_completions_accepts_bounded_png_multimodal_input() -> No
     assert payload["hipengine"]["multimodal"] is True
     assert len(fake.calls) == 1
     assert fake.calls[0][1]["items"][0]["data"].shape == (32, 32, 3)
+    expected = reported if reported is not None else telemetry_count
+    fallback = expected is None
+    if fallback:
+        expected = len(str(fake.calls[0][0]).split())
+    assert payload["usage"]["prompt_tokens"] == expected
+    assert fake.post_generation_counts == int(fallback)
 
 
 @pytest.mark.parametrize("value", ["https://example.com/a.png", "data:image/jpeg;base64,AAAA"])
