@@ -473,7 +473,7 @@ not by backend-branched runtime code.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` | false | Default-off screen selecting the dense dual WMMA row32/row48 variants for specdec2 production R28 rows. |
-| `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE` | true | Q5_T16 single-wave rowtile owner; `0` restores the four-wave owner for rollback and bisection. |
+| `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE` | retired | No runtime reader. gfx1100 package policy selects the single-wave owner; the four-wave parity reference remains separately registered. |
 | `HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120` | true | Fixed-5120 rounded-norm residual decode sibling (rows 2-8); `0` restores the generic rounded-norm tree. |
 
 ### Gemma 4 MoE prefill routes

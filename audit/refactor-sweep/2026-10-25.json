@@ -13342,8 +13342,8 @@
       "start_line": 11280,
       "end_line": 11297,
       "sha256": "fa6cbcafb8c2f4b56f8fc274b9dd35a71e27b73c2cb0f2b719624447a5e015b0",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Removed obsolete rollback flag without changing default selection or rebinding variants. Four-wave parity reference still serves grouped rows6/rows8 and direct producer contracts; remaining retirement moved to deferred ledger section. 347 focused dispatch tests pass. Public gfx1100 generation cannot run on this host's gfx1151 device. worklog/entries/20261030T034543.612618Z-cleanup-cleanup-r0479-611184.md."],
       "subitems": []
     },
     {

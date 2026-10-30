@@ -3544,24 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 Q5T16 single-wave verifier rowtile — env kill switch
-
-**State.** `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT` in
-`hipengine/kernels/hip_gfx1100/__init__.py` names the production owner for
-`gguf_q5_k_t16_v1` rows 2-8. `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE`
-overrides it on/off for bisection; clearing it to `0` restores the four-wave
-WG128 parent-parity owner `t16_gemv_rowtile_bf16_bf16_out`.
-
-**Why it is retained.** The four-wave entry point cannot be rebound: the
-grouped rows6/rows8 owners declare bit-identity to it applied to six-row
-chunks, so the two geometries must stay separately registered for as long as
-that parity contract is asserted.
-
-**Removal trigger.** If the grouped rows6/rows8 owners are retired, or their
-parity contract is restated against the single-wave owner, delete the four-wave
-variant, the capability table, and the env switch, and bind
-`t16_gemv_rowtile_bf16_bf16_out` to the single-wave body.
-
 ## 2026-09-13 strict dense IQ row slab covers the prompt rows — env kill switch
 
 **State.** `_row_batch()` in `hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py`
@@ -10282,3 +10264,20 @@ Run the three unit modules `test_unit_gguf_ar_eager_graph_equivalence.py`,
 exercise the replacement device comparison with matching settings on both
 paths. Keep graph mode as the paired denominator; the paired validator must
 continue rejecting eager payloads. No product admission depends on this choice.
+
+### R0479 — Q5 four-wave parity reference
+
+The Q5 singleton rollback flag is removed. gfx1100 package policy selects
+`t16_gemv_rowtile_single_wave_bf16_bf16_out`; the four-wave
+`t16_gemv_rowtile_bf16_bf16_out` remains separately registered. Its wrapper in
+`gguf_t16_selected_gemv.py` declares the ordered wave-0..3 reduction shared by
+the grouped rows6/rows8 owners and the one-expert direct producer. Removing a
+selector does not remove that reference contract.
+
+**Deferred contract migration:** keep the distinct reference, or migrate all
+of those consumers' parity contracts before deleting or rebinding it. The
+clearing checks must compare the grouped and direct producers against their
+replacement reference on device, followed by the applicable execution-profile
+gates for any changed arithmetic default. Dispatch tests alone cannot establish
+that equality. The capability table continues to distinguish the production
+owner from the reference; it is not an admission gate.

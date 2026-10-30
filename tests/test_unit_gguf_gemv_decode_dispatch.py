@@ -249,10 +249,10 @@ def test_native_batch_decode_q5_t16_rows_5_8_route_to_true_rowtile() -> None:
         assert key == _Q5_T16_ROWTILE_SINGLE_WAVE
 
 
-def test_native_batch_decode_q5_t16_single_wave_kill_switch(
+def test_native_batch_decode_q5_t16_ignores_retired_switch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Clearing the policy env switch restores the four-wave parity parent."""
+    """A stale rollback value cannot change the package's production owner."""
 
     monkeypatch.setenv("HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE", "0")
     for rows in (5, 6, 7, 8):
@@ -267,7 +267,7 @@ def test_native_batch_decode_q5_t16_single_wave_kill_switch(
                 _Q5_T16_WMMA,
             ),
         )
-        assert key == _Q5_T16_ROWTILE
+        assert key == _Q5_T16_ROWTILE_SINGLE_WAVE
 
 
 def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> None:

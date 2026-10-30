@@ -10456,8 +10456,8 @@ def _t16_native_rowtile_variant(quant: str, *, backend: str) -> str:
     ``t16_gemv_rowtile_bf16_bf16_out`` is the four-wave WG128 parent-parity
     owner. A backend may declare a measured single-wave replacement for a
     quant through ``GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT``; the four-
-    wave owner stays registered and reachable by clearing the entry's env
-    switch, so the change is a policy selection rather than a rebinding.
+    wave owner stays separately registered as the grouped-owner parity reference;
+    selecting a production owner does not rebind that reference.
     """
 
     default = "t16_gemv_rowtile_bf16_bf16_out"
@@ -10472,20 +10472,6 @@ def _t16_native_rowtile_variant(quant: str, *, backend: str) -> str:
     variant = entry.get("variant")
     if not isinstance(variant, str) or not variant:
         return default
-    enabled_env = entry.get("enabled_env")
-    if isinstance(enabled_env, str) and enabled_env:
-        raw = os.environ.get(enabled_env, "").strip().lower()
-        if raw:
-            if raw in {"1", "true", "yes", "on"}:
-                enabled = True
-            elif raw in {"0", "false", "no", "off"}:
-                enabled = False
-            else:
-                raise ValueError(f"{enabled_env} must be a boolean value")
-        else:
-            enabled = bool(entry.get("enabled_default", False))
-        if not enabled:
-            return default
     if not is_registered(
         KernelKey(backend, "linear", quant, variant)
     ):

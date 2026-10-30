@@ -358,13 +358,11 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
 # attn_k/v (1024, 5120) 20.5 -> 19.5 us. Both section-6.1 gates pass
 # (UD-Q4_K_M mean/p95/p99/max 3.51e-05/1.93e-04/2.46e-04/2.52e-04, UD-Q4_K_S
 # 2.96e-05/8.75e-05/5.71e-04/5.71e-04, top-1 1.0000, two deterministic
-# repeats), and the smoke's generated token sequence is unchanged. The env
-# switch restores the four-wave owner for rollback and bisection.
+# repeats), and the smoke's generated token sequence is unchanged. The four-wave
+# owner stays separately registered for grouped-owner parity comparisons.
 GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT = {
     "gguf_q5_k_t16_v1": {
         "variant": "t16_gemv_rowtile_single_wave_bf16_bf16_out",
-        "enabled_env": "HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE",
-        "enabled_default": True,
     }
 }
 # The physical pair helper owns a distinct split seam from the single-projection
