@@ -89,13 +89,6 @@ _F16_ROUTE_BINDER_ENV = {
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
         map(str, F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS)
     ),
-    # The tiled GDN recurrence at every GDN layer (27-47, with the
-    # register-state recurrence below, on a quant without the composition).
-    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(48))),
-    # The row-split recurrence in place of the multi-column tile-16 body: the
-    # same recurrence with the scales applied to the two dot products, a
-    # different FP32 summation order, 128-thread blocks.
-    "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_rowsplit_prefill",
 }
 # Profile-owned composition selectors: profiles without the composition disable
 # them even when a caller set them before binding, keeping dispatch and manifest aligned.
@@ -265,6 +258,18 @@ _DENSE_WIDE_TAIL_SCOPE = "prefill_rows_512_4096_k10240_n320_dense_wide_layers13_
 _DENSE_WIDE_TAIL_EVIDENCE = (
     "benchmarks/results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md"
 )
+
+
+_GDN_COMPOSITION_SCOPE = "prefill_rows_ge2_d128_tiled_gdn_layers0_47"
+
+
+def _gdn_composition_selection(*, production: bool) -> VariantSelection:
+    return _selection(
+        "gdn_recurrence_norm_gate", _GDN_COMPOSITION_SCOPE,
+        "qwen4exp_gdn_rowsplit_prefill" if production else "qwen4exp_sigmoid_strict_prefill",
+        "qwen4exp_sigmoid_strict_prefill", "f32_state",
+        evidence=_F16_ROUTE_EVIDENCE if production else None,
+    )
 
 
 def _dense_wide_tail_selection(*, production: bool) -> VariantSelection:
@@ -519,7 +524,8 @@ def _strict_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...
     if recovery:
         return _recovery_gdn_scopes(
             selections, variant="qwen4exp_sigmoid_strict_prefill", evidence=None,
-        ) + (_dense_wide_tail_selection(production=False),)
+        ) + (_dense_wide_tail_selection(production=False),
+             _gdn_composition_selection(production=False))
     return selections
 
 
@@ -914,7 +920,7 @@ def _f16_route_selections(
         raise RuntimeError(
             f"Qwen4Exp F16 route plan lost scopes: {sorted(missing)!r}"
         )
-    return tuple(result)
+    return tuple(result) + (_gdn_composition_selection(production=True),)
 
 
 def _apply_profile_env(values: dict[str, str]) -> None:
@@ -1509,6 +1515,13 @@ def _bind(
         # Every key here is written by each bind, so a later bind without the
         # composition in the same process restores its own value.
         _apply_profile_env(_F16_ROUTE_BINDER_ENV)
+        gdn = next(row for row in resolved.manifest["selections"]
+                   if row["scope"].startswith("prefill_rows_ge2_d128_tiled_gdn_layers"))
+        first, last = map(int, gdn["scope"].rsplit("layers", 1)[1].split("_"))
+        _apply_profile_env({
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(first, last + 1))),
+            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": gdn["selected_variant"],
+        })
     _bind_f16_routes(enabled=f16_routes)
     _report_prebinder_conflicts()
     if production:

@@ -113,12 +113,13 @@ def test_production_ud_owner_and_quarantined_q4km_binding(monkeypatch):
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
     assert not any("tiled16" in row["selected_variant"]
                    for row in other.manifest["selections"])
-    # UD declares reachable decode and serial prefill scopes, not tile16.
-    # The checked prefill owner covers 2-4096 rows; wide remains above4096.
+    # UD declares the composition route as well as decode and serial fallback.
+    # The checked serial owner covers 2-4096 rows; wide remains above4096.
     recovery_scopes = {row["scope"]: row["selected_variant"]
                        for row in profile.manifest["selections"]
                        if row["layer"] == "gdn_recurrence_norm_gate"}
     assert recovery_scopes == {
+        "prefill_rows_ge2_d128_tiled_gdn_layers0_47": "qwen4exp_gdn_rowsplit_prefill",
         "decode_c1_d128": "qwen4exp_gdn_rowsplit_decode",
         "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128": "qwen4exp_sigmoid_wave_norm_narrow_prefill",
         "prefill_rows_gt4096_serial_gdn_hk16_hv48_d128": "qwen4exp_sigmoid_wave_norm_prefill",

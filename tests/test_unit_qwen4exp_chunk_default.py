@@ -237,10 +237,10 @@ def _profile(production):
 
     from hipengine.execution_profiles import ExecutionProfile
     from hipengine.generation.qwen4_exp_profiles import (
-        _production_selections, _strict_selections,
+        _f16_route_selections, _strict_selections,
     )
 
-    rows = (_production_selections(recovery=True) if production
+    rows = (_f16_route_selections() if production
             else _strict_selections(recovery=True))
     return SimpleNamespace(
         manifest_sha256="test", profile=ExecutionProfile.PRODUCTION,

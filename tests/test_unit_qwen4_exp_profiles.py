@@ -1374,6 +1374,34 @@ def test_fast_is_opt_in_and_registered_only_for_the_in_envelope_quant() -> None:
     assert unregistered.source_profile is ExecutionProfile.STRICT
 
 
+def test_ud_gdn_composition_binding_matches_manifest() -> None:
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    rows = [row for row in production.manifest["selections"]
+            if row["scope"] == "prefill_rows_ge2_d128_tiled_gdn_layers0_47"]
+    assert len(rows) == 1
+    assert rows[0]["selected_variant"] == "qwen4exp_gdn_rowsplit_prefill"
+    assert rows[0]["strict_fallback_variant"] == "qwen4exp_sigmoid_strict_prefill"
+    production.binder(SimpleNamespace(runner=None), production)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == rows[0]["selected_variant"]
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    strict_rows = [row for row in strict.manifest["selections"] if row["scope"] == rows[0]["scope"]]
+    assert strict_rows[0]["selected_variant"] == rows[0]["strict_fallback_variant"]
+
+    # Binding consumes the selected leaf and layer window, not a second table.
+    from dataclasses import replace
+    manifest = dict(production.manifest)
+    changed = dict(rows[0], scope="prefill_rows_ge2_d128_tiled_gdn_layers7_31",
+                   selected_variant="qwen4exp_gdn_tiled16_multi_prefill")
+    manifest["selections"] = [changed if row is rows[0] else row
+                              for row in production.manifest["selections"]]
+    modified = replace(production, manifest=manifest)
+    modified.binder(SimpleNamespace(runner=None), modified)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == changed["selected_variant"]
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ",".join(map(str, range(7, 32)))
+
+
 def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()

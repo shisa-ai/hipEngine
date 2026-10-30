@@ -65,7 +65,9 @@ def select(variant, rows=512, hk=16, hv=48, d=128):
 def test_ud_manifest_binder_and_outside_parent():
     result = resolve(ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl")
     rows = [r for r in result.manifest["selections"] if r["layer"] == "gdn_recurrence_norm_gate"]
-    assert {r["scope"] for r in rows} == {SCOPE, OUTSIDE, "decode_c1_d128"}
+    assert {r["scope"] for r in rows} == {
+        SCOPE, OUTSIDE, "decode_c1_d128", "prefill_rows_ge2_d128_tiled_gdn_layers0_47",
+    }
     bounded = next(r for r in rows if r["scope"] == SCOPE)
     outside = next(r for r in rows if r["scope"] == OUTSIDE)
     assert bounded["selected_variant"] == NARROW

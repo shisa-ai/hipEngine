@@ -3488,24 +3488,19 @@ remains for this unit; strict fallbacks and the separate DP4A prerequisite remai
 
 ## Qwen4Exp production routes the manifest does not enumerate
 
-The `gguf_ud_q4_k_xl` production binder sets three routes through
-binder-owned environment values that have no manifest row: the F16 dense wide
-route's layer window (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`, 0-47), the
-tiled GDN recurrence's layer window
-(`HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`, every GDN layer; the manifest's
-GDN rows do not name a tiled owner for this quant), and the hyper-connection
-up projection on the wide route (`HIPENGINE_QWEN4_EXP_GR_WIDE`). Only the
-K10240/N320 tail leaf of the dense wide route is a declared scope. The
-manifest hash therefore changes with the routed-expert, attention and router
-selections but not with these three, and the names
-`PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS` (13-47) and
-`PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS` (27-47) now describe only a quant
-without the composition.
+The UD composition's tiled GDN route is now declared by
+`prefill_rows_ge2_d128_tiled_gdn_layers0_47`: production selects row-split,
+strict names the sigmoid recurrence, and the binder reads the leaf and layer
+window from that manifest row. Serial fallback scopes remain separate.
 
-Removal condition: add strict scopes for the dense wide layer window, the
-GDN recurrence and the hyper-connection up projection, declare them in the
-plan, and have the binder publish the window from the manifest row the way it
-already does for the router producer.
+Two composition controls still lack manifest rows: the F16 dense wide route's
+layer window (`HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`, 0-47) and the
+hyper-connection up projection (`HIPENGINE_QWEN4_EXP_GR_WIDE`). Only the
+K10240/N320 tail leaf of dense wide has a declared scope.
+
+Removal condition: add strict scopes for the dense wide layer window and the
+hyper-connection up projection, then publish their controls from the manifest
+rather than the composition's separate environment tables.
 
 ## The small-matrix F16 GEMM selector
 
@@ -10473,9 +10468,9 @@ Invalidation repair and validation:
 
 ### R0459 — Row-split GDN recurrence removal decision
 
-The UD production composition binder selects row-split after the generic
-binder selects multi-column. The manifest does not reflect that override;
-R0460 owns correcting the manifest and binding. The Q4_K_M production plan
+The UD production composition binder selects row-split from its tiled GDN
+manifest scope. R0460 still owns the dense-wide and GR manifest bindings.
+The Q4_K_M production plan
 still names multi-column but resolves to strict due to its recorded numerical
 failure; it is not evidence of a live default multi-column execution.
 

@@ -740,8 +740,8 @@ to the two dot products and sums in a different FP32 order than the
 column-warp owners (relative L2 1.5e-7 over 4096 tokens). Its norm/gate
 epilogue can publish `half(core)` for the output projection. Test:
 `tests/test_gpu_qwen4exp_gdn_rowsplit_prefill.py`. Strict fallback:
-`qwen4exp_sigmoid_strict_prefill`. The multi-column production owner and
-row-split alternative remain separately registered.
+`qwen4exp_sigmoid_strict_prefill`. The multi-column and row-split
+implementations remain separately registered.
 
 ## Qwen4Exp indexed GDN decode primitive
 

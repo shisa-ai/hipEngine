@@ -77,7 +77,7 @@ def test_missing_mapping_capability_is_a_safe_fallback():
 def test_production_binder_selects_random_with_strict_and_explicit_rollback(monkeypatch):
     from hipengine.execution_profiles import ExecutionProfile
     from hipengine.generation.qwen4_exp_profiles import (
-        _bind, _production_selections, _strict_selections,
+        _bind, _production_selections, _f16_route_selections, _strict_selections,
     )
     import os
 
@@ -91,7 +91,7 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
         fell_back_to_strict=False, manifest={
             "quant": "gguf_ud_q4_k_xl", "selections": [
                 {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
-                for r in _production_selections(recovery=True)
+                for r in _f16_route_selections()
             ],
         },
     )
@@ -111,7 +111,7 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS", "normal")
     profile.manifest["selections"] = [
         {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
-        for r in _production_selections(recovery=True)
+        for r in _f16_route_selections()
     ]
     _bind(generator, profile, production=True)
     assert calls == ["random", "normal", "normal"]
