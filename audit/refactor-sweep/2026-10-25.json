@@ -3599,23 +3599,23 @@
       "start_line": 3282,
       "end_line": 3294,
       "sha256": "a5ae1a7010255e93cd6271ef69fa442725b225c24a33c1f95630666f51bc96be",
-      "status": "pending",
-      "evidence": ["Corrected false claim that serving INT8 requires a qualification record. Verified DMSCompactBackend.__init__ and create_dms_int8_backend; tests/test_gpu_dms_codec_evaluation.py passes with device payloads disabled. Evaluation factory consolidation remains open."],
+      "status": "resolved-not-debt",
+      "evidence": ["NOT-DEBT: used factory provides evaluation telemetry to three quality tools, not duplicate codec execution. Removed speculative consolidation instruction; API/runtime preserved. 2 device-disabled tests/docs/audit pass. worklog/entries/20261030T064540.884554Z-cleanup-cleanup-r0133-12f97f.md.","Earlier status (superseded by NOT-DEBT triage above): corrected false claim that serving INT8 requires a qualification record. Verified DMSCompactBackend.__init__ and create_dms_int8_backend; tests/test_gpu_dms_codec_evaluation.py passed with device payloads disabled. Factory consolidation was then left open."],
       "subitems": [
         {
           "line": 3284,
           "text": "- `create_dms_int8_evaluation_backend` permits offline model measurement without",
-          "status": "pending"
+          "status": "resolved-not-debt"
         },
         {
           "line": 3287,
           "text": "- `Qwen35GGUFResidentSession.dms_backend_factory` injects a codec factory without",
-          "status": "pending"
+          "status": "resolved-not-debt"
         },
         {
           "line": 3290,
           "text": "- Keep the evaluation factory only while it is needed to qualify new artifacts",
-          "status": "pending"
+          "status": "resolved-not-debt"
         }
       ]
     },

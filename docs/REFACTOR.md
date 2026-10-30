@@ -2330,20 +2330,6 @@ should be removed or collapsed.
 
 
 
-## 2026-09-07 DMS codec evaluation bootstrap — open
-
-- `create_dms_int8_evaluation_backend` permits offline model measurement without
-  inventing a qualification record. Snapshots explicitly report
-  `codec_evaluation_only`; default resident/serving construction stays BF16.
-- `Qwen35GGUFResidentSession.dms_backend_factory` injects a codec factory without
-  codec-specific dispatch branches. The quality tools expose
-  `--codec int8_evaluation`, never a serving promotion switch.
-- Keep the evaluation factory only while it is needed to qualify new artifacts
-  or codecs. Consolidate it into a shared evaluator capability when one exists;
-  never replace its explicit unqualified status with fabricated passing scores.
-  Serving INT8 construction does not require a qualification record; if supplied,
-  the record's artifact fingerprint must match. Evaluation-only status is observability,
-  not a prerequisite for executing an explicitly requested codec.
 
 ## 2026-09-07 UD cleanup — reduce authorization surface
 
