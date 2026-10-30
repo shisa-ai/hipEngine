@@ -967,57 +967,6 @@ multi-column engagement evidence, so it stays.
 
 
 
-## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
-
-Resolved in three steps. (1) The `(8, 3)` cell left
-`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]` in 9c8ff5444; the
-explicit capacity-8 route now falls to the registered strict fallback
-`gguf_target_ar`, and the production-admission rerun recorded in
-`benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`
-confirms the withdrawal. (2) Speculation routes by priming source instead of
-sink refusal (3edac59c9): a row whose prompt sink was refused declines
-capability with `provider_state_absent` before any cycle can open a provider
-(regression:
-`tests/test_unit_qwen35_gguf_mtp2_seam.py::test_capability_refuses_a_row_whose_prompt_sink_was_refused`).
-(3) A zero partition bound is one whole-batch AR step in the engine instead of
-"do not partition" (regression:
-`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`).
-The observations below record the original finding; the first bullet's claim
-that the production width table lists `(8, 3)` predates the withdrawal.
-
-- `hipengine/kernels/hip_gfx1151/__init__.py` lists `(8, 3)` in
-  `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]`, but
-  `GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES` for the same
-  geometry/file-type/profile admits widths `(1, 2, 3, 4)`, so
-  `begin_prompt_streaming` refuses a pending set of 8 rows and stamps every row
-  `mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"`. The
-  refusal does not fail the route closed: the group still reports
-  `effective_route=speculative_mtp`, `used=true`, and executes 7-9 draft cycles
-  per row against a provider with no prompt state. Measured on all 80 rows of
-  the 10-cell width-8 protocol, with production admission as well as the
-  diagnostic resolver: the MTP arm agrees with AR for 3-5 tokens and then emits
-  the same `<|im_end|>`/`<|im_start|>` loop on all 10 prompts, so its output does
-  not depend on the prompt, and the cell is 0.936x of its own AR baseline where
-  the 2026-09-05 qualification recorded 1.0015x with 40/40 AR-equal cells.
-  Evidence:
-  `benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
-- `hipengine/generation/qwen35_gguf_mtp2.py` `partition_max_requests` returns 0
-  for a due group wider than
-  `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"]` (4), but
-  `hipengine/generation/engine_loop.py`
-  `_maybe_run_partitioned_speculative_decode` reads a non-positive bound as
-  "do not partition" and returns `None`, after which `_run_decode` falls through
-  to `_maybe_run_speculative_cycle` on the whole wide work item. The M5
-  whole-batch-AR defense is therefore inert for an over-width all-speculative due
-  item; `docs/REFACTOR.md` RF-M5 recorded that precondition as unreached before
-  the 2026-09-05 width policy admitted `(8, 3)`.
-- Remove the wide cell by either failing the route closed when the prompt sink is
-  refused (refusal is not a partial state the cycle can run on), or by adding
-  widths 5-8 to the prompt-streaming policy and re-qualifying the cell against a
-  same-run true-AR baseline. Move the over-width demotion to the admission owner
-  or make the engine treat a zero partition bound as a whole-batch AR step; then
-  the partitioner-level defense can be deleted. Do not keep `(8, 3)` listed while
-  the prompt sink refuses width 8.
 
 ## Per-token reused-prefix suffix prefill (found 2026-09-18)
 
