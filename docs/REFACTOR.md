@@ -2171,27 +2171,6 @@ the allocation repair. The observations and proposal below are historical.
   left intact; only `docs/API.md`, `docs/EXECUTION-PROFILES.md`, and
   `docs/archive/COMPARISON-vs-atlas.md` state the current contract.
 
-## VibeVoice ASR prefill and legacy dense attention
-
-- The Q4_K_M batched prefill in `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`
-  (`q4_prefill`) mirrors the orchestration in
-  `hipengine/runtime/vibevoice_qwen2.py::_prefill_batched` — the same norm / rope /
-  KV-write / attention / silu / residual sequence with different GEMMs and
-  activation dtypes. Unify them behind overridable GEMM, activation-staging
-  and scratch hooks once the Q4 prefill has a production-profile numerical
-  gate; the two copies currently differ only in those three places.
-- The batched prefill route wires only Q4_K and Q6_K; Q5_K has no WMMA
-  prefill kernel (only the naive raw-block `gguf_q5_k_prefill_*`, ~100x
-  slower) and raises rather than mis-decoding. Add a Q5_K WMMA prefill before
-  any Q5_K_M GGUF is put on this route.
-- `prefill_variant=hipblaslt` and `frontend_variant=wmma` expose the arithmetic
-  candidates to the production evaluator. Keep their registered strict chains
-  as debugging oracles. Bind the public production profile only after the full
-  model-specific numerical/task gate; remove standalone candidate-selection
-  plumbing when profile construction owns that selection.
-- Convolution tails currently use owned host snapshots at chunk boundaries.
-  Replace these with device-resident tails only after the same whole/chunk,
-  60-second transition, recording-reset and post-join-noise tests pass.
 
 
 
@@ -9871,3 +9850,33 @@ measurements remain in this ledger at `06d6b33dd`. Clearing command:
 `hipengine serve` with the variable set and unset. Retire the rollback and enable
 the shared default once it meets or beats separate execution at every width,
 with control/ownership gates intact. No runtime default changes in this triage.
+
+### R0083 — VibeVoice prefill orchestration and device-tail ownership
+
+The uncalled raw attention entry was removed and prefill scratch already uses
+reusable storage. Those repairs remain closed; span attention and its shared
+kernel remain live.
+
+**Deferred orchestration design:** unify `q4_prefill` in
+`hipengine/kernels/hip_gfx1100/vibevoice/q4.py` and `_prefill_batched` in
+`hipengine/runtime/vibevoice_qwen2.py` through explicit GEMM, activation-staging
+and scratch dependencies. Preserve norm, RoPE, KV-write, attention, SiLU and
+residual order and dtype conversions; do not combine a mechanical extraction
+with a changed-arithmetic promotion.
+
+**Deferred capability work:** the Q4 batched route wires Q4_K/Q6_K and rejects
+Q5_K before decoding it with the wrong layout. Implement and wire compatible
+Q5_K prefill before claiming that route supports it; preserve explicit errors
+until then. This is an implementation gap, not a model-identity restriction.
+
+**Deferred profile ownership:** retain strict chains while moving
+`prefill_variant=hipblaslt` and `frontend_variant=wmma` selection into profile
+construction. Promotion requires the model-specific numerical/task gate;
+standalone evaluation must remain runnable before promotion.
+
+**Deferred device-tail storage:** replace host snapshots in
+`hipengine/runtime/vibevoice_encoder.py` only while preserving whole/chunk,
+60-second transition, recording-reset and post-join-noise behavior. Verify
+buffer ownership, failed-call cleanup and public transcription with the selected
+route before retiring host storage. No kernels, defaults or storage change in
+this triage; historical raw-block speed estimates are not renewed.

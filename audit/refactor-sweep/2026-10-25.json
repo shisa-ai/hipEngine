@@ -2250,18 +2250,19 @@
       "start_line": 2541,
       "end_line": 2570,
       "sha256": "287f9608bf4dc4237c5ea1f8adc187340e1ecf086af45aacf2b90214c8086848",
-      "status": "partial-raw-entry-removed",
-      "evidence": ["Removed uncalled raw attention Python wrapper/C launcher, preserving span entry and shared kernel. Retired stale per-call scratch debt because reusable arena already exists. CPU bundle, focused ABI checks and available span/encoder GPU tests pass; full-model tests skip without checkpoint. Remaining orchestration, Q5_K and convolution-tail work stays open. worklog/entries/20261026T180226.744006Z-cleanup-refactor-r0083-raw-attention-502e20.md."],
+      "status": "triaged-deferred-vibevoice-capability-and-storage",
+      "evidence": [
+        "Remaining orchestration/Q5/profile/tail storage moved to bottom;26 tests/docs/audit pass. worklog/entries/20261030T085130.200351Z-cleanup-cleanup-r0083-final-a3d2fd.md.","Removed uncalled raw attention Python wrapper/C launcher, preserving span entry and shared kernel. Retired stale per-call scratch debt because reusable arena already exists. CPU bundle, focused ABI checks and available span/encoder GPU tests pass; full-model tests skip without checkpoint. Remaining orchestration, Q5_K and convolution-tail work stays open. worklog/entries/20261026T180226.744006Z-cleanup-refactor-r0083-raw-attention-502e20.md."],
       "subitems": [
         {
           "line": 2543,
           "text": "- The Q4_K_M batched prefill in `kernels/hip_gfx1100/vibevoice/q4.py`",
-          "status": "pending"
+          "status": "deferred-orchestration-design"
         },
         {
           "line": 2550,
           "text": "- The batched prefill route wires only Q4_K and Q6_K; Q5_K has no WMMA",
-          "status": "pending"
+          "status": "deferred-q5-prefill-capability"
         },
         {
           "line": 2554,
@@ -2271,7 +2272,7 @@
         {
           "line": 2558,
           "text": "- `prefill_variant=hipblaslt` and `frontend_variant=wmma` expose the arithmetic",
-          "status": "pending"
+          "status": "deferred-profile-selection"
         },
         {
           "line": 2563,
@@ -2281,7 +2282,7 @@
         {
           "line": 2567,
           "text": "- Convolution tails currently use owned host snapshots at chunk boundaries.",
-          "status": "pending"
+          "status": "deferred-device-tail-storage"
         }
       ]
     },
