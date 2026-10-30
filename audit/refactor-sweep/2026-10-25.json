@@ -635,7 +635,7 @@
       "start_line": 691,
       "end_line": 730,
       "sha256": "9e604eb42b6a0b0b74b89ffeb3fa944a62d22e2cfdfbaed39dc22181f14e1902",
-      "status": "resolved",
+      "status": "triaged-recovery-precedence-fixed-family-decisions-deferred",
       "evidence": [
         "Current capacity guard and binder precedence verified against implementation. Documentation corrected; worklog:worklog/entries/20261025T211104.838592Z-lhl-cleanup-refactor-r0022-r0023-ledger-2ab9f2.md. Generic removal rule reconciled with explicit MoE repair disposition in worklog/entries/20261025T211431.150088Z-cleanup-refactor-r0023-disposition-4ea5e1.md; runtime remains unchanged."
       ],

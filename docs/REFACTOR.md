@@ -260,82 +260,6 @@ The following records the investigation before removal, not open selector work.
   a default-suite run of either would be a control for the same reason - so
   neither route has measured numerical qualification from this gate.
 
-## Withdrawn Routes That Stay Bound In The Production Plan
-
-Cleanup status (2026-10-25, R0023): membership and binding precedence are
-corrected below. No runtime cleanup remains in this section; individual routes
-keep their recorded repair or removal conditions. `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`
-in `hipengine/generation/qwen4_exp_profiles.py` holds 12 flags, and the sweep
-that zeroes them runs for the `gguf_ud_q4_k_xl` quant, whose production and fast
-plans share this binder. A binding plus a sweep entry means "the plan says on,
-the sweep says off".
-
-Three paths re-open a swept flag, or keep a flag out of the sweep entirely:
-
-- `PRODUCTION_Q8_QSA_RESTORED_FLAGS` is applied immediately after the sweep and
-  restores `Q8_0_SELECTED_WMMA_DOWN`, `QSA_H256_WAVE_PREFILL`,
-  `QSA_ORDERED_DECODE`. Prefill head grouping and ordered-v2 decode selection
-  are published separately as runner-local state by the resolved profile binder.
-- `_F16_ROUTE_SELECTORS` is applied after both passes, so the F16 composition
-  restores `GR_WIDE` on the same plan.
-- `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` is bound `"1" if production` and
-  is deliberately absent from the sweep, because the 2026-10-08 tiled16
-  admission passed the layer2 envelope on the UD lane. Its remaining cleanup
-  is process transport: publish this gate with the runner's resolved profile
-  state, migrate serial-owner diagnostics to scoped controls, and preserve the
-  columnwarp/tiled and strict serial branches. Clear it with profile/forwarding
-  tests and public generation that confirms both the default and diagnostic
-  parent routes actually run.
-
-The following route choices stay held off there, with their recorded withdrawal
-reason and reopen condition:
-
-| Selector | Withdrawn for | Reopen condition |
-| --- | --- | --- |
-| `PRODUCTION_MOE_PREFILL`, `Q4_IU8_PREFILL` | perf in the disabled-family sweep, then rejected on the task gate (15/18) | a mechanism that fixes the three divergent prompts; a faster tiling does not clear it |
-| `GR_IU8` | accuracy (mean KL 1.40e-3) | a correction whose prefill-boundary KL is below ~5e-9 |
-| `GR_IU8_DOWN` | accuracy (mean KL 1.31e-3) | a further ~2x prefill-KL reduction |
-| `Q8_MMQ_PREFILL` | failed canonical depth | operand localization showing which role carries it |
-| `runner.gdn_peer_prefill_layers` | perf, inside run-to-run spread | a complete-owner mechanism |
-| `Q4_DP4A64` | isolated long-context decode discrepancy | both decode gates named in "2026-08-29 Qwen4Exp late-layer production prefill" |
-| `QSA_FLASH_PREFILL` | part of the failed recovery composition | none recorded |
-
-`tests/test_unit_qwen4exp_arithmetic_recovery.py` pins the sweep membership and
-the post-sweep flag values and runner-owned peer scope, and
-`tests/test_unit_qwen4_exp_profiles.py::test_production_binder_publishes_the_f16_routes_and_strict_retracts_them`
-pins the F16 re-admission. These tests cover binder behavior, not the prose here.
-
-- **These bindings are records of intent, not debt.** Each held-off route was
-  withdrawn *pending a named reopen condition*, so keeping the binding records
-  the plan the recovery overrode and makes re-admission a sweep edit plus a gate
-  run. Removing the bindings would erase that record.
-- **The failure mode to guard, learned from `Q8_IU8_WMM` (`20260930T`):** when a
-  route is **rejected** rather than withdrawn-with-a-condition, the binding stops
-  being a record of intent and becomes a contradiction. That route was rejected
-  by role isolation (14 of 17 roles claim and all 14 fail the canonical envelope),
-  yet still read `"1" if production`, so narrowing the sweep would have silently
-  re-enabled arithmetic the project had already ruled out. The route and its flag
-  are removed; the evidence is
-  `benchmarks/results/2026-09-30-q8-iu8-role-isolation/` and worklog
-  `20260930T092825`.
-- **Removal condition:** remove a production binding when the recorded
-  disposition rejects the mechanism with no remaining repair condition, or
-  when its named reopen condition has been exhausted and the disposition calls
-  for removal. A failed candidate evaluation alone is not that decision. The
-  MoE packet below explicitly replaces its performance-based reopen condition
-  with a task-quality repair condition; its binding stays suppressed pending
-  that repair and the applicable production gate. Do not restore it merely by
-  narrowing the recovery sweep.
-- **No re-admission is claimed here.** A passing numerical envelope is not
-  admission: the `production_moe_restore` candidate, which binds
-  `PRODUCTION_MOE_PREFILL` together with `Q4_IU8_PREFILL`, passes every category
-  and still fails the task gate, so the recorded disposition corrects its reopen
-  condition rather than re-admitting it
-  (`benchmarks/results/2026-09-30-qwen4exp-moe-restore-rejection/`). The
-  2026-10-04 disabled-selector ranking likewise concluded that none of its arms
-  can be re-admitted on its evidence
-  (`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/`).
-
 ## MoE Decode warp256 GEMV Pair - REMOVED 2026-09-30
 
 > 2026-10-14: the two kernels this section retained are selected again for
@@ -535,6 +459,40 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0023 — Preserve recovery precedence and decide held-off family repairs
+
+The recovery sweep, Q8/QSA restoration and later F16 composition bindings have
+separate precedence. Runner-local peer/head-group/ordered-decode ownership must
+not be replaced with a blanket global selector. Keep arithmetic-recovery and
+F16 profile-forwarding tests when migrating those bindings.
+
+**Deferred transport:** publish `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`
+through resolved runner state, with scoped serial diagnostics, before retiring
+the environment handoff. Preserve columnwarp/tiled and strict serial branches;
+verify profile forwarding and public default/diagnostic route engagement.
+
+**Deferred family decisions:** retain recorded repair conditions independently:
+
+- `PRODUCTION_MOE_PREFILL`/`Q4_IU8_PREFILL`: fix the divergent task responses;
+  faster tiling or numerical-envelope passes alone do not clear the task gate.
+- `GR_IU8` and `GR_IU8_DOWN`: R0026/R0027 own their independent correction gates.
+- `Q8_MMQ_PREFILL`: localize the operand role responsible for canonical-depth failure.
+- `runner.gdn_peer_prefill_layers`: require a complete-owner mechanism, not noise-level timing.
+- `Q4_DP4A64`: pass both decode gates from the late-layer production-prefill entry.
+- `QSA_FLASH_PREFILL`: choose a concrete repair or retirement disposition; no
+  reopening condition was recorded for its failed recovery composition.
+
+Remove an intent binding only after final rejection without a repair path, or
+an exhausted reopen condition followed by a removal decision. Do not silently
+re-enable withdrawn arithmetic by narrowing the sweep. The removed Q8_IU8_WMM
+mechanism is not a precedent for deleting all failed evaluations. Preserve
+`benchmarks/results/2026-09-30-q8-iu8-role-isolation/`,
+`benchmarks/results/2026-09-30-qwen4exp-moe-restore-rejection/` and
+`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/` as historical
+evidence, not new promotion. Full precedence history remains at `b6a43add0`;
+no binding, arithmetic or model admission changes here.
+
 
 ### R0030 — Decide router-selection semantics before reopening warp arithmetic
 
