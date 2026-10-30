@@ -13802,8 +13802,8 @@
       "start_line": 12143,
       "end_line": 12163,
       "sha256": "fcc33dea34f73920ab4df467e081a358092a5cec7bd7484ab92b0a3d09987d94",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Scratch-local rollback and retry tests do not establish whole-session release; deferred constructor acquisition audit/repair with failure injection and same-process public chat recovery. worklog/entries/20261030T053735.552067Z-cleanup-cleanup-r0511-44c15c.md."],
       "subitems": []
     },
     {

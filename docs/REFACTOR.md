@@ -3544,27 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## A failed wide startup probe leaves the process unable to allocate the next stage (open 2026-09-21)
-
-On the 120 GiB box, a startup at `--max-active-requests 4` sent the scratch probe's
-resident-session ladder down four HIP out-of-memory attempts. The probe then retried at
-width 1 and passed, and the very next stage -- the 9-token chat smoke -- failed with
-`HipError: HIP error 2: out of memory` during prefill. The ladder documents that a
-failed attempt is rolled back by the session constructor, and the width-1 probe right
-after it did allocate a full-context session, so what held the memory afterwards is
-unestablished.
-
-`_startup_probe_width_reduction` in `hipengine/server/api.py` now prices the width
-before allocating it, so the attempt that failed here does not happen. A genuine
-failure still reaches the ladder, and the retry then runs on a machine that may be
-tighter than it looks.
-
-Remove this once a failed `_construct_shared_session` in
-`hipengine/generation/qwen35_gguf.py` is shown to roll back completely: force the
-ladder with a width the box cannot hold, then assert a full-context session plus the
-chat smoke still allocate. If the failed attempt does not roll back completely, fix
-the rollback instead of weakening the probe.
-
 ## Dormant Q5_T16 rows==1 dual block with poisoned variant inheritance (open 2026-09-25)
 
 `launch_gguf_linear_pair_silu`'s Q5 block (`hipengine/runtime/gguf_linear.py`, the
@@ -9831,3 +9810,29 @@ Preserve actual request context limits and capacity estimates. Replace the width
 reduction only after a wide startup probe and subsequent public concurrent
 requests succeed under constrained memory, and failure/cancellation frees all
 probe resources. Keep the current guard until that replacement is implemented.
+
+### R0511 — Audit whole-session rollback after startup allocation failure
+
+The recorded wide-startup failure was followed by a successful narrow probe and
+then a chat-prefill out-of-memory error. Its original memory owner is not
+established. Width preflight avoids that particular over-allocation but does not
+prove recovery from a genuine constructor failure.
+
+`_construct_shared_session` retries smaller contexts. The scratch allocator has
+local rollback, but `Qwen35GGUFResidentSession.__post_init__` also allocates token,
+hidden and other session buffers after scratch construction. There is no
+constructor-wide cleanup wrapper around that sequence; retry tests alone do not
+establish complete release. Normal `close()` is not proof that every partially
+constructed state can safely use it.
+
+**Deferred ownership repair:** inventory each constructor acquisition and its
+release owner, add failure injection at each allocation boundary, and implement
+transactional cleanup for resources not already covered. Preserve borrowed shared
+weights and pre-existing pool entries. Test repeated failure/retry, late failure,
+and cleanup errors without masking the original allocation error.
+
+Then force an oversized startup ladder on the affected host and verify that a
+full-context session and subsequent public chat request still allocate in the
+same process, with allocation/free accounting around each attempt. Keep this
+item open until that recovery check passes; do not weaken the probe or treat a
+successful narrow retry as equivalent evidence.
