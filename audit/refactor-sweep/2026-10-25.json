@@ -4913,7 +4913,8 @@
         {
           "line": 4166,
           "text": "| Qwen3.8 native-XL v2 loader admission | `OI-7` retained the artifact planner/oracle evidence but rejected deployment: native B1/B2/B3 diverged from target AR on `general_ja_explain`, while serial-exact was correct but slower than AR and full-suite native rates regressed 43\u201361%. | Keep `qwen38_native_xl_v2` research-only. Remove its artifact-specific NextN loader recognition/tests after the local replay window, unless a replacement artifact first passes full native batch-composition exactness and same-host AR/MTP throughput gates. The generic planner, verifier, and independent BF16 oracle are reusable and remain. |",
-          "status": "pending"
+          "status": "closed-obsolete-identity-admission",
+          "evidence": ["Loader already validates capabilities, not artifact identity. Preserve provenance constants and generic planner/test users. 140 passed, 13 skipped; docs/audit pass. worklog/entries/20261030T075125.507350Z-cleanup-cleanup-r0187-native-xl-2b89d0.md."]
         },
         {
           "line": 4168,
