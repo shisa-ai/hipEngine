@@ -3544,55 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## `HIPENGINE_GEMMA4_DECODE_GRAPH` whole-step graph replay is prize-bounded, not correctness-bounded (open 2026-10-10)
-
-The Gemma 4 generation loop replays decode steps from a whole-step HIP graph
-capture (`hipengine/runtime/gemma4_decode_graph.py`). Since 2026-10-10 the
-flash phase kernel re-derives its slice partitioning per block from a staged
-device live-extent slot (`[delta, live]`, staged per replay per geometry),
-so every route a decode step takes below 15328 keys — flash, the two-phase
-split, the class kernel — replays bit-identically to the launched path; the
-capture window is bounded only by the measured launch-bound prize
-(`_CAPTURE_MAX_KEYS` = 2176 keys: +15.4 percent decode at 1024 prompt
-tokens, +2.2 percent at 2048, flat-to-negative from 2560 where the step is
-device-bound). The env `HIPENGINE_GEMMA4_DECODE_GRAPH` (default on) is the
-rollback seam for the whole route, and the in-session `launched_fallbacks`
-counter makes the fallback visible per request.
-
-History: the 2026-10-09 restriction blamed the split's host-computed slice
-geometry and blocked capture from 1024 keys; the 2026-10-10 layer probe
-(worklog 20261010T010705) attributed the replay divergence to flash's
-live-key-count partitioning (the split and class routes always replayd
-bit-exact), and a route-crossover attempt to re-route the launched path to
-the split was refuted on natural tokens the same day (worklog
-20261010T024452). The device-resolved slot keeps the launched path
-byte-identical (a null slot reproduces the scalar partitioning exactly) and
-needs no execution-profile gate.
-
-The window is per backend: a backend package may declare
-`GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`, and `_capture_max_keys` reads it. The
-2176-key default and the gains above are Radeon 8060S measurements.
-`hip_gfx1100` declares `0`: on a W7900 (2026-10-12, graph on against off at the
-default window) decode was 0.989x at 256 prompt tokens, 1.000x at 512, 0.994x
-at 1024, 0.934x at 1536 and 0.927x at 2048 with equal generated ids, so its
-decode steps stay launched. Replay exactness on that device is still pinned by
-`tests/test_gpu_gemma4_decode_graph_capture.py`, which captures inside the
-default window whatever the backend declares.
-
-Removal condition: correctness no longer bounds the window -- the
-class-global kernel (resident row above the 64 KiB LDS budget, keys > 15328
-for head_dim 512) and the staged singleton deep variant were probed at
-16384 and 32768 prompt depths on 2026-10-10 and replay bit-identically,
-like every other route, so the guard is purely the measured engagement
-threshold. It goes when the capture cost falls below the device-bound
-crossover (today flat-to-negative from 2560 keys: the per-bucket capture
-cost plus the frozen superset walk outweighs the launch-gap savings on
-device-bound steps), or if the deep steps become launch-bound again. Then
-the bucket guard, the fallback counter, and the env all go, and the graph
-covers the full decode range. The intermediate capture design notes
-(retarget cost, capture-amortized buckets) live in the module docstring
-and the 2026-10-09 worklog entry.
-
 ## Deferred decisions from the refactor sweep
 
 ### R0067 — Dense prefix retention budget
@@ -9631,3 +9582,24 @@ candidate-specific wiring/tests after preserving the required comparisons.
 Iteration 59 in `docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md` and ledger history
 at `0bc3556f2` preserve the original numerical investigation. No new numerical
 verdict is established by this triage.
+
+### R0521 — Revisit backend-specific decode graph engagement separately from telemetry
+
+`gemma4_decode_graph.py` still uses `_CAPTURE_MAX_KEYS` and the backend override
+`GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`; gfx1100 declares zero. This is an
+engagement policy based on the historical capture/replay tradeoff, not a claim
+that longer-context replay is unimplemented. The graph rollback and
+`launched_fallbacks` reporting remain separate controls.
+
+**Deferred optimization decision:** reduce capture/replay overhead or remeasure
+the crossover on each affected physical host before changing its policy. Compare
+public decode with graph selection confirmed, including capture amortization,
+short and long requests, and contexts on both sides of the threshold. Preserve
+replay parity and request/resource lifetime checks.
+
+Broader engagement may retire a threshold; it does not automatically justify
+removing the rollback or fallback telemetry. Retire those separately only when
+no supported fallback or diagnostic use remains. Preserve backend independence
+rather than applying one host's result to another. Historical measurements and
+probe narrative remain in ledger history at `a8d686248` and the graph module's
+design notes; this triage adds no performance or replay-correctness result.

@@ -13929,8 +13929,8 @@
       "start_line": 12512,
       "end_line": 12559,
       "sha256": "2804f718c32e1b83765cb79c1a4abf74cb23c47be562276906be06aaf86f3f27",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Backend-specific capture engagement optimization deferred separately from rollback/telemetry retirement; current defaults preserved. 85 focused tests pass. worklog/entries/20261030T060931.741764Z-cleanup-cleanup-r0521-46228e.md."],
       "subitems": []
     }
   ]
