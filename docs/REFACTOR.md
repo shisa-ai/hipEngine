@@ -965,57 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
-
-Cleanup status (2026-10-26, R0054): removed. `gemma4_attention_prefill_tiled_kernel`,
-`launch_gemma4_attention_prefill_tiled`, and the two
-`hipengine_gemma4_attention_prefill_tiled_{bf16,f32}` exports are gone from
-`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip`, and
-`scripts/gemma4_attention_prefill_tiled_ab.py` is deleted. The cross-reference
-in `gemma4_attention_prefill_wmma.hip` now names the removed route rather than a
-symbol that no longer exists.
-
-The live tiled prefill route is a different kernel and was left untouched:
-`gemma4_attention_tiled.hip` / `gemma4_attention_tiled.py`
-(`hipengine_gemma4_attention_tiled_prefill_bf16`,
-`gemma4_attention_prefill_tiled` at `:175`), registered as `gemma4_tiled`
-(`gemma4_attention.py:1600`), selected by `_select_prefill_route`
-(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py:837`) and launched at
-`:1569` for head_dim 512. It stays pinned by
-`tests/test_gpu_gemma4_attention_tiled_parity.py` and
-`tests/test_unit_gemma4_attention_prefill_routing.py:112`.
-
-The removed kernel was written to make the shared-memory footprint independent
-of context -- the strict kernel materialises one logit per key, so its shared
-array is `(head_dim + keys + 256) * 4` bytes and occupancy falls from 16 blocks
-per CU at 512 keys to 3 at 4096 -- on the theory that this is what limits the
-strict kernel. It is not what limits it.
-
-Measured with the since-deleted `scripts/gemma4_attention_prefill_tiled_ab.py`,
-both kernels driven through ctypes on the same device buffers, 5 iters and 2
-warmups:
-
-| tokens | head_dim | strict | tiled | ratio |
-| ---: | ---: | ---: | ---: | ---: |
-| 512 | 256 | 150.5 ms | 150.65 ms | 1.00 |
-| 2048 | 256 | 46.72 ms | 67.21 ms | **1.44 (slower)** |
-| 2048 | 512 | 88.83 ms | 95.52 ms | **1.075 (slower)** |
-
-and the outputs are **bit-identical** at every one of those sizes -- 0
-mismatched elements out of 8,388,608 and 16,777,216, max abs diff 0, max rel
-diff 0. The two kernels are not two arithmetic contracts; they are one contract
-with two schedules, and the schedule that costs a 1.44x slowdown is the one
-whose only justification was the occupancy theory the measurement refutes.
-
-Verification: the CPU routing and route-probe tests pass
-(`tests/test_unit_gemma4_attention_prefill_routing.py`,
-`tests/test_unit_gemma4_public_route_probe.py`). The parent's device build is
-the compile check that the two exports are gone, and its GPU
-`tests/test_gpu_gemma4_attention_tiled_parity.py` plus one public
-`LLM.generate()` at head_dim 512 confirm the live route still selects
-`gemma4_tiled`. The strict kernel stays: it is both faster than the removed
-schedule and the one the decode-parity contract is written against.
-
 ## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
 
 Current status (2026-10-26): the historical heading is incorrect. The branch is
