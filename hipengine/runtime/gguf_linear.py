@@ -7111,19 +7111,47 @@ def _rowtile8_row_chunks(rows: int) -> list[tuple[int, int]]:
     return chunks
 
 
-def launch_gguf_linear_pair_silu(
+@dataclass(frozen=True)
+class _GGUFPairSiluOperand:
+    """One exact operand bound to a fused pair-SiLU launch plan."""
+
+    weight: GGUFDeviceWeight
+
+
+@dataclass(frozen=True)
+class _GGUFPairSiluPlan:
+    """Private, launch-local plan for one fused gate/up pair."""
+
+    backend: str
+    rows: int
+    in_features: int
+    out_features: int
+    operands: tuple[_GGUFPairSiluOperand, _GGUFPairSiluOperand]
+    operation: str | None
+    pair_key: KernelKey | None
+    operand_mode: str | None
+    library_key: str | None
+    q8_1_quantize: bool
+    q8_1_library_key: str | None
+    expanded_metadata: bool
+    metadata_nbytes: int
+    chunks: tuple[tuple[int, int], ...]
+    use_gemv_decode: bool | None
+    use_q4_t16_sidecar: bool
+    use_q4_t16_dual_interleaved: bool
+    registered_decode_variant: str | None
+    layer_id: int | None
+    fallback_reason: str | None
+
+
+def _resolve_gguf_linear_pair_silu_plan(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
-    x_ptr: int,
-    out_ptr: int,
+    *,
     rows: int,
     in_features: int,
     out_features: int,
-    *,
     backend: str | None = None,
-    stream: int = 0,
-    libraries: Mapping[str, ctypes.CDLL] | None = None,
-    runtime=None,
     use_gemv_decode: bool | None = None,
     use_q4_t16_sidecar: bool = True,
     use_q4_t16_dual_interleaved: bool = True,
@@ -7132,10 +7160,58 @@ def launch_gguf_linear_pair_silu(
     q8_1_workspace_ptr: int | None = None,
     pair_workspace_ptr: int | None = None,
     pair_workspace_nbytes: int = 0,
-) -> bool:
-    """Launch a registered gate/up pair plus SiLU, or return False."""
+) -> _GGUFPairSiluPlan:
+    """Resolve one private, launch-local pair-SiLU plan.
+
+    Resolution owns dispatch, shape and workspace-resource selection. Device
+    pointers, allocation handles and registry callables stay with execution.
+    The plan binds the exact resident weights. The public launcher resolves and
+    executes immediately; reuse after resource or policy changes is unsupported.
+    """
 
     resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
+    use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
+    operands = (
+        _GGUFPairSiluOperand(weight_a),
+        _GGUFPairSiluOperand(weight_b),
+    )
+
+    def _plan(
+        operation: str | None,
+        *,
+        pair_key: KernelKey | None = None,
+        operand_mode: str | None = None,
+        library_key: str | None = None,
+        q8_1_quantize: bool = False,
+        q8_1_library_key: str | None = None,
+        expanded_metadata: bool = False,
+        metadata_nbytes: int = 0,
+        chunks: tuple[tuple[int, int], ...] = (),
+        fallback_reason: str | None = None,
+    ) -> _GGUFPairSiluPlan:
+        return _GGUFPairSiluPlan(
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            operands=operands,
+            operation=operation,
+            pair_key=pair_key,
+            operand_mode=operand_mode,
+            library_key=library_key,
+            q8_1_quantize=q8_1_quantize,
+            q8_1_library_key=q8_1_library_key,
+            expanded_metadata=expanded_metadata,
+            metadata_nbytes=metadata_nbytes,
+            chunks=chunks,
+            use_gemv_decode=use_gemv_decode,
+            use_q4_t16_sidecar=use_q4_t16_sidecar,
+            use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
+            registered_decode_variant=registered_decode_variant,
+            layer_id=layer_id,
+            fallback_reason=fallback_reason,
+        )
+
     dispatch_a = resolve_gguf_linear_dispatch(
         weight_a,
         backend=resolved_backend,
@@ -7162,31 +7238,12 @@ def launch_gguf_linear_pair_silu(
             out_features=out_features,
         )
         if production_q4_pair_key is not None:
-            fn = resolve(
-                backend=production_q4_pair_key.backend,
-                layer=production_q4_pair_key.layer,
-                quant=production_q4_pair_key.quant,
-                variant=production_q4_pair_key.variant,
+            return _plan(
+                "registered_pair",
+                pair_key=production_q4_pair_key,
+                operand_mode="tiles_tiles",
+                library_key=production_q4_pair_key.quant,
             )
-            kwargs = {"stream": stream, "runtime": runtime}
-            library = (
-                None
-                if libraries is None
-                else libraries.get(production_q4_pair_key.quant)
-            )
-            if library is not None:
-                kwargs["library"] = library
-            fn(
-                x_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_ptr,
-                rows,
-                in_features,
-                out_features,
-                **kwargs,
-            )
-            return True
         # Apply the same prefill-owner rewrite the two singles would get
         # (the raw resolve above does not consult the dense-IQ session or
         # the prefill policy), then gate the fusion on both operands
@@ -7232,29 +7289,12 @@ def launch_gguf_linear_pair_silu(
             )
             _ensure_linear_kernel_registered(iq4_pair_key)
             if is_registered(iq4_pair_key):
-                fn = resolve(
-                    backend=iq4_pair_key.backend,
-                    layer=iq4_pair_key.layer,
-                    quant=iq4_pair_key.quant,
-                    variant=iq4_pair_key.variant,
+                return _plan(
+                    "registered_pair",
+                    pair_key=iq4_pair_key,
+                    operand_mode="raw_raw",
+                    library_key="gguf_iq4_xs",
                 )
-                kwargs = {"stream": stream, "runtime": runtime}
-                library = (
-                    None if libraries is None else libraries.get("gguf_iq4_xs")
-                )
-                if library is not None:
-                    kwargs["library"] = library
-                fn(
-                    x_ptr,
-                    weight_a.allocation("raw").tensor.ptr,
-                    weight_b.allocation("raw").tensor.ptr,
-                    out_ptr,
-                    rows,
-                    in_features,
-                    out_features,
-                    **kwargs,
-                )
-                return True
         q5_pair_variant = (
             _q5_t16_dense_pair_silu_variant(int(rows))
             if dense_pair_quant == "gguf_q5_k_t16_v1"
@@ -7269,29 +7309,12 @@ def launch_gguf_linear_pair_silu(
             )
             _ensure_linear_kernel_registered(q5_pair_key)
             if is_registered(q5_pair_key):
-                fn = resolve(
-                    backend=q5_pair_key.backend,
-                    layer=q5_pair_key.layer,
-                    quant=q5_pair_key.quant,
-                    variant=q5_pair_key.variant,
+                return _plan(
+                    "registered_pair",
+                    pair_key=q5_pair_key,
+                    operand_mode="tiles_tiles",
+                    library_key=dense_pair_quant,
                 )
-                kwargs = {"stream": stream, "runtime": runtime}
-                library = (
-                    None if libraries is None else libraries.get(dense_pair_quant)
-                )
-                if library is not None:
-                    kwargs["library"] = library
-                fn(
-                    x_ptr,
-                    weight_a.allocation("tiles").tensor.ptr,
-                    weight_b.allocation("tiles").tensor.ptr,
-                    out_ptr,
-                    rows,
-                    in_features,
-                    out_features,
-                    **kwargs,
-                )
-                return True
         production_q4_chunk_groups = (
             _rowtile8_row_chunks(rows)
             if rows > _ROWTILE_MAX_ROWS
@@ -7311,42 +7334,13 @@ def launch_gguf_linear_pair_silu(
             else None
         )
         if production_q4_chunk_groups is not None:
-            token = _target_verifier_rowtile_chunk_child_enabled.set(True)
-            try:
-                for chunk_rows, row_base in production_q4_chunk_groups:
-                    launched = launch_gguf_linear_pair_silu(
-                        weight_a,
-                        weight_b,
-                        int(x_ptr) + row_base * in_features * DType.BF16.itemsize,
-                        int(out_ptr)
-                        + row_base * out_features * DType.BF16.itemsize,
-                        chunk_rows,
-                        in_features,
-                        out_features,
-                        backend=resolved_backend,
-                        stream=stream,
-                        libraries=libraries,
-                        runtime=runtime,
-                        use_gemv_decode=use_gemv_decode,
-                        use_q4_t16_sidecar=use_q4_t16_sidecar,
-                        use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
-                        registered_decode_variant=registered_decode_variant,
-                        layer_id=layer_id,
-                        q8_1_workspace_ptr=q8_1_workspace_ptr,
-                        pair_workspace_ptr=pair_workspace_ptr,
-                        pair_workspace_nbytes=pair_workspace_nbytes,
-                    )
-                    if not launched:
-                        raise RuntimeError(
-                            "admitted production Q4 verifier chunk lost its "
-                            "rowtile owner"
-                        )
-            finally:
-                _target_verifier_rowtile_chunk_child_enabled.reset(token)
-            return True
+            return _plan(
+                "production_q4_chunk_groups",
+                chunks=tuple(production_q4_chunk_groups),
+            )
         qmicro_q8x2_rowbatch = (
             _native_batch_decode_session_enabled
-            and _resolve_use_gemv_decode(use_gemv_decode)
+            and use_gemv
             and dense_pair_quant == "gguf_q4_k_qmicro_t16_v1"
             and registered_decode_variant
             == _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_ROWTILE8_VARIANT
@@ -7360,49 +7354,18 @@ def launch_gguf_linear_pair_silu(
             )
             _ensure_linear_kernel_registered(fused_key)
             if not is_registered(fused_key):
-                return False
+                return _plan(None, fallback_reason="qmicro_q8x2_unregistered")
             if q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0:
-                return False
-            fn = resolve(
-                backend=fused_key.backend,
-                layer=fused_key.layer,
-                quant=fused_key.quant,
-                variant=fused_key.variant,
+                return _plan(None, fallback_reason="q8_1_workspace_missing")
+            return _plan(
+                "qmicro_q8x2_rowbatch",
+                pair_key=fused_key,
+                operand_mode="tiles_tiles",
+                library_key=fused_key.quant,
+                q8_1_quantize=True,
+                q8_1_library_key="gguf_q4_k",
+                chunks=tuple(_rowtile8_row_chunks(rows)),
             )
-            kwargs = {"stream": stream, "runtime": runtime}
-            library = None if libraries is None else libraries.get(fused_key.quant)
-            if library is not None:
-                kwargs["library"] = library
-            tiles_a_ptr = weight_a.allocation("tiles").tensor.ptr
-            tiles_b_ptr = weight_b.allocation("tiles").tensor.ptr
-            q4_library = None if libraries is None else libraries.get("gguf_q4_k")
-            # The rowtile8 owner instantiates ROW_TILE 2..8; any c>8 chunks
-            # into <=8-row groups (all groups >= 2) so every decode concurrency
-            # shares one weight traversal per group. Groups are row-independent
-            # (per-row Q8_1x2 quantization and per-row SiLU), so chunking is
-            # exact: each row keeps the same dp4a/FMA/BF16 association as c1.
-            for chunk_rows, row_base in _rowtile8_row_chunks(rows):
-                x_chunk = int(x_ptr) + row_base * in_features * 2
-                gguf_q4_k_quantize_bf16_q8_1x2(
-                    x_chunk,
-                    int(q8_1_workspace_ptr),
-                    chunk_rows,
-                    in_features,
-                    stream=stream,
-                    library=q4_library,
-                    runtime=runtime,
-                )
-                fn(
-                    int(q8_1_workspace_ptr),
-                    tiles_a_ptr,
-                    tiles_b_ptr,
-                    int(out_ptr) + row_base * out_features * 2,
-                    chunk_rows,
-                    in_features,
-                    out_features,
-                    **kwargs,
-                )
-            return True
         pack8_wmma_key = _pack8_dual_wmma_silu_dispatch(
             dispatch_a,
             dispatch_b,
@@ -7412,33 +7375,12 @@ def launch_gguf_linear_pair_silu(
             use_wmma=_resolve_use_wmma_prefill(None),
         )
         if pack8_wmma_key is not None:
-            fn = resolve(
-                backend=pack8_wmma_key.backend,
-                layer=pack8_wmma_key.layer,
-                quant=pack8_wmma_key.quant,
-                variant=pack8_wmma_key.variant,
+            return _plan(
+                "registered_pair",
+                pair_key=pack8_wmma_key,
+                operand_mode="pack8_pack8",
+                library_key=pack8_wmma_key.quant,
             )
-            kwargs = {"stream": stream, "runtime": runtime}
-            library = (
-                None if libraries is None else libraries.get(pack8_wmma_key.quant)
-            )
-            if library is not None:
-                kwargs["library"] = library
-            fn(
-                x_ptr,
-                weight_a.allocation("qweight").tensor.ptr,
-                weight_a.allocation("scales").tensor.ptr,
-                weight_a.allocation("mins").tensor.ptr,
-                weight_b.allocation("qweight").tensor.ptr,
-                weight_b.allocation("scales").tensor.ptr,
-                weight_b.allocation("mins").tensor.ptr,
-                out_ptr,
-                rows,
-                in_features,
-                out_features,
-                **kwargs,
-            )
-            return True
         qmicro_metadata_nbytes = (
             (out_features // 16) * (in_features // 256) * 256
         )
@@ -7460,45 +7402,18 @@ def launch_gguf_linear_pair_silu(
             expanded_metadata=use_expanded_qmicro_metadata,
         )
         if t16_wmma_key is not None:
-            fn = resolve(
-                backend=t16_wmma_key.backend,
-                layer=t16_wmma_key.layer,
-                quant=t16_wmma_key.quant,
-                variant=t16_wmma_key.variant,
+            return _plan(
+                (
+                    "t16_wmma_expanded"
+                    if use_expanded_qmicro_metadata
+                    else "registered_pair"
+                ),
+                pair_key=t16_wmma_key,
+                operand_mode="tiles_tiles",
+                library_key=t16_wmma_key.quant,
+                expanded_metadata=use_expanded_qmicro_metadata,
+                metadata_nbytes=qmicro_metadata_nbytes,
             )
-            kwargs = {"stream": stream, "runtime": runtime}
-            library = (
-                None if libraries is None else libraries.get(t16_wmma_key.quant)
-            )
-            if library is not None:
-                kwargs["library"] = library
-            common = (
-                x_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-            )
-            if use_expanded_qmicro_metadata:
-                assert pair_workspace_ptr is not None
-                fn(
-                    *common,
-                    int(pair_workspace_ptr),
-                    int(pair_workspace_ptr) + qmicro_metadata_nbytes,
-                    out_ptr,
-                    rows,
-                    in_features,
-                    out_features,
-                    **kwargs,
-                )
-            else:
-                fn(
-                    *common,
-                    out_ptr,
-                    rows,
-                    in_features,
-                    out_features,
-                    **kwargs,
-                )
-            return True
         t16_rowtile_key = _q4_t16_dual_rowtile_silu_dispatch(
             dispatch_a,
             dispatch_b,
@@ -7534,31 +7449,16 @@ def launch_gguf_linear_pair_silu(
             and decode_tiles_a is not None
             and decode_tiles_b is not None
         ):
-            fn = resolve(
-                backend=t16_rowtile_key.backend,
-                layer=t16_rowtile_key.layer,
-                quant=t16_rowtile_key.quant,
-                variant=t16_rowtile_key.variant,
+            return _plan(
+                "registered_pair",
+                pair_key=t16_rowtile_key,
+                operand_mode=(
+                    "tiles_tiles"
+                    if allocation_name == "tiles"
+                    else "decode_tiles_pair"
+                ),
+                library_key=t16_rowtile_key.quant,
             )
-            kwargs = {"stream": stream, "runtime": runtime}
-            library = (
-                None
-                if libraries is None
-                else libraries.get(t16_rowtile_key.quant)
-            )
-            if library is not None:
-                kwargs["library"] = library
-            fn(
-                x_ptr,
-                decode_tiles_a.tensor.ptr,
-                decode_tiles_b.tensor.ptr,
-                out_ptr,
-                rows,
-                in_features,
-                out_features,
-                **kwargs,
-            )
-            return True
         fused_rowtile_key = _pack8_dual_rowtile_silu_dispatch(
             dispatch_a,
             dispatch_b,
@@ -7569,34 +7469,16 @@ def launch_gguf_linear_pair_silu(
             native_batch=_native_batch_decode_session_enabled,
         )
         if fused_rowtile_key is None:
-            return False
-        fn = resolve(
-            backend=fused_rowtile_key.backend,
-            layer=fused_rowtile_key.layer,
-            quant=fused_rowtile_key.quant,
-            variant=fused_rowtile_key.variant,
+            return _plan(None, fallback_reason="unsupported_prefill_pair")
+        return _plan(
+            "registered_pair",
+            pair_key=fused_rowtile_key,
+            operand_mode="pack8_pack8",
+            library_key=fused_rowtile_key.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = None if libraries is None else libraries.get(fused_rowtile_key.quant)
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            weight_a.allocation("qweight").tensor.ptr,
-            weight_a.allocation("scales").tensor.ptr,
-            weight_a.allocation("mins").tensor.ptr,
-            weight_b.allocation("qweight").tensor.ptr,
-            weight_b.allocation("scales").tensor.ptr,
-            weight_b.allocation("mins").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
-    if not _resolve_use_gemv_decode(use_gemv_decode):
-        return False
+
+    if not use_gemv:
+        return _plan(None, fallback_reason="gemv_decode_disabled")
     dense_pair_quant = (
         dispatch_a.key.quant
         if dispatch_a.key.quant == dispatch_b.key.quant
@@ -7642,48 +7524,21 @@ def launch_gguf_linear_pair_silu(
         and dispatch_b.key == q4_t16_decode
         and is_registered(q4_t16_pair_silu)
     ):
-        fn = resolve(
-            backend=q4_t16_pair_silu.backend,
-            layer=q4_t16_pair_silu.layer,
-            quant=q4_t16_pair_silu.quant,
-            variant=q4_t16_pair_silu.variant,
+        needs_q8_1 = (
+            q4_t16_pair_silu.variant in _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANTS
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None
-            if libraries is None
-            else libraries.get(q4_t16_pair_silu.quant)
+        if needs_q8_1 and (
+            q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0
+        ):
+            return _plan(None, fallback_reason="q8_1_workspace_missing")
+        return _plan(
+            "q4_t16_q8_1x2" if needs_q8_1 else "q4_t16_pair",
+            pair_key=q4_t16_pair_silu,
+            operand_mode="tiles_tiles",
+            library_key=q4_t16_pair_silu.quant,
+            q8_1_quantize=needs_q8_1,
+            q8_1_library_key="gguf_q4_k" if needs_q8_1 else None,
         )
-        if library is not None:
-            kwargs["library"] = library
-        launch_x_ptr = int(x_ptr)
-        if q4_t16_pair_silu.variant in _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANTS:
-            if q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0:
-                return False
-            q4_library = (
-                None if libraries is None else libraries.get("gguf_q4_k")
-            )
-            gguf_q4_k_quantize_bf16_q8_1x2(
-                x_ptr,
-                int(q8_1_workspace_ptr),
-                rows,
-                in_features,
-                stream=stream,
-                library=q4_library,
-                runtime=runtime,
-            )
-            launch_x_ptr = int(q8_1_workspace_ptr)
-        fn(
-            launch_x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # IQ4_XS local32 gate/up decode dual (2026-09-11): fires only when both
     # sides dispatch to the local32 decode owner at rows == 1 (the same
     # execution-owner gate as the single route). The fused owner is
@@ -7727,31 +7582,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 8 == 0
         and is_registered(iq4_xs_local32_pair)
     ):
-        fn = resolve(
-            backend=iq4_xs_local32_pair.backend,
-            layer=iq4_xs_local32_pair.layer,
-            quant=iq4_xs_local32_pair.quant,
-            variant=iq4_xs_local32_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=iq4_xs_local32_pair,
+            operand_mode="raw_raw",
+            library_key="gguf_iq4_xs",
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None
-            if libraries is None
-            else libraries.get(iq4_xs_local32_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     q4_decode = KernelKey(
         resolved_backend,
         "linear",
@@ -7790,32 +7626,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 8 == 0
         and is_registered(iq4_q4_pair)
     ):
-        fn = resolve(
-            backend=iq4_q4_pair.backend,
-            layer=iq4_q4_pair.layer,
-            quant=iq4_q4_pair.quant,
-            variant=iq4_q4_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=iq4_q4_pair,
+            operand_mode="raw_tiles",
+            library_key=iq4_q4_pair.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None if libraries is None else libraries.get(iq4_q4_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            # Side A (IQ4_XS local32) reads the raw allocation - the local32
-            # column bytes live there, exactly as the IQ4 same-quant dual
-            # passes them; side B (Q4_K T16) reads its repacked tiles.
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # E6b-2 mirror: (Q4_K gate, IQ4_XS up) mixed pair + SiLU (2026-09-25):
     # the ordered (12, 23) family - 6 gate/up layers. Side A takes the
     # Q4_K dense decode owner (tiles), side B the session-qualified
@@ -7838,30 +7654,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 16 == 0
         and is_registered(q4_iq4_pair)
     ):
-        fn = resolve(
-            backend=q4_iq4_pair.backend,
-            layer=q4_iq4_pair.layer,
-            quant=q4_iq4_pair.quant,
-            variant=q4_iq4_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=q4_iq4_pair,
+            operand_mode="tiles_raw",
+            library_key=q4_iq4_pair.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None if libraries is None else libraries.get(q4_iq4_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            # Gate first: Q4_K tiles; up second: IQ4_XS raw (local32).
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # E6b-3: (IQ4_XS gate, Q5_K up) mixed pair + SiLU (2026-09-25): the
     # ordered (23, 4) family - 3 gate/up layers, the largest remaining
     # mixed combo after 2a/2b. Side A is the session-qualified local32
@@ -7903,30 +7701,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 16 == 0
         and is_registered(iq4_q5_pair)
     ):
-        fn = resolve(
-            backend=iq4_q5_pair.backend,
-            layer=iq4_q5_pair.layer,
-            quant=iq4_q5_pair.quant,
-            variant=iq4_q5_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=iq4_q5_pair,
+            operand_mode="raw_tiles",
+            library_key=iq4_q5_pair.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None if libraries is None else libraries.get(iq4_q5_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            # Gate first: IQ4_XS raw (local32); up second: Q5_K T16 tiles.
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # E6b-4: (Q4_K gate, Q5_K up) mixed pair + SiLU (2026-09-25): the
     # ordered (12, 4) family - 3 gate/up layers, tied for largest
     # remaining (census-share tie-break over Q3_K->IQ4_XS). Neither
@@ -7952,30 +7732,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 16 == 0
         and is_registered(q4_q5_pair)
     ):
-        fn = resolve(
-            backend=q4_q5_pair.backend,
-            layer=q4_q5_pair.layer,
-            quant=q4_q5_pair.quant,
-            variant=q4_q5_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=q4_q5_pair,
+            operand_mode="tiles_tiles",
+            library_key=q4_q5_pair.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None if libraries is None else libraries.get(q4_q5_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            # Gate first: Q4_K T16 tiles; up second: Q5_K T16 tiles.
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # E6b-6: (Q5_K gate, Q4_K up) mixed pair + SiLU (2026-09-25): the
     # ordered (4, 12) family - 2 gate/up layers (blocks 24, 26), the
     # largest remaining mixed combo after 2a-2d (fresh census). Exact
@@ -8009,31 +7771,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 16 == 0
         and is_registered(q5_q4_pair)
     ):
-        fn = resolve(
-            backend=q5_q4_pair.backend,
-            layer=q5_q4_pair.layer,
-            quant=q5_q4_pair.quant,
-            variant=q5_q4_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=q5_q4_pair,
+            operand_mode="tiles_tiles",
+            library_key=q5_q4_pair.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None if libraries is None else libraries.get(q5_q4_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            # Gate first: Q5_K T16 tiles; up second: Q4_K T16 tiles.
-            # The wrapper reorders to C geometry order (Q4 chain side A).
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # E6 closeout (2026-09-25): the three remaining one-layer mixed
     # families from the fresh per-block decode recount - (IQ3_S gate,
     # IQ4_XS up) at layer 11, (IQ4_NL gate, Q5_K up) at layer 50, and
@@ -8081,31 +7824,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 16 == 0
         and is_registered(iq4nl_q5_pair)
     ):
-        fn = resolve(
-            backend=iq4nl_q5_pair.backend,
-            layer=iq4nl_q5_pair.layer,
-            quant=iq4nl_q5_pair.quant,
-            variant=iq4nl_q5_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=iq4nl_q5_pair,
+            operand_mode="raw_tiles",
+            library_key=iq4nl_q5_pair.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None if libraries is None else libraries.get(iq4nl_q5_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            # Gate first (IQ4_NL raw) already matches C geometry order;
-            # up second: Q5_K T16 tiles (the E4a tile8 c1 owner).
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # E6 same-quant closeout (2026-09-25): (IQ4_NL gate, IQ4_NL up) -
     # the only remaining same-quant combo without a fused owner (fresh
     # production probe + census adjudication: Q4_K/Q4_K's 5 layers
@@ -8136,31 +7860,12 @@ def launch_gguf_linear_pair_silu(
         and out_features % 16 == 0
         and is_registered(iq4nl_nl_pair)
     ):
-        fn = resolve(
-            backend=iq4nl_nl_pair.backend,
-            layer=iq4nl_nl_pair.layer,
-            quant=iq4nl_nl_pair.quant,
-            variant=iq4nl_nl_pair.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=iq4nl_nl_pair,
+            operand_mode="raw_raw",
+            library_key=iq4nl_nl_pair.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None if libraries is None else libraries.get(iq4nl_nl_pair.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            # Gate first (IQ4_NL raw) already matches C geometry order;
-            # up second: the same IQ4_NL raw layout.
-            weight_a.allocation("raw").tensor.ptr,
-            weight_b.allocation("raw").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     # Q5 T16 gate/up decode dual: requires the direct-GEMV singles at rows == 1.
     # Tile8 singles do not enter this route. The inherited policy variant must
     # also be registered under Q5; a Q4 policy variant does not satisfy that key.
@@ -8187,31 +7892,12 @@ def launch_gguf_linear_pair_silu(
         and dispatch_b.key == q5_t16_decode
         and is_registered(q5_t16_pair_silu)
     ):
-        fn = resolve(
-            backend=q5_t16_pair_silu.backend,
-            layer=q5_t16_pair_silu.layer,
-            quant=q5_t16_pair_silu.quant,
-            variant=q5_t16_pair_silu.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=q5_t16_pair_silu,
+            operand_mode="tiles_tiles",
+            library_key=q5_t16_pair_silu.quant,
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None
-            if libraries is None
-            else libraries.get(q5_t16_pair_silu.quant)
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     fused_key = KernelKey(
         resolved_backend,
         "linear_pair_silu",
@@ -8244,30 +7930,12 @@ def launch_gguf_linear_pair_silu(
         and decode_tiles_dual is not None
         and is_registered(t16_dual_interleaved_key)
     ):
-        fn = resolve(
-            backend=t16_dual_interleaved_key.backend,
-            layer=t16_dual_interleaved_key.layer,
-            quant=t16_dual_interleaved_key.quant,
-            variant=t16_dual_interleaved_key.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=t16_dual_interleaved_key,
+            operand_mode="decode_tiles_dual",
+            library_key="gguf_q4_k_t16_v1",
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
-            None
-            if libraries is None
-            else libraries.get("gguf_q4_k_t16_v1")
-        )
-        if library is not None:
-            kwargs["library"] = library
-        fn(
-            x_ptr,
-            decode_tiles_dual.tensor.ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            **kwargs,
-        )
-        return True
     decode_tiles_a = None
     decode_tiles_b = None
     try:
@@ -8283,24 +7951,191 @@ def launch_gguf_linear_pair_silu(
         and decode_tiles_b is not None
         and is_registered(t16_sidecar_key)
     ):
-        fn = resolve(
-            backend=t16_sidecar_key.backend,
-            layer=t16_sidecar_key.layer,
-            quant=t16_sidecar_key.quant,
-            variant=t16_sidecar_key.variant,
+        return _plan(
+            "registered_pair",
+            pair_key=t16_sidecar_key,
+            operand_mode="decode_tiles_pair",
+            library_key="gguf_q4_k_t16_v1",
         )
-        kwargs = {"stream": stream, "runtime": runtime}
-        library = (
+    if (
+        dispatch_a.key != q4_decode
+        or dispatch_b.key != q4_decode
+        or not is_registered(fused_key)
+    ):
+        return _plan(None, fallback_reason="unsupported_decode_pair")
+    return _plan(
+        "registered_pair",
+        pair_key=fused_key,
+        operand_mode="pack8_pack8",
+        library_key=fused_key.quant,
+    )
+
+
+def _pair_silu_operand_pointers(
+    mode: str,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+) -> tuple[int, ...]:
+    """Read one plan's late device operands from its exact weight owners."""
+
+    if mode == "tiles_tiles":
+        return (
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+        )
+    if mode == "raw_raw":
+        return (
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+        )
+    if mode == "raw_tiles":
+        return (
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+        )
+    if mode == "tiles_raw":
+        return (
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+        )
+    if mode == "decode_tiles_pair":
+        return (
+            weight_a.allocation("decode_tiles").tensor.ptr,
+            weight_b.allocation("decode_tiles").tensor.ptr,
+        )
+    if mode == "decode_tiles_dual":
+        return (weight_a.allocation("decode_tiles_dual").tensor.ptr,)
+    if mode == "pack8_pack8":
+        return (
+            weight_a.allocation("qweight").tensor.ptr,
+            weight_a.allocation("scales").tensor.ptr,
+            weight_a.allocation("mins").tensor.ptr,
+            weight_b.allocation("qweight").tensor.ptr,
+            weight_b.allocation("scales").tensor.ptr,
+            weight_b.allocation("mins").tensor.ptr,
+        )
+    raise ValueError(f"unknown GGUF pair-SiLU operand mode {mode!r}")
+
+
+def _execute_gguf_linear_pair_silu_plan(
+    plan: _GGUFPairSiluPlan,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    *,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    q8_1_workspace_ptr: int | None = None,
+    pair_workspace_ptr: int | None = None,
+    pair_workspace_nbytes: int = 0,
+) -> bool:
+    """Execute one private pair-SiLU plan, resolving pointers and callables now."""
+
+    operation = plan.operation
+    if operation is None:
+        return False
+    for index, (weight, operand) in enumerate(
+        zip((weight_a, weight_b), plan.operands)
+    ):
+        if operand.weight is not weight:
+            raise ValueError(f"GGUF pair-SiLU operand {index} owner changed")
+
+    rows = plan.rows
+    in_features = plan.in_features
+    out_features = plan.out_features
+
+    if operation == "production_q4_chunk_groups":
+        token = _target_verifier_rowtile_chunk_child_enabled.set(True)
+        try:
+            for chunk_rows, row_base in plan.chunks:
+                launched = launch_gguf_linear_pair_silu(
+                    weight_a,
+                    weight_b,
+                    int(x_ptr) + row_base * in_features * DType.BF16.itemsize,
+                    int(out_ptr)
+                    + row_base * out_features * DType.BF16.itemsize,
+                    chunk_rows,
+                    in_features,
+                    out_features,
+                    backend=plan.backend,
+                    stream=stream,
+                    libraries=libraries,
+                    runtime=runtime,
+                    use_gemv_decode=plan.use_gemv_decode,
+                    use_q4_t16_sidecar=plan.use_q4_t16_sidecar,
+                    use_q4_t16_dual_interleaved=plan.use_q4_t16_dual_interleaved,
+                    registered_decode_variant=plan.registered_decode_variant,
+                    layer_id=plan.layer_id,
+                    q8_1_workspace_ptr=q8_1_workspace_ptr,
+                    pair_workspace_ptr=pair_workspace_ptr,
+                    pair_workspace_nbytes=pair_workspace_nbytes,
+                )
+                if not launched:
+                    raise RuntimeError(
+                        "admitted production Q4 verifier chunk lost its "
+                        "rowtile owner"
+                    )
+        finally:
+            _target_verifier_rowtile_chunk_child_enabled.reset(token)
+        return True
+
+    pair_key = plan.pair_key
+    if pair_key is None:
+        raise ValueError(f"GGUF pair-SiLU plan {operation!r} has no kernel key")
+    fn = resolve(
+        backend=pair_key.backend,
+        layer=pair_key.layer,
+        quant=pair_key.quant,
+        variant=pair_key.variant,
+    )
+    kwargs = {"stream": stream, "runtime": runtime}
+    library = (
+        None if libraries is None or plan.library_key is None
+        else libraries.get(plan.library_key)
+    )
+    if library is not None:
+        kwargs["library"] = library
+
+    if operation == "qmicro_q8x2_rowbatch":
+        if q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0:
+            return False
+        tiles_a_ptr = weight_a.allocation("tiles").tensor.ptr
+        tiles_b_ptr = weight_b.allocation("tiles").tensor.ptr
+        q4_library = (
             None
-            if libraries is None
-            else libraries.get("gguf_q4_k_t16_v1")
+            if libraries is None or plan.q8_1_library_key is None
+            else libraries.get(plan.q8_1_library_key)
         )
-        if library is not None:
-            kwargs["library"] = library
+        for chunk_rows, row_base in plan.chunks:
+            x_chunk = int(x_ptr) + row_base * in_features * 2
+            gguf_q4_k_quantize_bf16_q8_1x2(
+                x_chunk,
+                int(q8_1_workspace_ptr),
+                chunk_rows,
+                in_features,
+                stream=stream,
+                library=q4_library,
+                runtime=runtime,
+            )
+            fn(
+                int(q8_1_workspace_ptr),
+                tiles_a_ptr,
+                tiles_b_ptr,
+                int(out_ptr) + row_base * out_features * 2,
+                chunk_rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+        return True
+
+    if operation == "q4_t16_pair":
         fn(
-            x_ptr,
-            decode_tiles_a.tensor.ptr,
-            decode_tiles_b.tensor.ptr,
+            int(x_ptr),
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
             out_ptr,
             rows,
             in_features,
@@ -8308,30 +8143,75 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
-    if (
-        dispatch_a.key != q4_decode
-        or dispatch_b.key != q4_decode
-        or not is_registered(fused_key)
-    ):
-        return False
-    fn = resolve(
-        backend=fused_key.backend,
-        layer=fused_key.layer,
-        quant=fused_key.quant,
-        variant=fused_key.variant,
+
+    if operation == "q4_t16_q8_1x2":
+        if q8_1_workspace_ptr is None or int(q8_1_workspace_ptr) <= 0:
+            return False
+        q4_library = (
+            None
+            if libraries is None or plan.q8_1_library_key is None
+            else libraries.get(plan.q8_1_library_key)
+        )
+        gguf_q4_k_quantize_bf16_q8_1x2(
+            x_ptr,
+            int(q8_1_workspace_ptr),
+            rows,
+            in_features,
+            stream=stream,
+            library=q4_library,
+            runtime=runtime,
+        )
+        fn(
+            int(q8_1_workspace_ptr),
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+
+    if operation == "t16_wmma_expanded":
+        common = (
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+        )
+        if plan.expanded_metadata:
+            assert pair_workspace_ptr is not None
+            fn(
+                *common,
+                int(pair_workspace_ptr),
+                int(pair_workspace_ptr) + plan.metadata_nbytes,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+        else:
+            fn(
+                *common,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+        return True
+
+    if operation != "registered_pair" or plan.operand_mode is None:
+        raise ValueError(f"unknown GGUF pair-SiLU plan operation {operation!r}")
+    operands = _pair_silu_operand_pointers(
+        plan.operand_mode,
+        weight_a,
+        weight_b,
     )
-    kwargs = {"stream": stream, "runtime": runtime}
-    library = None if libraries is None else libraries.get(fused_key.quant)
-    if library is not None:
-        kwargs["library"] = library
     fn(
         x_ptr,
-        weight_a.allocation("qweight").tensor.ptr,
-        weight_a.allocation("scales").tensor.ptr,
-        weight_a.allocation("mins").tensor.ptr,
-        weight_b.allocation("qweight").tensor.ptr,
-        weight_b.allocation("scales").tensor.ptr,
-        weight_b.allocation("mins").tensor.ptr,
+        *operands,
         out_ptr,
         rows,
         in_features,
@@ -8339,6 +8219,61 @@ def launch_gguf_linear_pair_silu(
         **kwargs,
     )
     return True
+
+
+def launch_gguf_linear_pair_silu(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    use_gemv_decode: bool | None = None,
+    use_q4_t16_sidecar: bool = True,
+    use_q4_t16_dual_interleaved: bool = True,
+    registered_decode_variant: str | None = None,
+    layer_id: int | None = None,
+    q8_1_workspace_ptr: int | None = None,
+    pair_workspace_ptr: int | None = None,
+    pair_workspace_nbytes: int = 0,
+) -> bool:
+    """Launch a registered gate/up pair plus SiLU, or return False."""
+
+    plan = _resolve_gguf_linear_pair_silu_plan(
+        weight_a,
+        weight_b,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+        backend=backend,
+        use_gemv_decode=use_gemv_decode,
+        use_q4_t16_sidecar=use_q4_t16_sidecar,
+        use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
+        registered_decode_variant=registered_decode_variant,
+        layer_id=layer_id,
+        q8_1_workspace_ptr=q8_1_workspace_ptr,
+        pair_workspace_ptr=pair_workspace_ptr,
+        pair_workspace_nbytes=pair_workspace_nbytes,
+    )
+    return _execute_gguf_linear_pair_silu_plan(
+        plan,
+        weight_a,
+        weight_b,
+        x_ptr,
+        out_ptr,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+        q8_1_workspace_ptr=q8_1_workspace_ptr,
+        pair_workspace_ptr=pair_workspace_ptr,
+        pair_workspace_nbytes=pair_workspace_nbytes,
+    )
 
 
 def _resolve_gguf_linear_pair_kind(
