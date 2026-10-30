@@ -3532,28 +3532,28 @@
       "start_line": 3227,
       "end_line": 3258,
       "sha256": "5c854e7ae24e86e7a733b63ae86aa524d32c5a83c7b5856be0eef249bdc6c5f6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-launch-design",
+      "evidence": ["Executed planner disproves safe chunk-only override: capacity5000/live4096 gives79 wrapper splits for64 proposed partial slots. Corrected design at ledger bottom; historical evidence preserved. Docs/audit pass. worklog/entries/20261030T063922.264585Z-cleanup-cleanup-r0131-cfafe2.md."],
       "subitems": [
         {
           "line": 3229,
           "text": "- `plan_surya_decode_splits` derives the decode split chunk from the runner's",
-          "status": "pending"
+          "status": "deferred-launch-design"
         },
         {
           "line": 3240,
           "text": "- Fix: derive the chunk from the live count instead of `max_seq`.",
-          "status": "pending"
+          "status": "deferred-launch-design"
         },
         {
           "line": 3251,
           "text": "- This changes decode arithmetic (different split boundaries reassociate the",
-          "status": "pending"
+          "status": "deferred-launch-design"
         },
         {
           "line": 3256,
           "text": "- Removal trigger: when the live-derived plan lands and the decode rows above",
-          "status": "pending"
+          "status": "deferred-launch-design"
         }
       ]
     },

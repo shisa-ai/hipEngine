@@ -2328,37 +2328,6 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-13 Surya decode split chunk keyed to `max_seq` — open
-
-- `plan_surya_decode_splits` derives the decode split chunk from the runner's
-  `max_seq` (`chunk = round_up(ceil(max_seq / 64), 32)`, `num_splits =
-  ceil(max_seq / chunk)`) and `SuryaGpuRunner._alloc_span_state` builds one
-  immutable `KVLiveSpans` view per runner, so a runner configured for a long
-  context runs short requests with fewer, longer producer blocks. At a *fixed*
-  live context that costs decode time, measured on gfx1151: 1024 live tokens
-  decode in 18.31 / 18.36 / 18.88 / 18.96 / 19.55 ms per token at `max_seq`
-  8192 / 12288 / 16384 / 20480 / 32768 (chunk 128 / 192 / 256 / 320 / 512), and
-  8580 live tokens in 19.07 / 19.22 / 19.38 / 20.00 ms from 12288 up — 3% from
-  8192 to 16384 and 4% more to 32768, against a per-row spread of 1.1-2.4%
-  (`benchmarks/results/2026-09-13-gfx1151-surya-context-default.json`).
-- Fix: derive the chunk from the live count instead of `max_seq`.
-  `surya_full_attn_decode_f32_spans` already resolves the plan inside the
-  wrapper from `spans.max_live_count` and already accepts a `chunk_size`
-  override, so the change is a host-only
-  `plan_surya_decode_splits(live_count)` call in `_attention_decode_spans` — no
-  kernel change. The one allocation that must move with it is the split-K
-  partial triple, sized today from the construction plan's `num_splits`: a
-  live-derived plan can exceed it (at `max_seq` 5000 the construction plan is 53
-  splits while a 4096-token request derives 64), so size those buffers for
-  `SURYA_TARGET_SPLITS` — 512 KiB for the output partials at Surya's 8 q heads
-  and head_dim 256.
-- This changes decode arithmetic (different split boundaries reassociate the
-  online-softmax partials), so promotion needs the production-profile numerical
-  gate plus the registered rocBLAS strict fallback. Note the default path's
-  decode arithmetic already depends on the configured `max_seq` for the same
-  reason, so this does not introduce a new variability class — it removes one.
-- Removal trigger: when the live-derived plan lands and the decode rows above
-  converge across `max_seq`, delete the `max_seq`-derived chunk and this entry.
 
 ## 2026-09-08 Native C1 Context Admission
 
@@ -9638,3 +9607,32 @@ Exercise public prefill with sidecars enabled and disabled, verify owner memory
 and cleanup, and check mixed prefill/decode requests before a performance-driven
 retirement. Preserve explicit resource and arithmetic failures rather than
 silently falling back. No runtime selection changes in this triage.
+
+### R0131 — Coordinate live-derived Surya split planning with launch bounds
+
+`SuryaGpuRunner` still allocates partial buffers from its construction-time
+capacity plan. `surya_full_attn_decode_f32_spans` derives both chunk and split
+count from `spans.max_live_count`, which is the runner's capacity bound for this
+immutable view. Historical context-sensitivity measurements remain in
+`benchmarks/results/2026-09-13-gfx1151-surya-context-default.json` and the ledger
+at commit `f2b9c188e`.
+
+The old proposed chunk-only override is insufficient: the executed planner
+returns `(96, 53)` for capacity 5000 and `(64, 64)` for live count 4096, but
+capacity 5000 with chunk 64 returns `(64, 79)`. Allocating only
+`SURYA_TARGET_SPLITS` partials while retaining that wrapper calculation would
+under-allocate. Do not apply the old one-line proposal.
+
+**Deferred arithmetic/launch design:** pass a validated live launch bound and
+consistent split count through the wrapper, or provide storage for the actual
+capacity-derived count. Keep the physical page/span bounds separate from the
+live work bound, and size all three partial buffers for the launch they serve.
+Account for growing live counts, graph reuse and empty producer ranges.
+
+Clearing checks: add host launch/allocation regressions for unequal capacity and
+live counts, including the example above and alignment boundaries. Run
+`tests/test_gpu_surya_kv_spans.py`, the applicable production numerical gate and
+strict fallback checks, then public Surya continuation at fixed live lengths
+across different configured capacities. Profile before claiming convergence or
+speedup. Retire capacity-derived chunking only after the coordinated replacement
+passes; this triage changes neither launch behavior nor arithmetic.
