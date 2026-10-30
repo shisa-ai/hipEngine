@@ -1374,6 +1374,32 @@ def test_fast_is_opt_in_and_registered_only_for_the_in_envelope_quant() -> None:
     assert unregistered.source_profile is ExecutionProfile.STRICT
 
 
+def test_ud_gr_wide_projection_binding_matches_manifest() -> None:
+    from dataclasses import replace
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    scope = "prefill_rows_ge257_branch4_k_multiple64_gr_up_projection"
+    row = next(row for row in production.manifest["selections"] if row["scope"] == scope)
+    assert row["layer"] == "linear"
+    assert row["selected_variant"] == "dense_wide256_f32_f32_out"
+    assert row["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
+    production.binder(SimpleNamespace(runner=None), production)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "1"
+    manifest = dict(production.manifest)
+    changed = dict(row, selected_variant=row["strict_fallback_variant"])
+    manifest["selections"] = [changed if item is row else item for item in manifest["selections"]]
+    modified = replace(production, manifest=manifest)
+    modified.binder(SimpleNamespace(runner=None), modified)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "0"
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    strict_row = next(item for item in strict.manifest["selections"] if item["scope"] == scope)
+    assert strict_row["selected_variant"] == row["strict_fallback_variant"]
+    strict.binder(SimpleNamespace(runner=None), strict)
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "0"
+
+
 def test_ud_dense_wide_composition_binding_matches_manifest() -> None:
     from dataclasses import replace
 

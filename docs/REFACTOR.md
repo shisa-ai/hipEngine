@@ -3486,24 +3486,6 @@ Resolved: the reduction-order choices have explicit manifest scopes and
 runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
-## Qwen4Exp production routes the manifest does not enumerate
-
-The UD composition's tiled GDN route is now declared by
-`prefill_rows_ge2_d128_tiled_gdn_layers0_47`: production selects row-split,
-strict names the sigmoid recurrence, and the binder reads the leaf and layer
-window from that manifest row. Serial fallback scopes remain separate.
-
-The dense wide route is declared by
-`prefill_rows_ge257_k_multiple64_dense_wide_layers0_47`, with the exact
-coltile parent as strict fallback. Its enablement and layer window come from
-that row; the K10240/N320 tail remains a separate scope.
-
-The hyper-connection up projection (`HIPENGINE_QWEN4_EXP_GR_WIDE`) still
-lacks a manifest row.
-
-Removal condition: declare the hyper-connection up projection and publish its
-control from the manifest rather than the composition's environment table.
-
 ## The small-matrix F16 GEMM selector
 
 `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` (default off) is published by the
@@ -10471,7 +10453,7 @@ Invalidation repair and validation:
 ### R0459 — Row-split GDN recurrence removal decision
 
 The UD production composition binder selects row-split from its tiled GDN
-manifest scope. R0460 still owns the GR manifest binding.
+manifest scope. The dense-wide and GR-up projections also have declared scopes.
 The Q4_K_M production plan
 still names multi-column but resolves to strict due to its recorded numerical
 failure; it is not evidence of a live default multi-column execution.

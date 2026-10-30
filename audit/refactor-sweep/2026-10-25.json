@@ -13094,8 +13094,8 @@
       "start_line": 10945,
       "end_line": 10965,
       "sha256": "01b823f7ece649908318fbe86c81d971a65bd663578fff477327b799e29f6646",
-      "status": "pending",
-      "evidence": ["Partial: UD tiled GDN now manifest-selected with strict fallback and manifest-derived layer window. Dense-wide window and GR-up remain open. RED/GREEN, broad CPU with focused fixture repair, public bg-860 records36 rowsplit calls; docs/audit pass. worklog/entries/20261030T003524.991124Z-cleanup-cleanup-r0460-gdn-manifest-708961.md."],
+      "status": "resolved",
+      "evidence": ["Declared strict/production scopes and manifest-derived controls for GDN (d2045ecf6), dense-wide window (f04758c10), and GR-up projection. RED/GREEN; complete CPU bundles bg861/bg864 pass; public bg860 rowsplit, bg862 dense across layers0..47, bg863 GR wide96 calls. Docs/audit/worklog pass. worklog/entries/20261030T004734.660604Z-cleanup-cleanup-r0460-gr-manifest-128f9f.md."],
       "subitems": []
     },
     {
