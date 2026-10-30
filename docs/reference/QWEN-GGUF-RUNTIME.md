@@ -17,7 +17,8 @@ Paths in this document are repository-relative.
 | --- | --- | --- |
 | `hipengine/generation/qwen35_gguf.py` | Public generator configuration, resident model adapter, request admission and serving assets | Individual kernel arithmetic |
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFFullStackRunner` | Loaded target weights, selected execution primitives and full-stack layer execution | Public request scheduling |
-| `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph lifetime | Physical KV plane allocation formulas |
+| `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph capture/synchronization | Physical KV plane allocation formulas or graph pin bookkeeping |
+| `hipengine/runtime/qwen35_gguf_graph_lifetime.py` | Decode-handle registry, KV pin accounting and retained submission-context closure over explicit resources | Session mutation, capture policy, kernel selection or synchronization |
 | `hipengine/runtime/qwen35_gguf_layer_attn.py` | Scalar linear/full attention and shared norm/alpha-beta leaves over explicit weights, geometry, views and selected operations | Request admission, registry policy, graph lifetime or bulk attention orchestration |
 | `hipengine/runtime/qwen35_gguf_layer_ffn.py` | Dense and MoE feed-forward execution for scalar and bulk rows over explicit weights, scratch and selected operations | Session state, speculative acceptance or kernel-selection policy |
 | `hipengine/runtime/qwen35_gguf_capture.py` | Host diagnostic snapshots, summary schemas and selected-buffer readback | Token setup, layer execution, session mutation or synchronization |
@@ -153,7 +154,11 @@ synchronization fails, the pool holds the arena separately until a successful
 close retry. Slot teardown cannot close a root's pool.
 
 Session code still owns kernel launches, cursor-device updates, KV bind/unbind
-publication and graph lifetime. Prefix clone publishes its cursor only after
+publication and graph capture/synchronization. `qwen35_gguf_graph_lifetime.py`
+owns graph handles, KV pins and retained submission contexts. Pin/unpin receive
+current allocation and pool explicitly; slot views have independent bookkeeping.
+Session compatibility properties expose the same mutable containers until capture
+sites migrate to owner methods. Prefix clone publishes its cursor only after
 required deferred-state flushing succeeds. The numerical copy order and existing
 speculative journal interfaces are unchanged.
 

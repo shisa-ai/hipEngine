@@ -1228,7 +1228,10 @@ Canonical root/slot bindings, provisional verifier storage and reusable rollback
 buffers live in `hipengine/runtime/qwen35_gguf_state.py`; cache-owned prefix
 snapshots and arena copy cleanup live in `hipengine/runtime/qwen35_gguf_prefix_state.py`.
 Existing speculative journals retain cycle ordering. Session adapters retain
-kernel orchestration, graph synchronization and KV/cursor publication.
+kernel orchestration, graph synchronization and KV/cursor publication. Decode-graph
+handles, KV pins and retained submission-context teardown live in
+`hipengine/runtime/qwen35_gguf_graph_lifetime.py`; pin operations receive the current
+allocation and pool explicitly, and resident slot views own independent bookkeeping.
 Diagnostic snapshots and host readback live in `qwen35_gguf_capture.py`; timing
 resources live in `qwen35_gguf_timing.py`; the standalone projection probe lives in
 `qwen35_gguf_probe.py`. Stateful capture setup and profiling interval placement
