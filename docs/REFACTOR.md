@@ -3544,22 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 Surya lane comparison is measured one process per lane — open
-
-`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json` is built from
-one `surya_perf_compare.py` run per lane merged with `--merge`, because both
-lanes in one process return the last three hipEngine rows (`full`, `columns`,
-`list`) degenerate from the first generated token with every stage time
-unchanged. Measuring hipEngine alone over the same 12 cases passes every gate,
-so the corruption rides on shared-process device state left by the torch lane
-rather than on the pages or the harness. This is task #80's bug.
-
-When #80 is fixed, re-run the suite as a single combined invocation
-(`--split all --runs 3 --lanes hipengine_gpu,torch_cuda`), confirm all 24 rows
-pass, and drop the `lane_isolation` protocol note and the per-lane caveat from
-`benchmarks/README.md`. `--merge` itself stays: merging per-lane artifacts is a
-legitimate way to keep a comparison honest when one lane perturbs the other.
-
 ## 2026-09-13 Surya tile shape: grid divisibility was tested and rejected
 
 Grid divisibility was the other candidate shape rule and it was tested: the
@@ -10132,3 +10116,23 @@ the fused producer's full-chunk dot products. Bounding work by visibility
 must preserve token positions and masking; verify with the spans GPU suite
 and the applicable numerical gate. No performance improvement is claimed by
 the scatter cleanup.
+
+### R0488 — Surya same-process comparison failure
+
+The recorded comparison in
+`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json` uses one process
+per lane and `scripts/surya_perf_compare.py --merge`. The original combined
+run produced degenerate hipEngine output for `full`, `columns` and `list`,
+while the isolated hipEngine run passed. Shared-process device state is a
+suspect, not an established root cause. The harness still supports both
+routes; keep `--merge` and the artifact's `lane_isolation` provenance.
+
+**Deferred reproduction:** the local cache lacks `datalab-to/surya-ocr-2`;
+the R0484 public request failed at loading, before inference. Make the
+checkpoint available to `resolve_surya_path`, then run
+`python3 scripts/surya_perf_compare.py --split all --runs 3 --lanes hipengine_gpu,torch_cuda`
+in the HIP environment. Compare with isolated runs, find and repair the
+first divergent state, and require every combined row to pass before
+publishing a replacement comparison. Preserve historical artifact provenance;
+remove any still-applicable scoreboard isolation caveat only when the new
+comparison no longer needs it. No runtime change or numerical fix is claimed.

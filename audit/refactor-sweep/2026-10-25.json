@@ -13432,8 +13432,8 @@
       "start_line": 11492,
       "end_line": 11507,
       "sha256": "80780ce5ae996ae1a82cc91b1da4c1879f0adfd2a8ef5d140a7aeb5affbb7e8c",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Moved to bottom: missing Surya checkpoint blocks reproduction of recorded same-process failure. Merge workaround preserved; clearing command recorded. worklog/entries/20261030T041958.107569Z-cleanup-cleanup-r0488-accf3d.md."],
       "subitems": []
     },
     {
