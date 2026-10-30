@@ -5341,23 +5341,24 @@
       "start_line": 4479,
       "end_line": 4506,
       "sha256": "06e7c59fc90136aa4727da1b7c9acb9e65122c0d974e4b2ceafc9e33a1072c12",
-      "status": "partial",
+      "status": "triaged-deferred-ngram-candidate-decision",
       "evidence": ["Removed environment enablement/config parsing in favor of existing explicit ngram_enabled and NgramModConfig constructor inputs. Default-off candidate and recorded failures preserved; no promotion. RED/GREEN instance selection, full MTP2 seam and docs/audit pass. Long-horizon/task/lifecycle gates and disposition remain open. Worklog: worklog/entries/20261027T162745.737930Z-cleanup-refactor-r0204-6c702f.md."],
       "subitems": [
         {
           "line": 4481,
           "text": "- Added 2026-08-28 for the coding/repetition composition spike.",
-          "status": "pending"
+          "status": "typed-settings-fixed-local-contract-preserved"
         },
         {
           "line": 4492,
           "text": "- Current verdict: the full canonical production D24 suite is exact with 142",
-          "status": "pending"
+          "status": "historical-results-and-failures-preserved"
         },
         {
           "line": 4499,
           "text": "- Removal/promotion trigger: replace environment parsing with a typed cold",
-          "status": "pending"
+          "status": "typed-settings-fixed-candidate-deferred",
+          "evidence": "Bottom R0204 preserves observed failures, true-AR and wider-frontier gates. Docs/audit pass. worklog/entries/20261030T091812.333751Z-cleanup-cleanup-r0204-final-6dc5ad.md."
         }
       ]
     },

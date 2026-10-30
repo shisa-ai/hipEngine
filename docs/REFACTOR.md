@@ -2290,33 +2290,6 @@ category and control/ownership gates before closing this entry.
   cancellation/cleanup checks. CPU transition-order and provider tests preserve
   the refactor contract but do not establish public GPU execution.
 
-## SPECDEC2 request-local ngram-mod experiment
-
-- Added 2026-08-28 for the coding/repetition composition spike.
-  Explicit `ngram_enabled=True` and `ngram_config=NgramModConfig(...)` give
-  the request-local continuation cache first refusal before dense GGUF MTP2.
-  Environment parsing is removed; typed defaults retain a 24-token match/minimum
-  and 64-token probe bound. A hit verifies only
-  the already-qualified K<=3 prefix, then catches target-attached MTP state up
-  from target-owned hidden rows. A miss, mixed-source physical group, disabled
-  option, unsupported shape, or failure keeps the registered ordinary MTP/AR
-  paths. Exact request-local keys intentionally replace llama.cpp's shared
-  modulo pool to avoid collisions, cross-tenant history leakage, and
-  benchmark-order/batch-composition contamination.
-- Current verdict: the full canonical production D24 suite is exact with 142
-  lookups / zero hits and 0.99915x MTP-only throughput. The independent strict
-  C2/K3 D80 repetition-heavy code suite is exact and improves MTP-only
-  **20.434 -> 20.930 tok/s (+2.425%)**, with train/heldout both +2.42%, but
-  remains 0.9875x true AR. Strict D96 also fails one SQL terminal-suffix cell,
-  and the prior production D120 numerical tail remains rejected. Keep explicit
-  and default-off; there is no automatic product cell.
-- Remaining promotion trigger: a K>3 frontier (or another materially different
-  lowering) must pass canonical + code train/heldout, long-horizon strict and production
-  numerical/task/lifecycle gates, and beats true AR rather than MTP alone.
-  Otherwise remove runtime composition at the end of the next dedicated wider-
-  frontier campaign and keep the cache/harness as research references. Ordinary
-  MTP plus AR remain permanent miss/failure fallbacks.
-
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`
@@ -9890,3 +9863,27 @@ GPU/CPU accept agreement. Cache-only traces must show no pre-accept D2H in the
 default route. Public acceptance and lifecycle verification remain required;
 constructor isolation tests alone do not establish them. No diagnostic body or
 runtime behavior changes in this triage.
+
+### R0204 — Decide the typed request-local ngram composition candidate
+
+Environment parsing is removed. Explicit `ngram_enabled=True` and
+`ngram_config=NgramModConfig(...)` select request-local continuation lookup
+before dense GGUF MTP2. Defaults retain a 24-token match/minimum and 64-token
+probe bound; hits verify a K<=3 prefix and catch up target-attached draft state
+from target-owned hidden rows. Misses, mixed-source groups, disabled selection,
+unsupported shapes and failures retain ordinary MTP/AR. Preserve exact local
+keys and isolation from cross-tenant history, modulo collisions and request order.
+
+**Deferred candidate decision:** keep the explicit default-off candidate's
+recorded failures visible. The strict D96 SQL terminal-suffix failure and
+production D120 numerical-tail rejection are not repaired by typed settings.
+Historical canonical/code results remain in this ledger at `8237ac38b`; a win
+against MTP alone did not establish a win against true AR.
+
+A wider K>3 frontier or materially different lowering must pass canonical and
+code train/heldout, long-horizon strict/production numerical, task and lifecycle
+gates and beat true AR. Otherwise retire runtime composition after the dedicated
+wider-frontier campaign, preserving cache/harness research references and
+permanent ordinary MTP/AR miss/failure fallbacks. Do not conflate this candidate
+with other request-local prompt lookup implementations. No new promotion,
+performance claim or runtime change is made here.
