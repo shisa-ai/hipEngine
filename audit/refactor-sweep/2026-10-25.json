@@ -9631,7 +9631,7 @@
       "start_line": 7287,
       "end_line": 7306,
       "sha256": "6399e224a08da24eaf5873f5ce8f835d573deac6edce3279300cb7a14222ee89",
-      "status": "partial-harness-repaired-bottom-primitive-migration",
+      "status": "triaged-harness-repaired-primitive-migration-deferred",
       "evidence": ["Reproduced real comparison-child prerequisite failures and repaired owner/child interleaved policy; explicitly hold later half-row/padded/permute/WMMA-prefetch/sums off and record policy in results. Host construction/main provenance tests and real primitive wrapper stub-launch checks cover all staging peers, pointers, streams and tile-neighbor/unrelated lanes. Runtime/defaults/kernels unchanged. Remaining selector/numerical-caller migration and unavailable local public model consolidated in bottom R0324–R0326."],
       "subitems": [
         {
@@ -9662,7 +9662,7 @@
       "start_line": 7307,
       "end_line": 7323,
       "sha256": "6d6e4317ccbb235caffb605e0c494f22dae02811d3b16cb2c2212589b499700f",
-      "status": "partial-harness-repaired-bottom-primitive-migration",
+      "status": "triaged-harness-repaired-primitive-migration-deferred",
       "evidence": ["Half-row A/B owner/child explicitly share interleaved resident policy, hold later padded/permute/WMMA-prefetch/sums off and record comparison policy. RED/GREEN host tests bind executable constructor prerequisites, state/provenance, cleanup and real primitive wrapper dispatch. Runtime/defaults/kernels unchanged; remaining selector/caller/public validation in shared bottom R0324–R0326."],
       "subitems": [
         {
@@ -9693,7 +9693,7 @@
       "start_line": 7324,
       "end_line": 7341,
       "sha256": "c1175bd4ae4a1b3e73d5d9feb39ba4cec43795183f8ea4776699a6521a713757",
-      "status": "partial-harness-repaired-bottom-primitive-migration",
+      "status": "triaged-harness-repaired-primitive-migration-deferred",
       "evidence": ["Padded-row A/B owner/child explicitly share interleaved resident policy, hold later permute/WMMA-prefetch/sums off and record comparison policy. RED/GREEN host tests bind executable constructor prerequisites, state/provenance, cleanup and real primitive wrapper dispatch. Runtime/defaults/kernels unchanged; remaining selector/caller/public validation in shared bottom R0324–R0326."],
       "subitems": [
         {
@@ -9724,7 +9724,7 @@
       "start_line": 7342,
       "end_line": 7357,
       "sha256": "5e0804ad28eb28a1f76f58fbfc09568f46c6ed309c569c9e922725c8689945e4",
-      "status": "partial-live-callers-repaired-bottom-layout-migration",
+      "status": "triaged-callers-repaired-layout-migration-deferred",
       "evidence": ["Current gfx1151 defaults planar on/permute off. Repaired live layout A/B to disable later planar-prefetch/sums in both arms and record policy, preserving labels. Profiler now honors explicit permute with interleaved layout/prerequisites, preserves unset defaults and records overrides. RED/GREEN construction, policy, parser, cleanup and real CLI-run constructor forwarding tests pass; remaining comparison/resident migration and local public-resource validation in shared bottom R0327/R0328."],
       "subitems": [
         {
@@ -9750,7 +9750,7 @@
       "start_line": 7358,
       "end_line": 7376,
       "sha256": "d5ff6b8850b9337fc22d94402d0842e3c4e2289857f48a06973285c6f761d347",
-      "status": "partial-live-callers-repaired-bottom-layout-migration",
+      "status": "triaged-callers-repaired-layout-migration-deferred",
       "evidence": ["Planar A/B inherited incompatible later prefetch settings in the interleaved arm and unbalanced features in the planar arm; fixed both to explicit common prefetch-off policy with recorded provenance. Profiler explicit interleaved request prerequisites repaired without changing unset package defaults. Host RED/GREEN and focused contracts pass; remaining selector/resident/numerical-caller migration plus local public-model validation in bottom R0327/R0328. Runtime/defaults/kernels unchanged."],
       "subitems": [
         {
