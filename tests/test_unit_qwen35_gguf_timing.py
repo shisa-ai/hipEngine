@@ -634,6 +634,7 @@ def test_timing_module_uses_direct_primitives_and_no_runner_imports() -> None:
     assert gguf_timing.__all__ == [
         "_HipEventStageRecorder",
         "_HipWallClockStageRecorder",
+        "_PackedVerifyGpuStageRecorderScope",
         "_add_sync_stage_timing",
         "_mark_sync_stage",
     ]

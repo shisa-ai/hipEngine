@@ -1427,28 +1427,22 @@ requests and cleanup. Compare complete-wall and latency on the intended backend 
 policy before choosing a tuning result. Keep per-slot unsupported-shape fallback and request-local
 state isolation.
 
-### R0281-VERIFY-TIMING — Packed verifier profiling interface and teardown
+### R0281-VERIFY-TIMING — Packed verifier profiling interface
 
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
+Owner: `hipengine/runtime/qwen35_gguf_timing.py`.
 
-Scope: `Qwen35GGUFResidentSession.verify_target_blocks_batch()`, `device_result=True`,;
-`HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS`; `qwen35_gguf_timing.py`.
+Scope: `Qwen35GGUFResidentSession.verify_target_blocks_batch()`, `device_result=True`;
+`HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS`.
 
-**Concrete cleanup gap:** the packed caller starts the recorder before embedding and resolves it
-only on success. An exception before resolution bypasses event cleanup; the recorder's own
-resolve-time `finally` cannot cover that interval. Other prefill/decode timing callers already have
-explicit finalizers. **Remaining work:** close the packed recorder across every post-creation exit,
-then decide whether its opt-in belongs in an explicit profiling argument/helper instead of process
-environment. Preserve default-off behavior, device-result bypass, stream association, bucket aliases
-and negative-time accounting. Do not enable diagnostic events on the default path to retire the
-flag.
+Decide whether to keep the documented process-environment opt-in as the diagnostic interface or
+replace it with an explicit profiling argument/helper and migrate its callers. Preserve default-off
+behavior, device-result bypass, stream association, bucket aliases and negative-time accounting.
+Do not enable diagnostic events on the default path to retire the flag.
 
-Done when: add fault injection at event start/embedding/layer/head/ scatter and prove all
-created handles are released, including retryable destroy failures. Run
-`tests/test_unit_qwen35_gguf_timing.py` and `tests/test_unit_gguf_packed_verify_layout.py`; a
-runtime wiring change also needs a guarded HIP event smoke and repeated public MTP requests with
-identical output, selected instrumentation mode and cleanup recorded. Instrumented diagnostic
-results are not uninstrumented performance evidence.
+Done when: a supported interface owns the diagnostic selection and its callers/tests/docs agree.
+If replacing the environment adapter, rerun timing fault-injection and real-HIP lifecycle tests plus
+repeated public MTP requests, recording selected instrumentation mode and cleanup. Instrumented
+diagnostic results are not uninstrumented performance evidence.
 
 ### R0281-LAUNCH-BOUNDS — Selected-WMMA compiler tuning surface
 

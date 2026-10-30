@@ -46,6 +46,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
 __all__ = [
     "_HipEventStageRecorder",
     "_HipWallClockStageRecorder",
+    "_PackedVerifyGpuStageRecorderScope",
     "_add_sync_stage_timing",
     "_mark_sync_stage",
 ]
@@ -109,6 +110,7 @@ class _HipEventStageRecorder:
     def resolve_into(self, timings: dict[str, float] | None) -> None:
         if not self.enabled:
             return
+        failure: BaseException | None = None
         try:
             for names, start, stop in self._intervals:
                 self.runtime.event_synchronize(stop)
@@ -119,8 +121,15 @@ class _HipEventStageRecorder:
                     ms = 0.0
                 for name in names:
                     _add_sync_stage_timing(timings, name, ms)
+        except BaseException as exc:
+            failure = exc
+            raise
         finally:
-            self.close()
+            try:
+                self.close()
+            except BaseException:
+                if failure is None:
+                    raise
 
     def close(self) -> None:
         # Best-effort teardown: one failing destroy must not strand the handles
@@ -148,6 +157,60 @@ class _HipEventStageRecorder:
         event = self.runtime.event_create()
         self._events.append(event)
         return event
+
+
+def _close_gguf_stage_recorder(
+    recorder: object | None,
+    failure: BaseException | None,
+) -> None:
+    """Retry retained handles without replacing an in-flight failure."""
+    if recorder is None:
+        return
+    first_error: BaseException | None = None
+    for _ in range(2):
+        try:
+            recorder.close()
+            return
+        except BaseException as exc:
+            if first_error is None:
+                first_error = exc
+    if failure is None and first_error is not None:
+        raise first_error
+
+
+class _PackedVerifyGpuStageRecorderScope:
+    """Own start, successful resolution and cleanup for a packed verify pass.
+
+    A missing recorder is inert. Every post-creation exit closes the recorder;
+    cleanup failure cannot replace a start, verification or resolution error.
+    """
+
+    def __init__(self, recorder: object | None, timings: dict[str, float] | None) -> None:
+        self._recorder = recorder
+        self._timings = timings
+
+    def __enter__(self) -> "_PackedVerifyGpuStageRecorderScope":
+        if self._recorder is not None:
+            try:
+                self._recorder.start()
+            except BaseException as exc:
+                _close_gguf_stage_recorder(self._recorder, exc)
+                raise
+        return self
+
+    def __exit__(self, exc_type: object, exc: BaseException | None, tb: object) -> bool:
+        if self._recorder is None:
+            return False
+        failure = exc
+        try:
+            if failure is None:
+                self._recorder.resolve_into(self._timings)
+        except BaseException as resolve_exc:
+            failure = resolve_exc
+            raise
+        finally:
+            _close_gguf_stage_recorder(self._recorder, failure)
+        return False
 
 
 class _HipWallClockStageRecorder:

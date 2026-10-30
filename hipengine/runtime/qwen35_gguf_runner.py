@@ -64,6 +64,7 @@ from hipengine.runtime.qwen35_gguf_capture import (
 from hipengine.runtime.qwen35_gguf_timing import (
     _HipEventStageRecorder,
     _HipWallClockStageRecorder,
+    _PackedVerifyGpuStageRecorderScope,
     _add_sync_stage_timing,
     _mark_sync_stage,
 )
@@ -20247,244 +20248,241 @@ class Qwen35GGUFResidentSession:
             and not bool(device_result)
             else None
         )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.start()
 
-        embedding_start = time.perf_counter()
-        hidden_seed_buf = self._verify_hidden_seed_buf
-        if hidden_seed_buf is None:
-            raise RuntimeError("GGUF packed verifier hidden-seed buffer is closed")
-        launch_gguf_embedding(
-            self._device_token_embedding_weight(reason="packed_verifier"),
-            self._prefill_token_buf.ptr,
-            self._prefill_hidden_a.ptr,
-            rows=rows,
-            hidden_size=self.runner.hidden_size,
-            vocab_size=self.runner.vocab_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        add_stage("packed_verify_embedding", embedding_start)
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark("packed_verify_gpu_embedding")
-        src = self._prefill_hidden_a
-        dst = self._prefill_hidden_b
-        linear_state_owner = (
-            linear_state_owner if direct_linear_state is None else direct_linear_state[1]
-        )
-        linear_decode_scratch = replace(
-            self.scratch,
-            layer_conv_states=linear_state_owner.layer_conv_states,
-            layer_recurrent_states=linear_state_owner.layer_recurrent_states,
-        )
-        block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
-        with (
-            wmma_prefill_session(block_wmma_prefill),
-            gemv_decode_session(self.use_gemv_decode),
-            target_verifier_rowtile_session(True),
-            target_verifier_production_q4_rowtile_session(
-                self.target_verifier_production_q4_rowtile
-            ),
-            self._q5_raw_mmq_target_context(
-                packed_scratch,
-                request_count=len(job_list),
-            ),
-            self._q6_dp4a_grouped_target_context(
-                packed_scratch,
-                request_count=len(job_list),
-            ),
-            self._q6_integer_mmq_context(target_verifier=True),
-            self._iq_dense_mmq_context(),
-        ):
-            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-                layer_start = time.perf_counter()
-                if layer_type == LINEAR_ATTENTION:
-                    linear_state_rows = (
-                        self._verify_linear_state_row_pair(layer_id)
-                        if capture_linear_state_rows
-                        else None
-                    )
-                    if (
-                        moe_physical_c2_exact_linear_enabled()
-                        and rows == 6
-                        and linear_state_rows is not None
-                    ):
-                        self.runner._run_moe_physical_c2_linear_rows_exact(
-                            layer_id,
-                            src.ptr,
-                            dst.ptr,
-                            packed_scratch,
-                            rows=rows,
-                            decode_scratch=linear_decode_scratch,
-                            linear_state_rows=linear_state_rows,
-                            state_capacity=int(linear_state_owner.slot_count),
-                            state_indices=layout.state_indices,
-                            stream=stream,
+        with _PackedVerifyGpuStageRecorderScope(gpu_stage_recorder, stage_timings):
+            embedding_start = time.perf_counter()
+            hidden_seed_buf = self._verify_hidden_seed_buf
+            if hidden_seed_buf is None:
+                raise RuntimeError("GGUF packed verifier hidden-seed buffer is closed")
+            launch_gguf_embedding(
+                self._device_token_embedding_weight(reason="packed_verifier"),
+                self._prefill_token_buf.ptr,
+                self._prefill_hidden_a.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                vocab_size=self.runner.vocab_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            add_stage("packed_verify_embedding", embedding_start)
+            if gpu_stage_recorder is not None:
+                gpu_stage_recorder.mark("packed_verify_gpu_embedding")
+            src = self._prefill_hidden_a
+            dst = self._prefill_hidden_b
+            linear_state_owner = (
+                linear_state_owner if direct_linear_state is None else direct_linear_state[1]
+            )
+            linear_decode_scratch = replace(
+                self.scratch,
+                layer_conv_states=linear_state_owner.layer_conv_states,
+                layer_recurrent_states=linear_state_owner.layer_recurrent_states,
+            )
+            block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
+            with (
+                wmma_prefill_session(block_wmma_prefill),
+                gemv_decode_session(self.use_gemv_decode),
+                target_verifier_rowtile_session(True),
+                target_verifier_production_q4_rowtile_session(
+                    self.target_verifier_production_q4_rowtile
+                ),
+                self._q5_raw_mmq_target_context(
+                    packed_scratch,
+                    request_count=len(job_list),
+                ),
+                self._q6_dp4a_grouped_target_context(
+                    packed_scratch,
+                    request_count=len(job_list),
+                ),
+                self._q6_integer_mmq_context(target_verifier=True),
+                self._iq_dense_mmq_context(),
+            ):
+                for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                    layer_start = time.perf_counter()
+                    if layer_type == LINEAR_ATTENTION:
+                        linear_state_rows = (
+                            self._verify_linear_state_row_pair(layer_id)
+                            if capture_linear_state_rows
+                            else None
                         )
-                    else:
-                        self.runner._run_linear_attention_prefill_layer_rows(
+                        if (
+                            moe_physical_c2_exact_linear_enabled()
+                            and rows == 6
+                            and linear_state_rows is not None
+                        ):
+                            self.runner._run_moe_physical_c2_linear_rows_exact(
+                                layer_id,
+                                src.ptr,
+                                dst.ptr,
+                                packed_scratch,
+                                rows=rows,
+                                decode_scratch=linear_decode_scratch,
+                                linear_state_rows=linear_state_rows,
+                                state_capacity=int(linear_state_owner.slot_count),
+                                state_indices=layout.state_indices,
+                                stream=stream,
+                            )
+                        else:
+                            self.runner._run_linear_attention_prefill_layer_rows(
+                                layer_id,
+                                src.ptr,
+                                dst.ptr,
+                                packed_scratch,
+                                rows=rows,
+                                stream=stream,
+                                decode_scratch=linear_decode_scratch,
+                                expert_sidecar=None,
+                                linear_state_rows=linear_state_rows,
+                                commit_final_linear_state=not defer_linear_state_commit,
+                                hidden_f32_ptr=None,
+                                out_f32_ptr=None,
+                                stage_timings=None,
+                                sync_stage_timings=False,
+                                stage_prefix="packed_verify_gpu_linear_attn",
+                                gpu_stage_recorder=gpu_stage_recorder,
+                            )
+                        add_stage("packed_verify_linear_attn_layers", layer_start)
+                    elif layer_type == FULL_ATTENTION:
+                        # Bind the retained INT8 planes and their scale metadata when
+                        # this layer stores INT8 directly; a BF16 layer returns the
+                        # same cache-backed scratch this verifier used before.
+                        layer_scratch = replace(
+                            self._packed_full_attention_scratch_for_layer(
+                                packed_scratch,
+                                packed_state,
+                                layer_id,
+                            ),
+                            cos_table=self.scratch.cos_table,
+                            sin_table=self.scratch.sin_table,
+                        )
+                        self.runner._run_full_attention_decode_batch_layer_rows(
                             layer_id,
                             src.ptr,
                             dst.ptr,
-                            packed_scratch,
-                            rows=rows,
+                            layer_scratch,
                             stream=stream,
-                            decode_scratch=linear_decode_scratch,
                             expert_sidecar=None,
-                            linear_state_rows=linear_state_rows,
-                            commit_final_linear_state=not defer_linear_state_commit,
-                            hidden_f32_ptr=None,
-                            out_f32_ptr=None,
                             stage_timings=None,
                             sync_stage_timings=False,
-                            stage_prefix="packed_verify_gpu_linear_attn",
-                            gpu_stage_recorder=gpu_stage_recorder,
+                            stage_prefix="target_block_packed_full_attn",
+                            split_workspace=packed_split_workspace,
                         )
-                    add_stage("packed_verify_linear_attn_layers", layer_start)
-                elif layer_type == FULL_ATTENTION:
-                    # Bind the retained INT8 planes and their scale metadata when
-                    # this layer stores INT8 directly; a BF16 layer returns the
-                    # same cache-backed scratch this verifier used before.
-                    layer_scratch = replace(
-                        self._packed_full_attention_scratch_for_layer(
-                            packed_scratch,
-                            packed_state,
-                            layer_id,
-                        ),
-                        cos_table=self.scratch.cos_table,
-                        sin_table=self.scratch.sin_table,
-                    )
-                    self.runner._run_full_attention_decode_batch_layer_rows(
-                        layer_id,
-                        src.ptr,
-                        dst.ptr,
-                        layer_scratch,
-                        stream=stream,
-                        expert_sidecar=None,
-                        stage_timings=None,
-                        sync_stage_timings=False,
-                        stage_prefix="target_block_packed_full_attn",
-                        split_workspace=packed_split_workspace,
-                    )
-                    if gpu_stage_recorder is not None:
-                        gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
-                    add_stage("packed_verify_full_attn_layers", layer_start)
-                else:
-                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-                src, dst = dst, src
+                        if gpu_stage_recorder is not None:
+                            gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
+                        add_stage("packed_verify_full_attn_layers", layer_start)
+                    else:
+                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                    src, dst = dst, src
 
-            output_norm_start = time.perf_counter()
-            output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
-            gguf_rmsnorm_bf16_f32_weight(
-                src.ptr,
-                output_norm_weight_ptr,
-                packed_scratch.norm.ptr,
-                rows=rows,
-                hidden_size=self.runner.hidden_size,
-                eps=self.runner.weights.config.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
-            gguf_rmsnorm_bf16_f32_weight_out_f32(
-                src.ptr,
-                output_norm_weight_ptr,
-                hidden_seed_buf.ptr,
-                rows=rows,
-                hidden_size=self.runner.hidden_size,
-                eps=self.runner.weights.config.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
-            if not bool(device_result):
-                runtime.memcpy_async(
-                    self.scratch.hidden_seed_fp32.ptr,
-                    hidden_seed_buf.ptr
-                    + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
-                    self.runner.hidden_size * DType.FP32.itemsize,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
-                )
-            add_stage("packed_verify_output_norm_hidden", output_norm_start)
-            if gpu_stage_recorder is not None:
-                gpu_stage_recorder.mark("packed_verify_gpu_output_norm_hidden")
-            sample_start = time.perf_counter()
-            if bool(device_result):
-                self._enqueue_target_block_rows_from_hidden(
+                output_norm_start = time.perf_counter()
+                output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
+                gguf_rmsnorm_bf16_f32_weight(
+                    src.ptr,
+                    output_norm_weight_ptr,
                     packed_scratch.norm.ptr,
-                    rows,
-                    activation_dtype=GGUF_ACTIVATION_BF16,
-                    stream=stream,
-                    require_logits=any(bool(job.get("require_logits", False)) for job in job_list),
-                )
-                token_host = None
-            else:
-                token_host = self._sample_target_block_rows_from_hidden(
-                    packed_scratch.norm.ptr,
-                    rows,
-                    activation_dtype=GGUF_ACTIVATION_BF16,
-                    stream=stream,
-                )
-            add_stage("packed_verify_lm_head_sample", sample_start)
-            capture_root = os.environ.get(
-                "HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR", ""
-            ).strip()
-            if capture_root:
-                capture_sequence = int(
-                    getattr(self, "_packed_verify_capture_sequence", 0)
-                )
-                _capture_packed_verify_norm_rows(
-                    layout,
-                    job_list,
-                    packed_scratch.norm,
+                    rows=rows,
                     hidden_size=self.runner.hidden_size,
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=stream,
                     runtime=runtime,
-                    sequence=capture_sequence,
                 )
-                self._packed_verify_capture_sequence = capture_sequence + 1
-            if gpu_stage_recorder is not None:
-                gpu_stage_recorder.mark("packed_verify_gpu_lm_head_sample")
-        scatter_start = time.perf_counter()
-        if bool(device_result):
-            results = self._describe_packed_verify_device_outputs(
-                job_list,
-                layout,
-                packed_state,
-                hidden_seed_buf,
-                src,
-            )
-            add_stage("packed_verify_device_descriptors", scatter_start)
-        else:
-            hidden_readback_start = time.perf_counter()
-            hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
-            copy_device_to_host(
-                host_array_ptr(hidden_host),
-                hidden_seed_buf,
-                hidden_host.nbytes,
-                runtime=runtime,
-            )
-            add_stage("packed_verify_hidden_readback", hidden_readback_start)
-            assert token_host is not None
-            results = self._scatter_packed_verify_outputs(
-                job_list,
-                layout,
-                packed_state,
-                hidden_host,
-                token_host,
-                runtime=runtime,
-                stream=stream,
-                linear_state_rows_captured=capture_linear_state_rows,
-                final_linear_state_committed=not defer_linear_state_commit,
-                defer_state_scatter=defer_state_scatter,
-            )
-            add_stage("packed_verify_scatter_outputs", scatter_start)
-            sync_start = time.perf_counter()
-            if stream:
-                runtime.stream_synchronize(stream)
+                gguf_rmsnorm_bf16_f32_weight_out_f32(
+                    src.ptr,
+                    output_norm_weight_ptr,
+                    hidden_seed_buf.ptr,
+                    rows=rows,
+                    hidden_size=self.runner.hidden_size,
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                if not bool(device_result):
+                    runtime.memcpy_async(
+                        self.scratch.hidden_seed_fp32.ptr,
+                        hidden_seed_buf.ptr
+                        + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
+                        self.runner.hidden_size * DType.FP32.itemsize,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                        stream,
+                    )
+                add_stage("packed_verify_output_norm_hidden", output_norm_start)
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark("packed_verify_gpu_output_norm_hidden")
+                sample_start = time.perf_counter()
+                if bool(device_result):
+                    self._enqueue_target_block_rows_from_hidden(
+                        packed_scratch.norm.ptr,
+                        rows,
+                        activation_dtype=GGUF_ACTIVATION_BF16,
+                        stream=stream,
+                        require_logits=any(bool(job.get("require_logits", False)) for job in job_list),
+                    )
+                    token_host = None
+                else:
+                    token_host = self._sample_target_block_rows_from_hidden(
+                        packed_scratch.norm.ptr,
+                        rows,
+                        activation_dtype=GGUF_ACTIVATION_BF16,
+                        stream=stream,
+                    )
+                add_stage("packed_verify_lm_head_sample", sample_start)
+                capture_root = os.environ.get(
+                    "HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR", ""
+                ).strip()
+                if capture_root:
+                    capture_sequence = int(
+                        getattr(self, "_packed_verify_capture_sequence", 0)
+                    )
+                    _capture_packed_verify_norm_rows(
+                        layout,
+                        job_list,
+                        packed_scratch.norm,
+                        hidden_size=self.runner.hidden_size,
+                        runtime=runtime,
+                        sequence=capture_sequence,
+                    )
+                    self._packed_verify_capture_sequence = capture_sequence + 1
+                if gpu_stage_recorder is not None:
+                    gpu_stage_recorder.mark("packed_verify_gpu_lm_head_sample")
+            scatter_start = time.perf_counter()
+            if bool(device_result):
+                results = self._describe_packed_verify_device_outputs(
+                    job_list,
+                    layout,
+                    packed_state,
+                    hidden_seed_buf,
+                    src,
+                )
+                add_stage("packed_verify_device_descriptors", scatter_start)
             else:
-                runtime.device_synchronize()
-            add_stage("packed_verify_final_sync", sync_start)
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.resolve_into(stage_timings)
+                hidden_readback_start = time.perf_counter()
+                hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
+                copy_device_to_host(
+                    host_array_ptr(hidden_host),
+                    hidden_seed_buf,
+                    hidden_host.nbytes,
+                    runtime=runtime,
+                )
+                add_stage("packed_verify_hidden_readback", hidden_readback_start)
+                assert token_host is not None
+                results = self._scatter_packed_verify_outputs(
+                    job_list,
+                    layout,
+                    packed_state,
+                    hidden_host,
+                    token_host,
+                    runtime=runtime,
+                    stream=stream,
+                    linear_state_rows_captured=capture_linear_state_rows,
+                    final_linear_state_committed=not defer_linear_state_commit,
+                    defer_state_scatter=defer_state_scatter,
+                )
+                add_stage("packed_verify_scatter_outputs", scatter_start)
+                sync_start = time.perf_counter()
+                if stream:
+                    runtime.stream_synchronize(stream)
+                else:
+                    runtime.device_synchronize()
+                add_stage("packed_verify_final_sync", sync_start)
         stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
         return results
 
