@@ -3544,76 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Priming-source refusals that still zero the budget (open 2026-09-19)
-
-The unsupported priming classes -- `prefix_reuse_k0`, `target_profile_k0`,
-`target_context_k0`, `physical_streaming_category_rejected`,
-`operator_disabled_streaming_prompt_k0`, `packed_prefill_unsupported_k0`,
-`incremental_streaming_unsupported_k0` -- still set
-`row.mtp2_candidate_budget = 0` at their refusal sites, spread across
-`hipengine/generation/qwen35_gguf.py` and `qwen35_gguf_mtp2.py`. That is correct
-today: each names a property of the row on this route, so the row cannot prime a
-provider at all. It should not stay spread out. `_priming_source` is the one
-place that answers "can this row speculate", so these sites should ask it
-instead of writing the budget, and `prefix_reuse_k0` should stop being a refusal
-entirely once #21 lands a checkpoint priming source: a reused-prefix row would
-then carry the fourth class (a restored checkpoint) rather than zeroing its
-budget. Removing the zeroing without that branch would let a reused-prefix row
-reach the gate with no source at all, which is why the two move together.
-
-Related, and separately owed: the serving evidence row for this cell is
-`cap4-realized-c1-b3`, which matches only `realized_group_rows == 1`, so a
-request admitted while it is alone is later batched into a wider decode group and
-silently realizes `effective_route="default"`. The wider realized widths need
-their own measured evidence rows before MTP can be admitted at c>1.
-
-**`HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS` (default off, added 2026-09-18).**
-A due group the provider refuses as a whole now decodes autoregressively in one
-batch, which is the route the adapter's partition contract specifies. The flag
-re-opens the alternative -- one one-row provider cycle per capable row, with the
-refused rows autoregressive in the same tick -- so the serving ladder can
-re-measure it. The 2026-09-18 measurement rejected it: at c=2 and c=4 with a row
-that crosses the provider's 1023-token window beside a healthy co-resident, the
-split route raised MTP output share from 1.8%/2.1% to 69.3%/73.9% and lowered
-decode throughput by 19%/26% per token, including a row that accepted depth 3 on
-every one of its 162 cycles. Remove the flag and
-`speculative_split_refused_groups` once the coupling has a retained row on a
-second protocol or host, or once a wider-group route actually beats the batch AR
-decode; until then the flag is the only way to reproduce the rejected arm.
-
-**Sampled-route finish-rule blockers — resolved (2026-09-22).** The route's
-servable blocker set is the sampling law and nothing else
-(`temperature`, `logit_bias`, penalties, `suppress_token_ids`), plus the
-finish-rule relaxations the cycle commit honors: `ignore_eos`, `min_tokens`,
-`eos_token_id`, `stop_token_ids`, and `stop_token_sequences`. The commit applies
-the autoregressive finish rule to the whole verified chain through
-`hipengine/speculative/streaming.py` `limit_chain_accept_finish`, selecting the
-terminal prefix and reporting `eos` or `stop`, so a stop token or EOS that lands
-mid-cycle publishes nothing after it.
-Evidence: `benchmarks/results/2026-09-22-gfx1151-qwen38-int8-mtp-finish-rule.json`
-and `benchmarks/results/2026-09-22-gfx1151-qwen38-bf16-mtp-finish-rule.json`
-(`scripts/mtp_finish_rule_gate.py`, with `tests/test_unit_mtp_finish_rule_gate.py`
-driving each check to fail against a server that violates it).
-Source: `worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md`.
-
-**Sampled-route debug traces (env-gated, added 2026-09-18; retained 2026-09-19).**
-`HIPENGINE_DEBUG_SAMPLED_ROUTE` gates stderr traces that name every gate on this
-route: `[route-debug]` and `[cap-debug]` and `[cap-silent-none]` and
-`[prefill-debug]` in `hipengine/generation/qwen35_gguf_mtp2.py`,
-`[cycle-failure]` in the same file's `recover_cycle_failure`, `[plan-debug]` in
-`hipengine/generation/engine_loop.py`, and `[sampled-plan]` in
-`_device_sampled_accept_plan` (six refusal sites: row/sampler shape, host state,
-planner mode, logits processors, tool-call and json constraints, forced tokens,
-temperature, and the missing captured graph with its warmup error). They cost one
-`os.environ` lookup per call when the variable is unset and print nothing.
-
-The device-side sampled accept landed on 2026-09-19 and the route now serves by
-default at the cap4 c1 key, so the original removal trigger is met; they are kept
-because they were decisive twice in that unit (a contained cycle exception
-planned `no_provider` for every row, and a warmup skipped at capacity > 1 left
-every sampled cycle without its graph) and the route's c>=2 admission cell is
-still open. Remove them, or replace them with a documented diagnostic, once the
-sampled route's admission cell is widened and measured.
 ## `HIPENGINE_GGUF_GAPPED_GATHER` kill-switch for the gapped slot-local gather route (added 2026-09-19)
 
 Default **on**. A gapped device-KV placement used to drop the whole packed
@@ -9896,3 +9826,33 @@ Compare generated tokens and acceptance against independent single-request runs
 through the public generation surface; check that waiting requests keep their
 provider and that all claims and sink buffers are released. The lifecycle fix
 alone does not enable overlap or establish its numerical/acceptance behavior.
+
+### R0505 — Separate prefill failure state from speculative intent
+
+Restored-checkpoint priming is implemented. Prefix reuse, target-profile and
+physical-streaming-category refusals no longer erase the candidate budget.
+The remaining zero-budget writes in `qwen35_gguf.py` and `qwen35_gguf_mtp2.py`
+cover exhausted target context and failed packed/incremental prefill streams.
+They also prevent reopening an aborted stream; simply deleting them is not a
+complete lifecycle refactor.
+
+**Deferred interface decision:** give failed-stream state an explicit owner and
+make eligibility consult it alongside `_priming_source`, or retain zero budget
+as the terminal request-local representation. If separating intent from failure,
+cover packed-to-serial fallback, incremental abort, cancellation, valid and
+missing restored checkpoints, and context exhaustion. Confirm through public
+requests that failed streams never reopen and eligible peers still speculate.
+
+**Deferred experiment decision:** retire `HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS`
+and `speculative_split_refused_groups`, or keep the default-off reproduction arm
+for the rejected singleton-split route. The alternative performs one provider
+cycle per capable row rather than one autoregressive batch for a refused group.
+Remove it when the cross-host/protocol comparison is complete or a replacement
+wide-group route makes it unnecessary; preserve historical evidence in the
+worklog, not as an admission rule. `docs/ENVS.md` documents the switch.
+
+`HIPENGINE_DEBUG_SAMPLED_ROUTE` is a documented diagnostic in `docs/ENVS.md`,
+not a pending admission prerequisite. Finish-rule resolution remains recorded
+in `worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md` and its
+linked artifacts. Missing measurement rows do not block implemented MTP
+capabilities; the old evidence-only admission requirement is retired.

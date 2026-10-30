@@ -13729,8 +13729,8 @@
       "start_line": 11944,
       "end_line": 12013,
       "sha256": "9d889cdaf9c16e851155c9259248b516fdd29a227ae74b4ac64053bc50350b59",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Reconciled restored-checkpoint support and budget writes; deferred failure-state ownership and rejected split-group experiment decisions; retired obsolete evidence admission and resolved finish-rule history; traces are documented in ENVS. worklog/entries/20261030T052140.700312Z-cleanup-cleanup-r0505-1205da.md."],
       "subitems": []
     },
     {
