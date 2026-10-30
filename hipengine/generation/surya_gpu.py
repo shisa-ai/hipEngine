@@ -41,6 +41,7 @@ from hipengine.generation.deadline import (
 )
 from hipengine.generation.registry import register_text_generator
 from hipengine.generation.surya_contract import (
+    SuryaRequestError,
     check_prompt_capacity,
     greedy_decode_tokens,
     resolve_surya_greedy_settings,
@@ -57,7 +58,7 @@ from hipengine.loading.surya import (
     render_chat_prompt,
     resolve_surya_path,
 )
-from hipengine.runtime.surya import DEFAULT_MAX_SEQ, SuryaGpuRunner
+from hipengine.runtime.surya import DEFAULT_MAX_SEQ, SuryaGpuRunner, SuryaVisionCapacityError
 
 _QUANT = "fp32"
 
@@ -264,7 +265,10 @@ class SuryaOCRGeneratorGPU:
             hint="raise LLM(max_sequence_length=...)",
         )
         raise_if_generation_deadline_expired(request)
-        self.runner.check_vision_capacity([grid])
+        try:
+            self.runner.check_vision_capacity([grid])
+        except SuryaVisionCapacityError as exc:
+            raise SuryaRequestError(str(exc)) from exc
         # The deadline is otherwise only observed at phase boundaries, so a page
         # whose vision forward cannot finish inside the remaining budget would
         # still run to completion before the client's timeout was noticed.

@@ -13544,18 +13544,18 @@
       "start_line": 11658,
       "end_line": 11676,
       "sha256": "4a39a184e4a2a51c028449c191c66d59b3878059ef1f331629a42d07f4db586b",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["GPU configured vision budget errors now translate to request errors; free-memory errors remain runtime failures. CPU admission policy deferred. worklog/entries/20261030T044815.391846Z-cleanup-cleanup-r0495-77e784.md."],
       "subitems": [
         {
           "line": 11664,
           "text": "- The CPU-reference generator (`SuryaOCRGenerator`) has no capacity check at",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 11670,
           "text": "- An over-budget page reaches a generator's caller as the runner's",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

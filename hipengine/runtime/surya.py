@@ -432,6 +432,10 @@ class SuryaGpuRuntimeError(RuntimeError):
     pass
 
 
+class SuryaVisionCapacityError(SuryaGpuRuntimeError):
+    """A page exceeds a configured vision budget, not available device memory."""
+
+
 def _raw_buffer(ptr: int, nbytes: int) -> DeviceBuffer:
     """A non-owning view over an existing device pointer (for copies)."""
 
@@ -1558,7 +1562,7 @@ class SuryaGpuRunner:
         grid = (int(grid_thw[0][0]), int(grid_thw[0][1]), int(grid_thw[0][2]))
         cap = self.max_vision_scratch_bytes
         if cap is not None and need > cap:
-            raise SuryaGpuRuntimeError(
+            raise SuryaVisionCapacityError(
                 f"vision attention score tile for grid {grid} is "
                 f"{need / 1e9:.2f} GB ({n} patches), above the "
                 f"{cap / 1e9:.2f} GB budget; one query row needs "
@@ -1575,7 +1579,7 @@ class SuryaGpuRunner:
                 if fits is None
                 else f"; the {limit:.0f} s budget admits up to {fits} patches"
             )
-            raise SuryaGpuRuntimeError(
+            raise SuryaVisionCapacityError(
                 f"vision forward for grid {grid} is estimated at "
                 f"{seconds:.1f} s ({n} patches, {tiles} query tiles, "
                 f"{attention / 1e12:.1f} TFLOP of bidirectional attention at "

@@ -3544,25 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-13 Surya vision admission is GPU-only and reports runner errors — open
-
-`SuryaGpuRunner.check_vision_capacity` enforces three budgets before any device
-work: the score-tile bytes, the vision wall clock, and free device memory. Two
-edges of that boundary are unowned.
-
-- The CPU-reference generator (`SuryaOCRGenerator`) has no capacity check at
-  all, so a page-scale grid runs a pure-numpy vision tower for as long as it
-  takes. Give it the same estimate (`vision_forward_seconds` is fitted to
-  device rates, so a CPU lane needs its own constants) or declare a patch
-  ceiling; neither generator is wired into a server yet, so nothing reaches
-  this today.
-- An over-budget page reaches a generator's caller as the runner's
-  `SuryaGpuRuntimeError`, which is a request-level fault: the server maps
-  `SuryaRequestError` to a 400 and anything else to a 500. Convert at the
-  generator boundary when the Surya generators are wired into a server, and
-  decide the free-memory check separately — that one is genuinely a
-  server-state fault rather than a bad request.
-
 ## 2026-09-13 Generation-registry clears cannot be replayed — open
 
 `clear_generation_registry_for_tests()` empties `_FACTORIES`, and nothing can
@@ -10082,3 +10063,19 @@ plugins that return no count. Keep the fallback until those producers have an
 explicit replacement contract; do not infer image-token counts from raw text.
 Validate migration with the Qwen/Gemma/Surya server multimodal modules,
 `tests/test_unit_server_prefix_cache_usage.py` and public requests.
+
+### R0495 — Decide CPU-reference vision admission
+
+Configured GPU vision byte/time budget rejections now use
+`SuryaVisionCapacityError`, translated to `SuryaRequestError` by the GPU
+multimodal generator. Free-device-memory failures remain runtime failures;
+they are not attributed to malformed requests.
+
+**Deferred policy decision:** the CPU-reference generator has no vision
+resource ceiling. Choose a configurable patch/memory budget or calibrate a
+CPU timing estimate before adding admission there. GPU timing constants do
+not describe CPU execution. Preserve existing runnable inputs until that
+policy is chosen; no arbitrary default ceiling is added by this cleanup.
+Validate the selected policy on both sides of its limit and an unrelated
+size through `LLM.generate()`. Live Surya validation also needs a locally
+available checkpoint; the current local cache lacks `datalab-to/surya-ocr-2`.

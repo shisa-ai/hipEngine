@@ -661,6 +661,33 @@ def _multimodal_call(generator: object, request: object) -> None:
     generator.generate_multimodal_detailed("prompt", "page.png", request)
 
 
+@pytest.mark.parametrize("request_fault", [True, False])
+def test_gpu_vision_admission_preserves_error_category(monkeypatch, request_fault):
+    from hipengine.generation import surya_gpu
+    from hipengine.runtime.surya import SuryaGpuRuntimeError, SuryaVisionCapacityError
+
+    calls = []
+    _stub_pipeline(monkeypatch, surya_gpu, calls)
+    generator = _gpu_generator(calls)
+    error = (SuryaVisionCapacityError if request_fault else SuryaGpuRuntimeError)(
+        "vision budget or device memory exhausted"
+    )
+
+    def reject(grid):
+        raise error
+
+    monkeypatch.setattr(generator.runner, "check_vision_capacity", reject)
+    expected = SuryaRequestError if request_fault else SuryaGpuRuntimeError
+    with pytest.raises(expected, match="vision budget or device memory exhausted") as caught:
+        _multimodal_call(generator, _request())
+    if request_fault:
+        assert caught.value.__cause__ is error
+    else:
+        assert caught.value is error
+    assert "vision_forward" not in calls
+    assert "prefill" not in calls
+
+
 def test_gpu_ocr_skips_every_stage_when_already_cancelled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -907,6 +934,23 @@ def test_vision_time_budget_rejects_the_checkpoint_ceiling() -> None:
     assert a4 < DEFAULT_MAX_VISION_SECONDS < ceiling, (a4, ceiling)
     assert 40.0 <= a4 <= 47.0
     assert 150.0 <= ceiling <= 170.0
+
+
+@pytest.mark.parametrize("budget", ["bytes", "time", "free_memory"])
+def test_vision_admission_distinguishes_configured_budgets(budget):
+    from hipengine.runtime.surya import SuryaGpuRuntimeError, SuryaVisionCapacityError
+
+    runner = _admission_runner()
+    if budget == "bytes":
+        runner.max_vision_scratch_bytes = 1
+    elif budget == "time":
+        runner.max_vision_seconds = 1e-12
+    else:
+        runner.runtime.mem_get_info = lambda: (0, 1 << 40)
+    with pytest.raises(SuryaGpuRuntimeError) as caught:
+        runner.check_vision_capacity([(1, 64, 64)])
+    assert isinstance(caught.value, SuryaVisionCapacityError) == (budget != "free_memory")
+    assert runner._scratch == {}
 
 
 def test_check_vision_capacity_rejects_a_page_over_the_time_budget() -> None:
