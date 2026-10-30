@@ -4868,7 +4868,8 @@
         {
           "line": 4151,
           "text": "| RF-8 | P1 | Backend package `__init__.py` files are capability databases, alias registrars, and implementation code. | Split backend policy by model/quant/subsystem into immutable manifest modules, with one package aggregator and validation. Keep the four-axis registry; do not replace it with backend conditionals. Generate or declaratively register repetitive aliases only when source-lineage and exact-key tests remain readable. |",
-          "status": "pending"
+          "status": "deferred-backend-manifest-boundaries",
+          "evidence": ["Existing frozen geometry records distinguished from remaining policy/registration split. Exact keys/fallbacks/values, cold import and peer isolation required. 58 tests/docs/audit pass. worklog/entries/20261030T081343.412539Z-cleanup-cleanup-r0187-rf8-e6b734.md."]
         },
         {
           "line": 4152,
