@@ -31,8 +31,8 @@
       "start_line": 39,
       "end_line": 54,
       "sha256": "a5356e67c987f6d48d2fdb59a2010288261d1f9bd9483f12f4d002aeaa7bb4ba",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-layout-decision",
+      "evidence": ["Corrected false prefix-only expiry premise with executed host-mask counterexample; moved layout decision and clearing requirements to ledger bottom. Runtime unchanged. worklog/entries/20261030T061329.839123Z-cleanup-cleanup-r0003-fe93ea.md."],
       "subitems": []
     },
     {

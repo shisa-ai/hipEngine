@@ -4,22 +4,6 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## DMS extent compaction: replace the memmove with a ring head
-
-The DMS append/decode kernel compacts the live extent on every decode step:
-each expired row moves every later slot left by one. At an 8K window that is a
-3.4 ms append per layer, which is what bounds the route's decode rate, and it is
-why the 2026-10-18 compaction-race fix had to stage 16-slot tiles through shared
-memory to stay correct.
-
-Expiry always removes the oldest row, which sits at the lowest slot, so the
-extent can advance `base_offsets` instead of moving data and only compact when
-the window reaches the end of the reserved range. That removes the per-step move
-entirely and the staging with it. The change touches the append kernel, the
-attention readers that walk `[base, base+live)`, and the store's snapshot
-bookkeeping, so it needs its own correctness gate against the host oracle in
-`tests/test_gpu_dms_append_decode_hip.py`.
-
 ## Flash-Next shared decode batch: rollback lever and remaining gaps
 
 The full-model AR batch is the default serving path for Flash-Next
@@ -9603,3 +9587,29 @@ no supported fallback or diagnostic use remains. Preserve backend independence
 rather than applying one host's result to another. Historical measurements and
 probe narrative remain in ledger history at `a8d686248` and the graph module's
 design notes; this triage adds no performance or replay-correctness result.
+
+### R0003 — Choose a DMS layout that preserves interior-expiry semantics
+
+The append kernels still compact surviving rows in token order. A ring head
+alone cannot replace this: `build_dms_live_mask` retains non-evictable history
+regardless of age. For positions `[0, 1, 2, 3]`, eviction flags
+`[false, true, true, true]`, and window 2, advancing the current position from
+3 to 4 removes position 1 but retains position 0. Expiry is not necessarily a
+prefix of the live extent. The HIP keep predicate implements the same rule.
+
+**Deferred design decision:** choose between a prefix-only head-advance fast
+path with interior compaction, or a layout that separately represents retained
+history and the expiring window. The latter requires coordinated attention-reader,
+allocator, snapshot, prefix-cache and speculative rollback changes; neither may
+silently discard non-evictable history. Account for reserved extent bounds and
+wrap/rebase behavior before changing `base_offsets`.
+
+Clearing checks: cover interior expiry, prefix expiry, no expiry, mixed heads,
+capacity boundaries and repeated wrap/rebase against the host oracle. Run
+`tests/test_gpu_dms_append_decode_hip.py`, INT8 device-payload, compact-attention,
+prefix and transaction tests, then public DMS generation including continuation
+and rejected speculative suffixes. Profile the selected route before claiming
+an append-cost improvement. Keep the existing race-safe staging until its data
+movement is replaced safely. The original race repair and timings are preserved
+in `worklog/entries/20261018T120817.976900Z-lhl-dms-append-compaction-race-6fa3d4.md`;
+this triage does not change kernels or claim a speedup.
