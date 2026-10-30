@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "scope": "Historical commit/evidence mapping; no new performance claim",
+  "rows": [
+    {
+      "id": "R0102",
+      "commit": "dcc347b36",
+      "type": "screen-record-no-production-code-landed",
+      "evidence": [
+        "benchmarks/results/2026-09-07-framework-qwen4exp-mmq-bank-first-rejected.json",
+        "worklog/entries/20260907T101740.589522Z-lhl-qwen4exp-mmq-bank-first-c37f7c.md"
+      ]
+    },
+    {
+      "id": "R0105",
+      "commit": "6874147e4",
+      "type": "screen-record-no-production-code-landed",
+      "evidence": [
+        "benchmarks/results/2026-09-07-framework-qwen4exp-mmq-scale-cache-rejected.json",
+        "worklog/entries/20260907T101037.440869Z-lhl-qwen4exp-mmq-scale-cache-17e1e1.md"
+      ]
+    },
+    {
+      "id": "R0106",
+      "commit": "68f4378b0",
+      "type": "screen-record-no-production-code-landed",
+      "evidence": [
+        "benchmarks/results/2026-09-07-framework-qwen4exp-q51-row16-rejected.json",
+        "worklog/entries/20260907T095223.812943Z-lhl-qwen4exp-q51-row16-6d5cdb.md"
+      ]
+    },
+    {
+      "id": "R0109",
+      "commit": "eaded1f16",
+      "type": "screen-record-no-production-code-landed",
+      "evidence": [
+        "benchmarks/results/2026-09-07-framework-qwen4exp-q4-block-pair-rejected.json",
+        "worklog/entries/20260907T063824.163007Z-lhl-qwen4exp-q4-block-pair-03c43d.md"
+      ]
+    },
+    {
+      "id": "R0111",
+      "commit": "20c05baed",
+      "type": "screen-record-no-production-code-landed",
+      "evidence": [
+        "benchmarks/results/2026-09-07-framework-qwen4exp-q51-wave-tail-rejected.json",
+        "worklog/entries/20260907T051623.892011Z-lhl-qwen4exp-q51-wave-tail-b44df3.md"
+      ]
+    },
+    {
+      "id": "R0112",
+      "commit": "f39da3c71",
+      "type": "source-removal",
+      "evidence": [
+        "benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json",
+        "worklog/entries/20260907T050824.246391Z-lhl-qwen4exp-q8-prefetch2-rejected-59148a.md"
+      ]
+    },
+    {
+      "id": "R0114",
+      "commit": "846806168",
+      "type": "source-removal",
+      "evidence": [
+        "benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-rejected.json",
+        "worklog/entries/20260907T015737.073215Z-lhl-qwen4exp-router-shuffle-rejection-9c63fa.md"
+      ]
+    },
+    {
+      "id": "R0118",
+      "commit": "88c5853c4",
+      "type": "source-removal",
+      "evidence": [
+        "worklog/entries/20260906T214749.830517Z-lhl-qwen4exp-q4-residual-cleanup-f15103.md"
+      ]
+    },
+    {
+      "id": "R0122",
+      "commit": "b71949383",
+      "type": "source-removal",
+      "evidence": [
+        "benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json",
+        "worklog/entries/20260906T153612.603935Z-lhl-qwen4exp-q5k-bundle-rejection-1850a3.md"
+      ]
+    }
+  ]
+}
