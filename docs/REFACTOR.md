@@ -2337,17 +2337,6 @@ should be removed or collapsed.
 
 
 
-## 2026-08-28 Qwen4Exp bounded general multimodal
-
-- `Qwen4ExpVisionRunner` preallocates at most 256 patch tokens per temporal pair
-  and public multimodal generation remains capped at 1K. Replace the
-  correctness-first one-thread vision attention and remove this cap only after
-  general-grid Transformers parity plus memory/admission gates pass at larger
-  shapes.
-- HTTP multimodal currently accepts inline bounded PNG data URLs only and is
-  non-streaming `n=1` without tools/session/continuation. Remove the dedicated
-  chat branch after the normal request/batcher/stream owner carries typed media,
-  request cancellation, exact token accounting, and safe remote-media policy.
 
 ## 2026-08-28 Qwen4Exp exact raw-Q8 prefill tiling
 
@@ -9691,3 +9680,31 @@ mixed-prefill/decode requests, including transfer, cancellation and continuation
 Confirm actual batch engagement and staging allocation lifetimes. Any claimed
 memory or speed improvement needs measured comparison; this triage changes no
 runtime behavior and reports no new performance result.
+
+### R0152 — Expand vision capacity and integrate typed media ownership separately
+
+`Qwen4ExpVisionRunner` defaults `max_patch_tokens` to 256, validates a positive
+multiple of four, and rejects inputs beyond its allocated capacity. The argument
+is configurable; 256 is not a universal kernel limit. The HTTP capability report
+still advertises bounded PNG data URLs and a 1024-token request limit.
+
+**Deferred capacity work:** connect larger supported grids to explicit memory
+admission and validate them against the vision reference before changing public
+limits. Profile the existing attention implementation before selecting a faster
+replacement; do not treat changing the limit as providing its storage or
+numerical contract.
+
+**Separate lifecycle integration:** replace the dedicated multimodal chat branch
+only when the normal request owner carries typed media, cancellation, exact token
+accounting and streaming state. Current HTTP checks reject streaming, n other
+than one, tools, sessions, continuation, grammar and speculative generation.
+Those missing semantics are not implemented by widening vision buffers. Remote
+media handling needs an explicit fetching/resource policy; preserve bounded
+inline decoding until that exists.
+
+Clearing checks: run `tests/test_unit_qwen4_exp_multimodal.py` and
+`tests/test_integration_qwen4_exp_server_multimodal.py`; add grid-boundary,
+allocation-failure and mixed-request lifecycle coverage for the chosen extension.
+Run vision reference/device parity and real public HTTP media requests, including
+cancellation and malformed inputs. Remove only restrictions whose replacement
+semantics actually run. This triage changes no runtime or public limit.

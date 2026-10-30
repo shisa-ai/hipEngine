@@ -3998,18 +3998,18 @@
       "start_line": 3622,
       "end_line": 3633,
       "sha256": "362c3a069d5b1b5508b51a17826441fdc9f7565f5e2953c4379cbaba4ba91a5d",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-capacity-and-media-lifecycle",
+      "evidence": ["Corrected configurable patch capacity vs default; HTTP restrictions verified. Deferred larger-grid admission separately from typed media ownership.18 tests/docs/audit pass. worklog/entries/20261030T071346.969977Z-cleanup-cleanup-r0152-9f4f58.md."],
       "subitems": [
         {
           "line": 3624,
           "text": "- `Qwen4ExpVisionRunner` preallocates at most 256 patch tokens per temporal pair",
-          "status": "pending"
+          "status": "deferred-vision-capacity"
         },
         {
           "line": 3629,
           "text": "- HTTP multimodal currently accepts inline bounded PNG data URLs only and is",
-          "status": "pending"
+          "status": "deferred-media-lifecycle"
         }
       ]
     },
