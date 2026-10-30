@@ -4862,7 +4862,8 @@
         {
           "line": 4150,
           "text": "| RF-7 | P1 | `server/api.py` combines unrelated protocol and execution concerns; `create_app()` is a 4K-line closure tree. | Split OpenAI request/response schemas, tool/structured validation, SSE/stream accounting, metrics, model lifecycle, and route handlers. `create_app()` should compose routers/services rather than define the implementation. The server must call one typed generation service; it must not become a second scheduler. |",
-          "status": "pending"
+          "status": "deferred-server-composition-boundaries",
+          "evidence": ["Existing media/tool helpers and engine service preserved; remaining route/schema/stream/metrics/lifecycle extraction deferred with HTTP and service ownership gates. 15 tests/docs/audit pass after correcting doc paths. worklog/entries/20261030T081106.332253Z-cleanup-cleanup-r0187-rf7-37012e.md."]
         },
         {
           "line": 4151,

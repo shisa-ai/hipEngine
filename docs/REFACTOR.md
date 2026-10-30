@@ -2430,7 +2430,6 @@ fallback, active test oracle, or current research campaign consumes it.
 
 | ID | Priority | Problem | Target design / completion gate |
 | --- | --- | --- | --- |
-| RF-7 | P1 | `server/api.py` combines unrelated protocol and execution concerns; `create_app()` is a 4K-line closure tree. | Split OpenAI request/response schemas, tool/structured validation, SSE/stream accounting, metrics, model lifecycle, and route handlers. `create_app()` should compose routers/services rather than define the implementation. The server must call one typed generation service; it must not become a second scheduler. |
 | RF-8 | P1 | Backend package `__init__.py` files are capability databases, alias registrars, and implementation code. | Split backend policy by model/quant/subsystem into immutable manifest modules, with one package aggregator and validation. Keep the four-axis registry; do not replace it with backend conditionals. Generate or declaratively register repetitive aliases only when source-lineage and exact-key tests remain readable. |
 | RF-9 | P1 | `laguna_kv_attention.hip` (18,799 lines), its Python wrapper (11,275), and 768-line registration function mix production and rejected geometry ladders. | Partition KV write, global decode/prefill, SWA decode/prefill, and experiment-only families. Delete unwrapped rejected bodies; move retained negative controls to explicit test-only builds where practical. Keep production kernel names and lineage stable during mechanical splits. |
 | RF-10 | P1 | GGUF linear launchers and generation owners encode a combinatorial decision tree in large functions; direct controls remain callable from production modules. | Replace repeated pair/triple/residual branching with typed launch-plan records resolved before launch. Move direct AR/MTP control loops to explicit oracle helpers once `SubmitPollTextGenerator` owns the same gates. Keep unsupported-shape fallbacks, but give each request exactly one scheduler/commit owner. |
@@ -9838,3 +9837,26 @@ exercise failure cleanup, graph lifetime, prefix restore and cancellation/reuse,
 and verify public ordinary and speculative requests. Update PLAN only for
 implemented boundaries. The prior bounded GGUF extraction is complete; this
 remaining GGUF/PARO decomposition is not.
+
+### RF-7 / R0187 — Split HTTP composition around the existing generation service
+
+`hipengine/server/multimodal.py` and `hipengine/server/tool_stream.py` already own separate helpers,
+but `hipengine/server/api.py` still combines protocol schemas, validation, stream
+accounting, metrics, model lifecycle, transport queueing and route bodies.
+`hipengine/generation/engine_service.py` already owns the generation service; the server
+must not introduce a replacement scheduler during decomposition.
+
+**Deferred boundary design:** define explicit application-state dependencies for
+routers, model lifecycle, metrics and stream translation, then extract cohesive
+units so `create_app()` composes them. Preserve transport backpressure and
+queue admission while keeping device scheduling, request state and commit
+ownership in the generation engine. Separate OpenAI schemas, tool/structured
+validation and SSE accounting without changing public errors or response shapes.
+
+Clearing checks: preserve public/import compatibility during move-only units;
+exercise HTTP ordinary/streamed requests, tool and structured responses,
+disconnect/cancel, queue saturation, startup failure, shutdown and model reuse.
+Verify readiness and service-health attribution still report the same engine.
+A real `hipengine serve` request must confirm the intended service path, not
+only mocked route tests. The split is not implemented by this triage; the old
+closure-size estimate is removed rather than presented as a current measurement.
