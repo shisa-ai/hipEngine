@@ -965,38 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
-
-Cleanup status (2026-10-26, R0053): fixed. The plain prefill block kernel now
-computes `first_kept` and `walk_end` with saturating int64 arithmetic clamped to
-`[0, keys]` (`gemma4_attention.hip:163`, `:190`, `:209`, called at `:275` and
-`:294`), the same form the staged family uses. The launcher (`:449`) validates
-the `tokens * num_heads` grid product before forming it and bounds `head_dim`,
-`keys`, and their sum before the LDS comparison, so an extreme shape returns
-`hipErrorInvalidValue` before a launch instead of wrapping the unsigned grid or
-the int64 sum. No legal shape is refused: the LDS ceiling and the device grid
-limit are the ones the kernel already had, and the coordinate clamp only changes
-inputs outside `[0, keys]`.
-
-The arithmetic is unchanged for legal inputs: for `window > 0` and
-`0 <= row_offset + token < keys`, `first_kept` is still
-`max(0, row_offset + token - window + 1)` and `walk_end` is still
-`min(row_offset + token + 1, keys)`; `window == 0` still keeps the full walk.
-The clamp replaces a wrapped 32-bit cast only at the edges. This remains a
-raw-launch boundary issue, not a measured regression on model-generated
-coordinates; the pre-repair staged reproducer that faulted the GPU queue is the
-RED evidence and is not re-run.
-
-Regression coverage: `tests/test_gpu_gemma4_attention_prefill_bounds.py` drives
-the raw `hipengine_gemma4_attention_prefill_f32` symbol (the one-token prefill
-path the Python wrapper routes to decode) with the staged family's huge positive
-and negative coordinates, asserts NaN for an empty clamped walk and the CPU
-oracle for a clamped non-empty one, and asserts `hipErrorInvalidValue` for an
-unrepresentable grid. The existing
-`tests/test_gpu_gemma4_attention_geometry.py` narrowed-walk test and
-`tests/test_gpu_gemma4_attention_staged.py` parity test remain the arithmetic
-checks; the parent runs the GPU half.
-
 ## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
 
 Cleanup status (2026-10-26, R0054): removed. `gemma4_attention_prefill_tiled_kernel`,
