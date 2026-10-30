@@ -13184,8 +13184,8 @@
       "start_line": 11075,
       "end_line": 11085,
       "sha256": "2d96d866980636e435bd00a97a595988cd70c7b45f4b60e218337ef76c8c30cc",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["75038ec1d removed legacy substring binding and static identities; structured validation unchanged. Focused 63 tests, docs/audit and bg-891 CPU deterministic bundle passed. worklog/entries/20261030T021026.289206Z-cleanup-cleanup-r0469-c3bf3e.md."],
       "subitems": []
     },
     {
