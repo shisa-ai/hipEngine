@@ -16,6 +16,9 @@ def _key(variant=PARENT):
     [
         (4096, 6144, 2560, LONG_K),
         (1024, 6144, 2560, LONG_K),
+        (1023, 6144, 2560, PARENT),
+        (1025, 6144, 2560, LONG_K),
+        (1536, 6144, 2560, LONG_K),
         (512, 6144, 2560, PARENT),      # measured slower below 1024 rows
         (4096, 2560, 10240, PARENT),    # the builds tie at K=2560
         (4096, 10240, 320, PARENT),     # narrow output: CU mode wins
@@ -29,14 +32,24 @@ def test_long_k_rule_selects_by_shape(monkeypatch, rows, in_features, out_featur
     assert (key.backend, key.layer, key.quant) == ("hip_gfx1100", "linear", "gguf_q8_0")
 
 
-def test_long_k_rule_opt_out_and_other_parents(monkeypatch):
-    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K", "0")
+@pytest.mark.parametrize("value", ["0", "false", "False", "1", "caller-sentinel"])
+def test_long_k_rule_ignores_retired_key_and_preserves_other_parents(monkeypatch, value):
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K", value)
     assert linear._dense_wide_f16_long_k_key(
-        _key(), rows=4096, in_features=6144, out_features=2560).variant == PARENT
-    monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K")
+        _key(), rows=4096, in_features=6144, out_features=2560).variant == LONG_K
     padded = "dense_wide256_padded_f16in_f32_f32_out"
     assert linear._dense_wide_f16_long_k_key(
         _key(padded), rows=4096, in_features=6144, out_features=2560).variant == padded
+
+
+def test_long_k_rule_keeps_parent_when_sibling_is_unavailable(monkeypatch):
+    attempted = []
+    monkeypatch.setattr(linear, "is_registered", lambda key: False)
+    monkeypatch.setattr(linear, "_ensure_linear_kernel_registered", attempted.append)
+    parent = _key()
+    assert linear._dense_wide_f16_long_k_key(
+        parent, rows=1536, in_features=6144, out_features=2560) == parent
+    assert attempted == [_key(LONG_K)]
 
 
 def test_short_chunk_build_bound_is_overridable(monkeypatch):
@@ -134,7 +147,7 @@ def test_pair_probe_and_staged_launch_resolve_the_same_long_k_sibling(monkeypatc
             variant="dense_wide256_f32_f32_out", runtime=object(),
         )
 
-    for env, expected in ((None, LONG_K), ("0", PARENT)):
+    for env, expected in ((None, LONG_K), ("0", LONG_K)):
         if env is None:
             monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K", raising=False)
         else:

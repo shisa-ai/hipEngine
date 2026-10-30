@@ -570,7 +570,6 @@ def _dense_wide_f16_tail_key(
     return candidate if is_registered(candidate) else key
 
 
-_DENSE_WIDE_LONG_K_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K"
 _DENSE_WIDE_LONG_K_PARENT = "dense_wide256_f16in_f32_f32_out"
 _DENSE_WIDE_LONG_K_VARIANT = "dense_wide128x128_wgp_f16in_f32_f32_out"
 _DENSE_WIDE_LONG_K_MIN_IN_FEATURES = 4096
@@ -587,7 +586,6 @@ def _dense_wide_f16_long_k_key(
 
     Same arithmetic as the parent tile, so the output bits are unchanged.
     Measured at 4096 rows, K=6144, N=2560 on gfx1151: 3.47 ms against 4.14.
-    ``HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K=0`` keeps the parent.
     """
 
     if (
@@ -595,7 +593,6 @@ def _dense_wide_f16_long_k_key(
         or int(in_features) < _DENSE_WIDE_LONG_K_MIN_IN_FEATURES
         or int(out_features) < _DENSE_WIDE_LONG_K_MIN_OUT_FEATURES
         or int(rows) < _DENSE_WIDE_LONG_K_MIN_ROWS
-        or os.environ.get(_DENSE_WIDE_LONG_K_ENV, "1") in {"0", "false", "False"}
     ):
         return key
     candidate = KernelKey(key.backend, key.layer, key.quant, _DENSE_WIDE_LONG_K_VARIANT)

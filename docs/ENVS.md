@@ -784,7 +784,7 @@ use.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_GGUF_PACK8_GEMV_WIDE` | unset | Wide-thread pack8 GEMV grid for eligible projections. |
-| `HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K` | profile-selected | Long-K dense-wide 128x128 WGP variant in place of the 256 parent. |
+| `HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K` | retired | Ignored. The F16 wide route selects the registered 128x128 WGP sibling at rows ≥ 1024, K ≥ 4096 and N ≥ 1024; otherwise it keeps the parent. |
 | `HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS` | `1024` | Upper row bound of the WGP-mode dense-wide build (`0` disables it). |
 | `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` | retired | Ignored. Selected Q4_K T16 gate+up uses the tile8 owner; the 16-column wrapper remains a direct numerical reference. |
 | `HIPENGINE_KERNEL_CENSUS` | unset | Records launch shapes and roles (never pointers or data) for kernel census reports. |

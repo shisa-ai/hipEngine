@@ -13064,8 +13064,8 @@
       "start_line": 10872,
       "end_line": 10888,
       "sha256": "c0900de51438a8817b78110d5e734a371d3d7f727694770b255f0274bfc3056b",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Long-K process opt-out removed; shape and registry fallback unchanged. RED4/GREEN79; native9, full CPU deterministic bundle, public generation with48 actual long-K launches despite stale key0, docs/audit pass. Worklog: worklog/entries/20261030T001345.427781Z-cleanup-cleanup-refactor-r0457-8991b3.md."],
       "subitems": []
     },
     {
