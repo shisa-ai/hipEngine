@@ -13606,23 +13606,23 @@
       "start_line": 11715,
       "end_line": 11744,
       "sha256": "a9fd5c9eb39c6bf7a6757123210e2404bd022f326d0a74caff56e97b385f98a5",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Rejected dispatch is absent; original immutable rejection and artifact preserved. worklog/entries/20261030T045650.070602Z-cleanup-cleanup-r0498-9d21e5.md."],
       "subitems": [
         {
           "line": 11724,
           "text": "- Measured over ten seeds on freshly synthesized audio: **54/60 request-runs pass",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11729,
           "text": "- The numerical difference at the boundary is small (max 0.0625 absolute, 3.7e-3",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 11734,
           "text": "- **A false negative was recorded here once.** A ten-seed A/B was believed to show",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

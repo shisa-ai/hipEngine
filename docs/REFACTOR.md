@@ -3544,36 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## VibeVoice-TTS semantic encoder `rows=1` GEMV dispatch (rejected on quality)
-
-`kernels/hip_gfx1100/vibevoice/registered.py`'s `frontend_gemm` routes every row
-count to the tiled WMMA prefill GEMM. Routing `rows < 2` to `dense_gemv_out_bf16`
-is **3.00x faster on the semantic stage** (per-chunk `encode_chunk_streaming`
-55.22 -> 18.42 ms, isolated A/B in one process) and takes pooled RTF from 1.337 to
-a median of 1.146 over five runs. **It must not land: it fails the generated-audio
-quality gate.**
-
-- Measured over ten seeds on freshly synthesized audio: **54/60 request-runs pass
-  with the dispatch on against 58/60 with it off**, and the on arm reproduces a
-  catastrophic failure -- `two-2turn` seed 20260917 at WER 0.6471 with 5 repeated
-  4-grams, 11.73 s of output (duration ratio 1.725) and a broken speaker
-  attribution. Two more seeds regress, one losing its transcript entirely.
-- The numerical difference at the boundary is small (max 0.0625 absolute, 3.7e-3
-  relative, about one bf16 ulp at the signal's 16.875 scale), which is why the
-  correctness suite and the exact-token-chain gate both pass while the audio
-  quality gate fails. Do not treat "small perturbation" as "safe perturbation":
-  the two-speaker trajectory is chaotically sensitive to it.
-- **A false negative was recorded here once.** A ten-seed A/B was believed to show
-  bit-identical outcomes on and off. That comparison was invalid: the harness
-  labels its arms `wmma` for threshold 0 and `gemv` for threshold 2, so `wmma`
-  means the dispatch is off, and both arms under comparison were off. Any future
-  A/B on this path must assert the arm's threshold in the artifact rather than
-  trusting the label.
-
-To remove this entry: it would need a mechanism that removes the trajectory
-sensitivity, not a re-measurement. The isolated stage win is real and stays on
-record in this file so it is not re-attempted from scratch.
-
 ## VibeVoice-TTS LM decode gate+up at `threads=64` (rejected on quality, ~1.2x)
 
 `vibevoice_qwen2.py`'s decode gate+up projection calls `dense_dual_gemv_out_bf16`
