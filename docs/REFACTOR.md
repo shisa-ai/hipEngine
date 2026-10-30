@@ -2228,25 +2228,6 @@ should be removed or collapsed.
   restoration before retiring the variable; do not substitute a process-global
   boolean or infer this arithmetic choice from the backend alone.
 
-## SPECDEC2 whole-request compatibility seam
-
-- Added 2026-08-24 for the approved [`SPECDEC2.md`](reference/SPECDEC2.md) campaign.
-  `SubmitPollTextGenerator.submit_speculative_many_detailed()` selects staged
-  submission first when the wrapped generator supplies staged support. Otherwise
-  its synchronous compatibility adapter finishes complete model-owned generation
-  under the submission/model-loop lock and publishes synthetic `VERIFY_CHAIN`
-  metadata. This adapter still supports generators without staged submission;
-  it is not the production selection for staged-capable generators.
-- Removal trigger: S3 must match direct c1 IDs/cycle semantics and exact
-  hidden/Conv/GDN/KV/cursor/following-AR state; S4 must pass physical c2/c4,
-  late-admission/refill, streaming, cancellation, and ownership gates. Then
-  remove production selection of the synchronous route, synthetic post-hoc work
-  metadata, and duplicate request/result ownership. Keep separately named
-  direct controls and registered strict/eager/serial kernel fallbacks required
-  by the execution-profile contract. Migrate each remaining non-staged provider
-  before removing its compatibility adapter; preserve explicit unsupported-mode
-  errors and verify staged providers never execute the whole-request path.
-
 ## SPECDEC2 dense prompt-activation fallback
 
 - Added 2026-08-25 with SPECDEC2-PERF P2. Fresh strict C1/C2/C4 requests stream
@@ -9883,3 +9864,24 @@ must leave one immutable profile/capability selection and registered strict
 fallbacks; a rejection must remove only unconsumed candidate selection. Verify
 nested disabled scopes and exception restoration as well as public selected
 routes. No candidate, backend geometry or runtime default changes here.
+
+### R0188 — SPECDEC2 whole-request compatibility seam
+
+`SubmitPollTextGenerator.submit_speculative_many_detailed()` selects staged
+submission for staged-capable providers. Other providers still use synchronous
+model-owned generation under the submission/model-loop lock and synthetic
+`VERIFY_CHAIN` metadata. Staged-first routing is verified; compatibility is not
+an unused route.
+
+**Deferred provider migration:** inventory and migrate the remaining non-staged
+providers before removing synchronous selection, post-hoc work metadata and
+duplicate request/result ownership. RF-10's direct-control migration refers to
+this requirement, not a separate scheduler implementation.
+
+Preserve the [`SPECDEC2.md`](reference/SPECDEC2.md) S3 direct-c1 ID/cycle and exact
+hidden/Conv/GDN/KV/cursor/following-AR gates, and S4 physical-c2/c4,
+late-admission/refill, streaming, cancellation and ownership gates. Keep named
+direct controls and registered strict/eager/serial kernel fallbacks. Verify
+staged providers never enter whole-request compatibility and unsupported modes
+fail explicitly. Exercise migrated providers through public generation before
+retiring their adapter; no provider support or runtime behavior changes here.
