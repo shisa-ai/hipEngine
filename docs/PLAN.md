@@ -423,6 +423,10 @@ OpenAI request models live in `hipengine/server/schemas.py`, independently of
 application composition. Schema imports stay free of FastAPI, generation and
 runtime imports. The server package lazily resolves its existing public app
 exports; `server.api` keeps aliases to the same request-model classes.
+Pure JSON Schema subset and value validation lives in
+`hipengine/server/json_schema.py`, with only standard-library dependencies;
+`server.api` preserves its existing helper aliases. Request error translation,
+tool-result handling and stream accounting remain in HTTP composition.
 
 ### Layer Diagram
 

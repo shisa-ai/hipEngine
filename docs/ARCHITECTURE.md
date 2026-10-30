@@ -81,7 +81,11 @@ BF16, INT8 and DMS storage must not each introduce another request scheduler.
 Pydantic and standard-library types. Importing it does not load the application,
 generation service or model runtime. `hipengine.server` lazily exports the app
 factory/configuration; `server.api` re-exports the same schema classes for existing
-callers. HTTP composition and request/resource lifetimes remain in the application.
+callers. `hipengine/server/json_schema.py` owns pure JSON Schema subset and value
+validation for structured outputs and tool parameters, with standard-library
+dependencies only. The application preserves the existing helper aliases and
+owns HTTP error translation. HTTP composition and request/resource lifetimes
+remain in the application.
 
 | Lifetime | Typical resources | Release/transfer boundary |
 | --- | --- | --- |
