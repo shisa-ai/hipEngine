@@ -1,7 +1,9 @@
-"""Observe native padded HC-tail selection and compare parent model state.
+"""Observe padded HC-tail fallback selection and compare parent model state.
 
-Logging-only registry wrappers do not substitute kernels. Each case runs
-native/parent/native/parent, comparing logits, state, full KV and output IDs.
+The direct GR route is disabled only around diagnostic prefill so ordinary
+staging reaches the padded-tail fallback. Logging-only registry wrappers do
+not substitute kernels. Each case runs padded/parent/padded/parent, comparing
+logits, state, full KV and output IDs.
 No performance claim is made by this integration smoke.
 """
 from __future__ import annotations
@@ -35,6 +37,7 @@ def main():
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.registry import KernelKey, resolve, register
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
+    from hipengine.runtime.qwen4_exp_runner import gr_f16_direct
     from hipengine.models import resolve_model
     from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture, _git_metadata, _host_metadata
     from scripts.qwen4exp_layer2_profile_gate import _state_summary
@@ -93,7 +96,8 @@ def main():
                 elif generator.runner.dense_wide_tail_variant != CANDIDATE:
                     generator.runner.dense_wide_tail_variant = report["native_binder_value"]
                 before = dict(counts)
-                first = generator.runner.prefill(case["prompt_token_ids"])
+                with gr_f16_direct(False):
+                    first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_state = _state_summary(generator.runner)
                 logits, token = [first.logits.copy()], int(first.token_id)
                 ids = [token]
