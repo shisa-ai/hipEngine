@@ -3486,43 +3486,6 @@ Resolved: the reduction-order choices have explicit manifest scopes and
 runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
-## The WMMA QSA attention selector and its F16 K/V gather
-
-The manifest's WMMA QSA selection is published as `runner.qsa_wmma_enabled`
-and forwarded to `run_qwen4_exp_qsa_prefill_token_mixer`; the process selector
-`HIPENGINE_QWEN4_EXP_QSA_WMMA` is retired. Diagnostic arms use
-`qsa_wmma_attention(runner, enabled)` and restore the runner's choice on exit.
-The route
-gathers the whole context's paged BF16 K/V into contiguous F16 scratch rows
-for every QSA layer on every prefill chunk (`wmma_k_f16`, `wmma_v_f16` on the
-QSA scratch). With batched selection and the default direct selector, top-k
-writes the per-query bitmask (`wmma_mask`) directly from scores. Only the last
-sparse row expands selected positions, which are copied to the index state for
-decode. Other selection paths build the mask from selected-position lists.
-
-The gather wrapper takes a `KVLiveSpans` and rejects anything but uniform
-BF16 spans; the kernel reads the page table those spans carry. The three
-scratch buffers are allocated on first use. Context admission reserves the
-shared F16 K/V pair and per-query mask alongside activation staging, once per
-runner; the base-allocation census excludes these lazy buffers.
-
-Removal conditions: (0) a variable-span gather (`live_counts`,
-`token_positions`, `evict_mask`) before the route is offered to any
-non-dense KV policy; scratch accounting is implemented;
-(1) gather only the positions a chunk appended and keep
-the F16 rows per layer once multi-chunk prefill at long context makes the
-full regather measurable. The F16 scratch is shared across layers, so an
-append-only gather requires per-layer ownership, matching capacity accounting,
-and invalidation on reset, restore and prefix changes; changing only the gather's
-`first_position` would reuse another layer's K/V.
-
-Condition (2), direct mask writing, is implemented for the direct-selection
-route. The final-row expansion is a decode-state handoff, not redundant mask
-construction; removing it requires an equivalent selected-position/count
-publication. The selector is manifest-bound runner state, completing condition
-(3). The direct-selector rollback is tracked in the next entry.
-
-
 ## Qwen4Exp direct QSA prefill selection (`HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT`)
 
 Default on. Prefill rows past the dense-equivalent limit score only the
@@ -10461,3 +10424,34 @@ still needs the shared implementation. Verify both quant bindings and
 user-facing execution before removing any UD-specific route. The earlier closure in
 `../worklog/entries/20261030T002539.121609Z-cleanup-cleanup-refactor-r0459-e3bbfd.md`
 missed the final composition override and is corrected by this entry.
+
+### R0462 — QSA gather storage and variable-span follow-up
+
+Selector ownership and scratch accounting are fixed: the manifest publishes
+`runner.qsa_wmma_enabled`, diagnostic arms use `qsa_wmma_attention`, and context
+admission reserves the shared lazy F16 K/V pair and mask once per runner.
+Direct selection already writes masks from scores; the final-row expansion
+publishes positions/counts for decode and is not redundant mask construction.
+The direct-selector rollback remains a separate cleanup item.
+
+**Deferred storage decision:** retain the shared full-context gather or spend
+per-layer storage to cache F16 K/V across chunks. Public multi-chunk generation
+confirms that distinct layers reuse the same output scratch within each chunk.
+Changing only `first_position` to the chunk start would reuse another layer's
+K/V. **Clearing action:** profile a representative long-context workload, choose
+the memory/reuse trade-off, then implement per-layer ownership and admission
+accounting together if caching is chosen. Validate reset, prefix adoption,
+snapshot restore, speculative rollback, interrupted prefill and teardown,
+including an intervening decode append before more prefill. Do not infer a
+throughput benefit from the short instrumented ownership diagnostic.
+
+**Deferred capability extension:** the gather wrapper accepts only uniform
+BF16 `KVLiveSpans`. Before offering this route to a non-dense policy, implement
+a gather consuming `live_counts`, `token_positions` and `evict_mask`, plus
+matching sparse-mask/attention semantics. Verify nonidentity physical pages,
+evicted positions and policy transitions against the strict reference; preserve
+the existing dense route. This is an implementation prerequisite, not an
+artifact-identity or benchmark-admission gate.
+
+Disposition and public ownership diagnostic:
+`../worklog/entries/20261030T012436.140169Z-cleanup-cleanup-r0462-disposition-92a3ce.md`.

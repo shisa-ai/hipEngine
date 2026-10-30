@@ -13114,9 +13114,9 @@
       "start_line": 10980,
       "end_line": 11005,
       "sha256": "e0fa951950900c6fb16aa0f076e53e396b086c6f32ba100aaebdd28748e5622b",
-      "status": "pending",
-      "evidence": [],
-      "subitems": []
+      "status": "deferred",
+      "evidence": ["Capacity reserve fixed defa2175a; manifest selector fixed b791b2f67; direct mask stale condition corrected 5ae5073f1. Remaining per-layer cache memory trade-off and non-dense span capability moved to ledger bottom with clearing actions. Public multi-chunk ownership diagnostic bg872 passed; no speedup claimed. worklog/entries/20261030T012436.140169Z-cleanup-cleanup-r0462-disposition-92a3ce.md."],
+      "subitems": [{"text": "shared lazy scratch admission", "status": "resolved"}, {"text": "manifest selector ownership", "status": "resolved"}, {"text": "direct mask publication", "status": "already-implemented"}, {"text": "per-layer gather cache and non-dense spans", "status": "deferred"}]
     },
     {
       "id": "R0463",
