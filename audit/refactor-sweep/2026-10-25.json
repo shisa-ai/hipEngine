@@ -5124,28 +5124,28 @@
       "start_line": 4316,
       "end_line": 4362,
       "sha256": "3b774ac26da5f76d264cd00c993d547eb71f05ddbf25144bee298fc05e5ebddf",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-physical-target-manifest",
+      "evidence": ["Live exact-row/mixed-Q6 readers confirmed; deferred profile consolidation preserves fallback/lifetime contracts and separates historical evidence from admission. 153 tests/docs/audit pass. worklog/entries/20261030T083541.556038Z-cleanup-cleanup-r0195-50755d.md."],
       "subitems": [
         {
           "line": 4318,
           "text": "- Added 2026-08-27 for the gfx1100 physical-C2 production campaign. The backend-",
-          "status": "pending"
+          "status": "reconciled-live-policy-historical-evidence"
         },
         {
           "line": 4343,
           "text": "- Removal trigger: after one release checkpoint, remove the exact-R8 env flag",
-          "status": "pending"
+          "status": "deferred-physical-target-manifest"
         },
         {
           "line": 4353,
           "text": "- Removal trigger: after one release checkpoint, remove the mixed-Q6 env flag",
-          "status": "pending"
+          "status": "deferred-physical-target-manifest"
         },
         {
           "line": 4356,
           "text": "- Removal trigger: after one release window with the exact automatic C2 key and",
-          "status": "pending"
+          "status": "deferred-physical-target-manifest"
         }
       ]
     },

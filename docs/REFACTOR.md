@@ -2493,53 +2493,6 @@ should be removed or collapsed.
   performance target; do not remove the correctness
   fallback merely because its original scalar implementation was slower.
 
-## SPECDEC2 physical production scope
-
-- Added 2026-08-27 for the gfx1100 physical-C2 production campaign. The backend-
-  and profile-scoped prompt-streaming capability enables normalized target rows
-  only for the qualified production owner; strict retains host replay. The request-
-  local `q4_t16_physical_extra_rowtiles_session(...)` selects exact C1-equivalent
-  rows6 rowtiles for K5120/N17408 gate/up and K6144/N5120 attention output only
-  when the production adapter and backend capability agree; strict keeps the
-  registered single-wave/shared-B fallbacks. The same request-local policy
-  selects the bit-exact Q5 rows6 four-column and planar-Q6 rows6 col8 rowtiles
-  while strict keeps their serial-row owners. Since 2026-08-29, physical groups
-  pad to rows6 multiples through R24 and split Q4/Q5/Q6 plus the unfused
-  gate/up fallback into consecutive qualified rows6 launches. Scope misses,
-  strict arithmetic, and ordinary prefill retain the prior owners.
-  The scope avoids changing the existing C1 production manifest while physical
-  production owns an independent policy fingerprint and quality/economics
-  packet. P12 adds one exact automatic evidence row for standard Q4_K_M,
-  gfx1100 production/BF16/cap2/C2/K2/context4-95/D24; all scope misses remain
-  K0. The device-resident proposal's enqueue-only call retains synchronized
-  default behavior for every other caller, and physical accept relies on its
-  bounded blocking D2H while the legacy diagnostic path remains synchronized.
-  The independently exact R8 owner is now the production default after its
-  counterbalanced full C2/K3 category+heldout gate passed: physical C2/K3 omits
-  four inactive padding rows and selects existing Q4/Q5/Q6 rows8 rowtiles,
-  while R6 and every other physical width retain the established rows6-multiple
-  route. `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS=0` restores padded R12 on
-  the same build.
-- Removal trigger: after one release checkpoint, remove the exact-R8 env flag
-  and fold R8 into the profile-resolved physical-target variant manifest while
-  retaining the padded rows6 decomposition as the registered strict fallback.
-  The planar-Q6 mixed-R8 composition is now the production default: R24 uses
-  `8+8+8`, R30 uses `8+8+8+6`, and R36 uses `8+8+8+6+6` at measured actual
-  recurrent-QKV, full-attention-V, and FFN-down shapes. R18 and shape misses
-  retain repeated R6. Actual-weight leaves are exact in 12/12 cells and improve
-  admitted rows by 1.079-1.234x; the complete C5-C8 gate improves every
-  width/category/heldout scope. `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES=0`
-  restores repeated R6 on the same build.
-- Removal trigger: after one release checkpoint, remove the mixed-Q6 env flag
-  and fold the retained partitions into the physical-target variant manifest;
-  preserve repeated R6 as the registered strict fallback.
-- Removal trigger: after one release window with the exact automatic C2 key and
-  rows6-multiple explicit C3/C4 route, collapse prompt streaming, padding, and
-  these boolean scopes into a general profile-resolved physical-target variant
-  manifest keyed by C/R/shape. Preserve the exact evidence-row bounds, strict
-  fallbacks, synchronized caller fallback, unfused pair ownership, and focused
-  offset/selector tests.
-
 ## gfx1100 dense SPECDEC2 C8 physical-width rollback
 
 The maximum-request environment override is removed from server admission and
@@ -9908,3 +9861,31 @@ request wall time with matched AR/direct controls when claiming a performance
 benefit. The old automatic-K0/default-off statement was a historical bring-up
 result, not a current admission rule; current model/provider capability and
 selection policy remain authoritative. No runtime defaults change here.
+
+### R0195 — Consolidate physical-target policy without changing admission
+
+The GGUF MTP adapter still reads `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS`
+and `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` during construction.
+Exact row counts, padding and Q6 partitions also depend on backend capabilities
+and execution profile. These controls are not retired by earlier C7/C8 policy
+cleanup. Historical physical-C2 measurements and row partitions remain in this
+ledger at `df87e047f`; they are not current universal admission bounds.
+
+**Deferred ownership decision:** consolidate exact rows, mixed-Q6 partitions,
+prompt streaming and padding into a profile-resolved physical-target manifest
+keyed by concurrency, target rows and shape. Reuse RF-1/RF-10 ownership rather
+than add a parallel selector. Retire the two rollback flags only with explicit
+coverage of their replacement policies and diagnostic controls.
+
+Preserve padded rows6 decomposition, repeated-R6 and serial-row strict owners,
+ordinary-prefill behavior, scope-miss fallbacks and unfused pair ownership.
+Keep synchronized callers synchronized; enqueue-only proposal and bounded
+blocking accept readback have separate lifetime contracts. Preserve independent
+physical-target and C1 policy fingerprints and historical evidence bounds as
+provenance, not identity-based admission rules.
+
+Clearing checks: exact output/state and offset/selector tests across C1, C2/K3,
+C3/C4 and wider supported groups, including shape misses and strict profiles;
+public generation must attribute the selected rows and fallback reason. Compare
+matched full-request category/heldout performance when claiming a benefit.
+No flag, arithmetic selection or model admission changes in this triage.
