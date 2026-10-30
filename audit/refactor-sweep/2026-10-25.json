@@ -1268,7 +1268,7 @@
       "start_line": 1297,
       "end_line": 1309,
       "sha256": "1dd44d45f7d53d0759deeac7bd2a0c87d877918be5251d6450849499e72488bf",
-      "status": "not-debt-retained",
+      "status": "triaged-mapping-implemented-override-retirement-deferred",
       "evidence": [
         "Verified PLE retention, Q4 arm removal and registry test-baseline resolution. Gemma draft-law comparison completed; switch removed, sampled and greedy public probes pass with sampled token IDs unchanged. Worklog:worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md; evidence:benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json."
       ],

@@ -965,19 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## Qwen4Exp PLE Mapping Advice (2026-09-14 JST)
-
-- gfx1151 production now selects instance-owned mapping-only random advice.
-  Strict selects normal; `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS=normal`
-  is the diagnostic rollback. Remove the environment override once remap,
-  full-cache warming and long-unique cold behavior have broader qualification;
-  preserve the explicit table API and normal fallback.
-- Existing `configure_random_access` combines per-gather prefetch/range work
-  and advice. It remains a separate explicit diagnostic; do not stack it on
-  mapping-only evidence or attribute its cost to the new default.
-- Exploratory sorted-dedup/pread/worker algorithms live only in the experiment
-  harness. None is an inference fallback chain or adopted default.
-
 ## gfx1151 Q4 dual-SiLU prefill 16-column arms: removed (2026-09-13)
 
 Cleanup status (2026-10-26, R0042): resolved and verified at HEAD. No
@@ -2002,6 +1989,20 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0041 — PLE mapping-advice diagnostic retirement
+
+Instance-owned mapping-only random advice is the gfx1151 production selection;
+strict uses normal. `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS=normal` remains the
+diagnostic rollback. **Deferred retirement:** verify remap, full-cache warming
+and long-unique cold behavior before removing the override, preserving the
+explicit table API and normal fallback.
+
+`configure_random_access` separately combines per-gather prefetch/range work
+with advice; do not attribute its costs or evidence to mapping-only selection.
+Sorted-dedup/pread/worker experiments are harness-only, not inference fallback
+chains or defaults. No mapping or runtime behavior changes in this relocation.
+
 
 ### R0080 — Candidate-budget compatibility alias deprecation
 
