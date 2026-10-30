@@ -965,36 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## gfx1100 has no kernel-registration refresh hook (found 2026-10-12)
-
-Cleanup status (2026-10-26, R0044): resolved by the test baseline, not by a
-hook. `tests/conftest.py` imports every `hip_gfx1100` module before snapshotting
-the collection-time registry (`pytest_collection_finish`, lines 80-101), so the
-teardown restore now carries the lazily imported Gemma 4 owners. The recorded
-GPU-visible `--suite all` run on the gfx1100 host passes in one invocation
-(26,811 tests, 0 failures;
-`worklog/entries/20261023T015203.261216Z-lhl-gpu-suite-health-eb4ac4.md`), and
-that run includes `tests/test_gpu_gemma4_decode_graph_capture.py`. The hook is
-still absent from `hipengine/kernels/hip_gfx1100/__init__.py`; it is not needed
-because no route clears the registry outside tests and the baseline is the
-refresh. Do not add a replay hook only to satisfy the withdrawn condition.
-
-`load_backend_kernel_package` refills registrations a test's registry isolation
-removed by calling the backend package's `register_backend_kernels(replace=False)`.
-`hipengine/kernels/hip_gfx1151/__init__.py` exports that hook;
-`hipengine/kernels/hip_gfx1100/__init__.py` does not, because its kernels
-register when their modules are first imported. Before the baseline fix, a
-second model load in one pytest process failed with
-`MissingRuntimeProfilePlanError` once an earlier test's teardown had restored
-the collection-time registry; `tests/test_gpu_gemma4_decode_graph_capture.py`
-was the file that showed it. Product loads were unaffected; nothing clears the
-registry outside tests.
-
-Removal condition (superseded 2026-10-26): the observed failure is gone under
-the baseline capture above, and no caller needs a gfx1100 replay hook. If a
-future test needs to clear the registry inside its body and reload a model, add
-a real replay hook then, with that test as its gate.
-
 ## Q8_0 T16 f16w tiles are found through a pointer table (added 2026-10-10)
 
 Cleanup status (2026-10-26, R0045): the pointer table and its registration APIs
