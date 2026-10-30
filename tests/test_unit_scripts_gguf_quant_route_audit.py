@@ -1230,7 +1230,8 @@ def test_cli_missing_nextn_tensor_is_printed_and_nextn_routes_labeled_diagnostic
     # The NextN map's own validation failure is visible with its details.
     assert "nextn map: validation=FAILED (diagnostic) block_id=64 own_slots=14/14 fallback_slots=3" in printed
     assert "nextn missing: blk.64.nextn.eh_proj.weight" in printed
-    assert "nextn dtype: blk.64.attn_q.weight: expected Q4_K, got F32" in printed
+    # F32 projections are supported; missing eh_proj remains a structural error.
+    assert entry["tensor_map"]["nextn"]["dtype_errors"] == []
     assert entry["tensor_map"]["nextn"]["validation_passed"] is False
     assert "blk.64.nextn.eh_proj.weight" in entry["tensor_map"]["nextn"]["missing"]
     # Zero per-slot planner refusals, explicitly labeled diagnostic.

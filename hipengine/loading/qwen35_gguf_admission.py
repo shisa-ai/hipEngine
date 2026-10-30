@@ -845,12 +845,10 @@ def resolve_qwen35_gguf_artifact_preset(
 def resolve_qwen35_gguf_nextn_draft_qtypes(
     preset: Qwen35GGUFArtifactPreset | None,
 ) -> Mapping[str, GGMLQuantizationType] | None:
-    """Pinned NextN draft dtype manifest for one admitted artifact preset.
+    """Historical NextN dtype expectations for explicit artifact diagnostics.
 
-    ``None`` means the preset carries no artifact-pinned draft manifest, so the
-    NextN validator keeps its default expectation.  This is resolved from the
-    preset identity (fingerprint-bound) and never from file metadata or a
-    caller-supplied variant.
+    Runtime materialization uses tensor capabilities, not this lookup. ``None``
+    means no historical diagnostic manifest is recorded for the preset.
     """
 
     if preset is None:
@@ -1360,16 +1358,13 @@ def _draft_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
 
     operation = QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
     records: list[Qwen35GGUFOperationCoverage] = []
-    # Owned attention/FFN/eh_proj projections: raw GGUF residents consumed by
-    # the shared layout-aware linear dispatch (Q6_K dense projections, Q8_0
-    # key/value).  Other raw source types are absent by design: the UD draft
-    # signature is pinned per artifact by ``_UD_NEXTN_DRAFT_QTYPES``.
+    # Owned attention/FFN/eh_proj projections use the shared layout-aware
+    # linear dispatch. Source type and resident layout determine capability.
     records.extend(
         _bf16_linear_records(
             (operation,),
             "projection",
-            layouts=(LAYOUT_RAW_GGUF,),
-            note="NextN draft owned projections (raw Q6_K/Q8_0) via the shared linear dispatch.",
+            note="NextN draft owned projections via the shared linear dispatch.",
         )
     )
     # Owned F32 norms (attn_norm, post_attention_norm, q/k norms, enorm, hnorm,

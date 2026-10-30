@@ -297,19 +297,16 @@ def materialize_qwen35_gguf_nextn_weights(
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
-    # Resolve artifact metadata for draft dtype expectations and packaged hot
-    # vocabulary identity. Historical certification scopes do not gate loading.
+    # Resolve artifact metadata only for packaged hot-vocabulary identity.
     from hipengine.loading.gguf import GGUFModelInfo
     from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
     from hipengine.loading.qwen35_gguf_admission import (
         resolve_qwen35_gguf_artifact_preset,
-        resolve_qwen35_gguf_nextn_draft_qtypes,
         qwen35_gguf_artifact_preset_key,
     )
 
     artifact_preset = None
     artifact_preset_key = None
-    draft_qtypes = None
     if isinstance(getattr(reader, "info", None), GGUFModelInfo):
         structural_map = build_qwen35_gguf_nextn_tensor_map(reader.info, strict=False)
         main_map = build_qwen35_gguf_tensor_map(reader.info)
@@ -318,10 +315,6 @@ def materialize_qwen35_gguf_nextn_weights(
             nextn_map=structural_map,
             file_type_stamp=getattr(reader.info, "file_type_name", None),
         )
-        # U6: the draft dtype manifest is resolved from the admitted preset
-        # identity, never from file metadata or a caller-supplied variant, so
-        # only the pinned artifact can obtain it.
-        draft_qtypes = resolve_qwen35_gguf_nextn_draft_qtypes(artifact_preset)
         # Plain-control qualification: a pinned qualified plain control keeps
         # the historical plain (stamp + tokenizer) hot-vocabulary identity;
         # an unknown manifest gets the unqualified sentinel so the packaged
@@ -332,7 +325,7 @@ def materialize_qwen35_gguf_nextn_weights(
             file_type_stamp=getattr(reader.info, "file_type_name", None),
             preset=artifact_preset,
         )
-    model_map = build_qwen35_gguf_nextn_tensor_map(reader.info, pinned_qtypes=draft_qtypes)
+    model_map = build_qwen35_gguf_nextn_tensor_map(reader.info)
     plan = plan_qwen35_gguf_nextn_materialization(
         model_map,
         decode_repack=decode_repack,

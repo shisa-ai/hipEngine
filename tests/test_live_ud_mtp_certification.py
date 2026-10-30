@@ -142,13 +142,13 @@ def test_pinned_ud_draft_manifest_matches_the_artifact(path: Path, preset_key: s
     assert pin is not None
     # The pin is the artifact's real per-slot quantization, not a relaxation.
     assert dict(pin) == UD_DRAFT_QTYPES
-    # ... and it makes the strict draft validation pass where the plain
-    # expectation fails.
+    # Explicit diagnostic expectations agree with the artifact, but default
+    # validation does not require its identity.
     validation = validate_qwen35_gguf_nextn_tensor_map(reader.info, pinned_qtypes=pin)
     assert validation.dtype_errors == ()
     build_qwen35_gguf_nextn_tensor_map(reader.info, pinned_qtypes=pin)
     unpinned = validate_qwen35_gguf_nextn_tensor_map(reader.info)
-    assert unpinned.dtype_errors, "plain expectation must not silently accept the UD draft"
+    unpinned.raise_for_errors()
 
 
 def test_plain_control_gets_no_pinned_draft_manifest():

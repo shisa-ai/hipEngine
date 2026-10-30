@@ -775,6 +775,24 @@ def test_mtp_draft_preflight_refuses_structural_errors(field):
     assert any("bad draft tensor" in u.reason for u in report.unsupported)
 
 
+@pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"artifact missing: {UD_Q4_K_M}")
+@pytest.mark.parametrize("qtype", [GGMLQuantizationType.Q4_K, GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0, GGMLQuantizationType.F32, GGMLQuantizationType.BF16])
+def test_mtp_projection_preflight_uses_registered_layouts(qtype):
+    from dataclasses import replace
+
+    _, model_map, nextn_map = _real_map(UD_Q4_K_M)
+    tensors = dict(nextn_map.nextn_tensors)
+    source = tensors["eh_proj"]
+    tensors["eh_proj"] = _tensor(source.name, tuple(source.shape), qtype)
+    nextn_map = replace(nextn_map, nextn_tensors=tensors)
+    report = preflight_qwen35_gguf_artifact(
+        model_map, nextn_map=nextn_map, backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,),
+    )
+    report.raise_for_errors()
+    assert report.plan_contract.is_complete()
+
+
 def test_mtp_scope_requires_a_draft_map():
     plain_map = _synthetic_model_map()
     report = preflight_qwen35_gguf_artifact(
@@ -833,8 +851,6 @@ def _native_xl_spoof_info(metadata_extra: dict):
 
     from types import SimpleNamespace
 
-    from hipengine.loading.qwen35_gguf_nextn import _EXPECTED_QWEN38_NATIVE_XL_QTYPES
-
     block_id = 4
     config = _config((FULL_ATTENTION, FULL_ATTENTION, FULL_ATTENTION, FULL_ATTENTION))
     tensors = []
@@ -888,11 +904,8 @@ def _native_xl_spoof_info(metadata_extra: dict):
     ), config
 
 
-def test_native_xl_variant_manifest_is_recomputed_from_actual_tensors():
-    """UD-U1 RED: a foreign artifact that stamps the native-XL variant AND the
-    pinned digest is refused because the recomputed manifest of its actual
-    tensors does not match — even when every draft qtype coincides with the
-    expected map."""
+def test_native_xl_variant_manifest_does_not_gate_supported_tensors():
+    """Manifest metadata does not authorize or refuse executable tensor types."""
 
     from hipengine.loading.qwen35_gguf_nextn import (
         QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256,
@@ -909,16 +922,11 @@ def test_native_xl_variant_manifest_is_recomputed_from_actual_tensors():
         }
     )
     validation = validate_qwen35_gguf_nextn_tensor_map(info)
-    joined = "\n".join(validation.dtype_errors)
-    assert "does not match the actual tensor type manifest" in joined
-    assert "is not the certified native-XL manifest" in joined
-    from hipengine.loading.gguf import MissingGGUFTensorError
+    assert validation.dtype_errors == ()
+    # This dtype-only fixture still fails independent structural validation.
+    assert validation.missing and validation.shape_errors
 
-    with pytest.raises(MissingGGUFTensorError, match="dtype"):
-        validation.raise_for_errors()
-
-    # A truthful claim about a foreign manifest is still refused, with the
-    # recomputed digest named.
+    # An unfamiliar manifest with truthful provenance is runnable too.
     import hashlib
 
     actual = hashlib.sha256(
@@ -934,9 +942,9 @@ def test_native_xl_variant_manifest_is_recomputed_from_actual_tensors():
         }
     )
     validation2 = validate_qwen35_gguf_nextn_tensor_map(info2)
-    joined2 = "\n".join(validation2.dtype_errors)
-    assert "does not match the actual tensor type manifest" not in joined2
-    assert "is not the certified native-XL manifest" in joined2
+    assert validation2.dtype_errors == ()
+    assert validation2.missing == validation.missing
+    assert validation2.shape_errors == validation.shape_errors
 
 
 def test_non_native_xl_variant_validation_unchanged():

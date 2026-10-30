@@ -8,7 +8,6 @@ draft model so they can never be mistaken for an additional AR layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import hashlib
 from types import MappingProxyType
 from typing import Mapping
 
@@ -66,83 +65,15 @@ _OPTIONAL_NEXTN_SLOTS: Mapping[str, str] = MappingProxyType(
     }
 )
 
-_EXPECTED_COMMON_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
-    {
-        "attn_norm": GGMLQuantizationType.F32,
-        "post_attention_norm": GGMLQuantizationType.F32,
-        "attn_q_norm": GGMLQuantizationType.F32,
-        "attn_k_norm": GGMLQuantizationType.F32,
-        "eh_proj": GGMLQuantizationType.Q8_0,
-        "enorm": GGMLQuantizationType.F32,
-        "hnorm": GGMLQuantizationType.F32,
-        "shared_head_norm": GGMLQuantizationType.F32,
-    }
-)
+_NEXTN_F32_NORM_SLOTS = frozenset({
+    "attn_norm", "post_attention_norm", "attn_q_norm", "attn_k_norm",
+    "enorm", "hnorm", "shared_head_norm",
+})
 
-_EXPECTED_MOE_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
-    {
-        "attn_q": GGMLQuantizationType.Q8_0,
-        "attn_k": GGMLQuantizationType.Q8_0,
-        "attn_v": GGMLQuantizationType.Q8_0,
-        "attn_output": GGMLQuantizationType.Q8_0,
-        "ffn_gate_inp": GGMLQuantizationType.BF16,
-        "ffn_gate_inp_shexp": GGMLQuantizationType.BF16,
-        "ffn_gate_exps": GGMLQuantizationType.Q3_K,
-        "ffn_up_exps": GGMLQuantizationType.Q3_K,
-        "ffn_down_exps": GGMLQuantizationType.Q4_K,
-        "ffn_gate_shexp": GGMLQuantizationType.Q8_0,
-        "ffn_up_shexp": GGMLQuantizationType.Q8_0,
-        "ffn_down_shexp": GGMLQuantizationType.Q8_0,
-    }
-)
-
-_EXPECTED_MOE_Q4_K_M_QTYPES: Mapping[str, GGMLQuantizationType] = (
-    MappingProxyType(
-        {
-            **_EXPECTED_MOE_QTYPES,
-            "ffn_gate_exps": GGMLQuantizationType.Q4_K,
-            "ffn_up_exps": GGMLQuantizationType.Q4_K,
-            "ffn_down_exps": GGMLQuantizationType.Q5_K,
-        }
-    )
-)
-
-_EXPECTED_DENSE_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
-    {
-        "attn_q": GGMLQuantizationType.Q4_K,
-        "attn_k": GGMLQuantizationType.Q4_K,
-        "attn_v": GGMLQuantizationType.Q6_K,
-        "attn_output": GGMLQuantizationType.Q4_K,
-        "ffn_gate": GGMLQuantizationType.Q4_K,
-        "ffn_up": GGMLQuantizationType.Q4_K,
-        "ffn_down": GGMLQuantizationType.Q6_K,
-    }
-)
-
-_EXPECTED_DENSE_Q4_K_S_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
-    {
-        **_EXPECTED_DENSE_QTYPES,
-        "attn_v": GGMLQuantizationType.Q4_K,
-        "ffn_down": GGMLQuantizationType.Q4_K,
-    }
-)
-
+# Historical provenance consumed by the artifact verification script, not admission.
 QWEN38_NATIVE_XL_QUANT_VARIANT = "qwen38_native_xl_v2"
 QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256 = (
     "a45045f99c2a094c244142876e5760474fc9dabc09d22b0aea622d0c15844c3c"
-)
-_EXPECTED_QWEN38_NATIVE_XL_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
-    {
-        **_EXPECTED_COMMON_QTYPES,
-        "eh_proj": GGMLQuantizationType.Q6_K,
-        "attn_q": GGMLQuantizationType.Q6_K,
-        "attn_k": GGMLQuantizationType.Q8_0,
-        "attn_v": GGMLQuantizationType.Q8_0,
-        "attn_output": GGMLQuantizationType.Q6_K,
-        "ffn_gate": GGMLQuantizationType.Q6_K,
-        "ffn_up": GGMLQuantizationType.Q6_K,
-        "ffn_down": GGMLQuantizationType.Q6_K,
-    }
 )
 
 
@@ -261,67 +192,40 @@ def validate_qwen35_gguf_nextn_tensor_map(
 
     slot_names = _slot_names(block_id, config=config)
     dtype_errors: list[str] = []
-    quant_variant = str(info.metadata.get("hipengine.quant.variant", "") or "")
-    if quant_variant == QWEN38_NATIVE_XL_QUANT_VARIANT:
-        manifest_sha256 = str(
-            info.metadata.get("hipengine.quant.output_type_manifest_sha256", "") or ""
-        )
-        # UD-U1: the variant exception is bound to the ACTUAL artifact, not to
-        # the claim. Recompute the canonical output-type manifest from the
-        # file's own tensors (same canonical form as
-        # scripts/qwen38_mixed_quant_plan.py) and require the claim to match
-        # reality AND reality to match the certified native-XL manifest. A
-        # foreign artifact that merely stamps the variant metadata and the
-        # pinned digest (e.g. a UD file whose draft qtypes coincide with the
-        # expected map) is refused here.
-        actual_manifest = hashlib.sha256(
-            "\n".join(
-                f"{tensor.name}={tensor.ggml_type_name}"
-                for tensor in sorted(info.tensors, key=lambda tensor: tensor.name)
-            ).encode("utf-8")
-        ).hexdigest()
-        if manifest_sha256 != actual_manifest:
-            dtype_errors.append(
-                "hipengine.quant.output_type_manifest_sha256 does not match the "
-                f"actual tensor type manifest: recomputed {actual_manifest}, "
-                f"claimed {manifest_sha256 or '<missing>'}"
-            )
-        if actual_manifest != QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256:
-            dtype_errors.append(
-                "actual output-type manifest is not the certified native-XL "
-                f"manifest: expected {QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256}, "
-                f"recomputed {actual_manifest}"
-            )
-    expected_qtypes = _expected_qtypes(
-        config,
-        file_type_name=info.file_type_name,
-        quant_variant=quant_variant,
-    )
+    # Artifact stamps and named manifests describe provenance, not capability.
+    # The shared planner owns supported storage types; normalization consumes
+    # F32 weights directly. Backend-specific consumers are checked at admission.
+    from hipengine.loading.qwen35_gguf_materialize import plan_qwen35_gguf_weight_spec
+
+    for slot, name in slot_names.items():
+        tensor = actual.get(name)
+        if tensor is None:
+            continue
+        if slot in _NEXTN_F32_NORM_SLOTS:
+            if int(tensor.ggml_type) != int(GGMLQuantizationType.F32):
+                dtype_errors.append(f"{name}: normalization requires F32, got {tensor.ggml_type_name}")
+        else:
+            try:
+                owner = "nextn" if slot in _NEXTN_SLOTS else "layer"
+                plan_qwen35_gguf_weight_spec(f"draft.{owner}.{slot}", tensor)
+            except ValueError as error:
+                dtype_errors.append(f"{name}: {error}")
     if pinned_qtypes is not None:
-        # U6: an artifact-pinned draft dtype manifest.  The caller resolves it
-        # from the *admitted artifact identity* (an admission preset bound to a
-        # role-manifest fingerprint), never from file metadata and never from a
-        # caller-supplied variant, so a foreign file that merely coincides with
-        # the same qtypes cannot claim it.  The pin must cover exactly the
-        # validated slots: a partial pin would silently fall back to the plain
-        # control's expectation for the rest of the draft block.
-        unknown = sorted(set(pinned_qtypes) - set(expected_qtypes))
-        uncovered = sorted(set(expected_qtypes) - set(pinned_qtypes))
+        # Explicit diagnostic expectations remain exact and complete. Runtime
+        # materialization never selects these by artifact identity.
+        unknown = sorted(set(pinned_qtypes) - set(slot_names))
+        uncovered = sorted(set(slot_names) - set(pinned_qtypes))
         if unknown or uncovered:
             dtype_errors.append(
                 "pinned draft dtype manifest must cover exactly the validated "
                 f"slots: unknown={unknown}, missing={uncovered}"
             )
-        expected_qtypes = {
-            **expected_qtypes,
-            **{slot: qtype for slot, qtype in pinned_qtypes.items() if slot in expected_qtypes},
-        }
-    for slot, expected in expected_qtypes.items():
-        tensor = actual.get(slot_names[slot])
-        if tensor is not None and int(tensor.ggml_type) != int(expected):
-            dtype_errors.append(
-                f"{tensor.name}: expected {expected.name}, got {tensor.ggml_type_name}"
-            )
+        for slot, expected in pinned_qtypes.items():
+            tensor = actual.get(slot_names.get(slot, ""))
+            if tensor is not None and int(tensor.ggml_type) != int(expected):
+                dtype_errors.append(
+                    f"{tensor.name}: expected {expected.name}, got {tensor.ggml_type_name}"
+                )
 
     shape_errors: list[str] = []
     for slot, expected in _expected_shapes(config).items():
@@ -399,29 +303,6 @@ def _nextn_layer_slots(
         else _NEXTN_DENSE_LAYER_SLOTS
     )
     return {**_NEXTN_COMMON_LAYER_SLOTS, **ffn_slots}
-
-
-def _expected_qtypes(
-    config: Qwen35GGUFConfig,
-    *,
-    file_type_name: str | None = None,
-    quant_variant: str = "",
-) -> dict[str, GGMLQuantizationType]:
-    if quant_variant == QWEN38_NATIVE_XL_QUANT_VARIANT:
-        if config.is_moe:
-            raise ValueError("Qwen3.8 native-XL quant variant requires a dense model")
-        return dict(_EXPECTED_QWEN38_NATIVE_XL_QTYPES)
-    if config.is_moe:
-        architecture_qtypes = (
-            _EXPECTED_MOE_Q4_K_M_QTYPES
-            if file_type_name == "MOSTLY_Q4_K_M"
-            else _EXPECTED_MOE_QTYPES
-        )
-    elif file_type_name == "MOSTLY_Q4_K_S":
-        architecture_qtypes = _EXPECTED_DENSE_Q4_K_S_QTYPES
-    else:
-        architecture_qtypes = _EXPECTED_DENSE_QTYPES
-    return {**_EXPECTED_COMMON_QTYPES, **architecture_qtypes}
 
 
 def _slot_names(

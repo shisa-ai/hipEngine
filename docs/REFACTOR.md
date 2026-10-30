@@ -3544,21 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-11 U6 — NextN draft dtype identity cleanup (R0473)
-
-MTP preflight and materialization no longer require a historical certification
-scope pin. Preflight requires a supplied structurally valid NextN map, registered
-per-slot consumers, and owned fallback residents. `_UD_MTP_CERTIFICATIONS` and
-its derived scopes describe historical evidence only; the records are populated.
-
-Remaining cleanup: `qwen35_gguf_nextn.py` still chooses exact draft dtype
-expectations by file stamp, native-XL manifest digest, or `_UD_NEXTN_DRAFT_QTYPES`
-preset identity. Replace these execution restrictions with supported slot/dtype
-capabilities while preserving required tensors, shapes, explicit diagnostic
-expectations, and consumer checks. Validate unfamiliar compatible manifests,
-unsupported types, missing tensors, and real public MTP generation before removing
-the identity-bound dtype exceptions.
-
 ## 2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`
 
 **State: resolved for raw profiler output.** The one-time history cleanup removes

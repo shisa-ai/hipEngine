@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import hashlib
 from dataclasses import replace
 from math import prod
 from pathlib import Path
@@ -690,21 +689,9 @@ def test_qwen35_dense_gguf_mtp_maps_architecture_shaped_blk2() -> None:
     assert nextn_map.fallback("lm_head").ggml_type_name == "Q6_K"
 
 
-def test_qwen38_native_xl_nextn_manifest_accepts_exact_mixed_qtypes(monkeypatch) -> None:
+def test_qwen38_native_xl_nextn_manifest_accepts_exact_mixed_qtypes() -> None:
     info = _synthetic_qwen35_dense_mtp_info(native_xl=True)
-
-    # A tiny fixture cannot borrow the shipped artifact's digest. Bind a
-    # fixture-specific certificate only after proving that spoofing is refused.
-    assert not validate_qwen35_gguf_nextn_tensor_map(info).passed
-    digest = hashlib.sha256("\n".join(
-        f"{tensor.name}={tensor.ggml_type_name}"
-        for tensor in sorted(info.tensors, key=lambda tensor: tensor.name)
-    ).encode("utf-8")).hexdigest()
-    import hipengine.loading.qwen35_gguf_nextn as nextn
-    monkeypatch.setattr(nextn, "QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256", digest)
-    info = replace(info, metadata={
-        **info.metadata, "hipengine.quant.output_type_manifest_sha256": digest,
-    })
+    # The tiny fixture has an unfamiliar manifest, but supported tensor types.
     validation = validate_qwen35_gguf_nextn_tensor_map(info)
 
     assert validation.passed
@@ -717,7 +704,7 @@ def test_qwen38_native_xl_nextn_manifest_accepts_exact_mixed_qtypes(monkeypatch)
     assert model_map.tensor("eh_proj").ggml_type_name == "Q6_K"
 
 
-def test_qwen38_native_xl_nextn_manifest_rejects_weakened_slot() -> None:
+def test_qwen38_native_xl_nextn_accepts_supported_alternate_projection() -> None:
     info = _synthetic_qwen35_dense_mtp_info(
         native_xl=True,
         extra_tensors=[
@@ -727,9 +714,8 @@ def test_qwen38_native_xl_nextn_manifest_rejects_weakened_slot() -> None:
 
     validation = validate_qwen35_gguf_nextn_tensor_map(info)
 
-    assert not validation.passed
-    assert "blk.2.nextn.eh_proj.weight: expected Q6_K, got Q4_K" in validation.dtype_errors
-    assert any("actual tensor type manifest" in error for error in validation.dtype_errors)
+    assert validation.passed
+    assert validation.dtype_errors == ()
 
 
 def test_qwen35_dense_gguf_mtp_plans_dense_ffn_slots_and_materialization() -> None:
@@ -881,6 +867,28 @@ def test_qwen35_dense_q4ks_nextn_accepts_q4_wide_roles() -> None:
     assert model_map.tensor("ffn_down").ggml_type_name == "Q4_K"
 
 
+@pytest.mark.parametrize("qtype", [GGMLQuantizationType.Q4_K, GGMLQuantizationType.Q6_K, GGMLQuantizationType.Q8_0])
+@pytest.mark.parametrize("metadata", [{}, {"general.file_type": 999}, {"hipengine.quant.variant": "unlisted", "hipengine.quant.output_type_manifest_sha256": "unlisted"}])
+def test_nextn_projection_capability_is_independent_of_artifact_metadata(qtype, metadata):
+    info = _synthetic_qwen35_dense_mtp_info(extra_tensors=[
+        _tensor("blk.2.nextn.eh_proj.weight", (8, 16), qtype),
+    ])
+    info = replace(info, metadata={**info.metadata, **metadata})
+    draft = build_qwen35_gguf_nextn_tensor_map(info)
+    plan = plan_qwen35_gguf_nextn_materialization(draft)
+    assert plan.nextn_specs["eh_proj"].source.ggml_type == qtype
+
+
+@pytest.mark.parametrize("slot", ["attn_norm", "attn_q_norm", "nextn.enorm", "nextn.hnorm", "nextn.shared_head_norm"])
+def test_nextn_norm_requires_f32_storage(slot):
+    info = _synthetic_qwen35_dense_mtp_info(extra_tensors=[
+        _tensor(f"blk.2.{slot}.weight", (4,) if slot == "attn_q_norm" else (8,), GGMLQuantizationType.BF16),
+    ])
+    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    assert not validation.passed
+    assert any("normalization requires F32" in error for error in validation.dtype_errors)
+
+
 def test_qwen35_dense_gguf_nextn_validation_rejects_dense_contract_errors() -> None:
     missing = _synthetic_qwen35_dense_mtp_info(
         drop_tensors={"blk.2.ffn_gate.weight"},
@@ -897,10 +905,17 @@ def test_qwen35_dense_gguf_nextn_validation_rejects_dense_contract_errors() -> N
         ],
     )
     validation = validate_qwen35_gguf_nextn_tensor_map(wrong_qtype)
-    assert not validation.passed
-    assert validation.dtype_errors == (
-        "blk.2.ffn_down.weight: expected Q6_K, got Q4_K",
+    assert validation.passed
+    assert validation.dtype_errors == ()
+
+    unsupported = _synthetic_qwen35_dense_mtp_info(
+        extra_tensors=[
+            _tensor("blk.2.ffn_down.weight", (8, 5), GGMLQuantizationType.I8),
+        ],
     )
+    validation = validate_qwen35_gguf_nextn_tensor_map(unsupported)
+    assert not validation.passed
+    assert any("unsupported" in error and "I8" in error for error in validation.dtype_errors)
 
     unexpected = _synthetic_qwen35_dense_mtp_info(
         extra_tensors=[_tensor("blk.2.ffn_gate_inp.weight", (3, 8))],
