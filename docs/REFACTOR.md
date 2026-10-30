@@ -4,41 +4,6 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
-## Flash-Next batch decode runner: hand-off copies and owner reset duplication
-
-- `import_prefilled` copies a prefilled c1 request into a slot with a host loop
-  of three `hipMemcpy` calls per paged block per QSA layer (key, value, index
-  keys), plus one copy per GDN layer and one for the PLE conv history. Collapse
-  it into one device-side copy once a paged-copy kernel takes a source and a
-  destination block table, so the per-block prefix arithmetic lives in one
-  kernel instead of Python. Do not remove the per-block prefix limit: a
-  whole-block copy would move the source's unwritten tail into the new request.
-  The serving path imports once per request at the end of prefill, so the cost
-  is per admission, not per tick.
-- Slot reset is now owner-local: attention, index, GDN and PLE implement one
-  `reset_slot` protocol. Shared block clearing validates ranges before writes;
-  index generation advances only after successful clearing. The runner delegates
-  without knowing buffer layout. Hand-off copying and admission-mirror cleanup
-  remain separate.
-- The batch runner keeps its own `_owners`/`_positions` host mirrors next to the
-  owners' `prepare` active sets. Now that the batch runner is reachable from
-  serving, one admission object should own the request-to-slot map and the
-  position mirror for every stage, so a step cannot prepare two owners in
-  disagreeing row order. The serving-side map
-  (`Qwen4ExpARBatchOwner._leases`) is the first half of that object; it should
-  absorb the runner's mirrors rather than sit beside them.
-- Regression gates: `tests/test_unit_qwen4exp_batch_runner.py` (dispatch shape,
-  admission, import preflight, per-block copy layout, owner reset),
-  `tests/test_unit_qwen4exp_ar_batch_decode.py` (generator wiring: one N-row
-  call per tick, physical-slot pinning, compaction no-op, cancel/reuse,
-  admission rollback, poisoned-step cleanup, MTP exclusion),
-  `tests/test_unit_qwen4exp_ar_batch_capacity.py` (default capacity, kernel
-  row bound, staging runners, rollback lever, per-instance isolation,
-  unchanged MTP bound) and
-  `tests/test_gpu_qwen4exp_ar_batch_decode.py` (synthetic-model serving run:
-  two imports, two 2-row steps, per-row forced-token identity, c1 chain
-  agreement).
-
 ## Flash-Next staged MTP physical width and controls
 
 - `Qwen4ExpServingMTP` uses exclusive target/draft pool owners and reversible
@@ -9882,3 +9847,31 @@ selection preserving production WMMA and strict grouped/GEMV comparisons.
 Keep map rebuild and capacity checks, run
 `tests/test_unit_qwen4exp_q8_wmma_down_tile_map.py`, and verify public selected
 routes. No capacity limit, scheduler policy or arithmetic choice changes here.
+
+### R0007 — Batch import-copy and admission ownership after reset repair
+
+Attention, index, GDN and PLE reset through the owner-local `reset_slot`
+protocol; range preflight and index-generation publication were repaired under
+`worklog/entries/20261027T095542.477175Z-cleanup-refactor-r0007-reset-622379.md`.
+Do not reopen that completed reset extraction.
+
+**Deferred copy design:** replace `import_prefilled` host per-block copies with
+an explicit source/destination block-table copy operation. Preserve every
+per-block prefix bound: copying an unwritten source tail into a new request is
+incorrect. Preserve QSA key/value/index, GDN state and PLE history ownership.
+Import happens once per admission, not per decode tick; profile that boundary
+before claiming a benefit from a new kernel.
+
+**Deferred admission design:** unify the runner's `_owners`/`_positions` mirrors,
+owner `prepare` row order and `Qwen4ExpARBatchOwner._leases` under one admission
+object. Preserve physical-slot identity, cancellation/reuse, preflight failure
+and poisoned-step cleanup; publishing partial admission is not acceptable.
+
+Clearing gates remain `tests/test_unit_qwen4exp_batch_runner.py`,
+`tests/test_unit_qwen4exp_ar_batch_decode.py`,
+`tests/test_unit_qwen4exp_ar_batch_capacity.py` and
+`tests/test_gpu_qwen4exp_ar_batch_decode.py`. Verify dispatch shape, copy prefix
+layout, reset, capacity/isolation, MTP exclusion, two imports/two-row steps,
+per-row forced-token identity and c1-chain agreement. Exercise public serving
+and teardown, and keep repeatability distinct from batch-composition invariance.
+Neither remaining design is implemented by this triage.

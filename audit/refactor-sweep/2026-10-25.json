@@ -110,13 +110,14 @@
       "start_line": 154,
       "end_line": 189,
       "sha256": "dbf0b88360b58974c0966f675af3213a2ea023b87d0ac2ae667ce430ebf5e048",
-      "status": "partial-owner-reset",
-      "evidence": ["Reset protocol now belongs to attention/index/GDN/PLE owners; runner delegates. Range preflight and generation-after-success tested, full CPU and real-device reuse/rollback gates pass. Public fixed-width repeat exact with all owners and zero allocation teardown. Mixed-width repeat difference reproduces identically under committed reset control, not a regression or batch-invariance claim. Copy kernel and admission map remain open. Worklog: worklog/entries/20261027T095542.477175Z-cleanup-refactor-r0007-reset-622379.md."],
+      "status": "triaged-deferred-import-and-admission",
+      "evidence": [
+        "Remaining import/admission designs moved to bottom with original prefix safety and regression gates;74 tests/docs/audit pass. worklog/entries/20261030T084543.560317Z-cleanup-cleanup-r0007-final-1cb75f.md.","Reset protocol now belongs to attention/index/GDN/PLE owners; runner delegates. Range preflight and generation-after-success tested, full CPU and real-device reuse/rollback gates pass. Public fixed-width repeat exact with all owners and zero allocation teardown. Mixed-width repeat difference reproduces identically under committed reset control, not a regression or batch-invariance claim. Copy kernel and admission map remain open. Worklog: worklog/entries/20261027T095542.477175Z-cleanup-refactor-r0007-reset-622379.md."],
       "subitems": [
         {
           "line": 156,
           "text": "- `import_prefilled` copies a prefilled c1 request into a slot with a host loop",
-          "status": "pending"
+          "status": "deferred-prefix-bounded-copy-design"
         },
         {
           "line": 165,
@@ -126,12 +127,12 @@
         {
           "line": 171,
           "text": "- The batch runner keeps its own `_owners`/`_positions` host mirrors next to the",
-          "status": "pending"
+          "status": "deferred-shared-admission-owner"
         },
         {
           "line": 178,
           "text": "- Regression gates: `tests/test_unit_qwen4exp_batch_runner.py` (dispatch shape,",
-          "status": "pending"
+          "status": "preserved-bottom-r0007-gates"
         }
       ]
     },
