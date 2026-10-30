@@ -3544,21 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## 2026-09-12 Surya A4 page has no torch fp32 reference — open
-
-The 300-DPI A4 page is in the transcription ground-truth and reading-order gates
-(`QUALITY_CASES` in `tests/test_live_surya_transcription.py`) but not in the
-implementation-parity gates, because those compare against a captured torch fp32
-greedy chain and no such capture exists for this page. So the page's *quality* is
-gated and its *parity with the reference implementation* is not.
-
-Capture it when a page-scale parity claim is wanted: add the case to
-`scripts/surya_oracle_greedy.py --case protocol` and to
-`tests/fixtures/surya/oracle_fullpage_protocol.json`, then move `a4` from
-`QUALITY_ONLY_CASES` into `CASES`/`EXACT_ID_CASES` (or `COORDINATE_CASES` if its
-bbox digits turn out to be as fragile as the degraded scan's). The capture is a
-torch fp32 CPU run of 2108 tokens; nothing else about the page needs to change.
-
 ## 2026-09-12 Only Surya reports `GenerationOutput.prompt_tokens` — open
 
 The server prefers a generator-reported `prompt_tokens` and falls back to
@@ -10073,3 +10058,22 @@ is worth optimizing, implement the bounded-key path and compare against the
 current chain on dense, partial-tail and multi-tile prompts, then run the
 applicable numerical gate and public Surya generation. Keep the current
 working implementation until that replacement is ready.
+
+### R0493 — Capture the Surya A4 fp32 reference
+
+A4 remains in `QUALITY_ONLY_CASES` in
+`tests/test_live_surya_transcription.py`; the ground-truth and reading-order
+checks cover it, but `tests/fixtures/surya/oracle_fullpage_protocol.json` has
+no A4 implementation-parity reference. Keep that distinction explicit.
+
+**Deferred capture:** restore the missing `datalab-to/surya-ocr-2` checkpoint.
+Add `a4` with an EOS-reaching budget to `PROTOCOL_MAX_TOKENS` in
+`scripts/surya_oracle_greedy.py`, then run
+`python3 scripts/surya_oracle_greedy.py --case protocol --only a4 --device cpu --page-dir tests/fixtures/surya --out-dir /tmp/surya-a4-oracle`.
+The case is not accepted by the current script until that table is extended.
+Inspect natural completion and merge the captured row into the existing
+fixture; do not overwrite the other cases with the single-case output.
+Move A4 into the implementation-parity test cases only after examining the
+capture and running the comparison. Preserve quality coverage throughout;
+use coordinate-tolerant comparison only if observed bbox-digit variation
+justifies it, not merely to make a failure pass.

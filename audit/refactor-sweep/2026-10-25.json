@@ -13524,8 +13524,8 @@
       "start_line": 11630,
       "end_line": 11644,
       "sha256": "b5975de88afd37eb82d27352c28a85513bb1967cb32badc225bb3cd30c5a4dbf",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["A4 protocol reference absent; checkpoint dependency and safe capture/merge procedure moved to bottom. worklog/entries/20261030T043836.733445Z-cleanup-cleanup-r0493-d62830.md."],
       "subitems": []
     },
     {
