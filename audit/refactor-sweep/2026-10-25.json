@@ -3399,23 +3399,23 @@
       "start_line": 3161,
       "end_line": 3174,
       "sha256": "24a9e66376d0d36a94d5720d4ca59c2472580d00eaff9d3b87d935cf22cfac3a",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-device-selection-choice",
+      "evidence": ["Verified host masking/NumPy selection and controlled full-logit requests. Deferred device replacement with ownership/semantics gates; XML contract and prior MTP correction preserved. 94 tests/docs/audit pass. worklog/entries/20261030T062801.065927Z-cleanup-cleanup-r0127-390d94.md."],
       "subitems": [
         {
           "line": 3163,
           "text": "- Model-owned embedded-template/XML parsing replaces the generic JSON tool",
-          "status": "pending"
+          "status": "resolved-contract-preserved"
         },
         {
           "line": 3165,
           "text": "- llguidance masks currently use full F32 D2H plus NumPy argmax. A later device",
-          "status": "pending"
+          "status": "deferred-device-selection-choice"
         },
         {
           "line": 3168,
           "text": "- Do not revive generic JSON forced prefixes or close-repair tokens on the XML",
-          "status": "pending"
+          "status": "resolved-contract-preserved"
         },
         {
           "line": 3170,

@@ -2307,21 +2307,6 @@ the allocation repair. The observations and proposal below are historical.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## Qwen4Exp tool grammar host path
-
-- Model-owned embedded-template/XML parsing replaces the generic JSON tool
-  instruction format only for Qwen4Exp. Keep other model parsers independent.
-- llguidance masks currently use full F32 D2H plus NumPy argmax. A later device
-  bitmask/argmax kernel may remove this cost, but must retain request isolation,
-  selected-token handoff, EOS/content boundaries and the same grammar language.
-- Do not revive generic JSON forced prefixes or close-repair tokens on the XML
-  route. Required/named tool choice is enforced by its grammar.
-- XML schema coverage is explicit; unsupported string/schema combinations fail
-  rather than being silently ignored. Broader XML parameter schema forms require
-  additional lexer/parser tests. Text MTP applies request-owned masks through
-  the attached provider's `supports_grammar` contract; multimodal grammar
-  remains rejected. See `tests/test_unit_qwen4exp_mtp_structured.py` for
-  committed-token, cancellation and grammar-completion coverage.
 
 ## Qwen4Exp context capacity policy
 
@@ -9594,3 +9579,32 @@ exercise public generation with forced fragmentation and continuation, and
 verify route telemetry and correctness against independent recomputation.
 Retire the environment knob and decline branch together only when the selected
 policy no longer needs them. This triage adds no timing or quality result.
+
+### R0127 — Choose whether to replace host grammar selection
+
+The llguidance matcher in `hipengine/generation/grammar.py` masks a host F32
+copy and uses NumPy argmax for its greedy selection. Qwen4Exp controlled batch
+rows request full logits; text MTP uses request-owned grammar through the
+attached provider's `supports_grammar` contract. Multimodal grammar remains
+rejected. The earlier MTP correction is recorded in
+`worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md`.
+
+**Deferred implementation choice:** retain host selection or replace its mask
+application and selection with a registered device implementation. Profile the
+controlled route before choosing an optimization. A replacement must preserve
+request-local matcher state, selected-token handoff, token controls and sampling
+semantics, EOS/content boundaries, cancellation and speculative commit/rollback.
+Do not remove the working host route before its supported inputs have a
+replacement; do not claim a speedup from reduced readback alone.
+
+Model-owned embedded-template/XML parsing is a semantic requirement, not dead
+code. Keep other model parsers independent. Do not revive generic JSON forced
+prefixes or close-repair tokens on the XML route: required/named tool choice is
+enforced by grammar. Unsupported XML string/schema forms must fail explicitly;
+additional supported forms need lexer/parser coverage.
+
+Clearing checks: run `tests/test_unit_grammar_masks.py` and
+`tests/test_unit_qwen4exp_mtp_structured.py`, add host/device selection parity
+and mixed-request isolation tests for any replacement, then exercise public
+required/named tool generation with streaming, MTP and cancellation. Confirm
+the intended selection route actually ran before removing host-only machinery.
