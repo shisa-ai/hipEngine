@@ -1,0 +1,2002 @@
+{
+ "bf16-r1-c20-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r1-c20-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r1-c21-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r1-c21-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r3-c20-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r3-c20-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r3-c21-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r3-c21-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r6-c20-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r6-c20-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r6-c21-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "bf16-r6-c21-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": null,
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": null,
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r1-c20-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r1-c20-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r1-c21-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r1-c21-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 1,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 1,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r3-c20-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r3-c20-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r3-c21-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r3-c21-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": true,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 3,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": null
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 3,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r6-c20-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": false,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r6-c20-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "commit_final_state": false,
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "linear",
+    "recorder": true,
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "stage_prefix": "packed_verify_gpu_linear_attn",
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r6-c21-t0": {
+  "gpu_marks": [],
+  "ops": [
+   {
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_total"
+  ]
+ },
+ "int8-r6-c21-t1": {
+  "gpu_marks": [
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample"
+  ],
+  "ops": [
+   {
+    "decode_conv": "conv[0]",
+    "decode_recurrent": "recurrent[0]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 0,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 1,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[1]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   },
+   {
+    "decode_conv": "conv[2]",
+    "decode_recurrent": "recurrent[2]",
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "layer": 2,
+    "op": "moe_c2_linear",
+    "retained_decode_kernel": "retained_decode_kernel",
+    "rows": 6,
+    "scratch": "packed",
+    "state_capacity": 1,
+    "state_indices": [
+     0
+    ],
+    "state_rows": [
+     "conv_rows[2]",
+     "recurrent_rows[2]"
+    ]
+   },
+   {
+    "cos_table": "cos",
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "layer": 3,
+    "op": "full_attention",
+    "rows": 6,
+    "scratch": "full_scratch[3]",
+    "sin_table": "sin",
+    "split_workspace": "split_workspace",
+    "stage_prefix": "target_block_packed_full_attn"
+   }
+  ],
+  "output_norm_hidden": 160,
+  "position": 0,
+  "results": 0,
+  "stage_keys": [
+   "packed_verify_setup",
+   "packed_verify_sync_initial_state",
+   "packed_verify_token_upload",
+   "packed_verify_embedding",
+   "packed_verify_linear_attn_layers",
+   "packed_verify_full_attn_layers",
+   "packed_verify_output_norm_hidden",
+   "packed_verify_lm_head_sample",
+   "packed_verify_hidden_readback",
+   "packed_verify_scatter_outputs",
+   "packed_verify_final_sync",
+   "packed_verify_gpu_embedding",
+   "packed_verify_gpu_full_attn_layers",
+   "packed_verify_gpu_output_norm_hidden",
+   "packed_verify_gpu_lm_head_sample",
+   "packed_verify_total"
+  ]
+ }
+}

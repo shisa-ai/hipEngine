@@ -1240,8 +1240,11 @@ prefill owns its output projection; the decode-batch adapter retains output
 projection and F32 composition. Both adapters retain the feed-forward call. The
 caller owns KV planes, DMS capture, stream bridges and split-buffer growth;
 attention reads current split views after allocation or replacement. Registry
-policy and full-stack composition stay in the runner. Physical KV
-layout, backing, byte accounting and allocation/release live in
+policy stays in the runner. `qwen35_gguf_verify_layer_stack.py` owns the packed
+target verifier's synchronous layer order, hidden ping-pong and layer-stage marks.
+The session supplies per-operation bindings with explicit arguments and retains
+embedding, output normalization, sampling, state scatter and transaction ownership.
+Physical KV layout, backing, byte accounting and allocation/release live in
 `hipengine/runtime/qwen35_gguf_kv.py`, which consumes model configuration rather than an
 executor. Shared scratch sizing, resident byte breakdown and capacity search live
 in `hipengine/runtime/qwen35_gguf_planning.py`; real allocation and size-only

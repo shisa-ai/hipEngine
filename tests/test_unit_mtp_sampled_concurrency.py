@@ -112,7 +112,7 @@ def test_packed_verifier_preserves_resident_initial_state_owner():
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     tree = ast.parse(textwrap.dedent(inspect.getsource(
-        Qwen35GGUFResidentSession.verify_target_blocks_batch)))
+        Qwen35GGUFResidentSession._packed_verify_layer_stack_plan)))
     assignment = next(node for node in ast.walk(tree)
                       if isinstance(node, ast.Assign) and isinstance(node.value, ast.IfExp)
                       and any(isinstance(t, ast.Name) and t.id == "linear_state_owner" for t in node.targets))

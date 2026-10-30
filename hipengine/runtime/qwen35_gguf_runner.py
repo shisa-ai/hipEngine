@@ -69,6 +69,16 @@ from hipengine.runtime.qwen35_gguf_timing import (
     _add_sync_stage_timing,
     _mark_sync_stage,
 )
+from hipengine.runtime.qwen35_gguf_verify_layer_stack import (
+    VerifyFullAttentionLayer,
+    VerifyLayer,
+    VerifyLayerStackGeometry,
+    VerifyLayerStackHidden,
+    VerifyLayerStackPlan,
+    VerifyMoeC2LinearLayer,
+    VerifyOrdinaryLinearLayer,
+    run_verify_layer_stack,
+)
 from hipengine.runtime.qwen35_gguf_probe import Qwen35GGUFOneLayerProbe
 from hipengine.runtime.qwen35_gguf_results import Qwen35GGUFNextTokenProbeResult
 from hipengine.runtime.qwen35_gguf_prefill_plan import (
@@ -19650,16 +19660,6 @@ class Qwen35GGUFResidentSession:
             add_stage("packed_verify_embedding", embedding_start)
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark("packed_verify_gpu_embedding")
-            src = self._prefill_hidden_a
-            dst = self._prefill_hidden_b
-            linear_state_owner = (
-                linear_state_owner if direct_linear_state is None else direct_linear_state[1]
-            )
-            linear_decode_scratch = replace(
-                self.scratch,
-                layer_conv_states=linear_state_owner.layer_conv_states,
-                layer_recurrent_states=linear_state_owner.layer_recurrent_states,
-            )
             block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
             with (
                 wmma_prefill_session(block_wmma_prefill),
@@ -19679,82 +19679,22 @@ class Qwen35GGUFResidentSession:
                 self._q6_integer_mmq_context(target_verifier=True),
                 self._iq_dense_mmq_context(),
             ):
-                for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-                    layer_start = time.perf_counter()
-                    if layer_type == LINEAR_ATTENTION:
-                        linear_state_rows = (
-                            self._verify_linear_state_row_pair(layer_id)
-                            if capture_linear_state_rows
-                            else None
-                        )
-                        if (
-                            moe_physical_c2_exact_linear_enabled()
-                            and rows == 6
-                            and linear_state_rows is not None
-                        ):
-                            self.runner._run_moe_physical_c2_linear_rows_exact(
-                                layer_id,
-                                src.ptr,
-                                dst.ptr,
-                                packed_scratch,
-                                rows=rows,
-                                decode_scratch=linear_decode_scratch,
-                                linear_state_rows=linear_state_rows,
-                                state_capacity=int(linear_state_owner.slot_count),
-                                state_indices=layout.state_indices,
-                                stream=stream,
-                            )
-                        else:
-                            self.runner._run_linear_attention_prefill_layer_rows(
-                                layer_id,
-                                src.ptr,
-                                dst.ptr,
-                                packed_scratch,
-                                rows=rows,
-                                stream=stream,
-                                decode_scratch=linear_decode_scratch,
-                                expert_sidecar=None,
-                                linear_state_rows=linear_state_rows,
-                                commit_final_linear_state=not defer_linear_state_commit,
-                                hidden_f32_ptr=None,
-                                out_f32_ptr=None,
-                                stage_timings=None,
-                                sync_stage_timings=False,
-                                stage_prefix="packed_verify_gpu_linear_attn",
-                                gpu_stage_recorder=gpu_stage_recorder,
-                            )
-                        add_stage("packed_verify_linear_attn_layers", layer_start)
-                    elif layer_type == FULL_ATTENTION:
-                        # Bind the retained INT8 planes and their scale metadata when
-                        # this layer stores INT8 directly; a BF16 layer returns the
-                        # same cache-backed scratch this verifier used before.
-                        layer_scratch = replace(
-                            self._packed_full_attention_scratch_for_layer(
-                                packed_scratch,
-                                packed_state,
-                                layer_id,
-                            ),
-                            cos_table=self.scratch.cos_table,
-                            sin_table=self.scratch.sin_table,
-                        )
-                        self.runner._run_full_attention_decode_batch_layer_rows(
-                            layer_id,
-                            src.ptr,
-                            dst.ptr,
-                            layer_scratch,
-                            stream=stream,
-                            expert_sidecar=None,
-                            stage_timings=None,
-                            sync_stage_timings=False,
-                            stage_prefix="target_block_packed_full_attn",
-                            split_workspace=packed_split_workspace,
-                        )
-                        if gpu_stage_recorder is not None:
-                            gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
-                        add_stage("packed_verify_full_attn_layers", layer_start)
-                    else:
-                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-                    src, dst = dst, src
+                src = run_verify_layer_stack(
+                    self._packed_verify_layer_stack_plan(
+                        rows=rows,
+                        layout=layout,
+                        packed_scratch=packed_scratch,
+                        packed_state=packed_state,
+                        packed_split_workspace=packed_split_workspace,
+                        linear_state_owner=linear_state_owner,
+                        direct_linear_state=direct_linear_state,
+                        capture_linear_state_rows=capture_linear_state_rows,
+                        defer_linear_state_commit=defer_linear_state_commit,
+                        stream=stream,
+                    ),
+                    stage_timings=stage_timings,
+                    gpu_stage_recorder=gpu_stage_recorder,
+                )
 
                 output_norm_start = time.perf_counter()
                 output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
@@ -19868,6 +19808,124 @@ class Qwen35GGUFResidentSession:
                 add_stage("packed_verify_final_sync", sync_start)
         stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
         return results
+
+    def _packed_verify_layer_stack_plan(
+        self,
+        *,
+        rows: int,
+        layout: _GGUFPackedVerifyLayout,
+        packed_scratch,
+        packed_state: _GGUFPackedTargetState,
+        packed_split_workspace,
+        linear_state_owner: object,
+        direct_linear_state: tuple[object, object] | None,
+        capture_linear_state_rows: bool,
+        defer_linear_state_commit: bool,
+        stream: int,
+    ) -> VerifyLayerStackPlan:
+        """Resolve every packed-verifier layer binding before execution.
+
+        Each binding is one typed selected operation with its concrete layer
+        id, scratch view, state rows, workspace and stream fixed here. Variant
+        choice (MoE C2 exact rows versus the ordinary linear row owner) is a
+        session decision, so the executor never reads the policy that selects
+        it and never receives a runner, session or scratch proxy.
+        """
+
+        linear_state_owner = (
+            linear_state_owner if direct_linear_state is None else direct_linear_state[1]
+        )
+        linear_decode_scratch = replace(
+            self.scratch,
+            layer_conv_states=linear_state_owner.layer_conv_states,
+            layer_recurrent_states=linear_state_owner.layer_recurrent_states,
+        )
+        layer_types = tuple(self.runner.weights.config.layer_types)
+        bindings: list[VerifyLayer] = []
+        for layer_id, layer_type in enumerate(layer_types):
+            if layer_type == LINEAR_ATTENTION:
+                linear_state_rows = (
+                    self._verify_linear_state_row_pair(layer_id)
+                    if capture_linear_state_rows
+                    else None
+                )
+                if (
+                    moe_physical_c2_exact_linear_enabled()
+                    and rows == 6
+                    and linear_state_rows is not None
+                ):
+                    bindings.append(
+                        VerifyMoeC2LinearLayer(
+                            layer_id=layer_id,
+                            rows=rows,
+                            run_moe_c2_linear_rows=(
+                                self.runner._run_moe_physical_c2_linear_rows_exact
+                            ),
+                            scratch=packed_scratch,
+                            decode_scratch=linear_decode_scratch,
+                            linear_state_rows=linear_state_rows,
+                            state_capacity=int(linear_state_owner.slot_count),
+                            state_indices=layout.state_indices,
+                            stream=stream,
+                        )
+                    )
+                else:
+                    bindings.append(
+                        VerifyOrdinaryLinearLayer(
+                            layer_id=layer_id,
+                            rows=rows,
+                            run_linear_rows=(
+                                self.runner._run_linear_attention_prefill_layer_rows
+                            ),
+                            scratch=packed_scratch,
+                            decode_scratch=linear_decode_scratch,
+                            linear_state_rows=linear_state_rows,
+                            commit_final_linear_state=(
+                                not defer_linear_state_commit
+                            ),
+                            stream=stream,
+                        )
+                    )
+            elif layer_type == FULL_ATTENTION:
+                # Bind the retained INT8 planes and their scale metadata when
+                # this layer stores INT8 directly; a BF16 layer returns the
+                # same cache-backed scratch this verifier used before.
+                layer_scratch = replace(
+                    self._packed_full_attention_scratch_for_layer(
+                        packed_scratch,
+                        packed_state,
+                        layer_id,
+                    ),
+                    cos_table=self.scratch.cos_table,
+                    sin_table=self.scratch.sin_table,
+                )
+                bindings.append(
+                    VerifyFullAttentionLayer(
+                        layer_id=layer_id,
+                        rows=rows,
+                        run_full_attention_rows=(
+                            self.runner._run_full_attention_decode_batch_layer_rows
+                        ),
+                        scratch=layer_scratch,
+                        split_workspace=packed_split_workspace,
+                        stream=stream,
+                    )
+                )
+            else:
+                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+        return VerifyLayerStackPlan(
+            geometry=VerifyLayerStackGeometry(
+                layer_types=layer_types,
+                rows=rows,
+            ),
+            hidden=VerifyLayerStackHidden(
+                first=self._prefill_hidden_a,
+                first_ptr=self._prefill_hidden_a.ptr,
+                second=self._prefill_hidden_b,
+                second_ptr=self._prefill_hidden_b.ptr,
+            ),
+            bindings=tuple(bindings),
+        )
 
     def _eager_native_row_views(
         self,

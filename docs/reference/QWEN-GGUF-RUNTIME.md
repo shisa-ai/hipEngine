@@ -23,6 +23,7 @@ Paths in this document are repository-relative.
 | `hipengine/runtime/qwen35_gguf_full_attention_bulk.py` | Bulk prefill attention through output projection over explicit views and selected operations | Feed-forward execution, session mutation or split-buffer allocation |
 | `hipengine/runtime/qwen35_gguf_full_attention_decode_batch.py` | Decode-batch attention through KV write and gated attention over explicit views and selected operations | Output projection, F32 composition, feed-forward execution or workspace allocation |
 | `hipengine/runtime/qwen35_gguf_layer_ffn.py` | Dense and MoE feed-forward execution for scalar and bulk rows over explicit weights, scratch and selected operations | Session state, speculative acceptance or kernel-selection policy |
+| `hipengine/runtime/qwen35_gguf_verify_layer_stack.py` | Packed target layer order, hidden ping-pong and layer-stage marks over invocation-local operation bindings | Embedding, sampling, state scatter, transaction ownership or graph lifetime |
 | `hipengine/runtime/qwen35_gguf_capture.py` | Host diagnostic snapshots, summary schemas and selected-buffer readback | Token setup, layer execution, session mutation or synchronization |
 | `hipengine/runtime/qwen35_gguf_timing.py` | Stage timing accumulation, event handles and wall-clock marker storage | Choosing interval boundaries or scheduling production work |
 | `hipengine/runtime/qwen35_gguf_probe.py` | Standalone one-layer projection diagnostic and its temporary resources | Full-model generation or resident-session ownership |
@@ -194,7 +195,15 @@ keeps stale pointer snapshots nor frees the caller's growth buffers. DMS capture
 AOTriton stream-bridge callbacks preserve their launch order without transferring
 ownership. The decode-batch workspace callback reads the caller's current buffers
 and capacity on each call. KV-write-only returns before attention, output projection
-and feed-forward execution. Layer composition remains in the runner.
+and feed-forward execution. Single-session layer composition remains in the runner.
+
+`qwen35_gguf_verify_layer_stack.py` owns the packed target layer walk. The session
+builds one frozen binding per ordinary linear, MoE-C2 linear or full-attention
+operation, with explicit scratch/state/workspace arguments and stream. The plan
+borrows live buffers for one synchronous call; neither it nor its bound operations
+is cached. The session retains embedding, normalization, sampling, state scatter,
+commit/rollback, prefix and graph lifetimes, and recorder cleanup. Binding validation
+precedes the first layer. Aggregate layer times cover execution, not binding resolution.
 
 Profiler markers for nested MoE calls wrap the execution module's functions.
 The runner's outer attention methods remain the scalar attention marker boundary.
