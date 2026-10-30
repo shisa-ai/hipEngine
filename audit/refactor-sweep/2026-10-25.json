@@ -13709,8 +13709,8 @@
       "start_line": 11888,
       "end_line": 11905,
       "sha256": "534405e820a83e6867d996373aa465525e0a071bfea72e80494d2c0b54952aa1",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Still present; ready-only batching versus bounded worker bridge decision moved to ledger bottom with cancellation/capacity requirements. worklog/entries/20261030T051107.924207Z-cleanup-cleanup-r0503-3a6d5d.md."],
       "subitems": []
     },
     {

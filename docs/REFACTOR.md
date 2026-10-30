@@ -3544,24 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## Streaming consumer pays one threadpool round trip per chunk (open 2026-09-17)
-`hipengine/server/api.py` pulls each streamed chunk with a separate
-`await run_in_threadpool(_next_stream_item, iterator)` call, and
-`StreamingOutputCollector.drain()` is invoked with `max_chunks=1`. The engine
-producer therefore only has to be modestly faster than that round trip for the
-per-child mailbox to fill, which is what the mailbox-bound fix in
-`worklog/entries/20260917T150847.490398Z-lhl-mtp-stream-mailbox-budget-f63132.md`
-turned from a cancellation into buffering. Buffering is the correct immediate
-behavior, but it hides the real cost: a consumer that is slower than the producer
-now delays the request instead of losing it.
-
-Remove the debt by draining a batch per round trip (yield the first ready chunk
-immediately, then hand over whatever is already buffered without blocking) and by
-raising `max_chunks` in the `drain()` call sites. Re-measure decode throughput on
-a streaming MTP request with per-chunk telemetry enabled before and after; the
-current per-chunk telemetry doubles the consumer's per-chunk cost, which is what
-made the margin visible.
-
 ## Concurrent prompt activation is refused instead of overlapped (open 2026-09-17)
 
 `Qwen35GGUFMTP2Adapter.begin_prompt_streaming` allows one prompt activation at a
@@ -9910,3 +9892,29 @@ Historical timing corrections remain in
 Profile the complete session before claiming a benefit; per-call device syncs
 can attribute work from other stages to this branch. Keep the existing working
 sequential path until a replacement is implemented and validated.
+
+### R0503 — Choose a bounded streaming handoff contract
+
+`_stream_engine_text` (detailed and legacy paths) and `_stream_engine_many`
+still call `_next_stream_item` in the threadpool for every chunk.
+`EngineChildHandle.iter_chunks` and `EngineService.stream_many_detailed` drain
+one collector event at a time. The collector supports larger nonblocking drains,
+but the public synchronous iterators do not expose whether another chunk is ready.
+
+**Deferred interface decision:** choose either a ready-only batch iterator
+contract propagated through the LLM/generator boundary, or a bounded producer
+bridge with explicit worker ownership and concurrency limits. Calling `next()`
+repeatedly can block the first chunk behind future production; reserving a shared
+threadpool worker for every live stream can starve other requests. Increasing
+collector drain sizes alone does not remove the server's per-item handoff.
+
+The replacement must deliver the first ready chunk without waiting for a full
+batch, preserve per-choice ordering and fairness, bound buffering, and propagate
+terminal errors after buffered output. Cancellation must signal the backend,
+unblock a backpressured producer and close the iterator only after its active
+`next()` finishes; the current batcher already documents that close race.
+Test empty streams, slow producers/consumers, multi-choice fairness, saturation,
+disconnects and errors through HTTP streaming. Then compare a streaming MTP
+request before/after with chunk telemetry enabled; do not reuse the old overhead
+estimate as a measurement of this implementation. Keep the existing bounded
+mailboxes until the replacement contract is implemented.
