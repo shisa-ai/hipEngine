@@ -2394,39 +2394,15 @@ re-resolved throughout runtime code, importable benchmark programs being shipped
 as a product package, and historical evidence remaining in active source and
 this active ledger.
 
-### Measured inventory
+### Historical inventory
 
-- `hipengine/` contains **304,814 Python lines**. The original PLAN statement
-  that the host is roughly 700 lines is historical and must not be used as a
-  current architecture budget.
-- `qwen35_gguf_runner.py` is **29,324 lines**; its two main classes are about
-  **7,739** and **10,109** lines. `qwen35_paro_runner.py` is **14,260 lines**
-  with a **12,304-line** resident-session class, and `qwen35_paro.py` is
-  **11,892 lines** with a **10,516-line** decode-state class.
-- `server/api.py` is **16,733 lines** and `create_app()` alone spans about
-  **4,410 lines**. Protocol translation, generation orchestration, tools,
-  structured-output validation, streaming, metrics, and route construction are
-  currently coupled in one module.
-- Product Python contains **225 direct environment-read expressions across 38
-  modules**, **308** `backend_package_capability(...)` call sites, and **144**
-  registry `resolve(...)` call sites. `hip_gfx1151/__init__.py` is **2,411
-  lines** with 256 top-level capability/policy assignments. This is selection
-  work that should largely resolve once into an immutable session plan.
-- `scripts/` contains **577 tracked Python programs / 289,396 lines** and is
-  included in the wheel by `pyproject.toml`. A conservative textual scan found
-  **405** with no reference from live `hipengine`, tests, current docs, README,
-  or package metadata. That does not prove they are unused command-line tools,
-  but it proves they are not an acceptable implicit product API. One product
-  module also imports `scripts.quant_quality.metrics`, preventing a clean
-  package boundary.
-- `benchmarks/results/` contains **5,158 tracked files / 225.7 MiB**, including
-  multi-megabyte tensor/capture JSON. New policy requires compact artifacts, but
-  the tree still mixes compact decisions with raw historical captures.
-- Before this review, this file was **3,951 lines / 398,544 bytes**, with 176
-  top-level entries. Its cleanup table contained 154 rows under only 120 area
-  labels, including stale duplicate rows, while closed and already-removed
-  history remained mixed with actionable work. This review removes three stale
-  duplicate rows; RF-4 owns the larger active/history split.
+The original measured inventory describes `a9419949d`, not the current tree.
+Its counts and methodology are preserved in this section at commit `c5ded0003`.
+They are triage signals, not line-count targets or evidence that a path is unused.
+Review RF-1 through RF-12 and each deletion candidate independently against
+current consumers. Packaging remains open: `pyproject.toml` includes `scripts`,
+and product benchmark modules still import it. Removing this historical summary
+does not complete any architectural migration.
 
 These counts are triage signals, not line-count targets to game. A pure move that
 creates more files but one clear owner is a win; a generic abstraction that

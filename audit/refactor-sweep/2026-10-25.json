@@ -4735,48 +4735,48 @@
       "start_line": 4075,
       "end_line": 4220,
       "sha256": "cadbb0bc1896b98e7b7a17c3c225cdbbb31591b1e34d6547d1ce512ddecb2a18",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-inventory-reconciled",
+      "evidence": ["Historical count inventory preserved atc5ded0003 and removed from active prose. RF1–RF12/deletion/keep-set review remains open; scripts packaging/import debt confirmed. Docs/audit pass. worklog/entries/20261030T073342.870846Z-cleanup-cleanup-r0187-inventory-e08286.md."],
       "subitems": [
         {
           "line": 4084,
           "text": "### Measured inventory",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 4086,
           "text": "- `hipengine/` contains **304,814 Python lines**. The original PLAN statement",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 4089,
           "text": "- `qwen35_gguf_runner.py` is **29,324 lines**; its two main classes are about",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 4093,
           "text": "- `server/api.py` is **16,733 lines** and `create_app()` alone spans about",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 4097,
           "text": "- Product Python contains **225 direct environment-read expressions across 38",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 4102,
           "text": "- `scripts/` contains **577 tracked Python programs / 289,396 lines** and is",
-          "status": "pending"
+          "status": "resolved-history-preserved-rf2-open"
         },
         {
           "line": 4109,
           "text": "- `benchmarks/results/` contains **5,158 tracked files / 225.7 MiB**, including",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 4112,
           "text": "- Before this review, this file was **3,951 lines / 398,544 bytes**, with 176",
-          "status": "pending"
+          "status": "resolved-history-preserved"
         },
         {
           "line": 4122,
