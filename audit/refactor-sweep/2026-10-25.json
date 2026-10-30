@@ -13668,18 +13668,18 @@
       "start_line": 11796,
       "end_line": 11837,
       "sha256": "0e3a17ca9a47b598df80501ba7d91df257800dbdb6dcfddae1e85e8bbc7392ac",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Separate weight/KV ownership and sequential loop confirmed; architecture decision moved to ledger bottom. worklog/entries/20261030T050300.999697Z-cleanup-cleanup-r0500-b0fefe.md."],
       "subitems": [
         {
           "line": 11825,
           "text": "- each `VibevoiceQwen2Runtime` owns its own `self.layers` weight buffers, so one GEMV",
-          "status": "pending"
+          "status": "deferred"
         },
         {
           "line": 11827,
           "text": "- `vv_kv_write_spans(...)` and `vv_attention_spans(...)` take a **single**",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },

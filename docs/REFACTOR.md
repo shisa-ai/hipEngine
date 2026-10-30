@@ -3544,48 +3544,6 @@ identities, registry and dispatch keys, step widths, and profile/source binding
 through `hipengine.runtime.qwen4_exp_batch_manifest`. Its c1-only rejection
 and identity-tampering tests remain.
 
-## VibeVoice-TTS: batch the CFG positive and negative LM branches (open, kernel-ABI change)
-
-The session builds two LM runtimes over the same weights, `positive` and `negative`.
-`_negative_condition` runs a full LM forward per diffusion frame, streaming all 28
-layers for one row. The negative branch is bounded by `stages.lm_total_seconds`
-(1.563 s of 4.230 s warm synthesis), which it shares with the positive branch, so its
-plausible share is roughly half of `lm_total` -- **~0.7-0.8 s, ~18% of warm synthesis**.
-
-> **Superseded magnitude.** Earlier revisions of this section reported a 65.5 GB /
-> ~47% traffic share and a "bit-exact, session-orchestration refactor" framing. Both
-> were retracted by `worklog/entries/20260915T200702.494130Z`; the original figure came
-> from per-call-sync instrumentation that absorbed outstanding kernels from other
-> stages and summed to more than the session can contain. Do not reuse the 49.8% or
-> 47% figures.
-
-This is **not** a small refactor. The dependency chain inside one generation step is
-strictly sequential:
-
-```
-pos_forward(k-1) -> next_token -> neg_forward(k) -> diffusion(k) -> pos_forward(k)
-```
-
-`neg_forward(k)` cannot be hoisted, because whether iteration `k` diffuses is decided
-by the logits `pos_forward(k-1)` produces. A speculative batch is semantically sound
-(`neg_forward(k)` consumes the same `_prev_feedback` row `pos_forward(k-1)` consumed)
-but needs a rollback of the negative KV position when speculation misses.
-
-The existing multi-row machinery does not reach across runtimes:
-
-- each `VibevoiceQwen2Runtime` owns its own `self.layers` weight buffers, so one GEMV
-  cannot read both branches' weights from a single pointer;
-- `vv_kv_write_spans(...)` and `vv_attention_spans(...)` take a **single**
-  `k_cache` / `v_cache` pointer, and the two branches hold different KV caches.
-
-So it requires new kernel variants taking per-row cache pointers, plus speculative
-execution and KV rollback in the session loop. **That is a kernel-ABI change, not a
-tuning change, and it reassociates arithmetic** -- so it needs the production-profile
-numerical gate in `docs/EXECUTION-PROFILES.md`, not the bit-exact parent-parity gate.
-
-Expected if it lands: LM 1.450 s toward ~0.86 s. That is a bound from the corrected
-~18% share, not a promise, and it is well below the 2-10x framing.
-
 ## VibeVoice-TTS: the model is bandwidth bound, and that bounds the remaining work
 
 Not a refactor item so much as the frame for every other one. The diffusion head
@@ -9979,3 +9937,26 @@ outputs, synchronize cache flushes before isolated timing, and verify through
 (`scripts/vibevoice_tts_quality_suite.py`), not correctness tests alone.
 Alternatively close this research direction explicitly. No runtime change is
 needed merely to keep the rejected variants absent.
+
+### R0500 — Choose cross-branch VibeVoice batching ownership
+
+`VibevoiceTTSSession` constructs separate positive and negative LM runtimes;
+each uploads its own layer weights and allocates its own KV caches. The loop
+selects the next token before invoking `_negative_condition` for a diffusion
+step. Existing attention calls take one cache pair, not per-row cache pointers.
+
+**Deferred architecture decision:** choose shared immutable weight ownership
+and a per-row KV interface before implementing speculative cross-branch batching.
+Specify negative-position rollback on non-diffusion tokens, speech-boundary
+resets, cancellation and errors; preserve RNG consumption and feedback ordering.
+Ordinary multi-row prefill is not a replacement for this transaction contract.
+Implement registered kernel variants only after that contract is chosen, then
+verify branch conditions, token chains, rollback and request reuse through the
+public synthesis surface and generated-audio quality suite. If arithmetic
+changes, run the applicable execution-profile numerical gate as well.
+
+Historical timing corrections remain in
+`worklog/entries/20260915T200702.494130Z-lhl-vibevoice-tts-cfg-batch-scoping-51a916.md`.
+Profile the complete session before claiming a benefit; per-call device syncs
+can attribute work from other stages to this branch. Keep the existing working
+sequential path until a replacement is implemented and validated.
