@@ -965,53 +965,6 @@ multi-column engagement evidence, so it stays.
   rejecting DPP itself. Ordinary tile16 and serial strict keys remain
   registered; keep them for strict/bisection.
 
-## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
-
-Current status (2026-10-26): the historical heading is incorrect. The branch is
-shadowed when WMMA claims the shape, but remains reachable otherwise.
-
-Cleanup status (2026-10-26, R0055): keep, not debt. The dense branch of
-`_q8_mmq_prefill_dispatch` (`hipengine/runtime/gguf_linear.py:10209`) is
-reachable whenever the WMMA prefill opt-in is off, and it is the calibrated
-route for exactly that configuration; deleting it would remove a live fallback.
-
-`_wmma_prefill_dispatch` (`:10892`) does run first in the chain (`:5024` before
-`:5105`) and rewrites a raw Q8_0 dispatch to `abi="wmma_raw"` /
-`variant="wmma_prefill_bf16_bf16_out"`, so under the default opt-in the MMQ
-branch returns the dispatch unchanged. But the opt-in is not unconditional:
-`_gemma4_block_wmma_session` (`hipengine/runtime/gemma4.py:1022`) leaves
-`use_wmma` false for a verification block and for any partial block when
-`HIPENGINE_GGUF_WMMA_PREFILL` is unset (`gemma4.py:2237`, `:2062`, `:2124`), and
-the env var is the documented rollback lever. In that configuration the rewrite
-is a no-op and the MMQ chain takes the shape. With `DEFAULT_PREFILL_BLOCK` at
-1024 (`gemma4.py:184`, `:1185`) and the policy's 512-row floor (`gemma4.py:1066`),
-a 512-row tail is the shipped case that reaches it.
-
-The Gemma policy was calibrated against that exact owner, not the WMMA one
-(`gemma4.py:1034-1046`, "what a shape runs when WMMA prefill is off"), and
-`tests/test_unit_gguf_q8_mmq_prefill_ordering.py` pins both directions: `:93`
-holds a WMMA-claimed shape away from the chain, and `:118` holds the chain
-taking the shape when `use_wmma` is false. The 2026-09-26 instrumentation -- 680
-admitted dispatches rejected on the key mismatch, none on policy -- was a
-WMMA-on measurement, so it describes the shadow, not unreachability.
-
-**Do not reorder.** Making the branch fire ahead of the rewrite was measured 29%
-slower (1054 against 1367 tok/s) although correct, and `kl_max` improved to
-0.000893 from 0.001341; at 512 rows the chain is 1.44x slower than the WMMA
-owner (258.6 -> 373.2 ms, campaign iteration 154). The ordering keeps the
-slower route off the default path, and the guard test makes a reorder fail
-loudly.
-
-Removal condition: the branch goes only when its configuration does -- the exact
-owner is retired, or WMMA prefill becomes unconditional for every block (no
-partial/verification opt-out and no rollback lever). Then delete the dense
-branch, the three unwrapped variant names it matches on
-(`prefill_bf16_bf16_out`, `gemv_f32_f32_out`, `prefill_f32_f32_out`), and the
-Gemma `Q8MMQPrefillPolicy` table together, and update the ordering guard. Until
-then, keep it: it is the route the policy's numbers were measured against, and
-a faster dense Q8 MMQ leaf is a new candidate with its own measurement, not a
-restoration of this one.
-
 ## Gemma attention legacy slice-count ABI (2026-09-26)
 
 Cleanup status (2026-10-26, R0056): **removed.** The signed count is gone from
