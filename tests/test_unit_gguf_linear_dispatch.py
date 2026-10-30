@@ -84,13 +84,31 @@ def _fake_weight(
     quant_key: str,
     decode_tiles: bool = False,
     decode_tiles_dual: bool = False,
+    backend: str | None = None,
+    slot_path: str | None = "layers.0.test",
+    source_shape: tuple[int, int] | None = None,
+    tiles_shape: tuple[int, ...] | None = None,
+    tiles_nbytes: int | None = None,
 ):
+    if tiles_shape is None:
+        tiles_shape = (
+            (source_shape[0] // 16, source_shape[1] // 32, 544)
+            if layout == LAYOUT_GGUF_Q8_0_T16 and source_shape is not None
+            else (1, 1, 544)
+        )
+    if tiles_nbytes is None:
+        tiles_nbytes = 1
+        for dim in tiles_shape:
+            tiles_nbytes *= int(dim)
     allocations = {
         "raw": SimpleNamespace(tensor=SimpleNamespace(ptr=10)),
         "qweight": SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
         "scales": SimpleNamespace(tensor=SimpleNamespace(ptr=12)),
         "mins": SimpleNamespace(tensor=SimpleNamespace(ptr=13)),
-        "tiles": SimpleNamespace(tensor=SimpleNamespace(ptr=14)),
+        "tiles": SimpleNamespace(
+            tensor=SimpleNamespace(ptr=14, shape=tiles_shape),
+            buffer=SimpleNamespace(nbytes=tiles_nbytes),
+        ),
     }
     if decode_tiles:
         allocations["decode_tiles"] = SimpleNamespace(
@@ -100,11 +118,19 @@ def _fake_weight(
         allocations["decode_tiles_dual"] = SimpleNamespace(
             tensor=SimpleNamespace(ptr=16)
         )
+    source = SimpleNamespace(shape=source_shape) if source_shape is not None else None
 
     class Weight:
         def __init__(self) -> None:
-            self.spec = SimpleNamespace(layout=layout, quant_key=quant_key)
+            self.spec = SimpleNamespace(
+                layout=layout,
+                quant_key=quant_key,
+                slot_path=slot_path,
+                source=source,
+            )
             self.allocations = allocations
+            if backend is not None:
+                self.backend = backend
 
         def allocation(self, name: str = "raw"):
             return allocations[name]
@@ -4485,7 +4511,24 @@ def test_t16_broad_package_policy_selects_single_and_triple_launch(monkeypatch, 
 
     gl = gguf_linear_module
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
-    weight = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(4096, 2048),
+        slot_path="layers.0.attn_q",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(1024, 2048),
+        slot_path="layers.0.attn_k",
+    )
+    weight_c = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(1024, 2048),
+        slot_path="layers.0.attn_v",
+    )
     calls = []
     monkeypatch.setitem(gl._LAUNCH_ABI, "t16", lambda *a, **kw: calls.append("exact"))
     monkeypatch.setattr(gl, "gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out",
@@ -4501,7 +4544,7 @@ def test_t16_broad_package_policy_selects_single_and_triple_launch(monkeypatch, 
                                   backend=backend, use_wmma_prefill=False)
         else:
             assert gl.launch_gguf_linear_triple(
-                weight, weight, weight, 101, 201, 301, 401, rows, 2048, 4096,
+                weight, weight_b, weight_c, 101, 201, 301, 401, rows, 2048, 4096,
                 out_features_b=1024, out_features_c=1024, backend=backend,
             )
 
@@ -4590,9 +4633,24 @@ def test_t16_broad_policy_restores_scopes_without_gating_shape_policy(monkeypatc
 def test_t16_triple_fuses_q8_separate_outputs() -> None:
     """Resident Q8T16 full-attention Q/K/V can share one split-output launch."""
 
-    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
-    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
-    weight_c = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(1024, 2048),
+        slot_path="layers.0.attn_q",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(512, 2048),
+        slot_path="layers.0.attn_k",
+    )
+    weight_c = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(512, 2048),
+        slot_path="layers.0.attn_v",
+    )
     import hipengine.runtime.gguf_linear as gl
 
     triple_calls: list[tuple] = []
@@ -4632,9 +4690,24 @@ def test_t16_triple_fuses_q8_separate_outputs() -> None:
 
 
 def test_t16_triple_qwen35_rows_gt1_routes_to_rowtile4_when_all_opted_in(monkeypatch) -> None:
-    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
-    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
-    weight_c = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(4096, 2048),
+        slot_path="layers.0.attn_q",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(1024, 2048),
+        slot_path="layers.0.attn_k",
+    )
+    weight_c = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16,
+        quant_key="gguf_q8_0_t16_v1",
+        source_shape=(1024, 2048),
+        slot_path="layers.0.attn_v",
+    )
     import hipengine.runtime.gguf_linear as gl
 
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_THREADS", raising=False)

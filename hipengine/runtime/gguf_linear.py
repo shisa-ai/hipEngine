@@ -151,6 +151,11 @@ from hipengine.loading.qwen35_gguf_materialize import (
     Q4_T16_DECODE_TILES,
     Q4_T16_DECODE_TILES_R3PLUS,
 )
+from hipengine.quant.gguf_t16 import (
+    GGUF_Q8_0_QK,
+    GGUF_Q8_0_T16_BLOCK_BYTES,
+    GGUF_T16_COLS,
+)
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
 GGUF_ACTIVATION_BF16 = "bf16"
@@ -1249,6 +1254,138 @@ class GGUFLinearDispatch:
 
     key: KernelKey
     abi: str
+
+
+GGUF_TRIPLE_OPERATION_EXACT = "q8_t16_triple_exact"
+GGUF_TRIPLE_OPERATION_ROWTILE4 = "q8_t16_triple_rowtile4"
+GGUF_TRIPLE_FALLBACK_WMMA_PREFILL_DECLINED = "wmma_prefill_declined"
+GGUF_TRIPLE_FALLBACK_UNSUPPORTED_OPERANDS = "unsupported_operands"
+GGUF_TRIPLE_FALLBACK_TRIPLE_OWNER_UNREGISTERED = "triple_owner_unregistered"
+_GGUF_TRIPLE_OPERATIONS = frozenset(
+    {GGUF_TRIPLE_OPERATION_EXACT, GGUF_TRIPLE_OPERATION_ROWTILE4}
+)
+_GGUF_TRIPLE_FALLBACK_REASONS = frozenset(
+    {
+        GGUF_TRIPLE_FALLBACK_WMMA_PREFILL_DECLINED,
+        GGUF_TRIPLE_FALLBACK_UNSUPPORTED_OPERANDS,
+        GGUF_TRIPLE_FALLBACK_TRIPLE_OWNER_UNREGISTERED,
+    }
+)
+
+
+@dataclass(frozen=True)
+class _GGUFTripleOperand:
+    """One immutable operand contract bound to an execution-time allocation."""
+
+    layout: str
+    quant_key: str
+    out_features: int
+    dispatch: GGUFLinearDispatch
+    owner_slot: str | None = None
+
+    def __post_init__(self) -> None:
+        if not str(self.layout).strip():
+            raise ValueError("GGUF triple operand layout must be non-empty")
+        if not str(self.quant_key).strip():
+            raise ValueError("GGUF triple operand quant_key must be non-empty")
+        if int(self.out_features) <= 0:
+            raise ValueError("GGUF triple operand out_features must be positive")
+        if not isinstance(self.dispatch, GGUFLinearDispatch):
+            raise TypeError("GGUF triple operand dispatch must be GGUFLinearDispatch")
+        owner_slot = self.owner_slot
+        if owner_slot is not None:
+            owner_slot = str(owner_slot)
+            if not owner_slot.strip():
+                raise ValueError("GGUF triple operand owner_slot must be non-empty")
+        object.__setattr__(self, "layout", str(self.layout))
+        object.__setattr__(self, "quant_key", str(self.quant_key))
+        object.__setattr__(self, "out_features", int(self.out_features))
+        object.__setattr__(self, "owner_slot", owner_slot)
+
+
+@dataclass(frozen=True)
+class _GGUFTripleLaunchPlan:
+    """Typed, pointer-free, launch-local plan for one same-input GGUF triple projection.
+
+    The plan owns the selected operation, resolved threads, operand contracts and
+    fallback reason. Raw device pointers and tile allocations stay out of the
+    plan; ``_execute_gguf_linear_triple_plan`` binds and revalidates them at
+    execution time. The plan is intentionally not exported and carries no
+    execution-profile owner: callers must re-resolve after a profile or registry
+    change rather than treating it as a reusable cross-owner policy object.
+    """
+
+    backend: str
+    rows: int
+    in_features: int
+    operands: tuple[_GGUFTripleOperand, _GGUFTripleOperand, _GGUFTripleOperand]
+    operation: str | None
+    owner_key: KernelKey | None
+    threads: int
+    use_wmma_prefill: bool
+    fallback_reason: str | None
+    registry_generation: int
+
+    def __post_init__(self) -> None:
+        if not str(self.backend).strip():
+            raise ValueError("GGUF triple plan backend must be non-empty")
+        if int(self.rows) <= 0:
+            raise ValueError("GGUF triple plan rows must be positive")
+        if int(self.in_features) <= 0:
+            raise ValueError("GGUF triple plan in_features must be positive")
+        operands = tuple(self.operands)
+        if len(operands) != 3 or not all(
+            isinstance(operand, _GGUFTripleOperand) for operand in operands
+        ):
+            raise TypeError("GGUF triple plan needs exactly three operands")
+        operation = self.operation
+        if operation is not None and operation not in _GGUF_TRIPLE_OPERATIONS:
+            raise ValueError(f"unsupported GGUF triple operation {operation!r}")
+        threads = int(self.threads)
+        if threads not in {0, 64, 128}:
+            raise ValueError("GGUF triple plan threads must be 0, 64 or 128")
+        fallback = self.fallback_reason
+        owner_key = self.owner_key
+        if operation is None:
+            if owner_key is not None:
+                raise ValueError("GGUF triple plan fallback cannot name an owner key")
+            if fallback not in _GGUF_TRIPLE_FALLBACK_REASONS:
+                raise ValueError(
+                    "GGUF triple plan without an operation needs a declared fallback reason"
+                )
+            if threads != 0:
+                raise ValueError("GGUF triple plan fallback must not bind threads")
+        else:
+            if not isinstance(owner_key, KernelKey):
+                raise TypeError("GGUF triple plan with an operation needs an owner key")
+            if fallback is not None:
+                raise ValueError("GGUF triple plan with an operation cannot have a fallback")
+            if operation == GGUF_TRIPLE_OPERATION_ROWTILE4 and threads != _Q8_T16_ROWTILE_THREADS:
+                raise ValueError("GGUF triple rowtile plan must bind the rowtile thread width")
+        registry_generation = int(self.registry_generation)
+        if registry_generation < 0:
+            raise ValueError("GGUF triple plan registry_generation must be non-negative")
+        object.__setattr__(self, "rows", int(self.rows))
+        object.__setattr__(self, "in_features", int(self.in_features))
+        object.__setattr__(self, "operands", operands)
+        object.__setattr__(self, "threads", threads)
+        object.__setattr__(self, "registry_generation", registry_generation)
+
+    @property
+    def fused(self) -> bool:
+        return self.operation is not None
+
+    @property
+    def out_features_a(self) -> int:
+        return self.operands[0].out_features
+
+    @property
+    def out_features_b(self) -> int:
+        return self.operands[1].out_features
+
+    @property
+    def out_features_c(self) -> int:
+        return self.operands[2].out_features
 
 
 @dataclass(frozen=True)
@@ -8808,6 +8945,394 @@ def _resolve_gguf_linear_pair_kind(
     return "none"
 
 
+def _triple_plan_operand(
+    weight: GGUFDeviceWeight,
+    *,
+    out_features: int,
+    dispatch: GGUFLinearDispatch,
+) -> _GGUFTripleOperand:
+    owner_slot = getattr(getattr(weight, "spec", None), "slot_path", None)
+    if owner_slot is not None:
+        owner_slot = str(owner_slot)
+    return _GGUFTripleOperand(
+        layout=str(weight.spec.layout),
+        quant_key=str(weight.spec.quant_key),
+        out_features=int(out_features),
+        dispatch=dispatch,
+        owner_slot=owner_slot,
+    )
+
+
+def _triple_source_shape(weight: GGUFDeviceWeight) -> tuple[int, ...] | None:
+    source = getattr(getattr(weight, "spec", None), "source", None)
+    shape = getattr(source, "shape", None)
+    if shape is None:
+        return None
+    return tuple(int(dim) for dim in shape)
+
+
+def _validate_triple_plan_source_geometry(
+    index: int,
+    weight: GGUFDeviceWeight,
+    operand: _GGUFTripleOperand,
+    in_features: int,
+) -> None:
+    source_shape = _triple_source_shape(weight)
+    if source_shape is None:
+        return
+    expected = (operand.out_features, int(in_features))
+    if source_shape != expected:
+        raise ValueError(
+            f"GGUF triple launch plan operand {index} source shape "
+            f"{source_shape} does not match plan geometry {expected}"
+        )
+
+
+def _q8_t16_tiles_shape(out_features: int, in_features: int) -> tuple[int, int, int]:
+    out_features = int(out_features)
+    in_features = int(in_features)
+    if out_features <= 0 or in_features <= 0:
+        raise ValueError("GGUF triple Q8T16 geometry must be positive")
+    if out_features % GGUF_T16_COLS or in_features % GGUF_Q8_0_QK:
+        raise ValueError(
+            f"GGUF triple Q8T16 geometry ({out_features}, {in_features}) "
+            "is not tile-aligned"
+        )
+    return (
+        out_features // GGUF_T16_COLS,
+        in_features // GGUF_Q8_0_QK,
+        GGUF_Q8_0_T16_BLOCK_BYTES,
+    )
+
+
+def _validate_triple_plan_allocation(
+    index: int,
+    weight: GGUFDeviceWeight,
+    operand: _GGUFTripleOperand,
+    in_features: int,
+) -> None:
+    source_shape = _triple_source_shape(weight)
+    expected_source = (operand.out_features, int(in_features))
+    if source_shape is not None and source_shape != expected_source:
+        raise ValueError(
+            f"GGUF triple launch plan operand {index} source shape "
+            f"{source_shape} does not match plan geometry {expected_source}"
+        )
+
+    allocation = weight.allocation("tiles")
+    tensor = getattr(allocation, "tensor", None)
+    if tensor is None:
+        raise ValueError(
+            f"GGUF triple launch plan operand {index} has no tiles tensor"
+        )
+    buffer = getattr(allocation, "buffer", None)
+    nbytes = getattr(buffer, "nbytes", None)
+    if nbytes is None:
+        raise ValueError(
+            f"GGUF triple launch plan operand {index} has no tiles buffer size"
+        )
+
+    expected_tiles = _q8_t16_tiles_shape(operand.out_features, in_features)
+    expected_nbytes = expected_tiles[0] * expected_tiles[1] * expected_tiles[2]
+    if int(nbytes) != expected_nbytes:
+        raise ValueError(
+            f"GGUF triple launch plan operand {index} tiles buffer has "
+            f"{int(nbytes)} bytes; plan geometry {expected_source} requires "
+            f"{expected_nbytes}"
+        )
+
+    tensor_shape = getattr(tensor, "shape", None)
+    actual_tensor_shape = (
+        tuple(int(dim) for dim in tensor_shape) if tensor_shape is not None else None
+    )
+    if actual_tensor_shape is not None and len(actual_tensor_shape) == 3:
+        if actual_tensor_shape != expected_tiles:
+            raise ValueError(
+                f"GGUF triple launch plan operand {index} tiles shape "
+                f"{actual_tensor_shape} does not match plan geometry {expected_tiles}"
+            )
+    if source_shape is None and (
+        actual_tensor_shape is None or len(actual_tensor_shape) != 3
+    ):
+        raise ValueError(
+            f"GGUF triple launch plan operand {index} has no source or resident "
+            "tensor shape; refusing to launch without a checked geometry contract"
+        )
+
+
+def _resolve_gguf_linear_triple_plan(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    weight_c: GGUFDeviceWeight,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    out_features_b: int | None = None,
+    out_features_c: int | None = None,
+    backend: str | None = None,
+    threads: int = 0,
+    use_wmma_prefill: bool | None = None,
+    rowtile_all: bool | None = None,
+) -> _GGUFTripleLaunchPlan:
+    """Resolve one private, pointer-free, launch-local GGUF triple plan.
+
+    Resolution owns the shape/resource decision: operand dispatches, the WMMA
+    decline, the Q8T16 owner check and the exact-versus-rowtile choice. It reads
+    weight metadata only; allocations and output pointers stay with the
+    execution call. ``rowtile_all`` is an explicit policy input for a caller
+    that has already resolved its owner; ``None`` preserves the ambient
+    session/env resolver used by the public launcher.
+
+    This plan is intentionally not a reusable cross-owner API. It carries no
+    execution-profile selector or owner token, so callers must re-resolve after
+    a profile or registry change. Execution revalidates the current owner slot,
+    registry generation, geometry and ``tiles`` allocation before launching.
+    """
+
+    resolved_registry_generation = generation()
+    rows = int(rows)
+    in_features = int(in_features)
+    out_features = int(out_features)
+    out_features_b = out_features if out_features_b is None else int(out_features_b)
+    out_features_c = out_features if out_features_c is None else int(out_features_c)
+    if rows <= 0:
+        raise ValueError("GGUF triple plan rows must be positive")
+    if in_features <= 0:
+        raise ValueError("GGUF triple plan in_features must be positive")
+    if out_features <= 0 or out_features_b <= 0 or out_features_c <= 0:
+        raise ValueError("GGUF triple plan out_features must be positive")
+
+    resolved_backend = _weight_backend(weight_a, weight_b, weight_c, backend=backend)
+    dispatch_a = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_a, backend=resolved_backend, rows=rows),
+        rows=rows,
+        out_features=out_features,
+    )
+    dispatch_b = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_b, backend=resolved_backend, rows=rows),
+        rows=rows,
+        out_features=out_features_b,
+    )
+    dispatch_c = _pack8_decode_dispatch(
+        resolve_gguf_linear_dispatch(weight_c, backend=resolved_backend, rows=rows),
+        rows=rows,
+        out_features=out_features_c,
+    )
+    operands = (
+        _triple_plan_operand(weight_a, out_features=out_features, dispatch=dispatch_a),
+        _triple_plan_operand(weight_b, out_features=out_features_b, dispatch=dispatch_b),
+        _triple_plan_operand(weight_c, out_features=out_features_c, dispatch=dispatch_c),
+    )
+    use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
+
+    def _plan(
+        operation: str | None,
+        owner_key: KernelKey | None,
+        resolved_threads: int,
+        fallback_reason: str | None,
+    ) -> _GGUFTripleLaunchPlan:
+        return _GGUFTripleLaunchPlan(
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            operands=operands,
+            operation=operation,
+            owner_key=owner_key,
+            threads=resolved_threads,
+            use_wmma_prefill=use_wmma,
+            fallback_reason=fallback_reason,
+            registry_generation=resolved_registry_generation,
+        )
+
+    if use_wmma and rows > 1 and (
+        _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
+        or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
+        or _dispatch_can_use_t16_wmma_prefill(dispatch_c, rows=rows, in_features=in_features)
+    ):
+        # P10.B4: decline Q8T16 triple GEMV fusion at rows>1 when WMMA
+        # prefill is opted in, so the caller falls back to singletons that
+        # each take the dense Q8T16 WMMA prefill path.
+        return _plan(
+            None,
+            None,
+            0,
+            GGUF_TRIPLE_FALLBACK_WMMA_PREFILL_DECLINED,
+        )
+
+    if not (
+        dispatch_a.abi == "t16"
+        and dispatch_b.abi == "t16"
+        and dispatch_c.abi == "t16"
+        and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
+        and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
+        and dispatch_c.key.quant == "gguf_q8_0_t16_v1"
+    ):
+        return _plan(
+            None,
+            None,
+            0,
+            GGUF_TRIPLE_FALLBACK_UNSUPPORTED_OPERANDS,
+        )
+
+    q8_t16_triple = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "t16_triple_gemv_decode_bf16_bf16_out",
+    )
+    if not is_registered(q8_t16_triple):
+        return _plan(
+            None,
+            None,
+            0,
+            GGUF_TRIPLE_FALLBACK_TRIPLE_OWNER_UNREGISTERED,
+        )
+
+    for index, (weight, operand) in enumerate(
+        zip((weight_a, weight_b, weight_c), operands, strict=True)
+    ):
+        if operand.owner_slot is None:
+            raise ValueError(
+                f"GGUF triple launch plan operand {index} requires spec.slot_path "
+                "for owner-bound planning"
+            )
+        _validate_triple_plan_source_geometry(index, weight, operand, in_features)
+
+    if rowtile_all is None:
+        use_rowtile = _use_q8_t16_all_rowtile(
+            rows=rows,
+            in_features=in_features,
+            threads=threads,
+        )
+    else:
+        use_rowtile = (
+            bool(rowtile_all)
+            and rows > 1
+            and in_features == _Q8_T16_QWEN35_ATTN_IN
+            and not _q8_t16_threads_override_active(threads)
+        )
+    if use_rowtile:
+        return _plan(
+            GGUF_TRIPLE_OPERATION_ROWTILE4,
+            q8_t16_triple,
+            _Q8_T16_ROWTILE_THREADS,
+            None,
+        )
+    return _plan(
+        GGUF_TRIPLE_OPERATION_EXACT,
+        q8_t16_triple,
+        _resolve_q8_t16_threads(threads),
+        None,
+    )
+
+
+def _bind_triple_plan_operands(
+    plan: _GGUFTripleLaunchPlan,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    weight_c: GGUFDeviceWeight,
+) -> None:
+    """Reject a plan reused with incompatible operand metadata or owner."""
+
+    for index, (weight, operand) in enumerate(
+        zip((weight_a, weight_b, weight_c), plan.operands, strict=True)
+    ):
+        layout = str(weight.spec.layout)
+        quant_key = str(weight.spec.quant_key)
+        if layout != operand.layout or quant_key != operand.quant_key:
+            raise ValueError(
+                f"GGUF triple launch plan operand {index} is incompatible: "
+                f"expected layout={operand.layout!r} quant={operand.quant_key!r}, "
+                f"got layout={layout!r} quant={quant_key!r}"
+            )
+        weight_backend = getattr(weight, "backend", None)
+        if weight_backend is not None and str(weight_backend) != plan.backend:
+            raise ValueError(
+                f"GGUF triple launch plan operand {index} backend "
+                f"{str(weight_backend)!r} does not match plan backend {plan.backend!r}"
+            )
+        if operand.owner_slot is None:
+            raise ValueError(
+                f"GGUF triple launch plan operand {index} has no owner slot"
+            )
+        current_slot = getattr(getattr(weight, "spec", None), "slot_path", None)
+        if current_slot is None or str(current_slot) != operand.owner_slot:
+            raise ValueError(
+                f"GGUF triple launch plan operand {index} owner slot "
+                f"{current_slot!r} does not match plan owner {operand.owner_slot!r}"
+            )
+
+
+def _execute_gguf_linear_triple_plan(
+    plan: _GGUFTripleLaunchPlan,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    weight_c: GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    out_c_ptr: int,
+    *,
+    stream: int = 0,
+    runtime=None,
+) -> bool:
+    """Bind allocations and pointers for one private, resolved triple plan.
+
+    The plan never carries a device pointer or tile allocation. Each execution
+    rechecks the registry generation, owner slots, logical geometry and current
+    ``tiles`` allocation before binding pointers, so a resident reallocation is
+    picked up only when its shape and byte count still match the plan.
+    """
+
+    if plan.operation is None:
+        return False
+    current_generation = generation()
+    if int(plan.registry_generation) != current_generation:
+        raise ValueError(
+            "GGUF triple launch plan is stale: registry generation changed "
+            f"from {plan.registry_generation} to {current_generation}; re-resolve the plan"
+        )
+    if plan.owner_key is None or not is_registered(plan.owner_key):
+        raise ValueError(
+            f"GGUF triple launch plan owner {plan.owner_key!r} is no longer "
+            "registered; re-resolve the plan"
+        )
+    _bind_triple_plan_operands(plan, weight_a, weight_b, weight_c)
+    for index, (weight, operand) in enumerate(
+        zip((weight_a, weight_b, weight_c), plan.operands, strict=True)
+    ):
+        _validate_triple_plan_allocation(index, weight, operand, plan.in_features)
+    launch_args = (
+        x_ptr,
+        weight_a.allocation("tiles").tensor.ptr,
+        weight_b.allocation("tiles").tensor.ptr,
+        weight_c.allocation("tiles").tensor.ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        plan.rows,
+        plan.in_features,
+        plan.out_features_a,
+        plan.out_features_b,
+        plan.out_features_c,
+    )
+    launch_kwargs = {
+        "threads": plan.threads,
+        "stream": stream,
+        "runtime": runtime,
+    }
+    if plan.operation == GGUF_TRIPLE_OPERATION_ROWTILE4:
+        gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out(
+            *launch_args, **launch_kwargs
+        )
+    else:
+        gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
+            *launch_args, **launch_kwargs
+        )
+    return True
+
+
 def launch_gguf_linear_triple(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
@@ -8829,91 +9354,30 @@ def launch_gguf_linear_triple(
 ) -> bool:
     """Launch a supported same-input triple of GGUF projections."""
 
-    resolved_backend = _weight_backend(weight_a, weight_b, weight_c, backend=backend)
-    out_features_b = out_features if out_features_b is None else int(out_features_b)
-    out_features_c = out_features if out_features_c is None else int(out_features_c)
-    dispatch_a = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_a, backend=resolved_backend, rows=rows),
+    plan = _resolve_gguf_linear_triple_plan(
+        weight_a,
+        weight_b,
+        weight_c,
         rows=rows,
+        in_features=in_features,
         out_features=out_features,
+        out_features_b=out_features_b,
+        out_features_c=out_features_c,
+        backend=backend,
+        threads=threads,
     )
-    dispatch_b = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_b, backend=resolved_backend, rows=rows),
-        rows=rows,
-        out_features=out_features_b,
+    return _execute_gguf_linear_triple_plan(
+        plan,
+        weight_a,
+        weight_b,
+        weight_c,
+        x_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        stream=stream,
+        runtime=runtime,
     )
-    dispatch_c = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_c, backend=resolved_backend, rows=rows),
-        rows=rows,
-        out_features=out_features_c,
-    )
-    use_wmma = _resolve_use_wmma_prefill(None)
-    q8_t16_triple = KernelKey(
-        resolved_backend,
-        "linear",
-        "gguf_q8_0_t16_v1",
-        "t16_triple_gemv_decode_bf16_bf16_out",
-    )
-    if use_wmma and rows > 1 and (
-        _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
-        or _dispatch_can_use_t16_wmma_prefill(dispatch_b, rows=rows, in_features=in_features)
-        or _dispatch_can_use_t16_wmma_prefill(dispatch_c, rows=rows, in_features=in_features)
-    ):
-        # P10.B4: decline Q8T16 triple GEMV fusion at rows>1 when WMMA
-        # prefill is opted in, so the caller falls back to singletons that
-        # each take the dense Q8T16 WMMA prefill path.
-        return False
-    if (
-        dispatch_a.abi == "t16"
-        and dispatch_b.abi == "t16"
-        and dispatch_c.abi == "t16"
-        and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
-        and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
-        and dispatch_c.key.quant == "gguf_q8_0_t16_v1"
-        and is_registered(q8_t16_triple)
-    ):
-        if _use_q8_t16_all_rowtile(
-            rows=rows,
-            in_features=in_features,
-            threads=threads,
-        ):
-            gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out(
-                x_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                weight_c.allocation("tiles").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                out_c_ptr,
-                rows,
-                in_features,
-                out_features,
-                out_features_b,
-                out_features_c,
-                threads=_Q8_T16_ROWTILE_THREADS,
-                stream=stream,
-                runtime=runtime,
-            )
-            return True
-        gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out(
-            x_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            weight_c.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            out_c_ptr,
-            rows,
-            in_features,
-            out_features,
-            out_features_b,
-            out_features_c,
-            threads=_resolve_q8_t16_threads(threads),
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-    return False
 
 
 def launch_gguf_linear_pair_concat(
@@ -11261,6 +11725,11 @@ __all__ = [
     "launch_gguf_q4_t16_sidecar_decode",
     "F32OrderedPrefillSession",
     "GGUFLinearDispatch",
+    "GGUF_TRIPLE_OPERATION_EXACT",
+    "GGUF_TRIPLE_OPERATION_ROWTILE4",
+    "GGUF_TRIPLE_FALLBACK_WMMA_PREFILL_DECLINED",
+    "GGUF_TRIPLE_FALLBACK_UNSUPPORTED_OPERANDS",
+    "GGUF_TRIPLE_FALLBACK_TRIPLE_OWNER_UNREGISTERED",
     "Q5F32ResidentPlane",
     "T16F16RocblasPrefillSession",
     "gguf_wmma_prefill_enabled",

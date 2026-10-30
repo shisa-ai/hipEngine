@@ -4424,12 +4424,15 @@ Owner: `hipengine/runtime/gguf_linear.py`.
 
 Scope: `hipengine/runtime/gguf_linear.py`.
 
-Done when: Resolve typed pair/triple/residual launch plans at the owning shape/resource boundary in
-`hipengine/runtime/gguf_linear.py`, reusing RF-1 profile infrastructure. Do not cache stale pointers
-or scratch generations in reusable policy. R0188 owns migration of non-staged providers before
-direct-control retirement. Compare selected operations, operands and fallback reasons across
-threshold-straddling and unrelated shapes; test owner isolation, graph reuse, scratch invalidation
-and public commit/rollback lifecycle.
+**Remaining planning work:** resolve pair/residual launch decisions at the owning shape/resource
+boundary. Bind reusable pair/triple/residual plans to RF-1's resolved profile owner; the private
+launch-local triple plan is not a cross-owner cache. Do not cache stale pointers or scratch
+generations in reusable policy. R0188 owns migration of non-staged providers before direct-control
+retirement.
+
+Done when: compare selected operations, operands and fallback reasons across threshold-straddling
+and unrelated shapes; test owner isolation, Q8T16 triple graph reuse, scratch invalidation and public
+commit/rollback lifecycle. Preserve the existing per-launch fallback and thread-selection contracts.
 
 ### R0189 — Packed-PARO transaction storage after journal integration
 
