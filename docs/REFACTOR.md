@@ -336,70 +336,6 @@ pins the F16 re-admission. These tests cover binder behavior, not the prose here
   can be re-admitted on its evidence
   (`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/`).
 
-## GR-Up Wide Tile (`HIPENGINE_QWEN4_EXP_GR_WIDE`)
-
-Cleanup status (2026-10-25, R0028): the route is not default-off. The
-`gguf_ud_q4_k_xl` production plan binds `GR_WIDE=1` through
-`_F16_ROUTE_SELECTORS`, which runs after the arithmetic-recovery sweep that
-zeroes it; the fast profile shares that binder, and `gguf_q4_k_m` production
-falls back to strict, so `GR_WIDE` is on for the `gguf_ud_q4_k_xl` production
-and fast bindings, not strict.
-The route replaces the GR-up projection with the promoted dense
-`dense_wide256_f32_f32_out` tile plus the retained exact sigmoid and gated-mean
-epilogue, and engages at `rows > 256` with `low_rank % 64 == 0`. The owner
-decision is `e73e6bed1`; admission rests on the complete composition gate, not
-on this route alone.
-
-- Measured 4.38x on the projection at the production chunk shape (1.4925 ms
-  against 6.5379 ms at rows=1024, K=320, N=10240). The fused kernel is
-  latency-bound by its per-output structure, not by weight traffic; the
-  2026-10-04 width screen refutes the traffic reading.
-- Admission evidence: the 2026-10-14 composition gate passes every global limit
-  and every top-1 floor (mean/p95/p99/max KL
-  6.493e-4/3.452e-3/7.889e-3/1.186e-2, top-1 99.56%, 15/18 strict-exact, three
-  bit-identical repeats). Two scope means (`prefill_last` 1.21e-3,
-  `mixed_ja_en` 1.11e-3) are advisories under
-  `docs/EXECUTION-PROFILES.md` section 6.1, which binds a scope on its top-1
-  floor only. That gate is 450 rows over 18 prompts at chunk 4096, a different
-  protocol from the canonical 780-row gate below. Evidence:
-  `benchmarks/results/2026-10-14-qwen4exp-fast-composition-gate-2/`.
-- The standalone rejection stays on record and is not the current disposition:
-  the 780-row gate rejected this arithmetic on its own (mean KL 1.554e-3, p95
-  7.081e-3, max 7.349e-2, top-1 768/780, 6,912 dispatch calls, all 12
-  mismatches flip-eligible, determinism and lifecycle pass). Keep it; do not
-  read it as removal of the composition's route, and do not read the
-  composition admission as clearance for a different GR arithmetic change.
-  Evidence: `benchmarks/results/2026-09-27-gr-up-wide-tile-screen/`.
-- Retired tuning ideas, with their reopen conditions. `ROW_BATCH` 8 at
-  `HIDDEN_TILE` 2 measures 0.833-0.844x and `ROW_BATCH` 16 0.430-0.437x, both
-  bit-identical; the cause is occupancy (VGPR 72/130/256, 28/15/8 waves per
-  CU), so reopen only on a machine class where 130 VGPR still buys 32 waves/CU,
-  or with a body change that lowers the accumulator cost. Dropping the dead
-  `gate` store measured 0.9797x (2% slower) and is closed. `HIDDEN_TILE` 4 is
-  unbuilt and is not a traffic lever. The 2026-09-06 `RB8/HT1` retile is
-  confounded - it changed `ROW_BATCH` and `HIDDEN_TILE` together - and is
-  superseded by the clean width screen. Evidence:
-  `benchmarks/results/2026-10-04-qwen4exp-gr-row-batch-width/` and
-  `docs/QWEN4EXP-OPTIMIZATION-LEDGER.md` section 4D HC-1/HC-3.
-- **The prefill-boundary KL screen is not a predictor.** This route screened at
-  5.17e-11 - 285x *better* than the rejected iu8 route's 1.48e-8 - while
-  carrying 300x more projection drift (4.7e-5 against 1.1e-7 relative L2), and
-  the standalone gate failed at the same plateau. The publication row's
-  ~22-logit argmax gap makes the softmax one-hot, so KL is blind to logits that
-  genuinely moved (median absolute drift 0.095, max 1.20). Screen a GR
-  candidate with the canonical-fixture depth gate, not this KL.
-- The gate's default prompt suite is 39-71 tokens, below these routes'
-  `rows > 256` admission, so a default-suite run never executes the candidate
-  and reads as a perfect pass; only the harness's independent dispatch count
-  exposes it. Use `qwen4exp_q8_repair_depth_gate.py`, or the layer2 gate with
-  `--prompts benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl`, for any
-  GR route.
-- No runtime cleanup remains. The measured-dead `rowbatch8`, `rowbatch16` and
-  no-gate wrapper arms stay in `gguf_k_gemv.py` as screen arms (the no-gate arm
-  is referenced by `scripts/qwen4exp_gr_projection_screen.py`). The selector
-  docstring records the composition's selection rather than the obsolete
-  prefill-boundary screen prerequisite.
-
 ## Router ordered DPP production owner
 
 Cleanup status (2026-10-26, R0029): the ownership claim this section used to
@@ -723,6 +659,22 @@ runner-owned controls. The GR fusion opt-out is retired. No process selector
 remains for this unit; strict fallbacks and the separate DP4A prerequisite remain.
 
 ## Deferred decisions from the refactor sweep
+
+### R0028 — GR-wide profile handoff and engagement checks
+
+GR-wide selection is admitted as part of a complete composition, not as blanket
+clearance of standalone GR arithmetic. `HIPENGINE_QWEN4_EXP_GR_WIDE` remains
+profile transport. **Deferred handoff migration:** replace it only with an
+owner-bound variant input preserving profile precedence, strict fallback and
+explicit diagnostics across construction paths.
+
+Preserve `rows > 256` and `low_rank % 64 == 0` capability checks. Short default
+prompts do not engage this route; use the canonical depth gate or layer2 gate
+with `--prompts benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl` and
+independent dispatch counts. A one-hot prefill-boundary KL is not a substitute
+for full-depth numerical/task validation. R0034 owns wider-row reference
+retention; no selector, arithmetic or default changes here.
+
 
 ### R0027 — Repair isolated GR-down IU8 drift independently
 

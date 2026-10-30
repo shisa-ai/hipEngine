@@ -810,7 +810,7 @@
       "start_line": 856,
       "end_line": 914,
       "sha256": "e8df479ca1f5203349f1b61759ce2634858acd21eb0ba09d08328558960fb923",
-      "status": "resolved",
+      "status": "triaged-wide-composition-recorded-handoff-deferred",
       "evidence": [
         "Current binder and historical gate dispositions reconciled; stale selector/binder comments corrected without executable changes. IU8 repair conditions preserved, wide composition selection documented. Worklog:worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md."
       ],
