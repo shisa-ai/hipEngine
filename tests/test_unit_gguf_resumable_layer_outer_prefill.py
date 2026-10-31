@@ -1383,7 +1383,6 @@ def test_segment_binds_request_spans_and_slot_owners(monkeypatch) -> None:
     for name, ptr in (
         ("q6_f16_x", 0x1100),
         ("q6_f16_weight", 0x1200),
-        ("q6_f16_out", 0x1300),
     ):
         setattr(
             owner._bulk_prefill_scratch,

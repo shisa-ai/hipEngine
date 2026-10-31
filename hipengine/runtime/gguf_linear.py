@@ -55,7 +55,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_f32_rocblas_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
     q6_k_f16_input_nbytes,
-    q6_k_f16_output_nbytes,
     q6_k_f16_weight_nbytes,
     register_gguf_q6_k_f16_rocblas_prefill_kernels,
 )
@@ -1580,9 +1579,10 @@ class T16F16RocblasPrefillSession:
     This context never changes resident weight ownership: admitted candidates
     read canonical Q4T16/Q5T16 or planar Q6T16 allocations and dequantize one
     bounded output tile immediately before the K16 consumer publishes BF16.
-    It carries no rocBLAS handle or solution policy: the K16 consumer's own
-    FP32 accumulator owns the arithmetic, so building an owner never loads or
-    version-queries a rocBLAS build.
+    It carries no F16 output plane, because the consumer writes BF16 into the
+    destination, and no rocBLAS handle or solution policy: the K16 consumer's
+    own FP32 accumulator owns the arithmetic, so building an owner never loads
+    or version-queries a rocBLAS build.
     """
 
     min_rows: int
@@ -1591,8 +1591,6 @@ class T16F16RocblasPrefillSession:
     x_f16_nbytes: int
     weight_f16_ptr: int
     weight_f16_nbytes: int
-    out_f16_ptr: int
-    out_f16_nbytes: int
     tile_out_features_by_shape: Mapping[tuple[int, ...], int]
     dequant_library: object
     cast_library: object
@@ -1620,7 +1618,6 @@ class T16F16RocblasPrefillSession:
         for label, ptr, nbytes in (
             ("activation", self.x_f16_ptr, self.x_f16_nbytes),
             ("weight", self.weight_f16_ptr, self.weight_f16_nbytes),
-            ("output", self.out_f16_ptr, self.out_f16_nbytes),
         ):
             if int(ptr) <= 0 or int(nbytes) <= 0:
                 raise ValueError(f"T16 F16/rocBLAS {label} plane must be non-empty")
@@ -11143,7 +11140,6 @@ def _launch_t16_f16_rocblas(
     required = {
         "activation": q6_k_f16_input_nbytes(rows, in_features),
         "weight": q6_k_f16_weight_nbytes(in_features, tile),
-        "output": q6_k_f16_output_nbytes(rows, tile),
     }
     available = {
         "activation": (
@@ -11152,7 +11148,6 @@ def _launch_t16_f16_rocblas(
             else int(session.x_f16_nbytes)
         ),
         "weight": int(session.weight_f16_nbytes),
-        "output": int(session.out_f16_nbytes),
     }
     for name, nbytes in required.items():
         if nbytes > available[name]:
@@ -11178,10 +11173,6 @@ def _launch_t16_f16_rocblas(
         "weight workspace": (
             int(session.weight_f16_ptr),
             required["weight"],
-        ),
-        "output workspace": (
-            int(session.out_f16_ptr),
-            required["output"],
         ),
     }
     if not activation_inplace:
@@ -11210,7 +11201,10 @@ def _launch_t16_f16_rocblas(
         int(out_ptr),
         int(x_ptr) if activation_inplace else int(session.x_f16_ptr),
         int(session.weight_f16_ptr),
-        int(session.out_f16_ptr),
+        # The K16 consumer publishes BF16 from its own FP32 accumulator, so the
+        # output-tile argument is unread. Keep the wrapper's positional ABI and
+        # pass zero rather than naming scratch nothing consumes.
+        0,
         int(rows),
         int(in_features),
         int(out_features),

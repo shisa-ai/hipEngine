@@ -68,7 +68,7 @@ _PREFILL_SCRATCH_Q8_1_BLOCK_BYTES = 36
 _PREFILL_SCRATCH_FULL_ATTN_SPLIT_BATCH_ROWS = 16
 _PREFILL_SCRATCH_FULL_ATTN_SPLIT_QUERY_ROWS = 1
 _PREFILL_SCRATCH_WMMA_ROW_PAD = 16
-_PREFILL_SCRATCH_Q6_F16_FIELDS = ("q6_f16_x", "q6_f16_weight", "q6_f16_out")
+_PREFILL_SCRATCH_Q6_F16_FIELDS = ("q6_f16_x", "q6_f16_weight")
 
 _PREFILL_SCRATCH_KV_FIELD_ORDER = ("key_cache", "value_cache")
 # Fields typed ``object | None`` on the scratch: an absent view means ``None``,
@@ -141,11 +141,6 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, ScratchLifetimes] = MappingProxyTy
             + _both_prefill_routes(12, 13)
         ),
         "q6_f16_weight": (
-            _both_prefill_routes(0, 1)
-            + _both_prefill_routes(5, 6)
-            + _both_prefill_routes(12, 13)
-        ),
-        "q6_f16_out": (
             _both_prefill_routes(0, 1)
             + _both_prefill_routes(5, 6)
             + _both_prefill_routes(12, 13)
@@ -758,17 +753,6 @@ def build_prefill_scratch_plan(
         if f16_shape_tiles
         else 0
     )
-    q6_f16_out_bytes = (
-        rows
-        * max(
-            int(tile)
-            for _shape, row_tiles in f16_shape_tiles
-            for _rows, tile in row_tiles
-        )
-        * DType.FP16.itemsize
-        if f16_shape_tiles
-        else 0
-    )
     conv_state_bytes = (
         linear_qkv_width * cfg.ssm_conv_kernel * DType.FP32.itemsize
     )
@@ -837,7 +821,6 @@ def build_prefill_scratch_plan(
         "prefill_value": recurrent_f32_bytes,
         "q6_f16_x": q6_f16_x_bytes,
         "q6_f16_weight": q6_f16_weight_bytes,
-        "q6_f16_out": q6_f16_out_bytes,
         "prefill_beta": prefill_scalar_bytes,
         "prefill_decay": prefill_scalar_bytes,
         "prefill_query_scale": prefill_scalar_bytes,

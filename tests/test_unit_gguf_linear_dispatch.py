@@ -365,8 +365,6 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         x_f16_nbytes=4096 * 17_408 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=2048 * 17_408 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=4096 * 2048 * 2,
         tile_out_features_by_shape={(512, 5120, 10240): 2048},
         dequant_library="dequant-library",
         cast_library="cast-library",
@@ -440,7 +438,7 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         0x20000000,
         0x30000000,
         0x40000000,
-        0x50000000,
+        0,
         512,
         5120,
         10240,
@@ -453,6 +451,78 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         "cast_activation": True,
         "runtime": "runtime-sentinel",
     }
+
+
+def test_source_f16_dispatch_passes_zero_for_the_unused_output_scratch() -> None:
+    """The wrapper keeps its positional ABI; the unread argument becomes zero.
+
+    ``_launch_t16_f16_rocblas`` declares an output-tile pointer for existing
+    callers but the K16 consumer publishes BF16 directly, so the resident
+    dispatcher must not name scratch that nothing reads.
+    """
+
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1100",
+        "linear",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[object, ...]] = []
+
+    def capture(*args, **kwargs):
+        calls.append(args)
+
+    session = T16F16RocblasPrefillSession(
+        min_rows=512,
+        max_rows=4096,
+        x_f16_ptr=0x30000000,
+        x_f16_nbytes=1 << 40,
+        weight_f16_ptr=0x40000000,
+        weight_f16_nbytes=1 << 40,
+        tile_out_features_by_shape={(512, 5120, 10240): 2048},
+        dequant_library="dequant-library",
+        cast_library="cast-library",
+    )
+    register(candidate_key, capture, replace=True)
+    try:
+        with t16_f16_rocblas_prefill_session(session):
+            launch_gguf_linear(
+                weight,
+                x_ptr=0x10000000,
+                out_ptr=0x20000000,
+                rows=512,
+                in_features=5120,
+                out_features=10240,
+                use_wmma_prefill=True,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert len(calls) == 1
+    assert calls[0] == (
+        0x10000000,
+        14,
+        0x20000000,
+        0x30000000,
+        0x40000000,
+        0,
+        512,
+        5120,
+        10240,
+    )
 
 
 def test_q5_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
@@ -496,8 +566,6 @@ def test_q5_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         x_f16_nbytes=4096 * 6144 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=1280 * 6144 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=4096 * 1280 * 2,
         tile_out_features_by_shape={(512, 17_408, 5120): 512},
         q5_tile_out_features_by_shape={
             (512, 6144, 5120): 1280,
@@ -593,8 +661,6 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         x_f16_nbytes=4096 * 17_408 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=2048 * 17_408 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=4096 * 2048 * 2,
         tile_out_features_by_shape={(512, 5120, 10240): 2048},
         q4_tile_out_features_by_shape={(512, 17_408, 5120): 1024},
         q4_x_inplace_shapes={(512, 17_408, 5120)},
@@ -640,7 +706,7 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         0x20000000,
         0x10000000,
         0x40000000,
-        0x50000000,
+        0,
         512,
         17_408,
         5_120,
@@ -688,8 +754,6 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         x_f16_nbytes=4096 * 17_408 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=1024 * 17_408 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=4096 * 1024 * 2,
         tile_out_features_by_shape={(512, 5120, 10240): 2048},
         q4_tile_out_features_by_shape={
             (512, 17_408, 5_120): 1_024,
@@ -801,8 +865,6 @@ def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
         x_f16_nbytes=4096 * 6_144 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=1280 * 6_144 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=4096 * 1280 * 2,
         tile_out_features_by_shape={},
         q5_tile_out_features_by_shape={
             (512, 6_144, 5_120): 1_280,
@@ -868,8 +930,6 @@ def test_t16_f16_rocblas_variant_policy_rejects_overlapping_intervals() -> None:
             x_f16_nbytes=1,
             weight_f16_ptr=2,
             weight_f16_nbytes=1,
-            out_f16_ptr=3,
-            out_f16_nbytes=1,
             tile_out_features_by_shape={(512, 5_120, 10_240): 2_048},
             q4_tile_out_features_by_shape={(512, 17_408, 5_120): 1_024},
             linear_variant_intervals_by_quant={
@@ -930,8 +990,6 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
         x_f16_nbytes=4096 * 5120 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=2048 * 5120 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=4096 * 2048 * 2,
         tile_out_features_by_shape={
             (512, 5120, 10240): 2048,
             (1024, 5120, 10240): 512,
@@ -1021,8 +1079,6 @@ def test_q4_t16_f16_rocblas_inplace_policy_is_shape_scoped() -> None:
         x_f16_nbytes=4096 * 17_408 * 2,
         weight_f16_ptr=0x20000000,
         weight_f16_nbytes=1024 * 17_408 * 2,
-        out_f16_ptr=0x30000000,
-        out_f16_nbytes=4096 * 1024 * 2,
         tile_out_features_by_shape={(512, 5120, 10240): 1024},
         q4_tile_out_features_by_shape={
             (512, 17_408, 5120): 1024,
@@ -1049,8 +1105,6 @@ def test_q6_t16_f16_rocblas_context_supports_bounded_inplace_down_activation() -
         x_f16_nbytes=512 * 17_408 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=1024 * 17_408 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=512 * 2048 * 2,
         tile_out_features_by_shape={(512, 17_408, 5_120): 1024},
         x_inplace_shapes=frozenset({(512, 17_408, 5_120)}),
         dequant_library="dequant-library",
@@ -1069,8 +1123,6 @@ def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
         x_f16_nbytes=4096 * 5120 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=2048 * 5120 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=4096 * 2048 * 2,
         tile_out_features_by_shape={
             (512, 5120, 10240): 2048,
             (768, 5120, 10240): 1024,
@@ -1206,8 +1258,6 @@ def test_q6_t16_f16_rocblas_context_declines_mixed_pair_for_singleton_owner() ->
         x_f16_nbytes=512 * 5120 * 2,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=2048 * 5120 * 2,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=512 * 2048 * 2,
         tile_out_features_by_shape={(512, 5120, 10240): 2048},
         dequant_library="dequant-library",
         cast_library="cast-library",

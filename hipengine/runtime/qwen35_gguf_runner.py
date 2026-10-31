@@ -18477,8 +18477,6 @@ class Qwen35GGUFResidentSession:
             x_f16_nbytes=int(scratch.q6_f16_x.nbytes),
             weight_f16_ptr=int(scratch.q6_f16_weight.ptr),
             weight_f16_nbytes=int(scratch.q6_f16_weight.nbytes),
-            out_f16_ptr=int(scratch.q6_f16_out.ptr),
-            out_f16_nbytes=int(scratch.q6_f16_out.nbytes),
             tile_out_features_by_shape=q6_shape_tiles,
             q4_tile_out_features_by_shape=q4_shape_tiles,
             q5_tile_out_features_by_shape=q5_shape_tiles,
@@ -30870,7 +30868,6 @@ class _GGUFFullAttentionPrefillScratch:
     prefill_value: object
     q6_f16_x: object
     q6_f16_weight: object
-    q6_f16_out: object
     prefill_beta: object
     prefill_decay: object
     prefill_query_scale: object

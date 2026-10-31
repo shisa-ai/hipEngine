@@ -118,8 +118,6 @@ def _owner(
         x_f16_nbytes=1 << 40,
         weight_f16_ptr=0x40000000,
         weight_f16_nbytes=1 << 40,
-        out_f16_ptr=0x50000000,
-        out_f16_nbytes=1 << 40,
         tile_out_features_by_shape=q6_tiles or {},
         q5_tile_out_features_by_shape=q5_tiles or {},
         q4_tile_out_features_by_shape=q4_tiles or {},

@@ -691,7 +691,7 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     assert scratch.q6_f16_x.ptr != 0
     assert scratch.q6_f16_x.nbytes == 768 * 5_120 * 2
     assert scratch.q6_f16_weight.ptr != 0
-    assert scratch.q6_f16_out.ptr != 0
+    assert not hasattr(scratch, "q6_f16_out")
     # The package-default compact-peer GDN route stores normalized Q/K once
     # per K head, while V remains per V head.
     compact_qk_bytes = 768 * 16 * 128 * 4
@@ -727,11 +727,11 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
         or down_offset + down_size <= intermediate_offset
     )
     # Attention-output F16 arithmetic owns full-attention stage 5-6. Q5
-    # recurrent-output F16 arithmetic also owns the shared weight/output planes
+    # recurrent-output F16 arithmetic also owns the shared weight plane
     # at linear stage 5-6 while casting its dead K6,144 input in place.
-    for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out"):
+    for name in ("q6_f16_x", "q6_f16_weight"):
         assert ("full", 5, 6) in lifetimes[name]
-    for name in ("q6_f16_weight", "q6_f16_out"):
+    for name in ("q6_f16_weight",):
         assert ("linear", 5, 6) in lifetimes[name]
 
     entries = list(offsets.items())
@@ -927,7 +927,6 @@ def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
         rows=scratch_rows,
         q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
         q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
-        q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
     )
     session = _source_f16_session(
         runner=runner,
@@ -1008,10 +1007,11 @@ def test_gfx1151_dense_source_f16_planes_have_dedicated_owners(
     # Dense gfx1151 has no liveness policy. The MoE owner-slot policy does not
     # apply to this geometry; preserve this boundary until a dense plan exists.
     assert scratch.allocation_mode == "dedicated"
-    for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out"):
+    for name in ("q6_f16_x", "q6_f16_weight"):
         plane = getattr(scratch, name)
         assert plane.ptr and plane.nbytes
         assert plane in scratch.buffers
+    assert not hasattr(scratch, "q6_f16_out")
     assert not scratch.allocation_groups
 
 
@@ -1308,13 +1308,44 @@ def _source_f16_owner_session(*, scratch_rows: int = 4096):
             rows=scratch_rows,
             q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
             q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
-            q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
         ),
         use_t16_f16_rocblas_prefill=None,
         _t16_f16_rocblas_prefill_library="dequant-library",
         compiler_version=None,
         require_cached_build=False,
     )
+
+
+def test_source_f16_owner_builds_without_an_output_plane() -> None:
+    """Resident owner construction reads only the activation and weight planes.
+
+    The K16 consumer publishes BF16 into the destination, so the owner must
+    not require an F16 output plane to exist at all.
+    """
+
+    runner = _fake_dense_qwen36_runner()
+    runner._cast_library = lambda: "cast-library"
+    session = _source_f16_session(
+        runner=runner,
+        _bulk_prefill_scratch=SimpleNamespace(
+            rows=4096,
+            q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
+            q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
+        ),
+        use_t16_f16_rocblas_prefill=None,
+        _t16_f16_rocblas_prefill_library="dequant-library",
+        compiler_version=None,
+        require_cached_build=False,
+    )
+    assert not hasattr(session._bulk_prefill_scratch, "q6_f16_out")
+
+    owner = session._source_f16_prefill_owner(request_rows=517)
+
+    assert owner is not None
+    assert owner.x_f16_ptr == 0x10000000
+    assert owner.weight_f16_ptr == 0x20000000
+    assert not hasattr(owner, "out_f16_ptr")
+    assert not hasattr(owner, "out_f16_nbytes")
 
 
 def test_source_f16_owner_construction_does_not_acquire_rocblas(monkeypatch) -> None:
@@ -1346,7 +1377,6 @@ def test_source_f16_owner_construction_does_not_acquire_rocblas(monkeypatch) -> 
             rows=4096,
             q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
             q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
-            q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
         ),
         use_t16_f16_rocblas_prefill=None,
         _t16_f16_rocblas_prefill_library="dequant-library",

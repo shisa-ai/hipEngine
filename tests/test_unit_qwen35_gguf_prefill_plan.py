@@ -124,7 +124,6 @@ _EXPECTED_DENSE_FIELD_SIZES = {
     "prefill_value": 576,
     "q6_f16_x": 0,
     "q6_f16_weight": 0,
-    "q6_f16_out": 0,
     "prefill_beta": 72,
     "prefill_decay": 72,
     "prefill_query_scale": 72,
@@ -210,12 +209,12 @@ def test_dedicated_layout_owner_order_is_bulk_then_metadata_then_kv() -> None:
     expected_owners = tuple(
         name
         for name in _EXPECTED_DENSE_FIELD_SIZES
-        if name not in {"q6_f16_x", "q6_f16_weight", "q6_f16_out"}
+        if name not in {"q6_f16_x", "q6_f16_weight"}
     ) + tuple(_EXPECTED_DEDICATED_SIZES)
     assert plan.allocation_mode == "dedicated"
     assert tuple(plan.owner_sizes) == expected_owners
     assert tuple(plan.owner_sizes.values()) == tuple(
-        _EXPECTED_DENSE_FIELD_SIZES[name] for name in expected_owners[: len(_EXPECTED_DENSE_FIELD_SIZES) - 3]
+        _EXPECTED_DENSE_FIELD_SIZES[name] for name in expected_owners[: len(_EXPECTED_DENSE_FIELD_SIZES) - 2]
     ) + tuple(_EXPECTED_DEDICATED_SIZES.values())
     assert plan.total_nbytes == sum(plan.owner_sizes.values())
     assert plan.allocation_offsets == {}
@@ -223,7 +222,7 @@ def test_dedicated_layout_owner_order_is_bulk_then_metadata_then_kv() -> None:
     assert plan.allocation_groups == {}
     assert plan.allocation_inplace_aliases == {}
     assert plan.allocation_subranges == {}
-    for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out"):
+    for name in ("q6_f16_x", "q6_f16_weight"):
         assert plan.views[name] is None
     for name in expected_owners:
         assert plan.views[name] == (name, 0, plan.owner_sizes[name])
@@ -260,7 +259,7 @@ def test_moe_and_split_geometry_fields() -> None:
     assert plan.field_sizes["moe_tile_expert"] == 5 * 8
 
 
-def test_source_f16_policy_sizes_three_planes() -> None:
+def test_source_f16_policy_sizes_the_activation_and_weight_planes() -> None:
     policy = {
         "gguf_q4_k_t16_v1": {(32, 16): {8: 16, 4: 32}},
         "linear_variant_intervals_by_quant": {(32, 16): {(1, 8): "x"}},
@@ -268,13 +267,35 @@ def test_source_f16_policy_sizes_three_planes() -> None:
         "pair_only_second_operand_policies": {},
     }
     plan = _build(_dense_cfg(), f16_policy=policy)
-    # x: rows * hidden * 2; weight: max(tile * shape[0]) * 2; out: rows * max(tile) * 2
+    # x: rows * hidden * 2; weight: max(tile * shape[0]) * 2
     assert plan.field_sizes["q6_f16_x"] == 3 * 16 * 2
     assert plan.field_sizes["q6_f16_weight"] == max(16 * 32, 32 * 32) * 2
-    assert plan.field_sizes["q6_f16_out"] == 3 * 32 * 2
+    assert "q6_f16_out" not in plan.field_sizes
     assert plan.f16_policy_applied is True
     assert plan.f16_shape_tiles == (((32, 16), ((4, 32), (8, 16))),)
     assert "q6_f16_x" in plan.owner_sizes
+
+
+def test_source_f16_plan_omits_the_unread_output_plane() -> None:
+    """The K16 consumer publishes BF16 from its own FP32 accumulator.
+
+    Nothing reads an F16 output plane on the resident route: the owner built
+    one, validated it as non-empty and forwarded it to a wrapper that never
+    touches it. The activation and weight-tile planes stay, because the K16
+    consumer reads both.
+    """
+
+    policy = {
+        "gguf_q4_k_t16_v1": {(32, 16): {8: 16, 4: 32}},
+        "pair_only_second_operand_policies": {},
+    }
+    plan = _build(_dense_cfg(), f16_policy=policy)
+
+    assert plan.field_sizes["q6_f16_x"] == 3 * 16 * 2
+    assert plan.field_sizes["q6_f16_weight"] == max(16 * 32, 32 * 32) * 2
+    assert "q6_f16_out" not in plan.field_sizes
+    assert "q6_f16_out" not in plan.views
+    assert "q6_f16_out" not in plan.owner_sizes
 
 
 def test_source_f16_policy_with_only_bookkeeping_keys_leaves_weight_planes_empty() -> None:
@@ -286,10 +307,10 @@ def test_source_f16_policy_with_only_bookkeeping_keys_leaves_weight_planes_empty
     plan = _build(_dense_cfg(), f16_policy=policy)
     assert plan.field_sizes["q6_f16_x"] == 3 * 16 * 2
     assert plan.field_sizes["q6_f16_weight"] == 0
-    assert plan.field_sizes["q6_f16_out"] == 0
+    assert "q6_f16_out" not in plan.field_sizes
     assert "q6_f16_x" in plan.owner_sizes
     assert plan.views["q6_f16_weight"] is None
-    assert plan.views["q6_f16_out"] is None
+    assert "q6_f16_out" not in plan.views
 
 
 def test_single_arena_layout_is_aligned_and_reports_its_groups() -> None:

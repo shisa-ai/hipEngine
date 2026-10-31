@@ -736,13 +736,7 @@ Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
 Scope: `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES`; `worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md`; `tests/test_unit_qwen35_gguf_prefill_scratch_liveness.py`.
 
 Done when: Dependency: dense gfx1151 has no `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` entry, so its
-activation and weight tiles are independently allocated. The bounded K16 consumer now publishes
-BF16 directly. Its unused resident rocBLAS handle, version/solution policy and forwarding are
-removed and pass gfx1151 public selected-route/cleanup checks; see
-`worklog/entries/20261031T193834.504076Z-lhl-r0220-source-f16-owner-rocblas-retirement-9e9b2b.md`.
-Remove the still-allocated legacy `q6_f16_out` plane and unused output-scratch ABI fields with their
-direct callers while preserving raw-Q6 rocBLAS diagnostics; that deletion does not require an
-aliasing experiment. The gfx1151 MoE owner-slot
+activation and weight tiles are independently allocated. The gfx1151 MoE owner-slot
 policy and gfx1100 dense arena do not establish safe reuse for this geometry. The 2026-08-16
 memory-parity investigation recorded final-logit changes under both dense owner-slot and
 single-arena aliases, plus trajectory divergence in other reuse attempts; dedicated storage
