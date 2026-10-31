@@ -64,7 +64,14 @@ def test_verify_mlp_policy_always_matches_runtime_threshold(monkeypatch, retired
         assert reservations[-1] == (expected, rows, scratch)
         assert session._verify_mlp_scratch(2, state, rows=rows) is scratch
         assert session._verify_mlp_scratch_cache[(2, rows, expected)] == (0, scratch)
-    assert len(reservations) == len(session._verify_mlp_scratch_cache)
+    # A reserve at a new width re-specifies that policy's workspace names, so
+    # only the newest reservation per policy may stay cached.
+    newest = {}
+    for policy, tokens, scratch in reservations:
+        newest[policy] = (tokens, scratch)
+    assert set(session._verify_mlp_scratch_cache) == {
+        (2, tokens, policy) for policy, (tokens, _scratch) in newest.items()
+    }
 
 
 def test_verify_mlp_threshold_changes_keep_separate_cache_keys(monkeypatch):
