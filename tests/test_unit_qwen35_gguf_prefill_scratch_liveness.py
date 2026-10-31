@@ -10,6 +10,7 @@ from hipengine.kernels.policy import (
     GGUFModelGeometry,
     QWEN35_DENSE_H5120_GEOMETRY,
 )
+from hipengine.runtime import qwen35_gguf_prefill_plan as prefill_plan
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.gguf_linear import native_batch_decode_session
 from hipengine.runtime.qwen35_gguf_runner import _GGUFFullAttentionPrefillScratch
@@ -736,7 +737,7 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):
         for name_b, (offset_b, size_b) in entries[index + 1 :]:
-            allocations_conflict = gguf_runner._prefill_scratch_allocations_conflict(
+            allocations_conflict = prefill_plan._prefill_scratch_allocations_conflict(
                 name_a,
                 offset_a,
                 size_a,
@@ -1076,7 +1077,7 @@ def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):
         for name_b, (offset_b, size_b) in entries[index + 1 :]:
-            lifetimes_overlap = gguf_runner._prefill_scratch_lifetimes_overlap(
+            lifetimes_overlap = prefill_plan._prefill_scratch_lifetimes_overlap(
                 lifetimes[name_a],
                 lifetimes[name_b],
             )
@@ -1245,7 +1246,7 @@ def test_gfx1151_exact_prefill_scratch_uses_bounded_liveness_owners(monkeypatch)
     entries = list(offsets.items())
     for index, (name_a, (offset_a, size_a)) in enumerate(entries):
         for name_b, (offset_b, size_b) in entries[index + 1 :]:
-            lifetimes_overlap = gguf_runner._prefill_scratch_lifetimes_overlap(
+            lifetimes_overlap = prefill_plan._prefill_scratch_lifetimes_overlap(
                 lifetimes[name_a],
                 lifetimes[name_b],
             )

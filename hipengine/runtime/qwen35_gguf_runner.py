@@ -95,8 +95,6 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
     _GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS,
     _GGUF_PREFILL_SCRATCH_OPTIONAL_FIELDS,
     _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS,
-    _prefill_scratch_allocations_conflict as _prefill_scratch_allocations_conflict,
-    _prefill_scratch_lifetimes_overlap as _prefill_scratch_lifetimes_overlap,
     build_prefill_scratch_plan,
 )
 from hipengine.runtime.qwen35_gguf_prefix_state import (

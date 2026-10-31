@@ -80,6 +80,11 @@ def test_runner_does_not_reexport_unconsumed_private_owner_helpers():
         ),
     }
     from hipengine.runtime import qwen35_gguf_kv as kv
+    from hipengine.runtime import qwen35_gguf_prefill_plan as prefill
+    owners[prefill] = (
+        '_prefill_scratch_allocations_conflict',
+        '_prefill_scratch_lifetimes_overlap',
+    )
     owners[kv] = (
         '_free_gguf_kv_plane_buffer',
         '_gguf_kv_backing_arena_identity',
