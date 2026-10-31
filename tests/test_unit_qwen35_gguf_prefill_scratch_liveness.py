@@ -929,13 +929,11 @@ def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
         q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
         q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
     )
-    fake_rocblas = SimpleNamespace(version_string=lambda: "unqualified")
     session = _source_f16_session(
         runner=runner,
         _bulk_prefill_scratch=scratch,
         use_t16_f16_rocblas_prefill=None,
         _t16_f16_rocblas_prefill_library="dequant-library",
-        _t16_f16_rocblas=fake_rocblas,
         compiler_version=None,
         require_cached_build=False,
     )
@@ -1021,7 +1019,9 @@ def test_source_f16_runner_uses_quant_neutral_owner_names() -> None:
     fields = gguf_runner.Qwen35GGUFResidentSession.__dataclass_fields__
     assert fields["use_t16_f16_rocblas_prefill"].default is None
     assert "use_q6_f16_rocblas_prefill" not in fields
-    assert "_t16_f16_rocblas" in fields
+    # The K16 consumer owns its FP32 accumulator, so the resident owner holds
+    # no rocBLAS handle: only the dequant library it actually launches.
+    assert "_t16_f16_rocblas" not in fields
     assert "_t16_f16_rocblas_prefill_library" in fields
     assert not hasattr(gguf_runner, "Q6T16F16RocblasPrefillSession")
     assert not hasattr(gguf_runner, "q6_t16_f16_rocblas_prefill_session")
@@ -1312,10 +1312,64 @@ def _source_f16_owner_session(*, scratch_rows: int = 4096):
         ),
         use_t16_f16_rocblas_prefill=None,
         _t16_f16_rocblas_prefill_library="dequant-library",
-        _t16_f16_rocblas=SimpleNamespace(version_string=lambda: "unqualified"),
         compiler_version=None,
         require_cached_build=False,
     )
+
+
+def test_source_f16_owner_construction_does_not_acquire_rocblas(monkeypatch) -> None:
+    """Owner construction is bounded scratch plus policy, not a rocBLAS handle.
+
+    The K16 consumer publishes BF16 from its own FP32 accumulator, so resident
+    owner construction must neither load rocBLAS nor version-query it: an
+    absent or unqualified rocBLAS build must not decide whether source-F16
+    arithmetic can run.
+    """
+
+    from hipengine.core.rocblas import Rocblas
+
+    def reject_load(*_args, **_kwargs):
+        pytest.fail("source-F16 owner construction acquired a rocBLAS handle")
+
+    monkeypatch.setattr(Rocblas, "load", classmethod(reject_load))
+    monkeypatch.setattr(
+        Rocblas,
+        "version_string",
+        lambda self: pytest.fail(
+            "source-F16 owner construction version-queried rocBLAS"
+        ),
+    )
+
+    session = _source_f16_session(
+        runner=_fake_dense_qwen36_runner(),
+        _bulk_prefill_scratch=SimpleNamespace(
+            rows=4096,
+            q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
+            q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
+            q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
+        ),
+        use_t16_f16_rocblas_prefill=None,
+        _t16_f16_rocblas_prefill_library="dequant-library",
+        # The owner has not acquired a handle yet: pre-repair construction
+        # loads one here, which is exactly what this test forbids.
+        _t16_f16_rocblas=None,
+        compiler_version=None,
+        require_cached_build=False,
+    )
+    session.runner._cast_library = lambda: "cast-library"
+    owner = session._source_f16_prefill_owner(request_rows=517)
+
+    assert owner is not None
+    assert owner.tile_out_features(
+        512, 6_144, 5_120, quant="gguf_q5_k_t16_v1"
+    ) == 1_280
+    assert owner.linear_variant(
+        512,
+        6_144,
+        5_120,
+        quant="gguf_q5_k_t16_v1",
+        default="f16_rocblas_t16_bf16_bf16_out",
+    ) == "f16_rocblas_t16_octet_bf16_bf16_out"
 
 
 def test_source_f16_owner_filters_by_complete_length_not_physical_rows() -> None:

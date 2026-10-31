@@ -48,6 +48,40 @@ def test_k16_rejects_invalid_shapes_before_loading(rows, hidden, cols, stride, o
         source._launch_source_f16_k16(1, 2, 3, rows, hidden, cols, stride, offset)
 
 
+def test_raw_q6_diagnostic_producer_keeps_its_rocblas_ownership(monkeypatch) -> None:
+    """Raw-Q6 diagnostics stay a rocBLAS route; only the T16 owner changed.
+
+    The bounded T16 K16 consumer no longer holds a resident rocBLAS handle. The
+    raw-Q6 diagnostic producer must keep acquiring one and issuing its FP16
+    GEMM, so removing the resident plumbing cannot silently downgrade the
+    diagnostic surface it exists to provide.
+    """
+
+    calls = []
+
+    class Handle:
+        def gemm_ex_rowmajor_nt_fp16_compute_f16(self, *args, **kwargs):
+            calls.append("gemm")
+
+    monkeypatch.setattr(
+        source, "get_rocblas", lambda: calls.append("handle") or Handle()
+    )
+    monkeypatch.setattr(
+        source,
+        "gguf_q6_k_dequantize_bf16_to_f16_source_fused",
+        lambda *a, **kw: calls.append("dequant"),
+    )
+    monkeypatch.setattr(
+        source, "fp16_to_bf16", lambda *a, **kw: calls.append("publish")
+    )
+
+    source.gguf_q6_k_f16_rocblas_bf16_bf16_out(
+        1, 2, 3, 4, 5, 6, 17, 256, 72, stream=0, runtime=object()
+    )
+
+    assert calls == ["dequant", "handle", "gemm", "publish"]
+
+
 def test_k16_forwards_raw_pointer_abi_and_runtime_errors():
     seen = []
 

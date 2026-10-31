@@ -283,7 +283,9 @@ def test_the_wide_selector_is_wired_into_the_launch_chain():
 
     from hipengine.runtime import gguf_linear
 
-    chain = inspect.getsource(gguf_linear.launch_gguf_linear)
+    # The dispatch chain lives in the impl; launch_gguf_linear binds the
+    # source-F16 span context and delegates to it.
+    chain = inspect.getsource(gguf_linear._launch_gguf_linear_impl)
     assert "_q8_dense_wide_dispatch(" in chain, (
         "launch_gguf_linear must run the wide-row selector; Qwen4Exp prefill "
         "reaches its Q8_0 linears through this entry point"
@@ -302,7 +304,7 @@ def test_the_wide_selector_claims_a_parent_the_wmma_rewrite_produced():
 
     from hipengine.runtime import gguf_linear
 
-    chain = inspect.getsource(gguf_linear.launch_gguf_linear)
+    chain = inspect.getsource(gguf_linear._launch_gguf_linear_impl)
     assert chain.index("_q8_dense_wide_dispatch(") < chain.index(
         "_wmma_prefill_dispatch("
     ), "the wide selector must precede WMMA so its certified route remains reachable"

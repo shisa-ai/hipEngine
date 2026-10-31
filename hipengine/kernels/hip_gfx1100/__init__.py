@@ -759,17 +759,6 @@ GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (5_120, 10_240): {512: 2_048, 768: 2_048, 1_024: 512, 1_280: 512, 4_096: 256},
     (5_120, 1_024): {512: 1_024, 768: 1_024, 1_024: 512, 1_280: 512, 4_096: 512},
 }
-# Zero-workspace rocBLAS solution indices selected by exact effective GEMM
-# shape. Each preserves every FP16 output bit versus standard dispatch and wins
-# on both gfx1100 boards; absent shapes deliberately keep rocBLAS standard.
-GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX = "5.2.0.dabb6df2b98"
-GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES = {
-    (512, 5_120, 1_024): -1_140_856_081,
-    (512, 5_120, 2_048): -1_140_856_092,
-    (4_096, 5_120, 512): -1_140_855_996,
-    (4_096, 17_408, 512): -1_140_855_997,
-    (4_096, 6_144, 512): -1_140_855_996,
-}
 # Actual W7900 Qwen3.8 root F32 logits: native R8 is bit-exact to two R4
 # chunks and 1.285x faster (40/40 paired wins). The request-local env remains
 # an explicit smaller-chunk rollback.
@@ -1580,8 +1569,6 @@ __all__ = [
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
     "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",
-    "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
-    "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",

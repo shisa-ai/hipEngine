@@ -13,7 +13,9 @@ VARIANT = "dense_split64x128_f32_f32_out"
 def test_failed_split_selector_is_not_in_runtime_dispatch():
     assert not hasattr(gl, "_q8_dense_split_dispatch")
     assert not hasattr(gl, "_q8_dense_split_layers")
-    chain = inspect.getsource(gl.launch_gguf_linear)
+    # The dispatch chain lives in the impl; launch_gguf_linear binds the
+    # source-F16 span context and delegates to it.
+    chain = inspect.getsource(gl._launch_gguf_linear_impl)
     assert "_q8_dense_split" not in chain
     assert "_split_key" not in chain
     assert chain.index("_raw_k_coltile_pipelined_dispatch(") < chain.index(

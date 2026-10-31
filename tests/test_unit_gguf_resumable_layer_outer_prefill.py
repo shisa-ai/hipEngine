@@ -1379,16 +1379,6 @@ def test_segment_binds_request_spans_and_slot_owners(monkeypatch) -> None:
         "build_gguf_q6_k_f16_rocblas_prefill",
         lambda **kwargs: "dequant-library",
     )
-    monkeypatch.setattr(
-        gguf_runner,
-        "Rocblas",
-        SimpleNamespace(
-            load=lambda: SimpleNamespace(
-                set_workspace=lambda *args, **kwargs: None,
-                version_string=lambda: "unqualified",
-            )
-        ),
-    )
     owner.runner._cast_library = lambda: "cast-library"
     for name, ptr in (
         ("q6_f16_x", 0x1100),

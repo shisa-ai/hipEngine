@@ -226,23 +226,15 @@ def test_resolve_gguf_linear_dispatch_uses_weight_quant_for_raw_layouts() -> Non
     )
 
 
-def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -> None:
-    assert backend_package_capability(
-        "hip_gfx1100",
+def test_gfx1100_t16_f16_rocblas_prefill_policies_are_backend_scoped() -> None:
+    # The source-F16 K16 consumer owns its own FP32 accumulator, so the route
+    # publishes no rocBLAS solution policy and never version-queries a build.
+    for retired in (
         "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
-        None,
-    ) == "5.2.0.dabb6df2b98"
-    assert backend_package_capability(
-        "hip_gfx1100",
         "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
-        None,
-    ) == {
-        (512, 5_120, 1_024): -1_140_856_081,
-        (512, 5_120, 2_048): -1_140_856_092,
-        (4_096, 5_120, 512): -1_140_855_996,
-        (4_096, 17_408, 512): -1_140_855_997,
-        (4_096, 6_144, 512): -1_140_855_996,
-    }
+    ):
+        assert backend_package_capability("hip_gfx1100", retired, None) is None
+        assert backend_package_capability("hip_gfx1151", retired, None) is None
     assert backend_package_capability(
         "hip_gfx1100",
         "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
@@ -257,11 +249,6 @@ def test_gfx1100_t16_f16_rocblas_solution_policy_is_version_and_shape_scoped() -
     ) == {
         "gguf_q4_k_t16_v1": {(5_120, 12_288): 2_047},
     }
-    assert backend_package_capability(
-        "hip_gfx1151",
-        "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
-        None,
-    ) is None
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
@@ -383,7 +370,6 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         tile_out_features_by_shape={(512, 5120, 10240): 2048},
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
     register(exact_key, capture("exact"), replace=True)
     register(candidate_key, capture("candidate"), replace=True)
@@ -464,8 +450,6 @@ def test_q6_t16_f16_rocblas_context_routes_only_bounded_planar_prefill() -> None
         "stream": 7,
         "dequant_library": "dequant-library",
         "cast_library": "cast-library",
-        "rocblas": "rocblas-handle",
-        "solution_index": None,
         "cast_activation": True,
         "runtime": "runtime-sentinel",
     }
@@ -524,7 +508,6 @@ def test_q5_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         ),
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
     register(exact_key, capture("exact"), replace=True)
     register(candidate_key, capture("candidate"), replace=True)
@@ -617,7 +600,6 @@ def test_q4_t16_f16_rocblas_context_routes_only_admitted_shapes() -> None:
         q4_x_inplace_shapes={(512, 17_408, 5120)},
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
     register(exact_key, capture("exact"), replace=True)
     register(candidate_key, capture("candidate"), replace=True)
@@ -727,7 +709,6 @@ def test_q4_t16_f16_rocblas_variant_policy_is_fail_closed_by_row_interval() -> N
         },
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
     register(exact_key, lambda *args, **kwargs: calls.append("exact"), replace=True)
     register(scalar_key, lambda *args, **kwargs: calls.append("scalar"), replace=True)
@@ -842,7 +823,6 @@ def test_q5_t16_f16_rocblas_variant_policy_routes_octet_owner() -> None:
         },
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
     register(scalar_key, lambda *args, **kwargs: calls.append("scalar"), replace=True)
     register(octet_key, lambda *args, **kwargs: calls.append("octet"), replace=True)
@@ -902,7 +882,6 @@ def test_t16_f16_rocblas_variant_policy_rejects_overlapping_intervals() -> None:
             },
             dequant_library="dequant-library",
             cast_library="cast-library",
-            rocblas="rocblas-handle",
         )
 
 
@@ -971,10 +950,6 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
         },
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
-        solution_indices_by_gemm_shape={
-            (512, 5120, 2048): -1_140_856_092,
-        },
     )
     register(q6_key, capture("q6"), replace=True)
     register(q4_pair_key, capture("q4_pair"), replace=True)
@@ -1033,7 +1008,7 @@ def test_q6_qkv_q4_gate_pair_reuses_pair_producer_and_one_activation_cast() -> N
     assert calls[0][2]["cast_activation"] is True
     assert calls[1][2]["cast_activation"] is False
     assert all(
-        kwargs["solution_index"] == -1_140_856_092
+        "solution_index" not in kwargs and "rocblas" not in kwargs
         for _label, _args, kwargs in calls
     )
 
@@ -1056,7 +1031,6 @@ def test_q4_t16_f16_rocblas_inplace_policy_is_shape_scoped() -> None:
         q4_x_inplace_shapes={(512, 17_408, 5120)},
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
 
     assert session.activation_is_inplace(
@@ -1081,7 +1055,6 @@ def test_q6_t16_f16_rocblas_context_supports_bounded_inplace_down_activation() -
         x_inplace_shapes=frozenset({(512, 17_408, 5_120)}),
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
     assert session.activation_is_inplace(512, 17_408, 5_120)
     assert session.activation_is_inplace(513, 17_408, 5_120)
@@ -1105,11 +1078,6 @@ def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
         },
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
-        solution_indices_by_gemm_shape={
-            (512, 5120, 2048): -1_140_856_092,
-            (4096, 5120, 512): -1_140_855_996,
-        },
     )
     assert session.tile_out_features(511, 5120, 10240) is None
     assert session.tile_out_features(513, 5120, 10240) == 2048
@@ -1118,9 +1086,6 @@ def test_q6_t16_f16_rocblas_policy_uses_nearest_measured_row_anchor() -> None:
     assert session.tile_out_features(1000, 5120, 10240) == 1024
     assert session.tile_out_features(1024, 5120, 10240) == 512
     assert session.tile_out_features(1024, 5120, 1024) is None
-    assert session.solution_index(512, 5120, 2048) == -1_140_856_092
-    assert session.solution_index(4096, 5120, 512) == -1_140_855_996
-    assert session.solution_index(1024, 5120, 512) is None
 
 
 def test_q4_t16_bulk_unequal_pair_routes_only_admitted_shape() -> None:
@@ -1246,7 +1211,6 @@ def test_q6_t16_f16_rocblas_context_declines_mixed_pair_for_singleton_owner() ->
         tile_out_features_by_shape={(512, 5120, 10240): 2048},
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
 
     with t16_f16_rocblas_prefill_session(session):

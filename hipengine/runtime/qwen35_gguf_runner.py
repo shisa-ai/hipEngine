@@ -54,7 +54,6 @@ from hipengine.core.virtual_memory import (
     rollback_all,
     virtual_memory_supported,
 )
-from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime import qwen35_gguf_capture as _diagnostic_capture
 from hipengine.runtime.qwen35_gguf_capture import (
@@ -13411,7 +13410,6 @@ class Qwen35GGUFResidentSession:
     _iq_dense_mmq_library: object | None = field(default=None, init=False)
     _iq_dense_mmq_producer_library: object | None = field(default=None, init=False)
     _t16_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
-    _t16_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
     _q5_raw_mmq_target_library: object | None = field(default=None, init=False)
     _q5_source_mmq_target_library: object | None = field(default=None, init=False)
@@ -18472,37 +18470,6 @@ class Qwen35GGUFResidentSession:
                     require_cached=self.require_cached_build,
                 )
             )
-        if self._t16_f16_rocblas is None:
-            self._t16_f16_rocblas = Rocblas.load()
-            # Qualified FP16 GEMMs need no auxiliary workspace. A caller-owned
-            # empty workspace releases rocBLAS's lazy ~32-MiB device reserve so
-            # this route remains inside hipEngine's existing tracked arena.
-            self._t16_f16_rocblas.set_workspace(0, 0)
-        solution_version_prefix = str(
-            backend_package_capability(
-                self.runner.backend,
-                "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
-                "",
-            )
-        )
-        raw_solution_indices = backend_package_capability(
-            self.runner.backend,
-            "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
-            {},
-        )
-        solution_indices = (
-            {
-                tuple(int(value) for value in shape): int(index)
-                for shape, index in raw_solution_indices.items()
-                if isinstance(shape, tuple) and len(shape) == 3
-            }
-            if isinstance(raw_solution_indices, Mapping)
-            and solution_version_prefix
-            and self._t16_f16_rocblas.version_string().startswith(
-                solution_version_prefix
-            )
-            else {}
-        )
         owner = T16F16RocblasPrefillSession(
             min_rows=min(shape[0] for shape in all_shape_tiles),
             max_rows=max(shape[0] for shape in all_shape_tiles),
@@ -18535,8 +18502,6 @@ class Qwen35GGUFResidentSession:
             pair_only_second_operand_policies=pair_only_policies,
             dequant_library=self._t16_f16_rocblas_prefill_library,
             cast_library=self.runner._cast_library(),
-            rocblas=self._t16_f16_rocblas,
-            solution_indices_by_gemm_shape=solution_indices,
         )
         return owner
 
@@ -30250,10 +30215,6 @@ class Qwen35GGUFResidentSession:
             self._release_prefill_aotriton_bridge()
         self._release_int8_prefill_oracle_buffers()
         self._release_gapped_prefill_buffers(runtime=runtime)
-        if self._t16_f16_rocblas is not None:
-            runtime.device_synchronize()
-            self._t16_f16_rocblas.close()
-            self._t16_f16_rocblas = None
         self._t16_f16_rocblas_prefill_library = None
         graph_lifetime_of(self).close_decode_graphs()
         self.close_decode_graph_submission_contexts()
@@ -30339,7 +30300,6 @@ class Qwen35GGUFResidentSession:
         self._prefill_hidden_b = None
         self._bulk_prefill_scratch = None
         self._t16_f16_rocblas_prefill_library = None
-        self._t16_f16_rocblas = None
         self._q8_mmq_risk_count = None
         self._q8_mmq_risk_indices = None
         self._logits_host = None

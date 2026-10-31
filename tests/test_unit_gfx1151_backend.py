@@ -3559,7 +3559,15 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         re.findall(r"^\| `(GGUF_[A-Z0-9_]+)` ", ledger_text, re.MULTILINE)
     )
     admitted = {"GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS"}
-    assert ledger_names == expected | admitted
+    # R0220 retired these two gfx1100 solution-policy names: the source-F16 K16
+    # consumer owns its FP32 accumulator and never loads or version-queries a
+    # rocBLAS build, so neither name is a live read any more. The ledger keeps
+    # its historical rows; only the live-read set moves.
+    retired = {
+        "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
+        "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
+    }
+    assert ledger_names == expected | admitted | retired
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS"
     ) == 48

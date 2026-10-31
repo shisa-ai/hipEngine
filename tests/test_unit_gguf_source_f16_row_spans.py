@@ -128,7 +128,6 @@ def _owner(
         linear_variant_intervals_by_quant=variants or {},
         dequant_library="dequant-library",
         cast_library="cast-library",
-        rocblas="rocblas-handle",
     )
 
 
