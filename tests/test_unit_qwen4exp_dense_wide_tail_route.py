@@ -39,8 +39,7 @@ def profile(kind=ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl"):
 def bind(result):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        target = SimpleNamespace()
-        result.binder(target, result)
+        target = result.construct_generator(SimpleNamespace)
     return target
 
 
@@ -50,8 +49,9 @@ def test_ud_manifest_and_binder_select_bounded_leaf():
     assert row["selected_variant"] == PADDED
     assert row["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     assert row["evidence_artifact"].endswith("dense-wide-padded-gate/README.md")
-    assert bind(result).dense_wide_tail_variant == PADDED
-    assert os.environ["HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256"] == result.manifest_sha256
+    generator = bind(result)
+    assert generator.dense_wide_tail_variant == PADDED
+    assert generator.execution_profile_manifest_sha256 == result.manifest_sha256
 
 
 @pytest.mark.parametrize("kind,quant", [

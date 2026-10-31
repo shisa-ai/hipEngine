@@ -8,7 +8,6 @@ independently selected Q4 rowtiles and every registered strict fallback.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from hipengine.execution_profiles import (
@@ -56,9 +55,6 @@ def _binder(
     generator.target_verifier_production_q4_rowtile = bool(q4_verifier_rowtile)
     generator.target_fp16_recurrent_state = bool(fp16_state)
     generator.target_verifier_prefill_gdn_capture = True
-    os.environ["HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256"] = (
-        resolved.manifest_sha256
-    )
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:

@@ -45,10 +45,11 @@ def resolve(profile, quant, **kwargs):
 
 
 def bind(result):
-    generator = SimpleNamespace(runner=SimpleNamespace())
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        result.binder(generator, result)
+        generator = result.construct_generator(
+            lambda: SimpleNamespace(runner=SimpleNamespace())
+        )
     return generator
 
 
@@ -82,7 +83,7 @@ def test_ud_manifest_binder_and_outside_parent():
     import os
     for name in RETIRED_ENVS:
         assert name not in os.environ
-    assert os.environ["HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256"] == result.manifest_sha256
+    assert generator.execution_profile_manifest_sha256 == result.manifest_sha256
 
 
 @pytest.mark.parametrize("profile,quant,expected,binder,fell_back", [

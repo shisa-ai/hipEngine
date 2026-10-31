@@ -1384,7 +1384,6 @@ def _bind(
             else ""
         ),
         "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1" if production else "0",
-        "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": resolved.manifest_sha256,
     }.items():
         profile_env[key] = value
     _apply_profile_env(profile_env)

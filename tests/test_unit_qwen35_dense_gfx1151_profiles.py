@@ -53,6 +53,32 @@ def _selection_map(resolved):
     }
 
 
+@pytest.mark.parametrize(
+    "order",
+    [(ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION),
+     (ExecutionProfile.PRODUCTION, ExecutionProfile.STRICT)],
+)
+@pytest.mark.parametrize("ambient", [None, "unrelated-manifest"])
+def test_manifest_identity_stays_on_each_generator(order, ambient, monkeypatch):
+    name = "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256"
+    if ambient is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, ambient)
+    register_gfx1151_kernels(replace=True)
+    register_qwen38_gguf_gfx1151_profiles()
+    owners = []
+    for profile in order:
+        resolved = _resolve(profile)
+        generator = resolved.construct_generator(SimpleNamespace)
+        owners.append((generator, resolved))
+        assert os.environ.get(name) == ambient
+        for owner, expected in reversed(owners):
+            assert owner.execution_profile_manifest_sha256 == expected.manifest_sha256
+            assert owner.execution_profile_manifest == expected.manifest
+            assert owner.execution_profile == expected.profile.value
+
+
 def test_qwen38_strict_profile_resolves_and_disables_fp16_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
