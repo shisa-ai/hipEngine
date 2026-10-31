@@ -23,6 +23,7 @@ selectors per arm.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -828,6 +829,7 @@ def _select_route(name: str) -> Route:
         raise CalibrationError(f"unknown Q8 prefill route {name!r}") from exc
 
 
+@contextlib.contextmanager
 def _apply_route_env(
     route: Route, *, candidate: bool, layers: str, generator: Any,
 ):
@@ -841,7 +843,8 @@ def _apply_route_env(
     raw_wmma = values.pop(WMMA_LAYERS_ENV, "")
     scope = Q8WMMALayerScope.parse(raw_wmma)
     os.environ.update(values)
-    return q8_wmma_layer_scope(generator, scope)
+    with q8_wmma_layer_scope(generator, scope):
+        yield resolve_q8_wmma_layers(generator)
 
 
 def _restore_env(bound: Mapping[str, str | None]) -> None:

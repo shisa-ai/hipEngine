@@ -186,7 +186,6 @@ from hipengine.runtime.gguf_linear import (
     Q8WMMALayerScope,
     q8_wmma_layer_scope_session,
     resolve_q8_wmma_layers,
-    wmma_prefill_session,
     wmma_prefill_weight_filter_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
@@ -9332,7 +9331,6 @@ def _q8_wmma_scope_sessions(scope: Q8WMMALayerScope):
 
     with (
         q8_wmma_layer_scope_session(scope),
-        wmma_prefill_session(None if scope.is_empty else True),
         wmma_prefill_weight_filter_session(
             None if scope.is_empty else _q8_wmma_weight_filter(scope)
         ),

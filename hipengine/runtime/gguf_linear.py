@@ -173,6 +173,10 @@ _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 # ``None`` until set, so the env var still controls the default for plain
 # bench/diagnostic invocations.
 _wmma_prefill_session_enabled: bool | None = None
+_WMMA_PREFILL_SESSION_UNSET = object()
+_wmma_prefill_execution_enabled: ContextVar[bool | None | object] = ContextVar(
+    "gguf_wmma_prefill_execution_enabled", default=_WMMA_PREFILL_SESSION_UNSET,
+)
 
 # Strict-exact scopes for a caller whose contract is bit-equality with the
 # parent launcher. The narrow-projection thread lever below reassociates the
@@ -2686,14 +2690,15 @@ def set_wmma_prefill_enabled(enabled: bool | None) -> None:
 
 @contextlib.contextmanager
 def wmma_prefill_session(enabled: bool | None) -> Iterator[None]:
-    """Context manager wrapper around :func:`set_wmma_prefill_enabled`."""
+    """Override WMMA enablement in the current execution context."""
 
-    previous = _wmma_prefill_session_enabled
-    set_wmma_prefill_enabled(enabled)
+    token = _wmma_prefill_execution_enabled.set(
+        None if enabled is None else bool(enabled)
+    )
     try:
         yield
     finally:
-        set_wmma_prefill_enabled(previous)
+        _wmma_prefill_execution_enabled.reset(token)
 
 
 @contextlib.contextmanager
@@ -2768,13 +2773,17 @@ def gguf_wmma_prefill_enabled(use_wmma_prefill: bool | None = None) -> bool:
 
 
 def _resolve_use_wmma_prefill(kwarg: bool | None) -> bool:
-    """Combine per-call kwarg + session toggle + env var.
+    """Combine explicit kwargs, execution scope, legacy toggle and environment.
 
-    Precedence (highest first): explicit kwarg, session toggle, env var.
+    An explicit ``None`` execution scope bypasses the legacy toggle and uses
+    the environment, matching the former context manager's reset behavior.
     """
 
     if kwarg is not None:
         return bool(kwarg)
+    local = _wmma_prefill_execution_enabled.get()
+    if local is not _WMMA_PREFILL_SESSION_UNSET:
+        return _env_wmma_prefill_enabled() if local is None else bool(local)
     if _wmma_prefill_session_enabled is not None:
         return _wmma_prefill_session_enabled
     return _env_wmma_prefill_enabled()
@@ -4341,13 +4350,14 @@ def q8_wmma_layer_scope(
 
 @contextlib.contextmanager
 def q8_wmma_layer_scope_session(scope: Q8WMMALayerScope) -> Iterator[None]:
-    """Bind the typed scope the dispatch memo and weight filter both read."""
+    """Bind the scope and its enablement without changing the global toggle."""
 
     if not isinstance(scope, Q8WMMALayerScope):
         raise TypeError("q8_wmma_layer_scope_session requires a scope")
     token = _q8_wmma_layer_scope_bound.set(scope)
     try:
-        yield
+        with wmma_prefill_session(None if scope.is_empty else True):
+            yield
     finally:
         _q8_wmma_layer_scope_bound.reset(token)
 

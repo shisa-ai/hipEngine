@@ -118,5 +118,7 @@ def test_wmma_route_scope_is_owner_state_not_a_process_key():
         with gate._apply_route_env(
             route, candidate=arm, layers=normalized, generator=type(
                 "Owner", (), {"runner": None})(),
-        ):
+        ) as measured:
+            assert measured == route.wmma_scope_for(candidate=arm, layers=normalized)
+            assert measured.to_report()["mode"] == ("layers" if arm else "empty")
             assert gate.WMMA_LAYERS_ENV not in __import__("os").environ
