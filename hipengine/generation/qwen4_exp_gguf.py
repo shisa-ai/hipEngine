@@ -1536,7 +1536,12 @@ class Qwen4ExpResidentServingRunner(
                 # A stream that already published text never receives the
                 # reclaimed output, so the terminal chunk carries the telemetry.
                 telemetry=(
-                    self._with_prefix_telemetry(row, self._ar_batch_telemetry(row))
+                    self._with_prefix_telemetry(
+                        row,
+                        self._mixed_telemetry(row)
+                        if row.mixed_mtp or row.mixed_widths
+                        else self._ar_batch_telemetry(row),
+                    )
                     if finish is not None else None
                 ),
             ),

@@ -1,5 +1,6 @@
 """Regression for public summary counts on shared target rows; CPU only."""
 from types import SimpleNamespace
+import pytest
 from hipengine.generation.qwen4_exp_serving_mixed import Qwen4ExpServingMixed
 from hipengine.server.api import _mtp_response_summary
 
@@ -22,3 +23,31 @@ def test_shared_ar_peer_does_not_claim_speculation():
     result=_mtp_response_summary('default',[SimpleNamespace(telemetry=telemetry)])
     assert result['used'] is False
     assert result['draft_tokens']==0
+
+
+@pytest.mark.parametrize(('mixed_mtp', 'widths', 'expected'), [
+    (True, {}, 'mixed'),
+    (False, {2: 1}, 'mixed'),
+    (False, {}, 'ar'),
+])
+def test_terminal_single_token_publication_preserves_mixed_telemetry(
+    mixed_mtp, widths, expected,
+):
+    from hipengine.generation.qwen4_exp_gguf import Qwen4ExpResidentServingRunner
+    row = SimpleNamespace(
+        request_id=7, generated_ids=[11, 12], token_logprobs=[],
+        mixed_mtp=mixed_mtp, mixed_widths=widths,
+    )
+    finish = SimpleNamespace(reason='length')
+    from hipengine.generation.registry import GenerationTelemetry
+
+    owner = SimpleNamespace(
+        _visible_ids=lambda row, finish: row.generated_ids,
+        _stream_text_delta=lambda row, visible, final: 'done',
+        _ar_batch_telemetry=lambda row: GenerationTelemetry(decode_state={}, diagnostics={'source': 'ar'}),
+        _mixed_telemetry=lambda row: GenerationTelemetry(decode_state={}, diagnostics={'source': 'mixed'}),
+        _with_prefix_telemetry=lambda row, telemetry: telemetry,
+    )
+    published = Qwen4ExpResidentServingRunner._published_token(owner, row, 12, finish)
+    assert published.stream_chunk.telemetry.diagnostics['source'] == expected
+    assert published.stream_chunk.generated_token_ids == (11, 12)
