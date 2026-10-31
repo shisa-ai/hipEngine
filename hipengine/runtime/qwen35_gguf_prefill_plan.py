@@ -118,7 +118,10 @@ def _both_prefill_routes(start: int, end: int) -> ScratchLifetimes:
 _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, ScratchLifetimes] = MappingProxyType(
     {
         "norm": _both_prefill_routes(0, 1),
-        "linear_qkv": (("linear", 0, 2),),
+        # Indexed decode Conv consumes BF16 QKV while producing FP32 output.
+        # Keep its input live through the Conv launch: same-index writes use
+        # twice the byte width and cannot reuse the input plane in place.
+        "linear_qkv": (("linear", 0, 3),),
         "linear_qkv_f32": (("linear", 1, 3),),
         "linear_z": (("linear", 0, 5),),
         "linear_alpha": (("linear", 0, 4),),

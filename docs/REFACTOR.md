@@ -3097,9 +3097,10 @@ unchanged.
 
 The host bundle passes. A gfx1151 public MTP on/off comparison reaches the T16 dual adapter only
 when enabled and closes cleanly; its resident certificate covers `ar_decode_rows`/`ar_prefill`, so
-this does not yet close the distinct `ar_decode_native_rows` requirement. Public C2 AR controls
-currently fail with the same invalid-token sentinel with or without the adapter; the cause is not
-isolated (see the R0471 worklog).
+this does not yet close the distinct `ar_decode_native_rows` requirement. The C2 invalid-token
+failure was caused by overlapping BF16 QKV and FP32 Conv scratch. Extending the QKV lifetime
+repairs public AR at widths 2/3/4 on gfx1151; repeat the optional-adapter native-row comparison
+with certificate and actual-launch attribution.
 
 Done when: a real-device public native-row generation run engages an optional
 adapter and reports the bound route (kernel, converter, workspace owner) from

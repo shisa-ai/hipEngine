@@ -867,7 +867,7 @@ def test_gfx1100_dense_qwen36_split_gdn_keeps_conv_output_disjoint(monkeypatch) 
     # (~66.5 MiB larger than the invalid page-sharing variant). Standalone RoPE
     # cos/sin ownership adds less than 2 MiB to the retained arena ceiling.
     assert sum(buffer.nbytes for buffer in scratch.buffers) <= 477 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) == 467 * _MIB + 576 * 1_024
+    assert max(buffer.nbytes for buffer in scratch.buffers) == 491_192_320
     assert scratch.allocation_offsets["attn_out"] == (
         48 * _MIB + 64 * 1_024,
         40 * _MIB,
@@ -1185,7 +1185,9 @@ def test_gfx1151_right_sized_short_scratch_uses_owner_slots(monkeypatch) -> None
     # Includes standalone full-attention RoPE cos/sin buffers. Split-K
     # partials are demand-driven: sized for one query row here (was 16),
     # grown via ensure_full_attn_split_query_rows by the native fallback.
-    assert sum(buffer.nbytes for buffer in scratch.buffers) == 69_440_936
+    # BF16 QKV remains live throughout the FP32 Conv write; it no longer
+    # shares the Conv owner while that launch is reading its input.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 78_878_120
     assert len(set(scratch.allocation_groups.values())) == 21
     assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.conv_out.ptr == scratch.moe_down_out.ptr
@@ -1229,8 +1231,11 @@ def test_gfx1151_exact_prefill_scratch_uses_bounded_liveness_owners(monkeypatch)
     )
 
     assert scratch.allocation_mode == "liveness_aliased"
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
+    # The indexed Conv input/output must be disjoint even though bulk
+    # prefill normally consumes the separate FP32 QKV projection plane.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 420_884_648
     assert max(buffer.nbytes for buffer in scratch.buffers) <= 384 * _MIB
+    assert scratch.linear_qkv.ptr != scratch.conv_out.ptr
     assert scratch.prefill_query == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.prefill_key == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.prefill_value == DeviceBuffer(ptr=0, nbytes=0)
