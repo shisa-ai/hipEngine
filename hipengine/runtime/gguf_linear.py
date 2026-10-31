@@ -2091,6 +2091,128 @@ def t16_f16_rocblas_prefill_session(
         _t16_f16_rocblas_prefill_session.reset(token)
 
 
+# The source-F16 pair operations are the only fused shapes that consume a
+# request-local owner. They are named here so span segmentation can recognise
+# them without re-deriving the pair plan.
+_SOURCE_F16_PAIR_OPERATIONS = frozenset(
+    {
+        "t16_f16_rocblas_shared_activation",
+        "t16_f16_rocblas_pair_only_second",
+    }
+)
+
+
+@dataclass(frozen=True)
+class SourceF16RowSpan:
+    """One request's contiguous physical rows inside a packed prefill slab.
+
+    ``rows`` is the physical row count the changed-arithmetic GEMM launches
+    with; ``request_rows`` is the complete logical request length that filtered
+    ``owner``. They differ whenever an outer scheduler feeds one request over
+    several calls, and a span never inherits another request's rows or its
+    pair-only interval.
+    """
+
+    row_start: int
+    rows: int
+    request_rows: int
+    owner: T16F16RocblasPrefillSession | None
+
+    def __post_init__(self) -> None:
+        if int(self.row_start) < 0:
+            raise ValueError("source-F16 span row_start must be non-negative")
+        if int(self.rows) <= 0:
+            raise ValueError("source-F16 span rows must be positive")
+        if int(self.request_rows) <= 0:
+            raise ValueError("source-F16 span request_rows must be positive")
+
+
+@dataclass(frozen=True)
+class SourceF16SlabSpans:
+    """Slot-major request spans covering one packed prefill slab exactly."""
+
+    slab_rows: int
+    spans: tuple[SourceF16RowSpan, ...]
+
+    def __post_init__(self) -> None:
+        if int(self.slab_rows) <= 0:
+            raise ValueError("source-F16 slab rows must be positive")
+        if not self.spans:
+            raise ValueError("source-F16 slab spans must not be empty")
+        cursor = 0
+        for span in self.spans:
+            if int(span.row_start) != cursor:
+                raise ValueError(
+                    "source-F16 slab spans must tile the slab in row order"
+                )
+            cursor += int(span.rows)
+        if cursor != int(self.slab_rows):
+            raise ValueError(
+                "source-F16 slab spans must cover every slab row exactly once"
+            )
+
+
+_source_f16_slab_spans: ContextVar[SourceF16SlabSpans | None] = ContextVar(
+    "source_f16_slab_spans", default=None
+)
+# Probe list appended by the real source-F16 launch leaf. A span launch that
+# does not reach it did not run the changed arithmetic, so it fails loudly
+# instead of silently leaving an exact projection in place of an admitted one.
+_source_f16_launch_probe: ContextVar[list[tuple[str, int, int, int]] | None] = (
+    ContextVar("source_f16_launch_probe", default=None)
+)
+
+
+@contextlib.contextmanager
+def source_f16_slab_spans_session(spans: SourceF16SlabSpans | None) -> Iterator[None]:
+    """Bind one packed slab's request spans for the enclosing prompt layers."""
+
+    token = _source_f16_slab_spans.set(spans)
+    try:
+        yield
+    finally:
+        _source_f16_slab_spans.reset(token)
+
+
+def current_source_f16_slab_spans() -> SourceF16SlabSpans | None:
+    """Return the spans bound for the current packed prompt projection."""
+
+    return _source_f16_slab_spans.get()
+
+
+def _source_f16_span_owner_admits(
+    owner: T16F16RocblasPrefillSession | None,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    quant: str,
+) -> bool:
+    """Whether one request's own owner selects source-F16 at these rows.
+
+    This mirrors the admission the dispatch rewrite applies after it has
+    accepted the weight: the quant must have a source-F16 route, the physical
+    rows must sit inside the owner's band, and the owner's shape policy must
+    produce a tile. Nothing here reads the slab's aggregate rows.
+    """
+
+    if owner is None:
+        return False
+    if str(quant) not in _T16_F16_ROCBLAS_ROUTE_BY_QUANT:
+        return False
+    if not int(owner.min_rows) <= int(rows) <= int(owner.max_rows):
+        return False
+    return (
+        owner.tile_out_features(
+            int(rows),
+            int(in_features),
+            int(out_features),
+            quant=str(quant),
+        )
+        is not None
+    )
+
+
 @contextlib.contextmanager
 def f32_ordered_prefill_session(
     session: F32OrderedPrefillSession | None,
@@ -4826,6 +4948,156 @@ def launch_gguf_linear_decode_rows(
         out_ptr + reference_rows * output_stride, remaining, in_features, out_features, kwargs)
 
 
+def _source_f16_span_launch_supported(
+    *,
+    activation_dtype: str,
+    output_dtype: str,
+    threads: int,
+    registered_variant: str | None,
+    use_q4_pack8_wmma: bool,
+) -> bool:
+    """Whether a launch keeps the shape this span owner was resolved for."""
+
+    return (
+        activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and int(threads) == 0
+        and registered_variant is None
+        and not use_q4_pack8_wmma
+    )
+
+
+def _launch_gguf_linear_source_f16_spans(
+    spans: SourceF16SlabSpans | None,
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    activation_dtype: str,
+    output_dtype: str,
+    backend: str | None,
+    threads: int,
+    stream: int,
+    libraries: Mapping[str, ctypes.CDLL] | None,
+    runtime,
+    use_wmma_prefill: bool | None,
+    use_gemv_decode: bool | None,
+    use_q4_pack8_wmma: bool,
+    registered_variant: str | None,
+    q8_t16_rowtile_all: bool | None,
+) -> bool:
+    """Run one packed projection as per-request source-F16 row spans.
+
+    Returns ``False`` when the call is not span-owned, or when no request in
+    the slab admits source-F16, so the caller keeps its ordinary launch. On
+    ``True`` every row has been completed: either every request ran its own
+    changed-arithmetic span, or the unchanged whole-slab strict launch ran
+    first and the admitted requests overwrote their own rows.
+    """
+
+    if spans is None:
+        return False
+    if not _source_f16_span_launch_supported(
+        activation_dtype=activation_dtype,
+        output_dtype=output_dtype,
+        threads=threads,
+        registered_variant=registered_variant,
+        use_q4_pack8_wmma=use_q4_pack8_wmma,
+    ):
+        return False
+    if _t16_f16_rocblas_prefill_session.get() is not None:
+        raise ValueError(
+            "source-F16 slab spans cannot nest inside a request-local owner scope"
+        )
+    if int(spans.slab_rows) != int(rows):
+        # A projection launched at a row count the span map does not describe
+        # (an internal row split, or a below-anchor chunk) keeps today's
+        # launch. Substituting the aggregate rows here is exactly the
+        # substitution this owner exists to prevent.
+        return False
+    quant = str(weight.spec.quant_key)
+    eligible = tuple(
+        span
+        for span in spans.spans
+        if _source_f16_span_owner_admits(
+            span.owner,
+            rows=span.rows,
+            in_features=in_features,
+            out_features=out_features,
+            quant=quant,
+        )
+    )
+    if not eligible:
+        return False
+
+    row_nbytes_x = int(in_features) * DType.BF16.itemsize
+    row_nbytes_out = int(out_features) * DType.BF16.itemsize
+
+    def _launch_span(span: SourceF16RowSpan) -> None:
+        probe: list[tuple[str, int, int, int]] = []
+        probe_token = _source_f16_launch_probe.set(probe)
+        try:
+            with t16_f16_rocblas_prefill_session(span.owner):
+                launch_gguf_linear(
+                    weight,
+                    int(x_ptr) + int(span.row_start) * row_nbytes_x,
+                    int(out_ptr) + int(span.row_start) * row_nbytes_out,
+                    int(span.rows),
+                    in_features,
+                    out_features,
+                    activation_dtype=activation_dtype,
+                    output_dtype=output_dtype,
+                    backend=backend,
+                    threads=threads,
+                    stream=stream,
+                    libraries=libraries,
+                    runtime=runtime,
+                    use_wmma_prefill=use_wmma_prefill,
+                    use_gemv_decode=use_gemv_decode,
+                    use_q4_pack8_wmma=use_q4_pack8_wmma,
+                    registered_variant=registered_variant,
+                    q8_t16_rowtile_all=q8_t16_rowtile_all,
+                )
+        finally:
+            _source_f16_launch_probe.reset(probe_token)
+        if not probe:
+            raise RuntimeError(
+                "source-F16 span launch did not select the request-local owner"
+            )
+
+    if len(eligible) != len(spans.spans):
+        # Mixed slab: run the unchanged whole-slab strict plan before any
+        # changed-arithmetic span overwrites rows, so a request whose own
+        # length is out of band keeps exactly today's launch instead of
+        # disabling its admitted neighbours.
+        _launch_gguf_linear_impl(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            threads=threads,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+            registered_variant=registered_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        )
+    for span in eligible:
+        _launch_span(span)
+    return True
+
+
 def launch_gguf_linear(
     weight: GGUFDeviceWeight,
     x_ptr: int,
@@ -4848,6 +5120,108 @@ def launch_gguf_linear(
     q8_t16_rowtile_all: bool | None = None,
 ) -> None:
     """Launch a GGUF resident linear projection through the kernel registry.
+
+    When a packed prefill slab has bound request spans, each admitted request
+    runs its own source-F16 span at its own physical rows and pointer offsets.
+    Spans are cleared for the launch body so they cannot leak into the strict
+    slab plan or into a nested row-chunk projection.
+    """
+
+    spans = _source_f16_slab_spans.get()
+    if spans is None:
+        _launch_gguf_linear_impl(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            threads=threads,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+            registered_variant=registered_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        )
+        return
+    # Clear the span map for the whole body, including the strict slab plan and
+    # any nested row-chunk projection, and restore it afterwards.
+    spans_token = _source_f16_slab_spans.set(None)
+    try:
+        if _launch_gguf_linear_source_f16_spans(
+            spans,
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            threads=threads,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+            registered_variant=registered_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        ):
+            return
+        _launch_gguf_linear_impl(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            threads=threads,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            use_q4_pack8_wmma=use_q4_pack8_wmma,
+            registered_variant=registered_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        )
+    finally:
+        _source_f16_slab_spans.reset(spans_token)
+
+
+def _launch_gguf_linear_impl(
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
+    backend: str | None = None,
+    threads: int = 0,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    use_wmma_prefill: bool | None = None,
+    use_gemv_decode: bool | None = None,
+    use_q4_pack8_wmma: bool = False,
+    registered_variant: str | None = None,
+    q8_t16_rowtile_all: bool | None = None,
+) -> None:
+    """Launch one GGUF resident linear projection without span segmentation.
 
     Hidden projections use ``output_dtype='bf16'``. The tied Q6_K lm-head path
     uses ``output_dtype='f32'`` to produce logits.
@@ -7015,7 +7389,276 @@ class _GGUFLinearPairPlan:
     registry_generation: int
 
 
+def _launch_gguf_linear_pair_source_f16_spans(
+    spans: SourceF16SlabSpans | None,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    out_features_b: int,
+    activation_dtype: str,
+    output_dtype: str,
+    backend: str | None,
+    stream: int,
+    libraries: Mapping[str, ctypes.CDLL] | None,
+    runtime,
+    use_wmma_prefill: bool | None,
+    use_gemv_decode: bool | None,
+    threads: int,
+    registered_decode_only: bool,
+    registered_decode_variant: str | None,
+    q8_t16_rowtile_all: bool | None,
+) -> bool | None:
+    """Run one packed pair as per-request source-F16 row spans.
+
+    ``None`` means the call is not span-owned and the caller runs its ordinary
+    pair resolution. ``False`` means every row was left to the caller's
+    fallback because no admitted span could complete the slab. ``True`` means
+    every row is written.
+    """
+
+    if spans is None:
+        return None
+    if registered_decode_only or registered_decode_variant is not None:
+        return None
+    if not _source_f16_span_launch_supported(
+        activation_dtype=activation_dtype,
+        output_dtype=output_dtype,
+        threads=threads,
+        registered_variant=None,
+        use_q4_pack8_wmma=False,
+    ):
+        return None
+    if _t16_f16_rocblas_prefill_session.get() is not None:
+        raise ValueError(
+            "source-F16 slab spans cannot nest inside a request-local owner scope"
+        )
+    if int(spans.slab_rows) != int(rows):
+        # See the singleton launcher: an undescribed row count keeps today's
+        # pair resolution instead of borrowing aggregate rows.
+        return None
+
+    def _resolve_span_plan(span: SourceF16RowSpan) -> _GGUFLinearPairPlan:
+        with t16_f16_rocblas_prefill_session(span.owner):
+            return _resolve_gguf_linear_pair_plan(
+                weight_a,
+                weight_b,
+                rows=int(span.rows),
+                in_features=in_features,
+                out_features=out_features,
+                out_features_b=out_features_b,
+                activation_dtype=activation_dtype,
+                output_dtype=output_dtype,
+                backend=backend,
+                use_wmma_prefill=use_wmma_prefill,
+                use_gemv_decode=use_gemv_decode,
+                threads=threads,
+                registered_decode_only=registered_decode_only,
+                registered_decode_variant=registered_decode_variant,
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
+            )
+
+    span_plans: list[tuple[SourceF16RowSpan, _GGUFLinearPairPlan]] = []
+    for span in spans.spans:
+        plan = _resolve_span_plan(span)
+        if plan.operation in _SOURCE_F16_PAIR_OPERATIONS:
+            span_plans.append((span, plan))
+    if not span_plans:
+        return None
+
+    row_nbytes_x = int(in_features) * DType.BF16.itemsize
+    row_nbytes_a = int(out_features) * DType.BF16.itemsize
+    row_nbytes_b = int(out_features_b) * DType.BF16.itemsize
+
+    if len(span_plans) != len(spans.spans):
+        # Mixed slab: the unchanged whole-slab pair plan completes every row
+        # first, then admitted requests overwrite their own rows. When it
+        # declines, nothing is launched here and the caller's ordinary
+        # singleton fallback covers the slab exactly.
+        if not _launch_gguf_linear_pair_impl(
+            weight_a,
+            weight_b,
+            x_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b=out_features_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            threads=threads,
+            registered_decode_only=registered_decode_only,
+            registered_decode_variant=registered_decode_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        ):
+            return False
+        # The strict launch may have completed a registration sweep, which
+        # advances the registry generation a plan is resolved against. Re-resolve
+        # (a cached kind plus a plan construction) so no span plan is stale.
+        span_plans = [(span, _resolve_span_plan(span)) for span, _plan in span_plans]
+        if any(
+            plan.operation not in _SOURCE_F16_PAIR_OPERATIONS
+            for _span, plan in span_plans
+        ):
+            raise RuntimeError(
+                "source-F16 pair span changed owner after the strict slab plan"
+            )
+
+    for span, plan in span_plans:
+        probe: list[tuple[str, int, int, int]] = []
+        probe_token = _source_f16_launch_probe.set(probe)
+        try:
+            with t16_f16_rocblas_prefill_session(span.owner):
+                launched = _execute_gguf_linear_pair_plan(
+                    plan,
+                    weight_a,
+                    weight_b,
+                    int(x_ptr) + int(span.row_start) * row_nbytes_x,
+                    int(out_a_ptr) + int(span.row_start) * row_nbytes_a,
+                    int(out_b_ptr) + int(span.row_start) * row_nbytes_b,
+                    stream=stream,
+                    libraries=libraries,
+                    runtime=runtime,
+                )
+        finally:
+            _source_f16_launch_probe.reset(probe_token)
+        if not launched or not probe:
+            raise RuntimeError(
+                "source-F16 pair span did not complete its request-local rows"
+            )
+    return True
+
+
 def launch_gguf_linear_pair(
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    x_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    out_features_b: int | None = None,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime=None,
+    use_wmma_prefill: bool | None = None,
+    use_gemv_decode: bool | None = None,
+    threads: int = 0,
+    registered_decode_only: bool = False,
+    registered_decode_variant: str | None = None,
+    q8_t16_rowtile_all: bool | None = None,
+) -> bool:
+    """Launch a supported pair of GGUF projections, returning True when fused.
+
+    When a packed prefill slab has bound request spans, each admitted request
+    resolves and executes its own ordered source-F16 pair at its own physical
+    rows and pointer offsets. Spans are cleared before the strict slab plan
+    and before every nested projection.
+    """
+
+    resolved_out_features_b = (
+        int(out_features) if out_features_b is None else int(out_features_b)
+    )
+    spans = _source_f16_slab_spans.get()
+    if spans is None:
+        return _launch_gguf_linear_pair_impl(
+            weight_a,
+            weight_b,
+            x_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b=resolved_out_features_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            threads=threads,
+            registered_decode_only=registered_decode_only,
+            registered_decode_variant=registered_decode_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        )
+    # Clear the span map for the whole body, including the strict slab plan and
+    # every nested projection, and restore it afterwards.
+    spans_token = _source_f16_slab_spans.set(None)
+    try:
+        outcome = _launch_gguf_linear_pair_source_f16_spans(
+            spans,
+            weight_a,
+            weight_b,
+            x_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b=resolved_out_features_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            threads=threads,
+            registered_decode_only=registered_decode_only,
+            registered_decode_variant=registered_decode_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        )
+        if outcome is not None:
+            return bool(outcome)
+        return _launch_gguf_linear_pair_impl(
+            weight_a,
+            weight_b,
+            x_ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            out_features_b=resolved_out_features_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            threads=threads,
+            registered_decode_only=registered_decode_only,
+            registered_decode_variant=registered_decode_variant,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
+        )
+    finally:
+        _source_f16_slab_spans.reset(spans_token)
+
+
+def _launch_gguf_linear_pair_impl(
     weight_a: GGUFDeviceWeight,
     weight_b: GGUFDeviceWeight,
     x_ptr: int,
@@ -7059,6 +7702,7 @@ def launch_gguf_linear_pair(
     ``linear_pair`` key and otherwise returns ``False`` for explicit singleton
     fallback.
     """
+
 
     resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
@@ -10497,6 +11141,9 @@ def _launch_t16_f16_rocblas(
     session = _t16_f16_rocblas_prefill_session.get()
     if session is None:
         raise RuntimeError("T16 F16/rocBLAS launch escaped its owner session")
+    probe = _source_f16_launch_probe.get()
+    if probe is not None:
+        probe.append((str(quant), int(rows), int(x_ptr), int(out_ptr)))
     tile = (
         int(tile_override)
         if tile_override is not None

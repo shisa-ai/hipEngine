@@ -893,6 +893,15 @@ def test_gfx1100_explicit_peer_gdn_keeps_full_qk_scratch_fallback(monkeypatch) -
     assert scratch.prefill_value.nbytes == full_qkv_bytes
 
 
+def _source_f16_session(**attributes):
+    """Build a resident session shell that keeps the class's own methods."""
+
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    for name, value in attributes.items():
+        setattr(session, name, value)
+    return session
+
+
 @pytest.mark.parametrize(
     ("scratch_rows", "request_rows", "expected_intervals"),
     (
@@ -921,7 +930,7 @@ def test_gfx1100_pair_only_source_f16_owner_keeps_current_row_interval(
         q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
     )
     fake_rocblas = SimpleNamespace(version_string=lambda: "unqualified")
-    session = SimpleNamespace(
+    session = _source_f16_session(
         runner=runner,
         _bulk_prefill_scratch=scratch,
         use_t16_f16_rocblas_prefill=None,
@@ -951,7 +960,7 @@ def test_gfx1100_source_f16_owner_keeps_exact_fallback_beyond_scratch_rows(
 ) -> None:
     runner = _fake_dense_qwen36_runner()
     scratch = SimpleNamespace(rows=768)
-    session = SimpleNamespace(
+    session = _source_f16_session(
         runner=runner,
         _bulk_prefill_scratch=scratch,
         use_t16_f16_rocblas_prefill=None,
@@ -1019,7 +1028,7 @@ def test_source_f16_runner_uses_quant_neutral_owner_names() -> None:
 
 
 def test_source_f16_explicit_opt_out_preserves_exact_fallback(monkeypatch) -> None:
-    session = SimpleNamespace(
+    session = _source_f16_session(
         runner=_fake_dense_qwen36_runner(),
         _bulk_prefill_scratch=SimpleNamespace(rows=768),
         use_t16_f16_rocblas_prefill=False,
@@ -1037,7 +1046,7 @@ def test_source_f16_explicit_opt_out_preserves_exact_fallback(monkeypatch) -> No
 
 
 def test_gfx1100_source_f16_owner_rejects_nonpositive_request_rows() -> None:
-    session = SimpleNamespace(
+    session = _source_f16_session(
         runner=_fake_dense_qwen36_runner(),
         _bulk_prefill_scratch=SimpleNamespace(rows=768),
         use_t16_f16_rocblas_prefill=None,
@@ -1288,3 +1297,89 @@ def test_prefill_scratch_keeps_dedicated_layout_for_diagnostics_and_unvalidated_
     )
     assert unvalidated.allocation_mode == "dedicated"
     assert sum(buffer.nbytes for buffer in unvalidated.buffers) > 1700 * _MIB
+
+
+def _source_f16_owner_session(*, scratch_rows: int = 4096):
+    runner = _fake_dense_qwen36_runner()
+    runner._cast_library = lambda: "cast-library"
+    return _source_f16_session(
+        runner=runner,
+        _bulk_prefill_scratch=SimpleNamespace(
+            rows=scratch_rows,
+            q6_f16_x=DeviceBuffer(ptr=0x10000000, nbytes=1 << 40),
+            q6_f16_weight=DeviceBuffer(ptr=0x20000000, nbytes=1 << 40),
+            q6_f16_out=DeviceBuffer(ptr=0x30000000, nbytes=1 << 40),
+        ),
+        use_t16_f16_rocblas_prefill=None,
+        _t16_f16_rocblas_prefill_library="dequant-library",
+        _t16_f16_rocblas=SimpleNamespace(version_string=lambda: "unqualified"),
+        compiler_version=None,
+        require_cached_build=False,
+    )
+
+
+def test_source_f16_owner_filters_by_complete_length_not_physical_rows() -> None:
+    """A 517-row chunk of a 1027-token request keeps the 1024-2047 interval."""
+
+    session = _source_f16_owner_session()
+    full = session._source_f16_prefill_owner(request_rows=1027)
+    short = session._source_f16_prefill_owner(request_rows=517)
+
+    assert set(next(iter(full.pair_only_second_operand_policies.values()))) == {
+        (1_024, 2_047)
+    }
+    assert set(next(iter(short.pair_only_second_operand_policies.values()))) == {
+        (512, 1_023)
+    }
+
+
+def test_source_f16_slab_spans_carry_rows_lengths_and_owners() -> None:
+    session = _source_f16_owner_session()
+
+    spans = session._source_f16_slab_spans(
+        (0, 517),
+        (517, 1_024),
+        (1_027, 1_024),
+    )
+
+    assert spans is not None
+    assert spans.slab_rows == 1_541
+    assert [span.row_start for span in spans.spans] == [0, 517]
+    assert [span.rows for span in spans.spans] == [517, 1_024]
+    assert [span.request_rows for span in spans.spans] == [1_027, 1_024]
+    # The 1027-token request's owner keeps the interval its complete length
+    # selects, not the one its 517 physical rows would select.
+    first, second = spans.spans
+    assert set(
+        next(iter(first.owner.pair_only_second_operand_policies.values()))
+    ) == {(1_024, 2_047)}
+    assert set(
+        next(iter(second.owner.pair_only_second_operand_policies.values()))
+    ) == {(1_024, 2_047)}
+
+
+def test_source_f16_slab_spans_drop_inactive_slots_and_decline_without_owners() -> None:
+    session = _source_f16_owner_session()
+
+    spans = session._source_f16_slab_spans(
+        (0, 517, 1_541),
+        (517, 1_024, 0),
+        (1_027, 1_024, 8),
+    )
+
+    assert spans is not None
+    assert spans.slab_rows == 1_541
+    assert [span.rows for span in spans.spans] == [517, 1_024]
+
+    session.use_t16_f16_rocblas_prefill = False
+    assert (
+        session._source_f16_slab_spans((0, 517), (517, 1_024), (1_027, 1_024))
+        is None
+    )
+
+
+def test_source_f16_slab_spans_reject_a_layout_that_disagrees() -> None:
+    session = _source_f16_owner_session()
+
+    with pytest.raises(ValueError, match="layout and request lengths disagree"):
+        session._source_f16_slab_spans((0, 517), (517,), (1_027, 1_024))

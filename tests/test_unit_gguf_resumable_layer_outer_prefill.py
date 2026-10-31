@@ -1347,3 +1347,121 @@ def test_identity_helper_tolerates_a_missing_plan_attribute() -> None:
     assert session.last_packed_prefill_plan == {
         "executor_mode": "layer_outer_resumable"
     }
+
+
+def test_segment_binds_request_spans_and_slot_owners(monkeypatch) -> None:
+    """Aggregate layers see request spans; slot-local layers see one owner."""
+
+    from hipengine.runtime import gguf_linear
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder, rows=2_048)
+    owner._int8_prefill_lifetime_plan.required_hidden_capacity = 4_096
+    owner._prefill_token_buf = SimpleNamespace(ptr=0x1000, nbytes=4_096 * 8)
+    owner._prefill_hidden_a = SimpleNamespace(
+        ptr=0x2000, nbytes=4_096 * 5_120 * 2
+    )
+    owner._prefill_hidden_b = SimpleNamespace(
+        ptr=0x3000, nbytes=4_096 * 5_120 * 2
+    )
+    # A two-row policy keeps the owner construction on CPU while still
+    # producing a real owner for the request's complete length.
+    monkeypatch.setattr(
+        gguf_runner,
+        "_gguf_t16_f16_rocblas_prefill_policy",
+        lambda runner: {
+            "gguf_q6_k_t16_qmicro_planar_v1": {(5_120, 10_240): {2: 512}},
+            "pair_only_second_operand_policies": {},
+        },
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "build_gguf_q6_k_f16_rocblas_prefill",
+        lambda **kwargs: "dequant-library",
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "Rocblas",
+        SimpleNamespace(
+            load=lambda: SimpleNamespace(
+                set_workspace=lambda *args, **kwargs: None,
+                version_string=lambda: "unqualified",
+            )
+        ),
+    )
+    owner.runner._cast_library = lambda: "cast-library"
+    for name, ptr in (
+        ("q6_f16_x", 0x1100),
+        ("q6_f16_weight", 0x1200),
+        ("q6_f16_out", 0x1300),
+    ):
+        setattr(
+            owner._bulk_prefill_scratch,
+            name,
+            SimpleNamespace(ptr=ptr, nbytes=1 << 20),
+        )
+
+    linear: list[tuple[object, tuple[int, ...], int]] = []
+    full: list[tuple[object, object]] = []
+
+    def run_linear(layer_id, *args, **kwargs):
+        spans = gguf_linear.current_source_f16_slab_spans()
+        linear.append(
+            (
+                spans,
+                tuple(span.request_rows for span in spans.spans),
+                spans.slab_rows,
+            )
+        )
+
+    def run_full_attention(layer_id, *args, **kwargs):
+        full.append(
+            (
+                gguf_linear.current_source_f16_slab_spans(),
+                gguf_linear._t16_f16_rocblas_prefill_session.get(),
+            )
+        )
+
+    owner.runner._run_linear_attention_prefill_layer_rows = run_linear
+    owner.runner._run_full_attention_prefill_layer_aotriton = run_full_attention
+
+    prompt = tuple(index % 32 for index in range(3_000))
+    chunks = _prompt_rounds(prompt, rows=2_048)
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,),
+        sessions=(owner,),
+        chunks=chunks,
+        layer_budget=2,
+        request_lengths=(1_027,),
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    assert state.request_lengths == (1_027,)
+    assert linear and full
+    for spans, lengths, slab_rows in linear:
+        assert spans is not None
+        # The complete request length, not the round's physical rows.
+        assert lengths == (1_027,)
+        assert spans.spans[0].row_start == 0
+        assert spans.slab_rows == slab_rows
+        assert spans.spans[0].rows == slab_rows
+    # Slot-local attention never borrows the aggregate span map: it binds the
+    # slot's own owner instead.
+    for spans, slot_owner in full:
+        assert spans is None
+        assert slot_owner is not None
+    assert len({id(slot_owner) for _spans, slot_owner in full}) == 1
+
+    linear.clear()
+    full.clear()
+    resumed = owner._prefill_batch_native_layer_outer(
+        None,
+        sessions=None,
+        chunks=None,
+        resume_state=state,
+        layer_budget=2,
+    )
+    assert isinstance(resumed, _GGUFResumablePrefillState)
+    # A continuation re-derives the same complete lengths from the checkpoint.
+    assert [lengths for _spans, lengths, _rows in linear] == [(1_027,)] * len(linear)
+    assert linear
+    assert full

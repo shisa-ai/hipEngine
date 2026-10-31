@@ -478,6 +478,9 @@ from hipengine.runtime.gguf_linear import (
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q5_raw_mmq_target_session,
+    source_f16_slab_spans_session,
+    SourceF16RowSpan,
+    SourceF16SlabSpans,
     t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     q8_t16_dual_wmma_prefill_session,
@@ -1756,6 +1759,10 @@ class _GGUFResumablePrefillState:
     # False when the prompt is a prefix of the sinks' stream (the caller
     # continues the same sinks with a tail call that finishes them).
     finish_target_hidden_sinks: bool = True
+    # Complete logical request length per prompt, carried so a continuation
+    # segment re-derives each request's own source-F16 owner from the same
+    # length the original call used instead of from a physical chunk.
+    request_lengths: tuple[int, ...] = ()
 
     @property
     def layer_count(self) -> int:
@@ -18377,15 +18384,28 @@ class Qwen35GGUFResidentSession:
     def _t16_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
 
+        return t16_f16_rocblas_prefill_session(
+            self._source_f16_prefill_owner(request_rows=request_rows)
+        )
+
+    def _source_f16_prefill_owner(self, *, request_rows: int | None = None):
+        """Build the sole-resident Q4/Q5/Q6 prefill owner for one request length.
+
+        The owner is filtered by the *complete* logical request length; the
+        physical rows a projection launches with are a separate input and are
+        never substituted for it. Returns ``None`` when this request keeps the
+        exact T16 owner.
+        """
+
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
         if self._bulk_prefill_scratch is None:
             self._ensure_bulk_prefill_workspace()
         if self.use_t16_f16_rocblas_prefill is False:
-            return t16_f16_rocblas_prefill_session(None)
+            return None
         policy = _gguf_t16_f16_rocblas_prefill_policy(self.runner)
         if policy is None:
-            return t16_f16_rocblas_prefill_session(None)
+            return None
         scratch = self._bulk_prefill_scratch
         q6_shape_tiles = {
             (int(rows), int(shape[0]), int(shape[1])): int(tile)
@@ -18421,7 +18441,7 @@ class Qwen35GGUFResidentSession:
             # Source-F16 arithmetic is admitted by complete request shape, not
             # by an implementation chunk that happens to fit this scratch.
             # Long chunked requests therefore retain the exact T16 owner.
-            return t16_f16_rocblas_prefill_session(None)
+            return None
         pair_only_policies = {
             key: MappingProxyType(
                 {
@@ -18438,7 +18458,7 @@ class Qwen35GGUFResidentSession:
         }
         all_shape_tiles = {**q6_shape_tiles, **q4_shape_tiles, **q5_shape_tiles}
         if not all_shape_tiles:
-            return t16_f16_rocblas_prefill_session(None)
+            return None
         if self._t16_f16_rocblas_prefill_library is None:
             self._t16_f16_rocblas_prefill_library = (
                 build_gguf_q6_k_f16_rocblas_prefill(
@@ -18513,7 +18533,70 @@ class Qwen35GGUFResidentSession:
             rocblas=self._t16_f16_rocblas,
             solution_indices_by_gemm_shape=solution_indices,
         )
-        return t16_f16_rocblas_prefill_session(owner)
+        return owner
+
+    def _source_f16_request_owners(
+        self, request_lengths: Sequence[int]
+    ) -> dict[int, object]:
+        """Build one owner per distinct complete request length in a slab."""
+
+        owners: dict[int, object] = {}
+        for raw_length in request_lengths:
+            length = int(raw_length)
+            if length in owners:
+                continue
+            owners[length] = self._source_f16_prefill_owner(request_rows=length)
+        return owners
+
+    def _source_f16_slab_spans(
+        self,
+        row_starts: Sequence[int],
+        row_counts: Sequence[int],
+        request_lengths: Sequence[int],
+        *,
+        owners: Mapping[int, object] | None = None,
+    ):
+        """Build the request-local span map for one packed prefill slab.
+
+        Each span carries its own physical rows, its own complete request
+        length, and the owner that length selected. ``None`` leaves the slab
+        on its ordinary launch.
+        """
+
+        if len(row_starts) != len(row_counts) or len(row_starts) != len(
+            request_lengths
+        ):
+            raise ValueError("packed prefill layout and request lengths disagree")
+        if not row_starts:
+            return None
+        active = tuple(
+            (int(row_start), int(row_count), int(request_length))
+            for row_start, row_count, request_length in zip(
+                row_starts, row_counts, request_lengths
+            )
+            if int(row_count) > 0
+        )
+        if not active:
+            return None
+        if owners is None:
+            owners = self._source_f16_request_owners(
+                tuple(request_length for _, _, request_length in active)
+            )
+        if not any(owners.get(request_length) is not None for _, _, request_length in active):
+            return None
+        spans = tuple(
+            SourceF16RowSpan(
+                row_start=row_start,
+                rows=row_count,
+                request_rows=request_length,
+                owner=owners[request_length],
+            )
+            for row_start, row_count, request_length in active
+        )
+        return SourceF16SlabSpans(
+            slab_rows=sum(row_count for _, row_count, _ in active),
+            spans=spans,
+        )
 
     def _ensure_prefill_f16_staging_buffer(self):
         """Return this resident session's shared bounded staging allocation."""
@@ -22810,6 +22893,7 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 _slot_local_full_attention=bool(aotriton_eligible_slots),
                 _force_aotriton_slot_indices=aotriton_eligible_slots,
+                _request_lengths=logical_prompt_lengths,
             )
 
         initial_positions = tuple(int(session.position) for session in session_tuple)
@@ -22841,6 +22925,7 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                     target_hidden_chunk_sinks=sink_tuple,
                     finish_target_hidden_sinks=bool(finish_target_hidden_sinks),
+                    request_lengths=logical_prompt_lengths,
                 )
                 return [
                     result if sample_output else None
@@ -22906,6 +22991,9 @@ class Qwen35GGUFResidentSession:
                 _force_aotriton_slot_indices=force_aotriton_slot_indices,
                 _sample_output_slot_indices=(
                     sample_output_slot_indices if sample_output else ()
+                ),
+                _request_lengths=tuple(
+                    logical_prompt_lengths[index] for index in chunk.slot_indices
                 ),
             )
             if len(chunk_results) != len(chunk.slot_indices):
@@ -22984,6 +23072,7 @@ class Qwen35GGUFResidentSession:
         target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
         suspend_in_place: bool = False,
         finish_target_hidden_sinks: bool = True,
+        request_lengths: Sequence[int] | None = None,
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Execute a multi-chunk packed prompt layer-outer with one shared oracle.
 
@@ -23021,6 +23110,20 @@ class Qwen35GGUFResidentSession:
         session_tuple = tuple(sessions)
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        # Complete logical request length per prompt. A scheduler chunk can be
+        # shorter than the request it belongs to, so the source-F16 owner must
+        # be filtered by this number on every segment, never by a round's rows.
+        logical_request_lengths = (
+            tuple(len(prompt) for prompt in prompt_tuple)
+            if request_lengths is None
+            else tuple(int(length) for length in request_lengths)
+        )
+        if len(logical_request_lengths) != len(prompt_tuple) or any(
+            int(length) <= 0 for length in logical_request_lengths
+        ):
+            raise ValueError(
+                "request_lengths must be positive and align with the prompts"
+            )
         sinks = (
             (None,) * len(session_tuple)
             if target_hidden_chunk_sinks is None else tuple(target_hidden_chunk_sinks)
@@ -23130,6 +23233,13 @@ class Qwen35GGUFResidentSession:
                 {
                     "layout": chunk_layout,
                     "sessions": chunk_sessions,
+                    # Complete logical request length per slot of this round,
+                    # aligned with ``sessions`` and independent of the round's
+                    # physical rows. A rebuilt slot view must not change it.
+                    "request_lengths": tuple(
+                        logical_request_lengths[index]
+                        for index in chunk.slot_indices
+                    ),
                     "base": global_row_base,
                 }
             )
@@ -23222,6 +23332,7 @@ class Qwen35GGUFResidentSession:
             target_hidden_chunk_sinks=sinks,
             suspend_in_place=bool(suspend_in_place),
             finish_target_hidden_sinks=bool(finish_target_hidden_sinks),
+            request_lengths=logical_request_lengths,
         )
         return self._prefill_batch_native_layer_outer_segment_guarded(
             state,
@@ -23271,6 +23382,15 @@ class Qwen35GGUFResidentSession:
 
         session_tuple = state.sessions
         chunk_plans = state.chunk_plans
+        # Complete logical request length per slot, carried across segments so
+        # a continuation re-derives each request's own source-F16 owner from
+        # the length the call started with rather than from a round's rows.
+        request_lengths = (
+            tuple(int(length) for length in state.request_lengths)
+            if state.request_lengths
+            else tuple(len(prompt) for prompt in state.prompts)
+        )
+        source_f16_owners = self._source_f16_request_owners(request_lengths)
         # Re-assert the executor identity every segment: the serving path may
         # rebuild a slot view between segments, and the identity is read from
         # the leased session rather than from the batch owner that runs this.
@@ -23358,23 +23478,38 @@ class Qwen35GGUFResidentSession:
                         bound_layout, runtime=runtime, stream=stream
                     )
                     if layer_type == LINEAR_ATTENTION:
-                        self.runner._run_linear_attention_prefill_layer_rows(
-                            layer_id,
-                            src.ptr + base * self.runner.hidden_size * DType.BF16.itemsize,
-                            dst.ptr + base * self.runner.hidden_size * DType.BF16.itemsize,
-                            packed_scratch,
-                            rows=rows,
-                            stream=stream,
-                            decode_scratch=linear_decode_scratch,
-                            expert_sidecar=None,
-                            linear_state_rows=None,
-                            commit_final_linear_state=False,
-                            hidden_f32_ptr=None,
-                            out_f32_ptr=None,
-                            stage_timings=None,
-                            sync_stage_timings=False,
-                            stage_prefix="ar_prefill_layer_outer_linear_attn",
+                        slot_rows_by_index = tuple(
+                            int(bound_layout.cu_seqlens[index + 1])
+                            - int(bound_layout.cu_seqlens[index])
+                            for index in range(len(entry["sessions"]))
                         )
+                        slab_spans = self._source_f16_slab_spans(
+                            tuple(
+                                int(bound_layout.cu_seqlens[index])
+                                for index in range(len(entry["sessions"]))
+                            ),
+                            slot_rows_by_index,
+                            entry["request_lengths"],
+                            owners=source_f16_owners,
+                        )
+                        with source_f16_slab_spans_session(slab_spans):
+                            self.runner._run_linear_attention_prefill_layer_rows(
+                                layer_id,
+                                src.ptr + base * self.runner.hidden_size * DType.BF16.itemsize,
+                                dst.ptr + base * self.runner.hidden_size * DType.BF16.itemsize,
+                                packed_scratch,
+                                rows=rows,
+                                stream=stream,
+                                decode_scratch=linear_decode_scratch,
+                                expert_sidecar=None,
+                                linear_state_rows=None,
+                                commit_final_linear_state=False,
+                                hidden_f32_ptr=None,
+                                out_f32_ptr=None,
+                                stage_timings=None,
+                                sync_stage_timings=False,
+                                stage_prefix="ar_prefill_layer_outer_linear_attn",
+                            )
                     elif layer_type == FULL_ATTENTION:
                         for slot_index, session in enumerate(entry["sessions"]):
                             if session.scratch is None:
@@ -23409,25 +23544,29 @@ class Qwen35GGUFResidentSession:
                                 direct_int8=transient_direct_oracle,
                             )
                             row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
-                            self.runner._run_full_attention_prefill_layer_aotriton(
-                                layer_id,
-                                src.ptr + (base + row_start) * row_nbytes,
-                                dst.ptr + (base + row_start) * row_nbytes,
-                                layer_scratch,
-                                cos_table_ptr=int(session.scratch.cos_table.ptr),
-                                sin_table_ptr=int(session.scratch.sin_table.ptr),
-                                max_positions=int(session.scratch.max_positions),
-                                stream=stream,
-                                expert_sidecar=None,
-                                allow_aotriton=(
-                                    _gguf_slot_local_prefill_allow_aotriton(
-                                        transient_direct_oracle=(
-                                            transient_direct_oracle
-                                        ),
-                                    )
-                                ),
-                                aotriton_min_tokens=None,
-                            )
+                            slot_owner = source_f16_owners[
+                                entry["request_lengths"][slot_index]
+                            ]
+                            with t16_f16_rocblas_prefill_session(slot_owner):
+                                self.runner._run_full_attention_prefill_layer_aotriton(
+                                    layer_id,
+                                    src.ptr + (base + row_start) * row_nbytes,
+                                    dst.ptr + (base + row_start) * row_nbytes,
+                                    layer_scratch,
+                                    cos_table_ptr=int(session.scratch.cos_table.ptr),
+                                    sin_table_ptr=int(session.scratch.sin_table.ptr),
+                                    max_positions=int(session.scratch.max_positions),
+                                    stream=stream,
+                                    expert_sidecar=None,
+                                    allow_aotriton=(
+                                        _gguf_slot_local_prefill_allow_aotriton(
+                                            transient_direct_oracle=(
+                                                transient_direct_oracle
+                                            ),
+                                        )
+                                    ),
+                                    aotriton_min_tokens=None,
+                                )
                     else:
                         raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 # One ping-pong swap per layer, not per chunk: a layer's input
@@ -23643,6 +23782,7 @@ class Qwen35GGUFResidentSession:
         _slot_local_full_attention: bool | None = None,
         _force_aotriton_slot_indices: tuple[int, ...] = (),
         _sample_output_slot_indices: tuple[int, ...] | None = None,
+        _request_lengths: Sequence[int] | None = None,
     ) -> list[
         Qwen35GGUFNextTokenProbeResult
         | Qwen35GGUFPackedPrefillResult
@@ -23657,6 +23797,19 @@ class Qwen35GGUFResidentSession:
             raise ValueError("prompt_token_ids must be non-empty")
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        # Complete logical request length per slot. It filters the source-F16
+        # owner; the slab's aggregate rows never do.
+        request_lengths = (
+            tuple(len(prompt) for prompt in prompt_tuple)
+            if _request_lengths is None
+            else tuple(int(length) for length in _request_lengths)
+        )
+        if len(request_lengths) != len(prompt_tuple) or any(
+            int(length) <= 0 for length in request_lengths
+        ):
+            raise ValueError(
+                "request lengths must be positive and align with the prompts"
+            )
         sample_output_slot_indices = (
             tuple(range(len(prompt_tuple)))
             if sample_output and _sample_output_slot_indices is None
@@ -23855,7 +24008,6 @@ class Qwen35GGUFResidentSession:
             raise NotImplementedError(
                 f"packed AR prefill rows {rows} exceed resident hidden-buffer capacity {self._bulk_prefill_scratch.rows}"
             )
-
         runtime = self.runtime or get_hip_runtime()
         packed_state, packed_scratch_base = self._ensure_packed_verify_workspace(
             slot_count=int(layout.slot_count),
@@ -23868,6 +24020,25 @@ class Qwen35GGUFResidentSession:
             require_kv_planes=not slot_local_full_prefill,
         )
         layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+        # Request-local source-F16 spans for the packed aggregate projections.
+        # Built once per slab from each slot's own physical rows and its own
+        # complete request length; ``None`` leaves every launch on today's
+        # path. Slot-local attention does not use these spans: it binds the
+        # slot's owner directly, because its rows already are that request's.
+        source_f16_owners = self._source_f16_request_owners(request_lengths)
+        slab_spans = self._source_f16_slab_spans(
+            tuple(
+                int(layout.cu_seqlens[slot_index])
+                for slot_index in range(int(layout.slot_count))
+            ),
+            tuple(
+                int(layout.cu_seqlens[slot_index + 1])
+                - int(layout.cu_seqlens[slot_index])
+                for slot_index in range(int(layout.slot_count))
+            ),
+            request_lengths,
+            owners=source_f16_owners,
+        )
         hidden_seed_buf = None
         if return_hidden_seeds:
             self._ensure_verify_block_buffers(rows, runtime=runtime)
@@ -23917,29 +24088,30 @@ class Qwen35GGUFResidentSession:
         with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
-                    self.runner._run_linear_attention_prefill_layer_rows(
-                        layer_id,
-                        src.ptr,
-                        dst.ptr,
-                        packed_scratch,
-                        rows=rows,
-                        stream=stream,
-                        decode_scratch=linear_decode_scratch,
-                        expert_sidecar=None,
-                        linear_state_rows=(
-                            self._verify_linear_state_row_pair(layer_id)
-                            if linear_state_plan.capture_token_state_rows
-                            else None
-                        ),
-                        commit_final_linear_state=bool(
-                            linear_state_plan.commit_captured_state_rows
-                        ),
-                        hidden_f32_ptr=None,
-                        out_f32_ptr=None,
-                        stage_timings=None,
-                        sync_stage_timings=False,
-                        stage_prefix="ar_prefill_batch_linear_attn",
-                    )
+                    with source_f16_slab_spans_session(slab_spans):
+                        self.runner._run_linear_attention_prefill_layer_rows(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            packed_scratch,
+                            rows=rows,
+                            stream=stream,
+                            decode_scratch=linear_decode_scratch,
+                            expert_sidecar=None,
+                            linear_state_rows=(
+                                self._verify_linear_state_row_pair(layer_id)
+                                if linear_state_plan.capture_token_state_rows
+                                else None
+                            ),
+                            commit_final_linear_state=bool(
+                                linear_state_plan.commit_captured_state_rows
+                            ),
+                            hidden_f32_ptr=None,
+                            out_f32_ptr=None,
+                            stage_timings=None,
+                            sync_stage_timings=False,
+                            stage_prefix="ar_prefill_batch_linear_attn",
+                        )
                 elif layer_type == FULL_ATTENTION:
                     if slot_local_full_prefill:
                         for slot_index, session in enumerate(session_tuple):
@@ -24006,37 +24178,39 @@ class Qwen35GGUFResidentSession:
                                     direct_int8=transient_direct_oracle,
                                 )
                             row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
-                            self.runner._run_full_attention_prefill_layer_aotriton(
-                                layer_id,
-                                src.ptr + row_start * row_nbytes,
-                                dst.ptr + row_start * row_nbytes,
-                                layer_scratch,
-                                cos_table_ptr=int(session.scratch.cos_table.ptr),
-                                sin_table_ptr=int(session.scratch.sin_table.ptr),
-                                max_positions=int(session.scratch.max_positions),
-                                stream=stream,
-                                expert_sidecar=None,
-                                allow_aotriton=(
-                                    _gguf_slot_local_prefill_allow_aotriton(
-                                        transient_direct_oracle=(
-                                            transient_direct_oracle
-                                        ),
-                                    )
-                                    and (
-                                        not gapped_gather_slot
-                                        or bool(
-                                            getattr(
-                                                layer_scratch,
-                                                "head_major_kv_admitted",
-                                                False,
+                            slot_owner = source_f16_owners[request_lengths[slot_index]]
+                            with t16_f16_rocblas_prefill_session(slot_owner):
+                                self.runner._run_full_attention_prefill_layer_aotriton(
+                                    layer_id,
+                                    src.ptr + row_start * row_nbytes,
+                                    dst.ptr + row_start * row_nbytes,
+                                    layer_scratch,
+                                    cos_table_ptr=int(session.scratch.cos_table.ptr),
+                                    sin_table_ptr=int(session.scratch.sin_table.ptr),
+                                    max_positions=int(session.scratch.max_positions),
+                                    stream=stream,
+                                    expert_sidecar=None,
+                                    allow_aotriton=(
+                                        _gguf_slot_local_prefill_allow_aotriton(
+                                            transient_direct_oracle=(
+                                                transient_direct_oracle
+                                            ),
+                                        )
+                                        and (
+                                            not gapped_gather_slot
+                                            or bool(
+                                                getattr(
+                                                    layer_scratch,
+                                                    "head_major_kv_admitted",
+                                                    False,
+                                                )
                                             )
                                         )
-                                    )
-                                ),
-                                aotriton_min_tokens=(
-                                    1 if slot_index in force_aotriton_slots else None
-                                ),
-                            )
+                                    ),
+                                    aotriton_min_tokens=(
+                                        1 if slot_index in force_aotriton_slots else None
+                                    ),
+                                )
                     else:
                         layer_scratch = replace(
                             self._packed_full_attention_scratch_for_layer(
@@ -24052,19 +24226,20 @@ class Qwen35GGUFResidentSession:
                         # paged prefill kernel consumes row-local spans and
                         # matches the c1 reduction order below the AOTriton
                         # threshold; its compact wrapper describes one sequence.
-                        self.runner._run_full_attention_prefill_layer_aotriton(
-                            layer_id,
-                            src.ptr,
-                            dst.ptr,
-                            layer_scratch,
-                            cos_table_ptr=int(self.scratch.cos_table.ptr),
-                            sin_table_ptr=int(self.scratch.sin_table.ptr),
-                            max_positions=int(self.scratch.max_positions),
-                            stream=stream,
-                            expert_sidecar=None,
-                            allow_aotriton=False,
-                            paged_max_context_len=int(layout.max_live_count),
-                        )
+                        with source_f16_slab_spans_session(slab_spans):
+                            self.runner._run_full_attention_prefill_layer_aotriton(
+                                layer_id,
+                                src.ptr,
+                                dst.ptr,
+                                layer_scratch,
+                                cos_table_ptr=int(self.scratch.cos_table.ptr),
+                                sin_table_ptr=int(self.scratch.sin_table.ptr),
+                                max_positions=int(self.scratch.max_positions),
+                                stream=stream,
+                                expert_sidecar=None,
+                                allow_aotriton=False,
+                                paged_max_context_len=int(layout.max_live_count),
+                            )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 src, dst = dst, src
