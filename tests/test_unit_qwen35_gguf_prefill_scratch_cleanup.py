@@ -192,3 +192,25 @@ def test_scratch_upload_failure_releases_every_owner_exactly_once(
     assert len(device.allocations) == owners_total
     assert set(device.uploads) <= {int(buffer.ptr) for buffer in device.allocations}
     _assert_released_exactly_once(device)
+
+
+@pytest.mark.parametrize("layout", tuple(_LAYOUTS))
+def test_scratch_upload_and_cleanup_failure_preserves_setup_error(
+    monkeypatch: pytest.MonkeyPatch, layout: str
+) -> None:
+    device = _RecordingDevice(fail_upload_at=1)
+    original_free = device.free
+    cleanup_error = RuntimeError("synthetic scratch cleanup failure")
+
+    def failing_free(buffer: DeviceBuffer, *, runtime: object) -> None:
+        original_free(buffer, runtime=runtime)
+        if len(device.frees) == 2:
+            raise cleanup_error
+
+    device.free = failing_free
+    with pytest.raises(RuntimeError) as caught:
+        _allocate(monkeypatch, layout, device)
+
+    assert caught.value is device.upload_error
+    assert any("synthetic scratch cleanup failure" in note for note in caught.value.__notes__)
+    _assert_released_exactly_once(device)

@@ -16,7 +16,7 @@ from copy import copy
 import time
 from contextlib import closing, contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
-from functools import partial
+from functools import partial, wraps
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Callable, Mapping, Sequence
@@ -3170,6 +3170,59 @@ def _gguf_short_c1_attn_threads(backend: str) -> int:
     return int(default)
 
 
+def _rollback_failed_full_stack_runner(method):
+    """Close a runner that failed after acquiring weights or a host mapping.
+
+    The runner constructor owns only its resident weights and its mapped host
+    token-embedding registration. ``close`` already releases exactly those two
+    resources, so a failed construction uses the same release owner instead of
+    duplicating the ownership rules here. The original exception is always the
+    one re-raised; a cleanup failure is recorded as a note on it.
+    """
+
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except BaseException as error:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                try:
+                    error.add_note(
+                        "Qwen35GGUFFullStackRunner construction cleanup "
+                        f"failed: {cleanup_error!r}"
+                    )
+                except BaseException:
+                    pass
+            raise
+
+    return wrapped
+
+
+def _rollback_failed_session_construction(method):
+    """Run the resident session's explicit rollback when construction fails."""
+
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except BaseException as error:
+            try:
+                self._rollback_construction(cause=error)
+            except BaseException as rollback_error:
+                try:
+                    error.add_note(
+                        "Qwen35GGUFResidentSession construction rollback "
+                        f"failed: {rollback_error!r}"
+                    )
+                except BaseException:
+                    pass
+            raise
+
+    return wrapped
+
+
 @dataclass
 class Qwen35GGUFFullStackRunner:
     """GGUF Qwen3.5 full-stack primitive runner over resident native weights.
@@ -3318,6 +3371,7 @@ class Qwen35GGUFFullStackRunner:
         self._fp16_recurrent_state_frozen = True
         return self.fp16_recurrent_state
 
+    @_rollback_failed_full_stack_runner
     def __post_init__(self) -> None:
         self.backend = resolve_backend(self.backend)
         try:
@@ -3438,46 +3492,37 @@ class Qwen35GGUFFullStackRunner:
                 )
             )
         if placement == "host":
-            try:
-                token_weight = self.weights.root("token_embedding")
-                if token_weight.allocations:
-                    # Externally owned resident maps must never be mutated or
-                    # freed merely because one session requested host ownership.
-                    if self.resident_weights is not None:
-                        self.token_embedding_placement = "device"
-                        return
-                    raise ValueError("host token embedding was materialized on device")
-                mapped_host = _gguf_mapped_host_token_embedding_enabled(
-                    backend=self.backend,
-                    quant_key=token_weight.spec.quant_key,
+            token_weight = self.weights.root("token_embedding")
+            if token_weight.allocations:
+                # Externally owned resident maps must never be mutated or
+                # freed merely because one session requested host ownership.
+                if self.resident_weights is not None:
+                    self.token_embedding_placement = "device"
+                    return
+                raise ValueError("host token embedding was materialized on device")
+            mapped_host = _gguf_mapped_host_token_embedding_enabled(
+                backend=self.backend,
+                quant_key=token_weight.spec.quant_key,
+            )
+            supported_quants = {"gguf_q8_0"}
+            if mapped_host:
+                supported_quants.add("gguf_q4_k")
+            if (
+                token_weight.spec.layout != "raw_gguf"
+                or token_weight.spec.quant_key not in supported_quants
+            ):
+                raise ValueError(
+                    "host token embedding requires raw Q8_0 or a backend-qualified "
+                    "mapped raw Q4_K token_embedding; "
+                    f"got layout={token_weight.spec.layout!r}, "
+                    f"quant={token_weight.spec.quant_key!r}"
                 )
-                supported_quants = {"gguf_q8_0"}
-                if mapped_host:
-                    supported_quants.add("gguf_q4_k")
-                if (
-                    token_weight.spec.layout != "raw_gguf"
-                    or token_weight.spec.quant_key not in supported_quants
-                ):
-                    raise ValueError(
-                        "host token embedding requires raw Q8_0 or a backend-qualified "
-                        "mapped raw Q4_K token_embedding; "
-                        f"got layout={token_weight.spec.layout!r}, "
-                        f"quant={token_weight.spec.quant_key!r}"
-                    )
-                reader = GGUFReader(self.model_path)
-                raw = reader.tensor_data(token_weight.spec.source.name)
-                self.host_token_embedding_reader = reader
-                self.host_token_embedding_raw = raw
-                if mapped_host:
-                    self._map_host_token_embedding(token_weight, raw)
-            except Exception:
-                self._unmap_host_token_embedding()
-                if self.weights is not None and self.owns_resident_weights:
-                    self.weights.free(runtime=self.runtime)
-                    self.weights = None
-                self.host_token_embedding_reader = None
-                self.host_token_embedding_raw = None
-                raise
+            reader = GGUFReader(self.model_path)
+            raw = reader.tensor_data(token_weight.spec.source.name)
+            self.host_token_embedding_reader = reader
+            self.host_token_embedding_raw = raw
+            if mapped_host:
+                self._map_host_token_embedding(token_weight, raw)
 
     def _map_host_token_embedding(
         self,
@@ -3525,8 +3570,17 @@ class Qwen35GGUFFullStackRunner:
                 allocations=MappingProxyType({"raw": allocation}),
                 backend=token_weight.backend,
             )
-        except BaseException:
-            self._unmap_host_token_embedding()
+        except BaseException as error:
+            try:
+                self._unmap_host_token_embedding()
+            except BaseException as unmap_error:
+                try:
+                    error.add_note(
+                        "Qwen35GGUFFullStackRunner host-embedding unregister "
+                        f"failed: {unmap_error!r}"
+                    )
+                except BaseException:
+                    pass
             raise
 
     def _unmap_host_token_embedding(self) -> None:
@@ -8723,15 +8777,39 @@ class Qwen35GGUFFullStackRunner:
         )
 
     def close(self) -> None:
+        """Release the mapped host table and resident weights independently.
+
+        Construction rollback calls this on a partially built runner. Either
+        cleanup step can fail, so each is attempted even when the other raises;
+        the first failure is re-raised with the secondary failure attached as a
+        note. ``weights`` is detached before freeing so a failed free cannot be
+        retried into a double release.
+        """
+
+        errors: list[BaseException] = []
         try:
             self._unmap_host_token_embedding()
-        finally:
-            if self.weights is not None:
-                if self.owns_resident_weights:
-                    self.weights.free(runtime=self.runtime)
-                self.weights = None
-            self.host_token_embedding_raw = None
-            self.host_token_embedding_reader = None
+        except BaseException as error:
+            errors.append(error)
+        weights = self.weights
+        self.weights = None
+        if weights is not None and self.owns_resident_weights:
+            try:
+                weights.free(runtime=self.runtime)
+            except BaseException as error:
+                errors.append(error)
+        self.host_token_embedding_raw = None
+        self.host_token_embedding_reader = None
+        if errors:
+            primary = errors[0]
+            for extra in errors[1:]:
+                try:
+                    primary.add_note(
+                        f"additional runner close failure: {extra!r}"
+                    )
+                except BaseException:
+                    pass
+            raise primary
 
     def __enter__(self) -> "Qwen35GGUFFullStackRunner":
         return self
@@ -13385,6 +13463,9 @@ class Qwen35GGUFResidentSession:
     decode_scratch_arena_enabled: bool = field(default=False, init=False)
     decode_scratch_arena_reason: str = field(default="disabled", init=False)
     _owns_runner: bool = field(default=True, init=False)
+    _construction_rollback_errors: tuple[BaseException, ...] = field(
+        default=(), init=False, repr=False
+    )
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
@@ -13444,6 +13525,10 @@ class Qwen35GGUFResidentSession:
     _dms_source: object | None = field(default=None, init=False, repr=False)
     _dms_backend: object | None = field(default=None, init=False, repr=False)
     _dms_dense_prefill_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
+    # An allocation returned by the dense prefill pool but not yet published
+    # through ``bind_device_kv_allocation``. Construction rollback owns its
+    # release, so a bind failure cannot strand the pages.
+    _dms_pending_allocation: object | None = field(default=None, init=False, repr=False)
     _dms_prefill_oracle_pair: tuple[DeviceBuffer, DeviceBuffer] | None = field(default=None, init=False, repr=False)
     _dms_layer_outer_pack: tuple[object, _ExternalDMSDevicePrefillCollector, int] | None = field(default=None, init=False, repr=False)
     _dms_decode_projector: object | None = field(default=None, init=False, repr=False)
@@ -13452,6 +13537,7 @@ class Qwen35GGUFResidentSession:
     _dms_decode_decisions_host: np.ndarray | None = field(default=None, init=False, repr=False)
     _dms_decode_seen: set[int] = field(default_factory=set, init=False, repr=False)
 
+    @_rollback_failed_session_construction
     def __post_init__(self) -> None:
         from hipengine.loading.qwen35_gguf_execution import execution_operations
         if "ar_decode_native_rows" in execution_operations(self.execution_routes):
@@ -13619,8 +13705,10 @@ class Qwen35GGUFResidentSession:
             self._owns_runner = True
         else:
             self.runner = self.shared_runner
-            self.runtime = self.runner.runtime or self.runtime
+            # Record borrowed ownership before any read that can fail, so a
+            # failed construction never closes the caller's runner.
             self._owns_runner = False
+            self.runtime = self.runner.runtime or self.runtime
         # ``auto`` is a load-time selector, never a registry/capability key.
         # The full-stack runner has already resolved it against the detected
         # device, so keep the resident session on that concrete identity too.
@@ -14082,10 +14170,12 @@ class Qwen35GGUFResidentSession:
             ),
         )
         hidden_bytes = self.runner.hidden_size * 2
-        prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
-        prefill_hidden_a = None
-        prefill_hidden_b = None
+        owner = _AllocationRollback(runtime)
         try:
+            prefill_token_buf = malloc(
+                alloc_capacity * DType.INT64.itemsize, runtime=runtime
+            )
+            owner.track(prefill_token_buf)
             prefill_hidden_a, prefill_hidden_b = _allocate_prefill_hidden_buffers(
                 self.runner,
                 rows=prefill_rows,
@@ -14093,6 +14183,9 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
                 single_plane=hidden_planes == 1,
             )
+            owner.track(prefill_hidden_a)
+            if prefill_hidden_b is not prefill_hidden_a:
+                owner.track(prefill_hidden_b)
             bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
                 self.runner,
                 rows=prefill_rows,
@@ -14101,29 +14194,28 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
                 runtime_state_library=self._runtime_state_library,
             )
-        except BaseException:
-            free(prefill_token_buf, runtime=runtime)
-            for buffer in (prefill_hidden_a, prefill_hidden_b):
-                if buffer is not None and buffer is not prefill_hidden_a:
-                    free(buffer, runtime=runtime)
-            if prefill_hidden_a is not None:
-                free(prefill_hidden_a, runtime=runtime)
-            raise
-        head_major_pair = _try_allocate_gguf_aotriton_head_major_kv_scratch(
-            backend=self.backend,
-            capacity_tokens=prefill_capacity,
-            kv_width=self.runner.kv_width,
-            runtime=runtime,
-        )
-        if head_major_pair is not None:
-            head_major_key_cache, head_major_value_cache = head_major_pair
-            bulk_prefill_scratch = replace(
-                bulk_prefill_scratch,
-                head_major_key_cache=head_major_key_cache,
-                head_major_value_cache=head_major_value_cache,
-                head_major_kv_capacity=prefill_capacity,
-                buffers=(*bulk_prefill_scratch.buffers, *head_major_pair),
+            for buffer in bulk_prefill_scratch.buffers:
+                owner.track(buffer)
+            head_major_pair = _try_allocate_gguf_aotriton_head_major_kv_scratch(
+                backend=self.backend,
+                capacity_tokens=prefill_capacity,
+                kv_width=self.runner.kv_width,
+                runtime=runtime,
             )
+            if head_major_pair is not None:
+                head_major_key_cache, head_major_value_cache = head_major_pair
+                owner.track(head_major_key_cache)
+                owner.track(head_major_value_cache)
+                bulk_prefill_scratch = replace(
+                    bulk_prefill_scratch,
+                    head_major_key_cache=head_major_key_cache,
+                    head_major_value_cache=head_major_value_cache,
+                    head_major_kv_capacity=prefill_capacity,
+                    buffers=(*bulk_prefill_scratch.buffers, *head_major_pair),
+                )
+        except BaseException as error:
+            owner.rollback(error)
+            raise
         self._prefill_token_buf = prefill_token_buf
         self._prefill_hidden_a = prefill_hidden_a
         self._prefill_hidden_b = prefill_hidden_b
@@ -14444,9 +14536,16 @@ class Qwen35GGUFResidentSession:
             chunk_pages=pages,
             idle_grace_seconds=0.0,
         )
-        allocation = pool.allocate(-1, pages)
-        self.bind_device_kv_allocation(pool, allocation)
+        # Publish the pool and the allocation before binding so construction
+        # rollback has one explicit owner for both. The pending allocation is
+        # cleared only after bind returns; if bind partially publishes
+        # ``_device_kv_allocation`` and then raises, rollback sees the same
+        # object through both fields and releases it exactly once.
         self._dms_dense_prefill_pool = pool
+        allocation = pool.allocate(-1, pages)
+        self._dms_pending_allocation = allocation
+        self.bind_device_kv_allocation(pool, allocation)
+        self._dms_pending_allocation = None
 
     def _retain_published_target_hidden(
         self, *, runtime: HipRuntime, stream: int = 0
@@ -29707,6 +29806,241 @@ class Qwen35GGUFResidentSession:
         self._verify_linear_state_recurrent_row_nbytes = 0
         self._verify_linear_state_layer_count = 0
 
+    def _rollback_construction(self, *, cause: BaseException) -> tuple[BaseException, ...]:
+        """Release every resource this constructor acquired, exactly once.
+
+        Construction failure is not ``close``: a partially built session may
+        not have fields that ``close`` reads, and ``close`` raises on cleanup
+        problems. Each release owner is therefore attempted independently in
+        reverse acquisition order. A release failure is recorded on the
+        original exception and in ``_construction_rollback_errors``; it never
+        replaces the allocation/setup failure that triggered the rollback.
+        """
+
+        errors: list[BaseException] = []
+
+        def record(label: str, error: BaseException) -> None:
+            errors.append(error)
+            try:
+                cause.add_note(
+                    "GGUF resident session construction rollback failed at "
+                    f"{label}: {error!r}"
+                )
+            except BaseException:
+                pass
+
+        def attempt(label: str, action: Callable[[], None]) -> None:
+            try:
+                action()
+            except BaseException as error:
+                record(label, error)
+
+        runtime = getattr(self, "runtime", None)
+        if runtime is None:
+            # No device resource can exist before the runtime is selected.
+            self.__dict__["_construction_rollback_errors"] = ()
+            return ()
+
+        recorder = self.__dict__.get("_prefill_flight_recorder")
+        if recorder is not None:
+            synchronized = True
+            try:
+                runtime.device_synchronize()
+            except BaseException as error:
+                synchronized = False
+                record("prefill-flight-recorder-sync", error)
+            if synchronized:
+                attempt("prefill-flight-recorder", recorder.close)
+            self.__dict__["_prefill_flight_recorder"] = None
+
+        dms_backend = self.__dict__.get("_dms_backend")
+        if dms_backend is not None:
+            def reclaim_dms_backend() -> None:
+                if dms_backend.has_request(0):
+                    dms_backend.reclaim(dms_backend.lease_for_request(0))
+
+            attempt("dms-backend-reclaim", reclaim_dms_backend)
+            attempt("dms-backend-close", dms_backend.close)
+            self.__dict__["_dms_backend"] = None
+        projector = self.__dict__.get("_dms_decode_projector")
+        if projector is not None:
+            attempt("dms-decode-projector", projector.close)
+            self.__dict__["_dms_decode_projector"] = None
+        for name in ("_dms_decode_decisions", "_dms_decode_logits"):
+            buffer = self.__dict__.get(name)
+            if buffer is not None:
+                attempt(name, lambda b=buffer: free(b, runtime=runtime))
+                self.__dict__[name] = None
+        pending = self.__dict__.get("_dms_pending_allocation")
+        allocation = getattr(self, "_device_kv_allocation", None)
+        pool = getattr(self, "_device_kv_pool", None)
+        dms_prefill_pool = self.__dict__.get("_dms_dense_prefill_pool")
+        release_pool = pool if pool is not None else dms_prefill_pool
+        if allocation is not None:
+            attempt("device-kv-unbind", self.unbind_device_kv_allocation)
+        allocations: list[object] = []
+        seen_allocations: set[int] = set()
+        for candidate in (pending, allocation):
+            if candidate is not None and id(candidate) not in seen_allocations:
+                seen_allocations.add(id(candidate))
+                allocations.append(candidate)
+        if allocations:
+            if release_pool is None:
+                record(
+                    "device-kv-release",
+                    RuntimeError(
+                        "GGUF session lost its device KV pool during rollback"
+                    ),
+                )
+            else:
+                for candidate in allocations:
+                    attempt(
+                        "device-kv-release",
+                        lambda a=candidate: release_pool.release(
+                            a.request_id, now_seconds=time.monotonic()
+                        ),
+                    )
+        self.__dict__["_dms_pending_allocation"] = None
+        self._device_kv_allocation = None
+        self._device_kv_pool = None
+        if dms_prefill_pool is not None:
+            attempt("dms-dense-prefill-pool", dms_prefill_pool.close)
+            self.__dict__["_dms_dense_prefill_pool"] = None
+        attempt("dms-prefill-oracle", self._release_dms_prefill_oracle)
+        self.__dict__["_dms_layer_outer_pack"] = None
+        self.__dict__["_dms_source"] = None
+
+        moe_graph = self.__dict__.get("_moe_graph")
+        if moe_graph is not None:
+            attempt("moe-graph", moe_graph.close)
+            self.__dict__["_moe_graph"] = None
+        native_sampler = self.__dict__.get("_native_sampler_workspace")
+        if native_sampler is not None:
+            attempt("native-sampler", native_sampler.close)
+            self.__dict__["_native_sampler_workspace"] = None
+
+        buffer_fields = (
+            "_token_buf",
+            "_hidden_a",
+            "_hidden_b",
+            "_logits_buf",
+            "_native_cu_seqlens_buf",
+            "_native_state_indices_buf",
+            "_lm_block_values",
+            "_lm_block_indices",
+            "_lm_out_index",
+            "_lm_out_value",
+            "_prefill_token_buf",
+            "_prefill_hidden_a",
+            "_prefill_hidden_b",
+        )
+        ordered: list[object] = []
+        seen: set[int] = set()
+
+        def add(buffer: object | None) -> None:
+            if buffer is not None and id(buffer) not in seen:
+                seen.add(id(buffer))
+                ordered.append(buffer)
+
+        for name in buffer_fields:
+            add(self.__dict__.get(name))
+        for buffer in self.__dict__.get("_buffers", ()):
+            add(buffer)
+        bulk = self.__dict__.get("_bulk_prefill_scratch")
+        if bulk is not None:
+            for buffer in getattr(bulk, "buffers", ()):
+                add(buffer)
+            for buffer in getattr(bulk, "full_attn_split_growth_buffers", ()):
+                add(buffer)
+        for buffer in reversed(ordered):
+            attempt("buffer-free", lambda b=buffer: free(b, runtime=runtime))
+        self.__dict__["_buffers"] = ()
+        for name in buffer_fields:
+            self.__dict__[name] = None
+        self.__dict__["_bulk_prefill_scratch"] = None
+
+        state = self._state_storage()
+
+        def best_effort_release(buffer, *, runtime) -> None:
+            # ``StateMemory.free_all`` aborts on the first failure. Rollback
+            # must attempt every acquired owner, so record each failure here
+            # and let the sequence continue. Ordinary runtime close keeps the
+            # strict ``free`` semantics.
+            try:
+                free(buffer, runtime=runtime)
+            except BaseException as error:
+                ptr = getattr(buffer, "ptr", None)
+                label = (
+                    "state-buffer-free"
+                    if ptr is None
+                    else f"state-buffer-free(ptr=0x{int(ptr):x})"
+                )
+                record(label, error)
+
+        memory = StateMemory(runtime, malloc, best_effort_release)
+        for name in ("rollback", "initial", "linear_rows", "block"):
+            section = getattr(state, name)
+            attempt(f"state-{name}", lambda s=section: s.close(memory))
+        verify_buffers = (
+            self.__dict__.get("_verify_logits_buf"),
+            self.__dict__.get("_verify_lm_q8_1"),
+            self.__dict__.get("_verify_lm_block_values"),
+            self.__dict__.get("_verify_lm_block_indices_i32"),
+            self.__dict__.get("_verify_lm_out_indices_i32"),
+            self.__dict__.get("_verify_lm_out_values"),
+        )
+        attempt("verify-lm-buffers", lambda: memory.free_all(verify_buffers))
+        for name in (
+            "_verify_logits_buf",
+            "_verify_lm_q8_1",
+            "_verify_lm_block_values",
+            "_verify_lm_block_indices_i32",
+            "_verify_lm_out_indices_i32",
+            "_verify_lm_out_values",
+        ):
+            self.__dict__[name] = None
+        attempt(
+            "packed-verify-workspace",
+            lambda: self._free_packed_verify_workspace(runtime=runtime),
+        )
+        attempt(
+            "canonical-scratch",
+            lambda: state.canonical.close_scratch(memory),
+        )
+
+        def detach_canonical() -> None:
+            state.canonical.scratch_owner = None
+            state.canonical.scratch = None
+            state.canonical.layout = None
+
+        attempt("canonical-detach", detach_canonical)
+
+        runner = self.__dict__.get("runner")
+        if runner is not None:
+            if bool(self.__dict__.get("_owns_runner", True)):
+                attempt("runner-close", runner.close)
+            self.__dict__["runner"] = None
+
+        for name in (
+            "_runtime_state_library",
+            "_lm_head_library",
+            "_q6_pack8_library",
+            "_expert_pack8_library",
+            "_expert_sidecar_reader",
+            "_expert_sidecar_model_map",
+            "_expert_sidecar_host_layers",
+            "_host_token_embedding_reader",
+            "_host_token_embedding_raw",
+        ):
+            self.__dict__[name] = None
+        self.__dict__["_host_token_embedding_cache"] = {}
+        self.__dict__["host_token_embedding_enabled"] = False
+        self.__dict__["host_token_embedding_reason"] = None
+        self.__dict__["_native_rows_ready"] = False
+
+        self.__dict__["_construction_rollback_errors"] = tuple(errors)
+        return tuple(errors)
+
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
         # Refuse an invalid close order before mutating any live resource. The
@@ -30174,9 +30508,16 @@ def _allocate_prefill_hidden_buffers(
     single_plane: bool = False,
 ) -> tuple[DeviceBuffer, DeviceBuffer]:
     hidden_a = malloc(int(nbytes), runtime=runtime)
-    if single_plane or _gguf_prefill_hidden_buffer_count(runner, rows=int(rows)) == 1:
-        return hidden_a, hidden_a
-    return hidden_a, malloc(int(nbytes), runtime=runtime)
+    owner = _AllocationRollback(runtime)
+    owner.track(hidden_a)
+    try:
+        if single_plane or _gguf_prefill_hidden_buffer_count(runner, rows=int(rows)) == 1:
+            return hidden_a, hidden_a
+        hidden_b = malloc(int(nbytes), runtime=runtime)
+    except BaseException as error:
+        owner.rollback(error)
+        raise
+    return hidden_a, hidden_b
 
 
 _LAYER_OUTER_HIDDEN_ALIAS_ENV = "HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS"
@@ -30692,11 +31033,17 @@ class _GGUFFullAttentionPrefillScratch:
                 gdn_segment_capacity=segments,
                 gdn_active_segments=1,
             )
-        except BaseException:
-            # Single rollback path: every owner acquired above is released
-            # exactly once, in reverse order, and the original error propagates.
+        except BaseException as error:
+            # Each allocation remains independently releasable if a prior free
+            # fails; cleanup must not replace the original setup failure.
             for buffer in reversed(owners):
-                free(buffer, runtime=runtime)
+                try:
+                    free(buffer, runtime=runtime)
+                except BaseException as cleanup_error:
+                    error.add_note(
+                        "GGUF prefill scratch allocation cleanup failed at "
+                        f"ptr=0x{int(buffer.ptr):x}: {cleanup_error!r}"
+                    )
             raise
 
     def ensure_full_attn_split_query_rows(self, query_rows: int, *, runtime: HipRuntime) -> None:
@@ -31053,6 +31400,58 @@ def _gguf_packed_state_linear_bytes(runner: object, *, slot_count: int) -> int:
     return int(slot_count) * linear_layers * (conv + recurrent)
 
 
+class _AllocationRollback:
+    """Best-effort rollback owner for a bounded group of device allocations.
+
+    ``track`` records a real allocation immediately and deduplicates by object
+    identity or live device pointer. ``track_arena`` records a single real arena
+    whose views are borrowed subranges and must never be freed independently.
+    ``rollback`` attempts every recorded real owner once, records individual
+    cleanup failures on the original exception, and never replaces that
+    exception.
+    """
+
+    def __init__(self, runtime: HipRuntime) -> None:
+        self.runtime = runtime
+        self._owners: list[object] = []
+        self._arena_owner: object | None = None
+        self.errors: list[BaseException] = []
+
+    def track(self, buffer: object) -> object:
+        ptr = getattr(buffer, "ptr", None)
+        for existing in self._owners:
+            if existing is buffer or (
+                ptr is not None and getattr(existing, "ptr", None) == ptr
+            ):
+                return buffer
+        self._owners.append(buffer)
+        return buffer
+
+    def track_arena(self, buffer: object) -> object:
+        self._arena_owner = buffer
+        return buffer
+
+    def rollback(self, cause: BaseException) -> tuple[BaseException, ...]:
+        arena_owner, self._arena_owner = self._arena_owner, None
+        owners, self._owners = self._owners, []
+        released = (arena_owner,) if arena_owner is not None else tuple(owners)
+        for buffer in reversed(released):
+            try:
+                free(buffer, runtime=self.runtime)
+            except BaseException as error:
+                self.errors.append(error)
+                ptr = getattr(buffer, "ptr", None)
+                label = "unknown" if ptr is None else f"0x{int(ptr):x}"
+                try:
+                    cause.add_note(
+                        "Qwen35GGUF allocation rollback failed at "
+                        f"ptr={label}: {error!r}"
+                    )
+                except BaseException:
+                    pass
+        return tuple(self.errors)
+
+
 @dataclass(frozen=True)
 class _FullStackScratch:
     norm: object
@@ -31172,6 +31571,62 @@ class _FullStackScratch:
         allocate_kv_cache: bool = True,
         use_single_arena: bool = False,
     ):
+        tracker = _AllocationRollback(runtime)
+        try:
+            return cls._allocate_with_tracker(
+                runner,
+                runtime=runtime,
+                tracker=tracker,
+                max_sequence_length=max_sequence_length,
+                max_batch_size=max_batch_size,
+                kv_storage_dtype=kv_storage_dtype,
+                kv_storage_layout=kv_storage_layout,
+                kv_scale_dtype=kv_scale_dtype,
+                kv_scale_granularity=kv_scale_granularity,
+                int8_kv_value_bf16=int8_kv_value_bf16,
+                int8_bf16_prefix_full_attention_layers=(
+                    int8_bf16_prefix_full_attention_layers
+                ),
+                int8_bf16_full_attention_layer_indices=(
+                    int8_bf16_full_attention_layer_indices
+                ),
+                retain_int8_bf16_mirrors=retain_int8_bf16_mirrors,
+                allocate_kv_cache=allocate_kv_cache,
+                use_single_arena=use_single_arena,
+            )
+        except BaseException as error:
+            try:
+                tracker.rollback(error)
+            except BaseException as rollback_error:
+                try:
+                    error.add_note(
+                        "Qwen35GGUF _FullStackScratch allocation rollback "
+                        f"failed: {rollback_error!r}"
+                    )
+                except BaseException:
+                    pass
+            raise
+
+    @classmethod
+    def _allocate_with_tracker(
+        cls,
+        runner: Qwen35GGUFFullStackRunner,
+        *,
+        runtime: HipRuntime,
+        tracker: _AllocationRollback,
+        max_sequence_length: int | None = None,
+        max_batch_size: int = 1,
+        kv_storage_dtype: str | DType = DType.BF16,
+        kv_storage_layout: str = "uniform",
+        kv_scale_dtype: str | DType = DType.FP16,
+        kv_scale_granularity: str = "per_token_head",
+        int8_kv_value_bf16: bool = False,
+        int8_bf16_prefix_full_attention_layers: int = 0,
+        int8_bf16_full_attention_layer_indices: tuple[int, ...] | None = None,
+        retain_int8_bf16_mirrors: bool = True,
+        allocate_kv_cache: bool = True,
+        use_single_arena: bool = False,
+    ):
         assert runner.weights is not None
         cfg = runner.weights.config
         device = Device("hip", 0)
@@ -31250,6 +31705,7 @@ class _FullStackScratch:
             except (HipError, MemoryError):
                 use_single_arena = False
             else:
+                tracker.track_arena(arena_owner)
                 arena_views = tuple(
                     DeviceBuffer(
                         ptr=int(arena_owner.ptr) + int(offset),
@@ -31263,7 +31719,7 @@ class _FullStackScratch:
             nonlocal arena_view_index
             size = int(nbytes)
             if arena_owner is None:
-                return malloc(size, runtime=runtime)
+                return tracker.track(malloc(size, runtime=runtime))
             if arena_view_index >= len(arena_views):
                 raise RuntimeError("private-c1 decode scratch arena plan underflow")
             view = arena_views[arena_view_index]

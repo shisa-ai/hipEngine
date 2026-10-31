@@ -3523,17 +3523,6 @@ estimates. Replace the width reduction only after a wide startup probe and subse
 concurrent requests succeed under constrained memory, and failure/cancellation frees all probe
 resources. Keep the current guard until that replacement is implemented.
 
-### R0511 — Audit whole-session rollback after startup allocation failure
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `hipengine/runtime/qwen35_gguf_runner.py` — Audit whole-session rollback after startup allocation failure.
-
-Done when: Deferred ownership repair: inventory each constructor acquisition and its release owner, add
-failure injection at each allocation boundary, and implement transactional cleanup for resources not
-already covered. Preserve borrowed shared weights and pre-existing pool entries. Test repeated
-failure/retry, late failure, and cleanup errors without masking the original allocation error.
-
 ### R0512 — Revisit Q5 decode-dual dispatch separately from working prefill
 
 Owner: `hipengine/runtime/gguf_linear.py`.
