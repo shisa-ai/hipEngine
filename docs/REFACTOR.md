@@ -243,24 +243,6 @@ Until retirement, preserve exact requested depth, agreement checks when both nam
 and malformed/conflicting/unsupported-value errors. Keep the generic direct-provider default;
 never reinstate independent fallback reads or silently rewrite requested depth.
 
-### R0081 — Finish legacy provider telemetry migration
-
-Owner: `hipengine/chat_cli.py`.
-
-Scope: `diagnostics.specdec2_mtp2`, `ar_output_tokens_in_cycles`, `output_accounting`.
-
-Done when: All three providers publish the common committed-output block. Complete independent
-HTTP usage/metrics checks for blocking and streaming consumers, then remove
-`_mtp_draft_counts`' legacy provider/scalar timing readers and migrate the legacy-only fixtures.
-Mixed reclaim clips the block to the delivered prefix; public shared-target HTTP/SSE checks select
-`qwen4exp_shared_mtp_ar_target`, reconcile spans and tear down cleanly. See
-`worklog/entries/20261031T205907.763240Z-lhl-qwen4exp-mixed-output-accounting-006aad.md`.
-Chat `/bench` now prefers public `output_accounting.mtp_output_tokens`, preserves explicit
-zero, and keeps legacy readers for older providers; see
-`worklog/entries/20261031T203642.245018Z-cleanup-refactor-r0081-chat-cli-mtp-accounting-6d2ee5.md`.
-Remove each fallback only when its publishers have migrated. Validate server usage, metrics and
-summaries independently of batch timing, with no duplicate attribution or zero-token workaround.
-
 ### R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback
 
 Owner: `hipengine/generation/qwen35_gguf.py`.

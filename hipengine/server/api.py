@@ -16589,52 +16589,19 @@ def _mtp_counted_int(value: Any) -> int:
 def _mtp_draft_counts(
     detail: GenerationOutput,
 ) -> tuple[int | None, int | None, int | None] | None:
-    """Return one output's accepted, generated, and cycle counts.
+    """Return counts only from the request-local execution block.
 
-    The per-request ``diagnostics.specdec2_mtp2`` block is authoritative.
-    Legacy providers still publish counts directly in provider diagnostics
-    (the Gemma assistant head and qwen4_exp) or as scalar ``mtp_*`` timing
-    fields (``speculative_mtp_server``), so those remain fallbacks.
+    Provider aggregates and batch timing cannot attribute delivered output.
+    Every shipped speculative publisher supplies ``diagnostics.specdec2_mtp2``.
     """
 
     block = _mtp_execution_accounting(detail)
-    if block is not None:
-        return (
-            _mtp_counted_int(block.get("accepted_draft_tokens")),
-            _mtp_counted_int(block.get("generated_draft_tokens")),
-            _mtp_counted_int(block.get("cycles")),
-        )
-    telemetry = getattr(detail, "telemetry", None)
-    diagnostics = (
-        telemetry.get("diagnostics")
-        if isinstance(telemetry, Mapping)
-        else getattr(telemetry, "diagnostics", None)
-    )
-    if isinstance(diagnostics, Mapping) and diagnostics.get("speculative_provider"):
-        provider_cycles = diagnostics.get("cycles")
-        if isinstance(provider_cycles, Sequence) and not isinstance(
-            provider_cycles, (str, bytes, bytearray)
-        ):
-            cycle_count = len(provider_cycles)
-        else:
-            cycle_count = _mtp_counted_int(diagnostics.get("cycle_count"))
-        return (
-            _mtp_counted_int(diagnostics.get("accepted_draft_tokens")),
-            _mtp_counted_int(diagnostics.get("proposed_draft_tokens")),
-            cycle_count,
-        )
-    timing, _, timing_owner = _mtp_telemetry_parts(detail)
-    if timing is None or not timing_owner:
-        return None
-    accepted = timing.get("mtp_accepted_draft_tokens")
-    generated = timing.get("mtp_generated_draft_tokens")
-    cycles = timing.get("mtp_cycles_count")
-    if accepted is None and generated is None and cycles is None:
+    if block is None:
         return None
     return (
-        None if accepted is None else _mtp_counted_int(accepted),
-        None if generated is None else _mtp_counted_int(generated),
-        None if cycles is None else _mtp_counted_int(cycles),
+        _mtp_counted_int(block.get("accepted_draft_tokens")),
+        _mtp_counted_int(block.get("generated_draft_tokens")),
+        _mtp_counted_int(block.get("cycles")),
     )
 
 
@@ -16644,9 +16611,8 @@ def _mtp_accepted_rejected_counts(
     """Sum owned MTP draft acceptance from generation telemetry.
 
     Mirrors vLLM's ``usage.completion_tokens_details.accepted_prediction_tokens``
-    and ``rejected_prediction_tokens`` fields. The per-request execution block
-    is read first, then legacy provider diagnostics and scalar timing. Returns
-    ``None`` when no owned payload carries MTP telemetry.
+    and ``rejected_prediction_tokens`` fields. Returns ``None`` when no
+    per-request execution block carries MTP telemetry.
     """
 
     accepted = 0
@@ -16881,31 +16847,13 @@ def _mtp_response_summary(
             if position is not None and first_fallback_position is None:
                 first_fallback_position = _mtp_counted_int(position)
         if block is not None:
-            # A per-row execution block is the authoritative cycle record and is
-            # available to streaming outputs too, where batch timing ownership
-            # would otherwise hide it. A zero-cycle block still reports intent,
-            # but contributes no draft counts; do not fall through to legacy
-            # timing for the same request.
+            # A zero-cycle execution block still reports request intent, but
+            # contributes no drafts. Batch timing and provider aggregates do
+            # not participate in per-request output attribution.
             if _mtp_counted_int(block.get("cycles")) > 0:
                 accepted += _mtp_counted_int(block.get("accepted_draft_tokens"))
                 generated += _mtp_counted_int(block.get("generated_draft_tokens"))
                 cycles += _mtp_counted_int(block.get("cycles"))
-            continue
-        counts = _mtp_draft_counts(detail)
-        if counts is None:
-            continue
-        row_accepted, row_generated, row_cycles = counts
-        if any(
-            value is not None
-            for value in (row_accepted, row_generated, row_cycles)
-        ):
-            used = True
-        if row_accepted is not None:
-            accepted += max(0, int(row_accepted))
-        if row_generated is not None:
-            generated += max(0, int(row_generated))
-        if row_cycles is not None:
-            cycles += max(0, int(row_cycles))
     used = used or generated > 0
     backend_k0_fallback = (
         selected_route == _SPECULATIVE_MTP_BATCH_ROUTE and not used

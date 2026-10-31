@@ -42,6 +42,7 @@ def _output(
     telemetry_usage: dict | None = None,
     generated_token_ids: tuple[int, ...] = (7, 8),
     timing: dict | None = None,
+    diagnostics: dict | None = None,
 ) -> GenerationOutput:
     return GenerationOutput(
         text="reply",
@@ -51,6 +52,7 @@ def _output(
             decode_state=DecodeState(prompt_tokens=decode_state_prompt_tokens),
             usage=telemetry_usage,
             timing=timing,
+            diagnostics=diagnostics,
         ),
     )
 
@@ -145,7 +147,14 @@ def test_usage_keeps_reported_counts_beside_speculative_accounting() -> None:
 
     detail = _output(
         prompt_tokens=11,
-        timing={"mtp_generated_draft_tokens": 4.0, "mtp_accepted_draft_tokens": 3.0},
+        generated_token_ids=(7, 8, 9, 10, 11),
+        timing={"mtp_generated_draft_tokens": 99.0, "mtp_accepted_draft_tokens": 88.0},
+        diagnostics={"specdec2_mtp2": {
+            "requested_budget": 4, "candidate_budget": 4, "cycles": 1,
+            "generated_draft_tokens": 4, "accepted_draft_tokens": 3,
+            "selected_depth_histogram": {"4": 1}, "mtp_output_tokens": 4,
+            "ar_output_tokens_in_cycles": 0,
+        }},
     )
 
     usage = _usage_for(("one two three",), (detail,))

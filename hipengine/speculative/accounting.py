@@ -34,8 +34,8 @@ Rows are duck-typed: the dense and MoE GGUF adapters use the resident loop row
 dataclass, while seam tests drive them with attribute-only doubles.
 
 The ``diagnostics.specdec2_mtp2`` block is the authoritative per-request record.
-Legacy providers may still publish scalar ``mtp_*`` entries in ``timing``; the
-server accepts those as a fallback, but this module does not synthesize them.
+Legacy scalar ``mtp_*`` timing entries may still describe provider work, but the
+server does not use them to attribute delivered output or draft acceptance.
 """
 
 from __future__ import annotations

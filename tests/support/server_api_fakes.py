@@ -221,6 +221,39 @@ class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
     supports_resident_session_kv = True
 
 
+def _speculative_mtp_execution_block() -> dict[str, Any]:
+    """The request-local block for one committed depth-3 cycle.
+
+    The fake emits exactly one token per row, so its cycle commits the target's
+    own verified token and accepts none of the three drafts it proposed. The
+    counts therefore describe what the row delivered: one speculative output
+    token, no accepted drafts, and three rejected proposals.
+
+    The legacy scalar ``mtp_*`` counters on the same row keep claiming two
+    accepted drafts. They are published as distractors only: the server reads
+    ``diagnostics.specdec2_mtp2``, so a row that reports two accepted drafts
+    here would be evidence that the retirement leaked.
+    """
+
+    return {
+        "requested_budget": 3,
+        "candidate_budget": 3,
+        "prompt_streaming": False,
+        "prompt_fallback_reason": None,
+        "cycles": 1,
+        "generated_draft_tokens": 3,
+        "accepted_draft_tokens": 0,
+        "selected_depth_histogram": {"3": 1},
+        "mtp_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 0,
+        "first_fallback_position": None,
+        "ar_step_reason_counts": {},
+        "recoverable_failures": 0,
+        "failure_reason_counts": {},
+        "k0_catchups": 0,
+    }
+
+
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
     # The loaded engine resolves an omitted budget from model-plugin evidence.
@@ -262,6 +295,7 @@ class SpeculativeMTPFakeLLM(FakeLLM):
                 phase="answer",
                 sampler_mode="greedy_fast",
                 execution_path="speculative_mtp_server",
+                diagnostics={"specdec2_mtp2": _speculative_mtp_execution_block()},
             ),
         )
 
@@ -291,6 +325,9 @@ class SpeculativeMTPFakeLLM(FakeLLM):
                             phase="answer",
                             sampler_mode="greedy_fast",
                             execution_path="speculative_mtp_server",
+                            diagnostics={
+                                "specdec2_mtp2": _speculative_mtp_execution_block()
+                            },
                         ).to_json_dict(),
                     },
                 }
@@ -307,10 +344,16 @@ class SpeculativeMTPFakeLLM(FakeLLM):
                     phase="done",
                     sampler_mode="greedy_fast",
                     execution_path="speculative_mtp_server",
+                    # Legacy scalar counters, kept as distractors beside the
+                    # authoritative block: they claim two accepted drafts the
+                    # row never delivered.
                     timing={
                         "mtp_cycles_count": 1.0,
                         "mtp_generated_draft_tokens": 3.0,
                         "mtp_accepted_draft_tokens": 2.0,
+                    },
+                    diagnostics={
+                        "specdec2_mtp2": _speculative_mtp_execution_block()
                     },
                 ),
             )

@@ -708,20 +708,23 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
         "verifier_rows": 6,
     }
     assert body["usage"]["completion_tokens_details"] == {
-        "accepted_prediction_tokens": 4,
-        "rejected_prediction_tokens": 2,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 6,
     }
-    assert body["hipengine"]["speculative_mtp"] == {
-        "effective_route": "speculative_mtp",
-        "used": True,
-        "draft_tokens": 6,
-        "accepted_draft_tokens": 4,
-        "rejected_draft_tokens": 2,
-        "acceptance_rate": 4 / 6,
-        "draft_cycles": 2,
-        "thinking_policy": "hint",
-        "thinking_controls": "prompt_hint_only",
-    }
+    summary = body["hipengine"]["speculative_mtp"]
+    assert summary["effective_route"] == "speculative_mtp"
+    assert summary["used"] is True
+    assert summary["draft_tokens"] == 6
+    assert summary["accepted_draft_tokens"] == 0
+    assert summary["rejected_draft_tokens"] == 6
+    assert summary["acceptance_rate"] == 0.0
+    assert summary["draft_cycles"] == 2
+    assert summary["mtp_output_tokens"] == 2
+    assert summary["ar_output_tokens"] == 0
+    assert summary["output_accounting"]["completion_tokens"] == 2
+    assert summary["output_accounting"]["reconciled"] is True
+    assert summary["thinking_policy"] == "hint"
+    assert summary["thinking_controls"] == "prompt_hint_only"
 
 
 def test_artifact_scoped_explicit_mtp_uses_one_plan_in_capability_route_and_response() -> None:
@@ -943,20 +946,23 @@ def test_chat_endpoint_routes_explicit_mtp_and_reports_direct_usage() -> None:
     assert len(fake.mtp_calls) == 1
     assert body["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
     assert body["usage"]["completion_tokens_details"] == {
-        "accepted_prediction_tokens": 2,
-        "rejected_prediction_tokens": 1,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 3,
     }
-    assert body["hipengine"]["speculative_mtp"] == {
-        "effective_route": "speculative_mtp",
-        "used": True,
-        "draft_tokens": 3,
-        "accepted_draft_tokens": 2,
-        "rejected_draft_tokens": 1,
-        "acceptance_rate": 2 / 3,
-        "draft_cycles": 1,
-        "thinking_policy": "hint",
-        "thinking_controls": "prompt_hint_only",
-    }
+    summary = body["hipengine"]["speculative_mtp"]
+    assert summary["effective_route"] == "speculative_mtp"
+    assert summary["used"] is True
+    assert summary["draft_tokens"] == 3
+    assert summary["accepted_draft_tokens"] == 0
+    assert summary["rejected_draft_tokens"] == 3
+    assert summary["acceptance_rate"] == 0.0
+    assert summary["draft_cycles"] == 1
+    assert summary["mtp_output_tokens"] == 1
+    assert summary["ar_output_tokens"] == 0
+    assert summary["output_accounting"]["completion_tokens"] == 1
+    assert summary["output_accounting"]["reconciled"] is True
+    assert summary["thinking_policy"] == "hint"
+    assert summary["thinking_controls"] == "prompt_hint_only"
 
 
 def test_chat_auto_fallback_reports_stable_route_reason() -> None:

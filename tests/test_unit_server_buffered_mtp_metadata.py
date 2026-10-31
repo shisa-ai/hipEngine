@@ -18,10 +18,15 @@ def choices(events):
 
 @pytest.mark.parametrize('include', [False, True])
 def test_buffered_completion_summary_counts_each_row_once(include):
-    details = [GenerationOutput(text='A', generated_token_ids=(1,), telemetry=GenerationTelemetry(
-        decode_state=DecodeState(generated_tokens=1, execution_path='qwen4exp_mtp_batched_state_rows_verify'),
-        timing=dict(mtp_generated_draft_tokens=proposed, mtp_accepted_draft_tokens=accepted,
-                    mtp_cycles_count=cycles)))
+    details = [GenerationOutput(text='A', generated_token_ids=tuple(range(accepted + cycles + 1)), telemetry=GenerationTelemetry(
+        decode_state=DecodeState(generated_tokens=accepted + cycles + 1, execution_path='qwen4exp_mtp_batched_state_rows_verify'),
+        diagnostics={'specdec2_mtp2': dict(
+            requested_budget=3, candidate_budget=3, cycles=cycles,
+            generated_draft_tokens=proposed, accepted_draft_tokens=accepted,
+            selected_depth_histogram={'3': cycles}, mtp_output_tokens=accepted + cycles,
+            ar_output_tokens_in_cycles=0)},
+        timing=dict(mtp_generated_draft_tokens=999, mtp_accepted_draft_tokens=888,
+                    mtp_cycles_count=777)))
         for proposed, accepted, cycles in [(6, 2, 2), (9, 3, 3)]]
     events = list(_completion_stream('id', 0, 'model', ['A', 'A'],
         [dict(index=i, finish_reason='length') for i in range(2)], details=details,
@@ -40,6 +45,9 @@ def test_buffered_completion_summary_counts_each_row_once(include):
         assert summary['accepted_draft_tokens'] == accepted
         assert summary['rejected_draft_tokens'] == proposed - accepted
         assert summary['draft_cycles'] == cycles
+        assert summary['mtp_output_tokens'] == accepted + cycles
+        assert summary['ar_output_tokens'] == 1
+        assert summary['output_accounting']['reconciled'] is True
         assert summary['selection_reason'] == 'explicit_speculative_request'
         assert summary['thinking_policy'] == 'hard'
         assert extra['generation_shape']['route'] == 'speculative'

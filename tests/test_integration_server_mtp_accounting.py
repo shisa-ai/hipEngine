@@ -160,14 +160,44 @@ def test_explicit_mtp_streaming_uses_committed_speculative_chunks(endpoint: str)
         and item["choices"][0].get("finish_reason") is not None
     )
     assert done["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    # The chunk publishes the request-local block, so the done summary carries
+    # the cycle it committed: one depth-3 cycle that delivered the target's own
+    # token and accepted none of its three drafts.
     assert done["hipengine"]["speculative_mtp"] == {
         "effective_route": "speculative_mtp",
         "used": True,
-        "draft_tokens": 0,
+        "draft_tokens": 3,
         "accepted_draft_tokens": 0,
-        "rejected_draft_tokens": 0,
-        "acceptance_rate": None,
-        "draft_cycles": 0,
+        "rejected_draft_tokens": 3,
+        "acceptance_rate": 0.0,
+        "draft_cycles": 1,
+        "mtp_output_tokens": 1,
+        "ar_output_tokens": 0,
+        "output_accounting": {
+            "completion_tokens": 1,
+            "mtp_output_tokens": 1,
+            "ar_output_tokens": 0,
+            "ar_output_tokens_in_cycles": 0,
+            "mtp_coverage": 1.0,
+            "mtp_output_tokens_explained_by_cycles": 1,
+            "unexplained_mtp_output_tokens": 0,
+            "speculative_cycles": 1,
+            "reconciled": True,
+            "reconciled_reasons": [],
+        },
+        "selected_depth_histogram": {"3": 1},
+        "fallback_event_counts": {},
+        "fallback_event_total": 0,
+        "execution": {
+            "activation_reason": None,
+            "provider_readiness": None,
+            "provider_state_present": None,
+            "provider_decline_reason": None,
+            "plan_group_rows": None,
+            "plan_ar_only": None,
+            "plan_reason": None,
+        },
+        "first_fallback_position": None,
         "thinking_policy": "hint",
         "thinking_controls": "prompt_hint_only",
     }
@@ -243,7 +273,15 @@ def test_explicit_mtp_streaming_done_reports_output_accounting(endpoint: str) ->
     }
 
 
-def test_mtp_summary_honors_batch_timing_ownership() -> None:
+def test_mtp_summary_reads_request_local_blocks_regardless_of_batch_timing() -> None:
+    """Batch timing ownership cannot hide or multiply a row's own block.
+
+    Two rows share one batch timing sample, and only its owner may read it. The
+    counts must come from each row's request-local block instead, so the legacy
+    scalar counters here are deliberately larger than the block: reading them
+    would change both the totals and the acceptance rate.
+    """
+
     details = []
     for row_index, timing_owner in enumerate((True, False)):
         details.append(
@@ -255,14 +293,23 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
                     row_index=row_index,
                     execution_path="speculative_mtp_server",
                     timing={
-                        "mtp_cycles_count": 2,
-                        "mtp_generated_draft_tokens": 6,
-                        "mtp_accepted_draft_tokens": 4,
+                        "mtp_cycles_count": 9,
+                        "mtp_generated_draft_tokens": 99,
+                        "mtp_accepted_draft_tokens": 77,
                     },
                     timing_scope="batch",
                     batch_id="mtp-batch",
                     group_rows=2,
                     timing_owner=timing_owner,
+                    diagnostics={
+                        "specdec2_mtp2": _full_coverage_accounting(
+                            cycles=1,
+                            generated_draft_tokens=3,
+                            accepted_draft_tokens=2,
+                            selected_depth_histogram={"3": 1},
+                            mtp_output_tokens=3,
+                        )
+                    },
                 ),
             )
         )
@@ -276,6 +323,33 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
         "rejected_draft_tokens": 2,
         "acceptance_rate": 4 / 6,
         "draft_cycles": 2,
+        "mtp_output_tokens": 6,
+        "ar_output_tokens": 0,
+        "output_accounting": {
+            "completion_tokens": 6,
+            "mtp_output_tokens": 6,
+            "ar_output_tokens": 0,
+            "ar_output_tokens_in_cycles": 0,
+            "mtp_coverage": 1.0,
+            "mtp_output_tokens_explained_by_cycles": 6,
+            "unexplained_mtp_output_tokens": 0,
+            "speculative_cycles": 2,
+            "reconciled": True,
+            "reconciled_reasons": [],
+        },
+        "selected_depth_histogram": {"3": 2},
+        "fallback_event_counts": {},
+        "fallback_event_total": 0,
+        "execution": {
+            "activation_reason": None,
+            "provider_readiness": None,
+            "provider_state_present": None,
+            "provider_decline_reason": None,
+            "plan_group_rows": None,
+            "plan_ar_only": None,
+            "plan_reason": None,
+        },
+        "first_fallback_position": None,
     }
     assert _mtp_response_summary("speculative_mtp", details) == expected
     # Frontend grouping may predict K0 before the resident due work selects K>0.
@@ -348,58 +422,60 @@ def test_mtp_usage_reads_fallback_accounting_without_timing_mirror() -> None:
     assert summary["first_fallback_position"] == 8
 
 
-def test_mtp_summary_uses_provider_diagnostics_when_no_normalized_timing_exists() -> None:
+@pytest.mark.parametrize(
+    ("execution_path", "diagnostics"),
+    [
+        # The Gemma assistant head publishes per-cycle records and an aggregate.
+        (
+            "gemma4_mtp_batched_exact_verify",
+            {
+                "speculative_provider": "gemma4_mtp",
+                "proposed_draft_tokens": 7,
+                "accepted_draft_tokens": 4,
+                "cycles": [{"accepted": 2}, {"accepted": 2}],
+            },
+        ),
+        # qwen4_exp publishes the same aggregates as scalars.
+        (
+            "qwen4exp_shared_mtp_ar_target",
+            {
+                "speculative_provider": "qwen4_exp_mtp",
+                "proposed_draft_tokens": 12,
+                "accepted_draft_tokens": 6,
+                "cycle_count": 3,
+            },
+        ),
+    ],
+)
+def test_mtp_summary_infers_no_counts_from_legacy_provider_diagnostics(
+    execution_path: str, diagnostics: dict[str, Any]
+) -> None:
+    """A provider aggregate cannot attribute delivered output.
+
+    The execution path still names MTP, so the response reports that the route
+    was speculative. What it must not do is invent draft counts, an acceptance
+    rate, or an MTP-versus-AR split from the provider's own totals: only a
+    request-local execution block can say which emitted tokens came from which
+    execution mode.
+    """
+
     details = [
         GenerationOutput(
             text="done",
             telemetry=GenerationTelemetry.from_decode_counts(
                 prompt_tokens=4,
                 generated_tokens=7,
-                execution_path="gemma4_mtp_batched_exact_verify",
-                diagnostics={
-                    "speculative_provider": "gemma4_mtp",
-                    "proposed_draft_tokens": 7,
-                    "accepted_draft_tokens": 4,
-                    "cycles": [{"accepted": 2}, {"accepted": 2}],
-                },
+                execution_path=execution_path,
+                diagnostics=diagnostics,
             ),
         )
     ]
 
-    assert _mtp_accepted_rejected_counts(details) == (4, 3)
-    assert _mtp_response_summary("speculative_mtp", details) == {
+    assert _mtp_accepted_rejected_counts(details) is None
+    summary = _mtp_response_summary("speculative_mtp", details)
+    assert summary == {
         "effective_route": "speculative_mtp",
-        "used": True,
-        "draft_tokens": 7,
-        "accepted_draft_tokens": 4,
-        "rejected_draft_tokens": 3,
-        "acceptance_rate": 4 / 7,
-        "draft_cycles": 2,
-    }
-
-
-def test_mtp_summary_treats_owned_zero_draft_timing_as_realized_mtp() -> None:
-    details = [
-        GenerationOutput(
-            text="done",
-            telemetry=GenerationTelemetry.from_decode_counts(
-                prompt_tokens=4,
-                generated_tokens=1,
-                row_index=0,
-                execution_path="resident_verify_chain",
-                timing={
-                    "mtp_cycles_count": 0,
-                    "mtp_generated_draft_tokens": 0,
-                    "mtp_accepted_draft_tokens": 0,
-                },
-                timing_scope="choice",
-                timing_owner=True,
-            ),
-        )
-    ]
-
-    assert _mtp_response_summary("speculative_mtp", details) == {
-        "effective_route": "speculative_mtp",
+        # ``used`` comes from the execution path naming MTP, not from a count.
         "used": True,
         "draft_tokens": 0,
         "accepted_draft_tokens": 0,
@@ -407,6 +483,64 @@ def test_mtp_summary_treats_owned_zero_draft_timing_as_realized_mtp() -> None:
         "acceptance_rate": None,
         "draft_cycles": 0,
     }
+    assert "output_accounting" not in summary
+
+
+def test_mtp_summary_reports_a_zero_cycle_block_as_realized_mtp() -> None:
+    """A zero-cycle block still proves intent, and legacy counters cannot fill it.
+
+    The backend publishes a block for every request that carried speculative
+    intent, including one whose cycles committed nothing. The row's legacy
+    scalar counters claim two accepted drafts here; they must stay unread,
+    because the token it delivered was the target's own and no draft was
+    accepted.
+    """
+
+    details = [
+        GenerationOutput(
+            text="done",
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=4,
+                generated_tokens=1,
+                row_index=0,
+                execution_path="speculative_mtp_server",
+                timing={
+                    "mtp_cycles_count": 1,
+                    "mtp_generated_draft_tokens": 3,
+                    "mtp_accepted_draft_tokens": 2,
+                },
+                timing_scope="choice",
+                timing_owner=True,
+                diagnostics={
+                    "specdec2_mtp2": _full_coverage_accounting(
+                        cycles=0,
+                        generated_draft_tokens=0,
+                        accepted_draft_tokens=0,
+                        selected_depth_histogram={},
+                        mtp_output_tokens=0,
+                    )
+                },
+            ),
+        )
+    ]
+
+    assert _mtp_accepted_rejected_counts(details) == (0, 0)
+    summary = _mtp_response_summary("speculative_mtp", details)
+    assert summary["effective_route"] == "speculative_mtp"
+    assert summary["used"] is True
+    assert summary["draft_tokens"] == 0
+    assert summary["accepted_draft_tokens"] == 0
+    assert summary["rejected_draft_tokens"] == 0
+    assert summary["acceptance_rate"] is None
+    assert summary["draft_cycles"] == 0
+    # Zero cycles committed, so the whole delivered output is autoregressive.
+    assert summary["mtp_output_tokens"] == 0
+    assert summary["ar_output_tokens"] == 1
+    assert summary["selected_depth_histogram"] == {}
+    assert summary["first_fallback_position"] == 0
+    assert summary["output_accounting"]["reconciled"] is True
+    assert summary["output_accounting"]["reconciled_reasons"] == []
+    assert "decision_reason" not in summary
 
 
 def test_mtp_summary_reports_resident_dynamic_mtp_after_frontend_k0() -> None:
@@ -418,13 +552,28 @@ def test_mtp_summary_reports_resident_dynamic_mtp_after_frontend_k0() -> None:
                 generated_tokens=3,
                 row_index=0,
                 execution_path="resident_verify_chain",
+                # A batch-owned timing mirror that disagrees with the row's own
+                # block, so reading it would be visible in every count below.
                 timing={
-                    "mtp_cycles_count": 1,
-                    "mtp_generated_draft_tokens": 2,
-                    "mtp_accepted_draft_tokens": 1,
+                    "mtp_cycles_count": 8,
+                    "mtp_generated_draft_tokens": 21,
+                    "mtp_accepted_draft_tokens": 13,
                 },
-                timing_scope="choice",
-                timing_owner=True,
+                timing_scope="batch",
+                batch_id="resident-batch",
+                group_rows=2,
+                timing_owner=False,
+                diagnostics={
+                    "specdec2_mtp2": _full_coverage_accounting(
+                        requested_budget=2,
+                        candidate_budget=2,
+                        cycles=1,
+                        generated_draft_tokens=2,
+                        accepted_draft_tokens=1,
+                        selected_depth_histogram={"2": 1},
+                        mtp_output_tokens=2,
+                    )
+                },
             ),
         )
     ]
@@ -445,6 +594,33 @@ def test_mtp_summary_reports_resident_dynamic_mtp_after_frontend_k0() -> None:
         "rejected_draft_tokens": 1,
         "acceptance_rate": 0.5,
         "draft_cycles": 1,
+        "mtp_output_tokens": 2,
+        "ar_output_tokens": 1,
+        "output_accounting": {
+            "completion_tokens": 3,
+            "mtp_output_tokens": 2,
+            "ar_output_tokens": 1,
+            "ar_output_tokens_in_cycles": 0,
+            "mtp_coverage": 2 / 3,
+            "mtp_output_tokens_explained_by_cycles": 2,
+            "unexplained_mtp_output_tokens": 0,
+            "speculative_cycles": 1,
+            "reconciled": True,
+            "reconciled_reasons": [],
+        },
+        "selected_depth_histogram": {"2": 1},
+        "fallback_event_counts": {},
+        "fallback_event_total": 0,
+        "execution": {
+            "activation_reason": None,
+            "provider_readiness": None,
+            "provider_state_present": None,
+            "provider_decline_reason": None,
+            "plan_group_rows": None,
+            "plan_ar_only": None,
+            "plan_reason": None,
+        },
+        "first_fallback_position": None,
         "decision_reason": "resident_dynamic_mtp",
         "requested_route": "speculative_mtp_auto",
         "selection_reason": "physical_group_not_qualified",
@@ -846,9 +1022,12 @@ def test_metrics_reports_mtp_serving_and_draft_acceptance() -> None:
 
     after = client.get("/metrics")
     assert _metric_value(after.text, "hipengine_mtp_requests_total") == 1
-    assert _metric_value(after.text, "hipengine_mtp_draft_tokens_accepted_total") == 4
-    assert _metric_value(after.text, "hipengine_mtp_draft_tokens_rejected_total") == 2
-    assert _metric_value(after.text, "hipengine_mtp_draft_acceptance_rate") == 4 / 6
+    # The two rows report their own block, not the legacy scalar counters beside
+    # it: one depth-3 cycle per row that accepted none of its three drafts, so
+    # the rejected total is 6 where the legacy mirror claims 2.
+    assert _metric_value(after.text, "hipengine_mtp_draft_tokens_accepted_total") == 0
+    assert _metric_value(after.text, "hipengine_mtp_draft_tokens_rejected_total") == 6
+    assert _metric_value(after.text, "hipengine_mtp_draft_acceptance_rate") == 0
 
 
 def test_mtp_summary_refuses_a_split_that_only_reconciles_arithmetically() -> None:

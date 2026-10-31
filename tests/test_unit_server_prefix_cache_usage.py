@@ -112,9 +112,14 @@ def test_usage_reports_cache_reuse_beside_mtp_acceptance() -> None:
         text="reply",
         telemetry=GenerationTelemetry.from_decode_counts(
             prompt_tokens=4,
-            generated_tokens=2,
-            timing={"mtp_generated_draft_tokens": 4.0, "mtp_accepted_draft_tokens": 3.0},
-            diagnostics=_prefix(2),
+            generated_tokens=5,
+            timing={"mtp_generated_draft_tokens": 99.0, "mtp_accepted_draft_tokens": 88.0},
+            diagnostics={**_prefix(2), "specdec2_mtp2": {
+                "requested_budget": 4, "candidate_budget": 4, "cycles": 1,
+                "generated_draft_tokens": 4, "accepted_draft_tokens": 3,
+                "selected_depth_histogram": {"4": 1}, "mtp_output_tokens": 4,
+                "ar_output_tokens_in_cycles": 0,
+            }},
         ),
     )
 
