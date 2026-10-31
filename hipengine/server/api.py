@@ -155,6 +155,28 @@ from hipengine.server.session_snapshots import (
     SessionSnapshotModel,
 )
 from hipengine.server.model_lifecycle import ModelBuildSpec, ModelLifecycle
+# SSE frame projection and stream accounting live in their own owner; live
+# sequencing, cancellation, backpressure, and finish/error policy stay here.
+from hipengine.server.stream_events import (
+    TOOL_CALL_ARGUMENT_STREAM_CHARS,
+    StreamTimingSource,
+    StreamTimingTracker,
+    StreamTokenAccounting,
+    chat_delta,
+    chat_done,
+    chat_error,
+    chat_role,
+    chat_tool_call,
+    chat_usage,
+    completion_delta,
+    completion_done,
+    completion_error,
+    completion_usage,
+    stream_chunk_backend_timing,
+    stream_chunk_with_phase,
+    stream_usage_token_payload,
+    tool_call_argument_chunks,
+)
 # Readiness payload composition takes a normalized snapshot; engine/service reads,
 # readiness state and queue getters stay in this module.
 from hipengine.server.readiness import (
@@ -184,7 +206,6 @@ _LOGGER = logging.getLogger("uvicorn.error")
 _SOLO_DISPATCH_SLICE_SECONDS = 0.002
 _THINKING_START_MARKER = "<think>"
 _THINKING_CLOSE_MARKER = "</think>"
-_TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
 _LOGPROB_OMISSION_REASON = "backend_omitted_logprob"
 _PROMPT_LOGPROB_OMISSION_REASON = "prompt_logprob_unavailable"
 _CONTINUATION_TTL_SECONDS = 15 * 60
@@ -1399,7 +1420,7 @@ def _tools_capability(
         "parallel_tool_calls_requires_opt_in": False,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
-        "streaming_argument_chunk_chars": _TOOL_CALL_ARGUMENT_STREAM_CHARS,
+        "streaming_argument_chunk_chars": TOOL_CALL_ARGUMENT_STREAM_CHARS,
         "no_tool_start_suppression": tokenizer_backed,
         "required_tool_start_forcing": tokenizer_backed,
         "required_tool_start_forcing_scope": (
@@ -3332,7 +3353,7 @@ def _generation_output_kv_request_bytes(details: Sequence[Any]) -> int | None:
 
 
 def _stream_timing_summary(
-    stream_started_at: "_StreamTimingSource",
+    stream_started_at: "StreamTimingSource",
     *,
     usage: Mapping[str, Any] | None = None,
     backend_timing: Mapping[str, float] | None = None,
@@ -3340,7 +3361,7 @@ def _stream_timing_summary(
     """Server-observed stream timing merged with backend phase timing."""
 
     timing: dict[str, float] = {}
-    if isinstance(stream_started_at, _StreamTimingTracker):
+    if isinstance(stream_started_at, StreamTimingTracker):
         # Final usage updates total accounting, but cannot invent a token-delivery
         # timestamp. The decode interval is fixed by token-bearing events.
         timing.update(
@@ -6531,7 +6552,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
         stream_started_at = (
-            _StreamTimingTracker.start()
+            StreamTimingTracker.start()
             if _stream_timing_enabled(include_hipengine, config)
             else time.perf_counter()
         )
@@ -6678,7 +6699,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     requested_model=request.model,
                     engine=engine,
                 )
-            token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
+            token_accounting = _stream_token_accounting(engine) if include_hipengine else None
             literal_stops = _LiteralStopStream(request.stop)
             pending_stream_logprobs: list[TokenLogprob] = []
             async for token in _iterate_with_literal_stops(
@@ -6718,11 +6739,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     else None
                 )
                 token_payload = (
-                    token_accounting.observe_stream_chunk("answer", stream_chunk)
+                    token_accounting.observe(
+                        "answer",
+                        stream_chunk.text,
+                        cumulative_tokens=_stream_chunk_generated_token_total(stream_chunk),
+                    )
                     if token_accounting is not None
                     else None
                 )
-                yield _completion_stream_delta(
+                yield completion_delta(
                     response_id,
                     created,
                     config.model_id,
@@ -6789,7 +6814,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if _stream_include_usage(request):
                 # A cancelled stream still reports what it delivered, so a client
                 # can detect the truncation and account for the tokens it saw.
-                yield _completion_stream_usage(
+                yield completion_usage(
                     response_id,
                     created,
                     config.model_id,
@@ -6994,7 +7019,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 timing=_stream_timing_summary(
                     stream_started_at,
                     usage=usage,
-                    backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
+                    backend_timing=stream_chunk_backend_timing(last_stream_chunk),
                 ),
                 kv_pool=await _kv_pool_stream_payload_async(engine),
                 kv_request_bytes=_telemetry_kv_request_bytes(
@@ -7003,7 +7028,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         cache_action = _session_cache_action(request)
         final_tokens = (
-            _stream_usage_token_payload(usage, token_accounting)
+            stream_usage_token_payload(usage, token_accounting)
             if include_hipengine and token_accounting is not None
             else None
         )
@@ -7033,7 +7058,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             kv_pool=final_kv_pool,
         )
         if _stream_include_usage(request):
-            yield _completion_stream_usage(
+            yield completion_usage(
                 response_id,
                 created,
                 config.model_id,
@@ -8036,12 +8061,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if request.stream:
             include_hipengine = _stream_include_hipengine(request)
             stream_started_at = (
-                _StreamTimingTracker.start()
+                StreamTimingTracker.start()
                 if _stream_timing_enabled(include_hipengine, config)
                 else time.perf_counter()
             )
             engine = getattr(app.state, "hipengine_llm", None)
-            token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
+            token_accounting = _stream_token_accounting(engine) if include_hipengine else None
             return StreamingResponse(
                 _completion_stream(
                     response_id,
@@ -8621,7 +8646,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
         stream_started_at = (
-            _StreamTimingTracker.start()
+            StreamTimingTracker.start()
             if _stream_timing_enabled(include_hipengine, config)
             else time.perf_counter()
         )
@@ -8686,7 +8711,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             engine=engine,
                         )
                     token_accounting_by_index = [
-                        _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
+                        _stream_token_accounting(engine) if include_hipengine else None
                         for _index in range(n)
                     ]
                     splitters = [
@@ -8701,7 +8726,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     full_text = ["" for _index in range(n)]
                     last_stream_chunks: list[GenerationStreamChunk | None] = [None for _index in range(n)]
                     for index in range(n):
-                        yield _chat_stream_role(
+                        yield chat_role(
                             response_id,
                             created,
                             config.model_id,
@@ -8746,7 +8771,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                                 if token_accounting is not None
                                 else None
                             )
-                            yield _chat_stream_delta(
+                            yield chat_delta(
                                 response_id,
                                 created,
                                 config.model_id,
@@ -8754,7 +8779,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                                 part.text,
                                 index=row_index,
                                 tokens=token_payload,
-                                stream_chunk=_stream_chunk_with_phase(stream_chunk, phase),
+                                stream_chunk=stream_chunk_with_phase(stream_chunk, phase),
                                 include_hipengine=include_hipengine,
                                 stream_started_at=stream_started_at,
                                 routing=routing_metadata,
@@ -8770,7 +8795,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                                 else None
                             )
                             final_stream_chunk = last_stream_chunks[index]
-                            yield _chat_stream_delta(
+                            yield chat_delta(
                                 response_id,
                                 created,
                                 config.model_id,
@@ -8781,7 +8806,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                                 stream_chunk=(
                                     None
                                     if final_stream_chunk is None
-                                    else _stream_chunk_with_phase(final_stream_chunk, phase)
+                                    else stream_chunk_with_phase(final_stream_chunk, phase)
                                 ),
                                 include_hipengine=include_hipengine,
                                 stream_started_at=stream_started_at,
@@ -8798,7 +8823,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             timing=_stream_timing_summary(
                                 stream_started_at,
                                 usage=usage,
-                                backend_timing=_stream_chunk_backend_timing(
+                                backend_timing=stream_chunk_backend_timing(
                                     last_stream_chunks[0] if last_stream_chunks else None
                                 ),
                             ),
@@ -8816,7 +8841,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         token_accounting = token_accounting_by_index[index]
                         row_usage = _usage(engine, (prompts[index],), (text,))
                         final_tokens = (
-                            _stream_usage_token_payload(row_usage, token_accounting)
+                            stream_usage_token_payload(row_usage, token_accounting)
                             if include_hipengine and token_accounting is not None
                             else None
                         )
@@ -8840,7 +8865,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             kv_pool=final_kv_pool,
                         )
                     if _stream_include_usage(request):
-                        yield _chat_stream_usage(
+                        yield chat_usage(
                             response_id,
                             created,
                             config.model_id,
@@ -8971,11 +8996,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     else None
                 )
                 token_accounting = (
-                    _StreamTokenAccounting.for_engine(getattr(app.state, "hipengine_llm", None))
+                    _stream_token_accounting(getattr(app.state, "hipengine_llm", None))
                     if include_hipengine
                     else None
                 )
-                yield _chat_stream_role(
+                yield chat_role(
                     response_id,
                     created,
                     config.model_id,
@@ -9126,7 +9151,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ):
                         yield event
             if _stream_include_usage(request):
-                yield _chat_stream_usage(
+                yield chat_usage(
                     response_id,
                     created,
                     config.model_id,
@@ -9221,7 +9246,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
         stream_started_at = (
-            _StreamTimingTracker.start()
+            StreamTimingTracker.start()
             if _stream_timing_enabled(include_hipengine, config)
             else time.perf_counter()
         )
@@ -9333,14 +9358,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         )
                     call = live_tool_calls[tool_index]
                     live_tool_calls[tool_index] = replace(call, arguments=call.arguments + fragment)
-                    yield _chat_stream_tool_call(
+                    yield chat_tool_call(
                         response_id, created, config.model_id, live_tool_calls[tool_index],
                         tool_index=tool_index, argument_chunk=fragment, include_name=bool(name),
                         tokens=tokens, stream_chunk=source_chunk, include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at, routing=routing_metadata,
                     )
                 else:
-                    yield _chat_stream_delta(
+                    yield chat_delta(
                         response_id, created, config.model_id, field, fragment,
                         tokens=tokens, stream_chunk=source_chunk, include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at, routing=routing_metadata, phase=phase,
@@ -9449,7 +9474,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     requested_model=request.model,
                     engine=engine,
                 )
-            token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
+            token_accounting = _stream_token_accounting(engine) if include_hipengine else None
             constraint = sampling.tool_call_constraint
             if buffer_tool_output and constraint is not None and constraint.envelope == "xml":
                 from hipengine.server.tool_stream import XMLToolStream
@@ -9460,7 +9485,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         request.tools, tool_name=name, key=key,
                     ),
                 )
-            yield _chat_stream_role(
+            yield chat_role(
                 response_id,
                 created,
                 config.model_id,
@@ -9541,10 +9566,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         else None
                     )
                     token_payload = (
-                        token_accounting.observe_stream_chunk(phase, phase_stream_chunk)
-                        if token_accounting is not None else None
+                        token_accounting.observe(
+                            phase,
+                            phase_stream_chunk.text,
+                            cumulative_tokens=_stream_chunk_generated_token_total(
+                                phase_stream_chunk
+                            ),
+                        )
+                        if token_accounting is not None
+                        else None
                     )
-                    yield _chat_stream_delta(
+                    yield chat_delta(
                         response_id,
                         created,
                         config.model_id,
@@ -9591,12 +9623,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         else None
                     )
                     token_payload = (
-                        token_accounting.observe_stream_chunk(phase, finish_stream_chunk)
+                        token_accounting.observe(
+                            phase,
+                            finish_stream_chunk.text,
+                            cumulative_tokens=_stream_chunk_generated_token_total(
+                                finish_stream_chunk
+                            ),
+                        )
                         if token_accounting is not None and finish_stream_chunk is not None
                         else token_accounting.observe(phase, part.text)
-                        if token_accounting is not None else None
+                        if token_accounting is not None
+                        else None
                     )
-                    yield _chat_stream_delta(
+                    yield chat_delta(
                         response_id,
                         created,
                         config.model_id,
@@ -9666,7 +9705,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if _stream_include_usage(request):
                 # A cancelled stream still reports what it delivered, so a client
                 # can detect the truncation and account for the tokens it saw.
-                yield _chat_stream_usage(
+                yield chat_usage(
                     response_id,
                     created,
                     config.model_id,
@@ -9871,7 +9910,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 timing=_stream_timing_summary(
                     stream_started_at,
                     usage=usage,
-                    backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
+                    backend_timing=stream_chunk_backend_timing(last_stream_chunk),
                 ),
                 kv_pool=await _kv_pool_stream_payload_async(engine),
                 kv_request_bytes=_telemetry_kv_request_bytes(
@@ -9880,7 +9919,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         cache_action = _session_cache_action(request)
         final_tokens = (
-            _stream_usage_token_payload(usage, token_accounting)
+            stream_usage_token_payload(usage, token_accounting)
             if include_hipengine and token_accounting is not None
             else None
         )
@@ -10052,7 +10091,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 kv_pool=final_kv_pool,
             )
         if _stream_include_usage(request):
-            yield _chat_stream_usage(
+            yield chat_usage(
                 response_id,
                 created,
                 config.model_id,
@@ -16425,7 +16464,7 @@ def _live_splitter_stream_chunk_for_delta(
         return source_chunk
     if fallback_chunk is None:
         return None
-    return _stream_chunk_with_phase(fallback_chunk, phase)
+    return stream_chunk_with_phase(fallback_chunk, phase)
 
 
 def _trim_live_splitter_source_chunks(
@@ -16476,7 +16515,7 @@ def _live_splitter_span_stream_chunk(
         telemetry=tail_chunk.telemetry,
         generated_token_ids=tail_chunk.generated_token_ids,
     )
-    return _stream_chunk_with_phase(chunk, phase)
+    return stream_chunk_with_phase(chunk, phase)
 
 
 def _unsupported_stream_logprobs_error() -> OpenAIHTTPError:
@@ -17606,256 +17645,165 @@ def _stream_chunk_generated_token_total(chunk: GenerationStreamChunk) -> int | N
     return _telemetry_generated_token_count(chunk.telemetry)
 
 
-@dataclass(slots=True)
-class _StreamTokenAccounting:
-    counter: Any
-    streamed_tokens: int = 0
-    reasoning_tokens: int = 0
-    answer_tokens: int = 0
-    tool_call_tokens: int = 0
-    structured_tokens: int = 0
-
-    @classmethod
-    def for_engine(cls, engine: Any) -> "_StreamTokenAccounting | None":
-        counter = getattr(engine, "count_tokens", None)
-        return cls(counter) if callable(counter) else None
-
-    def observe(
-        self,
-        phase: str,
-        text: str,
-        *,
-        cumulative_tokens: int | None = None,
-    ) -> dict[str, int]:
-        if cumulative_tokens is None or int(cumulative_tokens) < self.streamed_tokens:
-            delta_tokens = _safe_count(self.counter, text)
-            self.streamed_tokens += delta_tokens
-        else:
-            exact_total = max(0, int(cumulative_tokens))
-            delta_tokens = exact_total - self.streamed_tokens
-            self.streamed_tokens = exact_total
-        phase_name = str(phase)
-        if phase_name == "think":
-            self.reasoning_tokens += delta_tokens
-        elif phase_name == "tool_call":
-            self.tool_call_tokens += delta_tokens
-        elif phase_name == "structured":
-            self.structured_tokens += delta_tokens
-        else:
-            self.answer_tokens += delta_tokens
-        return self.snapshot(delta_tokens=delta_tokens)
-
-    def observe_stream_chunk(
-        self,
-        phase: str,
-        chunk: GenerationStreamChunk,
-    ) -> dict[str, int]:
-        return self.observe(
-            phase,
-            chunk.text,
-            cumulative_tokens=_stream_chunk_generated_token_total(chunk),
-        )
-
-    def snapshot(self, *, delta_tokens: int | None = None) -> dict[str, int]:
-        payload: dict[str, int] = {"streamed_tokens": self.streamed_tokens}
-        if delta_tokens is not None:
-            payload["delta_tokens"] = max(0, int(delta_tokens))
-        if self.reasoning_tokens:
-            payload["reasoning_tokens"] = self.reasoning_tokens
-        if self.answer_tokens:
-            payload["answer_tokens"] = self.answer_tokens
-        if self.tool_call_tokens:
-            payload["tool_call_tokens"] = self.tool_call_tokens
-        if self.structured_tokens:
-            payload["structured_tokens"] = self.structured_tokens
-        return payload
+def _stream_token_accounting(engine: Any) -> StreamTokenAccounting | None:
+    counter = getattr(engine, "count_tokens", None)
+    if not callable(counter):
+        return None
+    return StreamTokenAccounting(lambda text: _safe_count(counter, text))
 
 
-@dataclass(slots=True)
-class _StreamTimingTracker:
-    started_at: float
-    first_token_at: float | None = None
-    first_chunk_tokens: int | None = None
-    last_token_at: float | None = None
-    last_chunk_tokens: int = 0
-    observed_tokens: int = 0
-    buffered: bool = False
-
-    @classmethod
-    def start(cls) -> "_StreamTimingTracker":
-        return cls(started_at=time.perf_counter())
-
-    def observe(
-        self,
-        *,
-        event: str,
-        token_event: bool = False,
-        tokens: Mapping[str, int] | None = None,
-        usage: Mapping[str, int] | None = None,
-    ) -> dict[str, float]:
-        now = time.perf_counter()
-        token_total = _stream_timing_token_total(tokens=tokens, usage=usage)
-        if token_event:
-            if self.first_token_at is None:
-                self.first_token_at = now
-                self.first_chunk_tokens = token_total if token_total > 0 else None
-            if token_total > self.last_chunk_tokens:
-                self.last_token_at = now
-                self.last_chunk_tokens = token_total
-        if token_total > self.observed_tokens:
-            self.observed_tokens = token_total
-        return self.snapshot(now=now, event=event)
-
-    def snapshot(self, *, now: float, event: str) -> dict[str, float]:
-        elapsed_s = max(0.0, now - self.started_at)
-        payload: dict[str, float] = {"elapsed_ms": round(elapsed_s * 1000.0, 3)}
-        if self.first_token_at is None:
-            return payload
-        ttft_s = max(0.0, self.first_token_at - self.started_at)
-        payload["ttft_ms"] = round(ttft_s * 1000.0, 3)
-        if str(event) in {"done", "usage"} and not self.buffered and self.last_token_at is not None:
-            # The interval ends at the last token-bearing event, not at the
-            # final SSE flush. Tokens in the first chunk precede this interval.
-            decode_elapsed_s = max(0.0, self.last_token_at - self.first_token_at)
-            payload["decode_elapsed_ms"] = round(decode_elapsed_s * 1000.0, 3)
-            if self.first_chunk_tokens is not None:
-                decode_tokens = self.last_chunk_tokens - self.first_chunk_tokens
-                if decode_tokens > 0 and decode_elapsed_s > 0:
-                    payload["decode_tokens_per_second"] = round(decode_tokens / decode_elapsed_s, 3)
-        return payload
-
-
-def _observe_stream_source(
-    tracker: "_StreamTimingSource", chunk: GenerationStreamChunk | None,
-) -> None:
-    """A completed first backend chunk is buffered, even if split into channels."""
-    if not isinstance(tracker, _StreamTimingTracker) or tracker.first_token_at is not None or chunk is None:
-        return
-    if chunk.finish_details is not None or (
-        chunk.telemetry is not None and chunk.telemetry.decode_state.phase == "done"
-    ):
-        tracker.buffered = True
-
-
-_StreamTimingSource = float | _StreamTimingTracker | None
-
-
-def _stream_timing_token_total(
+def _completion_stream_done(
+    response_id: str,
+    created: int,
+    model: str,
+    finish_reason: str,
     *,
-    tokens: Mapping[str, int] | None = None,
-    usage: Mapping[str, int] | None = None,
-) -> int:
-    for source in (tokens, usage):
-        if source is None:
-            continue
-        for key in ("streamed_tokens", "completion_tokens"):
-            raw_value = source.get(key)
-            if isinstance(raw_value, int) and raw_value > 0:
-                return raw_value
-    return 0
-
-
-def _stream_usage_token_payload(
-    usage: Mapping[str, int],
-    accounting: _StreamTokenAccounting | None,
-) -> dict[str, int]:
-    payload = {
-        "prompt_tokens": max(0, int(usage.get("prompt_tokens", 0))),
-        "completion_tokens": max(0, int(usage.get("completion_tokens", 0))),
-        "total_tokens": max(0, int(usage.get("total_tokens", 0))),
-    }
-    if accounting is not None:
-        payload.update(accounting.snapshot())
-    return payload
-
-
-def _stream_hipengine_payload(
-    event: str,
-    *,
-    stream_started_at: _StreamTimingSource = None,
-    usage: Mapping[str, int] | None = None,
-    tokens: Mapping[str, int] | None = None,
-    token_event: bool = False,
-    backend_timing: Mapping[str, float] | None = None,
-    routing: Mapping[str, Any] | None = None,
-    kv_pool: Mapping[str, float] | None = None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {"metadata_version": 1, "event": str(event)}
-    if stream_started_at is not None:
-        if isinstance(stream_started_at, _StreamTimingTracker):
-            payload["timing"] = stream_started_at.observe(
-                event=event,
-                token_event=token_event,
-                tokens=tokens,
-                usage=usage,
-            )
-        else:
-            payload["timing"] = {
-                "elapsed_ms": round(max(0.0, (time.perf_counter() - stream_started_at) * 1000.0), 3)
-            }
-    backend_timing_payload = _backend_stream_timing_payload(backend_timing)
-    if backend_timing_payload:
-        payload.setdefault("timing", {}).update(backend_timing_payload)
-    if usage is not None:
-        payload["usage"] = dict(usage)
-    if routing is not None:
-        payload["routing"] = dict(routing)
-    if kv_pool is not None:
-        payload["kv_pool"] = dict(kv_pool)
-    return payload
-
-
-def _backend_stream_timing_payload(timing: Mapping[str, float] | None) -> dict[str, float]:
-    if not timing:
-        return {}
-    payload: dict[str, float] = {}
-    for raw_key, raw_value in timing.items():
-        key = str(raw_key).strip()
-        if not key:
-            continue
-        value = float(raw_value)
-        if not math.isfinite(value):
-            continue
-        payload[key if key.startswith("backend_") else f"backend_{key}"] = value
-    return payload
-
-
-def _stream_chunk_backend_timing(stream_chunk: GenerationStreamChunk | None) -> Mapping[str, float] | None:
-    telemetry = None if stream_chunk is None else stream_chunk.telemetry
-    return None if telemetry is None else telemetry.timing
-
-
-def _choice_hipengine_payload(
-    phase: str,
-    *,
+    index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
-    include_generated_token_ids: bool = False,
-) -> dict[str, Any]:
-    telemetry = None if stream_chunk is None else stream_chunk.telemetry
-    payload: dict[str, Any] = {"phase": str(phase)}
-    if telemetry is not None:
-        payload.update(telemetry.to_json_dict())
-        payload["phase"] = payload.get("decode_state", {}).get("phase", str(phase))
-    if finish_details is not None:
-        payload["finish_details"] = dict(finish_details)
-    if (
-        include_generated_token_ids
-        and stream_chunk is not None
-        and stream_chunk.generated_token_ids is not None
-    ):
-        payload["generated_token_ids"] = list(stream_chunk.generated_token_ids)
-        payload["generated_tokens"] = len(stream_chunk.generated_token_ids)
-    if tokens is not None:
-        token_payload = {str(key): max(0, int(value)) for key, value in tokens.items()}
-        payload["tokens"] = token_payload
-        if "decode_state" not in payload:
-            payload["decode_state"] = DecodeState.from_stream_tokens(
-                phase=phase,
-                tokens=token_payload,
-            ).to_json_dict()
-    return payload
+    include_hipengine: bool = False,
+    extra_hipengine: Mapping[str, Any] | None = None,
+    stream_started_at: StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
+    phase: str = "done",
+) -> str:
+    finish_payload = (
+        _finish_details_payload(None, finish_reason)
+        if finish_details is None
+        else finish_details
+    )
+    return completion_done(
+        response_id,
+        created,
+        model,
+        finish_reason,
+        finish_details=finish_payload,
+        index=index,
+        tokens=tokens,
+        stream_chunk=stream_chunk,
+        include_hipengine=include_hipengine,
+        extra_hipengine=extra_hipengine,
+        stream_started_at=stream_started_at,
+        routing=routing,
+        kv_pool=kv_pool,
+        phase=phase,
+    )
+
+
+def _completion_stream_error(
+    response_id: str,
+    created: int,
+    model: str,
+    message: str,
+    *,
+    status_code: int = 500,
+    code: str | None = None,
+    param: str | None = None,
+    error_type: str = "server_error",
+    finish_details: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
+) -> str:
+    error = _error_payload(
+        message=message,
+        error_type=error_type,
+        code=code,
+        param=param,
+        status_code=status_code,
+        finish_details=finish_details,
+        extra=extra,
+    )
+    return completion_error(
+        response_id,
+        created,
+        model,
+        error=error,
+        finish_details=finish_details,
+        include_hipengine=include_hipengine,
+        stream_started_at=stream_started_at,
+        routing=routing,
+    )
+
+
+def _chat_stream_done(
+    response_id: str,
+    created: int,
+    model: str,
+    finish_reason: str,
+    *,
+    index: int = 0,
+    finish_details: Mapping[str, Any] | None = None,
+    tokens: Mapping[str, int] | None = None,
+    stream_chunk: GenerationStreamChunk | None = None,
+    include_hipengine: bool = False,
+    extra_hipengine: Mapping[str, Any] | None = None,
+    stream_started_at: StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, float] | None = None,
+    phase: str = "done",
+) -> str:
+    finish_payload = (
+        _finish_details_payload(None, finish_reason)
+        if finish_details is None
+        else finish_details
+    )
+    return chat_done(
+        response_id,
+        created,
+        model,
+        finish_reason,
+        finish_details=finish_payload,
+        index=index,
+        tokens=tokens,
+        stream_chunk=stream_chunk,
+        include_hipengine=include_hipengine,
+        extra_hipengine=extra_hipengine,
+        stream_started_at=stream_started_at,
+        routing=routing,
+        kv_pool=kv_pool,
+        phase=phase,
+    )
+
+
+def _chat_stream_error(
+    response_id: str,
+    created: int,
+    model: str,
+    message: str,
+    *,
+    status_code: int = 500,
+    code: str | None = None,
+    param: str | None = None,
+    error_type: str = "server_error",
+    finish_details: Mapping[str, Any] | None = None,
+    extra: Mapping[str, Any] | None = None,
+    include_hipengine: bool = False,
+    stream_started_at: StreamTimingSource = None,
+    routing: Mapping[str, Any] | None = None,
+) -> str:
+    error = _error_payload(
+        message=message,
+        error_type=error_type,
+        code=code,
+        param=param,
+        status_code=status_code,
+        finish_details=finish_details,
+        extra=extra,
+    )
+    return chat_error(
+        response_id,
+        created,
+        model,
+        error=error,
+        finish_details=finish_details,
+        include_hipengine=include_hipengine,
+        stream_started_at=stream_started_at,
+        routing=routing,
+    )
 
 
 def _attach_choice_telemetry(choice: dict[str, Any], detail: GenerationOutput | None) -> None:
@@ -17885,226 +17833,6 @@ def _attach_choice_telemetry(choice: dict[str, Any], detail: GenerationOutput | 
     choice["hipengine"] = payload
 
 
-def _attach_stream_hipengine(
-    payload: dict[str, Any],
-    *,
-    include_hipengine: bool,
-    event: str,
-    stream_started_at: _StreamTimingSource,
-    usage: Mapping[str, int] | None = None,
-    tokens: Mapping[str, int] | None = None,
-    token_event: bool = False,
-    backend_timing: Mapping[str, float] | None = None,
-    routing: Mapping[str, Any] | None = None,
-    kv_pool: Mapping[str, float] | None = None,
-) -> dict[str, Any]:
-    # A tracker is also created when only the --info summary needs it, so it has
-    # to be fed even when the client did not request stream metadata; the
-    # payload itself stays opt-in.
-    if include_hipengine or isinstance(stream_started_at, _StreamTimingTracker):
-        hipengine_payload = _stream_hipengine_payload(
-            event,
-            stream_started_at=stream_started_at,
-            usage=usage,
-            tokens=tokens,
-            token_event=token_event,
-            backend_timing=backend_timing,
-            routing=routing,
-            kv_pool=kv_pool,
-        )
-        if include_hipengine:
-            payload["hipengine"] = hipengine_payload
-    return payload
-
-
-def _completion_stream_delta(
-    response_id: str,
-    created: int,
-    model: str,
-    text: str,
-    *,
-    index: int = 0,
-    logprobs: Mapping[str, Any] | None = None,
-    tokens: Mapping[str, int] | None = None,
-    stream_chunk: GenerationStreamChunk | None = None,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-    phase: str = "answer",
-) -> str:
-    _observe_stream_source(stream_started_at, stream_chunk)
-    choice = {
-        "text": text,
-        "index": int(index),
-        "logprobs": None if logprobs is None else dict(logprobs),
-        "finish_reason": None,
-    }
-    if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload(phase, tokens=tokens, stream_chunk=stream_chunk)
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "text_completion",
-                "created": created,
-                "model": model,
-                "choices": [choice],
-            },
-            include_hipengine=include_hipengine,
-            event="delta",
-            stream_started_at=stream_started_at,
-            tokens=tokens,
-            token_event=bool(text),
-            backend_timing=_stream_chunk_backend_timing(stream_chunk),
-            routing=routing,
-        )
-    )
-
-
-def _completion_stream_done(
-    response_id: str,
-    created: int,
-    model: str,
-    finish_reason: str,
-    *,
-    index: int = 0,
-    finish_details: Mapping[str, Any] | None = None,
-    tokens: Mapping[str, int] | None = None,
-    stream_chunk: GenerationStreamChunk | None = None,
-    include_hipengine: bool = False,
-    extra_hipengine: Mapping[str, Any] | None = None,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-    kv_pool: Mapping[str, float] | None = None,
-    phase: str = "done",
-) -> str:
-    finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
-    choice = {
-        "text": "",
-        "index": int(index),
-        "logprobs": None,
-        "finish_reason": finish_reason,
-        "finish_details": finish_payload,
-    }
-    if include_hipengine:
-        hipengine_payload = _choice_hipengine_payload(
-            phase,
-            finish_details=finish_payload,
-            tokens=tokens,
-            stream_chunk=stream_chunk,
-            include_generated_token_ids=True,
-        )
-        if extra_hipengine is not None:
-            hipengine_payload.update(deepcopy(dict(extra_hipengine)))
-        choice["hipengine"] = hipengine_payload
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "text_completion",
-                "created": created,
-                "model": model,
-                "choices": [choice],
-            },
-            include_hipengine=include_hipengine,
-            event="done",
-            stream_started_at=stream_started_at,
-            tokens=tokens,
-            backend_timing=_stream_chunk_backend_timing(stream_chunk),
-            routing=routing,
-            kv_pool=kv_pool,
-        )
-    )
-
-
-def _completion_stream_usage(
-    response_id: str,
-    created: int,
-    model: str,
-    usage: Mapping[str, int],
-    *,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-    kv_pool: Mapping[str, float] | None = None,
-) -> str:
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "text_completion",
-                "created": created,
-                "model": model,
-                "choices": [],
-                "usage": dict(usage),
-            },
-            include_hipengine=include_hipengine,
-            event="usage",
-            stream_started_at=stream_started_at,
-            usage=usage,
-            routing=routing,
-            kv_pool=kv_pool,
-        )
-    )
-
-
-def _completion_stream_error(
-    response_id: str,
-    created: int,
-    model: str,
-    message: str,
-    *,
-    status_code: int = 500,
-    code: str | None = None,
-    param: str | None = None,
-    error_type: str = "server_error",
-    finish_details: Mapping[str, Any] | None = None,
-    extra: Mapping[str, Any] | None = None,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-) -> str:
-    choice: dict[str, Any] = {
-        "text": "",
-        "index": 0,
-        "logprobs": None,
-        "finish_reason": "error",
-    }
-    error = _error_payload(
-        message=message,
-        error_type=error_type,
-        code=code,
-        param=param,
-        status_code=status_code,
-        finish_details=finish_details,
-        extra=extra,
-    )
-    if finish_details is not None:
-        details = dict(finish_details)
-        choice["finish_details"] = details
-    if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload(
-            "done",
-            finish_details=choice.get("finish_details"),
-        )
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "text_completion",
-                "created": created,
-                "model": model,
-                "choices": [choice],
-                "error": error,
-            },
-            include_hipengine=include_hipengine,
-            event="error",
-            stream_started_at=stream_started_at,
-            routing=routing,
-        )
-    )
-
-
 def _completion_stream(
     response_id: str,
     created: int,
@@ -18116,15 +17844,15 @@ def _completion_stream(
     generation_shape: Mapping[str, Any] | None = None,
     thinking_policy: str = "hard",
     usage: Mapping[str, int] | None = None,
-    token_accounting: _StreamTokenAccounting | None = None,
+    token_accounting: StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
+    stream_started_at: StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
     scheduler_token_chunks: Sequence[Mapping[str, Any]] | None = None,
 ) -> Iterator[str]:
-    if isinstance(stream_started_at, _StreamTimingTracker):
+    if isinstance(stream_started_at, StreamTimingTracker):
         stream_started_at.buffered = True
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     details_by_index = (
@@ -18147,11 +17875,15 @@ def _completion_stream(
                 if stream_chunk is None:
                     continue
                 token_payload = (
-                    token_accounting.observe_stream_chunk(phase, stream_chunk)
+                    token_accounting.observe(
+                        phase,
+                        stream_chunk.text,
+                        cumulative_tokens=_stream_chunk_generated_token_total(stream_chunk),
+                    )
                     if include_hipengine and token_accounting is not None and len(choices) == 1
                     else None
                 )
-                yield _completion_stream_delta(
+                yield completion_delta(
                     response_id,
                     created,
                     model,
@@ -18177,7 +17909,7 @@ def _completion_stream(
             if include_hipengine and token_accounting is not None and len(choices) == 1
             else None
         )
-        yield _completion_stream_delta(
+        yield completion_delta(
             response_id,
             created,
             model,
@@ -18197,7 +17929,7 @@ def _completion_stream(
             phase=phase,
         )
     final_tokens = (
-        _stream_usage_token_payload(usage, token_accounting)
+        stream_usage_token_payload(usage, token_accounting)
         if include_hipengine and usage is not None and len(choices) == 1
         else None
     )
@@ -18224,7 +17956,7 @@ def _completion_stream(
             phase=done_phase,
         )
     if usage is not None:
-        yield _completion_stream_usage(
+        yield completion_usage(
             response_id,
             created,
             model,
@@ -18259,24 +17991,6 @@ def _scheduler_payload_stream_chunk(payload: Mapping[str, Any]) -> GenerationStr
     if not isinstance(raw_chunk, Mapping):
         return None
     return _coerce_generation_stream_chunk(raw_chunk)
-
-
-def _stream_chunk_with_phase(
-    stream_chunk: GenerationStreamChunk,
-    phase: str,
-) -> GenerationStreamChunk:
-    if stream_chunk.telemetry is None:
-        return stream_chunk
-    return GenerationStreamChunk(
-        text=stream_chunk.text,
-        token_logprobs=stream_chunk.token_logprobs,
-        finish_details=stream_chunk.finish_details,
-        telemetry=replace(
-            stream_chunk.telemetry,
-            decode_state=replace(stream_chunk.telemetry.decode_state, phase=phase),
-        ),
-        generated_token_ids=stream_chunk.generated_token_ids,
-    )
 
 
 def _stream_chunk_row_index(
@@ -18451,10 +18165,10 @@ def _chat_stream(
     text: str,
     finish_reason: str,
 ) -> Iterator[str]:
-    yield _chat_stream_role(response_id, created, model)
+    yield chat_role(response_id, created, model)
     split = _split_reasoning(text)
     if split.reasoning_content:
-        yield _chat_stream_delta(
+        yield chat_delta(
             response_id,
             created,
             model,
@@ -18462,151 +18176,9 @@ def _chat_stream(
             split.reasoning_content,
         )
     if split.content:
-        yield _chat_stream_delta(response_id, created, model, "content", split.content)
+        yield chat_delta(response_id, created, model, "content", split.content)
     yield _chat_stream_done(response_id, created, model, finish_reason)
     yield "data: [DONE]\n\n"
-
-
-def _chat_stream_role(
-    response_id: str,
-    created: int,
-    model: str,
-    *,
-    index: int = 0,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-) -> str:
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [{"index": int(index), "delta": {"role": "assistant"}, "finish_reason": None}],
-            },
-            include_hipengine=include_hipengine,
-            event="role",
-            stream_started_at=stream_started_at,
-            routing=routing,
-        )
-    )
-
-
-def _chat_stream_delta(
-    response_id: str,
-    created: int,
-    model: str,
-    field: str,
-    text: str,
-    *,
-    index: int = 0,
-    logprobs: Mapping[str, Any] | None = None,
-    reasoning_logprobs: Mapping[str, Any] | None = None,
-    tokens: Mapping[str, int] | None = None,
-    stream_chunk: GenerationStreamChunk | None = None,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-    phase: str | None = None,
-) -> str:
-    _observe_stream_source(stream_started_at, stream_chunk)
-    choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
-    if logprobs is not None:
-        choice["logprobs"] = dict(logprobs)
-    if include_hipengine:
-        choice_phase = phase if phase is not None else "think" if field == "reasoning_content" else "answer"
-        choice["hipengine"] = _choice_hipengine_payload(choice_phase, tokens=tokens, stream_chunk=stream_chunk)
-        if reasoning_logprobs is not None:
-            choice["hipengine"]["reasoning_logprobs"] = dict(reasoning_logprobs)
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [choice],
-            },
-            include_hipengine=include_hipengine,
-            event="delta",
-            stream_started_at=stream_started_at,
-            tokens=tokens,
-            token_event=bool(text),
-            backend_timing=_stream_chunk_backend_timing(stream_chunk),
-            routing=routing,
-        )
-    )
-
-
-def _chat_stream_tool_call(
-    response_id: str,
-    created: int,
-    model: str,
-    call: _ParsedToolCall,
-    *,
-    index: int = 0,
-    tool_index: int = 0,
-    argument_chunk: str | None = None,
-    include_name: bool = True,
-    logprobs: Mapping[str, Any] | None = None,
-    tokens: Mapping[str, int] | None = None,
-    stream_chunk: GenerationStreamChunk | None = None,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-) -> str:
-    _observe_stream_source(stream_started_at, stream_chunk)
-    function: dict[str, Any] = {"arguments": call.arguments if argument_chunk is None else str(argument_chunk)}
-    if include_name:
-        function["name"] = call.name
-    choice = {
-        "index": int(index),
-        "delta": {
-            "tool_calls": [
-                {
-                    "index": int(tool_index),
-                    "id": call.id,
-                    "type": "function",
-                    "function": function,
-                }
-            ]
-        },
-        "finish_reason": None,
-    }
-    if logprobs is not None:
-        choice["logprobs"] = dict(logprobs)
-    if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload("tool_call", tokens=tokens, stream_chunk=stream_chunk)
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [choice],
-            },
-            include_hipengine=include_hipengine,
-            event="tool_call",
-            stream_started_at=stream_started_at,
-            tokens=tokens,
-            token_event=True,
-            backend_timing=_stream_chunk_backend_timing(stream_chunk),
-            routing=routing,
-        )
-    )
-
-
-def _tool_call_argument_stream_chunks(arguments: str) -> tuple[str, ...]:
-    text = str(arguments)
-    if len(text) <= _TOOL_CALL_ARGUMENT_STREAM_CHARS:
-        return (text,)
-    return tuple(
-        text[start : start + _TOOL_CALL_ARGUMENT_STREAM_CHARS]
-        for start in range(0, len(text), _TOOL_CALL_ARGUMENT_STREAM_CHARS)
-    )
 
 
 def _chat_stream_parsed(
@@ -18620,16 +18192,16 @@ def _chat_stream_parsed(
     logprobs: Mapping[str, Any] | None = None,
     finish_details: Mapping[str, Any] | None = None,
     done_tokens: Mapping[str, int] | None = None,
-    token_accounting: _StreamTokenAccounting | None = None,
+    token_accounting: StreamTokenAccounting | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     final_hipengine: Mapping[str, Any] | None = None,
-    stream_started_at: _StreamTimingSource = None,
+    stream_started_at: StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
-    if isinstance(stream_started_at, _StreamTimingTracker):
+    if isinstance(stream_started_at, StreamTimingTracker):
         stream_started_at.buffered = True
     split = _split_reasoning(
         parsed.text,
@@ -18641,7 +18213,7 @@ def _chat_stream_parsed(
             if token_accounting is not None
             else None
         )
-        yield _chat_stream_delta(
+        yield chat_delta(
             response_id,
             created,
             model,
@@ -18666,7 +18238,7 @@ def _chat_stream_parsed(
             if token_accounting is not None
             else None
         )
-        yield _chat_stream_delta(
+        yield chat_delta(
             response_id,
             created,
             model,
@@ -18687,13 +18259,13 @@ def _chat_stream_parsed(
             phase=content_phase,
         )
     for tool_index, call in enumerate(parsed.tool_calls):
-        for chunk_index, argument_chunk in enumerate(_tool_call_argument_stream_chunks(call.arguments)):
+        for chunk_index, argument_chunk in enumerate(tool_call_argument_chunks(call.arguments)):
             token_payload = (
                 token_accounting.observe("tool_call", argument_chunk)
                 if token_accounting is not None
                 else None
             )
-            yield _chat_stream_tool_call(
+            yield chat_tool_call(
                 response_id,
                 created,
                 model,
@@ -18809,20 +18381,20 @@ def _chat_stream_scheduler_tool_call_chunks(
     *,
     index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
-    token_accounting: _StreamTokenAccounting | None = None,
+    token_accounting: StreamTokenAccounting | None = None,
     final_stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     final_hipengine: Mapping[str, Any] | None = None,
-    stream_started_at: _StreamTimingSource = None,
+    stream_started_at: StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> Iterator[str]:
-    if isinstance(stream_started_at, _StreamTimingTracker):
+    if isinstance(stream_started_at, StreamTimingTracker):
         stream_started_at.buffered = True
     last_stream_chunk: GenerationStreamChunk | None = None
     emitted_by_tool: set[int] = set()
     for fragment in fragments:
-        last_stream_chunk = _stream_chunk_with_phase(fragment.stream_chunk, "tool_call")
+        last_stream_chunk = stream_chunk_with_phase(fragment.stream_chunk, "tool_call")
         token_payload = (
             token_accounting.observe("tool_call", fragment.text)
             if token_accounting is not None
@@ -18830,7 +18402,7 @@ def _chat_stream_scheduler_tool_call_chunks(
         )
         include_name = fragment.tool_index not in emitted_by_tool
         emitted_by_tool.add(fragment.tool_index)
-        yield _chat_stream_tool_call(
+        yield chat_tool_call(
             response_id,
             created,
             model,
@@ -18887,15 +18459,15 @@ def _chat_stream_scheduler_text_chunks(
     content_phase: str = "answer",
     reasoning_initially_open: bool = False,
     finish_details: Mapping[str, Any] | None = None,
-    token_accounting: _StreamTokenAccounting | None = None,
+    token_accounting: StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
     final_hipengine: Mapping[str, Any] | None = None,
-    stream_started_at: _StreamTimingSource = None,
+    stream_started_at: StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
-    if isinstance(stream_started_at, _StreamTimingTracker):
+    if isinstance(stream_started_at, StreamTimingTracker):
         stream_started_at.buffered = True
     splitter = _ReasoningSplitter(initially_open=reasoning_initially_open)
     last_stream_chunk: GenerationStreamChunk | None = None
@@ -18919,7 +18491,7 @@ def _chat_stream_scheduler_text_chunks(
                 if include_logprobs and delta_field == "reasoning_content"
                 else None
             )
-            yield _chat_stream_delta(
+            yield chat_delta(
                 response_id,
                 created,
                 model,
@@ -18929,7 +18501,7 @@ def _chat_stream_scheduler_text_chunks(
                 logprobs=logprobs,
                 reasoning_logprobs=reasoning_logprobs,
                 tokens=token_payload,
-                stream_chunk=_stream_chunk_with_phase(stream_chunk, phase),
+                stream_chunk=stream_chunk_with_phase(stream_chunk, phase),
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing,
@@ -18947,7 +18519,7 @@ def _chat_stream_scheduler_text_chunks(
                 logprobs = _chat_stream_logprobs(last_stream_chunk, chunk)
             elif delta_field == "reasoning_content":
                 reasoning_logprobs = _chat_reasoning_stream_logprobs(last_stream_chunk, chunk)
-        yield _chat_stream_delta(
+        yield chat_delta(
             response_id,
             created,
             model,
@@ -18958,7 +18530,7 @@ def _chat_stream_scheduler_text_chunks(
             reasoning_logprobs=reasoning_logprobs,
             tokens=token_payload,
             stream_chunk=(
-                None if last_stream_chunk is None else _stream_chunk_with_phase(last_stream_chunk, phase)
+                None if last_stream_chunk is None else stream_chunk_with_phase(last_stream_chunk, phase)
             ),
             include_hipengine=include_hipengine,
             stream_started_at=stream_started_at,
@@ -18969,7 +18541,7 @@ def _chat_stream_scheduler_text_chunks(
     if token_accounting is not None and token_accounting.streamed_tokens > 0:
         final_tokens = token_accounting.snapshot()
     done_stream_chunk = (
-        None if last_stream_chunk is None else _stream_chunk_with_phase(last_stream_chunk, done_phase)
+        None if last_stream_chunk is None else stream_chunk_with_phase(last_stream_chunk, done_phase)
     )
     yield _chat_stream_done(
         response_id,
@@ -18987,152 +18559,6 @@ def _chat_stream_scheduler_text_chunks(
         kv_pool=kv_pool,
         phase=done_phase,
     )
-
-
-def _chat_stream_done(
-    response_id: str,
-    created: int,
-    model: str,
-    finish_reason: str,
-    *,
-    index: int = 0,
-    finish_details: Mapping[str, Any] | None = None,
-    tokens: Mapping[str, int] | None = None,
-    stream_chunk: GenerationStreamChunk | None = None,
-    include_hipengine: bool = False,
-    extra_hipengine: Mapping[str, Any] | None = None,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-    kv_pool: Mapping[str, float] | None = None,
-    phase: str = "done",
-) -> str:
-    finish_payload = _finish_details_payload(None, finish_reason) if finish_details is None else dict(finish_details)
-    choice = {
-        "index": int(index),
-        "delta": {},
-        "finish_reason": finish_reason,
-        "finish_details": finish_payload,
-    }
-    if include_hipengine:
-        hipengine_payload = _choice_hipengine_payload(
-            phase,
-            finish_details=finish_payload,
-            tokens=tokens,
-            stream_chunk=stream_chunk,
-            include_generated_token_ids=True,
-        )
-        if extra_hipengine is not None:
-            hipengine_payload.update(deepcopy(dict(extra_hipengine)))
-        choice["hipengine"] = hipengine_payload
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [choice],
-            },
-            include_hipengine=include_hipengine,
-            event="done",
-            stream_started_at=stream_started_at,
-            tokens=tokens,
-            backend_timing=_stream_chunk_backend_timing(stream_chunk),
-            routing=routing,
-            kv_pool=kv_pool,
-        )
-    )
-
-
-def _chat_stream_usage(
-    response_id: str,
-    created: int,
-    model: str,
-    usage: Mapping[str, int],
-    *,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-    kv_pool: Mapping[str, float] | None = None,
-) -> str:
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [],
-                "usage": dict(usage),
-            },
-            include_hipengine=include_hipengine,
-            event="usage",
-            stream_started_at=stream_started_at,
-            usage=usage,
-            routing=routing,
-            kv_pool=kv_pool,
-        )
-    )
-
-
-def _chat_stream_error(
-    response_id: str,
-    created: int,
-    model: str,
-    message: str,
-    *,
-    status_code: int = 500,
-    code: str | None = None,
-    param: str | None = None,
-    error_type: str = "server_error",
-    finish_details: Mapping[str, Any] | None = None,
-    extra: Mapping[str, Any] | None = None,
-    include_hipengine: bool = False,
-    stream_started_at: _StreamTimingSource = None,
-    routing: Mapping[str, Any] | None = None,
-) -> str:
-    choice: dict[str, Any] = {
-        "index": 0,
-        "delta": {"content": ""},
-        "finish_reason": "error",
-    }
-    error = _error_payload(
-        message=message,
-        error_type=error_type,
-        code=code,
-        param=param,
-        status_code=status_code,
-        finish_details=finish_details,
-        extra=extra,
-    )
-    if finish_details is not None:
-        details = dict(finish_details)
-        choice["finish_details"] = details
-    if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload(
-            "done",
-            finish_details=choice.get("finish_details"),
-        )
-    return _sse(
-        _attach_stream_hipengine(
-            {
-                "id": response_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [choice],
-                "error": error,
-            },
-            include_hipengine=include_hipengine,
-            event="error",
-            stream_started_at=stream_started_at,
-            routing=routing,
-        )
-    )
-
-
-def _sse(payload: dict[str, Any]) -> str:
-    return f"data: {json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
 def _format_validation_error(exc: RequestValidationError) -> str:

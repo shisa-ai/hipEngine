@@ -46,6 +46,9 @@ OWNER_PATHS = {
         REPO_ROOT / "hipengine" / "server" / "session_snapshot_routes.py"
     ),
     "hipengine.server.readiness": REPO_ROOT / "hipengine" / "server" / "readiness.py",
+    "hipengine.server.stream_events": (
+        REPO_ROOT / "hipengine" / "server" / "stream_events.py"
+    ),
 }
 SCANNED_ROOTS = ("hipengine", "tests", "scripts")
 API_MODULES = ("hipengine.server.api", "hipengine.server")

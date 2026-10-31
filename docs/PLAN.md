@@ -483,6 +483,11 @@ attaches the existing breaker and closes the engine after the generation batcher
 drains. Application composition keeps the engine reference and startup stages;
 the generation service remains the sole device scheduler. Shutdown reads the
 engine after draining so a handle created during drain is closed as well.
+`hipengine/server/stream_events.py` owns SSE frame projection and explicitly
+passed token/timing accounting. It receives prepared finish/error payloads and
+stream values, not an engine, request or application state. Live sequencing,
+queue backpressure, cancellation, tool parsing and terminal `[DONE]` yields stay
+in HTTP composition; the generation service still owns device work.
 
 ### Layer Diagram
 
