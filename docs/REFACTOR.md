@@ -251,7 +251,10 @@ Scope: `diagnostics.specdec2_mtp2`, `ar_output_tokens_in_cycles`, `output_accoun
 
 Done when: `qwen4_exp_mtp` now publishes the common per-request committed-output block and
 passes real public LLM route checks (5/8 completion tokens, 4/7 attributed to committed cycles,
-reconciled spans and clean teardown). Migrate `gemma4_mtp` and `qwen4_exp_serving_mixed`, then remove
+reconciled spans and clean teardown). Gemma also publishes the block and passes two real public
+LLM checks with matching requested/effective depth and clean teardown. Finish
+`qwen4_exp_serving_mixed` committed-prefix/cancellation handling and validate HTTP/SSE for the
+migrated publishers, then remove
 `_mtp_draft_counts`' legacy provider/scalar timing readers after blocking and streaming consumers
 migrate. Chat `/bench` now prefers public `output_accounting.mtp_output_tokens`, preserves explicit
 zero, and keeps legacy readers for older providers; see

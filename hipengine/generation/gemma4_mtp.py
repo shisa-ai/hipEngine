@@ -50,7 +50,7 @@ pass, not from a forward that has not happened yet."*
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 from typing import Any
 
@@ -80,6 +80,10 @@ from hipengine.loading.gemma4_gguf import gemma4_gguf_config_from_metadata
 from hipengine.loading.gemma4_mtp_gguf import require_gemma4_mtp
 from hipengine.runtime.gemma4_assistant import (
     Gemma4AssistantHead, Gemma4MtpDrafter, gemma4_assistant_geometry,
+)
+from hipengine.speculative.accounting import (
+    record_speculative_outputs,
+    speculative_output_accounting,
 )
 from hipengine.speculative.registry import (
     QUANT_AGNOSTIC,
@@ -126,6 +130,46 @@ class Gemma4MTPOperation:
     select: Any = None
     output: GenerationOutput | None = None
     terminal: bool = False
+
+
+@dataclass
+class _Gemma4MTPOutputAccounting:
+    """Request-local carrier for the shared MTP-versus-AR output block.
+
+    One of these is created per ``generation_steps`` frame, so it belongs to
+    the request rather than to the provider, which serves many requests. The
+    names are the shared accounting contract: ``record_speculative_outputs``
+    writes them and ``speculative_output_accounting`` renders them into
+    ``diagnostics.specdec2_mtp2``.
+
+    Only facts this route can establish are declared. There is no group planner
+    and no prompt-activation decision here, so the ``plan_*`` and ``provider_*``
+    fields stay unset and the block reports them as absent rather than
+    inventing a decision this provider does not make.
+
+    Both budget keys are the frame's. ``requested`` is the budget the request
+    resolved to and ``candidate_budget`` is the effective one the frame ran at;
+    this route never narrows below what it resolved, so the two agree here. The
+    legacy provider-level ``candidate_budget`` diagnostic is a different fact --
+    the provider's configured default -- and a per-request override makes them
+    disagree, which is why the block must not borrow that number.
+    """
+
+    mtp2_requested_budget: int
+    mtp2_candidate_budget: int
+    mtp2_cycles: int = 0
+    mtp2_candidate_counts: list[int] = field(default_factory=list)
+    mtp2_accepted_counts: list[int] = field(default_factory=list)
+    mtp2_mtp_output_tokens: int = 0
+    mtp2_ar_step_output_tokens: int = 0
+    mtp2_first_fallback_position: int | None = None
+    mtp2_ar_step_reasons: dict[str, int] = field(default_factory=dict)
+    mtp2_output_spans: list[dict[str, Any]] = field(default_factory=list)
+    # Cycle phase sums, host wall measured around the same points the legacy
+    # ``phase_census`` accumulates. Only a committed cycle adds to them.
+    mtp2_proposal_ms: float = 0.0
+    mtp2_target_ms: float = 0.0
+    mtp2_accept_ms: float = 0.0
 
 
 class Gemma4MTPTextProvider:
@@ -309,6 +353,17 @@ class Gemma4MTPTextProvider:
             )
 
         candidate_budget = self.candidate_budget if candidate_budget is None else int(candidate_budget)
+        # Request-local carrier for the shared per-request output block. A zero
+        # budget is how the resident owner serves a plain row on this provider,
+        # and that row publishes no speculative block at all.
+        accounting = (
+            _Gemma4MTPOutputAccounting(
+                mtp2_requested_budget=candidate_budget,
+                mtp2_candidate_budget=candidate_budget,
+            )
+            if candidate_budget > 0
+            else None
+        )
         stop_ids = set(request.stop_token_ids)
         configured_eos = (
             set(
@@ -328,11 +383,11 @@ class Gemma4MTPTextProvider:
         phase_ms: dict[str, float] = {}
         phase_calls: dict[str, int] = {}
 
-        def record(name: str, started: float) -> None:
-            phase_ms[name] = phase_ms.get(name, 0.0) + (
-                time.perf_counter() - started
-            ) * 1_000.0
+        def record(name: str, started: float) -> float:
+            elapsed_ms = (time.perf_counter() - started) * 1_000.0
+            phase_ms[name] = phase_ms.get(name, 0.0) + elapsed_ms
             phase_calls[name] = phase_calls.get(name, 0) + 1
+            return elapsed_ms
 
         prefill_started = time.perf_counter()
         # A runner carries the previous request's position and KV, and this route
@@ -385,6 +440,7 @@ class Gemma4MTPTextProvider:
                 generated=generated, token_logprobs=token_logprobs, sampler=sampler,
                 cycles=cycles, reason=reason, stop_sequence=stop_sequence, runner=runner,
                 phase_ms=phase_ms, phase_calls=phase_calls, draft_law=draft_law,
+                accounting=accounting,
             )
 
         yield Gemma4MTPOperation("commit", runner, output=output(),
@@ -431,7 +487,7 @@ class Gemma4MTPTextProvider:
             for drafted in reversed(drafts):
                 sampler.unobserve(drafted)
             sampler.restore_controls(controls_before_cycle)
-            record("proposal", proposal_started)
+            proposal_ms = record("proposal", proposal_started)
             if not drafts and budget > 0:
                 break
 
@@ -449,7 +505,7 @@ class Gemma4MTPTextProvider:
                 # of vocabulary entry 0, whose argmax is 0, and a cycle that
                 # commits it emits ``<pad>`` instead of the model's next token.
                 rows = rows.reshape(1, -1)
-            record("target_verify", verify_started)
+            target_ms = record("target_verify", verify_started)
 
             accept_started = time.perf_counter()
             observed = 0
@@ -496,7 +552,7 @@ class Gemma4MTPTextProvider:
                         f"token is {consumed}"
                     )
             sampler.observe(token)
-            record("accept", accept_started)
+            accept_ms = record("accept", accept_started)
             committed = [*drafts[:accepted], token]
             observed_tokens = list(committed)
             stop_state = stop_before
@@ -562,7 +618,24 @@ class Gemma4MTPTextProvider:
                             tokenizer, committed_token, logprob, top_logprobs
                         )
                     )
+            committed_position = len(generated)
             generated.extend(committed)
+            if accounting is not None:
+                # One committed cycle, recorded once. ``committed`` is the
+                # published prefix: a stop already truncated it, so a discarded
+                # tail is never counted, and the proposals that were rejected
+                # or never reached the commit are not counted at all. The
+                # phase sums ride with the commit for the same reason.
+                accounting.mtp2_proposal_ms += proposal_ms
+                accounting.mtp2_target_ms += target_ms
+                accounting.mtp2_accept_ms += accept_ms
+                record_speculative_outputs(
+                    accounting,
+                    candidate_count=len(drafts),
+                    accepted_count=accepted,
+                    visible_count=len(committed),
+                    output_position=committed_position,
+                )
             sampler.discard_undo_history()
             token = committed[-1]
 
@@ -587,11 +660,70 @@ class Gemma4MTPTextProvider:
 
     def _cycle_output(self, *, request, tokenizer, token_ids, generated,
                       token_logprobs, sampler, cycles, reason, stop_sequence,
-                      runner, phase_ms, phase_calls, draft_law):
+                      runner, phase_ms, phase_calls, draft_law, accounting=None):
         self.last_cycles = tuple(cycles)
         verify_exact = bool(getattr(runner, "verify_dense_exact", True))
         proposed = sum(len(cycle.candidates) for cycle in cycles)
         accepted_total = sum(cycle.accepted for cycle in cycles)
+        diagnostics: dict[str, Any] = {
+            "speculative_provider": self.provider_name,
+            "candidate_budget": self.candidate_budget,
+            "proposed_draft_tokens": proposed,
+            "accepted_draft_tokens": accepted_total,
+            "draft_acceptance": (
+                float(accepted_total / proposed) if proposed else 0.0
+            ),
+            "tokens_per_cycle": (
+                float(len(generated) / len(cycles)) if cycles else 1.0
+            ),
+            "cycles": [
+                {
+                    "start_position": cycle.start_position,
+                    "candidates": list(cycle.candidates),
+                    "accepted": cycle.accepted,
+                    "committed": cycle.committed,
+                }
+                for cycle in cycles
+            ],
+            "target_verify": (
+                "batched_exact" if verify_exact else "batched_wmma"
+            ),
+            "draft_rollback": "cursor_rewind",
+            "accept_rule": "min(1, p/q) with residual resampling",
+            "draft_law": draft_law,
+            "verify_equivalence": (
+                _VERIFY_EXACT if verify_exact else _VERIFY_ENVELOPE
+            ),
+            "phase_census": {
+                "cycles": len(cycles),
+                "target_prefill": {
+                    "calls": phase_calls.get("target_prefill", 0),
+                    "ms": phase_ms.get("target_prefill", 0.0),
+                },
+                "proposal": {
+                    "calls": phase_calls.get("proposal", 0),
+                    "ms": phase_ms.get("proposal", 0.0),
+                },
+                "target_verify": {
+                    "calls": phase_calls.get("target_verify", 0),
+                    "rows": sum(len(cycle.candidates) + 1 for cycle in cycles),
+                    "ms": phase_ms.get("target_verify", 0.0),
+                },
+                "accept": {
+                    "calls": phase_calls.get("accept", 0),
+                    "ms": phase_ms.get("accept", 0.0),
+                },
+            },
+        }
+        execution_accounting = (
+            None if accounting is None else speculative_output_accounting(accounting)
+        )
+        if execution_accounting is not None:
+            # The shared per-request block: which emitted tokens came from
+            # committed speculative cycles and which from an autoregressive
+            # step while this request still owned the plan. Published beside the
+            # route diagnostics above, never instead of them.
+            diagnostics["specdec2_mtp2"] = execution_accounting
         telemetry = GenerationTelemetry(
             decode_state=DecodeState(
                 prompt_tokens=len(token_ids),
@@ -605,56 +737,7 @@ class Gemma4MTPTextProvider:
                 ),
             ),
             event="generation_complete",
-            diagnostics={
-                "speculative_provider": self.provider_name,
-                "candidate_budget": self.candidate_budget,
-                "proposed_draft_tokens": proposed,
-                "accepted_draft_tokens": accepted_total,
-                "draft_acceptance": (
-                    float(accepted_total / proposed) if proposed else 0.0
-                ),
-                "tokens_per_cycle": (
-                    float(len(generated) / len(cycles)) if cycles else 1.0
-                ),
-                "cycles": [
-                    {
-                        "start_position": cycle.start_position,
-                        "candidates": list(cycle.candidates),
-                        "accepted": cycle.accepted,
-                        "committed": cycle.committed,
-                    }
-                    for cycle in cycles
-                ],
-                "target_verify": (
-                    "batched_exact" if verify_exact else "batched_wmma"
-                ),
-                "draft_rollback": "cursor_rewind",
-                "accept_rule": "min(1, p/q) with residual resampling",
-                "draft_law": draft_law,
-                "verify_equivalence": (
-                    _VERIFY_EXACT if verify_exact else _VERIFY_ENVELOPE
-                ),
-                "phase_census": {
-                    "cycles": len(cycles),
-                    "target_prefill": {
-                        "calls": phase_calls.get("target_prefill", 0),
-                        "ms": phase_ms.get("target_prefill", 0.0),
-                    },
-                    "proposal": {
-                        "calls": phase_calls.get("proposal", 0),
-                        "ms": phase_ms.get("proposal", 0.0),
-                    },
-                    "target_verify": {
-                        "calls": phase_calls.get("target_verify", 0),
-                        "rows": sum(len(cycle.candidates) + 1 for cycle in cycles),
-                        "ms": phase_ms.get("target_verify", 0.0),
-                    },
-                    "accept": {
-                        "calls": phase_calls.get("accept", 0),
-                        "ms": phase_ms.get("accept", 0.0),
-                    },
-                },
-            },
+            diagnostics=diagnostics,
         )
         # A matched multi-token stop is held back from the reply; the generated
         # ids keep the whole emitted run, as the AR route and the shared
