@@ -5,7 +5,7 @@ Oracle lineage: stock transformers 5.x ``Qwen3_5ForConditionalGeneration``
 float32 on CPU.  Test-fixture generator only; the hipEngine hot path never
 imports torch.
 
-Two cases, both greedy (argmax) with the model's own logits:
+Every case is greedy (argmax) with the model's own logits:
 
 - ``image``    — ``page_small.png`` (256x256) -> ``oracle_greedy.json``.
   This is the reference that ``test_live_surya_e2e``, ``test_live_surya_public_api`` and
@@ -26,6 +26,11 @@ Two cases, both greedy (argmax) with the model's own logits:
   ruled table, blank page, degraded scan, block-heavy long page) ->
   ``oracle_bench.json``. These are the pages the tuning suite runs on, so they
   carry a torch fp32 oracle rather than only a CPU-reference basis.
+- ``protocol`` — the full-page HTML transcription protocol on those pages plus
+  ``a4``, the 300-DPI page-scale fixture -> ``oracle_fullpage_protocol.json``.
+  ``--only`` captures a subset and merges it into the oracle already in
+  ``--out-dir``, so a single-page capture cannot replace the rows it did not
+  capture.
 
 Additive: regenerating the ``image`` case rewrites ``oracle_greedy.json`` and
 nothing else. It does not touch ``oracle_image.npz`` / ``oracle_text.npz`` /
@@ -33,8 +38,10 @@ nothing else. It does not touch ``oracle_image.npz`` / ``oracle_text.npz`` /
 reproducible from ``scripts/surya_oracle_torch.py``.
 
 Usage:
-    python3 scripts/surya_oracle_greedy.py [--case all|image|fullpage|corpus] \
-        [--out-dir tests/fixtures/surya] [--device cpu]
+    python3 scripts/surya_oracle_greedy.py \
+        [--case all|image|fullpage|corpus|bench|protocol] \
+        [--only page[,page]] [--out-dir tests/fixtures/surya] [--device cpu] \
+        [--page-dir tests/fixtures/surya]
 """
 
 from __future__ import annotations
@@ -45,17 +52,14 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import torch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from surya_oracle_torch import (  # noqa: E402
-    PROMPT_TEXT,
-    _make_synthetic_page,
-    _make_synthetic_page_columns,
-    _make_synthetic_page_full,
-    _make_synthetic_page_list,
-)
+# torch and the sibling ``surya_oracle_torch`` page drawers are imported inside
+# the capture functions that use them. Argument parsing is a host contract: the
+# page table and the selection it names have to be checkable without the
+# optional torch extra installed.
 from surya_bench_pages import page_filename  # noqa: E402
 
 from hipengine.generation.surya_protocol import FULL_PAGE_HTML_PROMPT  # noqa: E402
@@ -67,10 +71,7 @@ IMAGE_MAX_TOKENS = 64
 FULLPAGE_MAX_TOKENS = 96
 # held-out layouts; both reach a natural EOS well inside this budget
 CORPUS_MAX_TOKENS = 96
-CORPUS_PAGES = {
-    "columns": _make_synthetic_page_columns,
-    "list": _make_synthetic_page_list,
-}
+CORPUS_PAGES = ("columns", "list")
 # Representative document types for the benchmark suite. The pages themselves
 # are produced by scripts/surya_bench_pages.py (seeded, byte-reproducible);
 # this captures their torch fp32 reference ids so the GPU lanes can be gated
@@ -80,8 +81,9 @@ BENCH_PAGES = ("ja", "mixed", "dense", "table", "blank", "scan", "long")
 # Full-page HTML transcription protocol oracle: the same page names, but scored
 # on the fitting acceptance fixtures and driven by the checkpoint's real
 # training-time prompt instead of the ad-hoc "Transcribe this page." text. The
-# budgets are the smallest that let every page reach a natural EOS, measured on
-# the fp32 HIP lane; a budget that truncates would gate only a prefix.
+# measured budgets are the smallest that let every page reach a natural EOS,
+# measured on the fp32 HIP lane; a budget that truncates would gate only a
+# prefix. ``a4`` has no capture yet, so its budget is derived instead.
 PROTOCOL_MAX_TOKENS = {
     "ja": 600,
     "mixed": 600,
@@ -90,6 +92,16 @@ PROTOCOL_MAX_TOKENS = {
     "blank": 64,
     "scan": 640,
     "long": 2600,
+    # The page-scale case: 2480x3508 at 300 DPI (a 220x156 patch grid, 8580
+    # image tokens) drawing 1586 characters in 12 text units plus one ruled
+    # 7x4 table. There is no torch capture for it yet, so this budget is
+    # arithmetic on the committed rows rather than a measured EOS: the worst
+    # ids-per-drawn-character rate among the text pages (1.435, ja) times 1586
+    # is 2276, and the same ruled grid costs 448 ids on the ``table`` page, so
+    # the floor is ~2724. 4000 clears it by 1.47x, and is the budget
+    # ``tests/test_live_surya_transcription.py`` already declares for this case,
+    # so the capture and the gate run the same number.
+    "a4": 4000,
 }
 # The blank page stops almost immediately; the long page needs room to finish.
 # The default is generous on purpose: at 128 the Japanese, mixed, dense and scan
@@ -118,7 +130,7 @@ def _greedy_from_page(
     *,
     device: str,
     max_tokens: int,
-    prompt: str = PROMPT_TEXT,
+    prompt: str | None = None,
 ) -> tuple[dict, dict, list[int], str]:
     """Run one image page through prefill + greedy decode.
 
@@ -126,7 +138,13 @@ def _greedy_from_page(
     ``vision_merged`` and ``logits_first`` when the merger hook fired.
     """
 
+    import torch
     from PIL import Image
+
+    from surya_oracle_torch import PROMPT_TEXT
+
+    if prompt is None:
+        prompt = PROMPT_TEXT
 
     messages = [
         {
@@ -195,6 +213,8 @@ def _greedy_from_page(
 
 
 def _run_image(model, processor, out_dir: Path, device: str) -> None:
+    from surya_oracle_torch import _make_synthetic_page
+
     page_path = out_dir / "page_small.png"
     if not page_path.exists():
         _make_synthetic_page(page_path)
@@ -210,6 +230,8 @@ def _run_image(model, processor, out_dir: Path, device: str) -> None:
 
 
 def _run_fullpage(model, processor, out_dir: Path, device: str) -> None:
+    from surya_oracle_torch import _make_synthetic_page_full
+
     page_path = out_dir / "page_full.png"
     if not page_path.exists():
         _make_synthetic_page_full(page_path)
@@ -243,10 +265,19 @@ def _run_corpus(model, processor, out_dir: Path, device: str) -> None:
     are written as fixtures; the oracle is a single JSON of ids+text per page.
     """
 
+    from surya_oracle_torch import (
+        _make_synthetic_page_columns,
+        _make_synthetic_page_list,
+    )
+
+    drawers = {
+        "columns": _make_synthetic_page_columns,
+        "list": _make_synthetic_page_list,
+    }
     oracle: dict[str, dict[str, object]] = {}
-    for name, draw in CORPUS_PAGES.items():
+    for name in CORPUS_PAGES:
         page_path = out_dir / f"page_{name}.png"
-        draw(page_path)
+        drawers[name](page_path)
         caps, _captured, ids, text = _greedy_from_page(
             model, processor, page_path, device=device, max_tokens=CORPUS_MAX_TOKENS
         )
@@ -305,6 +336,33 @@ def _run_bench(model, processor, out_dir: Path, device: str,
     print(f"wrote {out_dir}/oracle_bench.json — {len(oracle)} pages")
 
 
+def _merge_protocol_oracle(
+    path: Path, captured: dict[str, dict[str, object]]
+) -> dict[str, dict[str, object]]:
+    """Fold a partial capture into the oracle already in ``path``.
+
+    ``--only`` captures a subset of the pages. Writing that subset on its own
+    would replace the complete reference with one row, which is the hazard of
+    capturing a single new case into the fixture directory. Rows that were not
+    captured keep their values and their order; a captured name replaces only
+    its own row, and a new name is appended.
+    """
+
+    if not path.exists():
+        return captured
+    try:
+        existing = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{path} is not a protocol oracle: {exc}") from exc
+    if not isinstance(existing, dict):
+        raise SystemExit(f"{path} does not hold a page table")
+    merged = dict(existing)
+    merged.update(captured)
+    preserved = [name for name in existing if name not in captured]
+    print(f"  preserved {len(preserved)} existing page(s): {preserved}")
+    return merged
+
+
 def _run_protocol(model, processor, out_dir: Path, device: str,
                   only: list[str] | None = None,
                   page_dir: Path | None = None) -> None:
@@ -314,6 +372,9 @@ def _run_protocol(model, processor, out_dir: Path, device: str,
     ad-hoc-prompt bench oracle cannot serve: the model's continuation there is
     layout JSON or a degenerate repeat, so it says nothing about whether the
     page was transcribed.
+
+    A ``--only`` subset merges into the oracle already in ``--out-dir``; see
+    :func:`_merge_protocol_oracle`.
     """
 
     names = list(PROTOCOL_MAX_TOKENS) if not only else list(only)
@@ -353,11 +414,22 @@ def _run_protocol(model, processor, out_dir: Path, device: str,
             f"(limit {max_tokens}, {'length' if reached_limit else 'eos'}), "
             f"grid_thw={caps['image_grid_thw'].tolist()}"
         )
-    (out_dir / "oracle_fullpage_protocol.json").write_text(json.dumps(oracle, indent=1))
-    print(f"wrote {out_dir}/oracle_fullpage_protocol.json — {len(oracle)} pages")
+    path = out_dir / "oracle_fullpage_protocol.json"
+    # A subset capture augments the oracle instead of replacing it; a full run
+    # writes exactly the case table, so a stale row cannot survive it.
+    merged = _merge_protocol_oracle(path, oracle) if only else oracle
+    path.write_text(json.dumps(merged, indent=1))
+    print(f"wrote {path} — {len(merged)} pages")
+    if only:
+        print(
+            f"partial capture: {len(oracle)} of {len(PROTOCOL_MAX_TOKENS)} "
+            f"protocol page(s) refreshed"
+        )
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """The capture CLI, built without importing torch or transformers."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--case",
@@ -368,19 +440,61 @@ def main() -> None:
     parser.add_argument("--device", default="cpu")
     parser.add_argument(
         "--only", default=None,
-        help="comma-separated page names, applied to --case bench/protocol",
+        help=(
+            "comma-separated page names for --case bench/protocol; protocol "
+            "subsets merge existing oracle rows, while bench subsets replace "
+            "their output (use a scratch --out-dir)"
+        ),
     )
     parser.add_argument(
         "--page-dir", type=Path, default=None,
         help="directory holding the page fixtures; defaults to --out-dir",
     )
-    args = parser.parse_args()
-    args.out_dir.mkdir(parents=True, exist_ok=True)
+    return parser
+
+
+ONLY_CASES = ("bench", "protocol")
+
+
+def parse_args(
+    argv: list[str] | None = None,
+) -> tuple[argparse.Namespace, list[str] | None]:
+    """Parse and validate the CLI without loading a checkpoint.
+
+    Page selection is validated here rather than inside the capture function so
+    an unknown or not-yet-tabled page name fails immediately instead of after
+    the checkpoint load, and so the parser stays usable on a host without the
+    optional torch extra.
+    """
+
+    args = build_parser().parse_args(argv)
     only = (
         [name.strip() for name in args.only.split(",") if name.strip()]
         if args.only else None
     )
+    if args.only is not None and not only:
+        raise SystemExit("--only must name at least one page")
+    if only is None:
+        return args, None
+    if args.case not in ONLY_CASES:
+        raise SystemExit(
+            f"--only applies to --case {'/'.join(ONLY_CASES)}, not "
+            f"--case {args.case}"
+        )
+    known = BENCH_PAGES if args.case == "bench" else tuple(PROTOCOL_MAX_TOKENS)
+    unknown = [name for name in only if name not in known]
+    if unknown:
+        raise SystemExit(
+            f"unknown {args.case} page(s) {unknown}; known: {sorted(known)}"
+        )
+    return args, only
 
+
+def main(argv: list[str] | None = None) -> None:
+    args, only = parse_args(argv)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+
+    import torch
     from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
     processor = AutoProcessor.from_pretrained("datalab-to/surya-ocr-2")

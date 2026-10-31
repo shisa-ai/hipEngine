@@ -3247,13 +3247,13 @@ Owner: `scripts/surya_oracle_greedy.py`.
 Scope: `QUALITY_ONLY_CASES`, `tests/test_live_surya_transcription.py`,
 `tests/fixtures/surya/oracle_fullpage_protocol.json`.
 
-Done when: Deferred capture: restore the missing `datalab-to/surya-ocr-2` checkpoint. Add `a4` with an
-EOS-reaching budget to `PROTOCOL_MAX_TOKENS` in `scripts/surya_oracle_greedy.py`, then run `python3
-scripts/surya_oracle_greedy.py --case protocol --only a4 --device cpu --page-dir
-tests/fixtures/surya --out-dir /tmp/surya-a4-oracle`. The case is not accepted by the current script
-until that table is extended. Inspect natural completion and merge the captured row into the
-existing fixture; do not overwrite the other cases with the single-case output. Move A4 into the
-implementation-parity test cases only after examining the capture and running the comparison.
+Done when: Deferred capture: restore the missing `datalab-to/surya-ocr-2` checkpoint and run
+`python3 scripts/surya_oracle_greedy.py --case protocol --only a4 --device cpu --page-dir
+tests/fixtures/surya --out-dir /tmp/surya-a4-oracle`. The A4 case and 4000-token provisional
+budget are implemented; inspect actual natural EOS rather than assuming that budget completes
+capture. See `worklog/entries/20261031T201834.327598Z-subagent-refactor-surya-a4-oracle-cases-15f60a.md`.
+Merge the captured row into the existing fixture only after review; preserve all other cases.
+Move A4 into the implementation-parity test cases only after examining the capture and running the comparison.
 Preserve quality coverage throughout; use coordinate-tolerant comparison only if observed bbox-digit
 variation justifies it, not merely to make a failure pass.
 
