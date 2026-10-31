@@ -280,8 +280,8 @@ def test_the_wide_selector_is_wired_into_the_launch_chain():
 
     from hipengine.runtime import gguf_linear
 
-    # The dispatch chain lives in the impl; launch_gguf_linear binds the
-    # source-F16 span context and delegates to it.
+    entry = inspect.getsource(gguf_linear.launch_gguf_linear)
+    assert "_launch_gguf_linear_impl(" in entry
     chain = inspect.getsource(gguf_linear._launch_gguf_linear_impl)
     assert "_q8_dense_wide_dispatch(" in chain, (
         "launch_gguf_linear must run the wide-row selector; Qwen4Exp prefill "
