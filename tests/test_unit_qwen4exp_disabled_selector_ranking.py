@@ -141,3 +141,83 @@ def test_owner_state_routes_are_not_environment_arms(module):
 
 def test_baseline_arm_enables_nothing(module):
     assert module.ARMS["baseline"] == {}
+
+
+def test_main_replays_every_arm_through_its_child_report(module, monkeypatch, tmp_path):
+    """The per-arm report is the consumer of each child JSON.
+
+    The sweep itself needs the GPU and the pinned model; this replays the child
+    report shape on host so the report fields, the baseline ratio and the
+    effective-route check stay wired to what ``qwen4exp_profile_gap.py`` writes.
+    """
+
+    import json
+    from types import SimpleNamespace
+
+    bound = {"HIPENGINE_QWEN4_EXP_GR_IU8": "0"}
+
+    def fake_run(command, **kwargs):
+        output = Path(command[command.index("--output") + 1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        overrides = {}
+        for index, token in enumerate(command):
+            if token == "--override":
+                key, _, value = command[index + 1].partition("=")
+                overrides[key] = value
+        arm = output.parent.name
+        tok_s = 100.0 if arm == "baseline" else 90.0
+        output.write_text(json.dumps({
+            "wall_summary": {"tok_s": tok_s, "wall_seconds": 40.96},
+            "route_env": {**bound, **overrides},
+            "bound_route_env": dict(bound),
+            "token_id": 248068,
+            "configuration_class": (
+                "diagnostic_post_binder_override" if overrides else "named_profile"
+            ),
+            "named_profile_intact": not overrides,
+            "fell_back_to_strict": False,
+            "override_stage": "post_profile_binder_pre_measurement",
+            "overrides": overrides,
+            "production_moe_prefill_enabled": None,
+        }))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    report_path = tmp_path / "report.json"
+    rc = module.main([
+        "--work-root", str(tmp_path / "work"),
+        "--output", str(report_path),
+        "--arms", "baseline", "gr_iu8", "moe",
+    ])
+
+    assert rc == 0
+    report = json.loads(report_path.read_text())
+    assert report["kind"] == "qwen4exp_disabled_selector_ranking"
+    assert report["performance_claim"] is False
+    assert report["numerics_evaluated"] is False
+    assert [row["arm"] for row in report["arms"]] == ["baseline", "gr_iu8", "moe"]
+    assert report["baseline_tok_s"] == 100.0
+
+    baseline, gr_iu8, moe = report["arms"]
+    assert baseline["status"] == "measured"
+    assert baseline["ratio_vs_baseline"] == 1.0
+    assert gr_iu8["ratio_vs_baseline"] == 0.9
+    assert gr_iu8["delta_pct_vs_baseline"] == pytest.approx(-10.0)
+    assert gr_iu8["effective_route"] == {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"}
+    assert gr_iu8["effective_route_missing_keys"] == []
+    assert gr_iu8["overrides_recorded"] == {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"}
+    # The owner-transported arm carries its gate as an argument, not an override.
+    assert moe["owner_overrides"] == {"production_moe_prefill": "on"}
+    assert moe["overrides"] == {}
+    assert set(moe["baseline_route"]) == set(module.ARMS["all_prefill"])
+
+
+def test_main_refuses_an_unknown_arm(module, tmp_path):
+    import pytest
+
+    with pytest.raises(SystemExit, match="unknown arms"):
+        module.main([
+            "--work-root", str(tmp_path / "work"),
+            "--output", str(tmp_path / "report.json"),
+            "--arms", "baseline", "not_an_arm",
+        ])

@@ -142,19 +142,6 @@ diagnostic comparisons. `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` still transport
 retire that environment handoff only when an owner-bound construction input preserves all profile
 and diagnostic callers.
 
-### R0037 — Consolidate selector harnesses without losing reproduction
-
-Owner: `scripts/qwen4exp_disabled_family_sweep.py`.
-
-Scope: `scripts/qwen4exp_disabled_family_sweep.py`; `scripts/qwen4exp_disabled_selector_ranking.py`; `Q8_DENSE_WIDE_16_47`.
-
-Done when: Decide whether to retain `scripts/qwen4exp_disabled_family_sweep.py` for cited packet reproduction
-or replace it with `scripts/qwen4exp_disabled_selector_ranking.py`. A replacement must cover
-`Q8_DENSE_WIDE_16_47`, the three `Q8_WMMA_LAYERS_*` scopes, `Q4_DP4A64`, the no-op control, and
-per-arm JSON consumers. Preserve route-engagement reporting and historical driver records; run
-`tests/test_unit_qwen4exp_disabled_selector_ranking.py` and replay the migrated interfaces before
-deleting the old driver.
-
 ### R0035 — Supply selected-down variant keys through profile ownership
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.

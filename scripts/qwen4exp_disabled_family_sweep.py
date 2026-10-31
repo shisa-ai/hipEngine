@@ -15,6 +15,47 @@ still appears here with its speedup, because the speedup is what a future
 corrected arithmetic would be worth; admissibility is a separate axis and is
 recorded from the project's own rejection evidence rather than re-derived.
 
+This driver is retained as the reproduction path for two cited packets:
+``benchmarks/results/2026-09-16-disabled-family-recoverable-time/`` and
+``benchmarks/results/2026-09-16-q8-wmma-layers-recoverable-time/``. The decision
+that keeps it is
+``worklog/entries/20261031T200314.348659Z-subagent-refactor-r0037-retain-family-sweep-c5c9fe.md``.
+``scripts/qwen4exp_disabled_selector_ranking.py``
+asks the same question of the arithmetic-recovery selectors, but it carries
+neither the owner-transported axes here (the three f16 WMMA layer scopes and
+``Q4_DP4A64``) nor the override control, it does not collect the risk/repair
+instrument, and it writes a per-arm report instead of this per-family one. Do
+not delete this driver while those packets are cited as its output.
+
+The ``Q8_WMMA_LAYERS_*`` arms clear ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE``. The
+production plan binds the wide-row route over layers 13-47 and that route claims
+the WMMA-rewritten parent wherever its own scope covers the layer, so an arm
+that leaves it bound measures the wide route under a WMMA name. Clearing it is
+what makes these the 2026-09-16 packet's route, not a composition with the route
+that replaced it. Their saving is therefore measured against a fallback that has
+the wide route bound, and is not a recoverable-time figure for enabling WMMA
+alone.
+
+``Q4_DP4A64`` is a decode route. In prefill mode its owner override cannot move
+the measured pass, so that arm is a transport-and-spread row, not a family
+saving: it is never ranked or totalled, and its archived 2026-09-16 row stays in
+``families`` as legacy data rather than as a reproduced current saving.
+
+Every measured row records ``attribution_verified``, which says whether the
+arm's requested transport is confirmed **at the level the child reports**: for
+an environment arm, that every requested pair appears in the child's effective
+route environment as asked and at least one of those keys moved from the value
+the named profile binder wrote; for the WMMA scope arms, also that the owner
+scope resolved to the requested layers; for the control, that its override
+repeated the bound values and nothing else moved. It is a binding-level
+statement, not a launch census: a resolved scope does not prove the kernel ran,
+and an ``unknown`` row (the MoE, MMQ and DP4A owner arms carry no confirmation
+field this driver reads) is not a verified one. Rows whose attribution is
+``False`` are excluded from ``ranked_by_seconds_recoverable`` and from
+``total_seconds_recoverable`` and listed in ``ranking_excludes`` with their
+reason, so a JSON consumer cannot read a mismatched arm as a valid saving. Their
+measurements are left as taken rather than rewritten.
+
 This is a diagnostic. Its runs are not rate rows and it does not claim a
 performance result.
 """
@@ -29,6 +70,22 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+#: The same-code control's arm name.
+CONTROL_FAMILY = "NOOP_OVERRIDE_CONTROL"
+
+#: A process-owned route key the profile binder always writes and
+#: ``qwen4exp_profile_gap.py`` reports, so the fallback's ``route_env`` carries
+#: the exact value an inert override can repeat.
+CONTROL_KEY = "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"
+
+#: Clearing the wide route is what makes a WMMA scope arm run WMMA. The gate
+#: clears both the enable flag and the scope for the same reason
+#: (``scripts/execution_profile_q8_wmma_prefill_layers_gate.py``).
+WMMA_ARM_ENV: dict[str, str] = {
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": "",
+}
 
 # Each entry: family name, the env key that enables it, the value that enables
 # it, and any companion key/value the family needs. The GDN peer prefill family
@@ -61,15 +118,26 @@ FAMILIES: tuple[dict, ...] = (
     # benchmarks/results/2026-09-16-q8-wmma-dense-prefill-layers-gate/ at both
     # scopes; these arms supply the matching performance half.
     {
-        # Control: an override that changes no route. Any --override re-runs
-        # configure_mmq_prefill_resources() in _apply_post_binder_overrides
-        # while the fallback arm, which passes no override, does not. This arm
-        # measures that difference on its own so it can be subtracted from
-        # every family's saving rather than silently inflating all of them.
-        "family": "NOOP_OVERRIDE_CONTROL",
-        "env": {"HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "0"},
+        # Control: an override that repeats the value the named profile binder
+        # already wrote, so it moves no route. It measures the spread between a
+        # child started without --override and one started with it, which is
+        # what has to be subtracted from every family's saving.
+        #
+        # The value cannot be a constant. This arm read
+        # HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE=0 while nothing bound that key; the
+        # 2026-09-17 wide-route promotion bound it to 1 over layers 13-47, which
+        # turned the "control" into an arm that disables the live default route.
+        # The 2026-10-31 owner migration also removed the
+        # configure_mmq_prefill_resources() re-run this arm used to price. Its
+        # environment is resolved from the fallback's own route env below, and
+        # the row records whether the override stayed inert.
+        "family": CONTROL_FAMILY,
+        "env": {},
     },
     {
+        # 16-47 is the scope the 2026-09-17 promotion certified. The production
+        # plan now binds 13-47 (PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS), so this
+        # arm is a narrowing of the live route rather than its current scope.
         "family": "Q8_DENSE_WIDE_16_47",
         "env": {
             "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "1",
@@ -80,21 +148,21 @@ FAMILIES: tuple[dict, ...] = (
     },
     {
         "family": "Q8_WMMA_LAYERS_16_47",
-        "env": {},
+        "env": dict(WMMA_ARM_ENV),
         "owner": {
             "q8_wmma_layers": ",".join(map(str, range(16, 48))),
         },
     },
     {
         "family": "Q8_WMMA_LAYERS_32_47",
-        "env": {},
+        "env": dict(WMMA_ARM_ENV),
         "owner": {
             "q8_wmma_layers": ",".join(map(str, range(32, 48))),
         },
     },
     {
         "family": "Q8_WMMA_LAYERS_0_47",
-        "env": {},
+        "env": dict(WMMA_ARM_ENV),
         "owner": {
             "q8_wmma_layers": ",".join(map(str, range(0, 48))),
         },
@@ -115,8 +183,12 @@ FAMILIES: tuple[dict, ...] = (
         },
     },
     {
+        # Transport coverage only. ``Q4_DP4A64`` is a decode route, so its owner
+        # override cannot move the measured prefill pass; a new measurement of
+        # this arm is never ranked as a prefill saving.
         "family": "Q4_DP4A64",
         "env": {},
+        "savings_eligible": False,
         "owner": {
             "q4_dp4a_decode": "on",
             "q4_dp4a_layers": ",".join(
@@ -178,6 +250,159 @@ def _run(
     return _summarize(json.loads(output.read_text()), command)
 
 
+def _control_override(fallback: dict) -> dict[str, str] | None:
+    """An override that repeats the value the named profile binder wrote.
+
+    ``None`` means there is no inert value to send - the fallback failed, or the
+    binder wrote nothing for ``CONTROL_KEY``. Sending a value anyway is the
+    defect this replaces: an override that differs from the binder's is a route
+    change, and this arm is subtracted from every family's saving.
+    """
+
+    if not fallback.get("ok"):
+        return None
+    route = fallback.get("route_env")
+    if not isinstance(route, dict):
+        return None
+    value = route.get(CONTROL_KEY)
+    if value is None:
+        return None
+    return {CONTROL_KEY: str(value)}
+
+
+def _owner_scope_bound(result: dict, owner: dict | None) -> bool | None:
+    """Whether the child resolved the owner scope this arm asked for.
+
+    The environment axes are checked by comparing ``bound_route_env`` with
+    ``route_env``. An owner-transported axis has no environment value to
+    compare, so its engagement record is the scope the child resolved after the
+    bind (``q8_wmma_layers``). An arm that reports a different scope measured a
+    different route under the arm's name. ``None`` when the arm does not carry
+    that owner axis or the child did not report it.
+    """
+
+    requested = (owner or {}).get("q8_wmma_layers")
+    if requested is None:
+        return None
+    report = result.get("q8_wmma_layers")
+    if not isinstance(report, dict):
+        return None
+    layers = [
+        int(part) for part in str(requested).split(",") if part.strip()
+    ]
+    return report.get("layers") == sorted(set(layers))
+
+
+def _env_override_changed_route(payload: dict) -> bool | None:
+    """Whether ``--override`` moved a value the named profile binder wrote.
+
+    ``bound_route_env`` is the route environment right after the binder and
+    ``route_env`` is the same set after the override is applied, so a control arm
+    needs them to be identical. ``None`` when the child did not report both,
+    which is also the shape of a report written before this field existed.
+    """
+
+    bound = payload.get("bound_route_env")
+    effective = payload.get("route_env")
+    if not isinstance(bound, dict) or not isinstance(effective, dict):
+        return None
+    return any(
+        bound.get(key) != effective.get(key)
+        for key in set(bound) | set(effective)
+    )
+
+
+def _env_request_applied(
+    result: dict, env: dict[str, str], *, control: bool,
+) -> tuple[bool | None, str]:
+    """Whether every requested pair is in the child's effective route env.
+
+    ``None`` when the child reported no bound/effective pair, which is also the
+    shape of a payload written before those fields existed: an unverifiable arm
+    is unknown, not engaged. A coarse "some route value moved" is not enough - an
+    unrelated key changing would otherwise make an arm whose own override never
+    landed look engaged, which is how a WMMA arm could be attributed while the
+    wide route still claimed the parent.
+    """
+
+    bound = result.get("bound_route_env")
+    effective = result.get("route_env")
+    if not isinstance(bound, dict) or not isinstance(effective, dict):
+        return None, "the child did not report the bound route environment"
+    for key, value in env.items():
+        if key not in effective:
+            return (
+                False,
+                f"the requested key {key} is absent from the route environment",
+            )
+        if effective[key] != value:
+            return (
+                False,
+                f"{key} is {effective[key]!r} in the route environment, not the "
+                f"requested {value!r}",
+            )
+    if control:
+        moved = sorted(
+            key for key in set(bound) | set(effective)
+            if bound.get(key) != effective.get(key)
+        )
+        if moved:
+            return False, f"the control's override moved {', '.join(moved)}"
+        return True, "the control's override repeated every bound value"
+    if not any(bound.get(key) != effective.get(key) for key in env):
+        return (
+            False,
+            "no requested key moved from its bound value, so the arm changed "
+            "nothing",
+        )
+    return True, "every requested pair is in the route environment as asked"
+
+
+def _attribution(result: dict, entry: dict, env: dict[str, str]) -> tuple[bool | None, str]:
+    """Whether the arm's requested transport is confirmed at binding level.
+
+    Returns ``(verified, note)``. ``True``/``False`` mean a check ran and the
+    requested transport did or did not take effect; ``None`` means no field this
+    driver reads can tell, which is also what a per-arm payload written before
+    ``bound_route_env`` was reported looks like. This is not a launch census: a
+    resolved scope says the binding took the request, not that the kernel ran.
+    """
+
+    owner = entry.get("owner") or {}
+    checks: list[bool | None] = []
+    notes: list[str] = []
+    if entry["family"] == CONTROL_FAMILY:
+        verified, note = _env_request_applied(result, env, control=True)
+        checks.append(verified)
+        notes.append(note)
+    elif env:
+        verified, note = _env_request_applied(result, env, control=False)
+        checks.append(verified)
+        notes.append(note)
+    if "q8_wmma_layers" in owner:
+        # An arm can carry both an environment override and an owner scope. Both
+        # have to hold: the scope is what decides whether this arm ran WMMA.
+        bound = _owner_scope_bound(result, owner)
+        if bound is None:
+            checks.append(None)
+            notes.append("the child did not report the resolved owner scope")
+        elif bound:
+            checks.append(True)
+            notes.append("the owner scope resolved to the requested layers")
+        else:
+            checks.append(False)
+            notes.append("the owner scope resolved to different layers")
+    if not checks:
+        return None, (
+            "this arm's owner state has no confirmation field this driver reads"
+        )
+    if False in checks:
+        return False, notes[checks.index(False)]
+    if None in checks:
+        return None, notes[checks.index(None)]
+    return True, "; ".join(notes)
+
+
 def _summarize(payload: dict, command) -> dict:
     risk = payload.get("risk_diagnostics") or {}
     # The instrument reports per role and per layer; there is no precomputed
@@ -199,6 +424,7 @@ def _summarize(payload: dict, command) -> dict:
         "wall_summary": payload.get("wall_summary"),
         "wall_seconds": payload.get("wall_seconds"),
         "route_env": payload.get("route_env"),
+        "bound_route_env": payload.get("bound_route_env"),
         "configuration_class": payload.get("configuration_class"),
         "fell_back_to_strict": payload.get("fell_back_to_strict"),
         "named_profile_intact": payload.get("named_profile_intact"),
@@ -212,6 +438,7 @@ def _summarize(payload: dict, command) -> dict:
         "risk_by_role": {k: v.get("aggregate_repair_rate") for k, v in by_role.items()},
         "logits_sha256": payload.get("logits_sha256"),
         "token_id": payload.get("token_id"),
+        "env_override_changed_route": _env_override_changed_route(payload),
     }
 
 
@@ -223,7 +450,7 @@ def _median_wall(result: dict) -> float | None:
     return float(value) if value is not None else None
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -243,7 +470,7 @@ def main() -> int:
         ),
     )
     parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     args.scratch.mkdir(parents=True, exist_ok=True)
     wanted = set(args.only) if args.only else None
@@ -261,10 +488,30 @@ def main() -> int:
     rows = []
     for entry in families:
         name = entry["family"]
+        env = entry["env"]
+        if name == CONTROL_FAMILY:
+            env = _control_override(fallback)
+            if env is None:
+                print(
+                    f"  SKIPPED: the fallback recorded no value for {CONTROL_KEY}, "
+                    "so no inert override exists",
+                    flush=True,
+                )
+                rows.append({
+                    "family": name,
+                    "env": {},
+                    "owner": entry.get("owner"),
+                    "measured": False,
+                    "skipped": (
+                        f"the fallback recorded no value for {CONTROL_KEY}; "
+                        "any override would move a route"
+                    ),
+                })
+                continue
         print(f"=== {name} ===", flush=True)
         result = _run(
             args.python, args.model_root, args.fixture, args.case_id,
-            args.repetitions, entry["env"], args.scratch / f"{name}.json",
+            args.repetitions, env, args.scratch / f"{name}.json",
             reuse=args.reuse_scratch, owner=entry.get("owner"),
         )
         wall = _median_wall(result)
@@ -272,16 +519,19 @@ def main() -> int:
             print(f"  FAILED: {json.dumps(result)[:300]}", flush=True)
             rows.append({
                 "family": name,
-                "env": entry["env"],
+                "env": env,
                 "owner": entry.get("owner"),
                 "measured": False,
                 "failure": result.get("stderr_tail") or result.get("returncode"),
             })
             continue
         saved = fallback_wall - wall
+        owner_bound = _owner_scope_bound(result, entry.get("owner"))
+        verified, note = _attribution(result, entry, env)
+        savings_eligible = entry.get("savings_eligible", True)
         rows.append({
             "family": name,
-            "env": entry["env"],
+            "env": env,
             "owner": entry.get("owner"),
             "measured": True,
             "candidate_median_s": round(wall, 4),
@@ -297,6 +547,12 @@ def main() -> int:
             ),
             "named_profile_intact": result.get("named_profile_intact"),
             "fell_back_to_strict": result.get("fell_back_to_strict"),
+            "env_override_changed_route": result.get(
+                "env_override_changed_route"),
+            "owner_scope_bound": owner_bound,
+            "attribution_verified": verified,
+            "attribution_note": note,
+            "savings_eligible": savings_eligible,
         })
         print(
             f"  median {wall:.3f} s  saved {saved:+.3f} s  "
@@ -304,9 +560,43 @@ def main() -> int:
             f"repair {result.get('aggregate_repair_rate')}",
             flush=True,
         )
+        if not savings_eligible:
+            print(
+                "  note: decode-only route; this row is not a prefill saving",
+                flush=True,
+            )
+        elif name == CONTROL_FAMILY and verified is False:
+            print(
+                "  WARNING: the control's override moved a route value; do "
+                "not subtract this arm from any family's saving",
+                flush=True,
+            )
+        elif verified is False:
+            print(
+                f"  WARNING: {note}; this row is excluded from the ranking",
+                flush=True,
+            )
+
+    def _exclusion_reason(row: dict) -> str:
+        if not row["savings_eligible"]:
+            return "a decode-only route cannot measure a prefill saving"
+        return row["attribution_note"]
 
     measured = [r for r in rows if r["measured"]]
-    ranked = sorted(measured, key=lambda r: -r["seconds_recoverable"])
+    excluded = [
+        r for r in measured
+        if not r["savings_eligible"] or r["attribution_verified"] is False
+    ]
+    ranked = sorted(
+        (r for r in measured if r not in excluded),
+        key=lambda r: -r["seconds_recoverable"],
+    )
+    control_row = next(
+        (r for r in measured if r["family"] == CONTROL_FAMILY), None
+    )
+    control_route_neutral = (
+        None if control_row is None else control_row["attribution_verified"]
+    )
     artifact = {
         "schema": 1,
         "kind": "qwen4exp_disabled_family_recoverable_time",
@@ -327,8 +617,19 @@ def main() -> int:
         "families": rows,
         "ranked_by_seconds_recoverable": [
             {"family": r["family"], "seconds_recoverable": r["seconds_recoverable"],
-             "speedup": r["speedup"]}
+             "speedup": r["speedup"],
+             "attribution_verified": r["attribution_verified"]}
             for r in ranked
+        ],
+        # Measured rows whose requested transport is confirmed not to have taken
+        # effect. Their measurements stay in ``families`` as taken; they are not
+        # savings any consumer may read, so they are kept out of the ranking and
+        # the total and named here with the reason.
+        "ranking_excludes": [
+            {"family": r["family"],
+             "seconds_recoverable": r["seconds_recoverable"],
+             "reason": _exclusion_reason(r)}
+            for r in excluded
         ],
         "total_seconds_recoverable": round(
             sum(r["seconds_recoverable"] for r in ranked), 4
@@ -336,6 +637,9 @@ def main() -> int:
         "all_candidates_bit_identical": all(
             r["same_logits_as_fallback"] for r in ranked
         ) if ranked else None,
+        # Whether the control arm's override repeated the binder's value. Only
+        # then is its spread the difference to subtract from the other arms.
+        "control_route_neutral": control_route_neutral,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=1) + "\n")
