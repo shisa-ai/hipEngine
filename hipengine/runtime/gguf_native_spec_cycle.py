@@ -67,6 +67,10 @@ class NativeSpecTargetGraphUnsupportedError(RuntimeError):
     """The fixed native bucket cannot safely represent this verifier invocation."""
 
 
+class NativeSpecTargetContextResourceError(RuntimeError):
+    """A capable native target route exposes no allocated context capacity."""
+
+
 NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS = "target_graph_context_bucket_miss"
 NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS = "target_graph_output_room_miss"
 
@@ -373,16 +377,101 @@ _NATIVE_TARGET_LONG_CONTEXT_LIMIT = 1024
 _NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES = 8
 
 
+def _native_target_ffn_kind(weights: Any) -> str | None:
+    """Return the declared feed-forward kind, or None when it is unresolved.
+
+    ``dense`` and ``moe`` are structural execution axes, not artifact
+    identity. Runtime owners declare one through ``config.is_moe`` or
+    ``geometry.expert_count``. A configuration that declares neither is left
+    unresolved so the caller keeps the backend's numeric fallback instead of
+    assuming a route the target never claimed.
+    """
+
+    if weights is None:
+        return None
+    config = getattr(weights, "config", None)
+    is_moe = getattr(config, "is_moe", None)
+    if is_moe is not None:
+        return "moe" if bool(is_moe) else "dense"
+    geometry = getattr(weights, "geometry", None)
+    expert_count = getattr(geometry, "expert_count", None)
+    if expert_count is not None:
+        return "moe" if int(expert_count) > 0 else "dense"
+    return None
+
+
+def _positive_capacity(value: Any) -> int | None:
+    """Return a positive integer capacity, or None for missing/invalid."""
+
+    try:
+        capacity = int(value)
+    except (TypeError, ValueError):
+        return None
+    return capacity if capacity > 0 else None
+
+
+def _native_target_allocated_capacity(target: Any) -> int | None:
+    """Return the smallest valid allocated context bound, or None.
+
+    ``scratch.max_positions`` is the live slot bound. A present but
+    nonpositive slot is a zero-capacity slot: its ``target_layout`` copy was
+    published at construction and is stale here, so it is not used as a
+    fallback. When the slot is positive, ``target_layout.max_sequence_length``
+    (published as ``int(self.scratch.max_positions)`` in
+    ``Qwen35GGUFResidentSession.__init__``) and the scratch owner are
+    consistency bounds; the smallest positive value wins. Owners without a
+    slot scratch use the smallest positive published layout or scratch-owner
+    bound.
+    """
+
+    capacities: list[int] = []
+    scratch = getattr(target, "scratch", None)
+    if scratch is not None:
+        slot_capacity = _positive_capacity(getattr(scratch, "max_positions", None))
+        if slot_capacity is None:
+            return None
+        capacities.append(slot_capacity)
+    layout = getattr(target, "target_layout", None)
+    if layout is not None:
+        layout_capacity = _positive_capacity(
+            getattr(layout, "max_sequence_length", None)
+        )
+        if layout_capacity is not None:
+            capacities.append(layout_capacity)
+    owner = getattr(target, "_target_scratch_owner", None)
+    if owner is not None:
+        owner_capacity = _positive_capacity(getattr(owner, "max_positions", None))
+        if owner_capacity is not None:
+            capacities.append(owner_capacity)
+    return min(capacities) if capacities else None
+
+
 def native_target_context_limit(backend: str, target: Any, *, default: int, graph: bool = False) -> int:
-    """Use cache capacity for repaired routes; preserve other model policies."""
+    """Return the largest end position this target's native verify may reach.
+
+    Admission is structural. The backend declares which feed-forward kinds have
+    a native multi-row verify body; KV storage and recurrent-state arithmetic
+    are checked directly on the target, while row/topology validation remains
+    in the verifier. A capable route is bounded by its allocated capacity,
+    never by a quant stamp or geometry allowlist. Routes outside the
+    declaration keep the backend's numeric fallback.
+
+    ``default`` is the caller's own bound. The result is the smaller of that
+    bound and the allocated capacity, so a caller passing an end position
+    above capacity still gets the capacity bound rather than a tautology.
+    """
 
     name = (
         "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT"
         if graph else "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT"
     )
     fallback = int(backend_package_capability(backend, name, int(default)))
-    policies = backend_package_capability(backend, "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES", ())
-    if not policies or target is None:
+    if target is None:
+        return fallback
+    ffn_kinds = backend_package_capability(
+        backend, "GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS", ()
+    )
+    if not isinstance(ffn_kinds, (set, frozenset, tuple, list)) or not ffn_kinds:
         return fallback
     if getattr(target, "kv_storage_dtype", DType.BF16) not in {
         DType.BF16, DType.INT8_PER_TOKEN_HEAD,
@@ -390,10 +479,20 @@ def native_target_context_limit(backend: str, target: Any, *, default: int, grap
         return fallback
     if _native_target_execution_identity(target)[1] != "fp32":
         return fallback
-    from hipengine.runtime.qwen35_gguf_runner import _gguf_policy_identity
-
-    identity = _gguf_policy_identity(getattr(getattr(target, "runner", None), "weights", None))
-    return int(default) if identity is not None and identity in policies else fallback
+    weights = getattr(getattr(target, "runner", None), "weights", None)
+    ffn_kind = _native_target_ffn_kind(weights)
+    if ffn_kind is None or ffn_kind not in ffn_kinds:
+        return fallback
+    capacity = _native_target_allocated_capacity(target)
+    if capacity is None:
+        raise NativeSpecTargetContextResourceError(
+            "native target verify requires a positive allocated session capacity; "
+            f"{type(target).__name__} has a nonpositive or missing "
+            "scratch.max_positions and no usable fallback. A present nonpositive "
+            "slot is not replaced by a larger stale "
+            "target_layout.max_sequence_length or scratch-owner bound."
+        )
+    return min(int(default), capacity)
 
 
 def native_target_graph_context_bucket(session: Any, *, rows: int) -> int | None:
@@ -2978,6 +3077,7 @@ __all__ = [
     "NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS",
     "NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS",
     "NativeSpecTargetGraphUnsupportedError",
+    "NativeSpecTargetContextResourceError",
     "Qwen35GGUFNativeAcceptCommitResult",
     "Qwen35GGUFNativeB2TargetGraph",
     "Qwen35GGUFNativeCompleteCycleResult",

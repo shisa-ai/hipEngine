@@ -3563,7 +3563,10 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
     # consumer owns its FP32 accumulator and never loads or version-queries a
     # rocBLAS build, so neither name is a live read any more. The ledger keeps
     # its historical rows; only the live-read set moves.
+    # R0132 replaces the identity policy with a structural FFN capability; the
+    # original ledger row remains as history alongside its live replacement.
     retired = {
+        "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES",
         "GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES",
         "GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX",
     }

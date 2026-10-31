@@ -98,11 +98,26 @@ class _AdapterDouble:
 
 
 def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
-    from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+    from hipengine.kernels.policy import (
+        QWEN35_DENSE_H5120_GEOMETRY,
+        QWEN35_MOE_H2048_E256_GEOMETRY,
+    )
 
-    target = SimpleNamespace(
+    dense = SimpleNamespace(
+        scratch=SimpleNamespace(max_positions=16384),
         runner=SimpleNamespace(weights=SimpleNamespace(
             geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name="MOSTLY_Q4_K_M",
+        )),
+    )
+    narrow = SimpleNamespace(
+        scratch=SimpleNamespace(max_positions=1024),
+        runner=SimpleNamespace(weights=SimpleNamespace(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name="MOSTLY_Q4_K_M",
+        )),
+    )
+    moe = SimpleNamespace(
+        runner=SimpleNamespace(weights=SimpleNamespace(
+            geometry=QWEN35_MOE_H2048_E256_GEOMETRY, file_type_name="MOSTLY_Q4_K_M",
         )),
     )
     assert _target_verify_mode_for_context(
@@ -112,8 +127,19 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
         "native", backend="hip_gfx1100", end_position=96
     ) == "serial_exact"
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1100", end_position=16384, target=target,
+        "native", backend="hip_gfx1100", end_position=16384, target=dense,
     ) == "native"
+    # The allocated capacity, not the caller's end position, is the bound.
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=16384, target=narrow,
+    ) == "serial_exact"
+    # MoE keeps the backend's numeric fallback.
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=95, target=moe,
+    ) == "native"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=96, target=moe,
+    ) == "serial_exact"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=96,
         target=SimpleNamespace(

@@ -9,18 +9,18 @@ def test_native_context_override_restores_both_limits_after_failure():
     package = SimpleNamespace(
         GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT=95,
         GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT=95,
-        GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES=frozenset({"dense"}),
+        GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS=frozenset({"dense"}),
     )
     with pytest.raises(RuntimeError, match="probe"):
         with native_context_override(package, 256) as prior:
             assert set(prior.values()) == {95}
             assert package.GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT == 256
             assert package.GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT == 256
-            assert package.GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES == frozenset()
+            assert package.GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS == frozenset()
             raise RuntimeError("probe")
     assert package.GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT == 95
     assert package.GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT == 95
-    assert package.GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES == frozenset({"dense"})
+    assert package.GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS == frozenset({"dense"})
 
 
 def test_unbounded_backend_override_does_not_install_a_permanent_limit():

@@ -3657,12 +3657,18 @@ after wrapper counts and all partial-buffer allocations agree.
 
 Owner: `hipengine/runtime/gguf_native_spec_cycle.py`.
 
-Scope: `_backend_native_context_limit`.
+Scope: `native_target_context_limit`.
 
-**Deferred consolidation:** replace the generic cap/cache-policy split with capability-based bounds
-after diagnosing the recorded MoE full-logit discrepancy. Exercise the affected route, identify its
-actual failure scope, and retain eager/serial execution where graph capability is absent. Do not
-restore a 256 cap merely because longer contexts lack measurements.
+The resolver now replaces the dense geometry/quant allowlist with the backend's structural
+feed-forward capability and the allocated session capacity. Conflicting capacity sources use the
+smallest positive bound; a present nonpositive slot raises a named resource error instead of using
+a stale layout. gfx1151 public dense/MoE checks at prompt lengths 73, 96 and 137 pass with native
+route attribution and clean teardown; they do not establish gfx1100 behavior.
+
+**Remaining consolidation:** diagnose the recorded gfx1100 MoE full-logit discrepancy before
+removing its numeric fallback. Exercise the affected route, identify its actual failure scope, and
+retain eager/serial execution where graph capability is absent. Do not restore a 256 cap merely
+because longer contexts lack measurements.
 
 Done when: run native-context and native-cycle unit tests, then the native-context state/logit
 gates across affected geometries, KV layouts and boundary-straddling rows. Verify public generation,

@@ -33,14 +33,14 @@ def native_context_override(package, limit):
         "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     )
     prior = {name: getattr(package, name, None) for name in names}
-    policy_name = "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES"
-    prior_policy = getattr(package, policy_name, None)
+    capability_name = "GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS"
+    prior_capability = getattr(package, capability_name, None)
     try:
         if limit is not None:
             for name in names:
                 setattr(package, name, limit)
-            if prior_policy is not None:
-                setattr(package, policy_name, frozenset())
+            if prior_capability is not None:
+                setattr(package, capability_name, frozenset())
         yield prior
     finally:
         for name, value in prior.items():
@@ -49,8 +49,8 @@ def native_context_override(package, limit):
                     delattr(package, name)
             else:
                 setattr(package, name, value)
-        if prior_policy is not None:
-            setattr(package, policy_name, prior_policy)
+        if prior_capability is not None:
+            setattr(package, capability_name, prior_capability)
 
 
 def fixed_prompt(tokens, length):

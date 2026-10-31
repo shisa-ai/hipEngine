@@ -808,13 +808,15 @@ GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 8),
     (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2),
 }
-# Preserve unrelated routes while removing the obsolete p95 workaround for
-# the dense Q4_K_M verifier. Its cache and graph topology supply the bounds.
+# Native target verification uses allocated capacity for the feed-forward
+# kinds whose multi-row verify body is implemented. Dense is the exercised
+# long-context route; MoE keeps the numeric fallback because its eager native
+# full-logit control differs from scalar AR at p8 and its p128 selected-state
+# observation is not localized. This is a structural capability, never a
+# quant stamp or geometry allowlist.
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 95
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 95
-GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES = frozenset({
-    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"),
-})
+GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS = frozenset({"dense"})
 # Packed-PARO S7 starts with the independently-qualified singleton K1/R2
 # frontier only. C2/C4 remains absent until physical multi-request kernels pass.
 PARO_SPECDEC2_MTP2_C1 = True
@@ -1587,7 +1589,7 @@ __all__ = [
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
-    "GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES",
+    "GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS",
     "PARO_SPECDEC2_MTP2_C1",
     "PARO_SPECDEC2_MTP2_C4",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

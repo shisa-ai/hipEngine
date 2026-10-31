@@ -51,7 +51,7 @@ def _capacity_bound_session(position, capacity, backend="hip_gfx1100", file_type
     [(95, 1023), (128, 1023), (512, 1023), (1020, None), (1024, 1280),
      (1278, None), (1280, 1536), (4096, 4352), (8192, 8448)],
 )
-def test_gfx1100_context_uses_capacity_and_graph_topology_not_p95(monkeypatch, start, extent):
+def test_gfx1100_context_uses_allocated_capacity_and_graph_topology(monkeypatch, start, extent):
     from hipengine.runtime import qwen35_gguf_runner as runner
 
     monkeypatch.setattr(runner, "_gguf_prefill_device_metadata_enabled", lambda **_kw: True)
@@ -70,7 +70,7 @@ def test_native_graph_metadata_is_independent_of_bulk_prefill_policy(monkeypatch
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == position + 256
 
 
-def test_capacity_policy_preserves_unrelated_quant_state_and_model_routes():
+def test_dense_ffn_capability_ignores_unfamiliar_quant_stamps_and_bounds_moe():
     from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
 
     session = _capacity_bound_session(128, 65536)
@@ -78,19 +78,122 @@ def test_capacity_policy_preserves_unrelated_quant_state_and_model_routes():
         session.backend, session, default=session.scratch.max_positions,
     )
     assert resolve() == 65536
+    # Quant stamps are kernel-dispatch inputs, not native-context admission.
+    for stamp in ("MOSTLY_Q4_K_S", "MOSTLY_Q6_K", "", "MOSTLY_Q4_K_M\x00garbage"):
+        session.runner.weights.file_type_name = stamp
+        assert resolve() == 65536, stamp
+    session.runner.weights.file_type_name = "MOSTLY_Q4_K_M"
     session.runner.fp16_recurrent_state = True
     assert resolve() == 95
     session.runner.fp16_recurrent_state = False
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
     assert resolve() == 65536
-    session.kv_storage_dtype = DType.BF16
-    session.runner.weights.file_type_name = "MOSTLY_Q4_K_S"
+    session.kv_storage_dtype = DType.FP16
     assert resolve() == 95
-    session.runner.weights.file_type_name = "MOSTLY_Q4_K_M"
+    session.kv_storage_dtype = DType.BF16
     session.runner.weights.geometry = QWEN35_MOE_H2048_E256_GEOMETRY
     assert resolve() == 95
     session.backend = "hip_gfx1151"
     assert resolve() == 65544
+
+
+def test_allocated_capacity_bounds_native_target_even_when_default_exceeds_it():
+    session = _capacity_bound_session(1024, 1024)
+    assert native_cycle_mod.native_target_context_limit(
+        session.backend, session, default=4096,
+    ) == 1024
+    assert native_cycle_mod.native_target_context_limit(
+        session.backend, session, default=512,
+    ) == 512
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+
+
+def test_capable_dense_target_without_allocated_capacity_fails_named():
+    from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+
+    session = SimpleNamespace(
+        backend="hip_gfx1100",
+        kv_storage_dtype=DType.BF16,
+        runner=SimpleNamespace(weights=SimpleNamespace(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            file_type_name="MOSTLY_Q4_K_M",
+        )),
+    )
+    with pytest.raises(
+        native_cycle_mod.NativeSpecTargetContextResourceError,
+        match="allocated session capacity",
+    ):
+        native_cycle_mod.native_target_context_limit(
+            session.backend, session, default=4096,
+        )
+
+
+@pytest.mark.parametrize("owner_name,field_name", [
+    ("target_layout", "max_sequence_length"),
+    ("_target_scratch_owner", "max_positions"),
+])
+def test_allocated_capacity_falls_back_to_published_owner(owner_name, field_name):
+    from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+
+    session = SimpleNamespace(
+        backend="hip_gfx1100",
+        kv_storage_dtype=DType.BF16,
+        runner=SimpleNamespace(weights=SimpleNamespace(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            file_type_name="MOSTLY_Q4_K_S",
+        )),
+        **{owner_name: SimpleNamespace(**{field_name: 2048})},
+    )
+    assert native_cycle_mod.native_target_context_limit(
+        session.backend, session, default=4096,
+    ) == 2048
+
+
+def test_allocated_capacity_uses_smallest_valid_source():
+    session = _capacity_bound_session(1024, 2048)
+    session.target_layout = SimpleNamespace(max_sequence_length=1024)
+    assert native_cycle_mod.native_target_context_limit(
+        session.backend, session, default=4096,
+    ) == 1024
+    session.target_layout = SimpleNamespace(max_sequence_length=4096)
+    assert native_cycle_mod.native_target_context_limit(
+        session.backend, session, default=4096,
+    ) == 2048
+
+
+def test_nonpositive_slot_capacity_does_not_fall_back_to_a_stale_layout():
+    session = _capacity_bound_session(1024, 0)
+    session.target_layout = SimpleNamespace(max_sequence_length=4096)
+    session._target_scratch_owner = SimpleNamespace(max_positions=4096)
+    with pytest.raises(
+        native_cycle_mod.NativeSpecTargetContextResourceError,
+        match="allocated session capacity",
+    ):
+        native_cycle_mod.native_target_context_limit(
+            session.backend, session, default=4096,
+        )
+
+
+def test_zero_allocated_capacity_is_not_a_bound():
+    from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+
+    session = SimpleNamespace(
+        backend="hip_gfx1100",
+        kv_storage_dtype=DType.BF16,
+        scratch=SimpleNamespace(max_positions=0),
+        target_layout=SimpleNamespace(max_sequence_length=0),
+        runner=SimpleNamespace(weights=SimpleNamespace(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            file_type_name="MOSTLY_Q4_K_M",
+        )),
+    )
+    with pytest.raises(
+        native_cycle_mod.NativeSpecTargetContextResourceError,
+        match="allocated session capacity",
+    ):
+        native_cycle_mod.native_target_context_limit(
+            session.backend, session, default=4096,
+        )
 
 
 @pytest.mark.parametrize("capacity", [256, 1024, 4096])

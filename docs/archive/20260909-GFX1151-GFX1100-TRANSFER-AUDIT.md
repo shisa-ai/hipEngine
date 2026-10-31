@@ -994,7 +994,8 @@ condition. Reachability is stated against the two in-scope artifacts: Qwen3.8-27
 | `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS` | `{}` | doubly off: also ANDed with the Q6 rowtile name above | declined |
 | `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS` | `()` | no padded target-verify row counts | declined |
 | `GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS` | `()` | no exact-rowtile target rows | declined |
-| `GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES` | `()` | gfx1151's own `GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT` / `_GRAPH_MAX_CONTEXT = 65544`, already the cache capacity | N/A |
+| `GGUF_SPECDEC2_NATIVE_TARGET_CACHE_CAPACITY_POLICIES` | `()` | gfx1151's own `GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT` / `_GRAPH_MAX_CONTEXT = 65544`, already the cache capacity | N/A; retired by the structural FFN capability |
+| `GGUF_SPECDEC2_NATIVE_TARGET_CAPACITY_FFN_KINDS` | `()` | no allocated-capacity override; gfx1151 keeps its own 65544 numeric bounds | N/A; structural replacement for the retired cache-policy set |
 | `GGUF_IQ4_XS_ADMITTED_PREFILL_PAIR_VARIANT` | `None` | no gfx1100 cooperative IQ pair substitution | declined; requires gfx1151 pair qualification |
 | `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT` | `{}` | existing gfx1151 T16 verifier owners | declined; requires gfx1151 numerical/economics gate |
 | `GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE` | `{}` | existing selected T16 decode owner | declined; requires gfx1151 selected-shape gate |
