@@ -3946,11 +3946,11 @@ Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
 Scope: `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`; `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`; `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`.
 
-**Remaining ownership migration:** replace `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` and
-`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` with explicit resolved owner state at their consumers. The
-binder still resets the Q8 WMMA layer list to empty; provide a getter and explicit diagnostic
-override instead of requiring callers to know binder order. Test independent owners in both
-construction orders and interleaved requests before removing the environment transport.
+**Remaining ownership migration:** replace `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` with
+explicit resolved owner state at its consumers. The binder still resets the Q8 WMMA layer list
+to empty; provide a getter and explicit diagnostic override instead of requiring callers to know
+binder order. Test independent owners in both construction orders and interleaved requests before
+removing the environment transport.
 
 **Remaining direct-call migration:** replace the direct/unbound
 `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` fallback after every in-tree caller reaches the
@@ -3959,6 +3959,12 @@ consumer through a bound generator or runner. Confirm with
 consumer still depends on the ambient value, then remove the parser and its fallback tests and run
 `tests/test_unit_qwen4exp_production_moe_owner_transport.py`. Preserve explicit owner diagnostics
 and the guarded `rows >= 16` selector.
+
+Remove the direct/unbound `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` fallback only after its
+remaining direct callers bind `q8_mmq_prefill_enabled` explicitly. Preserve the named workspace
+preparation operation and the enabled-without-workspace error. Audit consumers with
+`rg -n 'Q8_MMQ_PREFILL|q8_mmq_prefill_enabled' hipengine scripts tests`, then run
+`tests/test_unit_qwen4exp_q8_mmq_owner_transport.py` before removing the parser.
 
 ```bash
 python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json
