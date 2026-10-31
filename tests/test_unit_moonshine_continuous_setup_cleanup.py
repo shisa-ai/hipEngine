@@ -1,5 +1,6 @@
 """Exercise benchmark topology setup ownership without CUDA or checkpoints."""
 
+import json
 import sys
 from types import SimpleNamespace
 
@@ -18,6 +19,15 @@ def test_continuous_benchmark_cli_keeps_explicit_topology(monkeypatch, topology)
         "--snapshot-dir", "synthetic", "--fixture-dir", "synthetic",
         "--output", "synthetic.json", "--topology", topology])
     assert bench.parse_args().topology == topology
+
+
+def test_continuous_benchmark_cli_rejects_unknown_topology(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["benchmark_moonshine_cuda_continuous.py",
+        "--snapshot-dir", "synthetic", "--fixture-dir", "synthetic",
+        "--output", "synthetic.json", "--topology", "mixed"])
+    with pytest.raises(SystemExit) as error:
+        bench.parse_args()
+    assert error.value.code == 2
 
 
 @pytest.mark.parametrize("topology,failure", [
@@ -75,8 +85,9 @@ def test_continuous_benchmark_releases_every_constructed_decoder(monkeypatch, tm
             return {"workspace_nbytes": 1}
 
     class Scheduler:
+        topology = "synthetic"
         def __init__(self, *decoders, **kwargs):
-            scheduler_calls.append((decoders, kwargs))
+            scheduler_calls.append((self.topology, decoders, kwargs))
             if failure == "scheduler":
                 raise RuntimeError("synthetic topology failure")
             self.decoders, self.kwargs = decoders, kwargs
@@ -87,13 +98,19 @@ def test_continuous_benchmark_releases_every_constructed_decoder(monkeypatch, tm
                 for decoder in self.decoders:
                     decoder.close()
         def graph_cache_contract(self):
-            return {}
+            return {"topology": self.topology}
         def scheduler_contract(self):
             return {}
 
+    class UniformScheduler(Scheduler):
+        topology = "uniform_t256_rederived"
+
+    class ExactScheduler(Scheduler):
+        topology = "exact_two_region"
+
     monkeypatch.setattr(batch_module, "MoonshineCudaBatchRuntime", Decoder)
-    monkeypatch.setattr(scheduler_module, "MoonshineCudaContinuousBatchRuntime", Scheduler)
-    monkeypatch.setattr(scheduler_module, "MoonshineCudaExactContinuousBatchRuntime", Scheduler)
+    monkeypatch.setattr(scheduler_module, "MoonshineCudaContinuousBatchRuntime", UniformScheduler)
+    monkeypatch.setattr(scheduler_module, "MoonshineCudaExactContinuousBatchRuntime", ExactScheduler)
     def sample(*a, **kw):
         if failure == "body":
             raise RuntimeError("synthetic topology failure")
@@ -107,6 +124,24 @@ def test_continuous_benchmark_releases_every_constructed_decoder(monkeypatch, tm
     assert sorted(closed) == list(range(1, len(created)+1))
     assert all(decoder.closed for decoder in created)
     assert weight_frees == [{"runtime": runtime}]
+    expected_topology = (
+        "exact_two_region" if topology == "exact-two-region"
+        else "uniform_t256_rederived"
+    )
+    expected_contract = (
+        "bit-exact t32/t256 regions with one D2D state transfer"
+        if topology == "exact-two-region"
+        else "full-corpus-qualified uniform t256 reassociation"
+    )
     if scheduler_calls:
-        assert len(scheduler_calls[0][0]) == (2 if topology == "exact-two-region" else 1)
+        selected_topology, decoders, kwargs = scheduler_calls[0]
+        assert selected_topology == expected_topology
+        assert len(decoders) == (2 if topology == "exact-two-region" else 1)
+        assert kwargs["max_pending"] == args.requests
+        assert kwargs["max_graphs"] == args.max_graphs
     assert args.output.exists() is (failure is None)
+    if failure is None:
+        report = json.loads(args.output.read_text())
+        assert report["scope"]["continuous_topology"] == topology
+        assert report["correctness"]["continuous_numerical_contract"] == expected_contract
+        assert report["results"]["b2"]["continuous_graph_cache"]["topology"] == expected_topology

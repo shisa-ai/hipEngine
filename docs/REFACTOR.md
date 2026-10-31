@@ -1842,25 +1842,6 @@ route gate and checkpoint eager/graph comparisons on HIP. Include FP16/default, 
 selective W8A16 requests, full logits/top-1, graph buckets, no timed allocation, repeat/reset/reuse
 and teardown before removing or replacing the selector.
 
-### R0370 — Moonshine exact two-region scheduler reference ownership
-
-Owner: `hipengine/runtime/moonshine_cuda_continuous.py`.
-
-Scope: `scripts/benchmark_moonshine_cuda_continuous.py --topology exact-two-region`.
-
-**Decision needed:** keep the explicitly requested continuous exact reference, or retire it after
-confirming no caller needs its hidden-boundary arithmetic and migrating its benchmark/GPU-test
-consumers. Do not silently substitute uniform-t256 for `--topology exact-two-region`.
-
-Done when: audit the class, benchmark selector and dynamic-arrival GPU tests together. Run
-`uv run pytest tests/test_unit_moonshine_continuous_setup_cleanup.py
-tests/test_unit_benchmark_moonshine_cuda_continuous.py
-tests/test_gpu_moonshine_cuda_sm120a_continuous_batch.py`, then both explicit benchmark topologies
-on a CUDA host with the same fixtures and static lockstep comparison. Check admission, one-time
-transfer, cancellation, compaction, bounded graph cache, EOS, reset/reuse and teardown before
-deleting the route. Public Moonshine admission is a separate architecture decision, not part of this
-benchmark cleanup.
-
 ### R0368 — LC-D3 global geometry diagnostics and unused repair separation
 
 Owner: `scripts/laguna_global_issue_diagnostic.py`.
