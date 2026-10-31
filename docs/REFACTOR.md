@@ -233,13 +233,15 @@ Owner: `hipengine/speculative/candidate_budget.py`.
 
 Scope: `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`; `HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`.
 
-Done when: Deferred API decision: deprecate `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` only through an explicit
-compatibility transition. Serving and direct generators use
-`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`; both names must agree when present. Preserve
-malformed/conflicting/unsupported-value errors and explicit user intent. Update direct callers,
-configuration documentation and resolver/reporting tests before removing the alias. Keep the generic
-direct-provider config default; this is not permission to reinstate independent fallback reads or
-silently rewrite requested depth.
+Done when: Deferred alias retirement: ship the implemented `FutureWarning` transition before removing
+`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`. Active in-repo scripts already write the canonical
+`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`; compatibility tests and historical evidence still name
+the alias. Before removal, recheck active callers and user configuration examples, migrate any
+remaining writers, and update resolver/reporting tests and configuration documentation together.
+See `worklog/entries/20261031T202425.449059Z-cleanup-refactor-r0080-deprecation-ab53a8.md`.
+Until retirement, preserve exact requested depth, agreement checks when both names are present,
+and malformed/conflicting/unsupported-value errors. Keep the generic direct-provider default;
+never reinstate independent fallback reads or silently rewrite requested depth.
 
 ### R0081 — Finish legacy provider telemetry migration
 

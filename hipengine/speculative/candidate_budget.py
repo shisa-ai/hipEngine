@@ -2,13 +2,15 @@
 
 ``HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`` is the canonical setting shared by
 the server and direct generator callers. ``HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET``
-remains a compatibility alias for existing generator-local callers; when both
-are present they must agree.
+is a deprecated compatibility alias: a legacy-only setting still resolves its
+exact requested depth and emits a ``FutureWarning``. When both names are present
+they must agree.
 """
 
 from __future__ import annotations
 
 import os
+import warnings
 
 SPECULATIVE_CANDIDATE_BUDGET_ENV = "HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"
 LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
@@ -34,7 +36,8 @@ def resolve_explicit_candidate_budget_env() -> int | None:
 
     The canonical name is read first, but the legacy alias is not ignored: if
     both are present and disagree, that is a configuration error rather than a
-    silent precedence choice. An explicitly configured depth is returned
+    silent precedence choice. A legacy-only setting emits ``FutureWarning`` and
+    still resolves its exact depth. An explicitly configured depth is returned
     unchanged; capability checks belong to the owner that executes it.
     """
 
@@ -45,4 +48,13 @@ def resolve_explicit_candidate_budget_env() -> int | None:
             f"{SPECULATIVE_CANDIDATE_BUDGET_ENV}={canonical} conflicts with "
             f"{LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV}={legacy}"
         )
-    return canonical if canonical is not None else legacy
+    if canonical is None and legacy is not None:
+        warnings.warn(
+            f"{LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV} is deprecated; use "
+            f"{SPECULATIVE_CANDIDATE_BUDGET_ENV} instead. The legacy name "
+            "still resolves the requested candidate depth.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return legacy
+    return canonical

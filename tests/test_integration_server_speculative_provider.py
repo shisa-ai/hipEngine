@@ -409,14 +409,28 @@ def test_server_cli_rejects_an_unusable_candidate_budget(monkeypatch, capsys) ->
 
 
 def test_server_cli_reads_the_legacy_candidate_budget_alias(monkeypatch) -> None:
-    """The generator-local name remains a working compatibility alias."""
+    """The generator-local name remains a working, deprecated compatibility alias."""
 
     monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
 
-    args = build_parser().parse_args(["--model", "target"])
+    with pytest.warns(FutureWarning, match="HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"):
+        args = build_parser().parse_args(["--model", "target"])
 
     assert args.speculative_candidate_budget == 3
+
+    client = TestClient(
+        create_app(
+            _config(speculative_candidate_budget=args.speculative_candidate_budget),
+            llm=_SpeculativeFakeLLM(),
+        )
+    )
+    capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative"]
+    assert capability["candidate_budget_resolution"] == {
+        "requested": 3,
+        "resolved": 3,
+        "source": "explicit",
+    }
 
 
 def test_server_cli_rejects_conflicting_candidate_budget_aliases(

@@ -47,7 +47,7 @@ def _env_positive_int(name: str) -> int | None:
 
 
 def _candidate_budget_env() -> int | None:
-    """Read the shared candidate-depth setting and its compatibility alias."""
+    """Read the shared candidate-depth setting and its deprecated alias."""
 
     try:
         return resolve_explicit_candidate_budget_env()
@@ -410,8 +410,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Candidate depth for the speculative owner. When omitted, use "
             "the environment setting or resolve from the loaded model's "
             "serving evidence (env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET; "
-            "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET is accepted as a legacy "
-            "alias). An explicit value bypasses those settings."
+            "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET is accepted as a deprecated "
+            "legacy alias). An explicit value bypasses those settings."
         ),
     )
     parser.add_argument(

@@ -683,10 +683,11 @@ def test_gguf_mtp_server_candidate_budget_uses_one_shared_setting(monkeypatch) -
     monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "2")
     assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
 
-    # The old generator-local name remains a compatibility alias.
+    # The old generator-local name remains a working, deprecated alias.
     monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "2")
-    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
+    with pytest.warns(FutureWarning, match="HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"):
+        assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
 
     # Agreement is accepted; disagreement is a configuration error, not a
     # silent precedence choice.

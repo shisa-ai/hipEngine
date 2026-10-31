@@ -920,7 +920,7 @@ def _trace_mtp2_resolution(reason: str) -> None:
 
 
 def _gguf_mtp_explicit_candidate_budget() -> int | None:
-    """Return an explicit dense MTP depth from either supported setting name."""
+    """Return an explicit dense MTP depth from the shared setting or its alias."""
 
     budget = resolve_explicit_candidate_budget_env()
     if budget is None:
