@@ -1721,6 +1721,18 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         selected = "wave" if route_package == "qsa-h256-wave" else "page256"
         return qsa_h256_prefill_mode(runner, selected if mode == "after" else "parent")
 
+    if route_package == "router-dpp":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("router-dpp needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import router_producer_variant
+        return router_producer_variant(
+            runner,
+            "f32_hidden_token_tile4_dpp_exact" if mode == "after"
+            else "f32_hidden_token_tile4_dense_exact",
+        )
+
     if route_package == "q5k-row4":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -2066,11 +2078,7 @@ def _apply_mode(
     if route_package == "router-dpp":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        environment["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"] = (
-            "f32_hidden_token_tile4_dpp_exact" if mode == "after"
-            else "f32_hidden_token_tile4_dense_exact"
-        )
-        return
+        return  # route_scope binds the runner-local producer.
     if route_package == "gr-dpp-reduction":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")

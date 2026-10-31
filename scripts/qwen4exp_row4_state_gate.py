@@ -93,10 +93,8 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # mapped path.
         return
     if package == "router-dpp":
-        environment[flag] = (
-            "f32_hidden_token_tile4_dpp_exact" if enabled == "1"
-            else "f32_hidden_token_tile4_dense_exact"
-        )
+        # Request-local on the runner; ``route_scope`` binds the arm around the
+        # measured prefill and restores the profile's producer on exit.
         return
     if package in {"qsa-head-pair", "qsa-head-quad"}:
         # Request-local on the runner; ``route_scope`` binds the arm around the
@@ -224,7 +222,7 @@ def main():
     if args.route_package == "q8-dpp-reduction":
         flag = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
     if args.route_package == "router-dpp":
-        flag = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
+        flag = ""  # route_scope binds the runner-local producer.
     if args.route_package == "gr-dpp-reduction":
         flag = "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"
     if args.route_package == "gr-wave-scale":
@@ -1020,8 +1018,7 @@ def main():
                 "mmq-token64", "q51-fold128", "q51-fold-pair",
                 "q8-down-row4", "q8-down-bundle",
             }:
-                os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
-                                    if args.route_package == "router-dpp" else "1")
+                os.environ[flag] = "1"
             register(key, original, replace=True)
         if mapped_register_original is not None:
             register(mapped_register_key, mapped_register_original, replace=True)

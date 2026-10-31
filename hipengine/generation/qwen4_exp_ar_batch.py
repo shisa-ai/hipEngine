@@ -662,6 +662,11 @@ def make_qwen4_exp_ar_batch_runner(
     batch.routed_f16_enabled = bool(getattr(generator, "routed_f16_enabled", False))
     batch.q51_wmma_down = bool(getattr(generator, "q51_wmma_down", False))
     batch.q51_out8 = bool(getattr(generator, "q51_out8", True))
+    # The router-logit producer is the plan's decision too. Multirow captured
+    # segments bake that kernel in, so the carrier hands over the published
+    # value rather than letting the batch owner fall back to the tile4 parent.
+    batch.router_producer_variant = getattr(
+        generator, "router_producer_variant", None)
     batch.q4_exact_grouped_gate = bool(
         getattr(generator, "q4_exact_grouped_gate", True))
     batch.q4_exact_grouped_all = bool(

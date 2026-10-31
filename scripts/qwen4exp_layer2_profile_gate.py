@@ -58,6 +58,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     routed_f16_enabled as routed_f16,
     qsa_ordered_decode_v2,
     qsa_prefill_head_mode, qsa_h256_prefill_mode, qsa_wmma_attention,
+    router_producer_variant,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -111,6 +112,13 @@ class CandidateSpec:
     qsa_wmma_enabled: bool | None = None
     # None preserves the base profile; parent, wave or page256 binds one arm.
     qsa_h256_prefill_mode: str | None = None
+    # Explicit router-logit producer for this arm, same protocol. ``None`` keeps
+    # the base profile's published producer (the exact tile4 parent on a strict
+    # or Q4_K_M plan, the F16-operand GEMM on the UD plan); a named producer
+    # binds that registered leaf for the measured rows and restores the plan's
+    # choice after. The arm's own field is the only selector: no process key
+    # names this leaf, so a stale value cannot make the arm measure production.
+    router_producer_variant: str | None = None
     # Explicit GDN serial-prefill owner for this arm, same protocol. ``None``
     # keeps the base profile's published variant (the register parent on a
     # strict base); a wide/narrow name binds that leaf for the measured rows.
@@ -208,8 +216,10 @@ _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
-    "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_token_tile4_dpp_exact",
 }
+#: The cleared composition's router producer is request-local runner state, so
+#: each isolation arm declares it on its own candidate instead.
+_F16_ROUTES_OFF_ROUTER = "f32_hidden_token_tile4_dpp_exact"
 _ALL_LAYERS = ",".join(map(str, range(48)))
 #: Down-only arms close routed F16 through CandidateSpec.routed_f16_enabled.
 _F16_ROUTE_ARMS = {
@@ -221,7 +231,6 @@ _F16_ROUTE_ARMS = {
     "recovery_plus_gr_wide": {"HIPENGINE_QWEN4_EXP_GR_WIDE": "1"},
     "recovery_plus_indexer_router_f16": {
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
-        "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm",
     },
     "recovery_plus_qsa_wmma": {},
     "recovery_plus_gdn_tiled_all_layers": {
@@ -247,6 +256,11 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
                 "binder" + (", plus " + ", ".join(sorted(extra)) if extra else "")
             ),
             environment={**_F16_ROUTES_OFF, **extra},
+            router_producer_variant=(
+                "f32_hidden_f16_wmma_gemm"
+                if name == "recovery_plus_indexer_router_f16"
+                else _F16_ROUTES_OFF_ROUTER
+            ),
             qsa_wmma_enabled=name == "recovery_plus_qsa_wmma",
             routed_f16_enabled=name == "recovery_plus_routed_f16",
             gr_f16_direct=False,
@@ -567,11 +581,11 @@ CANDIDATES = {
             ),
             "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
             "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
-            "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_f16_wmma_gemm",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(
                 str(layer) for layer in range(48)
             ),
         },
+        router_producer_variant="f32_hidden_f16_wmma_gemm",
         base_profile="production",
         scenario_id="qwen4exp-fast-composition",
         candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
@@ -975,9 +989,8 @@ CANDIDATES["router_warp_reduce"] = CandidateSpec(
         "in LDS, replacing the four-token tile's 256-thread LDS tree over a "
         "global weight row"
     ),
-    environment={
-        "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT": "f32_hidden_warp_reduce_dense_exact",
-    },
+    environment={},
+    router_producer_variant="f32_hidden_warp_reduce_dense_exact",
     base_profile="production",
     scenario_id="qwen4exp-ud-q4-k-xl-router-warp-reduce",
     candidate_key=("hip_gfx1151", "router_logits", "f32",
@@ -1568,6 +1581,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         and candidate_spec.qsa_wmma_enabled is None
         and candidate_spec.production_moe_prefill_enabled is None
         and candidate_spec.q8_mmq_prefill_enabled is None
+        and candidate_spec.router_producer_variant is None
     )
 
 
@@ -1729,6 +1743,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if candidate_spec.qsa_h256_prefill_mode is not None:
         dispatch_stack.enter_context(qsa_h256_prefill_mode(
             candidate_generator.runner, candidate_spec.qsa_h256_prefill_mode))
+    if candidate_spec.router_producer_variant is not None:
+        # The router producer is the plan's decision, so an arm that measures a
+        # different one binds it on this runner and the plan's choice comes back
+        # on unwind. Dispatch counting on the candidate key proves which leaf
+        # actually ran.
+        dispatch_stack.enter_context(router_producer_variant(
+            candidate_generator.runner, candidate_spec.router_producer_variant))
     if candidate_spec.qsa_prefill_head_mode is not None:
         # Request-local state, so the arm is bound around the measured rows and
         # the profile's own decision comes back when the stack unwinds.
@@ -2115,6 +2136,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 candidate_q8_mmq_prefill_enabled,
             ),
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
+            "router_producer_variant": candidate_spec.router_producer_variant,
             "base_profile": candidate_spec.base_profile,
             "bound_environment": bound_environment,
             "direct_dispatch_target": candidate_spec.direct_dispatch_target,

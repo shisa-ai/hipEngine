@@ -176,9 +176,11 @@ _ROUTER_WARP_REDUCE_EVIDENCE = (
 _ROUTER_DPP_EVIDENCE = (
     "benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md"
 )
-# Named router producer and rollback switch. Strict/Q4_K_M keep tile4; the UD
-# production plan selects the F16-operand GEMM below, and ordered DPP is the
-# arithmetic-recovery default and the named rollback.
+# Named router producers. Strict/Q4_K_M keep tile4; the UD production plan
+# selects the F16-operand GEMM below, and ordered DPP is the
+# arithmetic-recovery default and a named gate choice. The retired
+# ``HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`` key is recorded only so a caller value
+# the owner publication makes inert is still reported.
 _ROUTER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 _ROUTER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
 _ROUTER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
@@ -189,30 +191,20 @@ _ROUTER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
 # The F16-operand WMMA GEMM is the UD production plan's router producer; see
 # _f16_route_selections for the replacement it performs.
 _ROUTER_F16_GEMM_VARIANT = "f32_hidden_f16_wmma_gemm"
-_ROUTER_VARIANTS = (
-    _ROUTER_TILE4_VARIANT,
-    _ROUTER_WARP_REDUCE_VARIANT,
-    _ROUTER_DPP_VARIANT,
-    _ROUTER_F16_GEMM_VARIANT,
-)
 
 
 def _selected_router_producer_variant(*, recovery: bool = False) -> str:
-    """Return the named router producer, or the plan default when none is named.
+    """Return the plan's router producer before the manifest is resolved.
 
-    The default is ordered DPP for the arithmetic-recovery plan and the tile4
-    parent otherwise, so strict and Q4_K_M production keep tile4. The UD
-    production plan then replaces the DPP default with the F16-operand GEMM
-    unless a producer was named before import. The binder publishes the
-    resolved manifest selection for the runner's launch-time reader, including
-    the strict tile4 fallback and explicit rollback.
+    The plan default is ordered DPP for the arithmetic-recovery plan and the
+    exact tile4 parent otherwise, so strict and Q4_K_M production keep tile4.
+    The UD production plan then replaces the DPP default with the F16-operand
+    GEMM in the manifest. The binder publishes the resolved manifest selection
+    as request-local runner state; a gate arm names a different producer on the
+    runner it measures, so no process key selects this leaf.
     """
 
-    default = _ROUTER_DPP_VARIANT if recovery else _ROUTER_TILE4_VARIANT
-    requested = os.environ.get(_ROUTER_VARIANT_ENV, "").strip() or default
-    if requested not in _ROUTER_VARIANTS:
-        raise ValueError(f"{_ROUTER_VARIANT_ENV} must be one of {_ROUTER_VARIANTS}; got {requested!r}")
-    return requested
+    return _ROUTER_DPP_VARIANT if recovery else _ROUTER_TILE4_VARIANT
 
 
 _GDN_WIDE_VARIANT = "qwen4exp_sigmoid_wave_norm_prefill"
@@ -916,10 +908,6 @@ def _f16_route_selections(
 
     result = []
     replaced = set()
-    # A router producer the caller named before import is an explicit
-    # rollback and is kept; the binder's own published value is not.
-    requested = os.environ.get(_ROUTER_VARIANT_ENV, "").strip()
-    router_named = bool(requested) and _binder_written.get(_ROUTER_VARIANT_ENV) != requested
     for selection in _production_selections(
         recovery=True, gdn_prefill_variant=gdn_prefill_variant,
     ):
@@ -928,7 +916,6 @@ def _f16_route_selections(
         if (
             selection.layer == "router_logits"
             and selection.selected_variant == _ROUTER_DPP_VARIANT
-            and not router_named
         ):
             # The F16-operand WMMA GEMM producer: about 295 ms per 4096-token
             # prefill on the fastest FP32 producer against about 15 ms.
@@ -1042,8 +1029,9 @@ def _report_prebinder_conflicts() -> None:
         "Qwen4Exp profile bind discarded pre-binder values for "
         f"{len(_last_prebinder_conflicts)} profile-owned variable(s): {detail}. "
         "The binder owns these, so a value set before generator construction "
-        "is inert and the intended route did not run. Set them after the "
-        "binder instead."
+        "is inert and the intended route did not run. Use the documented "
+        "owner-bound diagnostic API for retired environment controls; apply "
+        "remaining environment overrides after the binder."
     )
     if os.environ.get(PREBINDER_CONFLICT_ENV, "warn").strip().lower() == "error":
         raise RuntimeError(message)
@@ -1274,6 +1262,16 @@ def _bind(
         if production
         else None
     )
+    # The router-logit producer is the plan's own decision, published as
+    # request-local runner state rather than the retired
+    # ``HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`` key. The manifest always declares
+    # it (tile4 on strict and Q4_K_M, the F16-operand GEMM on the UD plan), so
+    # the launch selection cannot disagree with the resolved plan; a gate arm
+    # names a different producer on the runner it measures.
+    router_producer_variant = next(
+        row["selected_variant"] for row in resolved.manifest["selections"]
+        if row["layer"] == "router_logits"
+    )
     # GDN peer prefill owner's layer scope, published as request-local state on
     # the owning runner rather than the retired
     # ``HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}`` pair. The production
@@ -1290,12 +1288,6 @@ def _bind(
     )
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
-        # Publish the router producer the manifest declares, so the runner's
-        # launch-time switch cannot disagree with the resolved selection.
-        _ROUTER_VARIANT_ENV: next(
-            row["selected_variant"] for row in resolved.manifest["selections"]
-            if row["layer"] == "router_logits"
-        ),
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
         # PF-3 Q5_1 M1 and PF-1 grouped Q8_0 down are T0 exact production
         # owners after the one-process/one-residency canonical gate, and their
@@ -1497,6 +1489,8 @@ def _bind(
         for row in resolved.manifest["selections"]
     )
     generator.gdn_prefill_variant = gdn_prefill_variant
+    _record_owner_transport(_ROUTER_VARIANT_ENV, router_producer_variant)
+    generator.router_producer_variant = router_producer_variant
     generator.gdn_register_prefill = production
     generator.gdn_peer_prefill_layers = gdn_peer_prefill_layers
     generator.q51_down_m1 = q51_down_m1
@@ -1566,6 +1560,7 @@ def _bind(
         runner.moe_decode_warp = generator.moe_decode_warp
         runner.gdn_decode_rowsplit = generator.gdn_decode_rowsplit
         runner.gdn_prefill_variant = gdn_prefill_variant
+        runner.router_producer_variant = router_producer_variant
         runner.gdn_register_prefill = production
         runner.gdn_peer_prefill_layers = gdn_peer_prefill_layers
         runner.q51_down_m1 = q51_down_m1

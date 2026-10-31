@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from scripts.qwen4exp_halo_box_campaign_ab import (
-    _apply_mode, build_parser, router_dpp_expected_calls,
+    _apply_mode, build_parser, route_scope, router_dpp_expected_calls,
 )
 from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
 from scripts.qwen4exp_router_dpp_gate_support import assert_router_outputs_exact
@@ -24,12 +24,21 @@ ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 
 @pytest.mark.parametrize("mode,enabled,variant", [("before", "0", PARENT), ("after", "1", DPP)])
 def test_router_gate_changes_only_the_producer(mode, enabled, variant):
+    # The producer is request-local runner state: neither the A/B binder nor
+    # the state gate may write a process key, and route_scope is what selects
+    # the arm on the runner it measures.
+    from types import SimpleNamespace
+
     environment = {"unrelated": "unchanged"}
     _apply_mode(mode, route_package="router-dpp", environment=environment)
-    assert environment == {"unrelated": "unchanged", ENV: variant}
-    other = {"unrelated": "unchanged"}
-    apply_state_gate_mode(None, "router-dpp", enabled, ENV, environment=other)
-    assert other == environment
+    assert environment == {"unrelated": "unchanged"}
+    apply_state_gate_mode(None, "router-dpp", enabled, "", environment=environment)
+    assert environment == {"unrelated": "unchanged"}
+    owner = SimpleNamespace(router_producer_variant=F16_GEMM)
+    with route_scope("router-dpp", mode, owner, environment=environment):
+        assert owner.router_producer_variant == variant
+        assert environment == {"unrelated": "unchanged"}
+    assert owner.router_producer_variant == F16_GEMM
     args = build_parser().parse_args([
         "--model-root", "/unused", "--output", "/unused.json",
         "--route-package", "router-dpp", "--prefill-chunk-size", "4096",
@@ -90,7 +99,7 @@ def test_private_checker_rejects_signed_zero_flip_and_nonfinite():
 
 
 @pytest.mark.parametrize("override", [None, PARENT, DPP, F16_GEMM, "f32_hidden_warp_reduce_dense_exact"])
-def test_named_default_manifest_and_strict_binder_in_fresh_process(override):
+def test_plan_declares_the_producer_and_ignores_a_stale_key(override):
     # Import-time selection must be tested in a fresh interpreter; reloading
     # shared profile modules would mutate another test's module/registry state.
     code = '''
@@ -107,9 +116,11 @@ for mode in ("strict", "production"):
                             quant="gguf_ud_q4_k_xl",profile=mode)
  with warnings.catch_warnings():
   warnings.simplefilter("ignore")
-  r.construct_generator(lambda: SimpleNamespace())
+  generator = r.construct_generator(lambda: SimpleNamespace())
  row = next(s for s in r.manifest["selections"] if s["layer"]=="router_logits")
- out[mode] = dict(selection=dict(row), bound=os.environ[p._ROUTER_VARIANT_ENV])
+ out[mode] = dict(selection=dict(row),
+                  owner=getattr(generator, "router_producer_variant", None),
+                  env=os.environ.get(p._ROUTER_VARIANT_ENV))
 print(json.dumps(out))
 '''
     env = dict(os.environ)
@@ -121,19 +132,17 @@ print(json.dumps(out))
                             cwd=Path(__file__).resolve().parents[1],
                             capture_output=True, text=True, check=True, timeout=60)
     data = json.loads(result.stdout)
-    assert data["strict"]["bound"] == PARENT
+    assert data["strict"]["owner"] == PARENT
     assert data["strict"]["selection"]["selected_variant"] == PARENT
-    # With no named producer the plan selects the F16-operand GEMM; a named
-    # producer is an explicit rollback and is kept.
-    selected = override or F16_GEMM
-    assert data["production"]["bound"] == selected
-    assert data["production"]["selection"]["selected_variant"] == selected
+    # The plan always declares the F16-operand GEMM on the UD lane, and the
+    # binder publishes it as owner state. A stale process value is inert: it is
+    # neither published nor read back.
+    assert data["production"]["owner"] == F16_GEMM
+    # The stale value stays where the caller put it: the binder publishes owner
+    # state instead of overwriting the key with the resolved selection.
+    assert data["production"]["env"] == override
+    assert data["production"]["selection"]["selected_variant"] == F16_GEMM
     assert data["production"]["selection"]["strict_fallback_variant"] == PARENT
     evidence = data["production"]["selection"]["evidence_artifact"]
-    expected = {
-        PARENT: "2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json",
-        DPP: "qwen4exp-router-dpp/README.md",
-        F16_GEMM: "2026-10-14-qwen4exp-fast-composition-gate-2/README.md",
-        "f32_hidden_warp_reduce_dense_exact": "2026-09-27-router-warp-reduce/",
-    }
-    assert evidence.endswith(expected[selected])
+    assert evidence.endswith(
+        "2026-10-14-qwen4exp-fast-composition-gate-2/README.md")

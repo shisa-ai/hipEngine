@@ -82,23 +82,9 @@ needs an explicit campaign decision and new reference validation, not a kernel-o
 threshold relaxation. Do not rerun the unchanged rejected route before that decision.
 
 Preserve tile4 strict fallback and the diagnostic warp implementation. F16 production and
-ordered-DPP recovery choices are separate siblings, not rejected by this candidate's result. R0029
-owns selector API/transport retirement; do not delete shared selection infrastructure to remove one
-candidate.
-
-### R0029 — Replace router producer handoff with a plan-level diagnostic API
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`.
-
-Done when: Deferred API design: give gate harnesses a plan-level producer option before removing the
-launch-time reader and binder environment publication. Migrate
-`scripts/qwen4exp_layer2_profile_gate.py`, `scripts/qwen4exp_profile_gap.py`,
-`scripts/qwen4exp_row4_state_gate.py` and `scripts/qwen4exp_halo_box_campaign_ab.py` together.
-Verify each comparison arm actually selects its named producer rather than measuring production
-twice. Preserve explicit tile4, ordered-DPP and warp-reduce diagnostic choices and registered strict
-fallback; diagnostic availability is not arithmetic promotion.
+ordered-DPP recovery choices are separate siblings, not rejected by this candidate's result.
+The diagnostic `router_producer_variant(runner, mode)` scope selects these siblings;
+do not delete shared selection infrastructure to remove one candidate.
 
 ### R0028 — GR-wide profile handoff and engagement checks
 

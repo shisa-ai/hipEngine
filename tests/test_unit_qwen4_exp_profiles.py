@@ -1582,10 +1582,10 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
         assert os.environ[key] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == all_layers
-    assert (
-        os.environ["HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"]
-        == "f32_hidden_f16_wmma_gemm"
-    )
+    # The router producer is request-local owner state, not a process key.
+    assert owner.router_producer_variant == "f32_hidden_f16_wmma_gemm"
+    assert owner.runner.router_producer_variant == "f32_hidden_f16_wmma_gemm"
+    assert "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT" not in os.environ
 
     # A later bind without the composition restores its own routes.
     other.binder(SimpleNamespace(), other)

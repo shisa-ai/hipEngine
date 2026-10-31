@@ -25,7 +25,10 @@ def test_router_select_cast_resolves_composite(monkeypatch, rows, setting):
         pass
 
     monkeypatch.setattr(runner, "_ensure_qwen4_exp_moe_backend", lambda backend: None)
-    monkeypatch.setattr(runner, "_qwen4_exp_router_producer_variant", lambda rows: None)
+    monkeypatch.setattr(
+        runner, "_qwen4_exp_router_producer_variant",
+        lambda rows, requested=None: None,
+    )
     monkeypatch.setattr(runner, "launch_gguf_linear", lambda *a, **k: None)
 
     def combined(*args, **kwargs):

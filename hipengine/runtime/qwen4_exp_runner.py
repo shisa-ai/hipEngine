@@ -5373,7 +5373,6 @@ def _qwen4_exp_q8_mmq_policy(policy):
     return policy
 
 
-_ROUTER_PRODUCER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 _ROUTER_PRODUCER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
 _ROUTER_PRODUCER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
 _ROUTER_PRODUCER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
@@ -5391,25 +5390,29 @@ _ROUTER_PRODUCER_VARIANTS = (
 _ROUTER_F16_GEMM_MIN_ROWS = 64
 
 
-def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
+def _qwen4_exp_router_producer_variant(
+    rows: int, requested: str | None = None,
+) -> str | None:
     """Return the multirow F32 router producer variant, or None for the linear path.
 
-    The named profile binder publishes the resolved producer: the UD
-    production plan selects the F16-operand WMMA GEMM, ordered DPP is the
-    arithmetic-recovery default and the named rollback, and strict and Q4_K_M
-    keep tile4. The environment reader remains for the named rollback and the
-    gate arms; see docs/REFACTOR.md. Unknown values raise rather than silently
-    running an inert measurement arm.
+    ``requested`` is the owning runner's plan-published producer (see
+    :func:`router_producer_variant`): the strict and Q4_K_M plans publish the
+    exact tile4 parent, and the arithmetic-recovery plan publishes the
+    F16-operand WMMA GEMM. ``None`` keeps that exact tile4 parent, so an
+    unbound runner never runs a diagnostic producer. Ordered DPP is the exact
+    producer that serves the widths the F16 GEMM's 128-row tiles leave nearly
+    empty, and it stays a named choice for gate arms. No process key selects
+    this leaf; unknown values raise rather than silently running an inert
+    measurement arm.
     """
 
     if rows < 2:
         return None
-    requested = os.environ.get(_ROUTER_PRODUCER_VARIANT_ENV, "").strip()
-    if not requested:
+    if requested is None:
         return _ROUTER_PRODUCER_TILE4_VARIANT
     if requested not in _ROUTER_PRODUCER_VARIANTS:
         raise ValueError(
-            f"{_ROUTER_PRODUCER_VARIANT_ENV} must be one of "
+            "router_producer_variant must be one of "
             + ", ".join(_ROUTER_PRODUCER_VARIANTS)
             + f"; got {requested!r}"
         )
@@ -5423,6 +5426,36 @@ def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
         # DPP producer serves those widths.
         return _ROUTER_PRODUCER_DPP_VARIANT
     return requested
+
+
+@contextlib.contextmanager
+def router_producer_variant(runner: Any, mode: str | None = None):
+    """Temporarily bind the router-logit producer field on one owning runner.
+
+    ``mode`` is the producer to bind for the scope. ``None`` binds the unbound
+    selection, which the dispatch reads as the exact tile4 parent; it is not a
+    restore of the plan's published producer, so a ``None`` scope around a plan
+    that publishes the F16-operand GEMM runs tile4 for its duration. The prior
+    field value is yielded and put back on exit, including on error, so the
+    plan's decision comes back.
+
+    The runner field is the owner: the profile binder publishes the plan's
+    producer to it, the constructor and clone inheritance can set it, and this
+    scope is one way a gate arm names a different one for the work it measures.
+    """
+
+    if mode is not None and mode not in _ROUTER_PRODUCER_VARIANTS:
+        raise ValueError(
+            "router_producer_variant must be one of "
+            + ", ".join(_ROUTER_PRODUCER_VARIANTS)
+            + f"; got {mode!r}"
+        )
+    prior = getattr(runner, "router_producer_variant", None)
+    runner.router_producer_variant = mode
+    try:
+        yield prior
+    finally:
+        runner.router_producer_variant = prior
 
 
 _PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
@@ -6328,6 +6361,7 @@ def run_qwen4_exp_moe(
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
     production_moe_prefill_enabled: bool | None = None,
+    router_producer_variant: str | None = None,
     scratch: Qwen4ExpMoEScratch,
     rows: int,
     hidden: int,
@@ -6454,6 +6488,12 @@ def run_qwen4_exp_moe(
     MoE route admits that owner on its own: the dispatch runs it whenever
     ``production_grouped_moe`` owns the chunk, whatever this field says, so the
     field only widens the route to the chunks the production route does not own.
+
+    ``router_producer_variant`` is the owning runner's plan-published
+    router-logit producer (see :func:`router_producer_variant`). ``None`` keeps
+    the exact tile4 parent; a named value selects that registered producer, and
+    the F16 WMMA GEMM's 128-row tiles still hand small widths to the exact DPP
+    producer. Gate arms bind this field on the runner they measure.
     """
 
     if scratch.closed:
@@ -6482,6 +6522,7 @@ def run_qwen4_exp_moe(
                 q4_dp4a_decode_enabled=q4_dp4a_enabled,
                 q4_dp4a_decode_layers=q4_dp4a_layers,
                 production_moe_prefill_enabled=production_moe_prefill_enabled,
+                router_producer_variant=router_producer_variant,
                 scratch=scratch,
                 rows=rows,
                 hidden=hidden,
@@ -6536,7 +6577,8 @@ def run_qwen4_exp_moe(
         raise ValueError("missing Qwen4Exp MoE weights: " + ", ".join(missing))
     backend = str(weights["expert_gate"].backend)
     _ensure_qwen4_exp_moe_backend(backend)
-    router_variant = _qwen4_exp_router_producer_variant(rows)
+    router_variant = _qwen4_exp_router_producer_variant(
+        rows, router_producer_variant)
     if router_variant is not None:
         router_logits = resolve(
             backend=backend,
@@ -7798,6 +7840,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
     production_moe_prefill_enabled: bool | None = None,
+    router_producer_variant: str | None = None,
     attention_state: Qwen4ExpDenseAttentionState,
     scratch: Qwen4ExpQSALayerScratch,
     position: int,
@@ -7939,6 +7982,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         production_moe_prefill_enabled=production_moe_prefill_enabled,
+        router_producer_variant=router_producer_variant,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
@@ -7984,6 +8028,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
     production_moe_prefill_enabled: bool | None = None,
+    router_producer_variant: str | None = None,
     attention_state: Qwen4ExpDenseAttentionState,
     index_state: Qwen4ExpQSAIndexDeviceState,
     scratch: Qwen4ExpQSALayerScratch,
@@ -8183,6 +8228,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         production_moe_prefill_enabled=production_moe_prefill_enabled,
+        router_producer_variant=router_producer_variant,
         scratch=scratch.moe,
         rows=rows,
         hidden=hidden,
@@ -8242,6 +8288,7 @@ def run_qwen4_exp_gdn_layer(
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
     production_moe_prefill_enabled: bool | None = None,
+    router_producer_variant: str | None = None,
     conv_state_ptr: int,
     recurrent_state_ptr: int,
     scratch: Qwen4ExpGDNLayerScratch,
@@ -8499,6 +8546,7 @@ def run_qwen4_exp_gdn_layer(
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         production_moe_prefill_enabled=production_moe_prefill_enabled,
+        router_producer_variant=router_producer_variant,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
@@ -9365,6 +9413,10 @@ class Qwen4ExpGGUFResidentModelRunner:
     # remains the fallback; a bound decision never reads it. The row>=16 guard
     # and the layer capability check stay at the dispatch consumer.
     production_moe_prefill_enabled: bool | None = None
+    # The router-logit producer is the owning runner's plan decision. ``None``
+    # keeps the exact tile4 parent, and a named value selects that registered
+    # producer; gate arms bind it on the runner they measure.
+    router_producer_variant: str | None = None
     # The Q8 MMQ prefill workspace is the owning runner's decision. ``None`` is
     # the unbound/direct state, where the historical process key remains the
     # fallback; a bound decision never reads it. Resource preparation stays an
@@ -9562,6 +9614,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q4_dp4a_decode_enabled: bool | None = None,
         q4_dp4a_decode_layers: frozenset[int] | None = None,
         production_moe_prefill_enabled: bool | None = None,
+        router_producer_variant: str | None = None,
         q8_mmq_prefill_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
     ) -> None:
@@ -9575,6 +9628,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             else frozenset(q4_dp4a_decode_layers)
         )
         self.production_moe_prefill_enabled = production_moe_prefill_enabled
+        self.router_producer_variant = router_producer_variant
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
         if not 0 < int(max_sequence_length) <= self.config.context_length:
@@ -10851,6 +10905,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
                     production_moe_prefill_enabled=self.production_moe_prefill_enabled,
+                    router_producer_variant=self.router_producer_variant,
                     layer_graph_cache=self.layer_graph_cache,
                     layer_graph_key=q4_dp4a_decode_graph_key(
                         "gdn", layer, q4_dp4a_decision),
@@ -10911,6 +10966,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
                     production_moe_prefill_enabled=self.production_moe_prefill_enabled,
+                    router_producer_variant=self.router_producer_variant,
                     cache_only=False,
                     qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
                     qsa_wave32=self.qsa_wave32,
@@ -11247,6 +11303,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
                     production_moe_prefill_enabled=self.production_moe_prefill_enabled,
+                    router_producer_variant=self.router_producer_variant,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     q51_down_m1=self.q51_down_m1,
                     q51_pair_prefill=self.q51_pair_prefill,
@@ -11305,6 +11362,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
                     production_moe_prefill_enabled=self.production_moe_prefill_enabled,
+                    router_producer_variant=self.router_producer_variant,
                     q51_down_m1=self.q51_down_m1,
                     q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,

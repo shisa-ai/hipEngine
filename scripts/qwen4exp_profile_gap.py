@@ -58,7 +58,6 @@ ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
     "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
     "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
-    "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT",
 )
 
 
@@ -423,6 +422,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the f16 WMMA layer scope is owner state; use "
                 "--q8-wmma-layers instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT":
+            raise ValueError(
+                "the router-logit producer is owner state; use "
+                "--router-producer-variant instead of --override"
+            )
         if key in overrides:
             raise ValueError(f"duplicate override for {key}")
         overrides[key] = value
@@ -434,6 +438,7 @@ def _named_profile_intact(
     production_moe_override: bool | None,
     q8_mmq_override: bool | None = None,
     q8_wmma_override: Q8WMMALayerScope | None = None,
+    router_producer_override: str | None = None,
 ) -> bool:
     """A named profile is intact only when no post-binder override is active."""
 
@@ -442,6 +447,7 @@ def _named_profile_intact(
         and production_moe_override is None
         and q8_mmq_override is None
         and q8_wmma_override is None
+        and router_producer_override is None
     )
 
 
@@ -450,12 +456,14 @@ def _configuration_class(
     production_moe_override: bool | None,
     q8_mmq_override: bool | None = None,
     q8_wmma_override: Q8WMMALayerScope | None = None,
+    router_producer_override: str | None = None,
 ) -> str:
     return (
         "diagnostic_post_binder_override"
         if overrides or production_moe_override is not None
         or q8_mmq_override is not None
         or q8_wmma_override is not None
+        or router_producer_override is not None
         else "named_profile"
     )
 
@@ -587,6 +595,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Explicit Q8 MMQ prefill workspace owner override applied after "
             "the binder; enabling it prepares the workspace explicitly"
+        ),
+    )
+    parser.add_argument(
+        "--router-producer-variant",
+        default=None,
+        choices=(
+            "f32_hidden_token_tile4_dense_exact",
+            "f32_hidden_warp_reduce_dense_exact",
+            "f32_hidden_token_tile4_dpp_exact",
+            "f32_hidden_f16_wmma_gemm",
+        ),
+        help=(
+            "Explicit router-logit producer for this measurement, bound on the "
+            "owning runner after the binder; the plan's published producer is "
+            "restored on exit"
         ),
     )
     parser.add_argument(
@@ -767,15 +790,16 @@ def main() -> None:
         "execution_profile": resolved.profile.value,
         "configuration_class": _configuration_class(
             overrides, production_moe_override, q8_mmq_override,
-            q8_wmma_override),
+            q8_wmma_override, args.router_producer_variant),
         "named_profile_intact": _named_profile_intact(
             overrides, production_moe_override, q8_mmq_override,
-            q8_wmma_override),
+            q8_wmma_override, args.router_producer_variant),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
         "production_moe_prefill_enabled": None,
         "q8_mmq_prefill_enabled": None,
         "q8_wmma_layers": None,
+        "router_producer_variant": None,
         "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
@@ -835,6 +859,15 @@ def main() -> None:
                 q8_wmma_layer_scope(generator, q8_wmma_override))
         report["q8_wmma_layers"] = resolve_q8_wmma_layers(
             generator).to_report()
+        if args.router_producer_variant is not None:
+            from hipengine.runtime.qwen4_exp_runner import (
+                router_producer_variant,
+            )
+
+            q4_scope.enter_context(router_producer_variant(
+                runner, args.router_producer_variant))
+        report["router_producer_variant"] = getattr(
+            runner, "router_producer_variant", None)
         if q4_dp4a_override is not None:
             from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
 

@@ -407,6 +407,7 @@ def run_qwen4_exp_batch_gdn_layer(
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
     production_moe_prefill_enabled: bool | None = None,
+    router_producer_variant: str | None = None,
     state: Qwen4ExpBatchGdnState,
     scratch: Qwen4ExpGDNLayerScratch,
     rows: int,
@@ -521,6 +522,7 @@ def run_qwen4_exp_batch_gdn_layer(
             q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
             q4_dp4a_decode_layers=q4_dp4a_decode_layers,
             production_moe_prefill_enabled=production_moe_prefill_enabled,
+            router_producer_variant=router_producer_variant,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -638,6 +640,7 @@ def _run_layer_ffn(
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
     production_moe_prefill_enabled: bool | None = None,
+    router_producer_variant: str | None = None,
     rows: int,
     branches: int,
     hidden: int,
@@ -711,6 +714,7 @@ def _run_layer_ffn(
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         production_moe_prefill_enabled=production_moe_prefill_enabled,
+        router_producer_variant=router_producer_variant,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=runtime,
@@ -756,6 +760,7 @@ def run_qwen4_exp_batch_qsa_layer(
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
     production_moe_prefill_enabled: bool | None = None,
+    router_producer_variant: str | None = None,
     attention_state: Qwen4ExpBatchAttentionState,
     index_state: Qwen4ExpBatchQsaIndexState,
     selection: Qwen4ExpBatchQsaSelectionScratch,
@@ -878,6 +883,7 @@ def run_qwen4_exp_batch_qsa_layer(
             q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
             q4_dp4a_decode_layers=q4_dp4a_decode_layers,
             production_moe_prefill_enabled=production_moe_prefill_enabled,
+            router_producer_variant=router_producer_variant,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -1005,6 +1011,10 @@ class Qwen4ExpGGUFBatchRunner:
     # ambient key. The selector's rows>=16 guard stays at the consumer, so a
     # c1 capture key is inert and only an active batch width carries it.
     production_moe_prefill_enabled: bool | None = None
+    # The router-logit producer is the plan's decision, published on the
+    # generator and carried here. ``None`` keeps the exact tile4 parent, and a
+    # captured segment bakes the router launch in, so it belongs in the key.
+    router_producer_variant: str | None = None
     gr_wave_scale: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder and ``None`` (the dispatch heuristic) on an unbound owner.
@@ -1945,7 +1955,8 @@ class Qwen4ExpGGUFBatchRunner:
         output1 base. ``q4_exact_grouped_gate`` and ``q4_exact_grouped_all`` are
         the Q4_K gate/up chain's own gate and its `_ALL` joint term, and
         ``q4_out4`` is that chain's non-expertgrid fallback rung; all three
-        select launches inside the segment.
+        select launches inside the segment. ``router_producer_variant`` selects
+        the router-logit kernel itself, which the segment also bakes in.
         """
 
         return (
@@ -1967,6 +1978,10 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.q8_down_bundle_prefill),
             bool(self.q5k_row4_prefill),
             getattr(self, "moe_decode_warp", frozenset()),
+            # A named producer, not a rung: it selects the router-logit kernel
+            # the captured segment bakes in, so the key carries the name itself
+            # rather than a boolean collapse of it.
+            getattr(self, "router_producer_variant", None),
         )
 
     def step(
@@ -2243,6 +2258,7 @@ class Qwen4ExpGGUFBatchRunner:
                     + self._q4_tile_policy() + self._q8_tile_policy()
                     + (self._q4_dp4a_policy(rows),)
                     + (self._production_moe_policy(rows),),
+                    router_producer_variant=self.router_producer_variant,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -2298,6 +2314,7 @@ class Qwen4ExpGGUFBatchRunner:
                     + self._q4_tile_policy() + self._q8_tile_policy()
                     + (self._q4_dp4a_policy(rows),)
                     + (self._production_moe_policy(rows),),
+                    router_producer_variant=self.router_producer_variant,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
