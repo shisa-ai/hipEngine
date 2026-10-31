@@ -1827,6 +1827,14 @@ class LLM:
             _weight_index, model_plugin = self._load_model_metadata()
         concrete_backend = self._resolve_backend() if backend is None else backend
         concrete_quant = self._resolve_quant(model_plugin) if quant is None else quant
+        # Server construction reads this property while it builds the app, before
+        # the first generation constructs a generator. Plan registration belongs
+        # to the generation path, so refresh the idempotent builtin plans here:
+        # pre-load resolution must see the same registry first generation uses.
+        # Registration constructs no generator and allocates no device storage.
+        from hipengine.generation import register_builtin_generators
+
+        register_builtin_generators()
         from hipengine.execution_profiles import (
             resolve_default_execution_profile,
             resolve_runtime_profile,
