@@ -249,11 +249,14 @@ Owner: `hipengine/chat_cli.py`.
 
 Scope: `diagnostics.specdec2_mtp2`, `ar_output_tokens_in_cycles`, `output_accounting`.
 
-Done when: Deferred provider migration: legacy provider diagnostics and scalar `mtp_*` timing remain
-compatibility readers. Remove each fallback only after its provider publishes the common per-request
-diagnostics contract and both blocking and streaming consumers migrate. Validate server usage,
-metrics and summaries independently of batch timing, with no duplicate attribution or zero-token
-workaround.
+Done when: Migrate `gemma4_mtp`, `qwen4_exp_mtp` and `qwen4_exp_serving_mixed` to row-level
+committed output accounting and publish the common per-request diagnostics block. Then remove
+`_mtp_draft_counts`' legacy provider/scalar timing readers after blocking and streaming consumers
+migrate. Chat `/bench` now prefers public `output_accounting.mtp_output_tokens`, preserves explicit
+zero, and keeps legacy readers for older providers; see
+`worklog/entries/20261031T203642.245018Z-cleanup-refactor-r0081-chat-cli-mtp-accounting-6d2ee5.md`.
+Remove each fallback only when its publishers have migrated. Validate server usage, metrics and
+summaries independently of batch timing, with no duplicate attribution or zero-token workaround.
 
 ### R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback
 

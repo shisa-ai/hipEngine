@@ -627,6 +627,74 @@ def test_usage_rows_count_cached_tokens_from_usage_and_diagnostics() -> None:
     assert "cached" not in dict(_usage_rows(convo, 4096))
 
 
+def _meta_turn(*metas: dict):
+    """A turn fed the server metadata events chat metadata is merged from."""
+
+    from hipengine.chat_cli import _Settings, _Turn
+
+    turn = _Turn(_Settings(build_parser().parse_args([])))
+    for meta in metas:
+        turn.add("meta", meta)
+    return turn
+
+
+def test_turn_reads_speculation_from_the_common_output_accounting() -> None:
+    """The common accounting block decides; neither side is summed into the other."""
+
+    from hipengine.chat_cli import _mtp_speculated
+
+    # The sources disagree in both directions: the common per-request accounting
+    # is authoritative, and the provider block is only the fallback.
+    assert (
+        _mtp_speculated(
+            _meta_turn(
+                {"diagnostics": {"specdec2_mtp2": {"cycles": 4, "mtp_output_tokens": 9}}},
+                {"speculative_mtp": {"draft_cycles": 4, "output_accounting": {"mtp_output_tokens": 0}}},
+            )
+        )
+        is False
+    )
+    assert (
+        _mtp_speculated(
+            _meta_turn(
+                {"diagnostics": {"specdec2_mtp2": {"cycles": 4, "mtp_output_tokens": 0}}},
+                {"speculative_mtp": {"draft_cycles": 4, "output_accounting": {"mtp_output_tokens": 9}}},
+            )
+        )
+        is True
+    )
+
+
+def test_turn_reads_speculation_from_either_response_shape() -> None:
+    """Either metadata placement decides the same way.
+
+    A blocking response carries ``hipengine.speculative_mtp`` beside the
+    response and the provider diagnostics beside the choice; a streaming done
+    chunk carries both in the choice metadata. The client merges those events,
+    so neither placement nor their order may change the decision.
+    """
+
+    from hipengine.chat_cli import _mtp_speculated
+
+    summary = {"output_accounting": {"mtp_output_tokens": 0}}
+    diagnostics = {"diagnostics": {"specdec2_mtp2": {"cycles": 4, "mtp_output_tokens": 0}}}
+    assert _mtp_speculated(_meta_turn({"speculative_mtp": summary}, diagnostics)) is False
+    assert _mtp_speculated(_meta_turn(diagnostics, {"speculative_mtp": summary})) is False
+
+
+def test_turn_treats_unreported_speculation_as_missing_evidence() -> None:
+    """Absence is not a refusal, and a bare cycle count is the legacy fallback."""
+
+    from hipengine.chat_cli import _mtp_speculated
+
+    assert _mtp_speculated(_meta_turn({"timing": {"elapsed_ms": 1.0}})) is None
+    # A summary without accounting cannot tell a decline from unreported telemetry.
+    assert _mtp_speculated(_meta_turn({"speculative_mtp": {"draft_cycles": 0, "used": False}})) is None
+    # A provider block that predates the attribution counter still reports cycles.
+    assert _mtp_speculated(_meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 0}}})) is False
+    assert _mtp_speculated(_meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 3}}})) is True
+
+
 def _sse(payload: dict) -> bytes:
     return b"data: " + json.dumps(payload).encode() + b"\n"
 
@@ -644,12 +712,16 @@ class _BenchStreamServer:
         usage_reports_cached: bool = False,
         refuse_mtp: bool = False,
         mtp_cycles: int = 7,
+        mtp_output_tokens: int = 12,
+        plan_reason: str | None = None,
     ) -> None:
         self.bodies: list[dict] = []
         self.seen: dict[str, int] = {}
         self.usage_reports_cached = usage_reports_cached
         self.refuse_mtp = refuse_mtp
         self.mtp_cycles = mtp_cycles
+        self.mtp_output_tokens = mtp_output_tokens
+        self.plan_reason = plan_reason
 
     def __call__(self, request, timeout=None):
         if not request.full_url.endswith("/chat/completions"):
@@ -687,12 +759,32 @@ class _BenchStreamServer:
                 "fallback_reason": None if cached else "miss",
             }
         }
+        done_choice: dict = {"phase": "done", "diagnostics": diagnostics}
         if speculative:
-            diagnostics["specdec2_mtp2"] = {
+            block = {
                 "requested_budget": 3,
                 "cycles": self.mtp_cycles,
                 "accepted_draft_tokens": 12,
+                "mtp_output_tokens": self.mtp_output_tokens,
                 "provider_decline_reason": None if self.mtp_cycles else "provider_not_ready",
+            }
+            if self.plan_reason is not None:
+                block["plan_reason"] = self.plan_reason
+            diagnostics["specdec2_mtp2"] = block
+            # The server publishes the common per-request accounting beside the
+            # provider block, in the done chunk's choice metadata.
+            done_choice["speculative_mtp"] = {
+                "effective_route": "speculative_mtp",
+                "used": bool(self.mtp_output_tokens),
+                "draft_cycles": self.mtp_cycles,
+                "output_accounting": {
+                    "completion_tokens": 24,
+                    "mtp_output_tokens": self.mtp_output_tokens,
+                    "ar_output_tokens": 24 - self.mtp_output_tokens,
+                    "ar_output_tokens_in_cycles": 0,
+                    "reconciled": True,
+                    "reconciled_reasons": [],
+                },
             }
         yield _sse(
             {
@@ -707,7 +799,7 @@ class _BenchStreamServer:
                         "index": 0,
                         "delta": {},
                         "finish_reason": "length",
-                        "hipengine": {"phase": "done", "diagnostics": diagnostics},
+                        "hipengine": done_choice,
                     }
                 ],
                 "hipengine": {"event": "done", "timing": timing},
@@ -877,15 +969,41 @@ def test_bench_reports_a_route_the_server_refuses(monkeypatch: pytest.MonkeyPatc
     assert [row.split()[0] for row in _bench_lines(text)[1:]] == ["off", "off"]
 
 
-def test_bench_notes_an_mtp_route_that_committed_no_speculative_cycle(
+def test_bench_notes_an_mtp_route_that_committed_no_speculative_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    server = _BenchStreamServer(mtp_cycles=0)
+    server = _BenchStreamServer(mtp_cycles=0, mtp_output_tokens=0)
 
-    text = _rich_bench_text(server, monkeypatch)
+    text = _plain_bench_text(server, monkeypatch)
 
-    assert "! mtp on: no speculative cycle ran (provider_decline_reason=provider_not_ready)" in text
+    assert "! mtp on: no speculative token was committed (provider_decline_reason=provider_not_ready)" in text
     assert [row.split()[0] for row in _bench_lines(text)[1:]] == ["on", "on", "off", "off"]
+
+
+def test_bench_notes_a_route_whose_cycles_committed_no_speculative_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cycle count cannot say whether speculation ran: AR-only cycles count too."""
+
+    server = _BenchStreamServer(
+        mtp_cycles=3,
+        mtp_output_tokens=0,
+        plan_reason="no_provider",
+    )
+
+    text = _plain_bench_text(server, monkeypatch)
+
+    assert "! mtp on: no speculative token was committed (plan_reason=no_provider)" in text
+
+
+def test_bench_does_not_note_a_route_that_committed_speculative_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = _BenchStreamServer(mtp_cycles=7, mtp_output_tokens=12)
+
+    text = _plain_bench_text(server, monkeypatch)
+
+    assert "no speculative token was committed" not in text
 
 
 def test_bench_rejects_a_non_numeric_token_count(monkeypatch: pytest.MonkeyPatch) -> None:

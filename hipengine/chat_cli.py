@@ -1073,8 +1073,23 @@ def _measure(
 
 
 def _mtp_block(turn: _Turn) -> dict | None:
+    """The backend's per-request MTP block, from its provider diagnostics.
+
+    ``diagnostics.specdec2_mtp2`` is the compatibility reader: the server also
+    publishes the same record as the common output accounting (see
+    ``_mtp_accounting``), which is authoritative where both exist.
+    """
+
     diagnostics = turn.meta.get("diagnostics")
     block = diagnostics.get("specdec2_mtp2") if isinstance(diagnostics, dict) else None
+    return block if isinstance(block, dict) else None
+
+
+def _mtp_accounting(turn: _Turn) -> dict | None:
+    """The common per-request output accounting, when the server published it."""
+
+    summary = turn.meta.get("speculative_mtp")
+    block = summary.get("output_accounting") if isinstance(summary, dict) else None
     return block if isinstance(block, dict) else None
 
 
@@ -1085,8 +1100,31 @@ def _mtp_cycles(turn: _Turn) -> int | None:
     return None if block is None else _as_int(block.get("cycles"))
 
 
+def _mtp_speculated(turn: _Turn) -> bool | None:
+    """Whether the backend committed any visible token through speculation.
+
+    A cycle count cannot answer this. An autoregressive-only plan still commits
+    depth-zero cycles, so a request that speculated on nothing can report
+    cycles. The committed-output attribution can, and the common accounting
+    block is where the server publishes it; the provider diagnostics block is
+    the fallback, and a block predating the attribution counter falls back to
+    its cycle count. ``None`` means the backend reported no attribution at all,
+    which is missing telemetry rather than a declined request.
+    """
+
+    accounting = _mtp_accounting(turn)
+    committed = _as_int(accounting.get("mtp_output_tokens")) if accounting else None
+    if committed is None:
+        block = _mtp_block(turn)
+        committed = _as_int(block.get("mtp_output_tokens")) if block else None
+    if committed is not None:
+        return committed > 0
+    cycles = _mtp_cycles(turn)
+    return None if cycles is None else cycles > 0
+
+
 def _mtp_decline_reason(turn: _Turn) -> str | None:
-    """Why a request that asked for MTP ran without a speculative cycle."""
+    """Why a request that asked for MTP committed no speculative token."""
 
     block = _mtp_block(turn)
     if block is None:
@@ -1228,12 +1266,16 @@ class _Bench:
                 )
             )
         if speculative:
-            cycles = _mtp_cycles(cold)
-            # A backend that reports no MTP accounting at all is not evidence of a
-            # declined request, so only a reported-but-empty cycle count is noted.
-            if cycles == 0:
+            speculated = _mtp_speculated(cold)
+            # A backend that reports no attribution at all is not evidence of a
+            # declined request, so only a reported-empty speculative output is
+            # noted.
+            if speculated is False:
                 reason = _mtp_decline_reason(cold)
-                self.notes.append(f"{route}: no speculative cycle ran" + (f" ({reason})" if reason else ""))
+                self.notes.append(
+                    f"{route}: no speculative token was committed"
+                    + (f" ({reason})" if reason else "")
+                )
 
 
 def _run_bench(
