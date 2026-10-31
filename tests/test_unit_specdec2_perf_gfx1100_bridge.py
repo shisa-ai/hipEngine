@@ -243,6 +243,41 @@ def test_loaded_paro_child_exposes_cached_roctx_leaf_mode(tmp_path: Path) -> Non
     assert parent.roctx_markers is True
 
 
+def test_loaded_child_pins_requested_budget_on_public_llm(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    import hipengine
+    from scripts import specdec2_perf_gfx1100_child as child
+
+    class StopAfterConstructor(Exception):
+        pass
+
+    captured = {}
+
+    def fake_llm(*args, **kwargs):
+        captured.update(kwargs)
+        raise StopAfterConstructor
+
+    monkeypatch.setattr(hipengine, "LLM", fake_llm)
+    monkeypatch.setattr(child, "_repo_provenance", lambda: {
+        "commit": _COMMIT, "staged_dirty": False,
+        "unstaged_dirty": False, "untracked_dirty": False,
+    })
+    monkeypatch.setattr(child, "load_prompt_rows", lambda path: [
+        {"id": "code_merge_intervals", "prompt": "Return code."},
+    ])
+    args = build_child_parser().parse_args([
+        "--profile", "production", "--candidate-budget", "1",
+        "--model", str(tmp_path), "--output", str(tmp_path / "packet.json"),
+    ])
+
+    with pytest.raises(StopAfterConstructor):
+        child.run_loaded_packet(args)
+
+    # The global default can change independently of this K1-only protocol.
+    assert captured["speculative_candidate_budget"] == args.candidate_budget
+
+
 def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
     validate_child_scope(lane="paro", profile="production", candidate_budget=1)
     validate_child_scope(lane="paro", profile="strict", candidate_budget=1)
