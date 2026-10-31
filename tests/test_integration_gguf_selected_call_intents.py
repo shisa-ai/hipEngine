@@ -273,6 +273,260 @@ def test_unrepresented_optional_adapter_refuses_certificate(monkeypatch, flag, k
         refused.certificate()
 
 
+OPTIONAL_ROUTES = (
+    # selector, kind, expert type, decode_repack, slots, launched kernel
+    ("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "single", "Q5_K", False, (DOWN,),
+     "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out"),
+    ("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "single", "Q6_K", False, (DOWN,),
+     "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out"),
+    ("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "dual", "Q4_K", False, (GATE, UP),
+     "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out"),
+    ("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", "dual", "Q4_K", False, (GATE, UP),
+     "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out"),
+    ("HIPENGINE_GGUF_T16_SELECTED_DP4A", "dual", "Q4_K", True, (GATE, UP),
+     "gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out"),
+)
+
+
+def optional_intent(kind, slots, **kwargs):
+    from hipengine.loading.gguf_selected_contract import (
+        SELECTED_Q8_1_DP4A, SELECTED_Q8_1_WORKSPACE_OWNER)
+    return intent(kind, slots, optional_adapter=SELECTED_Q8_1_DP4A,
+                  workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER, **kwargs)
+
+
+def optional_preflight(model, *, flag, kind, repack, slots):
+    return preflight_qwen35_gguf_artifact(model, backend="hip_gfx1100", operations=(C1,),
+        decode_repack=repack, repack_veto=False, slot_filter=slots,
+        selected_call_intents=(optional_intent(kind, slots),))
+
+
+@pytest.mark.parametrize("flag,kind,quant,repack,slots,kernel", OPTIONAL_ROUTES)
+def test_optional_q8_1_dp4a_adapter_binds_kernel_operands_and_workspace(
+        monkeypatch, flag, kind, quant, repack, slots, kernel):
+    """An engaged optional adapter binds the conversion it executes, the
+    Q8_1 operand it consumes, and the plan-owned workspace that owns it."""
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from hipengine.loading.gguf_selected_contract import (
+        SELECTED_WORKSPACE_LIFETIME, selected_input_adapter)
+    model = _synthetic_moe_model_map(expert_type=getattr(Q, quant))
+    monkeypatch.setenv(flag, "1")
+    report = optional_preflight(model, flag=flag, kind=kind, repack=repack, slots=slots)
+    assert report.supported, report.render_refusals()
+    bound, = report.plan_contract.selected_invocations
+    assert bound.adapter_kernels == (kernel,)
+    assert bound.adapters == (selected_input_adapter("bf16"),)
+    assert bound.operands[-1] == ("q8_1_workspace_ptr", "q8_1", "read_write")
+    assert bound.workspace.owner == "moe_q8_1"
+    assert bound.workspace.lifetime == SELECTED_WORKSPACE_LIFETIME
+    assert bound.workspace.rows_per_token == bound.intent.input_rows_per_token
+    assert bound.workspace.in_features == bound.shape[2]
+    assert [slot for slot, _ in bound.weight_bindings] == list(slots)
+    assert bound.row_limits == (1, 1)
+    assert bound.entry.endswith("_launch_selected_raw_gguf_moe_dual" if kind == "dual"
+                                else "_launch_selected_raw_gguf_moe_linear")
+
+
+@pytest.mark.parametrize("flag,kind,quant,repack,slots,kernel", OPTIONAL_ROUTES)
+def test_optional_adapter_engagement_is_binding_not_declared(
+        monkeypatch, flag, kind, quant, repack, slots, kernel):
+    """The same declared intent binds two different arithmetic contracts: the
+    selector decides whether the conversion actually runs."""
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    model = _synthetic_moe_model_map(expert_type=getattr(Q, quant))
+    monkeypatch.setenv(flag, "1")
+    engaged = optional_preflight(model, flag=flag, kind=kind, repack=repack, slots=slots)
+    monkeypatch.delenv(flag)
+    plain = optional_preflight(model, flag=flag, kind=kind, repack=repack, slots=slots)
+    assert engaged.supported and plain.supported
+    adapted, unconverted = (report.plan_contract.selected_invocations[0]
+                            for report in (engaged, plain))
+    assert adapted.intent == unconverted.intent  # one shared declaration
+    assert adapted.adapter_kernels == (kernel,) and unconverted.adapter_kernels == ()
+    assert adapted.workspace is not None and unconverted.workspace is None
+    assert adapted.adapters and not unconverted.adapters
+    assert adapted.operands != unconverted.operands
+    assert engaged.plan_contract.resident_plan_records == plain.plan_contract.resident_plan_records
+    assert not covers(engaged, plain) and not covers(plain, engaged)
+
+
+@pytest.mark.parametrize("flag,kind,quant,repack,slots,kernel", OPTIONAL_ROUTES)
+def test_optional_adapter_binding_names_the_kernel_the_caller_launches(
+        monkeypatch, flag, kind, quant, repack, slots, kernel):
+    """The bound record must name the symbol, operand order and per-token
+    workspace geometry the actual selected launcher executes."""
+    from types import SimpleNamespace as NS
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from hipengine.loading.qwen35_gguf_materialize import plan_qwen35_gguf_weight_spec
+    from hipengine.loading.gguf_selected_contract import selected_allocation
+    import hipengine.runtime.qwen35_gguf_runner as runner
+    model = _synthetic_moe_model_map(expert_type=getattr(Q, quant))
+    monkeypatch.setenv(flag, "1")
+    report = optional_preflight(model, flag=flag, kind=kind, repack=repack, slots=slots)
+    bound, = report.plan_contract.selected_invocations
+
+    def weight(slot, ptr):
+        spec = plan_qwen35_gguf_weight_spec(slot, model.layers[0].tensors[slot.rsplit(".", 1)[1]],
+                                           decode_repack=repack)
+        return NS(spec=spec, backend="hip_gfx1100",
+                  allocation=lambda name: NS(tensor=NS(ptr=ptr)))
+
+    from hipengine.loading.gguf_selected_contract import SELECTED_Q8_1_WORKSPACE_OWNER
+    weights = [weight(slot, 11 + index) for index, slot in enumerate(slots)]
+    pointers = {w.spec.slot_path: w.allocation(selected_allocation(w.spec.quant_key)).tensor.ptr
+                for w in weights}
+    assert [pointers[slot] for slot in slots] == [11 + index for index in range(len(slots))]
+    launched, converted = [], []
+    monkeypatch.setattr(runner, "_resolve_exact_selected_moe_kernel", lambda *a: None)
+    monkeypatch.setattr(runner, "gguf_q4_k_quantize_bf16_q8_1",
+                        lambda *a, **kw: converted.append(a))
+    assert getattr(runner, kernel)  # the bound symbol is the launcher's own dispatch target
+    monkeypatch.setattr(runner, kernel, lambda *a, **kw: launched.append(a))
+    geometry = dict(x_rows=1, rows=1, num_experts=4, in_features=256, out_features=256)
+    if kind == "dual":
+        runner._launch_selected_raw_gguf_moe_dual(
+            *weights, 21, 22, 23, 24, q8_1_workspace_ptr=41, stream=0, runtime="fake", **geometry)
+        assert len(launched) == 1, "the pair must not fall back to two singles"
+    else:
+        runner._launch_selected_raw_gguf_moe_linear(
+            weights[0], 21, 22, 23, q8_1_workspace_ptr=41, stream=0, runtime="fake", **geometry)
+    # The dp4a kernel consumes the converted activation, so the bound workspace
+    # leads the call and every other declared operand follows in record order.
+    actual = {"x_ptr": 21, "x_f32_ptr": 21, "selected_ptr": 22,
+              "q8_1_workspace_ptr": 41, "out_ptr": 23, "out_a_ptr": 23, "out_b_ptr": 24,
+              "weight_ptr": pointers[slots[0]], "weight_a_ptr": pointers[slots[0]]}
+    if len(slots) == 2:
+        actual["weight_b_ptr"] = pointers[slots[1]]
+    declared = [name for name, _, _ in bound.operands]
+    assert declared[-1] == "q8_1_workspace_ptr"
+    expected = (actual["q8_1_workspace_ptr"],) + tuple(
+        actual[name] for name in declared
+        if name not in {"x_ptr", "x_f32_ptr", "q8_1_workspace_ptr"})
+    assert launched[0][:len(expected)] == expected
+    assert bound.workspace.owner == SELECTED_Q8_1_WORKSPACE_OWNER
+    # One activation row per token, the resident's K, into the bound workspace.
+    assert converted == [(21, 41, bound.workspace.rows_per_token, bound.workspace.in_features)]
+
+
+def test_optional_adapter_f32_input_launches_the_f32_converter(monkeypatch):
+    """The F32-input leg converts from the declared x_f32 operand, not from x."""
+    from types import SimpleNamespace as NS
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from hipengine.loading.qwen35_gguf_materialize import plan_qwen35_gguf_weight_spec
+    from hipengine.loading.gguf_selected_contract import selected_allocation
+    import hipengine.runtime.qwen35_gguf_runner as runner
+    model = _synthetic_moe_model_map(expert_type=Q.Q6_K)
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    report = preflight_qwen35_gguf_artifact(model, backend="hip_gfx1100", operations=(C1,),
+        decode_repack=False, slot_filter=(DOWN,), selected_call_intents=(
+            optional_intent("single", (DOWN,), input_dtype="f32"),))
+    assert report.supported
+    bound, = report.plan_contract.selected_invocations
+    spec = plan_qwen35_gguf_weight_spec(DOWN, model.layers[0].tensors["ffn_down_exps"],
+                                       decode_repack=False)
+    weight = NS(spec=spec, backend="hip_gfx1100",
+                allocation=lambda name: NS(tensor=NS(ptr=11)))
+    assert weight.allocation(selected_allocation(spec.quant_key)).tensor.ptr == 11
+    launched, converted = [], []
+    monkeypatch.setattr(runner, "_resolve_exact_selected_moe_kernel", lambda *a: None)
+    monkeypatch.setattr(runner, "gguf_q4_k_quantize_f32_q8_1",
+                        lambda *a, **kw: converted.append(a))
+    monkeypatch.setattr(runner, "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
+                        lambda *a, **kw: launched.append(a))
+    runner._launch_selected_raw_gguf_moe_linear(
+        weight, 31, 61, 51, x_rows=1, rows=1, num_experts=4, in_features=256,
+        out_features=256, q8_1_workspace_ptr=41, x_f32_ptr=32, stream=0, runtime="fake")
+    assert converted == [(32, 41, bound.workspace.rows_per_token, bound.workspace.in_features)]
+    assert launched[0][:4] == (41, 61, 11, 51)
+    assert bound.operands[0] == ("x_f32_ptr", "f32", "read")
+    assert bound.adapters == ("gguf_q4_k_quantize_f32_q8_1",)
+
+
+def test_optional_adapter_intent_cannot_be_partial_or_invented(monkeypatch):
+    from hipengine.loading.gguf_selected_contract import (
+        SELECTED_Q8_1_DP4A, SELECTED_Q8_1_WORKSPACE_OWNER, SelectedCallIntent)
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    with pytest.raises(ValueError, match="requires an optional adapter"):
+        SelectedCallIntent(C1, "single", (DOWN,), workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER)
+    for alias, owner in ((DOWN, "weight_slot"), ("post_norm", "input_owner"),
+                         ("moe_down_out", "output_owner")):
+        declared = dict(input_owner="post_norm", output_owner="moe_down_out")
+        if owner == "weight_slot":
+            declared = {}
+        with pytest.raises(ValueError, match="must not alias"):
+            SelectedCallIntent(C1, "single", (DOWN,), optional_adapter=SELECTED_Q8_1_DP4A,
+                               workspace_owner=alias, **declared)
+    with pytest.raises(ValueError, match="unknown optional selected adapter"):
+        SelectedCallIntent(C1, "single", (DOWN,), optional_adapter="dp4a_unqualified",
+                           workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER)
+    # The runtime consumes exactly the plan-owned slot: a certificate may not
+    # name a different owner than the one the adapter writes.
+    for unexecuted in ("selected_q8_1", "moe_q8_1_f32", "workspace"):
+        with pytest.raises(ValueError, match="is not an executed Q8_1 workspace"):
+            SelectedCallIntent(C1, "single", (DOWN,), optional_adapter=SELECTED_Q8_1_DP4A,
+                               workspace_owner=unexecuted)
+    # The engaged conversion needs a named workspace before it can bind.
+    model = _synthetic_moe_model_map(expert_type=Q.Q5_K)
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    refused = preflight_qwen35_gguf_artifact(model, backend="hip_gfx1100", operations=(C1,),
+        decode_repack=False, slot_filter=(DOWN,), selected_call_intents=(
+            intent("single", (DOWN,), optional_adapter=SELECTED_Q8_1_DP4A),))
+    assert not refused.supported and not refused.plan_contract.is_complete()
+    assert any("named q8_1 workspace owner" in item.reason for item in refused.unsupported)
+    # A declared route this call cannot take is refused, never ignored.
+    no_route = preflight_qwen35_gguf_artifact(_synthetic_moe_model_map(), backend="hip_gfx1100",
+        operations=(C1,), slot_filter=(DOWN,), selected_call_intents=(
+            intent("weighted_down", (DOWN,), optional_adapter=SELECTED_Q8_1_DP4A,
+                   workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER),))
+    assert not no_route.supported
+    assert any("no route for this selected call" in item.reason for item in no_route.unsupported)
+
+
+def test_optional_dual_adapter_keeps_ordered_partners_and_requires_one_layout(monkeypatch):
+    from types import MappingProxyType
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from test_live_gguf_ud_admission import _tensor
+    model = _synthetic_moe_model_map(expert_type=Q.Q4_K)
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    forward = optional_preflight(model, flag="HIPENGINE_GGUF_RAW_SELECTED_DP4A",
+                                 kind="dual", repack=False, slots=(GATE, UP))
+    reversed_pair = preflight_qwen35_gguf_artifact(model, backend="hip_gfx1100", operations=(C1,),
+        decode_repack=False, repack_veto=False, slot_filter=(GATE, UP),
+        selected_call_intents=(optional_intent("dual", (UP, GATE)),))
+    assert forward.supported and reversed_pair.supported
+    assert not covers(forward, reversed_pair)
+    assert [slot for slot, _ in reversed_pair.plan_contract.selected_invocations[0].weight_bindings] \
+        == [UP, GATE]
+    # The dp4a pair reads one resident layout; a mixed pair has no route.
+    tensors = dict(model.layers[0].tensors)
+    tensors["ffn_up_exps"] = _tensor("blk.0.ffn_up_exps.weight", (4, 256, 256), Q.Q5_K)
+    mixed = replace(model, layers=(replace(model.layers[0], tensors=MappingProxyType(tensors)),))
+    refused = preflight_qwen35_gguf_artifact(mixed, backend="hip_gfx1100", operations=(C1,),
+        decode_repack=False, repack_veto=False, slot_filter=(GATE, UP),
+        selected_call_intents=(optional_intent("dual", (GATE, UP)),))
+    assert not refused.supported
+    assert any("no route for this selected call" in item.reason for item in refused.unsupported)
+
+
+def test_optional_adapter_keeps_f32_input_and_refuses_f32_output(monkeypatch):
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from hipengine.loading.gguf_selected_contract import selected_input_adapter
+    model = _synthetic_moe_model_map(expert_type=Q.Q6_K)
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    f32 = preflight_qwen35_gguf_artifact(model, backend="hip_gfx1100", operations=(C1,),
+        decode_repack=False, slot_filter=(DOWN,), selected_call_intents=(
+            optional_intent("single", (DOWN,), input_dtype="f32"),))
+    assert f32.supported
+    bound, = f32.plan_contract.selected_invocations
+    assert bound.adapters == (selected_input_adapter("f32"),)
+    assert bound.operands[0] == ("x_f32_ptr", "f32", "read")
+    refused = preflight_qwen35_gguf_artifact(model, backend="hip_gfx1100", operations=(C1,),
+        decode_repack=False, slot_filter=(DOWN,), selected_call_intents=(
+            optional_intent("single", (DOWN,), output_dtype="f32"),))
+    assert not refused.supported
+    assert any("no F32 output" in item.reason for item in refused.unsupported)
+
+
 def test_shared_full_model_default_is_the_actual_c1_caller_plan(monkeypatch):
     from types import SimpleNamespace as NS
     import hipengine.runtime.qwen35_gguf_runner as runner

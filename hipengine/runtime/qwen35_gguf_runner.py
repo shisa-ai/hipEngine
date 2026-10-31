@@ -11599,7 +11599,9 @@ def _optional_q8_1_workspace_ptr(
         return None
     if int(planes) <= 0:
         raise ValueError("q8_1 workspace planes must be positive")
-    workspace = getattr(scratch, "moe_q8_1", None)
+    # The selected-call binder names this same plan-owned slot; reading it by the
+    # shared name keeps a bound workspace owner and the runtime operand equal.
+    workspace = getattr(scratch, SELECTED_Q8_1_WORKSPACE_OWNER, None)
     if workspace is None:
         return None
     required = int(planes) * _q8_1_workspace_bytes(rows, in_features)
@@ -34966,8 +34968,9 @@ def _read_i64_device_scalar(buffer, host: np.ndarray, *, stream: int = 0, runtim
 
 
 from hipengine.loading.gguf_selected_contract import (
-    SELECTED_VARIANTS, selected_abi, selected_allocation, selected_ffn_modes,
-    selected_input_adapter, selected_adapter_enabled, selected_f32_output_supported,
+    SELECTED_Q8_1_WORKSPACE_OWNER, SELECTED_VARIANTS, selected_abi,
+    selected_allocation, selected_ffn_modes, selected_input_adapter,
+    selected_adapter_enabled, selected_f32_output_supported,
 )
 
 _SELECTED_MOE_SINGLE_VARIANT = SELECTED_VARIANTS["single"]

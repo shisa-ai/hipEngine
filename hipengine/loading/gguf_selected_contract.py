@@ -4,6 +4,12 @@ Call kind is an invocation interface, not a registry axis. Singleton, dual,
 dual-SiLU and weighted-down have different operands/output ownership. The
 runtime's existing primitive selection/variant policy stays below these
 interfaces. Certificates are not numerical/profile qualification.
+
+A call that consumes a Q8_1 operand -- the mandatory X8 layouts and the
+optional DP4A routes over an otherwise bf16-input resident -- binds the
+conversion it executes, the operand it consumes, and the plan-owned workspace
+that holds the converted activation, so a record never describes arithmetic
+the runtime does not run.
 """
 from __future__ import annotations
 
@@ -19,6 +25,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q4_K_X8, LAYOUT_GGUF_Q5_K_QMICRO_T16, LAYOUT_GGUF_Q5_K_X8,
     LAYOUT_GGUF_Q6_K_T16, LAYOUT_GGUF_Q6_K_X8,
 )
+from hipengine.quant.gguf_q4_k import GGUF_Q8_1_BLOCK
 
 # Existing concrete resident qualification rows, no inferred variant substrings.
 RAW_SELECTED_CONSUMERS = (
@@ -80,6 +87,100 @@ def selected_adapter_enabled(name: str) -> bool:
     return bool(raw) and raw.lower() not in {"0", "false", "off", "no"}
 
 
+# The Q8_1 operand every selected q8_1 caller consumes lives in ONE plan-owned
+# resident scratch slot. The scratch plan prices it for the widest selected
+# call (``max`` of the gate/up and down block counts); each call rewrites it in
+# place, so no selected caller allocates, resizes or frees it. ``owner`` names
+# that slot, ``lifetime`` records that the plan owns it for the whole session.
+SELECTED_Q8_1_WORKSPACE_OWNER = "moe_q8_1"
+SELECTED_WORKSPACE_LIFETIME = "scratch_plan"
+#: Workspace owners this contract can bind. The runtime consumes exactly these
+#: slots, so a bound record can never name a workspace nothing executes.
+SELECTED_WORKSPACE_OWNERS = frozenset({SELECTED_Q8_1_WORKSPACE_OWNER})
+
+
+def selected_workspace_owner(owner: str | None) -> str:
+    """Resolve one declared (or mandatory) Q8_1 workspace owner.
+
+    ``None`` is the mandatory X8 case, which has no choice to make. A declared
+    owner must be a slot the runtime actually reads; there is no owner mapping,
+    so any other name is refused instead of being recorded.
+    """
+    resolved = SELECTED_Q8_1_WORKSPACE_OWNER if owner is None else owner
+    if resolved not in SELECTED_WORKSPACE_OWNERS:
+        raise ValueError(
+            f"selected workspace owner {resolved!r} is not an executed Q8_1 "
+            f"workspace ({', '.join(sorted(SELECTED_WORKSPACE_OWNERS))})")
+    return resolved
+
+
+# Optional selected DP4A invocation: convert the call's activation to Q8_1 in
+# the caller-owned workspace, then run a dp4a GEMV whose resident allocation
+# and arithmetic differ from the bf16-input consumer the same quant key serves
+# by default. The env selectors below decide whether a call takes the route;
+# this table says what taking it means, so the intent can name the conversion,
+# the kernel and the workspace instead of borrowing a BF16 or X8 record.
+SELECTED_Q8_1_DP4A = "q8_1_dp4a"
+
+
+@dataclass(frozen=True)
+class SelectedOptionalAdapter:
+    """One optional selected-DP4A route over an otherwise bf16-input resident."""
+
+    adapter: str
+    kind: str
+    quant: str
+    allocation: str
+    kernel: str
+    flags: tuple[str, ...]
+    out_features_multiple: int | None = None
+
+    def engaged(self, shape: tuple[int, ...]) -> bool:
+        """Whether the live selectors take this route at this geometry.
+
+        Route availability is a resident/kernel fact; engagement is the
+        selectors plus the geometry the kernel is registered for.
+        """
+        multiple = self.out_features_multiple
+        if multiple is not None and int(shape[1]) % int(multiple):
+            return False
+        return any(selected_adapter_enabled(flag) for flag in self.flags)
+
+
+SELECTED_OPTIONAL_ADAPTERS = (
+    SelectedOptionalAdapter(
+        SELECTED_Q8_1_DP4A, "single", "gguf_q5_k", "raw",
+        "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
+        ("HIPENGINE_GGUF_RAW_SELECTED_DP4A",), 8),
+    SelectedOptionalAdapter(
+        SELECTED_Q8_1_DP4A, "single", "gguf_q6_k", "raw",
+        "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
+        ("HIPENGINE_GGUF_RAW_SELECTED_DP4A",), 8),
+    SelectedOptionalAdapter(
+        SELECTED_Q8_1_DP4A, "single", "gguf_q5_k_t16_v1", "tiles",
+        "gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out",
+        ("HIPENGINE_GGUF_T16_SELECTED_DP4A",)),
+    SelectedOptionalAdapter(
+        SELECTED_Q8_1_DP4A, "dual", "gguf_q4_k", "raw",
+        "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+        ("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", "HIPENGINE_GGUF_RAW_SELECTED_DP4A")),
+    SelectedOptionalAdapter(
+        SELECTED_Q8_1_DP4A, "dual", "gguf_q4_k_t16_v1", "tiles",
+        "gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
+        ("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A", "HIPENGINE_GGUF_T16_SELECTED_DP4A")),
+)
+SELECTED_OPTIONAL_ADAPTER_NAMES = frozenset(
+    route.adapter for route in SELECTED_OPTIONAL_ADAPTERS)
+
+
+def selected_optional_adapter(kind: str, quant: str) -> SelectedOptionalAdapter | None:
+    """The optional adapter route this call kind/quant can take, if any."""
+    for route in SELECTED_OPTIONAL_ADAPTERS:
+        if route.kind == kind and route.quant == quant:
+            return route
+    return None
+
+
 def selected_input_adapter(input_dtype: str) -> str:
     """Actual activation converter symbol used by the production caller."""
     return {"bf16": "gguf_q4_k_quantize_bf16_q8_1", "f32": "gguf_q4_k_quantize_f32_q8_1"}[input_dtype]
@@ -122,6 +223,12 @@ class SelectedCallIntent:
     output_owner: str = "selected_output"
     lanes_per_token: int = 1
     input_rows_per_token: int | None = None
+    # Optional selected DP4A route this call may take, and the caller-owned
+    # workspace its conversion writes. Declaring the route is not engaging it:
+    # the live env selectors decide that at bind time, and the bound record
+    # names the conversion, kernel and workspace actually executed.
+    optional_adapter: str | None = None
+    workspace_owner: str | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "weight_slots", tuple(self.weight_slots))
@@ -148,6 +255,35 @@ class SelectedCallIntent:
             self.selected_owner, self.input_owner, self.output_owner, self.routing_owner,
         )):
             raise ValueError("selected intent operand owners must be named")
+        if self.optional_adapter is not None and self.optional_adapter not in SELECTED_OPTIONAL_ADAPTER_NAMES:
+            raise ValueError(f"unknown optional selected adapter {self.optional_adapter!r}")
+        if self.workspace_owner is not None:
+            if not isinstance(self.workspace_owner, str) or not self.workspace_owner:
+                raise ValueError("selected workspace owner must be a nonempty name")
+            if self.optional_adapter is None:
+                raise ValueError("selected workspace owner requires an optional adapter intent")
+            if self.workspace_owner in {
+                self.selected_owner, self.routing_owner, self.input_owner,
+                self.output_owner, *self.weight_slots,
+            }:
+                raise ValueError("selected q8_1 workspace must not alias an operand or weight owner")
+            selected_workspace_owner(self.workspace_owner)
+
+
+@dataclass(frozen=True)
+class SelectedWorkspace:
+    """The caller-owned Q8_1 workspace one bound selected call consumes.
+
+    ``owner`` is the resident scratch slot holding it and ``lifetime`` records
+    that the scratch plan owns it for the whole session. The geometry is the
+    per-token pair the runtime sizes that slot with: the call's activation rows
+    per token, and the resident's K.
+    """
+
+    owner: str
+    lifetime: str
+    rows_per_token: int
+    in_features: int
 
 
 @dataclass(frozen=True)
@@ -191,6 +327,8 @@ class BoundSelectedCall:
     adapters: tuple[str, ...]
     row_limits: tuple[int, int | None]
     output_rows_per_token: int
+    adapter_kernels: tuple[str, ...] = ()
+    workspace: SelectedWorkspace | None = None
 
     def canonical_record(self) -> str:
         return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
@@ -198,7 +336,12 @@ class BoundSelectedCall:
 
 def bind_selected_call(intent: SelectedCallIntent, specs: Mapping, records: Mapping[str, str],
                        *, backend: str, row_limits: tuple[int, int | None]) -> BoundSelectedCall:
-    """Bind EVERY ordered partner; a filtered or refused owner is not optional."""
+    """Bind EVERY ordered partner; a filtered or refused owner is not optional.
+
+    A Q8_1-consuming call also binds the conversion, kernel and plan-owned
+    workspace it executes, so the record and the runtime agree on which
+    arithmetic ran.
+    """
     missing = tuple(slot for slot in intent.weight_slots if slot not in specs or slot not in records)
     if missing:
         raise ValueError(f"selected {intent.kind} requires resident partner(s): {', '.join(missing)}")
@@ -226,34 +369,64 @@ def bind_selected_call(intent: SelectedCallIntent, specs: Mapping, records: Mapp
     q8 = (kind == "single" and quants[0] in _X8_SINGLE) or (kind == "dual" and same and quants[0] == _X8_DUAL)
     if intent.lanes_per_token > shapes[0][0]:
         raise ValueError("selected lanes per token exceed the expert inventory")
-    # Optional legacy DP4A knobs select a different conversion contract. The
-    # default qualified selected interface does not authorize those experiments;
-    # mandatory X8 adapters are explicit below. Runtime choices are unchanged.
-    raw_dp4a = selected_adapter_enabled("HIPENGINE_GGUF_RAW_SELECTED_DP4A")
-    t16_dp4a = selected_adapter_enabled("HIPENGINE_GGUF_T16_SELECTED_DP4A")
-    q4_dp4a = selected_adapter_enabled("HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A")
-    optional_adapter = (
-        kind == "single" and ((quants[0] in {"gguf_q5_k", "gguf_q6_k"} and shapes[0][1] % 8 == 0 and raw_dp4a)
-                              or (quants[0] == "gguf_q5_k_t16_v1" and t16_dp4a))
-        or kind == "dual" and same and ((quants[0] == "gguf_q4_k" and (raw_dp4a or q4_dp4a))
-                                       or (quants[0] == "gguf_q4_k_t16_v1" and (t16_dp4a or q4_dp4a)))
-    )
-    if optional_adapter:
+    # The optional DP4A routes are a different conversion contract over the same
+    # residents: the call converts its activation to Q8_1 in the plan-owned
+    # workspace and runs a dp4a kernel. A route needs one shared resident layout
+    # (ordered partners are read by one kernel) and the intent must name the
+    # conversion and the workspace, otherwise the record would describe a
+    # different arithmetic than the runtime takes. Selectors still decide
+    # whether the route runs; this only makes that run representable.
+    route = selected_optional_adapter(kind, quants[0]) if same else None
+    if route is not None and route.allocation != allocations[0]:
+        raise ValueError("optional selected adapter route disagrees with the resident allocation")
+    if intent.optional_adapter is not None:
+        if route is None or intent.optional_adapter != route.adapter:
+            raise ValueError("declared optional selected adapter has no route for this selected call")
+        if not intent.workspace_owner:
+            raise ValueError("optional selected DP4A adapter requires a named q8_1 workspace owner")
+    adapter = route if route is not None and route.engaged(shapes[0]) else None
+    if adapter is not None and intent.optional_adapter != adapter.adapter:
         raise ValueError("optional selected DP4A adapter requires a separately qualified invocation intent")
-    if intent.input_dtype == "f32" and not q8:
+    q8_1 = bool(q8 or adapter)
+    if intent.input_dtype == "f32" and not q8_1:
         raise ValueError("supplied F32 selected input requires an executed Q8_1 adapter")
     if intent.output_dtype == "f32" and not (kind == "single" and quants[0] in _X8_SINGLE):
         raise ValueError("selected consumer has no F32 output")
     abi = selected_abi(kind, input_dtype=intent.input_dtype, output_dtype=intent.output_dtype)
     operands = abi.operands
-    if q8:
+    workspace = None
+    if q8_1:
         if intent.input_dtype == "f32":
             operands = (("x_f32_ptr", "f32", "read"),) + operands[1:]
         operands += (("q8_1_workspace_ptr", "q8_1", "read_write"),)
+        workspace = SelectedWorkspace(
+            selected_workspace_owner(intent.workspace_owner if adapter is not None else None),
+            SELECTED_WORKSPACE_LIFETIME, intent.input_rows_per_token, shapes[0][2])
+        if workspace.in_features % GGUF_Q8_1_BLOCK:
+            raise ValueError(
+                f"q8_1 workspace requires in_features divisible by {GGUF_Q8_1_BLOCK}")
     return BoundSelectedCall(intent, backend, tuple((slot, records[slot]) for slot in intent.weight_slots),
         shapes[0], operands, "hipengine.runtime.qwen35_gguf_runner:" + _ENTRY[kind],
-        allocations, ((selected_input_adapter(intent.input_dtype),) if q8 else ()), row_limits,
-        1 if kind == "weighted_down" else intent.lanes_per_token)
+        allocations, ((selected_input_adapter(intent.input_dtype),) if q8_1 else ()), row_limits,
+        1 if kind == "weighted_down" else intent.lanes_per_token,
+        (adapter.kernel,) if adapter is not None else (), workspace)
+
+
+def _optional_adapter_declaration(kind: str, quants: tuple[str, ...]) -> dict[str, str]:
+    """The shared plan declares the optional route this call can take.
+
+    Whether the route is taken is the live selector at bind time, not this
+    declaration: one plan binds both arithmetic contracts, and the bound record
+    says which one ran. A pair with unequal partners has no single-layout route,
+    so it declares nothing.
+    """
+    if len(set(quants)) != 1:
+        return {}
+    route = selected_optional_adapter(kind, quants[0])
+    if route is None:
+        return {}
+    return {"optional_adapter": route.adapter,
+            "workspace_owner": SELECTED_Q8_1_WORKSPACE_OWNER}
 
 
 def default_selected_call_intents(slot_quants: Mapping[str, str], operations, *, lanes_per_token: int = 1) -> tuple[SelectedCallIntent, ...]:
@@ -273,9 +446,13 @@ def default_selected_call_intents(slot_quants: Mapping[str, str], operations, *,
             calls.extend((
                 SelectedCallIntent(op, gate_kind, (gate, up), lanes_per_token=lanes_per_token,
                     input_owner="post_norm", selected_owner="moe_selected_experts",
-                    output_owner="ffn_intermediate" if gate_kind == "dual_silu" else "ffn_gate_up"),
+                    output_owner="ffn_intermediate" if gate_kind == "dual_silu" else "ffn_gate_up",
+                    **_optional_adapter_declaration(
+                        gate_kind, (slot_quants[gate], slot_quants.get(up, "")))),
                 SelectedCallIntent(op, down_kind, (down,), lanes_per_token=lanes_per_token,
                     input_rows_per_token=lanes_per_token, input_owner="ffn_intermediate", selected_owner="moe_selected_experts",
-                    routing_owner="moe_routing_weights", output_owner="moe_down_out"),
+                    routing_owner="moe_routing_weights", output_owner="moe_down_out",
+                    **_optional_adapter_declaration(
+                        down_kind, (slot_quants.get(down, ""),))),
             ))
     return tuple(calls)

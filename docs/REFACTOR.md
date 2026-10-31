@@ -2385,11 +2385,11 @@ Scope: `_LLAMA_COMPAT_MTP_ENV`; `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`,
 
 **Decision needed:** preserve these diagnostics or replace ambient selectors with an explicit
 caller-owned adapter plan across compatibility generation, bench/profiler and workbench consumers.
-The selected-call binder currently refuses certificates for optional raw/T16 adapters it cannot
-represent; it does not certify their conversion by borrowing a BF16 or mandatory-X8 record. That
-certificate limitation is not permission to remove implemented runtime capabilities. Coordinate the
-binder's open invocation-ownership work rather than independently deleting flags consumed by the
-named composition.
+The selected-call binder now represents the optional raw/T16 adapters (see R0471): it binds their
+conversion, kernel and plan-owned Q8_1 workspace instead of refusing the certificate, and it still
+never certifies a conversion by borrowing a BF16 or mandatory-X8 record. Removing implemented
+runtime capabilities is not implied by that representation work. Coordinate the selectors' remaining
+invocation-ownership work rather than independently deleting flags consumed by the named composition.
 
 Done when: migrate workspace allocation, ordered dual/single operands, BF16/F32 inputs,
 actual output types, adapter intents and artifact provenance together. Run selected-call
@@ -3079,16 +3079,35 @@ or benchmark-admission gate.
 
 Owner: `hipengine/loading/gguf_selected_contract.py`.
 
-Scope: `bind_selected_call`.
+Scope: `bind_selected_call`, `SelectedCallIntent`, `SELECTED_OPTIONAL_ADAPTERS`.
 
-Done when: Deferred contract extension: encode optional quantization/workspace ownership in the shared
-selected-call intent, bind the actual caller operands, and only then remove that specific refusal.
-Preserve row limits, ordered dual partners, workspace lifetime and the strict fallback. The clearing
-checks are `tests/test_integration_gguf_invocation_contract.py`,
-`tests/test_integration_gguf_selected_call_intents.py`,
-`tests/test_integration_gguf_execution_authorization.py`, and public native-row generation with the
-optional adapter engaged. Any changed arithmetic default additionally follows the execution-profile
-gate. This is a missing invocation representation, not missing benchmark evidence.
+The shared selected-call intent now represents the optional DP4A routes
+(`HIPENGINE_GGUF_RAW_SELECTED_DP4A`, `HIPENGINE_GGUF_T16_SELECTED_DP4A`,
+`HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`) instead of refusing them: the intent
+declares the route and the caller-owned Q8_1 workspace, and a bound call records
+the conversion symbol, the dp4a kernel, the Q8_1 operand and the plan-owned
+workspace (`moe_q8_1`, scratch-plan lifetime, per-token rows and the resident's
+K). Engagement still comes from the live selectors, so one plan binds both
+arithmetic contracts and a certificate never covers the other. Row limits,
+ordered dual partners, the strict two-single fallback and F32 capabilities are
+unchanged.
+
+The host bundle passes. A gfx1151 public MTP on/off comparison reaches the T16 dual adapter only
+when enabled and closes cleanly; its resident certificate covers `ar_decode_rows`/`ar_prefill`, so
+this does not yet close the distinct `ar_decode_native_rows` requirement. Public C2 AR controls
+currently fail with the same invalid-token sentinel with or without the adapter; the cause is not
+isolated (see the R0471 worklog).
+
+Done when: a real-device public native-row generation run engages an optional
+adapter and reports the bound route (kernel, converter, workspace owner) from
+the resident's certificate; an unengaged run of the same artifact must report
+the unconverted record. The clearing checks are
+`tests/test_integration_gguf_invocation_contract.py`,
+`tests/test_integration_gguf_selected_call_intents.py` and
+`tests/test_integration_gguf_execution_authorization.py`, all passing today for
+the host contract. Any changed arithmetic default additionally follows the
+execution-profile gate. This is a device validation of an implemented route,
+not missing benchmark evidence.
 
 ### R0475 — Eager AR diagnostic retirement
 

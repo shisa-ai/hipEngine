@@ -58,6 +58,25 @@ def native_fixture(tmp_path, *, rank=2, alpha_beta=Q.BF16, omit=()):
     return path
 
 
+def native_moe_fixture(tmp_path):
+    """One tiny native-ready MoE GGUF whose experts are raw Q4_K residents."""
+    tensors = [t for t in default_fixture_tensors(1, alpha_beta_type=Q.BF16)
+               if not t[0].startswith("blk.0.ffn_")]
+    tensors += [("output.weight", (64, 256), Q.Q8_0),
+                ("blk.0.ffn_gate_inp.weight", (4, 256), Q.F32),
+                ("blk.0.ffn_gate_inp_shexp.weight", (256,), Q.F32)]
+    for suffix in ("gate", "up", "down"):
+        tensors += [(f"blk.0.ffn_{suffix}_exps.weight", (4, 256, 256), Q.Q4_K),
+                    (f"blk.0.ffn_{suffix}_shexp.weight", (256, 256), Q.Q4_K)]
+    metadata = [(name.replace("qwen35.", "qwen35moe."), typ,
+                 "qwen35moe" if name == "general.architecture" else value)
+                for name, typ, value in fixture_metadata(1)]
+    metadata += [("qwen35moe." + name, 4, value) for name, value in (
+        ("expert_count", 4), ("expert_used_count", 2),
+        ("expert_feed_forward_length", 256), ("expert_shared_feed_forward_length", 256))]
+    return write_qwen35_gguf(tmp_path / "native-moe.gguf", tensors, metadata)
+
+
 @pytest.mark.parametrize("embedding,head,slot", [
     (Q.BF16, Q.Q8_0, "root.token_embedding"),
     (Q.Q8_0, Q.F32, "root.lm_head"),
@@ -289,6 +308,47 @@ def test_real_loader_preserves_deferred_embedding_and_arena_denial(monkeypatch, 
     assert resident.allocation_arena_reason == "owner denied"
     assert bool(resident.root("token_embedding").allocations) != deferred
     assert resident.root("output_norm").allocations
+
+
+def test_optional_selected_dp4a_adapter_is_bound_by_the_native_certificate(monkeypatch, tmp_path):
+    """A native-rows resident certified with the optional adapter engaged binds
+    its conversion, kernel and workspace; the same resident certified without
+    it cannot start that route later."""
+    from hipengine.loading.gguf_selected_contract import SELECTED_Q8_1_WORKSPACE_OWNER
+    from hipengine.loading.qwen35_gguf_execution import authorize_native_execution
+    from tests.test_live_gguf_ud_admission import _cpu_allocation_fakes
+    path = native_moe_fixture(tmp_path)
+    _cpu_allocation_fakes(monkeypatch)
+    monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", raising=False)
+    plain = loader.materialize_qwen35_gguf_weights(
+        path, decode_repack=False, requested_operations=(NATIVE,))
+    assert authorize_native_execution(plain, backend="hip_gfx1100", rows=2)
+    plain_calls = plain.admission_certificate.plan_contract.selected_invocations
+    assert plain_calls and all(not call.adapter_kernels and call.workspace is None
+                               for call in plain_calls)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    adapted = loader.materialize_qwen35_gguf_weights(
+        path, decode_repack=False, requested_operations=(NATIVE,))
+    contract = adapted.admission_certificate.plan_contract
+    gate, down = [call for call in contract.selected_invocations
+                  if call.intent.operation == NATIVE]
+    assert gate.adapter_kernels == ("gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",)
+    assert gate.adapters == ("gguf_q4_k_quantize_bf16_q8_1",)
+    assert gate.workspace.owner == SELECTED_Q8_1_WORKSPACE_OWNER
+    assert (gate.workspace.rows_per_token, gate.workspace.in_features) == (1, 256)
+    assert gate.operands[-1] == ("q8_1_workspace_ptr", "q8_1", "read_write")
+    assert [slot for slot, _ in gate.weight_bindings] == [
+        "layers.0.ffn_gate_exps", "layers.0.ffn_up_exps"]
+    # Weighted-down has no optional route: its call stays unconverted.
+    assert down.adapter_kernels == () and down.workspace is None
+    assert authorize_native_execution(adapted, backend="hip_gfx1100", rows=2)
+
+    # The certified arithmetic is binding: flipping the selector after load
+    # makes the resident's own invocation intent disagree with its certificate.
+    monkeypatch.delenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A")
+    with pytest.raises(Qwen35GGUFAdmissionError, match="does not cover actual full native"):
+        authorize_native_execution(adapted, backend="hip_gfx1100", rows=2)
 
 
 def test_native_moe_full_closure_and_gate_only_certificate_refusal(monkeypatch, tmp_path):

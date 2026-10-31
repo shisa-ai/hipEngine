@@ -124,6 +124,152 @@ def test_aux_wrappers_use_shared_abi_without_loading_hip():
                      (31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 2, 2, .125, 1, 2, 128, 128, 99)]
 
 
+def test_selected_q8_1_workspace_is_the_plan_owned_scratch_slot(monkeypatch):
+    """The bound workspace owner is the resident scratch slot the runtime reads,
+    and its per-token geometry is what that helper sizes the slot with."""
+    from types import SimpleNamespace as NS
+    from hipengine.loading.gguf_selected_contract import (
+        SELECTED_Q8_1_DP4A, SELECTED_Q8_1_WORKSPACE_OWNER, SELECTED_WORKSPACE_LIFETIME,
+        SelectedCallIntent, bind_selected_call, selected_allocation,
+    )
+    from hipengine.loading.qwen35_gguf_materialize import plan_qwen35_gguf_weight_spec
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from test_live_gguf_ud_admission import _synthetic_moe_model_map
+    import hipengine.runtime.qwen35_gguf_runner as runner
+
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    model = _synthetic_moe_model_map(expert_type=Q.Q4_K)
+    slots = ("layers.0.ffn_gate_exps", "layers.0.ffn_up_exps")
+    specs = {slot: plan_qwen35_gguf_weight_spec(slot, model.layers[0].tensors[slot.rsplit(".", 1)[1]],
+                                               decode_repack=False) for slot in slots}
+    intent = SelectedCallIntent(C1, "dual", slots, optional_adapter=SELECTED_Q8_1_DP4A,
+                                workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER)
+    bound = bind_selected_call(intent, specs, {slot: f"record:{slot}" for slot in slots},
+                               backend="hip_gfx1100", row_limits=(1, 1))
+    workspace = bound.workspace
+    assert workspace.owner == SELECTED_Q8_1_WORKSPACE_OWNER == "moe_q8_1"
+    assert workspace.lifetime == SELECTED_WORKSPACE_LIFETIME
+    assert (workspace.rows_per_token, workspace.in_features) == (1, 256)
+    assert all(spec.quant_key == "gguf_q4_k" and selected_allocation(spec.quant_key) == "raw"
+               for spec in specs.values())
+
+    # The same scratch slot the plan prices is the one the runtime helper reads.
+    required = runner._q8_1_workspace_bytes(workspace.rows_per_token, workspace.in_features)
+    sized = NS(**{workspace.owner: NS(ptr=77, nbytes=required)})
+    assert runner._optional_q8_1_workspace_ptr(sized, workspace.rows_per_token,
+                                               workspace.in_features) == 77
+    # A missing slot is not a workspace, and an undersized one is a refusal.
+    assert runner._optional_q8_1_workspace_ptr(NS(), workspace.rows_per_token,
+                                               workspace.in_features) is None
+    undersized = NS(**{workspace.owner: NS(ptr=77, nbytes=required - 1)})
+    with pytest.raises(ValueError, match="too small"):
+        runner._optional_q8_1_workspace_ptr(undersized, workspace.rows_per_token,
+                                            workspace.in_features)
+
+
+def test_mandatory_x8_and_optional_adapter_record_the_same_workspace_contract(monkeypatch):
+    from hipengine.loading.gguf_selected_contract import (
+        SELECTED_Q8_1_DP4A, SELECTED_Q8_1_WORKSPACE_OWNER, SelectedCallIntent,
+        bind_selected_call,
+    )
+    from hipengine.loading.qwen35_gguf_materialize import plan_qwen35_gguf_weight_spec
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from test_live_gguf_ud_admission import _synthetic_moe_model_map
+
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_X8_REPACK", "q5")
+    model = _synthetic_moe_model_map(expert_type=Q.Q5_K)
+    slot = "layers.0.ffn_down_exps"
+    spec = plan_qwen35_gguf_weight_spec(slot, model.layers[0].tensors["ffn_down_exps"], decode_repack=True)
+    assert spec.quant_key == "gguf_q5_k_x8_v1"
+    records = {slot: f"record:{slot}"}
+    x8 = bind_selected_call(SelectedCallIntent(C1, "single", (slot,)), {slot: spec}, records,
+                            backend="hip_gfx1100", row_limits=(1, 1))
+    assert x8.workspace.owner == SELECTED_Q8_1_WORKSPACE_OWNER
+    assert (x8.workspace.rows_per_token, x8.workspace.in_features) == (1, 256)
+    assert x8.adapter_kernels == ()  # the X8 kernel is the resident's own consumer
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_SELECTED_DOWN_RAW", "q5")
+    raw = plan_qwen35_gguf_weight_spec(slot, model.layers[0].tensors["ffn_down_exps"], decode_repack=True)
+    assert raw.quant_key == "gguf_q5_k"
+    optional = bind_selected_call(
+        SelectedCallIntent(C1, "single", (slot,), optional_adapter=SELECTED_Q8_1_DP4A,
+                           workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER),
+        {slot: raw}, records, backend="hip_gfx1100", row_limits=(1, 1))
+    assert optional.workspace == x8.workspace
+    assert optional.adapter_kernels == ("gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",)
+    assert optional.adapters == x8.adapters
+
+
+def test_planned_scratch_always_carries_the_bound_q8_1_workspace(monkeypatch):
+    """The runtime falls back to the unconverted GEMV when its scratch has no
+    ``moe_q8_1`` slot, so a bound adapter must fit what the resident scratch plan
+    prices at every certified row width of its operation."""
+    from hipengine.loading.gguf_selected_contract import (
+        SELECTED_Q8_1_DP4A, SELECTED_Q8_1_WORKSPACE_OWNER, SelectedCallIntent,
+        bind_selected_call,
+    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import OPERATION_ROW_LIMITS
+    from hipengine.loading.qwen35_gguf_materialize import plan_qwen35_gguf_weight_spec
+    from hipengine.quant.gguf import GGMLQuantizationType as Q
+    from hipengine.runtime.qwen35_gguf_planning import _full_stack_scratch_plan
+    from hipengine.runtime.qwen35_gguf_prefill_plan import build_prefill_scratch_plan
+    from test_live_gguf_ud_admission import _synthetic_moe_model_map
+    from test_unit_qwen35_gguf_prefill_plan import _moe_cfg
+    import hipengine.runtime.qwen35_gguf_runner as runner
+
+    monkeypatch.setenv("HIPENGINE_GGUF_RAW_SELECTED_DP4A", "1")
+    model = _synthetic_moe_model_map(expert_type=Q.Q4_K)
+    lanes = int(model.config.expert_used_count)
+    gate_up = ("layers.0.ffn_gate_exps", "layers.0.ffn_up_exps")
+    down = "layers.0.ffn_down_exps"
+    # Raw Q4_K has a dual route only; the single down route needs a Q5_K
+    # resident. The scratch pricing is quant-independent, so either resident
+    # measures the same slot.
+    down_model = _synthetic_moe_model_map(expert_type=Q.Q5_K)
+    specs = {slot: plan_qwen35_gguf_weight_spec(
+                 slot, model.layers[0].tensors[slot.rsplit(".", 1)[1]], decode_repack=False)
+             for slot in gate_up}
+    specs[down] = plan_qwen35_gguf_weight_spec(
+        down, down_model.layers[0].tensors["ffn_down_exps"], decode_repack=False)
+    records = {slot: f"record:{slot}" for slot in specs}
+    operation = "ar_decode_native_rows"
+    rows_limits = OPERATION_ROW_LIMITS[operation]
+    calls = (
+        bind_selected_call(
+            SelectedCallIntent(operation, "dual", gate_up, lanes_per_token=lanes,
+                               optional_adapter=SELECTED_Q8_1_DP4A,
+                               workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER),
+            specs, records, backend="hip_gfx1100", row_limits=rows_limits),
+        bind_selected_call(
+            SelectedCallIntent(operation, "single", (down,), lanes_per_token=lanes,
+                               input_rows_per_token=lanes,
+                               optional_adapter=SELECTED_Q8_1_DP4A,
+                               workspace_owner=SELECTED_Q8_1_WORKSPACE_OWNER),
+            specs, records, backend="hip_gfx1100", row_limits=rows_limits),
+    )
+    assert [call.workspace.rows_per_token for call in calls] == [1, lanes]
+    cfg = _moe_cfg()
+    low, high = rows_limits
+    for rows in range(low, high + 1):
+        plan = build_prefill_scratch_plan(
+            cfg, hidden_size=256, ffn_size=256, q_width=32, kv_width=16, linear_qkv_width=64,
+            ssm_value_dim=4, rows=rows, capacity=high, segments=1,
+            allocate_kv_cache=False, normalized_qk_heads=6)
+        assert "moe_q8_1" in plan.field_sizes  # the slot the runtime reads exists
+        for call in calls:
+            needed = rows * runner._q8_1_workspace_bytes(
+                call.workspace.rows_per_token, call.workspace.in_features)
+            assert plan.field_sizes["moe_q8_1"] >= needed, (rows, call.intent.kind, needed)
+    # The eager c1 decode scratch prices the same slot for one token.
+    cfg.context_length = 256
+    cfg.layer_types = ("linear_attention", "full_attention")
+    cfg.rope_freq_base = 10_000.0
+    decode = _full_stack_scratch_plan(
+        cfg, hidden_size=256, ffn_size=256, q_width=32, kv_width=16, linear_qkv_width=64,
+        max_sequence_length=256, max_batch_size=1, allocate_kv_cache=False)
+    assert decode.field_sizes["moe_q8_1"] >= lanes * runner._q8_1_workspace_bytes(1, 256)
+
+
 def test_aux_operand_elements_match_native_c_signatures():
     """Independent native ABI oracle, including mutability and mixed inputs."""
     import re
@@ -202,6 +348,8 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
     session = NS(weights=resident, runtime=object(), backend="hip_gfx1100",
                  fp16_recurrent_state=False, hidden_size=256, vocab_size=64, linear_qkv_width=192,
                  ssm_value_dim=32, _cast_library=lambda: object(),
+                 # Unbound owner: the ambient/session source stays authoritative.
+                 _q8_t16_rowtile_all_owner_for_rows=lambda rows: None,
                  _run_post_attention_ffn_rows=lambda *a, **kw: None)
     from tests.test_live_gguf_ud_admission import _native_entry_session
     scratch.calls = []
