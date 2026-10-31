@@ -104,9 +104,12 @@ record actual F16-direct engagement, passing state/repeats/teardown and failed
 numerical limits. The four-arm
 [isolation report](../audit/refactor-sweep/2026-11-01-r0028-isolation.json)
 shows wide-on changes logits within strict and production, while production
-wide-off independently misses the envelope against strict wide-off. Capture
-matched primitive inputs/outputs to distinguish operand rounding from
-accumulation error, and isolate the remaining production changes separately.
+wide-off independently misses the envelope against strict wide-off. The
+[sampled primitive report](../audit/refactor-sweep/2026-11-01-r0028-primitive.json)
+tracks the F16-rounded oracle closely; operand rounding dominates its error
+against original F32 inputs on those samples. Screen a precision-preserving
+projection against both primitive oracles, then run full depth/state/task checks.
+Isolate the remaining production changes separately.
 Public generation at 73/257/389 tokens confirms threshold engagement. Keep
 independent counts for both F32 and F16-direct leaves. Use the canonical depth
 gate and layer2 gate with `--prompts
