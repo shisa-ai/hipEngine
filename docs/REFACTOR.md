@@ -344,22 +344,6 @@ Done when: Validate shared `_enqueue_batch_hidden_transition` through public dev
 agreement and cancellation/cleanup. Check host-materialized and device-top1 callers retain their
 token staging, synchronization/scoring, cursor publication and result contracts.
 
-### R0184 — Production verifier-Q4 construction handoff
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE`; `_configure_session`.
-
-`HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` carries the profile decision from the cold binder to
-resident construction; sessions freeze it and hot methods consume the typed boolean. **Deferred
-construction migration:** carry this selection through RF-1's existing profile infrastructure rather
-than a global environment value. Preserve manifest selections, strict WMMA fallback, R6/R8/R9/R12
-actual-shape bounds and benchmark rollback evidence.
-
-Done when: Propagate the typed input through shared, direct, batch and NextN construction plus numerical
-harnesses; `_configure_session` alone is not universal. Test interleaved profile owners and nested
-diagnostic restoration.
-
 ### R0067 — Dense prefix retention budget
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
