@@ -3897,9 +3897,9 @@ Owner: `hipengine/execution_profiles.py`.
 Scope: `qwen35_dense_gfx1100_profiles.py`, `qwen35_dense_gfx1151_profiles.py`,
 `qwen35_moe_gfx1151_profiles.py`.
 
-**Remaining ownership migration:** move gfx1100 F32 verifier/residual and fused-Q4 selectors,
-gfx1151 MoE router/rowtile settings into explicit fields consumed by their owners. Inventory each
-actual consumer and binding lifetime; do not surround
+**Remaining ownership migration:** move gfx1100 F32 verifier/residual and fused-Q4 selectors
+into explicit fields consumed by their owners. Inventory each actual consumer and binding
+lifetime; do not surround
 every method with an implicit environment context. Preserve ordinary profile plugin composition,
 header identity, construction-time diagnostic inputs, shared-allocation ABI validation and native
 graph configuration identity.

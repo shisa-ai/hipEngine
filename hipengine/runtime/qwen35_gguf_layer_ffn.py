@@ -327,6 +327,7 @@ def run_post_attention_ffn_rows(
     stage_prefix: str = "target_block_ffn",
     gpu_stage_recorder: StageRecorder | None = None,
     force_bulk_rows: bool = False,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> None:
     """Residual + post-norm, dense or MoE feed-forward, down + residual.
 
@@ -470,6 +471,7 @@ def run_post_attention_ffn_rows(
                 sync_stage_timings=sync_stage_timings,
                 stage_prefix=f"{stage_prefix}_moe",
                 gpu_stage_recorder=gpu_stage_recorder,
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             )
         return
     if next_norm_weight_ptr is not None and f32_residual:
@@ -1287,6 +1289,7 @@ def run_post_attention_moe_rows(
     sync_stage_timings: bool = False,
     stage_prefix: str = "target_block_ffn_moe",
     gpu_stage_recorder: StageRecorder | None = None,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> None:
     """Bulk MoE feed-forward for ``rows > 1``.
 
@@ -1401,6 +1404,7 @@ def run_post_attention_moe_rows(
         runtime=runtime,
         gpu_stage_recorder=gpu_stage_recorder,
         stage_prefix=f"{stage_prefix}_compact_wmma",
+        q8_t16_rowtile_all=q8_t16_rowtile_all,
     ):
         ops.mark_sync_stage(
             runtime,

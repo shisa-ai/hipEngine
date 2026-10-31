@@ -87,6 +87,12 @@ def _bare_runner(
     return runner
 
 
+def _resolve_rowtile(runner, rows: int, requested: bool | None) -> bool | None:
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    return runner_mod._owner_rowtile_all(runner, rows, requested)
+
+
 def _register() -> None:
     assert register_qwen36_gguf_gfx1151_profiles() is True
 
@@ -268,26 +274,19 @@ def test_rowtile_runner_owner_rows_policy() -> None:
     # gfx1151 package floor is rows >= 4; the packed-AR route admits it.
     for rows, expected in ((1, False), (2, False), (3, False), (4, True), (8, True)):
         assert floor._q8_t16_rowtile_all_owner_for_packed_rows(rows) is expected
-    # Outside the packed-AR session the old production binder had removed the
-    # ambient input, so the exact route stayed selected.
+    # The outside-packed default is exact for every width, independent of any
+    # other runner's active legacy session.
     for rows in (2, 4, 8):
         assert floor._q8_t16_rowtile_all_owner_for_rows(rows) is False
-    with gguf_linear.q8_t16_rowtile_all_session(True):
-        for rows in (2, 4, 8):
-            assert floor._q8_t16_rowtile_all_owner_for_rows(rows) is True
-    with gguf_linear.q8_t16_rowtile_all_session(False):
-        for rows in (2, 4, 8):
-            assert floor._q8_t16_rowtile_all_owner_for_rows(rows) is False
 
 
 def test_rowtile_floor_is_scoped_to_the_packed_ar_route(monkeypatch) -> None:
     """The production floor must not retarget verifier, native or prefill rows.
 
     The old profile published no broad-rowtile input outside the packed-AR
-    step, and the step's session was the only carrier. A bound production
-    owner therefore leaves the exact route selected everywhere else; a bound
-    strict owner keeps forcing it. An unbound owner keeps the diagnostic
-    ambient/session resolution.
+    step. A bound production owner therefore leaves the exact route selected
+    everywhere else; a bound strict owner keeps forcing it. An unbound owner
+    keeps the diagnostic ambient/session resolution.
     """
 
     from hipengine.runtime import gguf_linear
@@ -301,22 +300,47 @@ def test_rowtile_floor_is_scoped_to_the_packed_ar_route(monkeypatch) -> None:
         assert strict._q8_t16_rowtile_all_owner_for_rows(rows) is False
         assert unbound._q8_t16_rowtile_all_owner_for_rows(rows) is None
 
-    # The packed-AR step sets the session from the packed helper; only then
-    # does the production floor reach the route-aware read.
+    # The packed invocation resolves the floor and carries it explicitly; the
+    # session is never consulted for a bound owner.
     for rows, expected in ((2, False), (4, True), (8, True)):
         packed = production._q8_t16_rowtile_all_owner_for_packed_rows(rows)
-        with gguf_linear.q8_t16_rowtile_all_session(packed):
-            assert production._q8_t16_rowtile_all_owner_for_rows(rows) is expected
+        assert _resolve_rowtile(production, rows, packed) is expected
+        with gguf_linear.q8_t16_rowtile_all_session(True):
+            assert _resolve_rowtile(production, rows, packed) is expected
+            assert production._q8_t16_rowtile_all_owner_for_rows(rows) is False
 
-    # A diagnostic ambient input is still honored when no owner decision
-    # exists; the session remains the fallback carrier.
+    # The legacy session remains the unbound fallback only.
     monkeypatch.setenv(ROWTILE_ALL_ENV, "0")
     with gguf_linear.q8_t16_rowtile_all_session(True):
-        assert unbound._q8_t16_rowtile_all_owner_for_rows(4) is None
+        assert _resolve_rowtile(unbound, 4, None) is None
         assert gguf_linear._resolve_use_q8_t16_all_rowtile() is False
     monkeypatch.delenv(ROWTILE_ALL_ENV, raising=False)
     with gguf_linear.q8_t16_rowtile_all_session(True):
         assert gguf_linear._resolve_use_q8_t16_all_rowtile() is True
+
+
+def test_two_production_runners_keep_packed_and_outside_routes_separate() -> None:
+    """A legacy session on runner A must not retarget runner B's routes."""
+
+    from hipengine.runtime import gguf_linear
+
+    runner_a = _bare_runner(rowtile=True)
+    runner_b = _bare_runner(rowtile=True)
+    strict = _bare_runner(rowtile=False)
+    unbound = _bare_runner(rowtile=None)
+
+    with gguf_linear.q8_t16_rowtile_all_session(True):
+        # A's packed invocation is explicit True at c4.
+        assert _resolve_rowtile(runner_a, 4, True) is True
+        # B's verifier/prefill/native defaults are exact, not A's floor.
+        assert _resolve_rowtile(runner_b, 4, None) is False
+        assert runner_b._q8_t16_rowtile_all_owner_for_rows(4) is False
+        assert _resolve_rowtile(strict, 4, None) is False
+        assert strict._q8_t16_rowtile_all_owner_for_rows(4) is False
+        # The unbound runner keeps the ambient/session diagnostic input.
+        assert _resolve_rowtile(unbound, 4, None) is None
+        assert gguf_linear._resolve_use_q8_t16_all_rowtile() is True
+    assert _resolve_rowtile(runner_b, 4, None) is False
 
 
 def test_use_q8_t16_all_rowtile_explicit_policy(monkeypatch) -> None:
@@ -337,21 +361,17 @@ def test_use_q8_t16_all_rowtile_explicit_policy(monkeypatch) -> None:
             is False
         )
 
-    # The production floor is a packed-AR decision: inside the session it
-    # selects the floor; outside it keeps the exact route the old binder's
-    # removed ambient input selected.
+    # The production floor is a packed-AR decision: the packed invocation
+    # carries the floor explicitly; the outside default is exact.
     monkeypatch.setenv(ROWTILE_ALL_ENV, "0")
     for rows, expected in ((1, False), (2, False), (3, False), (4, True), (8, True)):
         packed = production._q8_t16_rowtile_all_owner_for_packed_rows(rows)
-        with gguf_linear.q8_t16_rowtile_all_session(packed):
-            owner = production._q8_t16_rowtile_all_owner_for_rows(rows)
-            assert owner is packed
-            assert (
-                gguf_linear._use_q8_t16_all_rowtile(
-                    rows=rows, in_features=2048, out_features=4096, rowtile_all=owner
-                )
-                is expected
+        assert (
+            gguf_linear._use_q8_t16_all_rowtile(
+                rows=rows, in_features=2048, out_features=4096, rowtile_all=packed
             )
+            is expected
+        )
     for rows in (2, 4, 8):
         owner = production._q8_t16_rowtile_all_owner_for_rows(rows)
         assert owner is False
@@ -415,6 +435,57 @@ def test_use_q8_t16_pair_rowtile_explicit_policy(monkeypatch) -> None:
     gguf_linear.set_q8_t16_pair_rowtile_min_rows(None)
 
 
+def test_attention_norm_seam_carries_the_invocation_input(monkeypatch) -> None:
+    """The packed explicit value reaches the actual selector, not the AST."""
+
+    from hipengine.runtime import gguf_linear
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    captured = {}
+
+    def fake_norm(**kwargs):
+        captured["selectors"] = kwargs["selectors"]
+        return None
+
+    monkeypatch.setattr(
+        runner_mod._layer_attn, "run_attention_norm_rows", fake_norm
+    )
+    runner = _bare_runner(rowtile=True)
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(hidden_size=2048)
+    )
+
+    with gguf_linear.q8_t16_rowtile_all_session(True):
+        runner_mod.Qwen35GGUFFullStackRunner._run_attention_norm_rows(
+            runner,
+            hidden_ptr=1,
+            hidden_f32_ptr=None,
+            weight_ptr=2,
+            out_ptr=3,
+            rows=4,
+            eps=1e-6,
+            stream=0,
+            runtime=object(),
+            q8_t16_rowtile_all=True,
+        )
+        assert captured["selectors"].q8_t16_rowtile_all is True
+
+        # No invocation input means the outside-packed default, even while a
+        # legacy session on another runner is active.
+        runner_mod.Qwen35GGUFFullStackRunner._run_attention_norm_rows(
+            runner,
+            hidden_ptr=1,
+            hidden_f32_ptr=None,
+            weight_ptr=2,
+            out_ptr=3,
+            rows=4,
+            eps=1e-6,
+            stream=0,
+            runtime=object(),
+        )
+        assert captured["selectors"].q8_t16_rowtile_all is False
+
+
 def test_attention_selectors_carry_owner_rowtile_policy() -> None:
     from hipengine.runtime import gguf_linear
     from hipengine.runtime import qwen35_gguf_runner as runner_mod
@@ -424,8 +495,7 @@ def test_attention_selectors_carry_owner_rowtile_policy() -> None:
     unbound = _bare_runner(rowtile=None)
 
     assert runner_mod._layer_attention_selectors(strict, rows=4).q8_t16_rowtile_all is False
-    # Outside the packed-AR session the bound production owner keeps the exact
-    # route, matching the old binder's removed ambient input.
+    # The outside-packed default is exact for a bound production owner.
     assert (
         runner_mod._layer_attention_selectors(production, rows=4).q8_t16_rowtile_all
         is False
@@ -435,12 +505,15 @@ def test_attention_selectors_carry_owner_rowtile_policy() -> None:
         is False
     )
     assert runner_mod._layer_attention_selectors(unbound, rows=4).q8_t16_rowtile_all is None
+    # The packed invocation passes the floor explicitly; a legacy session on
+    # another runner cannot change it.
     with gguf_linear.q8_t16_rowtile_all_session(True):
         assert (
-            runner_mod._layer_attention_selectors(production, rows=4).q8_t16_rowtile_all
+            runner_mod._layer_attention_selectors(
+                production, rows=4, q8_t16_rowtile_all=True
+            ).q8_t16_rowtile_all
             is True
         )
-    with gguf_linear.q8_t16_rowtile_all_session(False):
         assert (
             runner_mod._layer_attention_selectors(production, rows=4).q8_t16_rowtile_all
             is False
@@ -457,8 +530,7 @@ def test_full_attention_selectors_carry_owner_rowtile_policy() -> None:
     strict = _bare_runner(rowtile=False)
     scratch = SimpleNamespace()
 
-    # Outside the packed-AR session the bound production owner keeps the exact
-    # route for prefill and the verifier.
+    # The outside-packed default is exact for prefill and the verifier.
     assert (
         runner_mod._decode_batch_attention_selectors(
             production, scratch, None, rows=4
@@ -477,12 +549,24 @@ def test_full_attention_selectors_carry_owner_rowtile_policy() -> None:
         ).q8_t16_rowtile_all
         is False
     )
+    # The packed invocation passes the floor explicitly; a legacy session on
+    # another runner cannot change it.
     with gguf_linear.q8_t16_rowtile_all_session(True):
+        assert (
+            runner_mod._decode_batch_attention_selectors(
+                production,
+                scratch,
+                None,
+                rows=4,
+                q8_t16_rowtile_all=True,
+            ).q8_t16_rowtile_all
+            is True
+        )
         assert (
             runner_mod._decode_batch_attention_selectors(
                 production, scratch, None, rows=4
             ).q8_t16_rowtile_all
-            is True
+            is False
         )
 
 
@@ -964,14 +1048,151 @@ def test_moe_rows_shared_ffn_launches_carry_the_owner_policy() -> None:
             calls.append(("q8_t16_rowtile_all", keywords.get("q8_t16_rowtile_all")))
 
     # gate/up pair + two singleton fallbacks + shared down; every launch in
-    # the seam carries the explicit input. Only the 2048-wide gate/up launches
-    # can select the broad rowtile, but the down launch still receives the
-    # route-resolved value so the policy is not re-read from ambient.
+    # the seam carries the invocation input. Only the 2048-wide gate/up
+    # launches can select the broad rowtile, but the down launch still receives
+    # the route-resolved value so the policy is not re-read from ambient.
     assert len(calls) == 4
     for name, value in calls:
         assert value is not None, name
-        assert isinstance(value, ast.Call)
-        assert isinstance(value.func, ast.Attribute)
-        assert value.func.attr == "_q8_t16_rowtile_all_owner_for_rows"
-        assert isinstance(value.func.value, ast.Name)
-        assert value.func.value.id == "runner"
+        assert isinstance(value, ast.Name)
+        assert value.id == "q8_t16_rowtile_all"
+
+    # The seam accepts the explicit input and only resolves the outside default
+    # when the caller did not supply one.
+    args = {arg.arg for arg in owner.args.args}
+    args.update(arg.arg for arg in owner.args.kwonlyargs)
+    assert "q8_t16_rowtile_all" in args
+    resolves_default = False
+    for node in ast.walk(owner):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if not (
+            isinstance(test, ast.Compare)
+            and isinstance(test.left, ast.Name)
+            and test.left.id == "q8_t16_rowtile_all"
+        ):
+            continue
+        for inner in ast.walk(node):
+            if (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+                and inner.func.attr == "_q8_t16_rowtile_all_owner_for_rows"
+            ):
+                resolves_default = True
+    assert resolves_default
+
+
+def test_indexed_linear_attention_seam_carries_invocation_input(monkeypatch) -> None:
+    """The packed AR width-4 path binds the real indexed method and forwards it.
+
+    ``_run_linear_attention_decode_slot_rows_exact`` passes an explicit
+    ``q8_t16_rowtile_all`` into ``_run_linear_attention_attn_rows_indexed_exact``.
+    That seam must accept the keyword on its real signature (not only through a
+    permissive fake) and carry the value to its first leaf call unchanged.
+    """
+
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    captured: dict[str, object] = {}
+
+    class _StopAtLeaf(Exception):
+        pass
+
+    def fake_norm(**kwargs):
+        captured["rowtile_all"] = kwargs["q8_t16_rowtile_all"]
+        raise _StopAtLeaf
+
+    def leaf(name):
+        return SimpleNamespace(
+            allocation=lambda: SimpleNamespace(
+                tensor=SimpleNamespace(ptr=hash(name) & 0xFFFF)
+            )
+        )
+
+    runner = _bare_runner(rowtile=True)
+    runner._run_attention_norm_rows = fake_norm
+    runner.runtime = object()
+    runner.weights = SimpleNamespace(
+        config=SimpleNamespace(rms_norm_eps=1e-6),
+        layer=lambda layer_id: SimpleNamespace(weight=leaf),
+    )
+    state = SimpleNamespace(ptr=11)
+    decode_scratch = SimpleNamespace(
+        layer_conv_states=[state],
+        layer_recurrent_states=[state],
+    )
+    batch_plan = SimpleNamespace(available=True)
+
+    def call(**kwargs):
+        return runner_mod.Qwen35GGUFFullStackRunner._run_linear_attention_attn_rows_indexed_exact(
+            runner,
+            0,
+            1,
+            2,
+            SimpleNamespace(norm=SimpleNamespace(ptr=3)),
+            rows=4,
+            decode_scratch=decode_scratch,
+            batch_plan=batch_plan,
+            gdn_cu_seqlens_ptr=5,
+            state_indices_ptr=6,
+            **kwargs,
+        )
+
+    with pytest.raises(_StopAtLeaf):
+        call(q8_t16_rowtile_all=True)
+    assert captured["rowtile_all"] is True
+
+    # Omitted input resolves the outside-packed owner default (bound -> False),
+    # not the packed invocation value.
+    with pytest.raises(_StopAtLeaf):
+        call()
+    assert captured["rowtile_all"] is False
+
+
+def test_rowtile_seams_accept_the_keyword_on_real_signatures() -> None:
+    """Every new seam call must bind against the real callable signature."""
+
+    import inspect
+
+    from hipengine.runtime import gguf_linear
+    from hipengine.runtime import qwen35_gguf_layer_ffn as layer_ffn
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    Runner = runner_mod.Qwen35GGUFFullStackRunner
+    seams = {
+        "launch_gguf_linear": gguf_linear.launch_gguf_linear,
+        "launch_gguf_linear_pair": gguf_linear.launch_gguf_linear_pair,
+        "run_post_attention_ffn_rows": layer_ffn.run_post_attention_ffn_rows,
+        "run_post_attention_moe_rows": layer_ffn.run_post_attention_moe_rows,
+        "_decode_batch_attention_selectors": runner_mod._decode_batch_attention_selectors,
+        "_try_run_post_attention_moe_rows_compact_wmma": (
+            runner_mod._try_run_post_attention_moe_rows_compact_wmma
+        ),
+        "_run_attention_norm_rows": Runner._run_attention_norm_rows,
+        "_run_linear_attention_alpha_beta_rows": (
+            Runner._run_linear_attention_alpha_beta_rows
+        ),
+        "_run_linear_attention_attn_only": Runner._run_linear_attention_attn_only,
+        "_run_linear_attention_attn_rows_indexed_exact": (
+            Runner._run_linear_attention_attn_rows_indexed_exact
+        ),
+        "_run_linear_attention_decode_slot_rows_exact": (
+            Runner._run_linear_attention_decode_slot_rows_exact
+        ),
+        "_run_full_attention_decode_batch_layer_rows": (
+            Runner._run_full_attention_decode_batch_layer_rows
+        ),
+        "_run_full_attention_output_rows": Runner._run_full_attention_output_rows,
+        "_run_post_attention_ffn_rows": Runner._run_post_attention_ffn_rows,
+    }
+    for name, seam in seams.items():
+        signature = inspect.signature(seam)
+        assert "q8_t16_rowtile_all" in signature.parameters, name
+        # bind_partial rejects an unexpected keyword, unlike a fake ``**kwargs``.
+        signature.bind_partial(q8_t16_rowtile_all=True)
+
+    # The triple launch names the same policy ``rowtile_all``.
+    triple = inspect.signature(gguf_linear.launch_gguf_linear_triple)
+    assert "rowtile_all" in triple.parameters
+    triple.bind_partial(rowtile_all=True)

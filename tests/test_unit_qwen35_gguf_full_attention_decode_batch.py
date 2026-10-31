@@ -620,7 +620,14 @@ def test_adapter_kv_write_only_skips_output_and_ffn(monkeypatch):
     )
 
     result = runner_mod.Qwen35GGUFFullStackRunner._run_full_attention_decode_batch_layer_rows(
-        runner, 2, 111, 222, scratch, stream=7, kv_write_only=True
+        runner,
+        2,
+        111,
+        222,
+        scratch,
+        stream=7,
+        kv_write_only=True,
+        q8_t16_rowtile_all=True,
     )
 
     assert result == "kv_write_only"
@@ -631,6 +638,8 @@ def test_adapter_kv_write_only_skips_output_and_ffn(monkeypatch):
     assert calls[0][4]["kv_write_only"] is True
     assert calls[0][4]["start"] == 0
     assert calls[0][4]["stage_prefix"] == "target_block_full_attn"
+    # The packed invocation's explicit input reaches the actual selector plan.
+    assert calls[0][4]["selectors"].q8_t16_rowtile_all is True
     assert not [call for call in calls if call[0] in {"output", "ffn", "sync"}]
 
 

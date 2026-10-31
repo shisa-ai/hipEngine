@@ -2578,12 +2578,6 @@ def set_q8_t16_rowtile_all_enabled(enabled: bool | None) -> None:
     _q8_t16_rowtile_all_session_enabled = None if enabled is None else bool(enabled)
 
 
-def q8_t16_rowtile_all_session_value() -> bool | None:
-    """Return the active packed-AR broad-rowtile value, or ``None``."""
-
-    return _q8_t16_rowtile_all_session_enabled
-
-
 @contextlib.contextmanager
 def q8_t16_rowtile_all_session(enabled: bool | None) -> Iterator[None]:
     """Temporarily select Q8T16 row amortization for one execution owner."""

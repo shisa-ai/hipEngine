@@ -485,7 +485,6 @@ from hipengine.runtime.gguf_linear import (
     q8_t16_dual_wmma_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
     q8_t16_rowtile_all_session,
-    q8_t16_rowtile_all_session_value,
     wide_f16_activation_enabled,
     wide_f16_activation_session,
     resolve_gguf_linear_dispatch,
@@ -541,17 +540,29 @@ def _layer_runner_method(runner, method_name: str, *args, **kwargs):
     return getattr(runner, method_name)(*args, **kwargs)
 
 
-def _owner_rowtile_all(runner, rows: int) -> bool | None:
-    """Resolve one runner's broad-rowtile policy for an explicit row width."""
+def _owner_rowtile_all(
+    runner, rows: int, requested: bool | None = None
+) -> bool | None:
+    """Resolve one operation's broad-rowtile input for an explicit row width.
 
+    ``None`` means the caller did not supply an invocation input, so the
+    runner's outside-packed default applies. An explicit ``True``/``False``
+    (from the packed-AR step) is carried through unchanged.
+    """
+
+    if requested is not None:
+        return bool(requested)
     resolve = getattr(runner, "_q8_t16_rowtile_all_owner_for_rows", None)
     return None if resolve is None else resolve(rows)
 
 
 def _layer_attention_selectors(
-    runner, *, rows: int
+    runner, *, rows: int, q8_t16_rowtile_all: bool | None = None
 ) -> _layer_attn.AttentionSelectors:
     """The attention bodies' lazily resolved operations, bound to ``runner``."""
+
+    if q8_t16_rowtile_all is None:
+        q8_t16_rowtile_all = _owner_rowtile_all(runner, rows)
 
     return _layer_attn.AttentionSelectors(
         norm_residual_kernel=partial(_gguf_norm_residual_decode_kernel, runner),
@@ -586,7 +597,7 @@ def _layer_attention_selectors(
         ),
         int8_kv_append_write_fn=_gguf_int8_kv_append_write_fn,
         int8_kv_decode_gate_fn=_gguf_int8_kv_decode_gate_fn,
-        q8_t16_rowtile_all=_owner_rowtile_all(runner, rows),
+        q8_t16_rowtile_all=q8_t16_rowtile_all,
     )
 
 
@@ -735,8 +746,12 @@ def _bulk_full_attention_selectors(
     runtime: Any,
     *,
     rows: int,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> _bulk_attn.BulkFullAttentionSelectors:
     """Lazy selected operations for one bulk prefill attention call."""
+
+    if q8_t16_rowtile_all is None:
+        q8_t16_rowtile_all = _owner_rowtile_all(runner, rows)
 
     def ensure_split_rows(rows: int) -> _bulk_attn.BulkFullAttentionSplitView:
         _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
@@ -773,7 +788,7 @@ def _bulk_full_attention_selectors(
         ),
         paged_kv_copy_resolve=resolve,
         ensure_split_rows=ensure_split_rows,
-        q8_t16_rowtile_all=_owner_rowtile_all(runner, rows),
+        q8_t16_rowtile_all=q8_t16_rowtile_all,
     )
 
 
@@ -826,8 +841,12 @@ def _decode_batch_attention_selectors(
     split_workspace,
     *,
     rows: int,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> _decode_batch_attn.DecodeBatchAttentionSelectors:
     """Lazy selected operations for one decode-batch attention call."""
+
+    if q8_t16_rowtile_all is None:
+        q8_t16_rowtile_all = _owner_rowtile_all(runner, rows)
 
     def split_workspace_view(
         _required_rows: int,
@@ -907,7 +926,7 @@ def _decode_batch_attention_selectors(
             _layer_runner_method, runner, "_packed_ar_attention_batch_kernel"
         ),
         split_workspace=split_workspace_view,
-        q8_t16_rowtile_all=_owner_rowtile_all(runner, rows),
+        q8_t16_rowtile_all=q8_t16_rowtile_all,
     )
 
 
@@ -3232,24 +3251,18 @@ class Qwen35GGUFFullStackRunner:
         return _gguf_q8_t16_decode_rowtile_all_for_rows(self.backend, rows=rows)
 
     def _q8_t16_rowtile_all_owner_for_rows(self, rows: int) -> bool | None:
-        """Resolve one owner's broad-rowtile admission for this call's route.
+        """Resolve the outside-packed-AR default for a bound owner.
 
-        The production floor is scoped to the packed-AR decode step, which is
-        the only route the old session wrapped. Verifier, native-row and
-        prefill calls ran outside that session with the ambient input unset, so
-        they must keep the exact route. A strict owner forces ``False``; an
-        unbound owner keeps the ambient/session resolution.
+        A bound owner selects the exact route outside the packed-AR step; an
+        unbound owner returns ``None`` so the ambient/session diagnostic input
+        remains its source. This never reads the packed-AR session value.
         """
 
+        del rows
         admitted = getattr(self, "q8_t16_rowtile_all", None)
         if admitted is None:
             return None
-        if not admitted:
-            return False
-        session_value = q8_t16_rowtile_all_session_value()
-        if session_value is None:
-            return False
-        return bool(session_value)
+        return False
 
     def _freeze_verifier_prefill_gdn_capture(self) -> bool:
         """Resolve the verifier capture mode once, before any session owner."""
@@ -5008,7 +5021,9 @@ class Qwen35GGUFFullStackRunner:
         eps: float,
         stream: int,
         runtime: HipRuntime,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> int | None:
+        q8_t16_rowtile_all = _owner_rowtile_all(self, rows, q8_t16_rowtile_all)
         return _layer_attn.run_attention_norm_rows(
             hidden_ptr=hidden_ptr,
             hidden_f32_ptr=hidden_f32_ptr,
@@ -5020,7 +5035,9 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
             geometry=_layer_attn.AttentionGeometry(hidden_size=self.hidden_size),
-            selectors=_layer_attention_selectors(self, rows=rows),
+            selectors=_layer_attention_selectors(
+                self, rows=rows, q8_t16_rowtile_all=q8_t16_rowtile_all
+            ),
             policy=_layer_attention_policy(),
         )
 
@@ -5034,7 +5051,9 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         stream: int,
         runtime: HipRuntime,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> str:
+        q8_t16_rowtile_all = _owner_rowtile_all(self, rows, q8_t16_rowtile_all)
         return _layer_attn.run_linear_attention_alpha_beta_rows(
             layer,
             norm_ptr,
@@ -5045,7 +5064,9 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             runtime=runtime,
-            selectors=_layer_attention_selectors(self, rows=rows),
+            selectors=_layer_attention_selectors(
+                self, rows=rows, q8_t16_rowtile_all=q8_t16_rowtile_all
+            ),
             policy=_layer_attention_policy(),
         )
 
@@ -5065,6 +5086,7 @@ class Qwen35GGUFFullStackRunner:
         stage_prefix: str = "target_block_full_attn",
         split_workspace: _GGUFPackedARAttentionWorkspace | None = None,
         kv_write_only: bool = False,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> str:
         """Run row-bulk QKV/KV write with the c1-equivalent batch decode attention."""
 
@@ -5075,6 +5097,7 @@ class Qwen35GGUFFullStackRunner:
         rows = int(scratch.rows)
         if rows <= 0:
             raise ValueError("rows must be positive")
+        q8_t16_rowtile_all = _owner_rowtile_all(self, rows, q8_t16_rowtile_all)
         if scratch.key_cache is None or scratch.value_cache is None:
             raise RuntimeError("GGUF full-attention decode batch requires cache-backed key/value buffers")
         result = _decode_batch_attn.run_full_attention_decode_batch_attn_rows(
@@ -5091,7 +5114,11 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             start=int(scratch.start),
             selectors=_decode_batch_attention_selectors(
-                self, scratch, split_workspace, rows=rows
+                self,
+                scratch,
+                split_workspace,
+                rows=rows,
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             ),
             stream=stream,
             hidden_f32_ptr=hidden_f32_ptr,
@@ -5112,6 +5139,7 @@ class Qwen35GGUFFullStackRunner:
             out_f32_ptr=out_f32_ptr,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
         _mark_sync_stage(
             runtime,
@@ -5135,6 +5163,7 @@ class Qwen35GGUFFullStackRunner:
             stage_timings=stage_timings,
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
         return result.attention_route
 
@@ -5187,8 +5216,10 @@ class Qwen35GGUFFullStackRunner:
         stream: int = 0,
         stage_prefix: str = "decode_linear_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> None:
         assert self.weights is not None
+        q8_t16_rowtile_all = _owner_rowtile_all(self, 1, q8_t16_rowtile_all)
         _layer_attn.run_linear_attention_attn_only(
             layer_id,
             self.weights.layer(layer_id),
@@ -5204,7 +5235,9 @@ class Qwen35GGUFFullStackRunner:
             ),
             backend=self.backend,
             runtime=self.runtime or get_hip_runtime(),
-            selectors=_layer_attention_selectors(self, rows=1),
+            selectors=_layer_attention_selectors(
+                self, rows=1, q8_t16_rowtile_all=q8_t16_rowtile_all
+            ),
             policy=_layer_attention_policy(),
             hidden_f32_ptr=hidden_f32_ptr,
             input_norm_ptr=input_norm_ptr,
@@ -6243,6 +6276,7 @@ class Qwen35GGUFFullStackRunner:
         state_indices_ptr: int,
         hidden_f32_ptr: int | None = None,
         stream: int = 0,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> None:
         """Run independent packed decode rows without rounding GDN output.
 
@@ -6258,6 +6292,7 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("indexed linear-attention decode plan is incomplete")
         if int(gdn_cu_seqlens_ptr) == 0 or int(state_indices_ptr) == 0:
             raise ValueError("indexed linear-attention decode requires segment metadata")
+        q8_t16_rowtile_all = _owner_rowtile_all(self, rows, q8_t16_rowtile_all)
         if self.weights is None:
             raise RuntimeError("GGUF weights are not materialized")
         layer = self.weights.layer(layer_id)
@@ -6282,6 +6317,7 @@ class Qwen35GGUFFullStackRunner:
             eps=cfg.rms_norm_eps,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
         pair_fused = launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
@@ -6295,7 +6331,7 @@ class Qwen35GGUFFullStackRunner:
             out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
-            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
         if not pair_fused:
             launch_gguf_linear(
@@ -6307,7 +6343,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.linear_qkv_width,
                 stream=stream,
                 runtime=runtime,
-                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("attn_gate"),
@@ -6318,7 +6354,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=cfg.ssm_inner_size,
                 stream=stream,
                 runtime=runtime,
-                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             )
         self._run_linear_attention_alpha_beta_rows(
             layer,
@@ -6328,6 +6364,7 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
         batch_plan.conv_indexed(
             scratch.linear_qkv.ptr,
@@ -6413,7 +6450,7 @@ class Qwen35GGUFFullStackRunner:
             activation_dtype=ssm_out_activation_dtype,
             stream=stream,
             runtime=runtime,
-            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
 
     def _run_linear_attention_decode_slot_rows_exact(
@@ -6436,6 +6473,7 @@ class Qwen35GGUFFullStackRunner:
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "ar_batch_linear_attn",
+        q8_t16_rowtile_all: bool | None = None,
     ) -> str:
         """Run exact indexed linear attention or its scalar row fallback."""
 
@@ -6443,6 +6481,7 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("rows must be positive")
         if len(state_indices) != rows:
             raise ValueError("state_indices must contain one entry per decode row")
+        q8_t16_rowtile_all = _owner_rowtile_all(self, rows, q8_t16_rowtile_all)
         if self.weights is None:
             raise RuntimeError("GGUF weights are not materialized")
         cfg = self.weights.config
@@ -6493,6 +6532,7 @@ class Qwen35GGUFFullStackRunner:
                 state_indices_ptr=state_indices_ptr,
                 hidden_f32_ptr=hidden_f32_ptr,
                 stream=stream,
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             )
             execution_path = "indexed_batch"
         else:
@@ -6525,6 +6565,7 @@ class Qwen35GGUFFullStackRunner:
                         else int(hidden_f32_ptr) + row * hidden_f32_row_nbytes
                     ),
                     stream=stream,
+                    q8_t16_rowtile_all=q8_t16_rowtile_all,
                 )
             execution_path = "exact_row_local"
 
@@ -6542,6 +6583,7 @@ class Qwen35GGUFFullStackRunner:
             stage_timings=stage_timings,
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
         return execution_path
 
@@ -8308,6 +8350,7 @@ class Qwen35GGUFFullStackRunner:
         stage_prefix: str = "decode_full_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
         kv_write_only: bool = False,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> None:
         dms_owner = self.__dict__.get("_dms_decode_owner")
         if dms_owner is not None:
@@ -8328,6 +8371,7 @@ class Qwen35GGUFFullStackRunner:
             )
         assert self.weights is not None
         runtime = self.runtime or get_hip_runtime()
+        q8_t16_rowtile_all = _owner_rowtile_all(self, 1, q8_t16_rowtile_all)
         _layer_attn.run_full_attention_attn_only(
             layer_id,
             self.weights.layer(layer_id),
@@ -8343,7 +8387,9 @@ class Qwen35GGUFFullStackRunner:
             ),
             backend=self.backend,
             runtime=runtime,
-            selectors=_layer_attention_selectors(self, rows=1),
+            selectors=_layer_attention_selectors(
+                self, rows=1, q8_t16_rowtile_all=q8_t16_rowtile_all
+            ),
             policy=_layer_attention_policy(),
             ensure_full_attn_split_rows=lambda rows: _ensure_full_attn_split_rows(
                 scratch, rows, runtime=runtime
@@ -8371,7 +8417,9 @@ class Qwen35GGUFFullStackRunner:
         out_f32_ptr: int | None,
         stream: int,
         runtime: HipRuntime,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> int | None:
+        q8_t16_rowtile_all = _owner_rowtile_all(self, rows, q8_t16_rowtile_all)
         attn_out_f32_ptr: int | None = None
         if (
             _gguf_verify_f32_attn_out_enabled()
@@ -8409,7 +8457,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.hidden_size,
                 stream=stream,
                 runtime=runtime,
-                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             )
         return attn_out_f32_ptr
 
@@ -8462,6 +8510,7 @@ class Qwen35GGUFFullStackRunner:
         stage_prefix: str = "target_block_ffn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
         force_bulk_rows: bool = False,
+        q8_t16_rowtile_all: bool | None = None,
     ) -> None:
         """``force_bulk_rows`` keeps a one-row PREFILL on the bulk schedule.
 
@@ -8474,6 +8523,7 @@ class Qwen35GGUFFullStackRunner:
         """
 
         assert self.weights is not None
+        q8_t16_rowtile_all = _owner_rowtile_all(self, rows, q8_t16_rowtile_all)
         _layer_ffn.run_post_attention_ffn_rows(
             self.weights.layer(layer_id),
             self.weights.config,
@@ -8504,6 +8554,7 @@ class Qwen35GGUFFullStackRunner:
             stage_prefix=stage_prefix,
             gpu_stage_recorder=gpu_stage_recorder,
             force_bulk_rows=force_bulk_rows,
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         )
 
     def _run_post_attention_moe_c1(
@@ -24150,17 +24201,19 @@ class Qwen35GGUFResidentSession:
         linear_attention_decode_paths: set[str] = set()
         full_attention_decode_paths: set[str] = set()
         linear_attention_decode_batch_plan = self.runner._linear_attention_decode_batch_plan()
-        # Owner-bound runners resolve the broad-rowtile policy explicitly; the
-        # packed-decode session below is the existing unbound/nested fallback.
-        # It is not a second owner source: every decode/verifier launch also
-        # receives the explicit input. Only this packed-AR step carries the
-        # production floor; the session scopes it to this route.
-        q8_t16_rowtile_all = self.runner._q8_t16_rowtile_all_owner_for_packed_rows(rows)
-        if q8_t16_rowtile_all is None:
-            q8_t16_rowtile_all = _gguf_q8_t16_decode_rowtile_all_for_rows(
+        # The packed step resolves the production floor explicitly and carries
+        # it as an invocation input into the linear/full attention and FFN row
+        # seams. The session is only the old unbound fallback: a bound owner's
+        # decision is never read back from it.
+        packed_rowtile_all = self.runner._q8_t16_rowtile_all_owner_for_packed_rows(rows)
+        unbound_rowtile_all_session = (
+            _gguf_q8_t16_decode_rowtile_all_for_rows(
                 self.runner.backend,
                 rows=rows,
             )
+            if packed_rowtile_all is None
+            else None
+        )
         q8_t16_pair_rowtile_min_rows = int(
             backend_package_capability(
                 self.runner.backend,
@@ -24200,7 +24253,7 @@ class Qwen35GGUFResidentSession:
                 selected_q6_down_pairreuse_min_rows
             ),
             q8_t16_pair_rowtile_min_rows_session(q8_t16_pair_rowtile_min_rows),
-            q8_t16_rowtile_all_session(q8_t16_rowtile_all),
+            q8_t16_rowtile_all_session(unbound_rowtile_all_session),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
@@ -24223,6 +24276,7 @@ class Qwen35GGUFResidentSession:
                             stage_timings=None,
                             sync_stage_timings=False,
                             stage_prefix="ar_batch_linear_attn",
+                            q8_t16_rowtile_all=packed_rowtile_all,
                         )
                     )
                 elif layer_type == FULL_ATTENTION:
@@ -24247,6 +24301,7 @@ class Qwen35GGUFResidentSession:
                             sync_stage_timings=False,
                             stage_prefix="ar_batch_full_attn",
                             split_workspace=split_workspace,
+                            q8_t16_rowtile_all=packed_rowtile_all,
                         )
                     )
                 else:
@@ -33089,6 +33144,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
     runtime: HipRuntime,
     gpu_stage_recorder: _HipEventStageRecorder | None = None,
     stage_prefix: str = "target_block_ffn_moe_compact_wmma",
+    q8_t16_rowtile_all: bool | None = None,
 ) -> bool:
     """Run an enabled compact grouped-MoE prefill plan when available.
 
@@ -33098,6 +33154,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
     selected fallback because they cannot amortize expert grouping.
     """
 
+    if q8_t16_rowtile_all is None:
+        q8_t16_rowtile_all = runner._q8_t16_rowtile_all_owner_for_rows(rows)
     if not _scratch_has_compact_moe_fields(scratch):
         return False
     cfg = runner.weights.config if runner.weights is not None else None
@@ -33356,7 +33414,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
             out_features=shared_ffn,
             stream=stream,
             runtime=runtime,
-            q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
+            q8_t16_rowtile_all=q8_t16_rowtile_all,
         ):
             launch_gguf_linear(
                 layer.weight("ffn_gate_shexp"),
@@ -33367,7 +33425,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
                 out_features=shared_ffn,
                 stream=stream,
                 runtime=runtime,
-                q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("ffn_up_shexp"),
@@ -33378,7 +33436,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
                 out_features=shared_ffn,
                 stream=stream,
                 runtime=runtime,
-                q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
+                q8_t16_rowtile_all=q8_t16_rowtile_all,
             )
         silu_mul_separate_out_bf16(
             scratch.moe_shared_gate.ptr,
@@ -33400,7 +33458,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         out_features=hidden_size,
         stream=stream,
         runtime=runtime,
-        q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
+        q8_t16_rowtile_all=q8_t16_rowtile_all,
     )
     if gpu_stage_recorder is not None:
         gpu_stage_recorder.mark(f"{stage_prefix}_shared_down", stage_prefix)

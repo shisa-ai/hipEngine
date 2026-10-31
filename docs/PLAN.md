@@ -385,6 +385,14 @@ The verifier prefill-GDN capture choice is owner-bound through the same generato
 runner, resident and NextN construction paths. Unbound runners freeze their diagnostic
 input once; verifier operations can explicitly select a capture producer without
 retargeting the owner. Native target graph identity includes this resolved choice.
+The gfx1151 MoE router, persistent-counter and broad Q8T16 rowtile selections are
+also generator/runner-owned. Router predicates consume the bound value; single,
+pair and triple projection launches receive the resolved broad-rowtile decision
+explicitly. The production broad-rowtile floor is confined to packed AR decode;
+verifier, native-row and prompt-prefill calls keep their exact broad policy.
+Unbound/direct calls retain ambient/session diagnostic resolution,
+and the independent pair-specific floor is unchanged. Native target graph keys
+include the bound route selections.
 
 Missing benchmark coverage is not an implementation failure. Within declared
 input, resource and execution contracts, run implemented paths, measure real
