@@ -4169,28 +4169,6 @@ operations and output/state against the pre-move control, exercise failure clean
 prefix restore and cancellation/reuse, and verify public ordinary and speculative requests. Update
 PLAN only for implemented boundaries.
 
-### RF-7 / R0187 — Split HTTP composition around the existing generation service
-
-Owner: `hipengine/server/multimodal.py`.
-
-Scope: `hipengine/server/multimodal.py`, `hipengine/server/tool_stream.py`,
-`hipengine/server/api.py`, `hipengine/generation/engine_service.py`.
-
-**Remaining boundary design:** separate tool/structured request and result policy from
-HTTP composition where it has a cohesive explicit dependency surface.
-Keep engine/stat collection outside the response owners; immutable metrics inputs
-contain normalized consumed values, not raw engine objects or borrowed live maps.
-Preserve transport backpressure and queue admission while keeping device scheduling,
-request state and commit ownership in the generation engine.
-Keep model-protocol adaptation at its engine seam; do not pull engine or HTTP state into the
-parser or frame owners or reintroduce unused application re-exports.
-
-Done when: preserve public/import compatibility during move-only units; exercise HTTP
-ordinary/streamed requests, tool and structured responses, disconnect/cancel, queue saturation,
-startup failure, shutdown and model reuse. Verify readiness and service-health attribution still
-report the same engine. A real `hipengine serve` request must confirm the intended service path, not
-only mocked route tests.
-
 ### RF-8 / R0187 — Verify Laguna dispatch after policy-owner migration
 
 Owner: `hipengine/kernels/policy.py`.

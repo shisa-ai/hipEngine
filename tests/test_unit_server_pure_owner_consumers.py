@@ -1,7 +1,8 @@
 """Consumer contract for the pure server owner modules.
 
 ``hipengine.server.schemas``, ``hipengine.server.json_schema``,
-``hipengine.server.chat_output``, ``hipengine.server.chat_sessions``,
+``hipengine.server.chat_output``, ``hipengine.server.chat_result_policy``,
+``hipengine.server.chat_sessions``,
 ``hipengine.server.chat_validation``, ``hipengine.server.model_lifecycle``,
 ``hipengine.server.metrics``,
 ``hipengine.server.readiness``,
@@ -32,6 +33,9 @@ OWNER_PATHS = {
     "hipengine.server.schemas": REPO_ROOT / "hipengine" / "server" / "schemas.py",
     "hipengine.server.json_schema": REPO_ROOT / "hipengine" / "server" / "json_schema.py",
     "hipengine.server.chat_output": REPO_ROOT / "hipengine" / "server" / "chat_output.py",
+    "hipengine.server.chat_result_policy": (
+        REPO_ROOT / "hipengine" / "server" / "chat_result_policy.py"
+    ),
     "hipengine.server.chat_sessions": REPO_ROOT / "hipengine" / "server" / "chat_sessions.py",
     "hipengine.server.chat_validation": REPO_ROOT / "hipengine" / "server" / "chat_validation.py",
     "hipengine.server.model_lifecycle": (

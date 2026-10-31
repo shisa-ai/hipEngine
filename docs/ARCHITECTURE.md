@@ -83,9 +83,12 @@ generation service or model runtime. `hipengine.server` lazily exports the app
 factory/configuration; `server.api` re-exports the same schema classes for existing
 callers. `hipengine/server/json_schema.py` owns pure JSON Schema subset and value
 validation for structured outputs and tool parameters, with standard-library
-dependencies only. The application preserves the existing helper aliases and
-owns HTTP error translation. HTTP composition and request/resource lifetimes
-remain in the application.
+dependencies only. `hipengine/server/chat_result_policy.py` validates tool and
+structured results over normalized policy records and pure parser output. The
+application keeps ordered request validation, lazy active-field normalization,
+HTTP errors, finish policy and response shaping. Live HTTP queues and request/
+resource lifetimes remain in the application; device scheduling stays in the
+existing generation service.
 
 | Lifetime | Typical resources | Release/transfer boundary |
 | --- | --- | --- |

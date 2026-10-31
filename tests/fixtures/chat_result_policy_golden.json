@@ -1,0 +1,1840 @@
+{
+  "source_head": "16864d1f9",
+  "structured_cases": {
+    "guided_choice_invalid": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_choice": [
+          "a",
+          "b"
+        ]
+      },
+      "text": "c",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_choice_values"
+      ]
+    },
+    "guided_choice_valid": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_choice": [
+          "a",
+          "b"
+        ]
+      },
+      "text": "a",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_choice_values",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "guided_diff_optional_fenced": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_diff": true
+      },
+      "text": "```diff\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n```",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "guided_json_object_invalid": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_json": true
+      },
+      "text": "[1]",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value"
+      ]
+    },
+    "guided_json_object_valid": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_json": true
+      },
+      "text": "{\"a\":1}",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "guided_json_schema_invalid": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_json": {
+          "properties": {
+            "a": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "a"
+          ],
+          "type": "object"
+        }
+      },
+      "text": "{\"a\":\"x\"}",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_json_schema"
+      ]
+    },
+    "guided_json_schema_length": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_output",
+      "request": {
+        "guided_json": {
+          "properties": {
+            "a": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "a"
+          ],
+          "type": "object"
+        }
+      },
+      "text": "[",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "guided_json_schema_not_json": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_json": {
+          "properties": {
+            "a": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "a"
+          ],
+          "type": "object"
+        }
+      },
+      "text": "not json",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value"
+      ]
+    },
+    "guided_json_schema_valid": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_json": {
+          "properties": {
+            "a": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "a"
+          ],
+          "type": "object"
+        }
+      },
+      "text": "{\"a\":1}",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_json_schema",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "guided_patch_forbidden_fenced": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": {
+          "fenced": "forbidden"
+        }
+      },
+      "text": "```diff\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n```",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "guided_patch_forbidden_raw": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": {
+          "fenced": "forbidden"
+        }
+      },
+      "text": "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "guided_patch_invalid": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": true
+      },
+      "text": "not a diff",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "guided_patch_required_fenced": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": {
+          "fenced": "required"
+        }
+      },
+      "text": "```diff\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n```",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "guided_patch_required_raw": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": {
+          "fenced": "required"
+        }
+      },
+      "text": "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "guided_patch_valid": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": true
+      },
+      "text": "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "guided_regex_invalid": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_regex": "^a+$"
+      },
+      "text": "b",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_regex_pattern"
+      ]
+    },
+    "guided_regex_valid": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_regex": "^a+$"
+      },
+      "text": "aaa",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_regex_pattern",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "invalid_guided_patch_fenced_raises": {
+      "expected": {
+        "code": "invalid_request",
+        "error_type": "invalid_request_error",
+        "message": "guided_patch.fenced must be one of optional, required, or forbidden",
+        "param": "guided_patch.fenced",
+        "raised": true,
+        "status_code": 400,
+        "type": "OpenAIHTTPError"
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": {
+          "fenced": "bogus"
+        }
+      },
+      "text": "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation",
+        "_guided_patch_fenced_policy"
+      ]
+    },
+    "invalid_response_format_raises": {
+      "expected": {
+        "code": "unsupported_parameter",
+        "error_type": "invalid_request_error",
+        "message": "response_format type 'bogus' is not supported",
+        "param": "response_format",
+        "raised": true,
+        "status_code": 400,
+        "type": "OpenAIHTTPError"
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "type": "bogus"
+        }
+      },
+      "text": "x",
+      "trace": [
+        "_response_format_mode"
+      ]
+    },
+    "length_guided_json_schema_invalid_prefix": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_length",
+      "request": {
+        "guided_json": {
+          "properties": {
+            "a": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "a"
+          ],
+          "type": "object"
+        }
+      },
+      "text": "[",
+      "trace": [
+        "_structured_json_object_prefix_validation",
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_json_schema",
+        "_json_schema_root_object"
+      ]
+    },
+    "length_json_object_invalid_prefix": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_length",
+      "request": {
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "text": "[",
+      "trace": [
+        "_structured_json_object_prefix_validation",
+        "_response_format_mode",
+        "_guided_json_mode_from_value"
+      ]
+    },
+    "length_json_object_valid_prefix": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_length",
+      "request": {
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "text": "{\"a\":",
+      "trace": [
+        "_structured_json_object_prefix_validation",
+        "_response_format_mode",
+        "_guided_json_mode_from_value"
+      ]
+    },
+    "length_json_schema_invalid_prefix": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_length",
+      "request": {
+        "response_format": {
+          "json_schema": {
+            "name": "answer",
+            "schema": {
+              "properties": {
+                "a": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "a"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "json_schema"
+        }
+      },
+      "text": "[",
+      "trace": [
+        "_structured_json_object_prefix_validation",
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_response_format_json_schema",
+        "_json_schema_root_object"
+      ]
+    },
+    "length_no_structured": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_length",
+      "request": {},
+      "text": "[",
+      "trace": [
+        "_structured_json_object_prefix_validation",
+        "_response_format_mode",
+        "_guided_json_mode_from_value"
+      ]
+    },
+    "length_non_length": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_length",
+      "request": {
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "text": "[",
+      "trace": []
+    },
+    "length_shortcircuit_invalid_guided_patch": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": {
+          "fenced": "bogus"
+        }
+      },
+      "text": "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "non_length_shortcircuit_invalid_response_format": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_length",
+      "request": {
+        "response_format": {
+          "type": "bogus"
+        }
+      },
+      "text": "[",
+      "trace": []
+    },
+    "response_format_failure_before_invalid_guided_patch": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "guided_patch": {
+          "fenced": "bogus"
+        },
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "text": "[1]",
+      "trace": [
+        "_response_format_mode"
+      ]
+    },
+    "response_format_json_object_invalid": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "text": "[1]",
+      "trace": [
+        "_response_format_mode"
+      ]
+    },
+    "response_format_json_object_not_json": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "text": "not json",
+      "trace": [
+        "_response_format_mode"
+      ]
+    },
+    "response_format_json_object_valid": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "text": "{\"a\":1}",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "response_format_json_schema_invalid": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "json_schema": {
+            "name": "answer",
+            "schema": {
+              "properties": {
+                "a": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "a"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "json_schema"
+        }
+      },
+      "text": "{\"a\":\"x\"}",
+      "trace": [
+        "_response_format_mode",
+        "_response_format_json_schema"
+      ]
+    },
+    "response_format_json_schema_length": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "length",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "json_schema": {
+            "name": "answer",
+            "schema": {
+              "properties": {
+                "a": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "a"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "json_schema"
+        }
+      },
+      "text": "[",
+      "trace": [
+        "_response_format_mode",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "response_format_json_schema_not_json": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "json_schema": {
+            "name": "answer",
+            "schema": {
+              "properties": {
+                "a": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "a"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "json_schema"
+        }
+      },
+      "text": "not json",
+      "trace": [
+        "_response_format_mode"
+      ]
+    },
+    "response_format_json_schema_valid": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "stop",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "json_schema": {
+            "name": "answer",
+            "schema": {
+              "properties": {
+                "a": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "a"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "json_schema"
+        }
+      },
+      "text": "{\"a\":1}",
+      "trace": [
+        "_response_format_mode",
+        "_response_format_json_schema",
+        "_guided_json_mode_from_value",
+        "_guided_regex_result_validation",
+        "_guided_choice_result_validation",
+        "_guided_patch_result_validation"
+      ]
+    },
+    "tool_calls_shortcircuit_invalid_response_format": {
+      "expected": {
+        "failure_reason": null,
+        "raised": false
+      },
+      "finish_reason": "tool_calls",
+      "function": "structured_output",
+      "request": {
+        "response_format": {
+          "type": "bogus"
+        }
+      },
+      "text": "x",
+      "trace": []
+    }
+  },
+  "tool_cases": {
+    "function_missing": {
+      "expected": {
+        "failure_reason": "tool_required_not_satisfied",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": {
+          "function": {
+            "name": "lookup"
+          },
+          "type": "function"
+        },
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "function_name_mismatch": {
+      "expected": {
+        "failure_reason": "invalid_tool_call",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"x\":1}",
+            "id": "call_fixed",
+            "name": "other",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": {
+          "function": {
+            "name": "lookup"
+          },
+          "type": "function"
+        },
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "function_present": {
+      "expected": {
+        "failure_reason": null,
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [
+            {
+              "arguments": "{\"q\":\"x\"}",
+              "id": "call_fixed",
+              "name": "lookup",
+              "raw_text": ""
+            }
+          ],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"q\":\"x\"}",
+            "id": "call_fixed",
+            "name": "lookup",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": {
+          "function": {
+            "name": "lookup"
+          },
+          "type": "function"
+        },
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "no_tools_call": {
+      "expected": {
+        "failure_reason": null,
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [
+            {
+              "arguments": "{\"q\":\"x\"}",
+              "id": "call_fixed",
+              "name": "lookup",
+              "raw_text": ""
+            }
+          ],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"q\":\"x\"}",
+            "id": "call_fixed",
+            "name": "lookup",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": false,
+        "tool_choice": "none",
+        "tools": null
+      }
+    },
+    "no_tools_empty": {
+      "expected": {
+        "failure_reason": null,
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": null,
+        "tools": null
+      }
+    },
+    "none_empty": {
+      "expected": {
+        "failure_reason": null,
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "none",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "none_with_call": {
+      "expected": {
+        "failure_reason": "invalid_tool_call",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"q\":\"x\"}",
+            "id": "call_fixed",
+            "name": "lookup",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "none",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "nonstrict_schema_ignored": {
+      "expected": {
+        "failure_reason": null,
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [
+            {
+              "arguments": "{\"q\":1}",
+              "id": "call_fixed",
+              "name": "lookup",
+              "raw_text": ""
+            }
+          ],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"q\":1}",
+            "id": "call_fixed",
+            "name": "lookup",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "parallel_false_two_calls": {
+      "expected": {
+        "failure_reason": "invalid_tool_call",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"q\":\"x\"}",
+            "id": "call_fixed",
+            "name": "lookup",
+            "raw_text": ""
+          },
+          {
+            "arguments": "{\"x\":1}",
+            "id": "call_2",
+            "name": "other",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": false,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "parser_invalid_blocks_strict": {
+      "expected": {
+        "failure_reason": "invalid_tool_call",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [
+          "<tool_call>bad</tool_call>"
+        ],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": "model"
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "required_missing": {
+      "expected": {
+        "failure_reason": "tool_required_not_satisfied",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "required",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "strict_auto_malformed_raw": {
+      "expected": {
+        "failure_reason": "invalid_tool_call",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": null
+      },
+      "raw_text": "<tool_call><function=lookup><parameter=q>x</parameter></function>",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "strict_auto_no_calls": {
+      "expected": {
+        "failure_reason": null,
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "strict_auto_unparseable_raw": {
+      "expected": {
+        "failure_reason": "invalid_tool_call",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": null
+      },
+      "raw_text": "<tool_call>not a call</tool_call>",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "strict_none_parser_invalid": {
+      "expected": {
+        "failure_reason": "invalid_tool_call",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [
+          "<tool_call>bad</tool_call>"
+        ],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [],
+        "tool_parser_name": "model"
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "none",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "strict_schema_violation": {
+      "expected": {
+        "failure_reason": "schema_violation",
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"q\":1}",
+            "id": "call_fixed",
+            "name": "lookup",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    },
+    "valid_call": {
+      "expected": {
+        "failure_reason": null,
+        "parsed": {
+          "invalid_tool_call_blocks": [],
+          "reasoning_initially_open": false,
+          "text": "",
+          "tool_calls": [
+            {
+              "arguments": "{\"q\":\"x\"}",
+              "id": "call_fixed",
+              "name": "lookup",
+              "raw_text": ""
+            }
+          ],
+          "tool_parser_name": null
+        }
+      },
+      "parsed": {
+        "invalid_tool_call_blocks": [],
+        "reasoning_initially_open": false,
+        "text": "",
+        "tool_calls": [
+          {
+            "arguments": "{\"q\":\"x\"}",
+            "id": "call_fixed",
+            "name": "lookup",
+            "raw_text": ""
+          }
+        ],
+        "tool_parser_name": null
+      },
+      "raw_text": "",
+      "request": {
+        "parallel_tool_calls": null,
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "function": {
+              "name": "lookup",
+              "parameters": {
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ],
+                "type": "object"
+              },
+              "strict": true
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "name": "other",
+              "parameters": {
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ]
+      }
+    }
+  }
+}

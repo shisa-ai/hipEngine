@@ -67,7 +67,7 @@ from hipengine.generation import (
     supports_sampled_speculative_mtp,
     supports_speculative_mtp_sampling,
 )
-from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
+from hipengine.generation.constraints import ToolCallConstraintSpec
 from hipengine.generation.logprobs import logprob_text, logprob_text_spans
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
@@ -100,7 +100,6 @@ from hipengine.server.schemas import (
 from hipengine.server.json_schema import (
     _JSON_SCHEMA_ANNOTATION_KEYWORDS,
     _validate_json_schema_subset,
-    _validate_json_schema_value,
 )
 # Chat reasoning/tool-output parsing lives in its own pure boundary module;
 # this application imports the parser entry points it drives.
@@ -111,13 +110,31 @@ from hipengine.server.chat_output import (
     _TOOL_CALL_END_MARKER,
     _TOOL_CALL_START_MARKER,
     _classify_chat_length_phase,
-    _find_marker,
     _parse_chat_tool_calls,
     _split_reasoning,
     _strip_chat_terminal_markers,
     _tool_arguments_json,
-    _valid_tool_call_blocks,
     _xml_parameter_is_string_typed,
+)
+# Tool and structured result validation lives in its own pure boundary module;
+# this application builds normalized policies and keeps request branching.
+from hipengine.server.chat_result_policy import (
+    StructuredResultPolicy,
+    ToolResultPolicy,
+    ToolValidationResult,
+    guided_choice_failure,
+    guided_json_failure,
+    guided_patch_failure,
+    guided_regex_failure,
+    json_schema_root_object,
+    parse_json_text,
+    response_format_failure,
+    structured_length_failure,
+    tool_choice_mode,
+    tool_function,
+    tool_map_by_name,
+    tool_parameters_schema,
+    validate_tool_result,
 )
 # Metric normalization and exposition take collected data in the metrics owner;
 # engine reads and capability discovery stay in this module.
@@ -378,23 +395,6 @@ _GUIDED_PATCH_FIELDS = ("guided_patch", "guided_diff")
 _GUIDED_PATCH_FORMATS = ("unified_diff",)
 _GUIDED_PATCH_FENCED_POLICIES = ("optional", "required", "forbidden")
 _GUIDED_PATCH_FENCE_LABELS = ("diff", "patch")
-_PATCH_FENCE_RE = re.compile(r"\A\s*```(?P<label>[^\n`]*)\n(?P<body>.*?)\n```\s*\Z", re.DOTALL)
-_UNIFIED_DIFF_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$")
-_UNIFIED_DIFF_METADATA_PREFIXES = (
-    "diff --git ",
-    "index ",
-    "new file mode ",
-    "deleted file mode ",
-    "old mode ",
-    "new mode ",
-    "similarity index ",
-    "dissimilarity index ",
-    "rename from ",
-    "rename to ",
-    "copy from ",
-    "copy to ",
-)
-_UNIFIED_DIFF_BINARY_PREFIXES = ("Binary files ", "GIT binary patch")
 
 
 @dataclass(frozen=True)
@@ -4671,16 +4671,6 @@ async def _stream_engine_many(
             closer = getattr(iterator, "close", None)
             if callable(closer):
                 await run_in_threadpool(closer)
-
-
-@dataclass(frozen=True)
-class _ToolValidationResult:
-    parsed: _ParsedChatOutput
-    failure_reason: str | None = None
-
-    @property
-    def failed(self) -> bool:
-        return self.failure_reason is not None
 
 
 @dataclass(frozen=True)
@@ -13708,7 +13698,7 @@ def _no_tool_sampling_suppress_token_ids(
 ) -> tuple[int, ...]:
     if not request.tools:
         return ()
-    mode, _name = _tool_choice_mode(request.tool_choice)
+    mode, _name = tool_choice_mode(request.tool_choice)
     if mode != "none":
         return ()
     try:
@@ -13744,7 +13734,7 @@ def _grammar_sampling_spec(request, engine):
         spec = {"format":"grammar","value":grammar_text}
     tools = getattr(request,"tools",None)
     if tools:
-        mode,name = _tool_choice_mode(request.tool_choice)
+        mode,name = tool_choice_mode(request.tool_choice)
         if mode!="none" and getattr(target,"model_owned_tool_grammar",False):
             spec = {"format":"qwen4exp_tools","tools":tools,
                     "mode":"required" if mode in {"required","function"} else "auto",
@@ -13777,7 +13767,7 @@ def _tool_call_sampling_constraint(
     tokenizer_caps = _tokenizer_capability_flags(engine)
     if not request.tools or not tokenizer_caps["tokenize"] or not tokenizer_caps["detokenize"]:
         return None
-    mode, requested_name = _tool_choice_mode(request.tool_choice)
+    mode, requested_name = tool_choice_mode(request.tool_choice)
     if mode == "none":
         return None
     if mode == "function":
@@ -13787,7 +13777,7 @@ def _tool_call_sampling_constraint(
         names = tuple(
             str(name)
             for tool in request.tools
-            if isinstance((name := _tool_function(tool).get("name")), str) and name
+            if isinstance((name := tool_function(tool).get("name")), str) and name
         )
         constraint_mode = "required" if mode == "required" else "auto"
     if not names:
@@ -13817,7 +13807,7 @@ def _required_tool_sampling_forced_prefix(
         return (), False
     if not request.tools:
         return (), False
-    mode, _name = _tool_choice_mode(request.tool_choice)
+    mode, _name = tool_choice_mode(request.tool_choice)
     if mode not in {"required", "function"}:
         return (), False
     try:
@@ -13856,14 +13846,14 @@ def _tool_call_sequence_completion_token_sequences(
 def _specific_tool_name_prefix_target(request: ChatCompletionRequest) -> str | None:
     if not request.tools:
         return None
-    mode, requested_name = _tool_choice_mode(request.tool_choice)
+    mode, requested_name = tool_choice_mode(request.tool_choice)
     if mode == "function":
         return requested_name
     if mode != "required":
         return None
     names: list[str] = []
     for tool in request.tools:
-        name = _tool_function(tool).get("name")
+        name = tool_function(tool).get("name")
         if isinstance(name, str) and name:
             names.append(name)
     return names[0] if len(names) == 1 else None
@@ -13878,7 +13868,7 @@ def _tool_call_close_repair_token_sequences(
 ) -> tuple[tuple[int, ...], ...]:
     if not request.tools:
         return ()
-    mode, _name = _tool_choice_mode(request.tool_choice)
+    mode, _name = tool_choice_mode(request.tool_choice)
     if mode not in {"auto", "required", "function"}:
         return ()
     try:
@@ -15370,7 +15360,7 @@ def _validate_tool_schema_requests(request: CompletionRequest | ChatCompletionRe
     if not _strict_tool_validation_enabled(request):
         return
     for index, tool in enumerate(request.tools):
-        schema = _tool_parameters_schema(tool)
+        schema = tool_parameters_schema(tool)
         if schema is None:
             continue
         schema_error = _validate_json_schema_subset(
@@ -15415,7 +15405,7 @@ def _validate_tool_choice_request(request: ChatCompletionRequest) -> None:
         mode = "function"
         requested_name = name.strip()
     else:
-        mode, requested_name = _tool_choice_mode(raw_choice)
+        mode, requested_name = tool_choice_mode(raw_choice)
 
     if mode in {"required", "function"} and not request.tools:
         raise OpenAIHTTPError(
@@ -15424,7 +15414,7 @@ def _validate_tool_choice_request(request: ChatCompletionRequest) -> None:
             code="invalid_request",
             param="tool_choice",
         )
-    if mode == "function" and requested_name not in _tool_map_by_name(request.tools or ()):
+    if mode == "function" and requested_name not in tool_map_by_name(request.tools or ()):
         raise OpenAIHTTPError(
             400,
             f"tool_choice function {requested_name!r} is not declared in tools",
@@ -15841,28 +15831,6 @@ def _tool_call_count_text(call: _ParsedToolCall) -> str:
     return f'<tool_call>{{"name":{json.dumps(call.name)},"arguments":{call.arguments}}}</tool_call>'
 
 
-def _response_format_failure_reason(
-    request: CompletionRequest | ChatCompletionRequest,
-    text: str,
-    finish_reason: str,
-) -> str | None:
-    mode = _response_format_mode(request)
-    if mode not in {"json_object", "json_schema"}:
-        return None
-    if str(finish_reason).strip().lower() == "length":
-        return None
-    try:
-        value = json.loads(str(text).strip())
-    except Exception:
-        return "schema_violation"
-    if mode == "json_object":
-        return None if isinstance(value, dict) else "schema_violation"
-    schema = _response_format_json_schema(request)
-    if schema is None:
-        return "schema_violation"
-    return None if _validate_json_schema_value(value, schema, path="$") is None else "schema_violation"
-
-
 def _structured_output_failure_reason(
     request: CompletionRequest | ChatCompletionRequest,
     text: str,
@@ -15870,19 +15838,81 @@ def _structured_output_failure_reason(
 ) -> str | None:
     if str(finish_reason).strip().lower()=="tool_calls":
         return None
-    response_format_failure = _response_format_failure_reason(request, text, finish_reason)
-    if response_format_failure is not None:
-        return response_format_failure
-    guided_json_failure = _guided_json_failure_reason(request, text, finish_reason)
-    if guided_json_failure is not None:
-        return guided_json_failure
-    guided_regex_failure = _guided_regex_failure_reason(request, text, finish_reason)
-    if guided_regex_failure is not None:
-        return guided_regex_failure
-    guided_choice_failure = _guided_choice_failure_reason(request, text, finish_reason)
-    if guided_choice_failure is not None:
-        return guided_choice_failure
-    return _guided_patch_failure_reason(request, text, finish_reason)
+    response_mode = _response_format_mode(request)
+    if response_mode in {"json_object", "json_schema"}:
+        if str(finish_reason).strip().lower() != "length":
+            parsed, value = parse_json_text(text)
+            if not parsed:
+                return "schema_violation"
+            schema = (
+                _response_format_json_schema(request)
+                if response_mode == "json_schema"
+                else None
+            )
+            failure = response_format_failure(
+                StructuredResultPolicy(
+                    response_format_mode=response_mode,
+                    response_format_schema=schema,
+                ),
+                value,
+            )
+            if failure is not None:
+                return failure
+    guided_mode = _guided_json_mode_from_value(
+        getattr(request, "guided_json", None), validate=False
+    )
+    if guided_mode in {"json_object", "json_schema"}:
+        if str(finish_reason).strip().lower() != "length":
+            parsed, value = parse_json_text(text)
+            if not parsed:
+                return "schema_violation"
+            schema = (
+                _guided_json_schema(request)
+                if guided_mode == "json_schema"
+                else None
+            )
+            failure = guided_json_failure(
+                StructuredResultPolicy(
+                    guided_json_mode=guided_mode,
+                    guided_json_schema=schema,
+                ),
+                value,
+            )
+            if failure is not None:
+                return failure
+    if _guided_regex_result_validation(request):
+        if str(finish_reason).strip().lower() != "length":
+            failure = guided_regex_failure(
+                StructuredResultPolicy(
+                    guided_regex=_guided_regex_pattern(
+                        getattr(request, "guided_regex", None), validate=False
+                    )
+                ),
+                text,
+            )
+            if failure is not None:
+                return failure
+    if _guided_choice_result_validation(request):
+        if str(finish_reason).strip().lower() != "length":
+            failure = guided_choice_failure(
+                StructuredResultPolicy(
+                    guided_choice=_guided_choice_values(
+                        getattr(request, "guided_choice", ()), validate=False
+                    )
+                ),
+                text,
+            )
+            if failure is not None:
+                return failure
+    if _guided_patch_result_validation(request):
+        if str(finish_reason).strip().lower() != "length":
+            return guided_patch_failure(
+                StructuredResultPolicy(
+                    guided_patch_fenced_policy=_guided_patch_fenced_policy(request)
+                ),
+                text,
+            )
+    return None
 
 
 def _structured_length_failure_reason(
@@ -15894,8 +15924,7 @@ def _structured_length_failure_reason(
         return None
     if not _structured_json_object_prefix_validation(request, text):
         return None
-    state = JsonObjectConstraintState().observe_text(text)
-    return "schema_violation" if state.invalid else None
+    return structured_length_failure(text)
 
 
 def _structured_json_object_prefix_validation(
@@ -15908,9 +15937,9 @@ def _structured_json_object_prefix_validation(
     if response_mode == "json_object" or guided_mode == "json_object":
         return True
     if response_mode == "json_schema":
-        return _json_schema_root_object(_response_format_json_schema(request))
+        return json_schema_root_object(_response_format_json_schema(request))
     if guided_mode == "json_schema":
-        return _json_schema_root_object(_guided_json_schema(request))
+        return json_schema_root_object(_guided_json_schema(request))
     return False
 
 
@@ -15919,175 +15948,9 @@ def _json_object_close_forcing(request: CompletionRequest | ChatCompletionReques
     guided_mode = _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False)
     if response_mode == "json_object" or guided_mode == "json_object":
         return True
-    if response_mode == "json_schema" and _json_schema_root_object(_response_format_json_schema(request)):
+    if response_mode == "json_schema" and json_schema_root_object(_response_format_json_schema(request)):
         return True
-    return bool(guided_mode == "json_schema" and _json_schema_root_object(_guided_json_schema(request)))
-
-
-def _json_schema_root_object(schema: Mapping[str, Any] | None) -> bool:
-    if not isinstance(schema, Mapping):
-        return False
-    schema_type = schema.get("type")
-    if schema_type == "object":
-        return True
-    return any(key in schema for key in ("properties", "required", "additionalProperties"))
-
-
-def _guided_json_failure_reason(
-    request: CompletionRequest | ChatCompletionRequest,
-    text: str,
-    finish_reason: str,
-) -> str | None:
-    mode = _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False)
-    if mode not in {"json_object", "json_schema"}:
-        return None
-    if str(finish_reason).strip().lower() == "length":
-        return None
-    try:
-        value = json.loads(str(text).strip())
-    except Exception:
-        return "schema_violation"
-    if mode == "json_object":
-        return None if isinstance(value, dict) else "schema_violation"
-    schema = _guided_json_schema(request)
-    if schema is None:
-        return "schema_violation"
-    return None if _validate_json_schema_value(value, schema, path="$") is None else "schema_violation"
-
-
-def _guided_regex_failure_reason(
-    request: CompletionRequest | ChatCompletionRequest,
-    text: str,
-    finish_reason: str,
-) -> str | None:
-    if not _guided_regex_result_validation(request):
-        return None
-    if str(finish_reason).strip().lower() == "length":
-        return None
-    pattern = _guided_regex_pattern(getattr(request, "guided_regex", None), validate=False)
-    if pattern is None:
-        return "schema_violation"
-    try:
-        valid = re.fullmatch(pattern, str(text).strip()) is not None
-    except re.error:
-        valid = False
-    return None if valid else "schema_violation"
-
-
-def _guided_choice_failure_reason(
-    request: CompletionRequest | ChatCompletionRequest,
-    text: str,
-    finish_reason: str,
-) -> str | None:
-    if not _guided_choice_result_validation(request):
-        return None
-    if str(finish_reason).strip().lower() == "length":
-        return None
-    choices = _guided_choice_values(getattr(request, "guided_choice", ()), validate=False)
-    return None if str(text).strip() in choices else "schema_violation"
-
-
-def _guided_patch_failure_reason(
-    request: CompletionRequest | ChatCompletionRequest,
-    text: str,
-    finish_reason: str,
-) -> str | None:
-    if not _guided_patch_result_validation(request):
-        return None
-    if str(finish_reason).strip().lower() == "length":
-        return None
-    valid = _is_valid_guided_patch_text(
-        text,
-        fenced_policy=_guided_patch_fenced_policy(request),
-    )
-    return None if valid else "schema_violation"
-
-
-def _is_valid_guided_patch_text(text: str, *, fenced_policy: str = "optional") -> bool:
-    extracted = _extract_guided_patch_body(str(text))
-    if extracted is None:
-        return False
-    patch, is_fenced = extracted
-    if fenced_policy == "required" and not is_fenced:
-        return False
-    if fenced_policy == "forbidden" and is_fenced:
-        return False
-    return _is_valid_unified_diff(patch)
-
-
-def _extract_guided_patch_body(text: str) -> tuple[str, bool] | None:
-    stripped = str(text).strip()
-    if not stripped:
-        return None
-    match = _PATCH_FENCE_RE.match(stripped)
-    if match is None:
-        return stripped, False
-    label = match.group("label").strip().lower()
-    if label and label not in {"diff", "patch"}:
-        return None
-    return match.group("body").strip(), True
-
-
-def _is_valid_unified_diff(text: str) -> bool:
-    lines = str(text).strip().splitlines()
-    if not lines:
-        return False
-    index = 0
-    file_count = 0
-    hunk_count = 0
-    while index < len(lines):
-        while index < len(lines) and _is_unified_diff_metadata_line(lines[index]):
-            index += 1
-        if index < len(lines) and lines[index].startswith(_UNIFIED_DIFF_BINARY_PREFIXES):
-            return False
-        if index >= len(lines) or not lines[index].startswith("--- "):
-            return False
-        index += 1
-        if index >= len(lines) or not lines[index].startswith("+++ "):
-            return False
-        file_count += 1
-        index += 1
-        file_hunks = 0
-        while index < len(lines) and _UNIFIED_DIFF_HUNK_RE.match(lines[index]):
-            file_hunks += 1
-            hunk_count += 1
-            index += 1
-            body_lines = 0
-            while index < len(lines):
-                line = lines[index]
-                if _UNIFIED_DIFF_HUNK_RE.match(line):
-                    break
-                if line.startswith("--- ") or _is_unified_diff_metadata_line(line):
-                    break
-                if not _is_unified_diff_body_line(line):
-                    return False
-                body_lines += 1
-                index += 1
-            if body_lines == 0:
-                return False
-        if file_hunks == 0:
-            return False
-    return file_count > 0 and hunk_count > 0
-
-
-def _is_unified_diff_metadata_line(line: str) -> bool:
-    return line.startswith(_UNIFIED_DIFF_METADATA_PREFIXES)
-
-
-def _is_unified_diff_body_line(line: str) -> bool:
-    return (
-        bool(line)
-        and line[0] in {" ", "+", "-"}
-        or line.startswith("\\ No newline at end of file")
-    )
-
-
-def _is_json_object_text(text: str) -> bool:
-    try:
-        value = json.loads(str(text).strip())
-    except Exception:
-        return False
-    return isinstance(value, dict)
+    return bool(guided_mode == "json_schema" and json_schema_root_object(_guided_json_schema(request)))
 
 
 def _chat_response_format_text(message: Mapping[str, Any]) -> str:
@@ -17318,7 +17181,7 @@ def _parse_chat_tool_calls_for_engine(
         if (tools and allow_bare_json_tools and not raw_calls and not invalid_blocks and
             getattr(parser,"capabilities",{}).get("json_compatibility")):
             legacy = _parse_chat_tool_calls(content)
-            names = {_tool_function(tool).get("name") for tool in tools}
+            names = {tool_function(tool).get("name") for tool in tools}
             if legacy.tool_calls and all(call.name in names for call in legacy.tool_calls):
                 return legacy
         if not isinstance(content, str):
@@ -17377,64 +17240,18 @@ def _validate_chat_tool_result(
     request: ChatCompletionRequest,
     parsed: _ParsedChatOutput,
     raw_text: str,
-) -> _ToolValidationResult:
+) -> ToolValidationResult:
     if not request.tools:
-        return _ToolValidationResult(parsed)
-    mode, required_name = _tool_choice_mode(request.tool_choice)
-    strict = _strict_tool_validation_enabled(request)
-    if parsed.tool_parser_name is not None:
-        malformed_blocks = parsed.invalid_tool_call_blocks if strict else ()
-        unparseable_blocks = parsed.invalid_tool_call_blocks
-    else:
-        malformed_blocks = (
-            _malformed_tool_call_blocks(raw_text, tools=request.tools) if strict else ()
-        )
-        unparseable_blocks = _unparseable_tool_call_blocks(raw_text, tools=request.tools)
-    if strict:
-        if mode == "none":
-            if parsed.tool_calls or malformed_blocks:
-                return _tool_validation_failure("invalid_tool_call")
-            return _ToolValidationResult(parsed)
-        if malformed_blocks:
-            return _tool_validation_failure("invalid_tool_call")
-    if unparseable_blocks:
-        return _tool_validation_failure("invalid_tool_call")
-    if not parsed.tool_calls:
-        if strict and mode in {"required", "function"}:
-            return _tool_validation_failure("tool_required_not_satisfied")
-        return _ToolValidationResult(parsed)
-    if len(parsed.tool_calls) > 1 and request.parallel_tool_calls is False:
-        return _tool_validation_failure("invalid_tool_call")
-
-    tools_by_name = _tool_map_by_name(request.tools)
-    for call in parsed.tool_calls:
-        if mode == "function" and required_name is not None and call.name != required_name:
-            return _tool_validation_failure("invalid_tool_call")
-        tool = tools_by_name.get(call.name)
-        if tool is None:
-            return _tool_validation_failure("invalid_tool_call")
-        if strict:
-            schema = _tool_parameters_schema(tool)
-            if schema is not None:
-                schema_error = _validate_json_schema_value(
-                    _tool_call_arguments_value(call),
-                    schema,
-                    path=f"{call.name}.arguments",
-                )
-                if schema_error is not None:
-                    return _tool_validation_failure("schema_violation")
-    if (
-        strict
-        and mode == "function"
-        and required_name is not None
-        and not any(call.name == required_name for call in parsed.tool_calls)
-    ):
-        return _tool_validation_failure("tool_required_not_satisfied")
-    return _ToolValidationResult(parsed)
-
-
-def _tool_validation_failure(reason: str) -> _ToolValidationResult:
-    return _ToolValidationResult(_ParsedChatOutput(text="", tool_calls=()), str(reason))
+        return ToolValidationResult(parsed)
+    mode, required_name = tool_choice_mode(request.tool_choice)
+    policy = ToolResultPolicy(
+        tools=tuple(request.tools),
+        choice_mode=mode,
+        choice_name=required_name,
+        parallel_tool_calls=request.parallel_tool_calls,
+        strict=_strict_tool_validation_enabled(request),
+    )
+    return validate_tool_result(policy, parsed, raw_text)
 
 
 def _invalid_tool_call_error_mode(request: ChatCompletionRequest) -> str:
@@ -17469,7 +17286,7 @@ def _invalid_tool_call_error_mode(request: ChatCompletionRequest) -> str:
 
 def _invalid_tool_call_hard_error(
     request: ChatCompletionRequest,
-    tool_validation: _ToolValidationResult,
+    tool_validation: ToolValidationResult,
     *,
     finish_details: Mapping[str, Any],
 ) -> OpenAIHTTPError | None:
@@ -17488,7 +17305,7 @@ def _invalid_tool_call_hard_error(
 
 def _raise_invalid_tool_call_hard_error_if_requested(
     request: ChatCompletionRequest,
-    tool_validation: _ToolValidationResult,
+    tool_validation: ToolValidationResult,
     *,
     finish_details: Mapping[str, Any],
 ) -> None:
@@ -17504,120 +17321,12 @@ def _raise_invalid_tool_call_hard_error_if_requested(
 def _strict_tool_validation_enabled(request: ChatCompletionRequest) -> bool:
     if not request.tools:
         return False
-    mode, _name = _tool_choice_mode(request.tool_choice)
+    mode, _name = tool_choice_mode(request.tool_choice)
     if mode in {"none", "required", "function"}:
         return True
     if request.parallel_tool_calls is not None:
         return True
-    return any(_tool_function(tool).get("strict") is True for tool in request.tools)
-
-
-def _tool_choice_mode(tool_choice: str | Mapping[str, Any] | None) -> tuple[str, str | None]:
-    if tool_choice is None:
-        return "auto", None
-    if isinstance(tool_choice, str):
-        value = tool_choice.strip().lower()
-        if value in {"none", "auto", "required"}:
-            return value, None
-        return "function", tool_choice.strip()
-    if isinstance(tool_choice, Mapping):
-        choice_type = str(tool_choice.get("type", "")).strip().lower()
-        function = tool_choice.get("function")
-        if choice_type == "function" and isinstance(function, Mapping):
-            name = function.get("name")
-            if isinstance(name, str) and name:
-                return "function", name
-    return "auto", None
-
-
-def _tool_map_by_name(tools: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[str, Any]]:
-    mapped: dict[str, Mapping[str, Any]] = {}
-    for tool in tools:
-        function = _tool_function(tool)
-        name = function.get("name")
-        if isinstance(name, str) and name:
-            mapped[name] = tool
-    return mapped
-
-
-def _tool_function(tool: Mapping[str, Any]) -> Mapping[str, Any]:
-    function = tool.get("function")
-    return function if isinstance(function, Mapping) else {}
-
-
-def _tool_parameters_schema(tool: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    function = _tool_function(tool)
-    parameters = function.get("parameters")
-    return parameters if isinstance(parameters, Mapping) else None
-
-
-def _tool_call_arguments_value(call: _ParsedToolCall) -> Any:
-    try:
-        return json.loads(call.arguments)
-    except Exception:
-        return call.arguments
-
-
-def _malformed_tool_call_blocks(
-    text: str,
-    *,
-    tools: Sequence[Mapping[str, Any]] | None = None,
-) -> tuple[str, ...]:
-    return _invalid_tool_call_blocks(text, tools=tools)
-
-
-def _unparseable_tool_call_blocks(
-    text: str,
-    *,
-    tools: Sequence[Mapping[str, Any]] | None = None,
-) -> tuple[str, ...]:
-    return _invalid_tool_call_blocks(text, tools=tools)
-
-
-def _invalid_tool_call_blocks(
-    text: str,
-    *,
-    tools: Sequence[Mapping[str, Any]] | None = None,
-) -> tuple[str, ...]:
-    lowered = text.lower()
-    invalid: list[str] = []
-    cursor = 0
-    blocks = _valid_tool_call_blocks(text, tools=tools)
-    for block in blocks:
-        invalid.extend(_invalid_tool_call_blocks_between(text, lowered, cursor, block.start, flag_unclosed=False))
-        cursor = block.end
-    invalid.extend(_invalid_tool_call_blocks_between(text, lowered, cursor, len(text), flag_unclosed=True))
-    return tuple(invalid)
-
-
-def _invalid_tool_call_blocks_between(
-    text: str,
-    lowered: str,
-    start: int,
-    end: int,
-    *,
-    flag_unclosed: bool,
-) -> tuple[str, ...]:
-    invalid: list[str] = []
-    cursor = start
-    while cursor < end:
-        open_index = _find_marker(lowered, _TOOL_CALL_START_MARKER, cursor, end)
-        if open_index < 0:
-            break
-        close_index = _find_marker(
-            lowered,
-            _TOOL_CALL_END_MARKER,
-            open_index + len(_TOOL_CALL_START_MARKER),
-            end,
-        )
-        if close_index < 0:
-            if flag_unclosed:
-                invalid.append(text[open_index:end])
-            break
-        close_end = close_index + len(_TOOL_CALL_END_MARKER)
-        invalid.append(text[open_index:close_end])
-        cursor = close_end
-    return tuple(invalid)
+    return any(tool_function(tool).get("strict") is True for tool in request.tools)
 
 
 def _openai_tool_call(call: _ParsedToolCall) -> dict[str, Any]:

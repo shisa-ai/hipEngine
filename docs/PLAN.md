@@ -451,9 +451,12 @@ runtime imports. The server package lazily resolves its public app exports;
 application code, tests and scripts import request models directly from their owner.
 Pure JSON Schema subset and value validation lives in
 `hipengine/server/json_schema.py`, with only standard-library dependencies.
-Request error translation,
-tool-result handling and stream accounting remain in HTTP composition. Pure
-reasoning-tag splitting, terminal-marker handling and legacy JSON/XML tool-output
+Request error translation, finish policy and live stream accounting remain in
+HTTP composition. Tool and structured result validation lives in
+`hipengine/server/chat_result_policy.py`, over explicit normalized policy values
+and pure parser results. Application adapters preserve branch order and normalize
+only active fields; they retain request errors, finish handling and response shaping.
+Pure reasoning-tag splitting, terminal-marker handling and legacy JSON/XML tool-output
 parsing live in `hipengine/server/chat_output.py`, with standard-library
 imports only. The application owns model-protocol adaptation, request errors
 and response shaping. Consumers import pure parser helpers directly from their
