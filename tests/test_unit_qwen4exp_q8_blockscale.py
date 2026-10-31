@@ -12,11 +12,13 @@ def test_blockscale_is_registered_only_as_an_explicit_candidate():
         module.gguf_q8_0_selected_grouped_blockscale_prefill_bf16_bf16_out)
     candidate = CANDIDATES["q8_blockscale"]
     assert candidate.count_registered_dispatch
+    # The variant is the arm's own declared owner selection; only the WMMA-down
+    # gate is still a process key.
     assert candidate.environment == {
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "1",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT":
-            "selected_grouped_blockscale_prefill_bf16_bf16_out",
     }
+    assert candidate.q8_down_variant == (
+        "selected_grouped_blockscale_prefill_bf16_bf16_out")
 
 
 def test_blockscale_wrapper_reuses_validated_raw_pointer_abi(monkeypatch):
@@ -51,8 +53,9 @@ def test_quad_restoration_does_not_restore_other_approximate_routes():
     assert candidate.qsa_prefill_head_mode == "quad"
     assert set(env) == {
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT",
     }
+    assert candidate.q8_down_variant == (
+        "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out")
 
 
 def test_all_q8_codes_are_exact_bf16_without_rounding_bias():

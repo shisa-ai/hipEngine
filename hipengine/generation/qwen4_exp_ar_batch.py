@@ -696,6 +696,11 @@ def make_qwen4_exp_ar_batch_runner(
         getattr(generator, "q8_down_row4_prefill", False))
     batch.q8_down_bundle_prefill = bool(
         getattr(generator, "q8_down_bundle_prefill", False))
+    # The grouped Q8_0 expert-down owner travels with the other expert-down
+    # decisions: a batch owner that never receives it would keep the unguarded
+    # parent on a row whose plan published the guarded leaf. ``None`` is the
+    # unbound parent, so the carrier forwards the published value as-is.
+    batch.q8_down_variant = getattr(generator, "q8_down_variant", None)
     return batch
 
 

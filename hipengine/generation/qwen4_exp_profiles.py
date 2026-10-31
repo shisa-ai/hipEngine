@@ -139,6 +139,16 @@ PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
     "QSA_ORDERED_DECODE": "1",
 }
+# The grouped Q8_0 expert-down owner is request-local generator/runner state
+# published from the plan's own selection (``q8_down_variant``), so the
+# restoration pass writes back only the flags that remain process keys.
+_Q8_DOWN_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT"
+_Q8_DOWN_WMMA_VARIANT = "selected_grouped_wmma_prefill_bf16_bf16_out"
+_PROCESS_RESTORED_Q8_QSA_FLAGS = {
+    flag: value
+    for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
+    if flag not in {"Q8_DOWN_VARIANT"}
+}
 _Q8_QSA_RESTORATION_EVIDENCE = (
     "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json"
 )
@@ -1034,6 +1044,16 @@ def _publish_q8_wmma_layer_scope(generator: Any, scope: Any) -> None:
         runner.q8_wmma_layer_scope = scope
 
 
+def _publish_q8_down_variant(generator: Any, variant: str) -> None:
+    """Publish the grouped Q8_0 expert-down owner as owner state."""
+
+    _record_owner_transport(_Q8_DOWN_VARIANT_ENV, variant)
+    generator.q8_down_variant = variant
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.q8_down_variant = variant
+
+
 def _publish_q4_dp4a_decode(
     generator: Any,
     enabled: bool,
@@ -1329,7 +1349,9 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": (
             "1" if production else "0"
         ),
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT": "selected_grouped_wmma_prefill_bf16_bf16_out",
+        # The grouped Q8_0 expert-down owner was this pair's other half; it is
+        # the owning generator/runner's state now (``q8_down_variant``),
+        # published below, so no process key names it.
         # Exact iu8-risk+repair gate/up: bit-identical to the pair2 owner
         # (state gate + 72 exact trajectories); production-only binding.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1" if production else "0",
@@ -1639,7 +1661,7 @@ def _bind(
         _apply_profile_env(
             {
                 "HIPENGINE_QWEN4_EXP_" + flag: value
-                for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
+                for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
     f16_routes = production and resolved.manifest.get("quant") in F16_ROUTE_QUANTS
@@ -1668,6 +1690,18 @@ def _bind(
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(first, last + 1))),
             "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": gdn["selected_variant"],
         })
+    # The grouped Q8_0 expert-down owner is the plan's own decision, published
+    # on the owning generator/runner instead of the retired
+    # ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`` key: the restoration pass above
+    # names the guarded block-scale leaf for the UD production plan, and every
+    # other plan keeps the unguarded WMMA parent. Every bind publishes its own
+    # value, so a later bind in the same process cannot inherit this one.
+    _publish_q8_down_variant(
+        generator,
+        PRODUCTION_Q8_QSA_RESTORED_FLAGS["Q8_DOWN_VARIANT"]
+        if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+        else _Q8_DOWN_WMMA_VARIANT,
+    )
     _report_prebinder_conflicts()
     if production:
         configure = getattr(

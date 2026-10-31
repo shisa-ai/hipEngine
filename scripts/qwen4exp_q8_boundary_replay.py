@@ -22,9 +22,26 @@ def dequant(raw, hidden):
     return (scales[:, :, None] * codes).reshape(-1, hidden)
 
 
+def declare_arm_owners():
+    """Name the leaf this probe samples for the arms it will run.
+
+    The replay below wraps the unguarded WMMA parent, while the plan publishes
+    the guarded block-scale leaf, so an arm that does not declare a leaf of its
+    own binds WMMA for its measured window. An arm whose candidate declaration
+    names another owner is left alone: this probe cannot instrument it.
+    """
+
+    declared = localize.declared_q8_down_variants()
+    arms = [name for name in localize.ARMS if name not in declared]
+    localize.declare_q8_down_owner(localize.Q8_DOWN_WMMA_VARIANT, arms=arms)
+    return arms
+
+
 def main():
     from hipengine.core.hip import MemcpyKind
     from hipengine.runtime import qwen4_exp_runner as runner
+
+    declare_arm_owners()
 
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--output", type=Path, required=True)
@@ -50,7 +67,7 @@ def main():
     def resolve(*a, **kw):
         fn = original_resolve(*a, **kw)
         if not (kw.get("quant") == "gguf_q8_0" and kw.get("variant") ==
-                "selected_grouped_wmma_prefill_bf16_bf16_out"):
+                localize.Q8_DOWN_WMMA_VARIANT):
             return fn
 
         def replay(x, starts_ptr, wmma_starts, tiles, weights, output,

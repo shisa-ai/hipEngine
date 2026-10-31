@@ -561,6 +561,28 @@ def main():
             # the plan's own publication, asserted in their blocks below.
             assert flag, "a process-keyed route package must name its key"
             assert os.environ[flag] == "1", "production must select the retained route without an override"
+        if args.route_package == "q8-wmma-down":
+            # The counted leaf is the unguarded WMMA parent, but the plan
+            # publishes the guarded block-scale owner, so ``route_scope`` binds
+            # the counted leaf for both arms and the record separates the arm's
+            # value from the published one.
+            from hipengine.runtime.qwen4_exp_runner import (
+                Q8_DOWN_WMMA_VARIANT, resolve_q8_down_variant,
+            )
+            report["selection_control"] = {
+                "runner_field": "q8_down_variant",
+                "environment": flag,
+                "environment_value": os.environ[flag],
+                "published": resolve_q8_down_variant(generator.runner),
+                "bound": Q8_DOWN_WMMA_VARIANT,
+                "scope": "per measured run; restored on exit",
+                "reason": (
+                    "the plan publishes the guarded block-scale leaf on the UD "
+                    "production plan, while this arm's counter and its gate "
+                    "A/B both instrument the unguarded WMMA parent; the "
+                    "counted leaf is bound for the measured window and the "
+                    "published owner comes back on exit"),
+            }
         if args.route_package in {"qsa-head-pair", "qsa-head-quad"}:
             # The leaf is runner state, so its production default is asserted
             # through the runner rather than through a binder-set env key.

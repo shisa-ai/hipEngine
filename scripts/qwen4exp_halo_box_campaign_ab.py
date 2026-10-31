@@ -1027,6 +1027,15 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
 Q8_DOWN_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
 )
+#: The Q8_0 WMMA down gate. It stays the arm's process key: it decides whether
+#: the grouped chain reaches the owner at all.
+Q8_WMMA_DOWN_GATE = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
+#: The leaf the ``q8-wmma-down`` arm's counter counts. Which owner the dispatch
+#: resolves once that gate is open is request-local runner state
+#: (``runner.q8_down_variant``), and the plan publishes the guarded block-scale
+#: leaf, so both arms bind the counted parent instead of leaving the plan's
+#: owner in place and reporting a neutral A/B.
+Q8_WMMA_DOWN_VARIANT = "selected_grouped_wmma_prefill_bf16_bf16_out"
 #: The sorted chain's own gate and its two ladder rungs. ``bundle`` replaces
 #: ``row4`` on its rows>=512 scope, so a row4 arm pins bundle off and a bundle
 #: arm requires row4. All three are request-local runner state
@@ -1658,6 +1667,21 @@ def gdn_serial_scope(*, environment=os.environ):
 
 
 @contextlib.contextmanager
+def _pinned_env(environment, key, value):
+    """Hold one process key at ``value`` for the measured window."""
+
+    previous = environment.get(key)
+    environment[key] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            environment.pop(key, None)
+        else:
+            environment[key] = previous
+
+
+@contextlib.contextmanager
 def _combined_scope(*scopes):
     """Enter several diagnostic scopes together, and only when entered.
 
@@ -1734,6 +1758,23 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             runner,
             "f32_hidden_token_tile4_dpp_exact" if mode == "after"
             else "f32_hidden_token_tile4_dense_exact",
+        )
+
+    if route_package == "q8-wmma-down":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("q8-wmma-down needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import q8_down_variant
+        # The counted leaf launches only when the gate is open and the dispatch
+        # resolves it, so the live control holds both halves: the gate is the
+        # arm's process key (the same value the mode binding writes, so the A/B
+        # is unchanged) and the owner is request-local runner state.
+        return _combined_scope(
+            _pinned_env(
+                environment, Q8_WMMA_DOWN_GATE,
+                "1" if mode == "after" else "0"),
+            q8_down_variant(runner, Q8_WMMA_DOWN_VARIANT),
         )
 
     if route_package == "q5k-row4":

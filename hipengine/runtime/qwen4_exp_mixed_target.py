@@ -407,6 +407,7 @@ class Qwen4ExpMixedTargetPass:
                         batch, "q8_down_row4_prefill", False),
                     q8_down_bundle_prefill=getattr(
                         batch, "q8_down_bundle_prefill", False),
+                    q8_down_variant=getattr(batch, "q8_down_variant", None),
                 )
                 residual = scratch.output
             head = run_qwen4_exp_gr_read(

@@ -439,6 +439,7 @@ def run_qwen4_exp_batch_gdn_layer(
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
+    q8_down_variant: str | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row GDN+MoE layer over request-owned state slots.
 
@@ -540,6 +541,7 @@ def run_qwen4_exp_batch_gdn_layer(
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
+            q8_down_variant=q8_down_variant,
             routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
         )
@@ -665,6 +667,7 @@ def _run_layer_ffn(
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
+    q8_down_variant: str | None = None,
 ) -> None:
     """GR write after the mixer, FFN GR read, MoE, and the final GR write.
 
@@ -678,6 +681,10 @@ def _run_layer_ffn(
     and PF-1 fork-b decisions are reachable at every multi-row batch width, and
     the out8 fallback rung is live wherever the exact grouped Q5_1 down chain
     runs with the expert-grid family off.
+
+    ``q8_down_variant`` is the plan-published grouped Q8_0 expert-down owner,
+    forwarded to the MoE dispatch unchanged: the guarded block-scale leaf takes
+    the sparse risk buffers and the unguarded leaves keep the plain ABI.
     """
 
     attention_inject = scratch.attention_gr.inject_logits
@@ -733,6 +740,7 @@ def _run_layer_ffn(
         forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
+        q8_down_variant=q8_down_variant,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -800,6 +808,7 @@ def run_qwen4_exp_batch_qsa_layer(
     forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
+    q8_down_variant: str | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row QSA+MoE layer over request-owned slots.
 
@@ -901,6 +910,7 @@ def run_qwen4_exp_batch_qsa_layer(
             forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
+            q8_down_variant=q8_down_variant,
             routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
         )
@@ -1035,6 +1045,11 @@ class Qwen4ExpGGUFBatchRunner:
     q8_down_row4_prefill: bool = False
     q5k_row4_prefill: bool = False
     q8_down_bundle_prefill: bool = False
+    # The grouped Q8_0 expert-down owner, published by the profile binder: the
+    # guarded block-scale leaf on the production plan, the unguarded WMMA parent
+    # on every plan that keeps it. ``None`` is the unbound parent. The MoE runs
+    # eager inside the captured layer segment, so the name is part of the key.
+    q8_down_variant: str | None = None
 
     def __init__(
         self,
@@ -1957,6 +1972,9 @@ class Qwen4ExpGGUFBatchRunner:
         ``q4_out4`` is that chain's non-expertgrid fallback rung; all three
         select launches inside the segment. ``router_producer_variant`` selects
         the router-logit kernel itself, which the segment also bakes in.
+        ``q8_down_variant`` names the grouped Q8_0 expert-down owner: the
+        guarded block-scale leaf takes the sparse risk-buffer launch ABI, so a
+        segment built on it must not replay under the WMMA parent.
         """
 
         return (
@@ -1982,6 +2000,9 @@ class Qwen4ExpGGUFBatchRunner:
             # the captured segment bakes in, so the key carries the name itself
             # rather than a boolean collapse of it.
             getattr(self, "router_producer_variant", None),
+            # A named owner, like the router producer: the guarded leaf is a
+            # different launch inside the segment, so the key carries the name.
+            getattr(self, "q8_down_variant", None),
         )
 
     def step(
@@ -2273,6 +2294,7 @@ class Qwen4ExpGGUFBatchRunner:
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
+                    q8_down_variant=self.q8_down_variant,
                 ).ptr
             else:
                 qsa_binding = self.qsa_bindings[layer]
@@ -2329,6 +2351,7 @@ class Qwen4ExpGGUFBatchRunner:
                     forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
+                    q8_down_variant=self.q8_down_variant,
                 ).ptr
         head_norm_ptr = self.resident.weight(
             "root.head_hc_norm"

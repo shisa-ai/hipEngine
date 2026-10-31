@@ -1,0 +1,231 @@
+{
+  "performance_claim": false,
+  "promotion_claim": false,
+  "pairs": [
+    {
+      "mode": "public",
+      "before_source": {
+        "path": "~/hipEngine",
+        "head": "a02fd9428e47a61bccdbc0bc43cbdf7adb72452a",
+        "tracked_clean": false
+      },
+      "after_source": {
+        "path": "~/hipEngine",
+        "head": "a02fd9428e47a61bccdbc0bc43cbdf7adb72452a",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0"
+      },
+      "arrays": 6,
+      "all_finite": true,
+      "max_abs_logit_delta": 0.0,
+      "logits_exact": true,
+      "lifecycle_clean": true,
+      "cases": [
+        {
+          "profile": "strict",
+          "length": 23,
+          "ids": [
+            248046,
+            198,
+            248045
+          ],
+          "calls": [],
+          "owner_variant": "selected_grouped_wmma_prefill_bf16_bf16_out",
+          "runner_variant": "selected_grouped_wmma_prefill_bf16_bf16_out"
+        },
+        {
+          "profile": "strict",
+          "length": 73,
+          "ids": [
+            198,
+            1,
+            198
+          ],
+          "calls": [],
+          "owner_variant": "selected_grouped_wmma_prefill_bf16_bf16_out",
+          "runner_variant": "selected_grouped_wmma_prefill_bf16_bf16_out"
+        },
+        {
+          "profile": "strict",
+          "length": 257,
+          "ids": [
+            1,
+            1,
+            248046
+          ],
+          "calls": [],
+          "owner_variant": "selected_grouped_wmma_prefill_bf16_bf16_out",
+          "runner_variant": "selected_grouped_wmma_prefill_bf16_bf16_out"
+        },
+        {
+          "profile": "production",
+          "length": 23,
+          "ids": [
+            198,
+            1,
+            198
+          ],
+          "calls": [
+            {
+              "variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+              "rows": 230,
+              "risk": true
+            }
+          ],
+          "owner_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+          "runner_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out"
+        },
+        {
+          "profile": "production",
+          "length": 73,
+          "ids": [
+            198,
+            1,
+            198
+          ],
+          "calls": [],
+          "owner_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+          "runner_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out"
+        },
+        {
+          "profile": "production",
+          "length": 257,
+          "ids": [
+            1,
+            1,
+            248046
+          ],
+          "calls": [],
+          "owner_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
+          "runner_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out"
+        }
+      ],
+      "source_report_hashes": {
+        "r0035-before.json": "1166f841d516af29239d769b3c01e2c59ecb0805de5c1aa0d8a4c6cd43fdda46",
+        "r0035-after.json": "7777f6d2bf7fbdc59bfcd90296e28d14c23b05f679ce80f24c4acfe5c6e24852"
+      },
+      "logit_archive_hashes": {
+        "r0035-before.npz": "df7fb61b5365ba1c2965786f20ccaa191133952de66a9b3f8e3447fdb8c6c8de",
+        "r0035-after.npz": "df7fb61b5365ba1c2965786f20ccaa191133952de66a9b3f8e3447fdb8c6c8de"
+      }
+    },
+    {
+      "mode": "depth",
+      "before_source": {
+        "path": "/tmp/hipengine-r0028-validation",
+        "head": "b4b70973782d722f01cf8a116adb447b8c57294e",
+        "tracked_clean": true
+      },
+      "after_source": {
+        "path": "~/hipEngine",
+        "head": "a02fd9428e47a61bccdbc0bc43cbdf7adb72452a",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0"
+      },
+      "arrays": 520,
+      "all_finite": true,
+      "max_abs_logit_delta": 0.0,
+      "logits_exact": true,
+      "lifecycle_clean": true,
+      "cases": [
+        {
+          "profile": "strict",
+          "id": "code-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "c361a271eb39a9df91e9d3851f40c8960da3256ca709aab4ab76e56063c3a8bf"
+        },
+        {
+          "profile": "strict",
+          "id": "general_en-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "f86f4bac7694cdbf4e5e620c3d1b8c3cef636cc096892b16961e41d82395686d"
+        },
+        {
+          "profile": "strict",
+          "id": "general_ja-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "8c95ff29c7971327b4342873044dc1d17b11c5d46a42c56da55a445837c95db6"
+        },
+        {
+          "profile": "strict",
+          "id": "mixed_ja_en-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "45094bf8b8ac4d3947b31dce9403116534e678fd5fd25002fcadd8b6f30ac21f"
+        },
+        {
+          "profile": "production",
+          "id": "code-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "b4464c17ce35dbde00deb3428acfaf7b139901e512d9d7e51cf2abc179eca37d"
+        },
+        {
+          "profile": "production",
+          "id": "general_en-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "e869ad24604e8f0b6707f1e18102b4562e2ac88549ad9f28491049866d457c06"
+        },
+        {
+          "profile": "production",
+          "id": "general_ja-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "8d2b5f89cf8bb2ac1934b3102176cbfa64e70d6ded7a29743c5b7b748fbc30ac"
+        },
+        {
+          "profile": "production",
+          "id": "mixed_ja_en-p1024",
+          "rows": 65,
+          "state_exact": true,
+          "repeat_exact": true,
+          "state_sha256": "0a0ffb64a4a2aaf2b69743be223de1c548b7b905064d220db0a253afbe4e277e"
+        }
+      ],
+      "source_report_hashes": {
+        "r0035-depth-before.json": "0cc92963b50fce657c28459c66566495d88cd9e4217439e2e906274431ce3faf",
+        "r0035-depth-after.json": "c1254792ce095ea164895aaef04d8b42e72f061655bf9975b5deae5330d9b785"
+      },
+      "logit_archive_hashes": {
+        "r0035-depth-before.npz": "06bc2175fb6b01cfc51f7ac5d5d98a346ce289e432eaeefbc148cfb7d2a8ca09",
+        "r0035-depth-after.npz": "06bc2175fb6b01cfc51f7ac5d5d98a346ce289e432eaeefbc148cfb7d2a8ca09"
+      }
+    }
+  ],
+  "scope": "R0035 owner-transport preservation, not profile qualification"
+}

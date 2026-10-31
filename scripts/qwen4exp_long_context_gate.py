@@ -70,6 +70,7 @@ from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator,
     _state_summary,
     _strict_trajectory,
+    bind_candidate_q8_down_variant,
     gr_wide_arm_scope,
 )
 
@@ -535,6 +536,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         str(args.candidate), bool(getattr(gen.runner, "gr_wide", False)))
     wide_scope = ExitStack()
     wide_scope.enter_context(gr_wide_arm_scope(gen.runner, candidate_gr_wide))
+    # The grouped Q8_0 down owner is a candidate declaration now, so the arm
+    # binds its leaf after the profile is constructed and the published owner
+    # comes back on unwind.
+    candidate_q8_down_variant = bind_candidate_q8_down_variant(
+        wide_scope, gen, spec)
     try:
         if batch_candidate:
             from scripts.qwen4exp_ar_batch_candidate import BatchCandidateRequest
@@ -712,6 +718,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                       "base_profile": spec.base_profile,
                       "gr_wide": candidate_gr_wide,
                       "gr_wide_override": spec.gr_wide,
+                      "q8_down_variant": candidate_q8_down_variant,
+                      "q8_down_variant_override": spec.q8_down_variant,
                       "environment": dict(spec.environment),
                       "manifest_sha256": candidate_profile.manifest_sha256,
                       "batch_manifest_sha256": (

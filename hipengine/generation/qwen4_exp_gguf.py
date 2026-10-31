@@ -254,6 +254,9 @@ class Qwen4ExpGGUFTextGenerator:
         self.q8_down_bundle_prefill = False
         self.q8_down_register = False
         self.q8_mapped_down = False
+        # The grouped Q8_0 expert-down owner is the plan's decision, published
+        # by the binder; an unbound generator keeps the unguarded WMMA parent.
+        self.q8_down_variant = None
         self._lock = threading.RLock()
         self._closed = False
         if tokenizer is None:
@@ -1040,6 +1043,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
         getattr(generator, "q8_down_bundle_prefill", False))
     runner.q8_down_register = bool(getattr(generator, "q8_down_register", False))
     runner.q8_mapped_down = bool(getattr(generator, "q8_mapped_down", False))
+    runner.q8_down_variant = getattr(generator, "q8_down_variant", None)
     return runner
 
 

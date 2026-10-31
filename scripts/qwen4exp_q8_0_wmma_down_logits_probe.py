@@ -17,6 +17,7 @@ import ctypes
 import json
 import os
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +68,10 @@ def main() -> None:
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(a.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
 
+    from hipengine.runtime.qwen4_exp_runner import (
+        Q8_DOWN_WMMA_VARIANT, q8_down_variant,
+    )
+
     from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
         register_gguf_q5_k_q8_1_selected_prefill_kernels,
     )
@@ -92,6 +97,7 @@ def main() -> None:
         "command": sys.argv,
         "arithmetic_class": "T1_production_candidate",
         "flag": FLAG,
+        "candidate_owner": Q8_DOWN_WMMA_VARIANT,
         "runtime_default_changed": False,
         "fixture_sha256": digest,
         "manifest_sha256": resolved.manifest_sha256,
@@ -111,8 +117,15 @@ def main() -> None:
                 ("candidate_a", "1"), ("candidate_b", "1"),
             ):
                 os.environ[FLAG] = enabled
-                rows[label] = _prefill_logits(
-                    generator, case["prompt_token_ids"])
+                # The gate alone no longer selects the WMMA parent: the plan
+                # publishes the guarded block-scale leaf, so the candidate rows
+                # bind the leaf this probe measures and the plan's owner comes
+                # back for the incumbent rows.
+                scope = (q8_down_variant(generator, Q8_DOWN_WMMA_VARIANT)
+                         if enabled == "1" else nullcontext())
+                with scope:
+                    rows[label] = _prefill_logits(
+                        generator, case["prompt_token_ids"])
 
             incumbent_b_ok = bool(
                 np.array_equal(rows["incumbent_a"], rows["incumbent_b"]))

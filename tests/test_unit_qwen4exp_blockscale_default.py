@@ -17,8 +17,12 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     generator = SimpleNamespace()
     profile.binder(generator, profile)
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT"] == (
+    # The Q8_0 grouped-down fallback key is owner state: the plan publishes the
+    # guarded block-scale owner on the owning generator and runner, and no
+    # process key carries it.
+    assert generator.q8_down_variant == (
         "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out")
+    assert "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT" not in os.environ
     assert generator.qsa_h256_prefill_mode == "page256"
     # The four-head prefill leaf is request-local runner state, not an env
     # switch: the binder publishes the plan's own selection.

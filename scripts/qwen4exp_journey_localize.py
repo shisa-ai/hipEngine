@@ -20,7 +20,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_production_moe_prefill, resolve_q8_mmq_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill
+from hipengine.runtime.qwen4_exp_runner import Q8_DOWN_WMMA_VARIANT
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -529,6 +530,66 @@ def gr_wide_arm_report(generator, arm):
         arm, bool(getattr(generator.runner, "gr_wide", False)))
 
 
+def declared_q8_down_variants():
+    """Arms whose candidate declaration names a grouped Q8_0 down owner.
+
+    The retired ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`` key used to carry this
+    decision. Each block-scale arm's candidate now declares it, so an arm that
+    names one binds that leaf and every other arm keeps whatever the plan
+    published.
+    """
+
+    return {
+        name: candidate.q8_down_variant
+        for name, candidate in ((name, CANDIDATES.get(name)) for name in ARMS)
+        if candidate is not None and candidate.q8_down_variant is not None
+    }
+
+
+#: Grouped Q8_0 down owner each arm measures. Seeded with the candidate
+#: declarations; a probe that counts or instruments one leaf names it here
+#: through :func:`declare_q8_down_owner` instead of writing a process key.
+_Q8_DOWN_ARM_VARIANTS: dict[str, str] = declared_q8_down_variants()
+
+
+def declare_q8_down_owner(variant, *, arms=None):
+    """Name the grouped Q8_0 down owner a probe's arms measure.
+
+    A diagnostic probe that counts or samples one registered leaf declares it
+    here, so its arms bind that leaf instead of the plan's published owner. The
+    map is the same one the arm loop reads, so the declaration, the binding and
+    the report cannot drift apart.
+    """
+
+    for arm in (ARMS if arms is None else arms):
+        _Q8_DOWN_ARM_VARIANTS[arm] = variant
+
+
+def q8_down_arm_variant(arm):
+    """The grouped Q8_0 down owner this arm measures, or ``None`` for the plan's."""
+
+    return _Q8_DOWN_ARM_VARIANTS.get(arm)
+
+
+def q8_down_arm_scope(generator, arm):
+    """Bind the grouped Q8_0 down owner this arm measures.
+
+    ``None`` leaves the plan's published owner in place; a named leaf is bound
+    for the arm's samples and the published owner comes back on exit.
+    """
+
+    variant = q8_down_arm_variant(arm)
+    if variant is None:
+        return nullcontext()
+    return q8_down_variant(generator, variant)
+
+
+def q8_down_arm_report(generator, arm):
+    """Name the grouped Q8_0 down owner that actually ran for this arm."""
+
+    return resolve_q8_down_variant(generator)
+
+
 #: Split arms bind the GR-up wide route per phase: the strict phase ran the
 #: strict snapshot's route, and the production phase kept the production one.
 GR_WIDE_SPLIT_ARMS = frozenset({
@@ -686,6 +747,7 @@ def main():
                 arm_scope = ExitStack()
                 arm_scope.enter_context(production_moe_arm_scope(generator, arm))
                 arm_scope.enter_context(q8_mmq_arm_scope(generator, arm))
+                arm_scope.enter_context(q8_down_arm_scope(generator, arm))
                 if resolve_q8_mmq_prefill(generator):
                     # Explicit cold-path preparation for the arm's bound owner.
                     generator.runner.configure_mmq_prefill_resources()
@@ -746,6 +808,7 @@ def main():
                             production_moe_arm_report(generator, arm)),
                         "q8_mmq_prefill_enabled": q8_mmq_arm_report(
                             generator, arm),
+                        "q8_down_variant": q8_down_arm_report(generator, arm),
                         "gr_wide": gr_wide_arm_report(generator, arm),
                     },
                     "quality": quality,

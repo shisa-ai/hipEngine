@@ -154,23 +154,42 @@ def test_layer2_gate_binds_a_declared_arm_mode_on_the_candidate_runner():
 
     import ast
     import inspect
+    from contextlib import ExitStack
 
-    from scripts import qwen4exp_layer2_profile_gate
+    from scripts import qwen4exp_layer2_profile_gate as gate
 
-    tree = ast.parse(inspect.getsource(qwen4exp_layer2_profile_gate.run))
-    calls = [
+    spec = gate.CANDIDATES["q8_blockscale_guarded_quad"]
+    runner = _runner("pair")
+    generator = SimpleNamespace(runner=runner)
+
+    # The helper binds the arm's declared mode over the published one and puts
+    # the published mode back when the measured rows' stack unwinds.
+    stack = ExitStack()
+    with stack:
+        assert gate.bind_candidate_qsa_head_mode(
+            stack, generator, spec) == "quad"
+        assert runner.qsa_prefill_head_mode == "quad"
+    assert runner.qsa_prefill_head_mode == "pair"
+
+    # An arm that declares no mode keeps whatever the profile published.
+    stack = ExitStack()
+    with stack:
+        assert gate.bind_candidate_qsa_head_mode(
+            stack, generator, gate.CANDIDATES["production_baseline"]) == "pair"
+        assert runner.qsa_prefill_head_mode == "pair"
+
+    # The helper is on the measured path: ``run`` enters it on the stack that
+    # unwinds with the measured rows, so the binding cannot be dropped from the
+    # gate while this helper keeps passing.
+    tree = ast.parse(inspect.getsource(gate.run))
+    bound = [
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "qsa_prefill_head_mode"
+        and node.func.id == "bind_candidate_qsa_head_mode"
     ]
-    assert calls, "the gate no longer binds the arm's head mode"
-    assert any(
-        isinstance(argument, ast.Attribute) and argument.attr == "runner"
-        for call in calls for argument in call.args
-    )
-    # It must be entered on the stack that unwinds with the measured rows.
+    assert bound, "the gate no longer binds the arm's head mode"
     assert any(
         isinstance(node, ast.Attribute) and node.attr == "enter_context"
         for node in ast.walk(tree)

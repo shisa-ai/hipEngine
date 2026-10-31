@@ -19,7 +19,7 @@ from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profil
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _strict_trajectory, _candidate_trajectory, _state_summary,
     _state_repeat_gate, CANDIDATES, bind_candidate_gr_wide,
-    candidate_dispatch_counter,
+    bind_candidate_q8_down_variant, candidate_dispatch_counter,
 )
 from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _host_metadata, _git_metadata,
@@ -199,6 +199,11 @@ def main():
             # The arm's GR-up wide tile is bound on the runner it measures;
             # dispatch counting on the candidate key proves which projection ran.
             report["gr_wide"] = bind_candidate_gr_wide(
+                dispatch_stack, generator, spec)
+            # The grouped Q8_0 down owner is a candidate declaration now, not a
+            # process key; bind it on the runner this arm measures so a
+            # block-scale arm cannot silently run the plan's guarded default.
+            report["q8_down_variant"] = bind_candidate_q8_down_variant(
                 dispatch_stack, generator, spec)
             if spec.q8_mmq_prefill_enabled is not None:
                 dispatch_stack.enter_context(q8_mmq_prefill_enabled(

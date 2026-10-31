@@ -773,7 +773,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` | profile-selected | Comma-separated layers whose Q8_0 dense projections take the dense-wide prefill route. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS` | profile-selected | Admits rows 9-256 to the dense-wide owner under the short-prompt gate. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` | profile-selected | Comma-separated layers on the split-operand dense WMMA route. |
-| `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` | profile-selected | Names the Q8_0 expert-down prefill owner. |
+| `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` | retired | No longer read. The execution profile publishes `q8_down_variant` on its generator and runners: UD production uses the guarded blockscale fallback; other plans and unbound calls use the unguarded WMMA parent. Diagnostic arms bind `q8_down_variant(owner, variant)`. The separate `Q8_0_SELECTED_WMMA_DOWN` gate, guarded risk-buffer ABI and strict fallback chain are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` | `1` | VALU DPP wave reduction in the Q8_0 coltile leaf; `0` restores the shuffle tree. |
 | `HIPENGINE_QWEN4_EXP_Q8_DPU_REDUCTION` | unset | Recorded in host-speed probe provenance only. |
 | `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Comma-separated layers on the staged-F32 Q8_0 route (candidate). |

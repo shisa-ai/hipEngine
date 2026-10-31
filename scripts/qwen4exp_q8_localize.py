@@ -20,21 +20,40 @@ SHAPES = ((2560, 10240), (2560, 12288), (6144, 2560), (10240, 320),
           (2560, 2560), (2560, 640), (2560, 512))
 
 
-def main():
-    from hipengine.runtime import gguf_linear as linear
-    from hipengine.runtime import qwen4_exp_runner as runner
+def define_arms():
+    """Add this probe's arms and name the leaf it counts for each of them.
 
+    The dispatch counter below wraps the unguarded WMMA parent, while the plan
+    publishes the guarded block-scale leaf, so every arm this probe defines
+    binds the WMMA owner for its measured window and the plan's owner comes
+    back on exit. Returns the arm names it defined.
+    """
+
+    defined = []
     for k, n in SHAPES:
-        localize.ARMS[f"mmq_off_{k}x{n}"] = {
+        arm = f"mmq_off_{k}x{n}"
+        localize.ARMS[arm] = {
             **localize.ARMS["q8_selected_down_strict"],
             SHAPE_FLAG: f"{k}x{n}",
         }
+        defined.append(arm)
     for layer in (2, 4, 30, 46, 47):
         arm = f"down_off_{layer}"
         localize.ARMS[arm] = {LAYER_FLAG: str(layer)}
         # The historical arm disabled Q8 MMQ as well; bind that owner decision
         # rather than writing a process key the bound runner no longer reads.
         localize._Q8_MMQ_ARM_VALUES[arm] = False
+        defined.append(arm)
+    localize.declare_q8_down_owner(
+        localize.Q8_DOWN_WMMA_VARIANT, arms=defined)
+    return defined
+
+
+def main():
+    from hipengine.runtime import gguf_linear as linear
+    from hipengine.runtime import qwen4_exp_runner as runner
+
+    define_arms()
     counts = Counter()
     original_dispatch = linear._q8_mmq_prefill_dispatch
     original_moe = runner.run_qwen4_exp_moe
@@ -72,7 +91,7 @@ def main():
     def resolve(*args, **kwargs):
         fn = original_resolve(*args, **kwargs)
         if (kwargs.get("quant") == "gguf_q8_0"
-                and kwargs.get("variant") == "selected_grouped_wmma_prefill_bf16_bf16_out"):
+                and kwargs.get("variant") == localize.Q8_DOWN_WMMA_VARIANT):
             def counted(*a, **kw):
                 counts[f"down:{os.environ.get(LAYER_FLAG, '')}:layer={active_layer}"] += 1
                 return fn(*a, **kw)

@@ -22,7 +22,8 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
 from scripts.qwen4exp_layer2_profile_gate import (
-    _make_generator, _state_summary, CANDIDATES, gr_wide_arm_scope,
+    _make_generator, _state_summary, CANDIDATES, bind_candidate_q8_down_variant,
+    gr_wide_arm_scope,
 )
 from scripts.qwen4exp_q8_repair_depth_gate import (
     observe_prefill_chunks, resolve_allocation_profile, validate_chunk_allocation,
@@ -181,6 +182,13 @@ def main():
                     arm, bool(getattr(generator.runner, "gr_wide", False)))
                 owner_scope.enter_context(gr_wide_arm_scope(generator.runner, route))
                 packet.setdefault("gr_wide", {})[arm] = route
+                # The grouped Q8_0 down owner is a candidate declaration now,
+                # so the candidate arm binds it and the strict arm keeps the
+                # strict plan's published parent.
+                if arm != "strict":
+                    packet.setdefault("q8_down_variant", {})[arm] = (
+                        bind_candidate_q8_down_variant(
+                            owner_scope, generator, spec))
                 packet.setdefault("q8_mmq_prefill_enabled", {})[arm] = (
                     resolve_q8_mmq_prefill(generator))
                 if packet["q8_mmq_prefill_enabled"][arm]:

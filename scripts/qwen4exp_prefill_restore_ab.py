@@ -26,11 +26,13 @@ from scripts.qwen4exp_canonical_ar_bench import (
 from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
+    candidate_owner_changes,
     gr_wide_arm_scope,
+    q8_down_variant_arm_scope,
 )
 from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_prefill_head_mode, qsa_h256_prefill_mode,
-    resolve_q8_mmq_prefill,
+    resolve_q8_down_variant, resolve_q8_mmq_prefill,
 )
 from scripts.qwen4exp_journey_localize import set_flags
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
@@ -40,12 +42,18 @@ from scripts.qwen4exp_q8_repair_depth_gate import (
 )
 
 
-SHARED_DECODE_SAFE_FLAGS = frozenset(
+SHARED_DECODE_SAFE_ENV = frozenset(
     "HIPENGINE_QWEN4_EXP_" + flag for flag in (
-        "Q8_0_SELECTED_WMMA_DOWN", "Q8_DOWN_VARIANT",
+        "Q8_0_SELECTED_WMMA_DOWN",
         "QSA_ORDERED_DECODE",
     )
 )
+# Owner-bound fields that are the same kind of prefill-or-uncaptured-attention
+# decision as the keys above. The grouped Q8_0 expert-down owner is request-local
+# runner state now, so a candidate names it here instead of writing the retired
+# ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`` key.
+SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset({"q8_down_variant"})
+SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
 # larger production chunk; the comparison arm borrows this one.
@@ -93,11 +101,21 @@ def arm_gr_wide(arm, published):
     return bool(candidate.gr_wide)
 
 
-def validate_shared_graphs(environments):
+def validate_shared_graphs(environments, owner_fields=()):
     # These switches affect prefill or uncaptured QSA attention, not the
-    # captured GDN and MoE decode units or their graph keys.
+    # captured GDN and MoE decode units or their graph keys. An owner field left
+    # at ``None`` keeps the published value, so it is not a change either; a
+    # candidate inventories only the fields it actually binds.
     changed = {key for env in environments for key in env}
-    if not changed <= SHARED_DECODE_SAFE_FLAGS:
+    bound = {
+        field
+        for fields in owner_fields
+        for field, value in fields.items()
+        if value is not None
+    }
+    if not changed <= SHARED_DECODE_SAFE_ENV:
+        raise ValueError("candidate can change captured decode units")
+    if not bound <= SHARED_DECODE_SAFE_OWNER_FIELDS:
         raise ValueError("candidate can change captured decode units")
 
 
@@ -243,7 +261,11 @@ def main():
             parser.error("chunk comparison requires one unchanged production arm, larger chunk, "
                          "allocation evidence and shared decode graphs")
     if args.shared_decode_graphs:
-        validate_shared_graphs(candidate_envs.values())
+        validate_shared_graphs(
+            candidate_envs.values(),
+            [candidate_owner_changes(CANDIDATES[name])
+             for name in args.candidate],
+        )
     args.prefill_chunk_size = args.candidate_chunk_size or 1024
     args.max_sequence_length = 4096 + 128 + 8
     os.environ["HIPENGINE_HIP_ARCH"] = "gfx1151"
@@ -300,6 +322,14 @@ def main():
         report["arm_q8_mmq_prefill_enabled"] = {
             name: mode for name, mode in arm_q8_mmq_modes.items()
             if mode is not None}
+        # The grouped Q8_0 down owner is owner state now, so an arm that
+        # declared the other leaf binds it for its samples and the plan's
+        # published owner comes back for the next arm.
+        arm_q8_down_variants = {
+            name: CANDIDATES[name].q8_down_variant for name in args.candidate}
+        report["arm_q8_down_variants"] = {
+            name: variant for name, variant in arm_q8_down_variants.items()
+            if variant is not None}
         # The GR-up wide tile is owner state now, so an arm that declared the
         # other route binds it for its samples and the production route comes
         # back for the next arm.
@@ -340,6 +370,8 @@ def main():
             with (
                 q8_scope,
                 gr_wide_arm_scope(runner, arm_gr_wide_modes.get(arm)),
+                q8_down_variant_arm_scope(
+                    runner, arm_q8_down_variants.get(arm)),
                 qsa_prefill_head_mode(runner, arm_head_modes.get(arm)),
                 qsa_h256_prefill_mode(runner, arm_h256_modes.get(arm)),
                 use_workspace(runner, workspace)
@@ -356,6 +388,7 @@ def main():
                         transitions=fixture["decode_transitions"])
                 row["prefill_chunks"] = chunks
                 row["active_chunk_size"] = runner.prefill_chunk_size
+                row["q8_down_variant"] = resolve_q8_down_variant(runner)
             logits = np.asarray(last["result"].logits)
             state = _state_summary(runner)
             if not logits.size or not np.isfinite(logits).all() or not state["finite"]:

@@ -59,6 +59,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     qsa_ordered_decode_v2,
     qsa_prefill_head_mode, qsa_h256_prefill_mode, qsa_wmma_attention,
     router_producer_variant,
+    q8_down_variant, resolve_q8_down_variant,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -125,6 +126,14 @@ class CandidateSpec:
     # choice after. The arm's own field is the only selector: no process key
     # names this leaf, so a stale value cannot make the arm measure production.
     router_producer_variant: str | None = None
+    # Explicit grouped Q8_0 expert-down owner for this arm, same protocol.
+    # ``None`` keeps the base profile's published owner (the guarded block-scale
+    # leaf on the UD production plan, the unguarded WMMA parent elsewhere); a
+    # named leaf binds that registered owner on the measured generator and the
+    # plan's choice comes back after. The arm's own field is the only selector:
+    # no process key names this leaf, so a stale value cannot make the arm
+    # measure production.
+    q8_down_variant: str | None = None
     # Explicit GR-up wide tile for this arm, same protocol. ``None`` keeps the
     # base profile's published route (on for the F16 route composition, the
     # fused exact parent on every other plan); ``True`` binds the wide tile for
@@ -318,9 +327,8 @@ CANDIDATES = {
         mechanism="raw Q8 codes times original BF16 activations; FP32 block scales after WMMA",
         environment={
             "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "1",
-            "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT":
-                "selected_grouped_blockscale_prefill_bf16_bf16_out",
         },
+        q8_down_variant="selected_grouped_blockscale_prefill_bf16_bf16_out",
         base_profile="production",
         scenario_id="qwen4exp-q8-blockscale",
         candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
@@ -806,11 +814,8 @@ CANDIDATES["q8_blockscale_mmq"] = replace(
 CANDIDATES["q8_blockscale_guarded"] = replace(
     CANDIDATES["q8_blockscale"], name="q8_blockscale_guarded",
     scenario_id="qwen4exp-q8-blockscale-guarded",
-    environment={
-        **CANDIDATES["q8_blockscale"].environment,
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT":
-            "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
-    },
+    environment={**CANDIDATES["q8_blockscale"].environment},
+    q8_down_variant="selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
     candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
                    "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out"),
 )
@@ -1593,6 +1598,20 @@ def gr_wide_arm_scope(runner: Any, enabled: bool | None):
     return gr_wide(runner, enabled)
 
 
+def q8_down_variant_arm_scope(owner: Any, variant: str | None):
+    """Bind an arm's explicit grouped Q8_0 down owner, or keep the published one.
+
+    ``None`` means the arm never named a leaf, so it ran whatever the profile
+    binder published and the scope leaves that decision in place. A named leaf
+    is bound for the measured window, and the published owner comes back on
+    unwind, including after an exception.
+    """
+
+    if variant is None:
+        return nullcontext()
+    return q8_down_variant(owner, variant)
+
+
 def bind_candidate_gr_wide(
     dispatch_stack: ExitStack,
     candidate_generator: Any,
@@ -1609,6 +1628,67 @@ def bind_candidate_gr_wide(
     dispatch_stack.enter_context(gr_wide_arm_scope(
         candidate_generator.runner, candidate_spec.gr_wide))
     return bool(getattr(candidate_generator.runner, "gr_wide", False))
+
+
+#: Candidate fields that are owner-bound decisions rather than process keys.
+#: ``None`` means "keep what the base profile published", so only a non-None
+#: value is a change an arm makes.
+_OWNER_FIELD_NAMES = ("q8_down_variant",)
+
+
+def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
+    """The owner-bound decisions this candidate actually changes.
+
+    A field left ``None`` keeps the base profile's published value, so it is not
+    a change and does not belong in a shared-graph inventory. Every harness that
+    validates a candidate's captured units inventories the same fields this way
+    instead of restating a literal per candidate.
+    """
+
+    return {
+        name: getattr(candidate_spec, name)
+        for name in _OWNER_FIELD_NAMES
+        if getattr(candidate_spec, name) is not None
+    }
+
+
+def bind_candidate_q8_down_variant(
+    dispatch_stack: ExitStack,
+    candidate_generator: Any,
+    candidate_spec: CandidateSpec,
+) -> str | None:
+    """Bind the arm's grouped Q8_0 expert-down owner and return the leaf in force.
+
+    ``CandidateSpec.q8_down_variant`` is the shared declaration of a
+    candidate's former ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`` value, so every
+    harness that applies a candidate's environment binds the owner here instead
+    of copying a key the dispatch no longer reads. ``None`` leaves the base
+    profile's published owner in place; the plan's choice comes back on unwind.
+    """
+
+    if candidate_spec.q8_down_variant is not None:
+        dispatch_stack.enter_context(q8_down_variant(
+            candidate_generator, candidate_spec.q8_down_variant))
+    return resolve_q8_down_variant(candidate_generator)
+
+
+def bind_candidate_qsa_head_mode(
+    dispatch_stack: ExitStack,
+    candidate_generator: Any,
+    candidate_spec: CandidateSpec,
+) -> str | None:
+    """Bind the arm's QSA prefill head grouping and return the mode in force.
+
+    The head grouping is request-local runner state rather than a process key,
+    so an arm that declares one is bound here around the measured rows and the
+    profile's own decision comes back when the stack unwinds. ``None`` leaves
+    the published mode in place.
+    """
+
+    if candidate_spec.qsa_prefill_head_mode is not None:
+        dispatch_stack.enter_context(qsa_prefill_head_mode(
+            candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
+    return getattr(candidate_generator.runner, "qsa_prefill_head_mode", None)
 
 
 def candidate_dispatch_counter(
@@ -1831,11 +1911,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # actually ran.
         dispatch_stack.enter_context(router_producer_variant(
             candidate_generator.runner, candidate_spec.router_producer_variant))
-    if candidate_spec.qsa_prefill_head_mode is not None:
-        # Request-local state, so the arm is bound around the measured rows and
-        # the profile's own decision comes back when the stack unwinds.
-        dispatch_stack.enter_context(qsa_prefill_head_mode(
-            candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
+    # Request-local state, so the arm is bound around the measured rows and the
+    # profile's own decision comes back when the stack unwinds.
+    bind_candidate_qsa_head_mode(
+        dispatch_stack, candidate_generator, candidate_spec)
     if candidate_spec.gr_f16_direct is not None:
         dispatch_stack.enter_context(gr_f16_direct(candidate_spec.gr_f16_direct))
     # The GR-up wide tile is the plan's decision, so an arm that measures the
@@ -1843,6 +1922,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # unwind. Dispatch counting on the candidate key proves which projection
     # actually ran.
     resolved_gr_wide = bind_candidate_gr_wide(
+        dispatch_stack, candidate_generator, candidate_spec)
+    # The grouped Q8_0 expert-down owner is the plan's decision too: an arm that
+    # names a different leaf binds it on this generator and the plan's owner
+    # comes back on unwind. Dispatch counting on the candidate key proves which
+    # leaf actually ran.
+    bind_candidate_q8_down_variant(
         dispatch_stack, candidate_generator, candidate_spec)
     if candidate_spec.moe_decode_warp is not None:
         dispatch_stack.enter_context(moe_decode_warp(

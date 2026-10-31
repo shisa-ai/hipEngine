@@ -158,18 +158,6 @@ diagnostic comparisons. `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` still transport
 retire that environment handoff only when an owner-bound construction input preserves all profile
 and diagnostic callers.
 
-### R0035 — Supply selected-down variant keys through profile ownership
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `selected_grouped_wmma_prefill_bf16_bf16_out`.
-
-Done when: Deferred transport migration: replace `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` with direct
-profile-owned variant keys across construction and launch callers. Preserve guarded/unguarded
-capability distinctions, registered strict fallback and other-quant compatibility. Verify selected
-symbols and full numerical/state behavior for each affected profile rather than assuming one
-restored path qualifies its neighbors.
-
 ### R0060 — Bind historical dense serving evidence when its artifact is available
 
 Owner: `hipengine/models/qwen35.py`.
