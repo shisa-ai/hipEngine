@@ -1329,6 +1329,19 @@ compatibility. The
 [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes these
 boundaries and the orchestration that remains in the runner.
 
+### PARO packed-prefill execution boundary
+
+`hipengine/runtime/qwen35_paro_packed_prefill.py` owns the four-operation
+linear-attention/MoE packed-prefill schedule over explicit geometry, borrowed
+scratch/state views and four separately selected callables. The public
+`Qwen35ParoDecodeState.run_linear_attention_moe_packed_prefill_layer_fp16`
+method retains token validation and scratch fallback, then delegates without
+duplicating the schedule. The state owns rotated-W4/FP16 projections and
+kernel selection. The resident runner retains segment/slot geometry, packed
+versus per-segment selection, output publication and transaction lifetime.
+Those state and session responsibilities are intentional; they do not borrow
+a GGUF executor or become a whole-runner proxy.
+
 ### Backend Plugin
 
 The gfx1151 backend owns data-only declarations in `policy_laguna.py`,

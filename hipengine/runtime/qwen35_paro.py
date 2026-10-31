@@ -179,6 +179,11 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import (
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen35_paro import Qwen35ParoLayerDeviceWeights, normalize_qwen35_weight_name
 from hipengine.runtime.moe_c1_dispatch import moe_c1_c_dispatch_enabled
+from hipengine.runtime.qwen35_paro_packed_prefill import (
+    Qwen35ParoPackedPrefillGeometry,
+    Qwen35ParoPackedPrefillScratch,
+    run_linear_attention_moe_packed_prefill_layer,
+)
 from hipengine.runtime.workspace import RuntimeWorkspace
 
 
@@ -7995,34 +8000,25 @@ class Qwen35ParoDecodeState:
         linear_scratch = linear_scratch or self.reserve_linear_attention_scratch(tokens=tokens, activation_dtype=DType.FP16)
         if not isinstance(moe_scratch, Qwen35ParoGroupedMoeScratch):
             moe_scratch = self.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16)
-        self.input_rmsnorm_fp16(hidden, linear_scratch.attn_input, tokens=tokens, library=library, stream=stream)
-        attn_out = self.run_linear_attention_prefill_out_proj_segments_fp16(
-            linear_scratch.attn_input,
+        return run_linear_attention_moe_packed_prefill_layer(
+            hidden,
             conv_state=conv_state,
             recurrent_state=recurrent_state,
             cu_seqlens=cu_seqlens,
             state_indices=state_indices,
-            segments=segments,
-            scratch=linear_scratch,
-            tokens=tokens,
-            group_size=group_size,
-            library=library,
-            stream=stream,
-        )
-        mlp_input, residual = self.post_attention_add_rmsnorm_fp16(
-            hidden,
-            attn_out,
-            moe_scratch,
-            tokens=tokens,
-            library=library,
-            stream=stream,
-        )
-        return self.run_moe_grouped_compact_fp16(
-            mlp_input,
-            residual,
-            scratch=moe_scratch,
-            tokens=tokens,
-            group_size=group_size,
+            geometry=Qwen35ParoPackedPrefillGeometry(
+                tokens=tokens,
+                segments=segments,
+                group_size=group_size,
+            ),
+            scratch=Qwen35ParoPackedPrefillScratch(
+                linear=linear_scratch,
+                moe=moe_scratch,
+            ),
+            input_rmsnorm=self.input_rmsnorm_fp16,
+            linear_prefill_segments=self.run_linear_attention_prefill_out_proj_segments_fp16,
+            post_attention_add_rmsnorm=self.post_attention_add_rmsnorm_fp16,
+            grouped_moe=self.run_moe_grouped_compact_fp16,
             library=library,
             stream=stream,
         )

@@ -219,6 +219,13 @@ These layer executors are GGUF-specific: their scratch, quantized weights,
 linear-state row capture and sidecar contracts do not match PARO's rotated W4/
 FP16 state and projection schedule. PARO retains its own layer execution and
 transaction owner rather than borrowing a GGUF session or runner proxy.
+`hipengine/runtime/qwen35_paro_packed_prefill.py` owns only the four-operation
+linear-attention/MoE packed-prefill schedule. It receives explicit token,
+segment and group geometry, borrowed scratch/state views, and separate norm,
+segmented-attention, add-norm and grouped-MoE callables. The public state method
+retains token validation and scratch fallback. PARO's state methods remain
+selected-operation owners for rotated W4/FP16 projections; its resident runner
+keeps packed/per-segment selection, slot geometry and transaction publication.
 
 Profiler markers for nested MoE calls wrap the execution module's functions.
 The runner's outer attention methods remain the scalar attention marker boundary.
@@ -283,6 +290,19 @@ not duplicate implementations. Source-audit tools inspect both the session's
 reader binding and the capture module before reporting the host-copy dtype. A
 copied runner source must include the matching capture module beside it; the
 source audit raises an error if that required source is missing.
+
+## Import compatibility
+
+Supported runner `__all__` entries, runtime package exports and the PARO public
+state method remain supported APIs, not pending deletions. Planning/capacity
+and KV types imported through the runner remain identical to their owner
+classes; legacy serialized class lookup is tested. Removing any such alias
+requires a separate compatibility decision, migration of documented imports
+and a replacement for the legacy serialized lookup, not merely an unused-name
+scan. Execution-used imports and test patch points stay until their execution
+consumers and instrumentation move together; they are not alternate owners.
+Private prefill conflict/lifetime helpers have only their planning-owner import
+path. Public probe/result imports still resolve to their single implementations.
 
 ## Scope of the remaining runner
 

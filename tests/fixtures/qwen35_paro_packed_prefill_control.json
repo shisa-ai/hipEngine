@@ -1,0 +1,1688 @@
+{
+  "schema": 1,
+  "base_commit": "d1dd4c4af9fc0318fb3c3af2a2a9fcc63635ad5b",
+  "method": "Qwen35ParoDecodeState.run_linear_attention_moe_packed_prefill_layer_fp16",
+  "cases": [
+    {
+      "name": "provided_t3_s2_g128",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": null
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              2
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.provided",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_moe_grouped_compact_fp16",
+          "args": [
+            {
+              "tensor": "moe.provided.normed",
+              "ptr": 36864
+            },
+            {
+              "tensor": "moe.provided.residual",
+              "ptr": 37120
+            }
+          ],
+          "kwargs": [
+            [
+              "scratch",
+              {
+                "scratch": "moe.provided",
+                "kind": "grouped_moe"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": {
+        "tensor": "moe.provided.moe_out",
+        "ptr": 37376
+      },
+      "error": null
+    },
+    {
+      "name": "provided_t5_s3_g64",
+      "inputs": {
+        "tokens": 5,
+        "segments": 3,
+        "group_size": 64,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": null
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              5
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              3
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              5
+            ],
+            [
+              "group_size",
+              64
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.provided",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              5
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_moe_grouped_compact_fp16",
+          "args": [
+            {
+              "tensor": "moe.provided.normed",
+              "ptr": 36864
+            },
+            {
+              "tensor": "moe.provided.residual",
+              "ptr": 37120
+            }
+          ],
+          "kwargs": [
+            [
+              "scratch",
+              {
+                "scratch": "moe.provided",
+                "kind": "grouped_moe"
+              }
+            ],
+            [
+              "tokens",
+              5
+            ],
+            [
+              "group_size",
+              64
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": {
+        "tensor": "moe.provided.moe_out",
+        "ptr": 37376
+      },
+      "error": null
+    },
+    {
+      "name": "provided_t1_s1_g128",
+      "inputs": {
+        "tokens": 1,
+        "segments": 1,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": null
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              1
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              1
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              1
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.provided",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              1
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_moe_grouped_compact_fp16",
+          "args": [
+            {
+              "tensor": "moe.provided.normed",
+              "ptr": 36864
+            },
+            {
+              "tensor": "moe.provided.residual",
+              "ptr": 37120
+            }
+          ],
+          "kwargs": [
+            [
+              "scratch",
+              {
+                "scratch": "moe.provided",
+                "kind": "grouped_moe"
+              }
+            ],
+            [
+              "tokens",
+              1
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": {
+        "tensor": "moe.provided.moe_out",
+        "ptr": 37376
+      },
+      "error": null
+    },
+    {
+      "name": "provided_t7_s2_g32",
+      "inputs": {
+        "tokens": 7,
+        "segments": 2,
+        "group_size": 32,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": null
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              7
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              2
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              7
+            ],
+            [
+              "group_size",
+              32
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.provided",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              7
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_moe_grouped_compact_fp16",
+          "args": [
+            {
+              "tensor": "moe.provided.normed",
+              "ptr": 36864
+            },
+            {
+              "tensor": "moe.provided.residual",
+              "ptr": 37120
+            }
+          ],
+          "kwargs": [
+            [
+              "scratch",
+              {
+                "scratch": "moe.provided",
+                "kind": "grouped_moe"
+              }
+            ],
+            [
+              "tokens",
+              7
+            ],
+            [
+              "group_size",
+              32
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": {
+        "tensor": "moe.provided.moe_out",
+        "ptr": 37376
+      },
+      "error": null
+    },
+    {
+      "name": "fallback_both_t3_s2_g128",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": null,
+        "moe_scratch": null,
+        "failure": null
+      },
+      "events": [
+        {
+          "op": "reserve_linear_attention_scratch",
+          "args": [],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "activation_dtype",
+              "DType.FP16"
+            ]
+          ]
+        },
+        {
+          "op": "reserve_moe_grouped_prefill_scratch",
+          "args": [],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "activation_dtype",
+              "DType.FP16"
+            ]
+          ]
+        },
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.attn_input",
+              "ptr": 24576
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.attn_input",
+              "ptr": 24576
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              2
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.reserve",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.reserve",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_moe_grouped_compact_fp16",
+          "args": [
+            {
+              "tensor": "moe.reserve.normed",
+              "ptr": 36864
+            },
+            {
+              "tensor": "moe.reserve.residual",
+              "ptr": 37120
+            }
+          ],
+          "kwargs": [
+            [
+              "scratch",
+              {
+                "scratch": "moe.reserve",
+                "kind": "grouped_moe"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": {
+        "tensor": "moe.reserve.moe_out",
+        "ptr": 37376
+      },
+      "error": null
+    },
+    {
+      "name": "fallback_moe_only_t4_s2_g128",
+      "inputs": {
+        "tokens": 4,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": null,
+        "failure": null
+      },
+      "events": [
+        {
+          "op": "reserve_moe_grouped_prefill_scratch",
+          "args": [],
+          "kwargs": [
+            [
+              "tokens",
+              4
+            ],
+            [
+              "activation_dtype",
+              "DType.FP16"
+            ]
+          ]
+        },
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              4
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              2
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              4
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.reserve",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              4
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_moe_grouped_compact_fp16",
+          "args": [
+            {
+              "tensor": "moe.reserve.normed",
+              "ptr": 36864
+            },
+            {
+              "tensor": "moe.reserve.residual",
+              "ptr": 37120
+            }
+          ],
+          "kwargs": [
+            [
+              "scratch",
+              {
+                "scratch": "moe.reserve",
+                "kind": "grouped_moe"
+              }
+            ],
+            [
+              "tokens",
+              4
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": {
+        "tensor": "moe.reserve.moe_out",
+        "ptr": 37376
+      },
+      "error": null
+    },
+    {
+      "name": "fallback_linear_failure",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": null,
+        "moe_scratch": null,
+        "failure": "reserve_linear_attention_scratch"
+      },
+      "events": [
+        {
+          "op": "reserve_linear_attention_scratch",
+          "args": [],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "activation_dtype",
+              "DType.FP16"
+            ]
+          ]
+        }
+      ],
+      "returned": null,
+      "error": {
+        "type": "RuntimeError",
+        "message": "reserve_linear_attention_scratch failed"
+      }
+    },
+    {
+      "name": "fallback_moe_failure",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": null,
+        "failure": "reserve_moe_grouped_prefill_scratch"
+      },
+      "events": [
+        {
+          "op": "reserve_moe_grouped_prefill_scratch",
+          "args": [],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "activation_dtype",
+              "DType.FP16"
+            ]
+          ]
+        }
+      ],
+      "returned": null,
+      "error": {
+        "type": "RuntimeError",
+        "message": "reserve_moe_grouped_prefill_scratch failed"
+      }
+    },
+    {
+      "name": "invalid_tokens_zero",
+      "inputs": {
+        "tokens": 0,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": null,
+        "moe_scratch": null,
+        "failure": null
+      },
+      "events": [],
+      "returned": null,
+      "error": {
+        "type": "ValueError",
+        "message": "tokens must be positive"
+      }
+    },
+    {
+      "name": "input_failure",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": "input_rmsnorm_fp16"
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": null,
+      "error": {
+        "type": "RuntimeError",
+        "message": "input_rmsnorm_fp16 failed"
+      }
+    },
+    {
+      "name": "linear_failure",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": "run_linear_attention_prefill_out_proj_segments_fp16"
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              2
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": null,
+      "error": {
+        "type": "RuntimeError",
+        "message": "run_linear_attention_prefill_out_proj_segments_fp16 failed"
+      }
+    },
+    {
+      "name": "post_norm_failure",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": "post_attention_add_rmsnorm_fp16"
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              2
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.provided",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": null,
+      "error": {
+        "type": "RuntimeError",
+        "message": "post_attention_add_rmsnorm_fp16 failed"
+      }
+    },
+    {
+      "name": "grouped_moe_failure",
+      "inputs": {
+        "tokens": 3,
+        "segments": 2,
+        "group_size": 128,
+        "linear_scratch": "provided",
+        "moe_scratch": "provided",
+        "failure": "run_moe_grouped_compact_fp16"
+      },
+      "events": [
+        {
+          "op": "input_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_linear_attention_prefill_out_proj_segments_fp16",
+          "args": [
+            {
+              "tensor": "linear.provided.attn_input",
+              "ptr": 24832
+            }
+          ],
+          "kwargs": [
+            [
+              "conv_state",
+              {
+                "tensor": "conv_state",
+                "ptr": 8192
+              }
+            ],
+            [
+              "recurrent_state",
+              {
+                "tensor": "recurrent_state",
+                "ptr": 12288
+              }
+            ],
+            [
+              "cu_seqlens",
+              {
+                "tensor": "cu_seqlens",
+                "ptr": 16384
+              }
+            ],
+            [
+              "state_indices",
+              {
+                "tensor": "state_indices",
+                "ptr": 20480
+              }
+            ],
+            [
+              "segments",
+              2
+            ],
+            [
+              "scratch",
+              {
+                "scratch": "linear.provided",
+                "kind": "linear"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "post_attention_add_rmsnorm_fp16",
+          "args": [
+            {
+              "tensor": "hidden",
+              "ptr": 4096
+            },
+            {
+              "tensor": "attn_out",
+              "ptr": 28672
+            },
+            {
+              "scratch": "moe.provided",
+              "kind": "grouped_moe"
+            }
+          ],
+          "kwargs": [
+            [
+              "tokens",
+              3
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        },
+        {
+          "op": "run_moe_grouped_compact_fp16",
+          "args": [
+            {
+              "tensor": "moe.provided.normed",
+              "ptr": 36864
+            },
+            {
+              "tensor": "moe.provided.residual",
+              "ptr": 37120
+            }
+          ],
+          "kwargs": [
+            [
+              "scratch",
+              {
+                "scratch": "moe.provided",
+                "kind": "grouped_moe"
+              }
+            ],
+            [
+              "tokens",
+              3
+            ],
+            [
+              "group_size",
+              128
+            ],
+            [
+              "library",
+              "lib"
+            ],
+            [
+              "stream",
+              7
+            ]
+          ]
+        }
+      ],
+      "returned": null,
+      "error": {
+        "type": "RuntimeError",
+        "message": "run_moe_grouped_compact_fp16 failed"
+      }
+    }
+  ]
+}
