@@ -1808,24 +1808,6 @@ actual public `LLM.generate()` engagement, full-logit/state parity for strict va
 and graph/workspace teardown. A replacement arithmetic variant uses its execution-profile gate
 rather than inheriting strict bit parity.
 
-### R0371 — Moonshine top-1 and unfused LM-head route ownership
-
-Owner: `hipengine/runtime/moonshine.py`.
-
-Scope: `wave8_argmax`.
-
-**Decision needed:** keep the explicit route selector or replace it with caller-owned capability
-selection plus an explicit numerical reference interface. Preserve the unfused projection/argmax
-implementations and the W8A16 route; do not silently downgrade an explicit `wave8_top1` request.
-
-Done when: migrate constructor, decoder smoke, leaf benchmark and route gate together. Run
-`uv run pytest tests/test_unit_moonshine_lm_head_reference.py
-tests/test_unit_moonshine_lm_head_route_gate.py tests/test_unit_moonshine_lm_head_bench.py
-tests/test_gpu_moonshine_runtime.py tests/test_gpu_moonshine_hip_projection.py`, then the real-audio
-route gate and checkpoint eager/graph comparisons on HIP. Include FP16/default, explicit unfused and
-selective W8A16 requests, full logits/top-1, graph buckets, no timed allocation, repeat/reset/reuse
-and teardown before removing or replacing the selector.
-
 ### R0368 — LC-D3 global geometry diagnostics and unused repair separation
 
 Owner: `scripts/laguna_global_issue_diagnostic.py`.

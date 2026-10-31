@@ -8,6 +8,7 @@ from hipengine.kernels.hip_gfx1100.fused import moonshine_glue as glue
 from hipengine.kernels.hip_gfx1100.linear import moonshine_projection as projection
 from hipengine.kernels.hip_gfx1100.linear import moonshine_w8a16 as w8
 from hipengine.kernels.hip_gfx1100.norm import moonshine_layernorm as norm
+from hipengine.loading.moonshine import MoonshineW8A16Weights
 from hipengine.runtime.moonshine import (
     MOONSHINE_DEFAULT_LM_HEAD_ROUTE,
     MoonshineResidentRuntime,
@@ -67,6 +68,34 @@ def test_lm_head_real_token_dag_keeps_default_and_unfused_quantized_routes(monke
     else:
         assert contract["partial_count"] == 0
     assert contract["materializes_full_fp16_logits"] and contract["stable_lowest_id_top1"]
+
+
+@pytest.mark.parametrize("route,families,message", [
+    (MOONSHINE_DEFAULT_LM_HEAD_ROUTE, ("lm_head",), "requires the exact FP16"),
+    ("wave8_top1", ("lm_head",), "requires the exact FP16"),
+    ("missing", (), "lm_head_route"),
+])
+def test_constructor_rejects_unsupported_route_and_quantized_top1(route, families, message):
+    free_calls = []
+    runtime = object()
+    loaded = SimpleNamespace(
+        w8a16=MoonshineW8A16Weights(families=families, tensors={}),
+        weights={"sentinel": object()},
+        spec=object(),
+        baseline_allocated_bytes=0,
+        baseline_active_allocations=0,
+        free=lambda **kwargs: free_calls.append(kwargs),
+    )
+    with pytest.raises(ValueError, match=message):
+        MoonshineResidentRuntime(
+            loaded_model=loaded,
+            encoder_frames=40,
+            runtime=runtime,
+            lm_head_route=route,
+        )
+    assert free_calls == (
+        [{"runtime": runtime}] if message == "requires the exact FP16" else []
+    )
 
 
 def test_top1_is_default_and_unknown_route_fails_loudly():

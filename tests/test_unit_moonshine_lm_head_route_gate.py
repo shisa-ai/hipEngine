@@ -96,6 +96,21 @@ def test_smoke_report_gate_requires_transcript_state_lifecycle_and_four_graphs()
     assert any("graph_count" in failure for failure in failures)
 
 
+def test_smoke_report_gate_rejects_mismatched_and_unknown_routes() -> None:
+    failures = smoke_report_failures(
+        _good_report("wave8_argmax", "eager"),
+        expected_route="wave8_top1",
+        expected_token_route="eager",
+    )
+    assert any("lm_head.route" in failure for failure in failures)
+    with pytest.raises(ValueError, match="unknown LM-head route"):
+        smoke_report_failures(
+            _good_report("wave8_argmax", "eager"),
+            expected_route="wave8",
+            expected_token_route="eager",
+        )
+
+
 def test_gate_summary_requires_complete_paired_matrix_and_exact_route_outcomes() -> None:
     fixture = "audio-test-fp16"
     rows = [
@@ -162,6 +177,60 @@ def test_decoder_smoke_cli_uses_the_promoted_runtime_default(monkeypatch) -> Non
         ],
     )
     assert moonshine_decoder_smoke.parse_args().lm_head_route == "wave8_top1"
+
+
+@pytest.mark.parametrize("route", ["wave8_top1", "wave8_argmax"])
+def test_decoder_smoke_cli_keeps_explicit_lm_head_route(monkeypatch, route) -> None:
+    from scripts import moonshine_decoder_smoke
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "moonshine_decoder_smoke.py",
+            "--compiler-version-file",
+            "/tmp/hipcc.txt",
+            "--prebuild-only",
+            "--lm-head-route",
+            route,
+        ],
+    )
+    assert moonshine_decoder_smoke.parse_args().lm_head_route == route
+
+
+def test_decoder_smoke_cli_keeps_selective_w8a16_families(monkeypatch) -> None:
+    from scripts import moonshine_decoder_smoke
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "moonshine_decoder_smoke.py",
+            "--compiler-version-file",
+            "/tmp/hipcc.txt",
+            "--prebuild-only",
+            "--w8a16-families",
+            "lm_head,mlp",
+        ],
+    )
+    assert moonshine_decoder_smoke.parse_args().w8a16_families == "lm_head,mlp"
+
+
+def test_decoder_smoke_cli_rejects_unknown_lm_head_route(monkeypatch) -> None:
+    from scripts import moonshine_decoder_smoke
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "moonshine_decoder_smoke.py",
+            "--compiler-version-file",
+            "/tmp/hipcc.txt",
+            "--prebuild-only",
+            "--lm-head-route",
+            "wave8",
+        ],
+    )
+    with pytest.raises(SystemExit) as error:
+        moonshine_decoder_smoke.parse_args()
+    assert error.value.code == 2
 
 
 def test_retained_gfx1151_route_admission_artifact_promotes_exact_top1() -> None:
