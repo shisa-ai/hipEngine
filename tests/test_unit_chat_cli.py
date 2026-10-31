@@ -683,16 +683,47 @@ def test_turn_reads_speculation_from_either_response_shape() -> None:
 
 
 def test_turn_treats_unreported_speculation_as_missing_evidence() -> None:
-    """Absence is not a refusal, and a bare cycle count is the legacy fallback."""
+    """Absence is not a refusal, and a bare cycle count is not attribution."""
 
     from hipengine.chat_cli import _mtp_speculated
 
     assert _mtp_speculated(_meta_turn({"timing": {"elapsed_ms": 1.0}})) is None
     # A summary without accounting cannot tell a decline from unreported telemetry.
     assert _mtp_speculated(_meta_turn({"speculative_mtp": {"draft_cycles": 0, "used": False}})) is None
-    # A provider block that predates the attribution counter still reports cycles.
-    assert _mtp_speculated(_meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 0}}})) is False
-    assert _mtp_speculated(_meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 3}}})) is True
+    # A provider block that predates the attribution counter reports no output.
+    assert _mtp_speculated(_meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 0}}})) is None
+    assert _mtp_speculated(_meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 3}}})) is None
+
+
+def test_turn_does_not_claim_speculation_from_a_cycle_count() -> None:
+    """A cycle count cannot say whether any token was committed by speculation.
+
+    Depth-zero cycles are committed cycles, so the same count covers a fully
+    speculative commit and an autoregressive-only one. A provider that reports
+    only cycles leaves the question unanswered; either attribution counter
+    answers it without changing the count.
+    """
+
+    from hipengine.chat_cli import _mtp_speculated
+
+    # Legacy provider diagnostics: cycles, no committed-output counter.
+    assert _mtp_speculated(_meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 7}}})) is None
+    # Legacy summary: draft cycles, no common accounting block.
+    assert _mtp_speculated(_meta_turn({"speculative_mtp": {"draft_cycles": 7, "used": True}})) is None
+
+    # The same count decides once either counter arrives.
+    assert (
+        _mtp_speculated(
+            _meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 7, "mtp_output_tokens": 5}}})
+        )
+        is True
+    )
+    assert (
+        _mtp_speculated(
+            _meta_turn({"diagnostics": {"specdec2_mtp2": {"cycles": 7, "mtp_output_tokens": 0}}})
+        )
+        is False
+    )
 
 
 def _sse(payload: dict) -> bytes:
@@ -713,6 +744,7 @@ class _BenchStreamServer:
         refuse_mtp: bool = False,
         mtp_cycles: int = 7,
         mtp_output_tokens: int = 12,
+        mtp_attribution: bool = True,
         plan_reason: str | None = None,
     ) -> None:
         self.bodies: list[dict] = []
@@ -721,6 +753,8 @@ class _BenchStreamServer:
         self.refuse_mtp = refuse_mtp
         self.mtp_cycles = mtp_cycles
         self.mtp_output_tokens = mtp_output_tokens
+        # A provider that predates the committed-output counter reports cycles only.
+        self.mtp_attribution = mtp_attribution
         self.plan_reason = plan_reason
 
     def __call__(self, request, timeout=None):
@@ -765,9 +799,10 @@ class _BenchStreamServer:
                 "requested_budget": 3,
                 "cycles": self.mtp_cycles,
                 "accepted_draft_tokens": 12,
-                "mtp_output_tokens": self.mtp_output_tokens,
                 "provider_decline_reason": None if self.mtp_cycles else "provider_not_ready",
             }
+            if self.mtp_attribution:
+                block["mtp_output_tokens"] = self.mtp_output_tokens
             if self.plan_reason is not None:
                 block["plan_reason"] = self.plan_reason
             diagnostics["specdec2_mtp2"] = block
@@ -777,15 +812,16 @@ class _BenchStreamServer:
                 "effective_route": "speculative_mtp",
                 "used": bool(self.mtp_output_tokens),
                 "draft_cycles": self.mtp_cycles,
-                "output_accounting": {
+            }
+            if self.mtp_attribution:
+                done_choice["speculative_mtp"]["output_accounting"] = {
                     "completion_tokens": 24,
                     "mtp_output_tokens": self.mtp_output_tokens,
                     "ar_output_tokens": 24 - self.mtp_output_tokens,
                     "ar_output_tokens_in_cycles": 0,
                     "reconciled": True,
                     "reconciled_reasons": [],
-                },
-            }
+                }
         yield _sse(
             {
                 "choices": [{"index": 0, "delta": {"content": "ok"}, "finish_reason": None}],
@@ -1004,6 +1040,20 @@ def test_bench_does_not_note_a_route_that_committed_speculative_output(
     text = _plain_bench_text(server, monkeypatch)
 
     assert "no speculative token was committed" not in text
+
+
+def test_bench_does_not_infer_a_decline_from_a_cycle_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A route reporting only cycles leaves speculation unanswered, so no note."""
+
+    for cycles in (0, 3):
+        server = _BenchStreamServer(mtp_cycles=cycles, mtp_attribution=False)
+
+        text = _plain_bench_text(server, monkeypatch)
+
+        assert "no speculative token was committed" not in text, cycles
+        assert [row.split()[0] for row in _bench_lines(text)[1:]] == ["on", "on", "off", "off"]
 
 
 def test_bench_rejects_a_non_numeric_token_count(monkeypatch: pytest.MonkeyPatch) -> None:

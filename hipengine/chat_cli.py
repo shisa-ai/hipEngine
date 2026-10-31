@@ -1093,22 +1093,15 @@ def _mtp_accounting(turn: _Turn) -> dict | None:
     return block if isinstance(block, dict) else None
 
 
-def _mtp_cycles(turn: _Turn) -> int | None:
-    """Speculative cycles the backend committed, when it reported MTP intent."""
-
-    block = _mtp_block(turn)
-    return None if block is None else _as_int(block.get("cycles"))
-
-
 def _mtp_speculated(turn: _Turn) -> bool | None:
     """Whether the backend committed any visible token through speculation.
 
     A cycle count cannot answer this. An autoregressive-only plan still commits
-    depth-zero cycles, so a request that speculated on nothing can report
-    cycles. The committed-output attribution can, and the common accounting
-    block is where the server publishes it; the provider diagnostics block is
-    the fallback, and a block predating the attribution counter falls back to
-    its cycle count. ``None`` means the backend reported no attribution at all,
+    depth-zero cycles, so a request that speculated on nothing can report the
+    same cycles as one that committed drafts. Only the committed-output
+    attribution answers it: the common accounting block is where the server
+    publishes it, and the provider diagnostics block is the compatibility
+    reader. ``None`` means the backend reported no attribution counter at all,
     which is missing telemetry rather than a declined request.
     """
 
@@ -1117,10 +1110,7 @@ def _mtp_speculated(turn: _Turn) -> bool | None:
     if committed is None:
         block = _mtp_block(turn)
         committed = _as_int(block.get("mtp_output_tokens")) if block else None
-    if committed is not None:
-        return committed > 0
-    cycles = _mtp_cycles(turn)
-    return None if cycles is None else cycles > 0
+    return None if committed is None else committed > 0
 
 
 def _mtp_decline_reason(turn: _Turn) -> str | None:
