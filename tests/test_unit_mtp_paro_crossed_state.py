@@ -500,6 +500,49 @@ def test_report_problems_flags_a_requested_profile_with_no_profile_entry(
     assert any("requested profile(s) ['production']" in problem for problem in problems), problems
 
 
+def _terminal_tail_report(tmp_path: Path) -> dict:
+    report = _report(tmp_path)
+    report["route"].update(serial_decode_fallback=True, serial_decode_steps=1)
+    report["schedule"][-1].update(root_index=126, accepted=0)
+    report["mtp_accounting"].update(
+        first_fallback_position=128,
+        ar_step_reason_counts={"no_provider": 1, "target_graph_output_room_miss": 1},
+        ar_output_tokens_in_cycles=2,
+        mtp_output_tokens=127,
+    )
+    return report
+
+
+def test_report_accepts_a_fully_accounted_terminal_serial_token(tmp_path: Path) -> None:
+    report = _terminal_tail_report(tmp_path)
+    assert finish_report(report)["status"] == "complete"
+    assert report["terminal_serial_tail"] is True
+    # Keep the observed route, rather than rewriting fallback telemetry.
+    assert report["route"]["serial_decode_fallback"] is True
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("mtp_accounting", "first_fallback_position"), 127),
+        (("mtp_accounting", "first_fallback_position"), None),
+        (("mtp_accounting", "ar_step_reason_counts"), {"target_graph_output_room_miss": 1}),
+        (("mtp_accounting", "ar_step_reason_counts"),
+         {"no_provider": 1, "target_graph_output_room_miss": 1, "circuit_breaker_open": 1}),
+        (("mtp_accounting", "ar_output_tokens_in_cycles"), 3),
+        (("mtp_accounting", "mtp_output_tokens"), 126),
+        (("route", "serial_decode_steps"), 2),
+        (("schedule", 0, "root_index"), 125),
+        (("schedule", 0, "accepted"), 1),
+        (("schedule", 0, "accepted"), None),
+    ],
+)
+def test_report_rejects_unaccounted_or_nonterminal_serial_fallback(tmp_path, path, value):
+    report = _terminal_tail_report(tmp_path)
+    _set(report, path, value)
+    assert any("fell back to serial decode" in problem for problem in report_problems(report))
+
+
 _DELETE = object()
 
 
