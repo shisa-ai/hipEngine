@@ -801,18 +801,16 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `tests/test_unit_laguna_h5r_runtime_policy.py`; `tests/test_unit_laguna_h6a_runtime_policy.py`; `tests/test_unit_laguna_h6a_source_default.py`.
 
-Done when: Decision needed: keep bounded backend role maps as the supported policy representation, or
-normalize them into a unified selector. They select cache ordering as well as a function; absence,
-empty maps, independent global/SWA overrides and explicit variants carry different fallback
-semantics. **Clearing action:** if normalization is chosen, compare exact selected function, cache
-ownership and append ordering before/after over starts 0/128/256 and unrelated positions,
-no-wrap/wrap, complete/partial chunks, verifier/continuation, shape/backend and registration misses.
-Run `tests/test_unit_laguna_h5r_runtime_policy.py`, `tests/test_unit_laguna_h6a_runtime_policy.py`,
-`tests/test_unit_laguna_h6a_source_default.py`, `tests/test_unit_laguna_h6w_source_default.py` and
-`tests/test_unit_laguna_h6z_source_default.py`, then public bulk-prefill selection, output/state and
-teardown on the applicable backend using R0249/R0250's command and checkpoint dependency. Retain
-span-aware primitive fallbacks and the separately owned online arithmetic. A release window alone is
-not a reason to remove safe ordering or working policy.
+Done when: Bounded backend role maps remain the supported representation, documented in
+`reference/KVCACHE.md` "Laguna prefill append ordering"; no selector normalization is planned.
+Host resolution, tile bounds and launch-interface checks pass, but the runner wiring is only
+source-inspected. Remaining: public bulk-prefill selected function, output/state and teardown on
+the applicable backend using R0249/R0250's command and missing checkpoint dependency. Include
+starts 0/128/256 and unrelated positions, wrap/partial chunks, verifier/continuation and explicit
+variants. Preserve absent-versus-empty and independent global/SWA override semantics, span-aware
+primitive fallbacks and separately owned online arithmetic. The adjacent
+`prefill_score_scratch_required` method/property mismatch also needs repair and a focused
+regression before closure.
 
 ### R0264 — Laguna full-score long-attention diagnostic retirement
 

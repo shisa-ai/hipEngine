@@ -77,6 +77,31 @@ measured load. gfx1151 and external gates remain unavailable/unrun. See
 [`short global/native`](../../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
 and [`long/load blocked`](../../benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
 
+## Laguna prefill append ordering
+
+The gfx1100 package's bounded role maps are the supported declaration format
+for append-before-attention policy. `allocate_laguna_kv_cache` resolves them
+once into `prefill_preappend_role_scoped` and
+`prefill_preappend_role_variants`; cache consumers read that resolved pair.
+`LAGUNA_PREFILL_PREAPPEND_ROLE_VARIANTS` declares the SWA role, while
+`LAGUNA_PREFILL_DENSE_INITIAL_PREAPPEND_ROLE_VARIANTS` declares global and SWA
+roles and overrides the base map on their shared SWA role.
+
+When both maps are absent, the primitive bounds control append ordering.
+A present empty map enables role scoping but admits no role. Explicit global
+and SWA variants independently suppress their respective preappend roles,
+including requests that name the package default. The separate
+`LAGUNA_SWA_PREFILL_ROLE_VARIANTS` substitution instead compares the resolved
+variant, so it can still apply to an explicitly named default.
+
+Scoped roles require complete 128-row tiles at starts 0/128/256/384 and their
+declared head counts and capacities. Dense-initial variants additionally
+require valid dense metadata. Shape, registration, wrap and partial-tile misses
+keep the primitive attend-then-append chain. Score-replay variants borrow
+caller-owned scratch; without it the cached fixed512/global or cached SWA
+variant runs on the same append-before-attention route. The maps allocate
+neither another weight payload nor a workspace.
+
 ## Executive decision
 
 | Question | Answer |
