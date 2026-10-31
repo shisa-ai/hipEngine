@@ -12,7 +12,7 @@ worth knowing about.
 
 Entries are grouped by what they are built for. **AMD-focused** engines target
 RDNA hardware — usually one specific APU or GPU — and tune for it.
-**NVIDIA-focused** engines do the same for consumer Blackwell parts.
+**NVIDIA-focused** engines target consumer and prosumer GPUs.
 **Apple-silicon** engines target unified-memory Macs, where the device-specific
 choices are a fixed memory budget and a Metal-only kernel path.
 **Cross-platform** engines target many vendors and treat any single device as
@@ -49,6 +49,7 @@ lives in
 | WHIRL | [tsaipifong/whirl-llm](https://github.com/tsaipifong/whirl-llm) | Radeon 8060S (`gfx1151`) or R9700 (`gfx1201`), Windows 11 | Its own MXFP4 GGUFs | Zip download, run | Apache-2.0 | Zero-install Windows HIP, with three explicit numerics modes. |
 | Kyojin | [Yamz-Labs/kyojin](https://github.com/Yamz-Labs/kyojin) | Strix Halo only (`gfx1151`), one 128 GB mini PC | Own EXL3 packs | Source build, published HF packs | MIT | 300B-class MoE models on one APU, with quality and long-context reports to match. |
 | Lucebox | [Luce-Org/lucebox](https://github.com/Luce-Org/lucebox) · [lucebox.com](https://www.lucebox.com/) | AMD RDNA (`gfx1201`/`gfx1151`) and NVIDIA; separate CUDA and HIP builds | Its own checkpoints and quants | Source build | Apache-2.0 | Heterogeneous execution across a discrete card, an iGPU, and SSD. |
+| QEngine | [bpx03/QEngine](https://github.com/bpx03/QEngine) | NVIDIA RTX 3090 (`sm_86`), Linux; two or three cards for Flash-Next | INT4 checkpoints and converted Flash-Next weights | Source build or container image | PolyForm Noncommercial 1.0.0 | Model-specific multi-GPU serving over PCIe, with MTP and conversation caching. |
 | NInfer | [Neroued/ninfer](https://github.com/Neroued/ninfer) | One NVIDIA RTX 5090 (`sm_120a`) | Own `.ninfer` artifacts | Source build only | Apache-2.0 | Single-GPU residency and long-context reuse behind a deliberately small product boundary. |
 | Infernix | [Wallawalla47/Infernix](https://github.com/Wallawalla47/Infernix) | One NVIDIA RTX 50-series GPU (tuned on the 5090) | Own `.infernix` artifacts, plus NInfer `.ninfer` | Source build, release zip | Apache-2.0 | Flash-Next on one 32 GB card, with a prefix cache built for Qwen's linear-attention layers. |
 | CapyFlash | [ValerioDolci/capy-flash](https://github.com/ValerioDolci/capy-flash) | NVIDIA RTX 50-series (`sm_120`), 16 GB cards, one or two | Own `.ninfer` artifacts, converted from NVFP4 or GSQ checkpoints | Installer script, release tarball, Docker | Apache-2.0 | A 125B MoE on consumer 16 GB cards, with agent-session serving. |
@@ -523,6 +524,34 @@ Limits that matter for comparison:
 Targets NVIDIA consumer and prosumer cards rather than datacenter parts. The
 constraint that shapes these engines is VRAM per card, not bandwidth per
 device.
+
+### QEngine
+
+[`bpx03/QEngine`](https://github.com/bpx03/QEngine) — source-available
+C++/CUDA engines with a Python server, licensed under PolyForm Noncommercial
+1.0.0. The Linux build targets RTX 3090 (`sm_86`), primarily three cards over
+PCIe. It supports Qwen3.8-27B INT4 and a separate Qwen3.8-Flash-Next INT4
+engine; the latter uses its own converted weights. Source builds and container
+images are available.
+
+Strengths:
+
+- **Multi-GPU execution over PCIe**, including tensor parallelism for the 27B
+  and expert placement across cards for Flash-Next. A startup probe selects a
+  transfer path, with host-staged transfers when peer access is unavailable.
+- **Speculative decoding and serving**: model MTP heads and lookup drafts,
+  continuous batching, prefix reuse, and a host-memory conversation archive.
+- **Agent-facing APIs**: OpenAI- and Anthropic-compatible endpoints, tool calls,
+  structured output, and optional image input.
+
+Limits that matter for comparison:
+
+- The build targets `sm_86` and the supported model and quantization surface is
+  narrow. The 27B single-card configuration is experimental; Flash-Next requires
+  two or three cards and substantial host memory.
+- Published performance uses peer-to-peer access with a patched driver; stock
+  GeForce drivers use a different transfer path. The license restricts use to
+  noncommercial purposes.
 
 ### NInfer
 
@@ -1373,6 +1402,7 @@ Strix Halo iGPU.
 | Engine | How it spreads a model | Mixed NVIDIA generations |
 | --- | --- | --- |
 | llama.cpp | Layer split by default (`--split-mode layer`), with `-ts` proportions per card; `tensor` is experimental | Yes, if the build carries kernels for both architectures. A native build compiles for the cards present at build time; otherwise set `CMAKE_CUDA_ARCHITECTURES`. |
+| QEngine | Tensor parallelism for the 27B; Flash-Next distributes experts across cards | RTX 3090 (`sm_86`) is the target; mixed cards are discussed upstream, but other GPU models are untested. |
 | Strata | Layer split with Main and Helper roles; the faster card runs the last stage | Yes. Its installer recommends an RTX 5080 + RTX 3090 pair, and orders cards by measured speed rather than by model. |
 | Xolotl | The same layer split, with a per-GPU expert cache, an optional head device and `--remote-device` | Yes, with the same recommendation: newest generation as Main, older card as Helper. |
 | ds4 | Complete layers per device with a per-device VRAM budget (`--gpu-vram auto` or explicit GiB per device); Flash tensor parallelism pairs cards | Not stated. Per-device budgets and a native multi-architecture build would allow it; the tested configuration is eight L40S. |
@@ -1393,6 +1423,18 @@ architecture in the machine — a fat binary covering both, not just the card th
 was present at compile time. And a layer split distributes by free memory, so
 the smaller card still has to hold the layers it is given; the engines that
 recommend pairs enforce a floor, and Strata and Xolotl warn below 8 GB.
+
+## Related reference repositories
+
+These repositories collect deployment recipes and measurements rather than
+implementing a single inference engine:
+
+- [club-3090](https://github.com/noonghunna/club-3090) — community serving
+  configurations, patches, and evaluations for RTX 3090 and other NVIDIA GPUs
+  across vLLM, SGLang, llama.cpp, and other engines.
+- [rtx6kpro](https://github.com/local-inference-lab/rtx6kpro) — a field wiki
+  for RTX PRO 6000 Blackwell PCIe systems, with model runbooks, Docker builds,
+  quantization and quality checks, and multi-GPU topology work.
 
 ## Adding an engine
 
