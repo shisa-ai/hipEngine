@@ -181,7 +181,8 @@ def main():
             report["lifecycle"]["strict"] = memory_stats()
         generator, profile, _ = _make_generator(args, "production")
         report["production_base_manifest"] = profile.manifest_sha256
-        overrides = dict(CANDIDATES[args.candidate].environment)
+        spec = CANDIDATES[args.candidate]
+        overrides = dict(spec.environment)
         report["overrides"] = overrides
         previous = {key: os.environ.get(key) for key in overrides}
         os.environ.update(overrides)
@@ -190,10 +191,17 @@ def main():
         dispatch_stack = ExitStack()
         counter = {"calls": 0, "shapes": {}}
         try:
-            if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
+            from hipengine.runtime.qwen4_exp_runner import (
+                q8_mmq_prefill_enabled, qsa_h256_prefill_mode,
+                resolve_q8_mmq_prefill,
+            )
+            if spec.q8_mmq_prefill_enabled is not None:
+                dispatch_stack.enter_context(q8_mmq_prefill_enabled(
+                    generator, spec.q8_mmq_prefill_enabled))
+            report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
+                generator)
+            if report["q8_mmq_prefill_enabled"]:
                 generator.runner.configure_mmq_prefill_resources()
-            spec = CANDIDATES[args.candidate]
-            from hipengine.runtime.qwen4_exp_runner import qsa_h256_prefill_mode
             dispatch_stack.enter_context(qsa_h256_prefill_mode(
                 generator.runner, spec.qsa_h256_prefill_mode))
             if spec.requires_dispatch_count:

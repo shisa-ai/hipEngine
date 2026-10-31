@@ -33,12 +33,17 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # GR_WIDE is closed by the recovery pass and reopened by the F16 route
     # composition this quant's production plan carries.
     expected = {**PRODUCTION_Q8_QSA_RESTORED_FLAGS, "GR_WIDE": "1"}
+    owner_flags = {"PRODUCTION_MOE_PREFILL", "Q8_MMQ_PREFILL"}
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
-        if flag == "Q4_DP4A64":
+        if flag == "Q4_DP4A64" or flag in owner_flags:
             continue
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == expected.get(flag, "0")
     assert generator.q4_dp4a_decode_enabled is False
+    assert generator.production_moe_prefill_enabled is False
+    assert generator.q8_mmq_prefill_enabled is False
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
     # The QSA prefill head leaf is request-local state now, so the recovery
     # pass must not write a process-wide switch for it.
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
@@ -81,9 +86,11 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
 def test_failed_q4km_profile_binding_uses_strict(monkeypatch):
     monkeypatch.setattr(os, "environ", os.environ.copy())
     profile = resolve("gguf_q4_k_m")
-    profile.binder(SimpleNamespace(), profile)
+    generator = SimpleNamespace()
+    profile.binder(generator, profile)
     assert profile.fell_back_to_strict
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
+    assert generator.q8_mmq_prefill_enabled is False
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "0"
 
 

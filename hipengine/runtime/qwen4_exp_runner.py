@@ -5492,6 +5492,75 @@ def production_moe_prefill_enabled(
             target.production_moe_prefill_enabled = previous
 
 
+_Q8_MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
+_Q8_MMQ_PREFILL_FALSE = frozenset({"", "0", "false", "False"})
+_Q8_MMQ_PREFILL_UNSET = object()
+
+
+def _parse_q8_mmq_prefill_enabled(value: str) -> bool:
+    """Preserve the historical raw false set, including its case handling."""
+
+    return value not in _Q8_MMQ_PREFILL_FALSE
+
+
+def _resolve_q8_mmq_prefill_enabled(enabled: bool | None) -> bool:
+    """Resolve a bound owner decision, or the direct/unbound ambient fallback."""
+
+    if enabled is not None:
+        return bool(enabled)
+    return _parse_q8_mmq_prefill_enabled(
+        os.environ.get(_Q8_MMQ_PREFILL_ENV, "0")
+    )
+
+
+def resolve_q8_mmq_prefill(owner: Any) -> bool:
+    """Return the Q8 MMQ prefill decision a generator or runner would use."""
+
+    return _resolve_q8_mmq_prefill_enabled(
+        getattr(owner, "q8_mmq_prefill_enabled", None)
+    )
+
+
+def _q8_mmq_prefill_targets(owner: Any) -> list[Any]:
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    return targets
+
+
+@contextlib.contextmanager
+def q8_mmq_prefill_enabled(
+    owner: Any,
+    enabled: bool | None | object = _Q8_MMQ_PREFILL_UNSET,
+):
+    """Override the Q8 MMQ prefill decision on one owner.
+
+    A generator target also binds its current runner. Omitted preserves the
+    current owner value, ``None`` restores the direct/unbound fallback, and a
+    bool binds that decision. The previous state is restored on exit, including
+    after an exception. No allocation or resource work happens here: call
+    ``configure_mmq_prefill_resources()`` explicitly to prepare a newly enabled
+    workspace.
+    """
+
+    targets = _q8_mmq_prefill_targets(owner)
+    prior = [
+        (target, getattr(target, "q8_mmq_prefill_enabled", None))
+        for target in targets
+    ]
+    try:
+        for target in targets:
+            if enabled is not _Q8_MMQ_PREFILL_UNSET:
+                target.q8_mmq_prefill_enabled = (
+                    None if enabled is None else bool(enabled)
+                )
+        yield prior
+    finally:
+        for target, previous in prior:
+            target.q8_mmq_prefill_enabled = previous
+
+
 def _qwen4_exp_production_moe_prefill_enabled(
     weight: GGUFDeviceWeight, *, rows: int,
     enabled: bool | None = None,
@@ -9244,9 +9313,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     dense_wide_tail_variant: str | None = None
     # Same shape for the Q8 MMQ lane: the profile publishes which variant
     # siblings this runner's prefill may select. Publication is independent of
-    # the MMQ parent's own switch, so a diagnostic that re-enables
-    # HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL after the bind still gets the children
-    # the production plan selected.
+    # the MMQ parent owner, so a diagnostic that binds the parent on after the
+    # binder still gets the children the production plan selected.
     dense_mmq_token64_enabled: bool = False
     dense_mmq_raw_vector_enabled: bool = False
     dense_mmq_vec4_enabled: bool = False
@@ -9261,6 +9329,11 @@ class Qwen4ExpGGUFResidentModelRunner:
     # remains the fallback; a bound decision never reads it. The row>=16 guard
     # and the layer capability check stay at the dispatch consumer.
     production_moe_prefill_enabled: bool | None = None
+    # The Q8 MMQ prefill workspace is the owning runner's decision. ``None`` is
+    # the unbound/direct state, where the historical process key remains the
+    # fallback; a bound decision never reads it. Resource preparation stays an
+    # explicit ``configure_mmq_prefill_resources()`` call.
+    q8_mmq_prefill_enabled: bool | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -9449,6 +9522,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q4_dp4a_decode_enabled: bool | None = None,
         q4_dp4a_decode_layers: frozenset[int] | None = None,
         production_moe_prefill_enabled: bool | None = None,
+        q8_mmq_prefill_enabled: bool | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
@@ -9460,6 +9534,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             else frozenset(q4_dp4a_decode_layers)
         )
         self.production_moe_prefill_enabled = production_moe_prefill_enabled
+        self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
                 "Qwen4Exp runner max_sequence_length must be in "
@@ -9743,9 +9818,14 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._q8_mmq_weight_sidecars = owner
 
     def _configure_q8_mmq_prefill_resources(self) -> None:
-        if self._q8_mmq_buffers or os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
-        ) in {"", "0", "false", "False"}:
+        # Reuse the owned resources before consulting any owner or ambient
+        # decision: a later diagnostic that turns the lane off must not drop a
+        # workspace the runner already owns.
+        if self._q8_mmq_buffers:
+            return
+        if not _resolve_q8_mmq_prefill_enabled(
+            getattr(self, "q8_mmq_prefill_enabled", None)
+        ):
             return
         policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
         if policy is None:
@@ -9757,16 +9837,33 @@ class Qwen4ExpGGUFResidentModelRunner:
 
         rows_cap = min(int(self.prefill_chunk_size), int(policy.max_rows))
         hidden_cap = max(int(hidden) for hidden, _ in policy.min_rows)
+        library = build_gguf_q8_0_mmq_prefill(load=True)
+        allocated: list[DeviceBuffer] = []
+        try:
+            allocated.append(malloc(
+                q8_mmq_d4x3_nbytes(rows_cap, hidden_cap), runtime=self.runtime
+            ))
+            allocated.append(malloc(
+                DType.INT32.itemsize, runtime=self.runtime
+            ))
+            allocated.append(malloc(
+                policy.risk_indices_nbytes(rows_cap), runtime=self.runtime
+            ))
+        except BaseException as error:
+            for buffer in reversed(allocated):
+                try:
+                    free(buffer, runtime=self.runtime)
+                except BaseException as cleanup:
+                    # Preserve the partial-resource error that made the
+                    # rollback necessary, but keep the cleanup failure visible
+                    # and keep releasing the remaining acquired buffers.
+                    error.add_note(
+                        "Q8 MMQ prefill allocation cleanup failed: "
+                        f"{cleanup!r}")
+            raise
         self._q8_mmq_policy = policy
-        self._q8_mmq_library = build_gguf_q8_0_mmq_prefill(load=True)
-        workspace = malloc(
-            q8_mmq_d4x3_nbytes(rows_cap, hidden_cap), runtime=self.runtime
-        )
-        risk_count = malloc(DType.INT32.itemsize, runtime=self.runtime)
-        risk_indices = malloc(
-            policy.risk_indices_nbytes(rows_cap), runtime=self.runtime
-        )
-        self._q8_mmq_buffers = (workspace, risk_count, risk_indices)
+        self._q8_mmq_library = library
+        self._q8_mmq_buffers = tuple(allocated)
         self._buffers.extend(self._q8_mmq_buffers)
 
     def rebind_resident_weights(self) -> None:
@@ -9800,12 +9897,17 @@ class Qwen4ExpGGUFResidentModelRunner:
     def _q8_mmq_prefill_context(self):
         """Expose the guarded Q8 MMQ session while a chunked prefill runs."""
 
-        enabled = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
-        ) not in {"", "0", "false", "False"}
+        enabled = _resolve_q8_mmq_prefill_enabled(
+            getattr(self, "q8_mmq_prefill_enabled", None)
+        )
+        if enabled and not self._q8_mmq_buffers:
+            raise ValueError(
+                "Q8 MMQ prefill is enabled but no device workspace is prepared; "
+                "call configure_mmq_prefill_resources() explicitly"
+            )
         workspace, risk_count, risk_indices = (
             self._q8_mmq_buffers
-            if enabled and self._q8_mmq_buffers
+            if enabled
             else (None, None, None)
         )
         prepacked = None

@@ -24,7 +24,9 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     # switch: the binder publishes the plan's own selection.
     assert generator.qsa_prefill_head_mode == "quad"
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
-    for flag in ("Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
+    assert generator.q8_mmq_prefill_enabled is False
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
+    for flag in ("QSA_FLASH_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "0"
     assert generator.q4_dp4a_decode_enabled is False
     assert generator.q4_dp4a_decode_layers == frozenset(

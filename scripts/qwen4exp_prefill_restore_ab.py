@@ -27,7 +27,10 @@ from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
 )
-from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode, qsa_h256_prefill_mode
+from hipengine.runtime.qwen4_exp_runner import (
+    q8_mmq_prefill_enabled, qsa_prefill_head_mode, qsa_h256_prefill_mode,
+    resolve_q8_mmq_prefill,
+)
 from scripts.qwen4exp_journey_localize import set_flags
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace, workspace_description
@@ -274,6 +277,13 @@ def main():
                           for name in args.candidate}
         report["arm_h256_modes"] = {
             name: mode for name, mode in arm_h256_modes.items() if mode is not None}
+        arm_q8_mmq_modes = {
+            name: CANDIDATES[name].q8_mmq_prefill_enabled
+            for name in args.candidate
+        }
+        report["arm_q8_mmq_prefill_enabled"] = {
+            name: mode for name, mode in arm_q8_mmq_modes.items()
+            if mode is not None}
         original_step = runner.step
         last = {}
         names = ("moe_graph_cache", "layer_graph_cache")
@@ -297,15 +307,23 @@ def main():
                 setattr(runner, name, cache)
             clear_gguf_linear_dispatch_cache()
             set_flags(arm_envs[arm])
-            if os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
-                runner.configure_mmq_prefill_resources()
             workspace = workspaces.get(arm)
+            q8_mode = arm_q8_mmq_modes.get(arm)
+            q8_scope = (
+                q8_mmq_prefill_enabled(runner, q8_mode)
+                if q8_mode is not None
+                else q8_mmq_prefill_enabled(runner)
+            )
             with (
+                q8_scope,
                 qsa_prefill_head_mode(runner, arm_head_modes.get(arm)),
                 qsa_h256_prefill_mode(runner, arm_h256_modes.get(arm)),
                 use_workspace(runner, workspace)
                 if workspace is not None else nullcontext(),
             ):
+                if resolve_q8_mmq_prefill(runner):
+                    # Explicit cold-path preparation for the arm's bound owner.
+                    runner.configure_mmq_prefill_resources()
                 with observe_prefill_chunks(
                     runner, tokens=case["prompt_tokens"], size=runner.prefill_chunk_size,
                 ) as chunks:

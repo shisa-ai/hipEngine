@@ -6,7 +6,8 @@ from scripts.qwen4exp_journey_localize import (
     ARMS, OUTLIER, PREFIX, clear_arm_graphs, gdn_isolation_overrides,
     phase_peer_scope, production_moe_arm_policy, production_moe_arm_report,
     production_moe_arm_scope, production_moe_split_scope, q4_dp4a_arm_policy,
-    q4_dp4a_arm_scope, q4_dp4a_split_scope, serial_gdn, strict_environment,
+    q4_dp4a_arm_scope, q4_dp4a_split_scope, q8_mmq_arm_report,
+    q8_mmq_split_scope, serial_gdn, strict_environment,
     strict_family_overrides,
 )
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
@@ -217,6 +218,58 @@ def test_split_trajectory_binds_q4_dp4a_per_phase(monkeypatch):
     )
     assert seen == [("prefill", frozenset()), ("step", frozenset({0, 2}))]
     assert runner.q4_dp4a_decode_layers == frozenset({0, 2})
+
+
+@pytest.mark.parametrize("arm,phase,expected", [
+    ("strict_prefill_production_decode", "prefill", False),
+    ("strict_prefill_production_decode", "decode", True),
+    ("production_prefill_strict_decode", "prefill", True),
+    ("production_prefill_strict_decode", "decode", False),
+])
+def test_q8_mmq_split_scope_uses_the_phase_owner(arm, phase, expected):
+    runner = SimpleNamespace(q8_mmq_prefill_enabled=True)
+    with q8_mmq_split_scope(runner, arm, phase):
+        assert runner.q8_mmq_prefill_enabled is expected
+    assert runner.q8_mmq_prefill_enabled is True
+
+
+def test_q8_mmq_split_report_names_both_actual_phases():
+    runner = SimpleNamespace(q8_mmq_prefill_enabled=True)
+    assert q8_mmq_arm_report(
+        runner, "strict_prefill_production_decode") == {
+        "prefill": False, "decode": True}
+    assert q8_mmq_arm_report(
+        runner, "production_prefill_strict_decode") == {
+        "prefill": True, "decode": False}
+
+
+@pytest.mark.parametrize("arm,expected", [
+    ("strict_prefill_production_decode", [("prefill", False), ("step", True)]),
+    ("production_prefill_strict_decode", [("prefill", True), ("step", False)]),
+])
+def test_split_trajectory_binds_q8_mmq_per_phase_with_an_enabled_production_owner(
+        monkeypatch, arm, expected):
+    import numpy as np
+    from scripts import qwen4exp_journey_localize as module
+
+    seen = []
+    result = SimpleNamespace(logits=np.array([1.0], dtype=np.float32))
+    runner = SimpleNamespace(
+        q8_mmq_prefill_enabled=True,
+        production_moe_prefill_enabled=False,
+        q4_dp4a_decode_enabled=False,
+        q4_dp4a_decode_layers=frozenset({0, 2}),
+        reset=lambda: None,
+        prefill=lambda ids: (
+            seen.append(("prefill", runner.q8_mmq_prefill_enabled)) or result),
+        step=lambda token: (
+            seen.append(("step", runner.q8_mmq_prefill_enabled)) or result),
+    )
+    monkeypatch.setattr(module, "clear_arm_graphs", lambda runner: None)
+    monkeypatch.setattr(module, "set_flags", lambda flags: None)
+    module.split_trajectory(runner, [3], [5], {}, {}, arm=arm)
+    assert seen == expected
+    assert runner.q8_mmq_prefill_enabled is True
 
 
 def test_selected_down_control_is_a_single_numerical_override():

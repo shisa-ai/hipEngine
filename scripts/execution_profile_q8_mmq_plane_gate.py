@@ -190,6 +190,10 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_mmq_prefill_enabled,
+        resolve_q8_mmq_prefill,
+    )
 
     if int(args.repeat_runs) < 3:
         raise CalibrationError("plane gate requires at least three repeats")
@@ -236,9 +240,15 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     generator = resolved.construct_generator(factory)
+    # This gate measures the Q8 MMQ workspace itself, so it binds the owner
+    # decision after the profile binder and prepares the cold-path resources
+    # explicitly. The historical process key is inert below a bound owner.
+    owner_scope = q8_mmq_prefill_enabled(generator, True)
+    owner_scope.__enter__()
     runner = generator.runner
     if runner is None:
         raise CalibrationError("runner is not resident")
+    runner.configure_mmq_prefill_resources()
 
     original_policy = runner._q8_mmq_policy
     if original_policy is None:
@@ -427,9 +437,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         command=command,
         environment={
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": os.environ.get(
-                "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
-            ),
+            "q8_mmq_prefill_enabled": resolve_q8_mmq_prefill(generator),
             "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"
             ),
@@ -440,6 +448,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         repetitions=int(args.repeat_runs),
         profiler={"enabled": False, "kind": None, "command": None},
     )
+    owner_scope.__exit__(None, None, None)
     generator.close()
 
     quality = evaluated["quality"]

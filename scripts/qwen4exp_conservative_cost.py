@@ -24,7 +24,9 @@ from scripts.qwen4exp_halo_box_campaign_ab import summarize_campaign_ab
 from scripts.qwen4exp_ple_gather_ab import pair_sequence
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary, CANDIDATES
 from scripts.qwen4exp_journey_localize import set_flags
-from hipengine.runtime.qwen4_exp_runner import qsa_h256_prefill_mode
+from hipengine.runtime.qwen4_exp_runner import (
+    q8_mmq_prefill_enabled, qsa_h256_prefill_mode,
+)
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
 
@@ -91,9 +93,22 @@ def main():
                 setattr(runner, name, cache)
             clear_gguf_linear_dispatch_cache()
             set_flags(previous if mode == "before" else overrides)
-            with qsa_h256_prefill_mode(
-                runner, CANDIDATES["production_conservative"].qsa_h256_prefill_mode
-                if mode == "after" else None,
+            q8_mode = (
+                CANDIDATES["production_conservative"].q8_mmq_prefill_enabled
+                if mode == "after" else None
+            )
+            q8_scope = (
+                q8_mmq_prefill_enabled(runner, q8_mode)
+                if q8_mode is not None
+                else q8_mmq_prefill_enabled(runner)
+            )
+            with (
+                q8_scope,
+                qsa_h256_prefill_mode(
+                    runner,
+                    CANDIDATES["production_conservative"].qsa_h256_prefill_mode
+                    if mode == "after" else None,
+                ),
             ):
                 row = _hipengine_case_sample(
                     runner, case=case, repetition=rep, transitions=fixture["decode_transitions"])

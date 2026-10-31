@@ -36,7 +36,6 @@ def build_parser() -> argparse.ArgumentParser:
 def configure_production_routes() -> None:
     os.environ.update(
         {
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
@@ -58,7 +57,9 @@ def main() -> None:
     from hipengine.runtime.qwen4_exp_runner import (
         production_moe_prefill_enabled,
         q4_dp4a_decode,
+        q8_mmq_prefill_enabled,
         resolve_production_moe_prefill,
+        resolve_q8_mmq_prefill,
     )
 
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
@@ -72,6 +73,7 @@ def main() -> None:
     )
     rows: list[dict[str, Any]] = []
     production_moe_enabled = None
+    q8_mmq_enabled = None
     owner_scope = ExitStack()
     try:
         owner_scope.enter_context(
@@ -81,6 +83,8 @@ def main() -> None:
         owner_scope.enter_context(
             q4_dp4a_decode(generator, True, SAFE43_DP4A_LAYERS)
         )
+        owner_scope.enter_context(q8_mmq_prefill_enabled(generator, True))
+        q8_mmq_enabled = resolve_q8_mmq_prefill(generator)
         runner = generator.runner
         runner.configure_mmq_prefill_resources()
         runtime = runner.runtime
@@ -132,6 +136,7 @@ def main() -> None:
         "schema": 1,
         "kind": "qwen4exp_decode_sync_ab",
         "production_moe_prefill_enabled": production_moe_enabled,
+        "q8_mmq_prefill_enabled": q8_mmq_enabled,
         "steps": args.steps,
         "warmup_steps": args.warmup_steps,
         "sync_median_seconds": statistics.median(sync_seconds),

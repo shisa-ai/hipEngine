@@ -22,6 +22,7 @@ QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
+Q8_MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
 PREBINDER_CONFLICT_ENV = "HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT"
 _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
 # Values this module has written, so a later bind can tell its own previous
@@ -992,6 +993,17 @@ def _publish_production_moe_prefill(generator: Any, enabled: bool) -> None:
         runner.production_moe_prefill_enabled = bool(enabled)
 
 
+def _publish_q8_mmq_prefill(generator: Any, enabled: bool) -> None:
+    """Publish the Q8 MMQ prefill workspace gate as owner state."""
+
+    _record_owner_transport(
+        Q8_MMQ_PREFILL_ENV, "1" if enabled else "0")
+    generator.q8_mmq_prefill_enabled = bool(enabled)
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.q8_mmq_prefill_enabled = bool(enabled)
+
+
 def _publish_q4_dp4a_decode(
     generator: Any,
     enabled: bool,
@@ -1052,6 +1064,7 @@ def _bind(
         )
         table.configure_mapping_access(mode)
     _publish_production_moe_prefill(generator, production)
+    _publish_q8_mmq_prefill(generator, production)
     q4_dp4a_decode_layers = (
         frozenset(PRODUCTION_Q4_DP4A_DECODE_LAYERS)
         if production
@@ -1092,9 +1105,9 @@ def _bind(
     # fast route that shares this binder) selects them, strict and
     # batch-invariant keep the scalar parents. Request-local on the owning
     # runner, never a process-wide switch. Publication is deliberately
-    # independent of HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL: the UD recovery zeroes
-    # that parent after this table is published, and the supported diagnostic -
-    # set the parent back to 1 after the bind, then
+    # independent of the Q8 MMQ prefill owner: the UD recovery binds that parent
+    # off after this table is published, and the supported diagnostic - bind
+    # the parent owner on after the binder, then
     # configure_mmq_prefill_resources() - must still get the vectorized children
     # the production plan selected. The dispatch-time selectors keep the
     # rows>=64, parent-variant and registration guards, the prepacked child stays
@@ -1269,7 +1282,6 @@ def _bind(
             row["selected_variant"] for row in resolved.manifest["selections"]
             if row["layer"] == "router_logits"
         ),
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
         # PF-3 Q5_1 M1 and PF-1 grouped Q8_0 down are T0 exact production
         # owners after the one-process/one-residency canonical gate, and their
@@ -1574,12 +1586,16 @@ def _bind(
             {
                 "HIPENGINE_QWEN4_EXP_" + flag: "0"
                 for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
-                if flag not in {"Q4_DP4A64", "PRODUCTION_MOE_PREFILL"}
+                if flag not in {
+                    "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
+                    "Q8_MMQ_PREFILL",
+                }
             }
         )
         _publish_q4_dp4a_decode(
             generator, False, q4_dp4a_decode_layers)
         _publish_production_moe_prefill(generator, False)
+        _publish_q8_mmq_prefill(generator, False)
         _apply_profile_env(
             {
                 "HIPENGINE_QWEN4_EXP_" + flag: value
@@ -1771,6 +1787,7 @@ __all__ = [
     "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",
     "PRODUCTION_Q4_DP4A_DECODE_LAYERS",
+    "Q8_MMQ_PREFILL_ENV",
     "QWEN4_EXP_BACKEND",
     "QWEN4_EXP_MODEL",
     "QWEN4_EXP_QUANTS",

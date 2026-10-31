@@ -30,10 +30,11 @@ def main():
             SHAPE_FLAG: f"{k}x{n}",
         }
     for layer in (2, 4, 30, 46, 47):
-        localize.ARMS[f"down_off_{layer}"] = {
-            localize.PREFIX + "Q8_MMQ_PREFILL": "0",
-            LAYER_FLAG: str(layer),
-        }
+        arm = f"down_off_{layer}"
+        localize.ARMS[arm] = {LAYER_FLAG: str(layer)}
+        # The historical arm disabled Q8 MMQ as well; bind that owner decision
+        # rather than writing a process key the bound runner no longer reads.
+        localize._Q8_MMQ_ARM_VALUES[arm] = False
     counts = Counter()
     original_dispatch = linear._q8_mmq_prefill_dispatch
     original_moe = runner.run_qwen4_exp_moe

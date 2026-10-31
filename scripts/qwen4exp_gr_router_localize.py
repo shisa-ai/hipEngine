@@ -124,8 +124,14 @@ def main() -> None:
         register_gfx1151_kernels(replace=True)
         register_qwen4_exp_gfx1151_profiles()
 
-        def arm_trajectory(environment: dict[str, str], case):
+        def arm_trajectory(
+            environment: dict[str, str], case, *, q8_mmq_owner=None,
+        ):
             """Run one arm, recording per-step routing and logits evidence."""
+
+            from hipengine.runtime.qwen4_exp_runner import (
+                q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
+            )
 
             previous = {key: os.environ.get(key) for key in environment}
             os.environ.update(environment)
@@ -161,9 +167,18 @@ def main() -> None:
 
             try:
                 runtime_module.qwen35_router_select = wrapped
-                trajectory = _strict_trajectory(
-                    generator.runner, case["prompt_token_ids"], args.decode_steps
+                owner_scope = (
+                    q8_mmq_prefill_enabled(generator, q8_mmq_owner)
+                    if q8_mmq_owner is not None
+                    else q8_mmq_prefill_enabled(generator)
                 )
+                with owner_scope:
+                    if resolve_q8_mmq_prefill(generator):
+                        generator.runner.configure_mmq_prefill_resources()
+                    trajectory = _strict_trajectory(
+                        generator.runner, case["prompt_token_ids"],
+                        args.decode_steps,
+                    )
                 for index, sample in enumerate(trajectory):
                     if pending["selected"]:
                         steps.append({
@@ -189,7 +204,10 @@ def main() -> None:
                 print("strict", case["id"], flush=True)
                 strict = arm_trajectory({"HIPENGINE_QWEN4_EXP_GR_IU8": "0"}, case)
                 print("candidate", case["id"], flush=True)
-                candidate = arm_trajectory(dict(spec.environment), case)
+                candidate = arm_trajectory(
+                    dict(spec.environment), case,
+                    q8_mmq_owner=spec.q8_mmq_prefill_enabled,
+                )
                 if len(strict) != len(candidate):
                     raise ValueError("arm step counts differ")
 

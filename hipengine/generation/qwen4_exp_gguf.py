@@ -208,6 +208,11 @@ class Qwen4ExpGGUFTextGenerator:
         # the fallback; the binder publishes the final decision here and on the
         # runner it finds.
         self.production_moe_prefill_enabled = None
+        # The Q8 MMQ prefill workspace gate is owner state too. ``None`` is the
+        # direct/unbound state, where the historical process key remains the
+        # fallback; the binder publishes the final decision here and on the
+        # runner it finds. Resource preparation stays explicit.
+        self.q8_mmq_prefill_enabled = None
         # QSA ordered-v2 sparse decode is request-local too; the binder
         # republishes it with the rest.
         self.qsa_ordered_decode_v2 = False
@@ -388,6 +393,7 @@ class Qwen4ExpGGUFTextGenerator:
             q4_dp4a_decode_enabled=self.q4_dp4a_decode_enabled,
             q4_dp4a_decode_layers=self.q4_dp4a_decode_layers,
             production_moe_prefill_enabled=self.production_moe_prefill_enabled,
+            q8_mmq_prefill_enabled=self.q8_mmq_prefill_enabled,
         )
 
     server_plain_ar_max_active_requests = QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
@@ -1001,6 +1007,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
         generator, "q4_dp4a_decode_layers", None)
     runner.production_moe_prefill_enabled = getattr(
         generator, "production_moe_prefill_enabled", None)
+    runner.q8_mmq_prefill_enabled = getattr(
+        generator, "q8_mmq_prefill_enabled", None)
     runner.q4_bundle_prefill = bool(getattr(generator, "q4_bundle_prefill", False))
     runner.q4_pair_prefill = bool(getattr(generator, "q4_pair_prefill", False))
     runner.q8_wave_scale_prefill = bool(getattr(generator, "q8_wave_scale_prefill", False))

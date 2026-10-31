@@ -402,17 +402,28 @@ def _load_campaign():
 def test_the_campaign_closes_the_owner_on_the_runner() -> None:
     campaign = _load_campaign()
     assert RETIRED_ENV not in campaign.Q51_PAIR2_PREEMPTING_ENV
-    assert campaign.Q51_PAIR2_PREEMPTING_FIELDS == (FIELD, "routed_f16_enabled")
+    assert campaign.Q51_PAIR2_PREEMPTING_FIELDS == (
+        FIELD, "routed_f16_enabled", "production_moe_prefill_enabled")
     assert RETIRED_ENV not in campaign.PF13_PREEMPTING_ENV
 
-    owner = SimpleNamespace(q51_exact_grouped_down=True, **{FIELD: True})
+    owner = SimpleNamespace(
+        q51_exact_grouped_down=True, production_moe_prefill_enabled=True,
+        **{FIELD: True})
     with campaign.q51_pair2_scope(runner=owner, environment={}):
         assert getattr(owner, FIELD) is False
+        assert owner.production_moe_prefill_enabled is False
     assert getattr(owner, FIELD) is True
+    assert owner.production_moe_prefill_enabled is True
 
     record = campaign.q51_pair2_control_record(owner, environment={})
-    assert record["preempting_owner_fields_closed"] == {FIELD: False, "routed_f16_enabled": False}
-    assert record["preempting_owner_fields_previous"] == {FIELD: True, "routed_f16_enabled": False}
+    assert record["preempting_owner_fields_closed"] == {
+        FIELD: False, "routed_f16_enabled": False,
+        "production_moe_prefill_enabled": False,
+    }
+    assert record["preempting_owner_fields_previous"] == {
+        FIELD: True, "routed_f16_enabled": False,
+        "production_moe_prefill_enabled": True,
+    }
 
 
 def test_the_pf13_arm_closes_the_owner_in_both_arms() -> None:
@@ -424,18 +435,24 @@ def test_the_pf13_arm_closes_the_owner_in_both_arms() -> None:
         q51_fold128_prefill=True, q51_fold_pair_prefill=True,
         q51_register_cache=True, q51_row_publish=True,
         q8_down_row4_prefill=True, q8_down_bundle_prefill=True,
-        q8_down_register=True, **{FIELD: True})
+        q8_down_register=True, production_moe_prefill_enabled=True,
+        **{FIELD: True})
     environment = {"HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID": "64"}
 
     for mode in ("before", "after"):
         with campaign.route_scope("pf13", mode, runner, environment=environment):
             assert getattr(runner, FIELD) is False, mode
+            assert runner.production_moe_prefill_enabled is False, mode
         assert getattr(runner, FIELD) is True, mode
+        assert runner.production_moe_prefill_enabled is True, mode
 
     control = campaign.pf13_control_record(runner, environment=environment)
     assert control["preempting_owner_fields"] == {
         "bound_value": False,
-        "published_value": {FIELD: True, "routed_f16_enabled": False},
+        "published_value": {
+            FIELD: True, "routed_f16_enabled": False,
+            "production_moe_prefill_enabled": True,
+        },
     }
 
 

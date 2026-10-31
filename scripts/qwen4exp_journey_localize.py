@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, resolve_production_moe_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, resolve_production_moe_prefill, resolve_q8_mmq_prefill
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -49,6 +49,14 @@ ARMS["production_conservative"] = dict(CANDIDATES["production_conservative"].env
 for name in ("q8_blockscale", "q8_blockscale_mmq",
              "q8_blockscale_guarded", "q8_blockscale_guarded_mmq"):
     ARMS[name] = dict(CANDIDATES[name].environment)
+# Candidate owner decisions are not environment keys any more. Keep each arm's
+# former process value only as the owner decision bound in the arm loop; no
+# process-wide switch is written.
+_Q8_MMQ_ARM_VALUES: dict[str, bool] = {}
+for name in tuple(ARMS):
+    candidate = CANDIDATES.get(name)
+    if candidate is not None and candidate.q8_mmq_prefill_enabled is not None:
+        _Q8_MMQ_ARM_VALUES[name] = bool(candidate.q8_mmq_prefill_enabled)
 ARMS["all_flags_strict"] = {}
 ARMS["gdn_flags_strict"] = {}
 ARMS["base_plus_moe_flags"] = {}
@@ -76,6 +84,20 @@ for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
     ARMS["strict_plus_" + flag.lower()] = {}
     ARMS["q8down_off_without_" + flag.lower()] = {
         **ARMS["q8_selected_down_strict"], PREFIX + flag: "0"}
+
+# Move every remaining Q8 MMQ process value onto the owner decision. This
+# includes the strict families that inherited the historical ``0``.
+_Q8_MMQ_ENV = PREFIX + "Q8_MMQ_PREFILL"
+_Q8_MMQ_FALSE = frozenset({"", "0", "false", "False"})
+for name in tuple(ARMS):
+    raw = ARMS[name].pop(_Q8_MMQ_ENV, None)
+    if raw is not None:
+        _Q8_MMQ_ARM_VALUES[name] = raw not in _Q8_MMQ_FALSE
+# These families are materialized later from ``all_numerics_strict`` and so
+# inherited its historical Q8 MMQ ``0`` without carrying a key of their own.
+for name in ("base_plus_moe_flags", "base_plus_q8_gr_flags",
+             "base_plus_gdn_flags"):
+    _Q8_MMQ_ARM_VALUES[name] = False
 
 
 #: Arms whose former production-MoE process value was 0. The gate is owner
@@ -141,6 +163,61 @@ def production_moe_arm_report(generator, arm):
     return actual
 
 
+#: Split arms bind Q8 MMQ per phase: the strict phase closes the workspace
+#: owner, and the production phase leaves the production owner in place.
+Q8_MMQ_SPLIT_ARMS = frozenset({
+    "strict_prefill_production_decode", "production_prefill_strict_decode",
+})
+
+
+def q8_mmq_arm_enabled(arm):
+    """The Q8 MMQ owner value this arm's former process key meant."""
+
+    return _Q8_MMQ_ARM_VALUES.get(arm)
+
+
+def q8_mmq_arm_scope(generator, arm):
+    """Bind the arm's Q8 MMQ decision on the generator and its runner."""
+
+    enabled = q8_mmq_arm_enabled(arm)
+    if enabled is None:
+        return nullcontext()
+    return q8_mmq_prefill_enabled(generator, enabled)
+
+
+def q8_mmq_split_scope(runner, arm, phase):
+    """Bind one split phase's Q8 MMQ decision on the measured runner.
+
+    The strict phase closes the owner. The production phase returns an
+    unbound scope, so the production binder's owner decision is restored and
+    used, including when that decision is enabled.
+    """
+
+    if arm not in Q8_MMQ_SPLIT_ARMS:
+        return nullcontext()
+    strict_phase = (
+        (arm == "strict_prefill_production_decode" and phase == "prefill")
+        or (arm == "production_prefill_strict_decode" and phase == "decode")
+    )
+    if not strict_phase:
+        return nullcontext()
+    return q8_mmq_prefill_enabled(runner, False)
+
+
+def q8_mmq_arm_report(generator, arm):
+    """Name the Q8 MMQ decision(s) that actually ran for this arm."""
+
+    if arm in Q8_MMQ_SPLIT_ARMS:
+        actual = resolve_q8_mmq_prefill(generator)
+        strict_prefill = arm == "strict_prefill_production_decode"
+        return {
+            "prefill": False if strict_prefill else actual,
+            "decode": actual if strict_prefill else False,
+        }
+    enabled = q8_mmq_arm_enabled(arm)
+    return resolve_q8_mmq_prefill(generator) if enabled is None else enabled
+
+
 #: Arms whose retired Q4_DP4A64 process key disabled DP4A without changing the
 #: layer scope. They now bind the same decision on the owning generator/runner.
 Q4_DP4A_CURRENT_ARMS = frozenset({
@@ -167,6 +244,7 @@ def strict_environment(environ):
         key: value for key, value in environ.items()
         if (key.startswith(PREFIX) or key == "HIPENGINE_GGUF_WMMA_PREFILL")
         and key not in Q4_DP4A_ENV_KEYS
+        and key != _Q8_MMQ_ENV
     }
 
 
@@ -358,6 +436,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                     if wave_prefill is None else wave_prefill), gr_wave_scale(
                         runner, getattr(runner, "gr_wave_scale", False)
                         if gr_wave_prefill is None else gr_wave_prefill), q4_dp4a_split_scope(
+                            runner, arm, "prefill"), q8_mmq_split_scope(
                             runner, arm, "prefill"), production_moe_split_scope(
                             runner, arm, "prefill"):
         runner.reset()
@@ -365,7 +444,8 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with q4_dp4a_split_scope(runner, arm, "decode"), production_moe_split_scope(
+    with q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
+            runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"):
         for token in forced_ids:
             result = runner.step(token)
@@ -447,8 +527,20 @@ def main():
                 **ARMS["q8_selected_down_strict"],
                 **{key: strict_flags[key] for key in keys}}
         for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
-            ARMS["strict_plus_" + flag.lower()] = {
-                **strict_flags, PREFIX + flag: "1"}
+            arm = "strict_plus_" + flag.lower()
+            ARMS[arm] = dict(strict_flags)
+            if flag == "Q8_MMQ_PREFILL":
+                _Q8_MMQ_ARM_VALUES[arm] = True
+            else:
+                ARMS[arm][PREFIX + flag] = "1"
+        # The strict binding historically published Q8 MMQ off. Bind that owner
+        # decision explicitly now that the process key is gone.
+        for name in tuple(ARMS):
+            if (name.startswith("strict_plus_")
+                    or name in {"all_flags_strict", "gdn_flags_strict",
+                                "q8down_off_without_dense",
+                                "q8down_off_without_qsa"}):
+                _Q8_MMQ_ARM_VALUES.setdefault(name, False)
         controlled = set(key for values in ARMS.values() for key in values)
         bound = {key: os.environ.get(key) for key in controlled}
         try:
@@ -462,11 +554,13 @@ def main():
                     else:
                         os.environ[key] = value
                 os.environ.update(ARMS[arm])
-                if os.environ.get(PREFIX + "Q8_MMQ_PREFILL") == "1":
-                    generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
                 arm_scope.enter_context(production_moe_arm_scope(generator, arm))
+                arm_scope.enter_context(q8_mmq_arm_scope(generator, arm))
+                if resolve_q8_mmq_prefill(generator):
+                    # Explicit cold-path preparation for the arm's bound owner.
+                    generator.runner.configure_mmq_prefill_resources()
                 arm_scope.enter_context(q4_dp4a_arm_scope(generator, arm))
                 arm_scope.enter_context(gr_wave_scale(
                     generator.runner, gr_wave_arm_enabled(
@@ -519,6 +613,8 @@ def main():
                     "owner_overrides": {
                         "production_moe_prefill_enabled": (
                             production_moe_arm_report(generator, arm)),
+                        "q8_mmq_prefill_enabled": q8_mmq_arm_report(
+                            generator, arm),
                     },
                     "quality": quality,
                 }

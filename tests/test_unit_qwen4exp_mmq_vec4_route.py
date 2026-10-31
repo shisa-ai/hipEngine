@@ -52,17 +52,21 @@ class ProvisioningRunner:
         self._sidecars = sidecars
         self._q8_mmq_buffers = ()
         self._q8_mmq_weight_sidecars = None
+        self.q8_mmq_prefill_enabled = None
         self.dense_mmq_token64_enabled = False
         self.dense_mmq_raw_vector_enabled = True
         self.dense_mmq_vec4_enabled = True
         self.provisions = []
 
     def configure_mmq_prefill_resources(self):
-        self.provisions.append(dict(self.environment))
-        if self.environment.get(MMQ_PREFILL_ENV) == "1" and self._workspace:
+        self.provisions.append({
+            "q8_mmq_prefill_enabled": self.q8_mmq_prefill_enabled,
+            MMQ_PREPACK_ENV: self.environment.get(MMQ_PREPACK_ENV),
+        })
+        if self.q8_mmq_prefill_enabled is True and self._workspace:
             self._q8_mmq_buffers = (object(),)
         if (
-            self.environment.get(MMQ_PREFILL_ENV) == "1"
+            self.q8_mmq_prefill_enabled is True
             and self.environment.get(MMQ_PREPACK_ENV) == "1"
             and self._sidecars
         ):
@@ -170,12 +174,15 @@ def test_the_campaign_arm_binds_parent_then_candidate():
             # The raw child keeps the plan's published value.
             assert selection.raw_vector is True
             assert selection.token64 is True
-        # The prerequisite admits the parent and prepares the mapping.
-        assert env[MMQ_PREFILL_ENV] == "1"
+        # The prerequisite admits the parent owner and prepares the mapping;
+        # the ambient key is inert and unchanged.
+        assert owner.q8_mmq_prefill_enabled is True
+        assert env[MMQ_PREFILL_ENV] == "0"
         assert env[MMQ_PREPACK_ENV] == "1"
         assert owner._q8_mmq_buffers
         assert owner._q8_mmq_weight_sidecars.mapping
     assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "0"}
+    assert owner.q8_mmq_prefill_enabled is None
     with route_scope("q8-mmq-vec4", "after", owner, environment=env):
         with q8_mmq_lane_session(raw_vector=True, vec4=False):
             selection = q8_mmq_lane_selection()
@@ -193,12 +200,14 @@ def test_the_prerequisite_prepares_the_mapping_and_restores_the_switch():
     env = {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "0", "other": "keep"}
     owner = ProvisioningRunner(env)
     with mmq_vector_prerequisite(owner, "q8-mmq-vec4", environment=env) as record:
-        assert env[MMQ_PREFILL_ENV] == "1"
+        assert owner.q8_mmq_prefill_enabled is True
+        assert env[MMQ_PREFILL_ENV] == "0"
         assert env[MMQ_PREPACK_ENV] == "1"
         assert record["forced"][MMQ_PREPACK_ENV] == "1"
         assert record["previous"][MMQ_PREPACK_ENV] == "0"
         assert owner._q8_mmq_weight_sidecars.mapping
     assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "0", "other": "keep"}
+    assert owner.q8_mmq_prefill_enabled is None
 
 
 def test_the_prerequisite_fails_loudly_without_the_mapping():
@@ -208,6 +217,7 @@ def test_the_prerequisite_fails_loudly_without_the_mapping():
         with mmq_vector_prerequisite(owner, "q8-mmq-vec4", environment=env):
             raise AssertionError("the arm must not run without the mapping")
     assert env == {MMQ_PREFILL_ENV: "0"}
+    assert owner.q8_mmq_prefill_enabled is None
 
 
 def test_the_control_record_names_the_field_and_the_prerequisite():
@@ -218,8 +228,9 @@ def test_the_control_record_names_the_field_and_the_prerequisite():
     assert record["before"] is False
     assert record["after"] is True
     assert record["published_value"] is True
-    assert record["prerequisite_environment"] == {
-        MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "1"}
+    assert record["prerequisite_environment"] == {MMQ_PREPACK_ENV: "1"}
+    assert record["prerequisite_owner"] == {
+        "q8_mmq_prefill_enabled": True}
 
 
 def test_the_state_gate_arm_writes_no_process_switch():

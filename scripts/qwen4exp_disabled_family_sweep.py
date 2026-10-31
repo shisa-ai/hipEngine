@@ -52,7 +52,8 @@ FAMILIES: tuple[dict, ...] = (
     },
     {
         "family": "Q8_MMQ_PREFILL",
-        "env": {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"},
+        "env": {},
+        "owner": {"q8_mmq_prefill": "on"},
     },
     # The f16 WMMA dense Q8_0 selector is a layer list rather than a flag, and
     # it is not one of the recovery flags, so it was absent from the original
@@ -157,6 +158,8 @@ def _run(
         if "production_moe_prefill" in owner:
             command += [
                 "--production-moe-prefill", owner["production_moe_prefill"]]
+        if "q8_mmq_prefill" in owner:
+            command += ["--q8-mmq-prefill", owner["q8_mmq_prefill"]]
     completed = subprocess.run(
         command, cwd=ROOT, capture_output=True, text=True, timeout=3600
     )

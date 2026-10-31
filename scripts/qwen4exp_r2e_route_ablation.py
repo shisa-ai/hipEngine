@@ -43,7 +43,6 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 # route -> (env name(s), disabled value)
 ROUTES = {
-    "q8_mmq": (("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",), "0"),
     "q4_iu8": (("HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"), "0"),
 }
@@ -59,6 +58,7 @@ RUNNER_ROUTE_MODES = {
 # ablation binds the field instead of writing a process key nothing reads.
 RUNNER_ROUTE_OFF = {
     "moe_wmma_27_47": "production_moe_prefill_enabled",
+    "q8_mmq": "q8_mmq_prefill_enabled",
     "decode_dp4a": "q4_dp4a_decode",
     "row4_gemv": "q5k_row4_prefill",
     "q51_down_m1": "q51_down_m1",

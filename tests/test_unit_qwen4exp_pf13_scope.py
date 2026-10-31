@@ -342,6 +342,9 @@ def test_the_ablation_binds_the_runner_fields_instead_of_env_keys() -> None:
     from scripts import qwen4exp_r2e_route_ablation as ablation
 
     assert ablation.RUNNER_ROUTE_OFF == {
+        "moe_wmma_27_47": "production_moe_prefill_enabled",
+        "q8_mmq": "q8_mmq_prefill_enabled",
+        "decode_dp4a": "q4_dp4a_decode",
         "row4_gemv": "q5k_row4_prefill",
         "q51_down_m1": "q51_down_m1",
         "forkb_grouped_down": "forkb_grouped_down",

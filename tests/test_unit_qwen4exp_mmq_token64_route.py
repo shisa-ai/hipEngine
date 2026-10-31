@@ -209,14 +209,15 @@ def test_the_campaign_arm_is_a_scoped_control_not_an_env_write():
     owner = ProvisioningRunner(env)
     with route_scope("mmq-token64", "after", owner, environment=env):
         selection = q8_mmq_lane_selection()
-        assert env == {MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}
-        assert owner.provisions == [{MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}]
+        assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "0"}
+        assert owner.provisions == [{
+            "q8_mmq_prefill_enabled": True, MMQ_PREPACK_ENV: "0"}]
     assert selection.token64 is True
     assert selection.raw_vector is True
     assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "1"}
     with route_scope("mmq-token64", "before", owner, environment=env):
         selection = q8_mmq_lane_selection()
-        assert env == {MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}
+        assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "0"}
     assert selection.token64 is False
     assert selection.raw_vector is True
     assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "1"}
@@ -264,10 +265,10 @@ def test_the_campaign_arm_records_the_parent_it_admits():
     assert record["parent_bound_value"] is True
     assert record["before"] is False and record["after"] is True
     assert record["published_value"] is True
-    assert record["prerequisite_environment"] == {
-        MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}
-    assert record["prerequisite_previous"] == {
-        MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "1"}
+    assert record["prerequisite_environment"] == {MMQ_PREPACK_ENV: "0"}
+    assert record["prerequisite_previous"] == {MMQ_PREPACK_ENV: "1"}
+    assert record["prerequisite_owner"] == {
+        "q8_mmq_prefill_enabled": True}
     assert "zero calls" in record["reason"]
 
 

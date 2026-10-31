@@ -89,11 +89,19 @@ def test_candidate_owner_provenance_reports_the_bound_decision(
 ) -> None:
     module = _load_script()
     fields = module._candidate_owner_provenance(
-        SimpleNamespace(production_moe_prefill_enabled=override), resolved)
+        SimpleNamespace(
+            production_moe_prefill_enabled=override,
+            q8_mmq_prefill_enabled=None,
+        ),
+        resolved,
+        False,
+    )
 
     assert fields == {
         "production_moe_prefill_enabled": expected,
         "production_moe_prefill_override": override,
+        "q8_mmq_prefill_enabled": False,
+        "q8_mmq_prefill_override": None,
     }
 
 
@@ -115,6 +123,7 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         environment=environment,
         qsa_wmma_enabled=qsa_wmma,
         production_moe_prefill_enabled=override,
+        q8_mmq_prefill_enabled=None,
     )
 
     assert module._candidate_named_profile_intact(spec) is expected
@@ -295,17 +304,19 @@ def test_q8_fallback_preserves_other_production_choices() -> None:
     assert candidate.base_profile == "production"
     assert candidate.environment == {
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
     }
+    assert candidate.q8_mmq_prefill_enabled is False
 
 
 def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
     candidate = _load_script().CANDIDATES["production_conservative"]
     assert candidate.base_profile == "production"
     assert set(candidate.environment.values()) == {"0"}
-    for suffix in ("Q8_MMQ_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
+    for suffix in ("Q8_0_SELECTED_WMMA_DOWN",
                    "QSA_ORDERED_DECODE", "GDN_COLWARPS_PREFILL"):
         assert candidate.environment["HIPENGINE_QWEN4_EXP_" + suffix] == "0"
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in candidate.environment
+    assert candidate.q8_mmq_prefill_enabled is False
     assert candidate.q4_dp4a_decode_enabled is False
     assert candidate.q4_dp4a_decode_layers == frozenset()
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in candidate.environment

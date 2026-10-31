@@ -98,6 +98,8 @@ def test_arms_cover_every_disabled_prefill_selector(module):
     for owner in module.OWNER_ARMS.values():
         if "production_moe_prefill" in owner:
             covered.add("PRODUCTION_MOE_PREFILL")
+        if "q8_mmq_prefill" in owner:
+            covered.add("Q8_MMQ_PREFILL")
     assert still_disabled <= covered, sorted(still_disabled - covered)
 
 def test_the_restored_flags_are_not_in_the_disabled_set(module):
@@ -123,11 +125,18 @@ def test_the_restored_flags_are_not_in_the_disabled_set(module):
     assert len(still_disabled) == 8
 
 
-def test_production_moe_is_owner_state_not_an_environment_arm(module):
-    key = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
-    assert all(key not in overrides for overrides in module.ARMS.values())
+def test_owner_state_routes_are_not_environment_arms(module):
+    for key in (
+        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
+    ):
+        assert all(key not in overrides for overrides in module.ARMS.values())
     assert module.OWNER_ARMS["moe"] == {"production_moe_prefill": "on"}
-    assert module.OWNER_ARMS["all_prefill"] == {"production_moe_prefill": "on"}
+    assert module.OWNER_ARMS["q8_mmq"] == {"q8_mmq_prefill": "on"}
+    assert module.OWNER_ARMS["all_prefill"] == {
+        "production_moe_prefill": "on",
+        "q8_mmq_prefill": "on",
+    }
 
 
 def test_baseline_arm_enables_nothing(module):

@@ -6,6 +6,7 @@ mentioning the expected answer is insufficient. Reference failures remain visibl
 """
 
 import argparse
+from contextlib import ExitStack
 import fcntl
 import hashlib
 import json
@@ -148,8 +149,17 @@ def main():
             previous = {key: os.environ.get(key) for key in overrides}
             os.environ.update(overrides)
             packet["cases"][arm] = []
+            owner_scope = ExitStack()
             try:
-                if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
+                from hipengine.runtime.qwen4_exp_runner import (
+                    q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
+                )
+                if arm != "strict" and spec.q8_mmq_prefill_enabled is not None:
+                    owner_scope.enter_context(q8_mmq_prefill_enabled(
+                        generator, spec.q8_mmq_prefill_enabled))
+                packet.setdefault("q8_mmq_prefill_enabled", {})[arm] = (
+                    resolve_q8_mmq_prefill(generator))
+                if packet["q8_mmq_prefill_enabled"][arm]:
                     generator.runner.configure_mmq_prefill_resources()
                 counted = arm == "candidate" and spec.requires_dispatch_count
                 with count_candidate_dispatch(
@@ -182,6 +192,7 @@ def main():
                 packet["error"] = f"{type(error).__name__}: {error}"
                 raise
             finally:
+                owner_scope.close()
                 for key, value in previous.items():
                     if value is None:
                         os.environ.pop(key, None)

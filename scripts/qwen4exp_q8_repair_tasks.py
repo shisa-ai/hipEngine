@@ -169,10 +169,18 @@ def main():
                                        overrides=dict(overrides), cases=[])
             dispatch_stack = ExitStack()
             try:
+                from hipengine.runtime.qwen4_exp_runner import (
+                    q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
+                )
+                if name != "strict" and candidate.q8_mmq_prefill_enabled is not None:
+                    dispatch_stack.enter_context(q8_mmq_prefill_enabled(
+                        generator, candidate.q8_mmq_prefill_enabled))
+                report["arms"][name]["q8_mmq_prefill_enabled"] = (
+                    resolve_q8_mmq_prefill(generator))
+                if report["arms"][name]["q8_mmq_prefill_enabled"]:
+                    generator.runner.configure_mmq_prefill_resources()
                 counter = (dispatch_stack.enter_context(task_dispatch_context(candidate))
                            if name != "strict" else None)
-                if overrides.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
-                    generator.runner.configure_mmq_prefill_resources()
                 for prompt in prompts:
                     ids = build_chat_prompt(generator.tokenizer, prompt["prompt"])
                     check_prompt_budget(ids, args.prompt_token_budget)

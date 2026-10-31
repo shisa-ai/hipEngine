@@ -394,7 +394,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     # stays production-bound.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
+    assert production_generator.q8_mmq_prefill_enabled is True
+    assert fake_runner.q8_mmq_prefill_enabled is True
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
     # The PF-1 fork-b and Q5_1 down M1 leaves are request-local runner state:
     # the binder selects them without writing a process-wide switch.
@@ -603,7 +605,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.production_moe_prefill_enabled is False
     assert PRODUCTION_MOE_PREFILL_ENV not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
+    assert strict_generator.q8_mmq_prefill_enabled is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
     assert strict_generator.q51_down_m1 is False
     assert strict_generator.forkb_grouped_down is False
@@ -1200,14 +1203,14 @@ def test_mmq_vector_children_follow_the_q8_mmq_lane(profile, quant, enabled):
 
 
 def test_ud_production_publishes_the_vector_children_while_the_parent_is_off():
-    """The supported diagnostic re-enables the parent after the bind.
+    """The supported diagnostic re-enables the parent owner after the bind.
 
-    The UD recovery zeroes ``HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`` after the
-    env table is published, so the parent stays off on the shipped lane. A
-    diagnostic that sets the parent back to 1 and provisions its resources must
-    still get the vectorized children the production plan selected; publishing
-    the children only when the parent is on would silently measure the scalar
-    owners instead.
+    The UD recovery publishes ``q8_mmq_prefill_enabled=False`` after the
+    profile table, so the parent stays off on the shipped lane. A diagnostic
+    that binds the owner true and provisions its resources must still get the
+    vectorized children the production plan selected; publishing the children
+    only when the parent is on would silently measure the scalar owners
+    instead.
     """
 
     register_gfx1151_kernels(replace=True)
@@ -1216,7 +1219,9 @@ def test_ud_production_publishes_the_vector_children_while_the_parent_is_off():
     runner = SimpleNamespace()
     generator = SimpleNamespace(runner=runner)
     resolved.binder(generator, resolved)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
+    assert generator.q8_mmq_prefill_enabled is False
+    assert runner.q8_mmq_prefill_enabled is False
     assert runner.dense_mmq_raw_vector_enabled is True
     assert runner.dense_mmq_vec4_enabled is True
     assert runner.dense_mmq_token64_enabled is True

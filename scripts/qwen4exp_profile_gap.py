@@ -41,7 +41,6 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
 )
 
 ROUTE_ENV_KEYS = (
-    "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
@@ -408,6 +407,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the production MoE prefill gate is owner state; use "
                 "--production-moe-prefill instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL":
+            raise ValueError(
+                "the Q8 MMQ prefill gate is owner state; use "
+                "--q8-mmq-prefill instead of --override"
+            )
         if key in overrides:
             raise ValueError(f"duplicate override for {key}")
         overrides[key] = value
@@ -417,19 +421,26 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
 def _named_profile_intact(
     overrides: dict[str, str],
     production_moe_override: bool | None,
+    q8_mmq_override: bool | None = None,
 ) -> bool:
     """A named profile is intact only when no post-binder override is active."""
 
-    return not bool(overrides) and production_moe_override is None
+    return (
+        not bool(overrides)
+        and production_moe_override is None
+        and q8_mmq_override is None
+    )
 
 
 def _configuration_class(
     overrides: dict[str, str],
     production_moe_override: bool | None,
+    q8_mmq_override: bool | None = None,
 ) -> str:
     return (
         "diagnostic_post_binder_override"
         if overrides or production_moe_override is not None
+        or q8_mmq_override is not None
         else "named_profile"
     )
 
@@ -437,25 +448,16 @@ def _configuration_class(
 def _apply_post_binder_overrides(
     overrides: dict[str, str], runner: Any = None
 ) -> tuple[dict[str, str | None], dict[str, str | None]]:
-    """Apply diagnostic overrides after the profile binder has run.
+    """Apply diagnostic environment overrides after the profile binder.
 
-    Some selectors own resources that the binder allocates during its own
-    pass, so flipping the flag afterwards is not enough: the binder reads
-    ``HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`` when deciding whether to build the
-    MMQ sidecars, and with the production default it has already returned
-    early. Re-run the same hook the binder would have run, so an override that
-    turns the selector on is actually in effect rather than silently inert.
+    Owner-state routes (the Q4 DP4A pair, the production MoE gate and the Q8
+    MMQ prefill gate) are not environment keys and are bound separately. This
+    helper only moves the remaining process-owned diagnostic switches.
     """
 
     effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
     bound = {key: os.environ.get(key) for key in effective_route_keys}
     os.environ.update(overrides)
-    if runner is not None:
-        configure = getattr(runner, "configure_mmq_prefill_resources", None)
-        if callable(configure) and os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
-        ) not in {"", "0", "false", "False"}:
-            configure()
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
 
@@ -563,6 +565,14 @@ def build_parser() -> argparse.ArgumentParser:
             "after the binder"
         ),
     )
+    parser.add_argument(
+        "--q8-mmq-prefill",
+        choices=("on", "off"),
+        help=(
+            "Explicit Q8 MMQ prefill workspace owner override applied after "
+            "the binder; enabling it prepares the workspace explicitly"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -610,6 +620,10 @@ def main() -> None:
     production_moe_override = (
         None if args.production_moe_prefill is None
         else args.production_moe_prefill == "on"
+    )
+    q8_mmq_override = (
+        None if args.q8_mmq_prefill is None
+        else args.q8_mmq_prefill == "on"
     )
     q4_dp4a_override = None
     if args.q4_dp4a_decode is not None or args.q4_dp4a_layers is not None:
@@ -719,12 +733,13 @@ def main() -> None:
         "execution_profile_requested": args.execution_profile,
         "execution_profile": resolved.profile.value,
         "configuration_class": _configuration_class(
-            overrides, production_moe_override),
+            overrides, production_moe_override, q8_mmq_override),
         "named_profile_intact": _named_profile_intact(
-            overrides, production_moe_override),
+            overrides, production_moe_override, q8_mmq_override),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
         "production_moe_prefill_enabled": None,
+        "q8_mmq_prefill_enabled": None,
         "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
@@ -756,6 +771,27 @@ def main() -> None:
 
             report["production_moe_prefill_enabled"] = (
                 resolve_production_moe_prefill(generator))
+        report["q8_mmq_prefill_override"] = q8_mmq_override
+        if q8_mmq_override is not None:
+            from hipengine.runtime.qwen4_exp_runner import (
+                q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
+            )
+
+            q4_scope.enter_context(q8_mmq_prefill_enabled(
+                generator, q8_mmq_override))
+            report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
+                generator)
+        else:
+            from hipengine.runtime.qwen4_exp_runner import (
+                resolve_q8_mmq_prefill,
+            )
+
+            report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
+                generator)
+        if report["q8_mmq_prefill_enabled"]:
+            # Enabling a scoped diagnostic must not allocate secretly: the
+            # script names the cold-path resource operation explicitly.
+            runner.configure_mmq_prefill_resources()
         if q4_dp4a_override is not None:
             from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
 

@@ -76,7 +76,7 @@ ARMS: dict[str, dict[str, str]] = {
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": _L(PRODUCTION_Q4_IU8_PREFILL_LAYERS),
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
     },
-    "q8_mmq": {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1"},
+    "q8_mmq": {},
     "gr_iu8": {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"},
     "gr_iu8_down": {"HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1"},
     "gr_wide": {"HIPENGINE_QWEN4_EXP_GR_WIDE": "1"},
@@ -100,7 +100,6 @@ ARMS: dict[str, dict[str, str]] = {
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": _L(PRODUCTION_Q4_IU8_PREFILL_LAYERS),
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
@@ -117,7 +116,11 @@ ARMS: dict[str, dict[str, str]] = {
 #: Arms whose production grouped-MoE gate is owner state rather than an env key.
 OWNER_ARMS: dict[str, dict[str, str]] = {
     "moe": {"production_moe_prefill": "on"},
-    "all_prefill": {"production_moe_prefill": "on"},
+    "q8_mmq": {"q8_mmq_prefill": "on"},
+    "all_prefill": {
+        "production_moe_prefill": "on",
+        "q8_mmq_prefill": "on",
+    },
 }
 
 
@@ -165,6 +168,8 @@ def _run_arm(
     if "production_moe_prefill" in owner:
         command += [
             "--production-moe-prefill", owner["production_moe_prefill"]]
+    if "q8_mmq_prefill" in owner:
+        command += ["--q8-mmq-prefill", owner["q8_mmq_prefill"]]
 
     started = time.monotonic()
     log = directory / "process.log"

@@ -173,9 +173,15 @@ def main():
             return result
 
         try:
-            for flag in ("GR_IU8", "GR_IU8_DOWN", "Q8_MMQ_PREFILL"):
+            from hipengine.runtime.qwen4_exp_runner import resolve_q8_mmq_prefill
+
+            if resolve_q8_mmq_prefill(generator):
+                raise ValueError(
+                    "production reference must keep the Q8 MMQ owner off")
+            for flag in ("GR_IU8", "GR_IU8_DOWN"):
                 if os.environ.get("HIPENGINE_QWEN4_EXP_" + flag) != "0":
-                    raise ValueError("production reference must keep failed GR/dense arms off")
+                    raise ValueError(
+                        "production reference must keep failed GR arms off")
             baseline = generator.runner.prefill(case["prompt_token_ids"])
             baseline_logits = np.array(baseline.logits, copy=True)
             baseline_state = _state_summary(generator.runner)

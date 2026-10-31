@@ -102,7 +102,8 @@ def test_real_gr_alias_and_candidate_scopes_match():
         assert spec.dispatch_shape_positions == (3, 4, 5)
         assert spec.environment == {
             "HIPENGINE_QWEN4_EXP_" + flag: "1" if flag == enabled else "0"
-            for flag in ("GR_IU8", "GR_IU8_DOWN", "Q8_MMQ_PREFILL")}
+            for flag in ("GR_IU8", "GR_IU8_DOWN")}
+        assert spec.q8_mmq_prefill_enabled is False
         with count_candidate_dispatch(
             key=KernelKey(*spec.candidate_key), direct_target=spec.direct_dispatch_target,
             direct_reference=spec.direct_dispatch_reference,
