@@ -1102,7 +1102,8 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     # VGPR against the parent's 72), so they are a rejected lever, not a selectable
     # variant, and a registry key would make a dead path reachable from dispatch. They
     # stay exported because the screen names them and a wider-register-file machine
-    # class may want to re-measure them; see docs/REFACTOR.md.
+    # class may want to re-measure them. Retention decision:
+    # worklog/entries/20261031T200910.873594Z-cleanup-refactor-r0034-gr-row-reuse-retention-2cec4e.md
     register(
         KernelKey(
             "hip_gfx1100",

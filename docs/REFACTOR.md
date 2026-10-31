@@ -167,18 +167,6 @@ capability distinctions, registered strict fallback and other-quant compatibilit
 symbols and full numerical/state behavior for each affected profile rather than assuming one
 restored path qualifies its neighbors.
 
-### R0034 — Decide retention of unregistered GR row-reuse comparisons
-
-Owner: `tests/test_gpu_qwen4exp_gr_row_batch8.py`.
-
-Scope: `_row_batch`; `tests/test_gpu_qwen4exp_gr_row_batch8.py`.
-
-Done when: Decide whether to retain the unregistered GR rowbatch8, rowbatch8-wave-scale and
-rowbatch16-wave-scale comparisons for a different register-resource class or cost model. If retiring
-them, remove their exports, wrappers and exclusive `_row_batch` plumbing together after checking
-shared instantiations. Keep `tests/test_gpu_qwen4exp_gr_row_batch8.py` registry-exclusion coverage
-until retirement.
-
 ### R0060 — Bind historical dense serving evidence when its artifact is available
 
 Owner: `hipengine/models/qwen35.py`.
