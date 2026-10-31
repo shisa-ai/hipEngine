@@ -136,6 +136,17 @@ from hipengine.server.metrics import (
     _resident_loop_metric_values,
     _scheduler_metric_values,
 )
+# Readiness payload composition takes a normalized snapshot; engine/service reads,
+# lifecycle state and queue getters stay in this module.
+from hipengine.server.readiness import (
+    ReadinessConfig,
+    ReadinessQueue,
+    ReadinessSnapshot,
+    ReadinessStartup,
+    build_health_payload,
+    build_readiness_payload,
+    readiness_http_status,
+)
 from hipengine.speculative.accounting import span_accounting
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
@@ -7357,7 +7368,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     async def readiness_payload() -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
-        model_identity = _server_model_identity(config, engine)
+        model_identity = dict(_server_model_identity(config, engine))
         readiness: _ReadinessState = app.state.hipengine_readiness
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
         service_health = _engine_service_health(engine)
@@ -7366,146 +7377,97 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             # Probing the live loop touches engine state, so keep it off the
             # event loop like the rest of the readiness work.
             live_snapshot = await asyncio.to_thread(_live_loop_snapshot, engine) or {}
-            graph = _live_graph_metric_values(engine, live_snapshot=live_snapshot)
-            pool = _live_pool_metric_values(engine, live_snapshot=live_snapshot)
+            graph = deepcopy(_live_graph_metric_values(engine, live_snapshot=live_snapshot))
+            pool = deepcopy(_live_pool_metric_values(engine, live_snapshot=live_snapshot))
         else:
             # A failed or closed service can block or raise on its live loop, so
             # report static metric defaults instead of probing it.
             live_snapshot = None
-            graph = _live_graph_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT)
-            pool = _live_pool_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT)
-        prefix_cache = _prefix_cache_metric_values(live_snapshot)
+            graph = deepcopy(_live_graph_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT))
+            pool = deepcopy(_live_pool_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT))
+        prefix_cache = deepcopy(_prefix_cache_metric_values(live_snapshot))
         service_health = _engine_service_health(engine)
         service_ready = _service_health_accepts_requests(service_health)
+        service_health = deepcopy(service_health)
+        service_diagnostics = (
+            tuple(_service_health_diagnostics(service_health))
+            if service_health is not None
+            else ()
+        )
         engine_service = _engine_service_payload(engine)
-        diagnostics: list[str] = []
-        if not readiness.ready:
-            diagnostics.append("server startup is not ready; check startup.error and server logs")
-            if readiness.startup_error:
-                diagnostics.append(
-                    f"{readiness.startup_error.get('message')}: {readiness.startup_error.get('guidance')}"
+        engine_service_view = None if engine_service is None else deepcopy(engine_service)
+        # Startup fields are read after the live await, matching the previous
+        # payload's view of concurrent startup mutations. Copy the consumed
+        # mappings so the owner never holds live app state.
+        startup_error = deepcopy(readiness.startup_error)
+        last_startup_timings = deepcopy(readiness.last_startup_timings)
+        last_startup_memory = deepcopy(readiness.last_startup_memory)
+        last_startup_checks = deepcopy(readiness.last_startup_checks)
+        snapshot = ReadinessSnapshot(
+            model_identity=model_identity,
+            startup=ReadinessStartup(
+                ready=bool(readiness.ready),
+                status=readiness.status,
+                eager_load=bool(readiness.eager_load),
+                model_loaded=bool(readiness.model_loaded),
+                warmup_complete=bool(readiness.warmup_complete),
+                startup_error=startup_error,
+                last_startup_timings=last_startup_timings,
+                last_startup_memory=last_startup_memory,
+                last_startup_checks=last_startup_checks,
+            ),
+            configured_max_context_tokens=configured_max_context_tokens(),
+            effective_max_context_tokens=effective_context,
+            loaded_model_count=0 if engine is None else 1,
+            kv_capability=deepcopy(_kv_capability_provenance(engine)),
+            service_health=service_health,
+            service_ready=service_ready,
+            service_diagnostics=service_diagnostics,
+            engine_service=engine_service_view,
+            graph=graph,
+            pool=pool,
+            prefix_cache=prefix_cache,
+            kv_capacity_estimate=deepcopy(_kv_capacity_estimate_payload(engine)),
+            selected_device=deepcopy(_selected_device_payload(config, engine)),
+            dms_policy=deepcopy(
+                _nested_mapping(
+                    _nested_mapping(live_snapshot, "runner"), "model_runner"
+                ).get("dms")
+            ),
+            scheduler_fairness=deepcopy(
+                _scheduler_fairness_capability(
+                    continuous_decode=_engine_supports_controlled_streaming(engine)
                 )
-        scratch_check = readiness.last_startup_checks.get("scratch_probe")
-        if isinstance(scratch_check, Mapping) and str(scratch_check.get("status")) == "reduced":
-            diagnostics.append(
-                "startup scratch probe ran at width "
-                f"{scratch_check.get('max_batch_size')} instead of "
-                f"{scratch_check.get('requested_max_batch_size')}: "
-                f"{scratch_check.get('width_reduction_detail')}"
-            )
-        runtime_status = readiness.status
-        runtime_ready = bool(readiness.ready)
-        if engine_service is not None and not bool(engine_service.get("serving", True)):
-            unhealthy = engine_service.get("unhealthy")
-            if unhealthy:
-                runtime_status = "unhealthy"
-                diagnostics.append(
-                    "resident engine service stopped serving after a fatal execution "
-                    f"failure ({unhealthy.get('exception_type')}: {unhealthy.get('message')})"
-                    + (
-                        f" at {unhealthy.get('location')}"
-                        if unhealthy.get("location")
-                        else ""
-                    )
-                    + "; restart the server to restore serving"
-                )
-            else:
-                runtime_status = "closed"
-                diagnostics.append(
-                    "resident engine service is closed; restart the server to restore serving"
-                )
-            runtime_ready = False
-        elif service_health is not None and not service_ready:
-            # A service that is neither serving nor closed still fails its
-            # lifetime checks; report why instead of a bare status change.
-            runtime_status = "unavailable"
-            runtime_ready = False
-            diagnostics.extend(_service_health_diagnostics(service_health))
-        payload: dict[str, Any] = {
-            "object": "hipengine.readiness",
-            "status": runtime_status,
-            "ready": runtime_ready,
-            "diagnostics": diagnostics,
-            "engine_service": dict(engine_service) if engine_service is not None else None,
-            "model": {
-                **model_identity,
-                "loaded": bool(readiness.model_loaded),
-                "loaded_model_count": 0 if engine is None else 1,
-                "kv_capability": _kv_capability_provenance(engine),
-            },
-            "startup": {
-                "eager_load": bool(readiness.eager_load),
-                "warmup_complete": bool(readiness.warmup_complete),
-                "last_timings_s": dict(readiness.last_startup_timings),
-                "checks": dict(readiness.last_startup_checks),
-                "memory": dict(readiness.last_startup_memory),
-                "error": readiness.startup_error,
-            },
-            "context": {
-                "configured_max_context_tokens": configured_max_context_tokens(),
-                "effective_max_context_tokens": (
-                    None if effective_context is None else int(effective_context)
-                ),
-                "chat_default_max_tokens": config.chat_default_max_tokens,
-            },
-            "kv_capacity": {
-                "storage": config.kv_storage,
-                "scale_dtype": config.kv_scale_dtype,
-                "scale_granularity": config.kv_scale_granularity,
-                "estimate": _kv_capacity_estimate_payload(engine),
-                "pool": pool,
-            },
-            "prefix_cache": prefix_cache,
-            "dms": {
-                "requested_metadata_path": (
+            ),
+            queue=ReadinessQueue(
+                depth=generation_batcher.queue_depth(),
+                max_depth=generation_batcher.max_queue_size(),
+                worker_active=generation_batcher.active(),
+                active_requests=generation_batcher.active_requests(),
+                max_active_requests=generation_batcher.max_active_requests(),
+            ),
+            sessions=deepcopy(chat_session_summary()),
+            config=ReadinessConfig(
+                chat_default_max_tokens=config.chat_default_max_tokens,
+                kv_storage=config.kv_storage,
+                kv_scale_dtype=config.kv_scale_dtype,
+                kv_scale_granularity=config.kv_scale_granularity,
+                dms_requested_metadata_path=(
                     config.dms.metadata_path if config.dms is not None else config.dms_metadata_path
                 ),
-                "policy": _nested_mapping(_nested_mapping(live_snapshot, "runner"), "model_runner").get("dms"),
-            },
-            "graph_cache": {
-                "entries": graph["entries"],
-                "hits": graph["hits"],
-                "misses": graph["misses"],
-                "replay_hit_rate": graph["replay_hit_rate"],
-            },
-            "device": _selected_device_payload(config, engine),
-            "queue": {
-                "depth": generation_batcher.queue_depth(),
-                "max_depth": generation_batcher.max_queue_size(),
-                "worker_active": generation_batcher.active(),
-                "active_requests": generation_batcher.active_requests(),
-                "max_active_requests": generation_batcher.max_active_requests(),
-                "scheduler_fairness": _scheduler_fairness_capability(
-                    continuous_decode=_engine_supports_controlled_streaming(engine)
-                ),
-                "batch_window_ms": float(config.generation_batch_window_ms),
-            },
-            "sessions": chat_session_summary(),
-        }
-        if service_health is not None:
-            # The documented lifetime quartet, kept apart from the service's own
-            # ``status``/``serving`` fields published under ``engine_service``.
-            payload["service"] = {
-                "accepting_requests": bool(service_health.get("accepting_requests")),
-                "driver_alive": bool(service_health.get("driver_alive")),
-                "closing": bool(service_health.get("closing")),
-                "closed": bool(service_health.get("closed")),
-                "failure": service_health.get("failure"),
-            }
-        return payload
+                generation_batch_window_ms=float(config.generation_batch_window_ms),
+            ),
+        )
+        return build_readiness_payload(snapshot)
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        return {
-            "object": "hipengine.health",
-            "status": "ok",
-            "model": config.model_id,
-        }
+        return build_health_payload(config.model_id)
 
     @app.get("/ready")
     async def ready() -> JSONResponse:
         payload = await readiness_payload()
-        return JSONResponse(status_code=200 if payload["ready"] else 503, content=payload)
+        return JSONResponse(status_code=readiness_http_status(payload), content=payload)
 
     @app.get("/v1/hipengine/sessions")
     async def list_sessions(_auth: None = Depends(require_auth)) -> dict[str, Any]:

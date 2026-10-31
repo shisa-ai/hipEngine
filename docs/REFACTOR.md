@@ -4198,8 +4198,8 @@ Scope: `hipengine/server/multimodal.py`, `hipengine/server/tool_stream.py`,
 
 **Remaining boundary design:** define explicit application-state dependencies for routers, model
 lifecycle and stream translation, then extract cohesive units so `create_app()` composes them.
-Keep engine/stat collection and readiness attribution outside the pure metrics owner; immutable
-metrics inputs contain normalized consumed values, not raw engine objects or borrowed live maps.
+Keep engine/stat collection outside the pure response owners; immutable metrics inputs
+contain normalized consumed values, not raw engine objects or borrowed live maps.
 Preserve transport backpressure and queue admission while keeping device scheduling,
 request state and commit ownership in the generation engine. Separate remaining tool/structured
 request and result handling and SSE accounting without changing public errors or response shapes.

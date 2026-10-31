@@ -448,7 +448,10 @@ Prometheus counters, metric normalization and text exposition live in
 `hipengine/server/metrics.py`, with only standard-library dependencies. The
 application collects one live snapshot per scrape, normalizes consumed fields
 before freezing them, and supplies an immutable metrics snapshot. Engine/stat
-lookup, capability discovery and readiness attribution stay in the application.
+lookup and capability discovery stay in the application. Readiness and health
+payload composition lives in `hipengine/server/readiness.py`; the application
+collects detached startup, service, queue and resource values, while lifecycle
+state and live engine reads remain application-owned.
 
 ### Layer Diagram
 

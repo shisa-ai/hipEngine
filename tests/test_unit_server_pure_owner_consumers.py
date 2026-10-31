@@ -1,9 +1,10 @@
 """Consumer contract for the pure server owner modules.
 
 ``hipengine.server.schemas``, ``hipengine.server.json_schema``,
-``hipengine.server.chat_output`` and ``hipengine.server.metrics`` are pure
-owners under the HTTP boundary.  ``hipengine.server.api`` imports the names its
-own application code references; it is not a compatibility facade for the rest.
+``hipengine.server.chat_output``, ``hipengine.server.metrics`` and
+``hipengine.server.readiness`` are pure owners under the HTTP boundary.
+``hipengine.server.api`` imports the names its own application code references;
+it is not a compatibility facade for the rest.
 
 These checks pin the two properties that keep that true:
 
@@ -28,6 +29,7 @@ OWNER_PATHS = {
     "hipengine.server.json_schema": REPO_ROOT / "hipengine" / "server" / "json_schema.py",
     "hipengine.server.chat_output": REPO_ROOT / "hipengine" / "server" / "chat_output.py",
     "hipengine.server.metrics": REPO_ROOT / "hipengine" / "server" / "metrics.py",
+    "hipengine.server.readiness": REPO_ROOT / "hipengine" / "server" / "readiness.py",
 }
 SCANNED_ROOTS = ("hipengine", "tests", "scripts")
 API_MODULES = ("hipengine.server.api", "hipengine.server")
