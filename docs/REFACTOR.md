@@ -1442,27 +1442,6 @@ final-output/hidden-seed accounting, repeated output and cleanup recorded. Do no
 arithmetic promotion as a prerequisite for running the existing default; apply the numerical gates
 only to changed math.
 
-### R0281-FAIR-BURST — Scheduler control retirement decision
-
-Owner: `hipengine/generation/engine_loop.py`.
-
-Scope: `fair_prefill_burst_chunks`; `HIPENGINE_FAIR_PREFILL_BURST_CHUNKS`.
-
-**Decision needed:** retain this as an operator scheduling control, or replace it with a named
-workload-derived policy. A release window and a defaults-only rerun do not migrate the live CLI/env
-callers, tuning protocol, reconfiguration or telemetry. Keep those interfaces and defaults unchanged
-until that decision; do not add backend branches to the scheduler.
-
-Done when: if retained, document the supported control and remove this retirement item. If
-replaced, migrate `hipengine/llm.py`, engine-loop configuration,
-`scripts/gguf_production_load_gate.py`, protocol fixtures and metrics together. Run
-`tests/test_integration_generation_engine_loop_burst.py`, engine-loop CLI/env nodes in
-`tests/test_integration_generation_batch_scheduler.py`, generator-default nodes in
-`tests/test_unit_llm_generate.py`, load-gate tuning nodes and resident-loop metrics nodes in
-`tests/test_integration_server_metrics.py`. A behavior change also needs mixed-arrival public serving
-validation of bounded decode interruption, completion, cancellation and cleanup; cold-prefill
-throughput alone does not validate fairness.
-
 ### R0281-NATIVE-CYCLE / R0384 — Native diagnostic interfaces and graph composition
 
 Owner: `scripts/gguf_mtp_bench.py`.
