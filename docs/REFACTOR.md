@@ -389,13 +389,11 @@ Owner: `scripts/laguna_grouped_down_category_bench.py`.
 
 Scope: `prefill_350_candidate`; `scripts/laguna_grouped_down_category_bench.py`.
 
-**Decision needed:** keep or retire the `prefill_350_candidate` comparison in
-`scripts/laguna_grouped_down_category_bench.py`. Its scaled F16 route executes different arithmetic
-from range-direct; silently substituting the default would invalidate that comparison. **Clearing
-action:** if retained, name the diagnostic owner and close the route-retirement request as
-intentional reference code. If retired, remove that comparison arm and its executable scaled-mode
-plumbing, migrate category/publication tests without rewriting historical artifacts, and preserve
-general scaled-cast primitives needed outside the normalized boundary.
+**Reference diagnostic:** retain `prefill_350_candidate` under
+`scripts/laguna_grouped_down_category_bench.py` as the named scaled-F16 comparison owner;
+its control and candidate remain distinct from range-direct. The route-retirement decision is
+closed as intentional reference code. See
+`worklog/entries/20261031T202627.067172Z-subagent-r0271-r0271-scaled-f16-diagnostic-0ff940.md`.
 
 Done when: Validation dependency: a local Laguna checkpoint. Run the R0273 gfx1151 public command and
 confirm range-direct selection, output parity and teardown.

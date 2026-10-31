@@ -754,6 +754,103 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
     assert benchmark.current_f16_prefill_strategy() == "auto"
 
 
+def test_prefill_350_scaled_diagnostic_pins_arms_away_from_the_default() -> None:
+    from hipengine.runtime.laguna_f16_hipblaslt import resolve_laguna_f16_prefill_mode
+
+    lanes = benchmark._PREFILL_LANE_CONFIGURATIONS
+    control_mode, candidate_mode = PREFILL_350_COMPARISON.modes
+    owner = PREFILL_350_COMPARISON.diagnostic_owner
+    assert owner is not None
+    assert "scripts/laguna_grouped_down_category_bench.py" in owner
+    assert "hipblaslt_scaled" in owner
+    assert lanes[control_mode].f16_projection_mode == "retained"
+    assert lanes[candidate_mode].f16_projection_mode == "hipblaslt_scaled"
+    default = resolve_laguna_f16_prefill_mode("hip_gfx1151")
+    assert default == "hipblaslt_range_direct"
+    assert default not in {
+        lanes[control_mode].f16_projection_mode,
+        lanes[candidate_mode].f16_projection_mode,
+    }
+    assert lanes["production_absolute_candidate"].f16_projection_mode == default
+    assert PRODUCTION_ABSOLUTE_COMPARISON.diagnostic_owner is None
+
+
+def test_cumulative_artifact_metadata_records_each_arm_route() -> None:
+    control_mode, candidate_mode = PREFILL_350_COMPARISON.modes
+    lanes = benchmark._lane_configurations(PREFILL_350_COMPARISON)
+    assert set(lanes) == set(PREFILL_350_COMPARISON.modes)
+    assert lanes[control_mode]["f16_projection_mode"] == "retained"
+    assert lanes[candidate_mode]["f16_projection_mode"] == "hipblaslt_scaled"
+    assert (
+        lanes[control_mode]["selected_down_mode"]
+        != lanes[candidate_mode]["selected_down_mode"]
+    )
+    assert (
+        lanes[control_mode]["dense_q4_prefill_mode"]
+        != lanes[candidate_mode]["dense_q4_prefill_mode"]
+    )
+    note = benchmark._protocol_note(PREFILL_350_COMPARISON)
+    assert "not interchangeable" in note
+    assert "both freeze the same exact grouped-down" not in note
+    assert benchmark._lane_configurations(SWA_QROW2_COMPARISON) is None
+
+
+def test_cumulative_control_note_matches_its_shared_routes() -> None:
+    lanes = benchmark._lane_configurations(CUMULATIVE_CONTROL_COMPARISON)
+    for field in ("selected_down_mode", "selected_gate_up_mode", "dense_q4_prefill_mode"):
+        assert lanes["all_exact"][field] == lanes["shipping_control"][field]
+    assert "both freeze the same exact grouped-down" in benchmark._protocol_note(
+        CUMULATIVE_CONTROL_COMPARISON
+    )
+
+
+def test_cumulative_lane_refuses_a_remapped_projection_route(monkeypatch) -> None:
+    configured: list[tuple[str, object]] = []
+
+    class FakeSession:
+        backend = "hip_gfx1151"
+
+        def set_selected_gate_up_mode(self, mode: str) -> None:
+            configured.append(("selected_gate_up", mode))
+
+        def set_selected_down_mode(self, mode: str) -> None:
+            configured.append(("selected_down", mode))
+
+        @property
+        def f16_prefill_mode(self) -> str:
+            return "retained"
+
+        @f16_prefill_mode.setter
+        def f16_prefill_mode(self, mode: str) -> None:
+            configured.append(("f16_projection", mode))
+
+        @property
+        def dense_q4_prefill_mode(self) -> str:
+            return "retained"
+
+        @dense_q4_prefill_mode.setter
+        def dense_q4_prefill_mode(self, mode: str) -> None:
+            configured.append(("dense_q4", mode))
+
+        def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
+            configured.append(("attention_hipblaslt", enabled))
+
+    monkeypatch.setattr(
+        benchmark,
+        "_set_f16_prefill_mode",
+        lambda _session, _mode: "hipblaslt_range_direct",
+    )
+    with pytest.raises(ValueError, match="resolved to 'hipblaslt_range_direct'"):
+        benchmark._configure_prefill_lane(
+            FakeSession(),
+            benchmark._PREFILL_LANE_CONFIGURATIONS["prefill_350_candidate"],
+        )
+    assert configured == [
+        ("selected_gate_up", "mmq128x32_d8_f32"),
+        ("selected_down", "mmq64x32_d4_f32"),
+    ]
+
+
 def test_f16_wmma_comp_swa_category_requires_matching_compensated_screen(
     tmp_path,
 ) -> None:

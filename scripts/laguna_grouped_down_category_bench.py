@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Gate one Laguna prefill route against the complete canonical AR suite."""
+"""Gate one Laguna prefill route against the complete canonical AR suite.
+
+The ``prefill_350`` comparison is the named reference diagnostic for the
+scaled source-F16 (``hipblaslt_scaled``) route: it pairs that route with the
+retained projection control and records both arms per artifact. Neither arm is
+the gfx1151 range-direct default, so substituting the default changes the
+compared arithmetic and is not an equivalent edit.
+"""
 
 from __future__ import annotations
 
@@ -67,6 +74,7 @@ class CategoryComparison:
     screen_candidate_variant: str | None = None
     require_shape_screen: bool = True
     require_performance_gate: bool = True
+    diagnostic_owner: str | None = None
 
 
 @dataclass(frozen=True)
@@ -173,6 +181,11 @@ PREFILL_350_COMPARISON = CategoryComparison(
     require_exact_free_running=False,
     screen_requires_model=False,
     require_shape_screen=False,
+    diagnostic_owner=(
+        "scripts/laguna_grouped_down_category_bench.py prefill_350: intentional "
+        "reference diagnostic for the hipblaslt_scaled source-F16 route against "
+        "the retained control; neither arm is the range-direct default"
+    ),
 )
 PRODUCTION_ABSOLUTE_COMPARISON = CategoryComparison(
     name="production_absolute",
@@ -378,11 +391,7 @@ def _session_for_mode(
             global_prefill_variant=lane.global_prefill_variant,
             swa_prefill_variant=lane.swa_prefill_variant,
         )
-        session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
-        session.set_selected_down_mode(lane.selected_down_mode)
-        _set_f16_prefill_mode(session, lane.f16_projection_mode)
-        _set_dense_q4_prefill_mode(session, lane.dense_q4_prefill_mode)
-        session.set_prefill_attention_hipblaslt(lane.attention_hipblaslt)
+        _configure_prefill_lane(session, lane)
         return session
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
@@ -396,13 +405,32 @@ def _session_for_mode(
     return session
 
 
-def _set_f16_prefill_mode(session: LagunaGGUFResidentSession, mode: str) -> None:
-    """Validate and select the projection route for one diagnostic session."""
+def _set_f16_prefill_mode(session: LagunaGGUFResidentSession, mode: str) -> str:
+    """Validate, select and return the projection route for one diagnostic session."""
     from hipengine.runtime.laguna_f16_hipblaslt import validate_laguna_f16_prefill_mode
 
-    session.f16_prefill_mode = validate_laguna_f16_prefill_mode(
+    resolved = validate_laguna_f16_prefill_mode(
         session.backend, session.weights, mode,
     )
+    session.f16_prefill_mode = resolved
+    return resolved
+
+
+def _configure_prefill_lane(
+    session: LagunaGGUFResidentSession,
+    lane: PrefillLaneConfiguration,
+) -> None:
+    """Apply one frozen cumulative lane and refuse a silent route substitution."""
+    session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
+    session.set_selected_down_mode(lane.selected_down_mode)
+    resolved = _set_f16_prefill_mode(session, lane.f16_projection_mode)
+    if resolved != lane.f16_projection_mode:
+        raise ValueError(
+            "Laguna cumulative lane F16 projection route resolved to "
+            f"{resolved!r}, not the declared {lane.f16_projection_mode!r}"
+        )
+    _set_dense_q4_prefill_mode(session, lane.dense_q4_prefill_mode)
+    session.set_prefill_attention_hipblaslt(lane.attention_hipblaslt)
 
 
 def _set_dense_q4_prefill_mode(session: LagunaGGUFResidentSession, mode: str) -> None:
@@ -440,13 +468,7 @@ def _oracle_for_candidate(
         lane = _PREFILL_LANE_CONFIGURATIONS[candidate_mode]
 
         def configure_session(session: LagunaGGUFResidentSession) -> None:
-            session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
-            session.set_selected_down_mode(lane.selected_down_mode)
-            _set_f16_prefill_mode(session, lane.f16_projection_mode)
-            _set_dense_q4_prefill_mode(session, lane.dense_q4_prefill_mode)
-            session.set_prefill_attention_hipblaslt(
-                lane.attention_hipblaslt
-            )
+            _configure_prefill_lane(session, lane)
 
         with _f16_prefill_mode(lane.f16_prefill_mode):
             return _oracle_gate(
@@ -968,6 +990,72 @@ def _load_shape_screen(
     }
 
 
+def _lane_configurations(
+    comparison: CategoryComparison,
+) -> dict[str, dict[str, Any]] | None:
+    """Return the frozen per-arm routes a cumulative artifact records."""
+    if comparison.execution_mode != "cumulative_prefill":
+        return None
+    lanes: dict[str, dict[str, Any]] = {}
+    for mode in comparison.modes:
+        lane = _PREFILL_LANE_CONFIGURATIONS[mode]
+        lanes[mode] = {
+            "f16_prefill_mode": lane.f16_prefill_mode,
+            "global_prefill_variant": lane.global_prefill_variant,
+            "swa_prefill_variant": lane.swa_prefill_variant,
+            "selected_down_mode": lane.selected_down_mode,
+            "selected_gate_up_mode": lane.selected_gate_up_mode,
+            "f16_projection_mode": lane.f16_projection_mode,
+            "dense_q4_prefill_mode": lane.dense_q4_prefill_mode,
+            "attention_hipblaslt": lane.attention_hipblaslt,
+        }
+    return lanes
+
+
+def _protocol_note(comparison: CategoryComparison) -> str:
+    """Describe what one comparison freezes without claiming shared routes."""
+    if comparison.execution_mode == "cumulative_prefill":
+        if comparison.name == CUMULATIVE_CONTROL_COMPARISON.name:
+            return (
+                "The all-exact lane freezes tiled source-F16 plus exact global and "
+                "context-qualified exact SWA attention. The shipping lane freezes "
+                "gfx1151 compensated source-F16 plus online global/SWA attention; "
+                "both freeze the same exact grouped-down and dense/shared routes."
+            )
+        return (
+            "Each cumulative arm pins its own route in "
+            "protocol.prefill_lane_configurations: source-F16 strategy, global/SWA "
+            "attention variant, grouped gate-up/down, F16 projection and dense-Q4 "
+            "modes. The arms are not interchangeable, so substituting one arm's "
+            "route changes the compared arithmetic."
+        )
+    if comparison.execution_mode == "f16_prefill":
+        return (
+            "Compensated WMMA applies only to the 36 SWA layers from M16; all "
+            "12 full-attention layers stay exact tiled, M2-15 stay exact tiled, "
+            "and rows==1 stays on GEMV."
+        )
+    if comparison.execution_mode == "global_prefill":
+        return (
+            "Online global prefill changes softmax association only on the 12 "
+            "full-attention layers; all 36 SWA layers and decode stay unchanged."
+        )
+    if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name:
+        return (
+            "Online SWA prefill changes softmax association only on the 36 "
+            "sliding-attention layers; global attention and decode stay unchanged."
+        )
+    if comparison.require_positive_wall:
+        return (
+            "Adaptive grouped down stays BF16 throughout and falls back to "
+            "direct below 32 rows."
+        )
+    return (
+        "The candidate preserves both BF16 boundaries while removing "
+        "one launch and the selected-output round trip for rows >=32."
+    )
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     comparison = _COMPARISONS[str(args.comparison)]
     horizons = tuple(int(value) for value in args.output_horizons)
@@ -1175,6 +1263,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "protocol": {
             "comparison": comparison.name,
+            "diagnostic_owner": comparison.diagnostic_owner,
             "modes": list(comparison.modes),
             "chunk_size": args.chunk_size,
             "output_horizons": list(horizons),
@@ -1193,39 +1282,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 in {"f16_prefill", "cumulative_prefill"}
             ),
             "decode_route": "identical exact c=1 path for both modes",
-            "prefill_lane_configurations": (
-                {
-                    mode: {
-                        "f16_prefill_mode": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].f16_prefill_mode,
-                        "global_prefill_variant": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].global_prefill_variant,
-                        "swa_prefill_variant": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].swa_prefill_variant,
-                        "selected_down_mode": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].selected_down_mode,
-                        "selected_gate_up_mode": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].selected_gate_up_mode,
-                        "f16_projection_mode": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].f16_projection_mode,
-                        "dense_q4_prefill_mode": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].dense_q4_prefill_mode,
-                        "attention_hipblaslt": _PREFILL_LANE_CONFIGURATIONS[
-                            mode
-                        ].attention_hipblaslt,
-                    }
-                    for mode in comparison.modes
-                }
-                if comparison.execution_mode == "cumulative_prefill"
-                else None
-            ),
+            "prefill_lane_configurations": _lane_configurations(comparison),
         },
         "shape_screen": shape_screen,
         "load": {"seconds_excluded": load_seconds, "resident_nbytes": resident_nbytes},
@@ -1249,36 +1306,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command": [str(Path(sys.executable).resolve()), *sys.argv],
         "notes": [
             "Both modes share resident weights and use isolated bounded request sessions.",
-            (
-                "The all-exact lane freezes tiled source-F16 plus exact global and "
-                "context-qualified exact SWA attention. The shipping lane freezes "
-                "gfx1151 compensated source-F16 plus online global/SWA attention; "
-                "both freeze the same exact grouped-down and dense/shared routes."
-                if comparison.execution_mode == "cumulative_prefill"
-                else (
-                    "Compensated WMMA applies only to the 36 SWA layers from M16; all "
-                    "12 full-attention layers stay exact tiled, M2-15 stay exact tiled, "
-                    "and rows==1 stays on GEMV."
-                    if comparison.execution_mode == "f16_prefill"
-                    else (
-                        "Online global prefill changes softmax association only on the 12 "
-                        "full-attention layers; all 36 SWA layers and decode stay unchanged."
-                        if comparison.execution_mode == "global_prefill"
-                        else (
-                            "Online SWA prefill changes softmax association only on the 36 "
-                            "sliding-attention layers; global attention and decode stay unchanged."
-                            if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
-                            else (
-                                "Adaptive grouped down stays BF16 throughout and falls back to "
-                                "direct below 32 rows."
-                                if comparison.require_positive_wall
-                                else "The candidate preserves both BF16 boundaries while removing "
-                                "one launch and the selected-output round trip for rows >=32."
-                            )
-                        )
-                    )
-                )
-            ),
+            _protocol_note(comparison),
             "Teacher forcing feeds baseline-route top-1 IDs to both routes and compares "
             "full logits.",
             "Complete free-running IDs are reported, while KL/top-1 thresholds remain "
