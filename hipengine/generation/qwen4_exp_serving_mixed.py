@@ -1,7 +1,7 @@
 """Scheduler-owned proposal, shared target execution and acceptance for Flash-Next."""
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 import time
 
@@ -12,7 +12,12 @@ from hipengine.runtime.qwen4_exp_mixed_layout import Qwen4ExpMixedRequest, compi
 from hipengine.runtime.qwen4_exp_mixed_target import Qwen4ExpMixedTargetPass
 from hipengine.speculative import (
     AcceptResult, ProviderAttachment, ProviderCatchupMode, SpecCycleResult,
-    SpecCycleStage, SpecCycleTransaction, SpecTransactionMode, SpeculativeCapability,
+    SpecCycleStage, SpecCycleTransaction, SpecPlanReason, SpecTransactionMode,
+    SpeculativeCapability,
+)
+from hipengine.speculative.accounting import (
+    record_speculative_outputs,
+    speculative_output_accounting,
 )
 
 
@@ -72,6 +77,98 @@ def _mixed_failure_mutation(*, commit_started, error):
     if _device_fault(error) is not None:
         return 'unknown'
     return 'unknown' if commit_started else 'partial'
+
+
+@dataclass(frozen=True)
+class _MixedCommit:
+    """One committed mixed cycle, in the coordinates of the row's output.
+
+    ``position`` is the index its first token occupies in ``generated_ids`` and
+    ``tokens`` is how many it committed. ``depth`` is the candidate count the
+    cycle selected, which is what the depth histogram reports even when only
+    part of the cycle is delivered.
+    """
+
+    position: int
+    tokens: int
+    accepted: int
+    depth: int
+    reason: object
+
+
+def _mixed_output_accounting(row):
+    """Return one mixed row's shared MTP-versus-AR block for its *delivered* output.
+
+    ``mtp_budget`` is the depth the request registered with the planner and it
+    is both the requested and the effective depth: registration clamps it to the
+    provider's budget, and the generic provider route rejects a request that
+    asked for another. A row without one never carried speculative intent, so it
+    publishes no split at all -- its peers in a shared pass are ordinary
+    autoregressive decode.
+
+    The block describes the tokens ``reclaim`` actually delivers, not the tokens
+    the passes committed. ``reclaim`` rewrites a cancelled row's ids to the
+    scheduler-committed prefix, which can end before a committed pass or inside
+    one; publishing the committed totals there would attribute tokens the
+    caller never received, and publishing nothing would fall back to the legacy
+    cycle counters, which over-attribute the same way. So the recorded cycles
+    are replayed onto a scratch record and cut at ``len(row.generated_ids)``.
+    The cut is a prefix: the committed cycles are contiguous and in order, so
+    the delivered ones are a prefix of the ledger and at most one is partial.
+
+    A partially delivered cycle keeps only the tokens it delivered. Its first
+    ``accepted`` tokens are the accepted drafts and the token after them is the
+    target's own correction or bonus, so ``min(accepted, delivered)`` names the
+    drafts inside the prefix; the depth is still the one the cycle selected.
+
+    A row that counted cycles without a commit ledger recorded them through a
+    writer that keeps its own per-cycle data, and no aggregate can be cut to a
+    delivered prefix after the fact. That row publishes no block: a zero-cycle
+    block would claim its delivered output was entirely autoregressive, which is
+    exactly the false statement this function exists to avoid, so it defers to
+    the legacy counters it already carries.
+    """
+
+    if not row.mtp_budget:
+        return None
+    commits = _mixed_commits(row)
+    if not commits and row.mixed_cycles:
+        return None
+    record = SimpleNamespace(
+        mtp2_requested_budget=int(row.mtp_budget),
+        mtp2_candidate_budget=int(row.mtp_budget),
+    )
+    delivered = len(row.generated_ids)
+    for commit in commits:
+        visible = min(commit.tokens, delivered - commit.position)
+        if visible <= 0:
+            break
+        record_speculative_outputs(
+            record,
+            candidate_count=commit.depth,
+            accepted_count=min(commit.accepted, visible),
+            visible_count=visible,
+            output_position=commit.position,
+            plan_reason=commit.reason,
+        )
+    return speculative_output_accounting(record)
+
+
+def _mixed_commits(row):
+    """The row's committed mixed cycles, oldest first.
+
+    The list is created on first use and is the only per-cycle record the
+    accounting keeps: the helper's own counters aggregate a row that can later
+    be trimmed, and the recorded spans are a diagnostic switch rather than an
+    always-present ledger. Nothing else reads it, so it lives beside the
+    accounting instead of on the row's declared fields.
+    """
+
+    commits = getattr(row, 'mixed_commits', None)
+    if not isinstance(commits, list):
+        commits = []
+        row.mixed_commits = commits
+    return commits
 
 
 class Qwen4ExpServingMixed:
@@ -287,12 +384,17 @@ class Qwen4ExpServingMixed:
         committed_tokens, accept_counts, finish_reasons = [], [], []
         corrections, target_deltas, provider_deltas = [], [], []
         depth_by_request = {request.request_id: depth for request, depth in zip(layout.requests, depths, strict=True)}
+        # A real plan carries one reason per request. The scheduler's K0 pass is
+        # built without reasons, and its decision is exactly "decode these rows
+        # autoregressively", so that is the reason recorded for it.
+        plan_reasons = dict(zip(plan.request_ids, getattr(plan, 'reasons', ()) or ()))
         for row in rows:
             depth = depth_by_request.get(row.request_id, -1)
             if row.mixed_mtp:
                 acceptance = accepted[row.request_id]
                 tokens, count = acceptance.tokens, acceptance.accepted
                 row.mixed_root_hidden = acceptance.root_hidden
+                committed_position = len(row.generated_ids)
                 row.generated_ids.extend(tokens)
                 finish = self._finish(row)
                 proposal = proposals[row.request_id]
@@ -301,6 +403,25 @@ class Qwen4ExpServingMixed:
                 if row.request_id in lookup_copies:
                     row.prompt_lookup.observe(count)
                 row.mixed_cycles += 1
+                # Attribute the committed tokens, never the proposals: ``tokens``
+                # is the accepted drafts plus the target's own correction or
+                # bonus token, already cut at the stop and horizon checks inside
+                # ``consume_proposal_rows``. ``committed_position`` is the index
+                # the first of them occupies, so the prompt root at 0 is never
+                # counted as speculative output. The cycle is recorded rather
+                # than attributed here because ``reclaim`` can still shorten the
+                # row to the prefix the scheduler delivers.
+                _mixed_commits(row).append(
+                    _MixedCommit(
+                        position=committed_position,
+                        tokens=len(tokens),
+                        accepted=count,
+                        depth=len(proposal.candidates),
+                        reason=plan_reasons.get(
+                            row.request_id, SpecPlanReason.POLICY_SELECTED_AR
+                        ),
+                    )
+                )
                 if finish is not None:
                     from hipengine.generation.registry import GenerationOutput
                     row.mtp_output = GenerationOutput(
@@ -422,16 +543,20 @@ class Qwen4ExpServingMixed:
                           else 'qwen4exp_shared_target_ar_peer')
         provider = ({'speculative_provider': 'qwen4_exp_mtp',
                      'cycle_count': row.mixed_cycles} if row.mtp_budget else {})
+        diagnostics = dict(execution_path=execution_path, **provider,
+                           candidate_budget=row.mtp_budget, proposed_draft_tokens=row.mixed_proposed,
+                           accepted_draft_tokens=row.mixed_accepted, cycles_count=row.mixed_cycles,
+                           prompt_lookup=(row.prompt_lookup.diagnostics()
+                               if getattr(row, 'prompt_lookup', None) is not None else {}),
+                           draft_vocabulary=(row.draft.draft_vocabulary_diagnostics()
+                               if callable(getattr(getattr(row, 'draft', None), 'draft_vocabulary_diagnostics', None)) else {}),
+                           physical_request_width_histogram=dict(row.mixed_widths),
+                           physical_target_rows=row.mixed_target_rows)
+        accounting = _mixed_output_accounting(row)
+        if accounting is not None:
+            diagnostics['specdec2_mtp2'] = accounting
         return GenerationTelemetry(
             decode_state=DecodeState(prompt_tokens=len(row.prompt_ids), generated_tokens=len(row.generated_ids),
                                      execution_path=execution_path),
-            diagnostics=dict(execution_path=execution_path, **provider,
-                             candidate_budget=row.mtp_budget, proposed_draft_tokens=row.mixed_proposed,
-                             accepted_draft_tokens=row.mixed_accepted, cycles_count=row.mixed_cycles,
-                             prompt_lookup=(row.prompt_lookup.diagnostics()
-                                 if getattr(row, 'prompt_lookup', None) is not None else {}),
-                             draft_vocabulary=(row.draft.draft_vocabulary_diagnostics()
-                                 if callable(getattr(getattr(row, 'draft', None), 'draft_vocabulary_diagnostics', None)) else {}),
-                             physical_request_width_histogram=dict(row.mixed_widths),
-                             physical_target_rows=row.mixed_target_rows),
+            diagnostics=diagnostics,
         )

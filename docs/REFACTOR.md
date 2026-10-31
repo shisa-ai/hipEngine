@@ -249,14 +249,13 @@ Owner: `hipengine/chat_cli.py`.
 
 Scope: `diagnostics.specdec2_mtp2`, `ar_output_tokens_in_cycles`, `output_accounting`.
 
-Done when: `qwen4_exp_mtp` now publishes the common per-request committed-output block and
-passes real public LLM route checks (5/8 completion tokens, 4/7 attributed to committed cycles,
-reconciled spans and clean teardown). Gemma also publishes the block and passes two real public
-LLM checks with matching requested/effective depth and clean teardown. Finish
-`qwen4_exp_serving_mixed` committed-prefix/cancellation handling and validate HTTP/SSE for the
-migrated publishers, then remove
-`_mtp_draft_counts`' legacy provider/scalar timing readers after blocking and streaming consumers
-migrate. Chat `/bench` now prefers public `output_accounting.mtp_output_tokens`, preserves explicit
+Done when: All three providers publish the common committed-output block. Complete independent
+HTTP usage/metrics checks for blocking and streaming consumers, then remove
+`_mtp_draft_counts`' legacy provider/scalar timing readers and migrate the legacy-only fixtures.
+Mixed reclaim clips the block to the delivered prefix; public shared-target HTTP/SSE checks select
+`qwen4exp_shared_mtp_ar_target`, reconcile spans and tear down cleanly. See
+`worklog/entries/20261031T205907.763240Z-lhl-qwen4exp-mixed-output-accounting-006aad.md`.
+Chat `/bench` now prefers public `output_accounting.mtp_output_tokens`, preserves explicit
 zero, and keeps legacy readers for older providers; see
 `worklog/entries/20261031T203642.245018Z-cleanup-refactor-r0081-chat-cli-mtp-accounting-6d2ee5.md`.
 Remove each fallback only when its publishers have migrated. Validate server usage, metrics and
