@@ -354,7 +354,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_DENSE_Q8_DP4A_SHARED` | retired | No runtime reader | The rejected per-projection shared-expert verifier route and its CLI/suite/profiler switches are removed. Normal shared-expert projections and independent resident-draft shared-dual execution remain. |
 | `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` | unset | Diagnostic route | Enables rows>1 F32-input singleton/triple dp4a helpers with raw Q8 sidecars and workspace, including `ssm_out`. F32 pair helpers use the base pair/all control instead; F32 pair outputs also require `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS`. |
 | `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A` | unset | Diagnostic route | Singleton verifier direct top-1 path reading the X8 Q6_K `lm_head` sidecar; multirow blocks use BF16 hidden rows and the full-logit sampler. Production gates force it off. |
-| `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` | unset (bound on by public/profile callers) | Verifier state capture | Selects prefill Conv and decode-order no-copy GDN row-state writers. Packed verification requires this path; public generation and profile binders enable it, and llama-compat forces it on. This is execution/state policy, not only offline instrumentation. |
+| `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` | false for unbound runners; true in dense profile owners | Verifier state capture | Selects prefill Conv and decode-order no-copy GDN row-state writers. Unbound runners resolve this diagnostic input once at construction; profile-bound generators carry the choice to each runner, resident session and NextN owner without writing this variable. Explicit verifier-call input overrides the owner for that call. Packed verification, public MTP and llama-compat request the no-copy producer directly. Native target graph identity includes the resolved mode. |
 | `HIPENGINE_GGUF_VERIFY_GDN_SEMANTIC_GATE` | unset | Gate instrumentation | Reserves the GDN semantic-gate capture scratch and enables the semantic-gate comparison route; must be set before session construction so the scratch allocation precedes capture. |
 | `HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR` | unset | Diagnostic capture | Writes diagnostic BF16 output-norm rows for offline full-logit gates into this directory. |
 | `HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` | retired | No runtime reader | The generator selects integer-Q6 MMQ from the production profile; strict and strict fallback keep the parent. Execution still requires a session-owned workspace and an eligible backend/quant/shape/row policy. Stale values have no effect. |
@@ -430,8 +430,10 @@ verifier's T16/raw sidecar placement.
 ### GGUF target-verifier capture and F32-diagnostic family
 
 The prefill-GDN control selects the production verifier's per-row Conv/GDN
-state capture. Public generation and profile binders set
-`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`. The Qwen3.8 gfx1151 profile binds
+state capture. Dense profiles bind the generator's capture choice; public MTP
+and llama-compat verifier calls explicitly request the no-copy producer.
+`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` remains a construction-time input
+for unbound runners. The Qwen3.8 gfx1151 profile binds
 its production-Q4 rowtile decision directly to each generator and resident
 session; `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` remains an input for
 unbound/direct diagnostic sessions. The five alternative

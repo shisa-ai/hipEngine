@@ -78,7 +78,8 @@ def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
     assert selection["strict_fallback_variant"] == selection["selected_variant"]
     assert __import__("os").environ[FP16_RECURRENT_STATE_ENV] == "1"
     assert generator.target_fp16_recurrent_state is False
-    assert __import__("os").environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
+    assert generator.target_verifier_prefill_gdn_capture is True
+    assert VERIFY_CAPTURE_PREFILL_GDN_ENV not in __import__("os").environ
     assert __import__("os").environ[VERIFY_F32_RESIDUAL_ENV] == "0"
     assert __import__("os").environ[VERIFY_F32_POST_NORM_ENV] == "0"
     assert generator.use_q6_dp4a_grouped is False

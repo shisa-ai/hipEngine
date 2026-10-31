@@ -18,9 +18,10 @@ def test_sampled_prefill_graph_survives_later_provider_profile_binding(
     target = SimpleNamespace(position=23, runner=SimpleNamespace(fp16_recurrent_state=False))
     captured = []
 
-    def warm(tokens, *, request_id, sampled_accept):
+    def warm(tokens, *, request_id, sampled_accept, capture_prefill_gdn):
         assert tokens == (9, 0, 0)
         assert request_id == 7 and sampled_accept
+        assert capture_prefill_gdn is True
         graph = object.__new__(native.Qwen35GGUFNativeB2TargetGraph)
         graph.session = target
         graph.closed = False
@@ -48,7 +49,8 @@ def test_sampled_prefill_graph_survives_later_provider_profile_binding(
     adapter._sampled_accept_candidate = lambda rid: True
     options = dict(
         bulk_attention_mode="native", use_wmma_prefill=False,
-        capture_linear_state_rows=True, capture_pre_output_norm_hidden=True,
+        capture_linear_state_rows=True, capture_prefill_gdn=True,
+        capture_pre_output_norm_hidden=True,
         defer_linear_state_commit=True, device_accept_commit=True, sampled_accept=True,
     )
 
@@ -61,7 +63,7 @@ def test_sampled_prefill_graph_survives_later_provider_profile_binding(
     assert graph.launch_ineligibility_reason(
         target, position=23, rows=3, remaining_decode=12, **options,
     ) is None
-    assert graph.configuration_key[7:9] == (manifest, "fp32")
+    assert graph.configuration_key[-3:-1] == (manifest, "fp32")
     # A second observation uses the existing capture rather than recapturing.
     adapter.observe_prefill_result(7, (1, 2, 3), SimpleNamespace(token_id=9))
     assert captured == [graph]
@@ -97,6 +99,8 @@ def test_prefill_graph_capture_uses_the_staged_cycle_environment(
         runner._observe_mtp2_prefill(row, object())
     with runner._staged_adapter_arch_environment():
         cycle_environment = (os.environ.get(name), os.environ.get("HIPENGINE_HIP_ARCH"))
-    assert observed == [cycle_environment] == [("1", "gfx1151")]
+    # The capture mode is an explicit operation input; the staged environment
+    # carries only the target architecture.
+    assert observed == [cycle_environment] == [(initial, "gfx1151")]
     assert os.environ.get(name) == initial
     assert os.environ["HIPENGINE_HIP_ARCH"] == "gfx1100"

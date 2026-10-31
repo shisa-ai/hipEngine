@@ -85,6 +85,7 @@ def test_device_proposal_ready_checks_live_cycle_end_and_output_room(
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.closed = False
     verifier.backend = "hip_gfx1151"
     verifier.target_verify_mode = "native"
@@ -119,6 +120,7 @@ def test_device_proposal_admission_respects_native_policy_before_launch(
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.closed = False
     verifier.backend = "hip_gfx1100"
     verifier.target_verify_mode = "native"
@@ -183,6 +185,7 @@ def test_device_handoff_boundary_prevents_proposal_submission(
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.closed = False
     verifier.backend = "hip_gfx1151"
     verifier.target_verify_mode = "native"
@@ -379,6 +382,7 @@ def test_native_verifier_lazily_owns_a_separate_serial_fallback_journal(monkeypa
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.target = object()
     verifier.max_candidate_budget = 3
     verifier.journal = primary
@@ -414,6 +418,7 @@ def test_serial_only_verifier_reuses_its_primary_journal(monkeypatch) -> None:
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.journal = verifier._primary_journal = primary
     verifier._serial_journal = None
     monkeypatch.setattr(
@@ -429,6 +434,7 @@ def test_failed_serial_journal_allocation_keeps_native_owner(monkeypatch) -> Non
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.target = object()
     verifier.max_candidate_budget = 3
     verifier.journal = verifier._primary_journal = primary
@@ -458,6 +464,7 @@ def test_prepare_selects_serial_journal_before_context_fallback_mutation(monkeyp
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.target = SimpleNamespace(position=93)
     verifier.backend = "hip_gfx1100"
     verifier.target_verify_mode = "native"
@@ -498,6 +505,7 @@ def test_device_proposal_tail_stays_on_device_accept_commit(budget, remaining) -
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.target = SimpleNamespace(
         position=25,
         verify_target_from_device_proposal=device_target,
@@ -536,6 +544,7 @@ def test_verifier_closes_both_journals_once() -> None:
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     verifier.closed = False
     verifier._prepared = None
     verifier._primary_journal = SimpleNamespace(close=lambda: closed.append("native"))
@@ -573,6 +582,7 @@ def test_eager_verify_does_not_inherit_previous_graph_telemetry(monkeypatch):
         capture_initial=lambda **_kw: None, capture_hidden_rows=lambda *_a, **_kw: None,
     )
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(mtp_module.Qwen35GGUFTransactionalVerifier)
+    verifier.capture_prefill_gdn = None
     verifier.target = SimpleNamespace(
         position=25, runtime=object(),
         verify_target_block=lambda *_a, **_kw: SimpleNamespace(
@@ -1492,6 +1502,7 @@ def test_adopt_accept_summary_keeps_the_open_transaction_identity() -> None:
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
+    verifier.capture_prefill_gdn = None
     prepared = mtp_module.Qwen35GGUFPreparedVerify(
         batch=SimpleNamespace(),
         buffers=SimpleNamespace(),

@@ -487,6 +487,7 @@ class Qwen35GGUFMoEMTP2Adapter:
                                 (int(result.token_id), *((0,) * warm_budget)),
                                 request_id=rid,
                                 sampled_accept=True,
+                                capture_prefill_gdn=True,
                             )
                         except Exception as exc:
                             state.sampled_accept_prepare_error = (
@@ -1124,6 +1125,7 @@ class Qwen35GGUFMoEMTP2Adapter:
                 k1_disable_f32_verifier=True,
                 sampled_accept=bool(sampled_route),
                 sampled_accept_state=sampled_plan,
+                capture_prefill_gdn=True,
             )
         except NativeSpecTargetGraphUnsupportedError as exc:
             if not sampled_route:

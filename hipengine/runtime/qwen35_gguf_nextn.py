@@ -546,6 +546,7 @@ class Qwen35GGUFNextNExecutor:
         resident_weights: Qwen35GGUFNextNResidentWeights | None = None,
         target_verifier_production_q4_rowtile: bool | None = None,
         target_fp16_recurrent_state: bool | None = None,
+        target_verifier_prefill_gdn_capture: bool | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
@@ -566,6 +567,9 @@ class Qwen35GGUFNextNExecutor:
             target_verifier_production_q4_rowtile
         )
         self.target_fp16_recurrent_state = target_fp16_recurrent_state
+        self.target_verifier_prefill_gdn_capture = (
+            target_verifier_prefill_gdn_capture
+        )
         register_gguf_q3_k_gemv_kernels()
         # Borrowed weights stay owned by the caller (the generator shares one
         # draft block across every provider shape); only self-materialized
@@ -592,6 +596,7 @@ class Qwen35GGUFNextNExecutor:
             resident_weights=adapted,
             owns_resident_weights=False,
             target_fp16_recurrent_state=target_fp16_recurrent_state,
+            target_verifier_prefill_gdn_capture=target_verifier_prefill_gdn_capture,
         )
         self.hidden_size = int(self.runner.hidden_size)
         self.vocab_size = int(self.runner.vocab_size)
@@ -611,6 +616,7 @@ class Qwen35GGUFNextNExecutor:
                 target_verifier_production_q4_rowtile
             ),
             target_fp16_recurrent_state=target_fp16_recurrent_state,
+            target_verifier_prefill_gdn_capture=target_verifier_prefill_gdn_capture,
         )
         self.scratch = self._batch_session._target_scratch_owner
         if self.scratch is None:

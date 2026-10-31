@@ -64,7 +64,9 @@ def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     del resolved
     generator.use_q6_dp4a_grouped = False
     generator.target_fp16_recurrent_state = False
-    _bind_profile_env(VERIFY_CAPTURE_PREFILL_GDN_ENV, "1")
+    # The capture mode is an owner decision, not a process-global env write:
+    # each verifier operation this generator owns reads it directly.
+    generator.target_verifier_prefill_gdn_capture = True
     _bind_profile_env(VERIFY_F32_RESIDUAL_ENV, "0")
     _bind_profile_env(VERIFY_F32_POST_NORM_ENV, "0")
     _bind_profile_env(Q4_FUSED_R28_ENV, "0")

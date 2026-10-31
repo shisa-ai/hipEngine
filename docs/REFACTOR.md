@@ -3897,15 +3897,12 @@ Owner: `hipengine/execution_profiles.py`.
 Scope: `qwen35_dense_gfx1100_profiles.py`, `qwen35_dense_gfx1151_profiles.py`,
 `qwen35_moe_gfx1151_profiles.py`.
 
-**Remaining ownership migration:** move settings needed by coexisting owners into explicit fields
-consumed by those owners. The gfx1151 dense Q4 verifier rowtile choice is generator-bound and
-transported to ordinary, streaming, native-batch, MTP and NextN sessions; direct/unbound sessions
-keep their construction-time diagnostic input. Recurrent-state storage is likewise owner-bound
-and frozen once before native preflight and allocation; shared/reused owners validate the live ABI.
-GDN capture, gfx1100 F32 verifier/residual and fused-Q4 selectors, gfx1151 MoE router/rowtile
-settings, and manifest environment publication remain to migrate. Inventory each actual
-consumer and binding lifetime; do not surround every method with an implicit environment context.
-Preserve ordinary profile plugin composition and header identity.
+**Remaining ownership migration:** move gfx1100 F32 verifier/residual and fused-Q4 selectors,
+gfx1151 MoE router/rowtile settings, and manifest environment publication into explicit fields
+consumed by their owners. Inventory each actual consumer and binding lifetime; do not surround
+every method with an implicit environment context. Preserve ordinary profile plugin composition,
+header identity, construction-time diagnostic inputs, shared-allocation ABI validation and native
+graph configuration identity.
 
 Done when: test two differently configured owners in both construction orders and interleaved
 execution, confirm no settings leak, then exercise public model generation and teardown. For

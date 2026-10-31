@@ -68,7 +68,8 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state(
 
     assert os.environ[FP16_RECURRENT_STATE_ENV] == "1"
     assert generator.target_fp16_recurrent_state is False
-    assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
+    assert generator.target_verifier_prefill_gdn_capture is True
+    assert VERIFY_CAPTURE_PREFILL_GDN_ENV not in os.environ
     assert generator.target_verifier_production_q4_rowtile is False
     assert PRODUCTION_Q4_VERIFIER_ROWTILE_ENV not in os.environ
     assert resolved.profile is ExecutionProfile.STRICT
@@ -107,7 +108,8 @@ def test_qwen38_production_profile_keeps_fp32_state_and_q4_rowtiles(
     assert resolved.manifest_sha256 != resolved.strict_manifest_sha256
     assert os.environ[FP16_RECURRENT_STATE_ENV] == "1"
     assert generator.target_fp16_recurrent_state is False
-    assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
+    assert generator.target_verifier_prefill_gdn_capture is True
+    assert VERIFY_CAPTURE_PREFILL_GDN_ENV not in os.environ
     assert generator.target_verifier_production_q4_rowtile is True
     assert PRODUCTION_Q4_VERIFIER_ROWTILE_ENV not in os.environ
     selections = _selection_map(resolved)

@@ -1212,7 +1212,7 @@ def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it
     assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
 
 
-def test_resident_runner_delegates_bounded_complete_cycle_with_gdn_capture(monkeypatch) -> None:
+def test_resident_runner_delegates_bounded_complete_cycle_without_env_capture(monkeypatch) -> None:
     observed: list[str | None] = []
 
     def execute(plan, commit):
@@ -1228,7 +1228,9 @@ def test_resident_runner_delegates_bounded_complete_cycle_with_gdn_capture(monke
 
     assert runner.speculative_frontier_available("plan") is False
     assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
-    assert observed == ["1"]
+    # The capture requirement belongs to the adapter's operation inputs; the
+    # complete-cycle scope publishes only the target architecture.
+    assert observed == [None]
     assert "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN" not in os.environ
 
 
@@ -4807,6 +4809,7 @@ def test_mtp2_wide_provider_lazily_adds_singleton_target_verifier(monkeypatch) -
             max_candidate_budget: int,
             quant: str,
             target_verify_mode: str,
+            capture_prefill_gdn: bool | None = None,
         ) -> None:
             calls.append(
                 (
@@ -4815,6 +4818,7 @@ def test_mtp2_wide_provider_lazily_adds_singleton_target_verifier(monkeypatch) -
                     int(max_candidate_budget),
                     str(quant),
                     str(target_verify_mode),
+                    capture_prefill_gdn,
                 )
             )
 
@@ -4864,7 +4868,7 @@ def test_mtp2_wide_provider_lazily_adds_singleton_target_verifier(monkeypatch) -
     assert states[8].verifier is None
     assert calls == [
         ("ensure", (7,)),
-        ("verifier", targets[7], 3, "gguf_q4_k_m", "native"),
+        ("verifier", targets[7], 3, "gguf_q4_k_m", "native", True),
     ]
 
     # A neighbor still selects the existing physical C2 target branch; adding

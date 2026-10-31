@@ -381,6 +381,10 @@ Recurrent-state storage is also owner-bound across generator, runner, session an
 NextN construction. The runner resolves it once before native preflight and scratch
 allocation; a reused/shared allocation must already have the requested ABI. Unbound
 runners retain environment/backend defaults without inheriting another binder's writes.
+The verifier prefill-GDN capture choice is owner-bound through the same generator,
+runner, resident and NextN construction paths. Unbound runners freeze their diagnostic
+input once; verifier operations can explicitly select a capture producer without
+retargeting the owner. Native target graph identity includes this resolved choice.
 
 Missing benchmark coverage is not an implementation failure. Within declared
 input, resource and execution contracts, run implemented paths, measure real

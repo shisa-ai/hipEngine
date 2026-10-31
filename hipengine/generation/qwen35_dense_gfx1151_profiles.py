@@ -55,7 +55,7 @@ def _binder(
     # diagnostic input, but it is no longer the carrier between profile owners.
     generator.target_verifier_production_q4_rowtile = bool(q4_verifier_rowtile)
     generator.target_fp16_recurrent_state = bool(fp16_state)
-    os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] = "1"
+    generator.target_verifier_prefill_gdn_capture = True
     os.environ["HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256"] = (
         resolved.manifest_sha256
     )

@@ -332,7 +332,6 @@ def _encode_prompt(tokenizer: Any, prompt: PromptInput) -> list[int]:
 
 _LLAMA_COMPAT_MTP_ENV = {
     "HIPENGINE_GGUF_DECODE_REPACK": "1",
-    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A": "1",
     "HIPENGINE_GGUF_T16_SELECTED_DP4A": "1",
     "HIPENGINE_GGUF_RAW_SELECTED_DP4A": "1",
@@ -1444,6 +1443,9 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
+    # diagnostic environment input, resolved once at session construction.
+    target_verifier_prefill_gdn_capture: bool | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -1767,6 +1769,14 @@ class Qwen35GGUFBringupGenerator:
             return {}
         return {"target_fp16_recurrent_state": bool(requested)}
 
+    def _target_verifier_prefill_gdn_capture_session_kwargs(self) -> dict[str, Any]:
+        """Carry the owner-bound verifier capture mode into every session."""
+
+        requested = getattr(self, "target_verifier_prefill_gdn_capture", None)
+        if requested is None:
+            return {}
+        return {"target_verifier_prefill_gdn_capture": bool(requested)}
+
     def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
         signature = getattr(self, "_prepared_kv_signature", None)
         if getattr(self, "dms_metadata_path", None) is not None:
@@ -1934,13 +1944,12 @@ class Qwen35GGUFBringupGenerator:
                             )
                             sessions.append(session)
                             keys.append(key)
-                        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                            prefill_batch = getattr(sessions[0], "prefill_batch_native")
-                            prefill_batch(
-                                [warm_prompt_for(slot_index, target_len) for slot_index in range(width)],
-                                sessions=sessions,
-                                return_logits=False,
-                            )
+                        prefill_batch = getattr(sessions[0], "prefill_batch_native")
+                        prefill_batch(
+                            [warm_prompt_for(slot_index, target_len) for slot_index in range(width)],
+                            sessions=sessions,
+                            return_logits=False,
+                        )
                     except NotImplementedError:
                         result["packed_ar_prefill_skipped"] = True
                         result["packed_ar_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
@@ -2046,7 +2055,8 @@ class Qwen35GGUFBringupGenerator:
                                                     chunk_sessions,
                                                     strict=True,
                                                 )
-                                            ]
+                                            ],
+                                            capture_prefill_gdn=True,
                                         )
                                         if verify_results is None:
                                             raise NotImplementedError("packed MTP verifier warmup returned no results")
@@ -2150,6 +2160,11 @@ class Qwen35GGUFBringupGenerator:
                     target_fp16_recurrent_state=getattr(
                         self,
                         "target_fp16_recurrent_state",
+                        None,
+                    ),
+                    target_verifier_prefill_gdn_capture=getattr(
+                        self,
+                        "target_verifier_prefill_gdn_capture",
                         None,
                     ),
                 )
@@ -3172,6 +3187,7 @@ class Qwen35GGUFBringupGenerator:
                     **self._prepared_session_kv_kwargs(),
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
+                    **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                     **session_kwargs,
                 )
             except (HipError, MemoryError) as exc:
@@ -3370,6 +3386,7 @@ class Qwen35GGUFBringupGenerator:
                 **self._prepared_session_kv_kwargs(),
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
+                **self._target_verifier_prefill_gdn_capture_session_kwargs(),
             }
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
@@ -3472,6 +3489,11 @@ class Qwen35GGUFBringupGenerator:
             target_fp16_recurrent_state=getattr(
                 self,
                 "target_fp16_recurrent_state",
+                None,
+            ),
+            target_verifier_prefill_gdn_capture=getattr(
+                self,
+                "target_verifier_prefill_gdn_capture",
                 None,
             ),
         )
@@ -3600,6 +3622,17 @@ class Qwen35GGUFBringupGenerator:
                 raise RuntimeError(
                     "cannot change live recurrent-state allocation"
                 )
+        requested_capture = getattr(
+            self,
+            "target_verifier_prefill_gdn_capture",
+            None,
+        )
+        if requested_capture is not None:
+            live_capture = getattr(session, "verifier_prefill_gdn_capture", None)
+            if live_capture is not None and bool(live_capture) is not bool(
+                requested_capture
+            ):
+                raise RuntimeError("cannot change a live verifier capture mode")
         self._configure_native_sampler(session)
         requested_rowtile = getattr(
             self,
@@ -3918,6 +3951,7 @@ class Qwen35GGUFBringupGenerator:
             **self._prepared_session_kv_kwargs(),
             **self._target_verifier_rowtile_session_kwargs(),
             **self._target_fp16_recurrent_state_session_kwargs(),
+            **self._target_verifier_prefill_gdn_capture_session_kwargs(),
         }
         if shared_runner is not None:
             session_kwargs.update(runtime=shared_runner.runtime, shared_runner=shared_runner)
@@ -4024,6 +4058,7 @@ class Qwen35GGUFBringupGenerator:
                 execution_routes=("eager", "native_rows", "native_graph"),
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
+                **self._target_verifier_prefill_gdn_capture_session_kwargs(),
             ) as session:
                 self._configure_session(session)
                 native_run = self._generate_greedy_batch(
@@ -4308,30 +4343,29 @@ class Qwen35GGUFBringupGenerator:
         completed_chunks = 0
         serial_prefill_request_ids: set[int] = set()
         try:
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                for chunk in chunks:
-                    prefill_batch = getattr(chunk[0].session, "prefill_batch_native")
-                    prompt_ids = [tuple(int(token) for token in slot.prompt_ids) for slot in chunk]
-                    sessions = [slot.session for slot in chunk]
-                    chunk_start = time.perf_counter()
-                    results = prefill_batch(
-                        prompt_ids,
-                        sessions=sessions,
-                        return_logits=False,
+            for chunk in chunks:
+                prefill_batch = getattr(chunk[0].session, "prefill_batch_native")
+                prompt_ids = [tuple(int(token) for token in slot.prompt_ids) for slot in chunk]
+                sessions = [slot.session for slot in chunk]
+                chunk_start = time.perf_counter()
+                results = prefill_batch(
+                    prompt_ids,
+                    sessions=sessions,
+                    return_logits=False,
+                )
+                if results is None:
+                    raise NotImplementedError("GGUF AR packed prefill returned no results")
+                batch_results = list(results)
+                if len(batch_results) != len(chunk):
+                    raise RuntimeError(
+                        f"GGUF AR packed prefill returned {len(batch_results)} result(s) "
+                        f"for {len(chunk)} live slot(s)"
                     )
-                    if results is None:
-                        raise NotImplementedError("GGUF AR packed prefill returned no results")
-                    batch_results = list(results)
-                    if len(batch_results) != len(chunk):
-                        raise RuntimeError(
-                            f"GGUF AR packed prefill returned {len(batch_results)} result(s) "
-                            f"for {len(chunk)} live slot(s)"
-                        )
-                    chunk_ms = _timing_ms_since(chunk_start)
-                    for slot, result in zip(chunk, batch_results, strict=True):
-                        batch_results_by_request[int(slot.request_id)] = result
-                        chunk_ms_by_request[int(slot.request_id)] = chunk_ms
-                    completed_chunks += 1
+                chunk_ms = _timing_ms_since(chunk_start)
+                for slot, result in zip(chunk, batch_results, strict=True):
+                    batch_results_by_request[int(slot.request_id)] = result
+                    chunk_ms_by_request[int(slot.request_id)] = chunk_ms
+                completed_chunks += 1
         except NotImplementedError:
             if completed_chunks == 0:
                 # Nothing was prefilled yet, so the caller's per-slot route can
@@ -4520,15 +4554,14 @@ class Qwen35GGUFBringupGenerator:
             )
 
         stream_start = time.perf_counter()
-        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
-                futures = [(chunk, pool.submit(step_chunk, chunk)) for chunk in chunks]
-                chunk_results: list[tuple[list[_GGUFARServingSlot], list[Any]]] = []
-                for chunk, future in futures:
-                    result = future.result()
-                    if result is None:
-                        raise RuntimeError("streamed packed AR decode chunk failed after launch")
-                    chunk_results.append((chunk, result))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+            futures = [(chunk, pool.submit(step_chunk, chunk)) for chunk in chunks]
+            chunk_results: list[tuple[list[_GGUFARServingSlot], list[Any]]] = []
+            for chunk, future in futures:
+                result = future.result()
+                if result is None:
+                    raise RuntimeError("streamed packed AR decode chunk failed after launch")
+                chunk_results.append((chunk, result))
         stream_ms = _timing_ms_since(stream_start)
         for chunk, step_results in chunk_results:
             owner_session = chunk[0].session
@@ -4571,14 +4604,13 @@ class Qwen35GGUFBringupGenerator:
                 )
             else:
                 self._flush_ar_packed_decode_owners_if_chunk_changed(chunk)
-                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                    batch_result = step_batch(
-                        token_ids,
-                        sessions=sessions,
-                        positions=positions,
-                        return_logits=False,
-                        scatter_state=False,
-                    )
+                batch_result = step_batch(
+                    token_ids,
+                    sessions=sessions,
+                    positions=positions,
+                    return_logits=False,
+                    scatter_state=False,
+                )
         except NotImplementedError:
             return None
         if batch_result is None:
@@ -4933,6 +4965,11 @@ class Qwen35GGUFBringupGenerator:
                             "target_fp16_recurrent_state",
                             None,
                         ),
+                        target_verifier_prefill_gdn_capture=getattr(
+                            self,
+                            "target_verifier_prefill_gdn_capture",
+                            None,
+                        ),
                     ) as local_runner:
                         resident_slot_count, target_verify_batching = self._generate_prepared_mtp_serving_slots(
                             local_runner,
@@ -5219,6 +5256,7 @@ class Qwen35GGUFBringupGenerator:
                         use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                         **self._target_verifier_rowtile_session_kwargs(),
                         **self._target_fp16_recurrent_state_session_kwargs(),
+                        **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                     ),
                     None,
                     False,
@@ -5256,40 +5294,39 @@ class Qwen35GGUFBringupGenerator:
                 prefill_results_by_slot: list[Any | None] = [None] * len(acquired)
                 prefill_ms_by_slot = [0.0] * len(acquired)
                 chunk_start_index = 0
-                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                    while chunk_start_index < len(acquired):
-                        remaining = len(acquired) - chunk_start_index
-                        take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
-                        if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
-                            take -= 1
-                        chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
-                        chunk_owner = chunk_entries[0]["session"]
-                        chunk_prefill_batch = getattr(chunk_owner, "prefill_batch_native", None)
-                        if not callable(chunk_prefill_batch):
-                            raise NotImplementedError("resident session has no packed prefill entry point")
-                        prompt_batch = [tuple(entry["prompt_ids"]) for entry in chunk_entries]
-                        session_batch = [entry["session"] for entry in chunk_entries]
-                        prefill_start = time.perf_counter()
-                        chunk_results = chunk_prefill_batch(
-                            prompt_batch,
-                            sessions=session_batch,
-                            return_logits=False,
-                            return_hidden_seeds=True,
+                while chunk_start_index < len(acquired):
+                    remaining = len(acquired) - chunk_start_index
+                    take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
+                    if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                        take -= 1
+                    chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
+                    chunk_owner = chunk_entries[0]["session"]
+                    chunk_prefill_batch = getattr(chunk_owner, "prefill_batch_native", None)
+                    if not callable(chunk_prefill_batch):
+                        raise NotImplementedError("resident session has no packed prefill entry point")
+                    prompt_batch = [tuple(entry["prompt_ids"]) for entry in chunk_entries]
+                    session_batch = [entry["session"] for entry in chunk_entries]
+                    prefill_start = time.perf_counter()
+                    chunk_results = chunk_prefill_batch(
+                        prompt_batch,
+                        sessions=session_batch,
+                        return_logits=False,
+                        return_hidden_seeds=True,
+                    )
+                    prefill_ms = _timing_ms_since(prefill_start)
+                    if chunk_results is None:
+                        raise NotImplementedError("packed MTP prefill returned no results")
+                    chunk_results = list(chunk_results)
+                    if len(chunk_results) != len(chunk_entries):
+                        raise RuntimeError(
+                            f"packed MTP prefill returned {len(chunk_results)} result(s) "
+                            f"for {len(chunk_entries)} slot(s)"
                         )
-                        prefill_ms = _timing_ms_since(prefill_start)
-                        if chunk_results is None:
-                            raise NotImplementedError("packed MTP prefill returned no results")
-                        chunk_results = list(chunk_results)
-                        if len(chunk_results) != len(chunk_entries):
-                            raise RuntimeError(
-                                f"packed MTP prefill returned {len(chunk_results)} result(s) "
-                                f"for {len(chunk_entries)} slot(s)"
-                            )
-                        for offset, result in enumerate(chunk_results):
-                            slot_index = chunk_start_index + offset
-                            prefill_results_by_slot[slot_index] = result
-                            prefill_ms_by_slot[slot_index] = prefill_ms
-                        chunk_start_index += take
+                    for offset, result in enumerate(chunk_results):
+                        slot_index = chunk_start_index + offset
+                        prefill_results_by_slot[slot_index] = result
+                        prefill_ms_by_slot[slot_index] = prefill_ms
+                    chunk_start_index += take
             except NotImplementedError:
                 close_acquired()
                 return None
@@ -5430,6 +5467,7 @@ class Qwen35GGUFBringupGenerator:
                     use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
+                    **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                 ),
                 None,
                 False,
@@ -5824,6 +5862,7 @@ class Qwen35GGUFBringupGenerator:
                         bulk_attention_mode="bulk",
                         use_wmma_prefill=_mtp_serving_target_wmma_for(self),
                         capture_linear_state_rows=True,
+                        capture_prefill_gdn=True,
                         defer_linear_state_commit=True,
                     )
                     _timing_add(slot.timing, "target_verify_ms", verify_start)
@@ -5961,9 +6000,11 @@ class Qwen35GGUFBringupGenerator:
         verify_start = time.perf_counter()
         try:
             if stream:
-                batch_result = verify_batch(jobs, stream=int(stream))
+                batch_result = verify_batch(
+                    jobs, stream=int(stream), capture_prefill_gdn=True
+                )
             else:
-                batch_result = verify_batch(jobs)
+                batch_result = verify_batch(jobs, capture_prefill_gdn=True)
         except NotImplementedError:
             return None
         if batch_result is None:
@@ -6295,6 +6336,7 @@ class Qwen35GGUFBringupGenerator:
                             draft_cache_len=mtp_device_kv_len,
                             cycle_id=len(cycles),
                             transaction_id=len(cycles),
+                            capture_prefill_gdn=True,
                         )
                     except NativeSpecTargetGraphUnsupportedError:
                         native_result = None
@@ -6378,6 +6420,7 @@ class Qwen35GGUFBringupGenerator:
                         bulk_attention_mode="bulk",
                         use_wmma_prefill=_mtp_serving_target_wmma_for(self),
                         capture_linear_state_rows=True,
+                        capture_prefill_gdn=True,
                         defer_linear_state_commit=True,
                     )
                     _timing_add(timing, "target_verify_ms", verify_start)
@@ -8578,16 +8621,15 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             }
 
         try:
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                prefill_batch(
-                    [prefix],
-                    sessions=[session],
-                    full_prompt_lengths=[len(prompt)],
-                    return_logits=False,
-                    return_hidden_seeds=False,
-                    sample_output=False,
-                    **_stream_kwargs(0, False),
-                )
+            prefill_batch(
+                [prefix],
+                sessions=[session],
+                full_prompt_lengths=[len(prompt)],
+                return_logits=False,
+                return_hidden_seeds=False,
+                sample_output=False,
+                **_stream_kwargs(0, False),
+            )
             # The prefix call ends exactly on the deepest 256-aligned boundary,
             # so this captures that boundary's real Conv/GDN state.
             position = int(getattr(session, "position", -1))
@@ -8597,16 +8639,15 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     f"{position}, expected {boundary}"
                 )
             self._refresh_prefix_cache(row)
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    [tail],
-                    sessions=[session],
-                    full_prompt_lengths=[len(prompt)],
-                    return_logits=False,
-                    return_hidden_seeds=False,
-                    sample_output=True,
-                    **_stream_kwargs(boundary, True),
-                )
+            results = prefill_batch(
+                [tail],
+                sessions=[session],
+                full_prompt_lengths=[len(prompt)],
+                return_logits=False,
+                return_hidden_seeds=False,
+                sample_output=True,
+                **_stream_kwargs(boundary, True),
+            )
         except Exception:
             if sink is not None:
                 self._finish_mtp2_prompt_streaming((row,), (sink,), success=False)
@@ -9402,9 +9443,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
 
     @contextmanager
     def _staged_adapter_arch_environment(self):
-        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-            with hip_target_arch_environment(self.generator.target_arch):
-                yield
+        with hip_target_arch_environment(self.generator.target_arch):
+            yield
 
     def _begin_staged_adapter_cycle(self, plan) -> None:
         self._begin_speculative_cycle(plan)
@@ -9437,9 +9477,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         execute = None if adapter is None else getattr(adapter, "execute_cycle", None)
         if not callable(execute):
             raise NotImplementedError("GGUF MTP2 adapter has no bounded complete cycle")
-        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-            with hip_target_arch_environment(self.generator.target_arch):
-                return execute(plan, commit=bool(commit))
+        with hip_target_arch_environment(self.generator.target_arch):
+            return execute(plan, commit=bool(commit))
 
     def note_speculative_plan(self, plan) -> None:
         """Publish the group-level plan decision on every row it planned.
@@ -9528,14 +9567,13 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         if not callable(prefill_batch):
             return False
         try:
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    token_rows,
-                    sessions=sessions,
-                    full_prompt_lengths=[len(tokens) for tokens in token_rows],
-                    return_logits=False,
-                    return_hidden_seeds=False,
-                )
+            results = prefill_batch(
+                token_rows,
+                sessions=sessions,
+                full_prompt_lengths=[len(tokens) for tokens in token_rows],
+                return_logits=False,
+                return_hidden_seeds=False,
+            )
         except NotImplementedError:
             # This rebuild runs after the cycle already published committed
             # tokens, so a shape refusal from the packed route must not end a
@@ -9833,15 +9871,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             else {}
         )
         try:
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    chunks,
-                    sessions=[lease.session for lease in leases],
-                    full_prompt_lengths=[len(chunk) for chunk in chunks],
-                    return_logits=False,
-                    return_hidden_seeds=capture_mtp2_hidden,
-                    **streaming_kwargs,
-                )
+            results = prefill_batch(
+                chunks,
+                sessions=[lease.session for lease in leases],
+                full_prompt_lengths=[len(chunk) for chunk in chunks],
+                return_logits=False,
+                return_hidden_seeds=capture_mtp2_hidden,
+                **streaming_kwargs,
+            )
         except NotImplementedError:
             # The packed route refuses this slab's operation or resource shape.
             # That is a route decision about this group, not a failure of the
@@ -11059,27 +11096,26 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             )
             packed_prefill_declined = False
             try:
-                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                    results = prefill_batch(
-                        [row.prompt_ids],
-                        sessions=[lease.session],
-                        full_prompt_lengths=[len(row.prompt_ids)],
-                        return_logits=False,
-                        return_hidden_seeds=bool(
-                            row.mtp2_candidate_budget > 0
-                            and (
-                                not streaming
-                                or bool(
-                                    getattr(
-                                        mtp2_adapter,
-                                        "requires_prefill_hidden_seeds",
-                                        False,
-                                    )
+                results = prefill_batch(
+                    [row.prompt_ids],
+                    sessions=[lease.session],
+                    full_prompt_lengths=[len(row.prompt_ids)],
+                    return_logits=False,
+                    return_hidden_seeds=bool(
+                        row.mtp2_candidate_budget > 0
+                        and (
+                            not streaming
+                            or bool(
+                                getattr(
+                                    mtp2_adapter,
+                                    "requires_prefill_hidden_seeds",
+                                    False,
                                 )
                             )
-                        ),
-                        **streaming_kwargs,
-                    )
+                        )
+                    ),
+                    **streaming_kwargs,
+                )
             except NotImplementedError:
                 # A packed-route refusal is a shape limit, not a request
                 # failure. The row may already own committed prompt chunks (a
@@ -11297,18 +11333,15 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 else {}
             )
             try:
-                with _temporary_env(
-                    {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
-                ):
-                    results = prefill_batch(
-                        [row.prompt_ids],
-                        sessions=[lease.session],
-                        full_prompt_lengths=[len(row.prompt_ids)],
-                        return_logits=not row.native_sampler,
-                        return_hidden_seeds=False,
-                        **streaming_kwargs,
-                        **native_logits_kwargs,
-                    )
+                results = prefill_batch(
+                    [row.prompt_ids],
+                    sessions=[lease.session],
+                    full_prompt_lengths=[len(row.prompt_ids)],
+                    return_logits=not row.native_sampler,
+                    return_hidden_seeds=False,
+                    **streaming_kwargs,
+                    **native_logits_kwargs,
+                )
             except Exception:
                 self._finish_mtp2_prompt_streaming(
                     (row,),
@@ -11416,19 +11449,16 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     raise RuntimeError("MTP processed prefill requires packed hidden sinks")
                 for index, segment in enumerate(segments):
                     want_output = bool(final_chunk and index == len(segments) - 1)
-                    with _temporary_env(
-                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
-                    ):
-                        results = prefill_batch(
-                            [segment], sessions=[session],
-                            full_prompt_lengths=[len(row.prompt_ids)],
-                            return_logits=want_output, return_hidden_seeds=False,
-                            sample_output=want_output,
-                            target_hidden_chunk_sinks=sinks,
-                            target_hidden_request_ids=(row.request_id,),
-                            target_hidden_chunk_starts=(chunk_start,),
-                            finish_target_hidden_sinks=False,
-                        )
+                    results = prefill_batch(
+                        [segment], sessions=[session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=want_output, return_hidden_seeds=False,
+                        sample_output=want_output,
+                        target_hidden_chunk_sinks=sinks,
+                        target_hidden_request_ids=(row.request_id,),
+                        target_hidden_chunk_starts=(chunk_start,),
+                        finish_target_hidden_sinks=False,
+                    )
                     chunk_start += len(segment)
                     self._refresh_prefix_cache(row)
                     if want_output:
@@ -11481,17 +11511,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 for segment_index, segment in enumerate(segments):
                     last_segment = segment_index == len(segments) - 1
                     want_output = bool(final_chunk and last_segment)
-                    with _temporary_env(
-                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
-                    ):
-                        results = prefill_batch(
-                            [segment],
-                            sessions=[session],
-                            full_prompt_lengths=[len(row.prompt_ids)],
-                            return_logits=want_output,
-                            return_hidden_seeds=False,
-                            sample_output=want_output,
-                        )
+                    results = prefill_batch(
+                        [segment],
+                        sessions=[session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=want_output,
+                        return_hidden_seeds=False,
+                        sample_output=want_output,
+                    )
                     if not last_segment:
                         # The segment ended exactly on the deepest prompt-
                         # aligned boundary; capture it before continuing.
@@ -11552,17 +11579,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     )
                 sample_kwargs = {} if not tail else {"sample_output": False}
                 try:
-                    with _temporary_env(
-                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
-                    ):
-                        results = prefill_batch(
-                            [aligned_prompt],
-                            sessions=[session],
-                            full_prompt_lengths=[len(row.prompt_ids)],
-                            return_logits=not tail,
-                            return_hidden_seeds=False,
-                            **sample_kwargs,
-                        )
+                    results = prefill_batch(
+                        [aligned_prompt],
+                        sessions=[session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=not tail,
+                        return_hidden_seeds=False,
+                        **sample_kwargs,
+                    )
                 except NotImplementedError as exc:
                     raise RuntimeError(
                         "processed-argmax radix prefill does not support private prefill"
@@ -11677,18 +11701,15 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                         else {}
                     )
                     segment_offset += len(segment)
-                    with _temporary_env(
-                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
-                    ):
-                        results = prefill_batch(
-                            [segment],
-                            sessions=[session],
-                            full_prompt_lengths=[len(row.prompt_ids)],
-                            return_logits=False,
-                            return_hidden_seeds=False,
-                            sample_output=bool(final_chunk and last_segment),
-                            **streaming_kwargs,
-                        )
+                    results = prefill_batch(
+                        [segment],
+                        sessions=[session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=False,
+                        return_hidden_seeds=False,
+                        sample_output=bool(final_chunk and last_segment),
+                        **streaming_kwargs,
+                    )
                     if not last_segment:
                         # The segment ended exactly on the deepest prompt-
                         # aligned boundary; capture it before continuing.
@@ -11781,16 +11802,15 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             else {}
         )
         try:
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    [chunk],
-                    sessions=[lease.session],
-                    full_prompt_lengths=[len(row.prompt_ids)],
-                    return_logits=False,
-                    return_hidden_seeds=False,
-                    **streaming_kwargs,
-                    **sample_kwargs,
-                )
+            results = prefill_batch(
+                [chunk],
+                sessions=[lease.session],
+                full_prompt_lengths=[len(row.prompt_ids)],
+                return_logits=False,
+                return_hidden_seeds=False,
+                **streaming_kwargs,
+                **sample_kwargs,
+            )
         except NotImplementedError:
             self._finish_mtp2_prompt_streaming(
                 (row,),
@@ -12484,11 +12504,10 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 }
             )
         try:
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = step_batch(
-                    [int(slot.prev_token) for slot in concrete],
-                    **batch_kwargs,
-                )
+            results = step_batch(
+                [int(slot.prev_token) for slot in concrete],
+                **batch_kwargs,
+            )
         except NotImplementedError:
             return False
         except MemoryAdmissionRefused:

@@ -733,6 +733,7 @@ def _record_linear(trace):
         sync_stage_timings=False,
         stage_prefix="target_block_linear_attn",
         gpu_stage_recorder=None,
+        prefill_gdn_capture=None,
     ) -> None:
         trace["ops"].append(
             {
@@ -849,7 +850,6 @@ def _make_packed_session(
     trace: dict[str, object],
 ) -> tuple[Qwen35GGUFResidentSession, dict[str, object]]:
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_F32_RESIDUAL", raising=False)
-    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
     monkeypatch.delenv("HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR", raising=False)
     if timing:
         monkeypatch.setenv(_TIMING_ENV, "1")
@@ -899,6 +899,8 @@ def _make_packed_session(
     session._position = 0
     session.use_gemv_decode = False
     session.target_verifier_production_q4_rowtile = False
+    # The packed verifier's capture mode is the session's frozen owner decision.
+    session.verifier_prefill_gdn_capture = True
 
     session._direct_resident_verify_linear_state = MethodType(
         lambda self, jobs: None, session

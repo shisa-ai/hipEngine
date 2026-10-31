@@ -2014,6 +2014,7 @@ class Qwen35GGUFMTP2Adapter:
                                 len(row.prompt_ids) + self.candidate_budget + 1
                             ),
                         ),
+                        capture_prefill_gdn=True,
                     )
                     if len(ids) == 1
                     and not self._physical_c1_request(request_id)
@@ -2195,6 +2196,7 @@ class Qwen35GGUFMTP2Adapter:
                         (int(token_id), *((0,) * budget)),
                         request_id=rid,
                         sampled_accept=True,
+                        capture_prefill_gdn=True,
                     )
                 except Exception as exc:
                     if state is not None:
@@ -2226,6 +2228,7 @@ class Qwen35GGUFMTP2Adapter:
                         prepare_target(
                             (int(token_id), *((0,) * budget)),
                             request_id=rid,
+                            capture_prefill_gdn=True,
                         )
                         if self._sampled_accept_candidate(rid):
                             # The sampled variant is warmed at prefill, before
@@ -2235,6 +2238,7 @@ class Qwen35GGUFMTP2Adapter:
                                 (int(token_id), *((0,) * budget)),
                                 request_id=rid,
                                 sampled_accept=True,
+                                capture_prefill_gdn=True,
                             )
                     for bucket_budget in range(1, budget + 1):
                         draft = DraftBatch(
@@ -3464,6 +3468,7 @@ class Qwen35GGUFMTP2Adapter:
                     int(target.position) + self.candidate_budget + 1
                 ),
             ),
+            capture_prefill_gdn=True,
         )
 
     def _ensure_request_states(self, ids: tuple[int, ...]) -> None:
@@ -5663,7 +5668,13 @@ class Qwen35GGUFMTP2Adapter:
                 and plan.declared_logical_c >= 8
             ),
         ):
-            results = list(verify_batch(jobs, device_result=device_result))
+            results = list(
+                verify_batch(
+                    jobs,
+                    device_result=device_result,
+                    capture_prefill_gdn=True,
+                )
+            )
         target_finished_ns = time.perf_counter_ns()
         target_seconds = (target_finished_ns - target_started_ns) / 1e9
         physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
@@ -7133,6 +7144,7 @@ class Qwen35GGUFMTP2Adapter:
                     target=target,
                     end_position=len(row.prompt_ids) + self.candidate_budget + 1,
                 ),
+                capture_prefill_gdn=True,
             )
             return _MTP2RequestState(
                 request_id=rid,

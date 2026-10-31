@@ -1329,6 +1329,7 @@ class Qwen35GGUFTransactionalVerifier:
         backend: str | None = None,
         quant: str = "gguf_ud_q3_k_m",
         target_verify_mode: str = "serial_exact",
+        capture_prefill_gdn: bool | None = None,
     ) -> None:
         if int(max_candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
             raise ValueError(
@@ -1340,11 +1341,16 @@ class Qwen35GGUFTransactionalVerifier:
         selected_verify_mode = str(target_verify_mode).strip().lower().replace("-", "_")
         if selected_verify_mode not in _GGUF_MTP_TARGET_VERIFY_MODES:
             raise ValueError("target_verify_mode must be 'serial_exact' or 'native'")
+        if capture_prefill_gdn is not None and not isinstance(capture_prefill_gdn, bool):
+            raise ValueError("capture_prefill_gdn must be a bool or None")
         self.target = target
         self.max_candidate_budget = int(max_candidate_budget)
         self.backend = _resolve_gguf_verifier_backend(target, backend)
         self.quant = str(quant)
         self.target_verify_mode = selected_verify_mode
+        # Public-MTP owners declare the captured-row producer they require; an
+        # unbound verifier defers to the session's frozen decision instead.
+        self.capture_prefill_gdn = capture_prefill_gdn
         self.workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=target.runtime)
         # Keep main's compact primary journal. _select_journal allocates a
         # separate consumer-owned journal before any serial fallback executes.
@@ -1429,6 +1435,19 @@ class Qwen35GGUFTransactionalVerifier:
         self._buckets[key] = bucket
         return bucket
 
+    def _declared_capture_mode(self) -> bool:
+        """Return the captured-row producer this verifier's operations require.
+
+        The constructor-owned declaration wins. A verifier that declares
+        nothing defers to the session's frozen decision, which keeps a
+        standalone diagnostic on its own route. Cached graph metadata is never
+        consulted: cache contents must not choose arithmetic.
+        """
+
+        if self.capture_prefill_gdn is not None:
+            return bool(self.capture_prefill_gdn)
+        return bool(getattr(self.target, "verifier_prefill_gdn_capture", False))
+
     def device_proposal_ready(
         self,
         candidate_budget: int,
@@ -1479,6 +1498,7 @@ class Qwen35GGUFTransactionalVerifier:
             bulk_attention_mode="native",
             use_wmma_prefill=False,
             capture_linear_state_rows=True,
+            capture_prefill_gdn=self._declared_capture_mode(),
             capture_pre_output_norm_hidden=True,
             defer_linear_state_commit=True,
             device_accept_commit=True,
@@ -1588,6 +1608,7 @@ class Qwen35GGUFTransactionalVerifier:
                     "bulk_attention_mode": "native",
                     "use_wmma_prefill": False,
                     "capture_linear_state_rows": True,
+                    "capture_prefill_gdn": self._declared_capture_mode(),
                     "capture_pre_output_norm_hidden": True,
                     "capture_lm_head_logits": return_logits,
                     "defer_linear_state_commit": True,

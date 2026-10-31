@@ -3141,6 +3141,9 @@ class Qwen35GGUFFullStackRunner:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
+    # diagnostic environment input, resolved once at construction.
+    target_verifier_prefill_gdn_capture: bool | None = None
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
@@ -3159,6 +3162,33 @@ class Qwen35GGUFFullStackRunner:
     )
     fp16_recurrent_state: bool = field(default=False, init=False)
     _fp16_recurrent_state_frozen: bool = field(default=False, init=False, repr=False)
+    verifier_prefill_gdn_capture: bool = field(default=False, init=False)
+    _verifier_prefill_gdn_capture_frozen: bool = field(
+        default=False, init=False, repr=False
+    )
+
+    def _freeze_verifier_prefill_gdn_capture(self) -> bool:
+        """Resolve the verifier capture mode once, before any session owner."""
+
+        if getattr(self, "_verifier_prefill_gdn_capture_frozen", False):
+            return bool(self.verifier_prefill_gdn_capture)
+        resolved = _resolve_verifier_prefill_gdn_capture(
+            getattr(self, "target_verifier_prefill_gdn_capture", None)
+        )
+        self.verifier_prefill_gdn_capture = bool(resolved)
+        self._verifier_prefill_gdn_capture_frozen = True
+        return self.verifier_prefill_gdn_capture
+
+    def _prefill_gdn_capture_for_call(self, requested: bool | None) -> bool:
+        """Resolve one capture-mode read; an explicit operation input wins.
+
+        The initializer freezes the owner decision before any session or
+        weight exists, so the default read is constructor-owned state only.
+        """
+
+        if requested is not None:
+            return bool(requested)
+        return bool(getattr(self, "verifier_prefill_gdn_capture", False))
 
     def _freeze_fp16_recurrent_state(
         self,
@@ -3195,6 +3225,9 @@ class Qwen35GGUFFullStackRunner:
         )
         self.runtime = self.runtime or get_hip_runtime()
         self.require_cached_build = bool(self.require_cached_build)
+        # The verifier capture mode selects the captured-row producer; freeze it
+        # before any weight, session or scratch owner exists.
+        self._freeze_verifier_prefill_gdn_capture()
         placement = str(self.token_embedding_placement).strip().lower()
         if placement not in {"device", "host", "auto"}:
             raise ValueError("token_embedding_placement must be 'device', 'host' or 'auto'")
@@ -7196,6 +7229,7 @@ class Qwen35GGUFFullStackRunner:
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         linear_state_rows: tuple[object, object] | None = None,
+        prefill_gdn_capture: bool | None = None,
         commit_final_linear_state: bool = True,
         hidden_f32_ptr: int | None = None,
         out_f32_ptr: int | None = None,
@@ -7471,7 +7505,9 @@ class Qwen35GGUFFullStackRunner:
         active_segments = int(getattr(scratch, "gdn_active_segments", 1))
         if linear_state_rows is not None:
             conv_state_rows, recurrent_state_rows = linear_state_rows
-            use_prefill_gdn_capture = _gguf_verify_capture_prefill_gdn_enabled()
+            use_prefill_gdn_capture = self._prefill_gdn_capture_for_call(
+                prefill_gdn_capture
+            )
             use_prefill_gdn_chain_conv = (
                 use_prefill_gdn_capture
                 and _gguf_verify_capture_prefill_gdn_chain_conv_enabled()
@@ -10668,6 +10704,21 @@ def _gguf_verify_capture_prefill_gdn_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV, False)
 
 
+def _resolve_verifier_prefill_gdn_capture(requested: bool | None) -> bool:
+    """Resolve the frozen verifier capture mode.
+
+    A profile-bound owner supplies the decision directly; verifier operations
+    that require the capture mode supply it per call. ``None`` is the
+    unbound/direct diagnostic path, where the explicit environment input is
+    honored once at construction and later ambient mutation cannot retarget an
+    owner.
+    """
+
+    if requested is not None:
+        return bool(requested)
+    return _gguf_verify_capture_prefill_gdn_enabled()
+
+
 _GGUF_FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
 
 
@@ -12788,6 +12839,9 @@ class Qwen35GGUFResidentSession:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    # Profile-owned verifier capture mode. ``None`` inherits the runner's frozen
+    # decision, or resolves the unbound/direct environment once.
+    target_verifier_prefill_gdn_capture: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch = resident_state_field("canonical", "scratch")
     _target_scratch_owner = resident_state_field("canonical", "scratch_owner")
@@ -13259,6 +13313,9 @@ class Qwen35GGUFResidentSession:
                     self.small_weight_arena_max_allocation_bytes
                 ),
                 target_fp16_recurrent_state=self.target_fp16_recurrent_state,
+                target_verifier_prefill_gdn_capture=(
+                    self.target_verifier_prefill_gdn_capture
+                ),
             )
             self._owns_runner = True
         else:
@@ -13277,6 +13334,21 @@ class Qwen35GGUFResidentSession:
                     "shared runner recurrent-state allocation does not match "
                     "the owner request"
                 )
+        requested_capture = self.target_verifier_prefill_gdn_capture
+        live_capture = getattr(self.runner, "verifier_prefill_gdn_capture", None)
+        if requested_capture is None:
+            if live_capture is None:
+                live_capture = _resolve_verifier_prefill_gdn_capture(None)
+            self.verifier_prefill_gdn_capture = bool(live_capture)
+        else:
+            if live_capture is not None and bool(live_capture) is not bool(
+                requested_capture
+            ):
+                raise RuntimeError(
+                    "shared runner verifier capture mode does not match the "
+                    "owner request"
+                )
+            self.verifier_prefill_gdn_capture = bool(requested_capture)
         # Freeze this experimental T2 axis at session construction so strict
         # and candidate owners can coexist in one numerical evaluator process.
         self.target_verifier_production_q4_rowtile = (
@@ -16602,6 +16674,7 @@ class Qwen35GGUFResidentSession:
         scratch,
         rows: int,
         runtime: HipRuntime,
+        prefill_gdn_capture: bool | None = None,
     ) -> dict[str, np.ndarray]:
         """Copy scored bulk-verifier layer internals for parity diagnostics.
 
@@ -16617,6 +16690,9 @@ class Qwen35GGUFResidentSession:
         row_count = int(rows)
         if row_count <= 0:
             raise ValueError("rows must be positive")
+        use_prefill_gdn_capture = self._capture_prefill_gdn_for_call(
+            prefill_gdn_capture
+        )
 
         def copy_bf16(name: str, ptr: int, shape: tuple[int, ...]) -> tuple[str, np.ndarray]:
             elements = int(np.prod(shape))
@@ -16718,7 +16794,7 @@ class Qwen35GGUFResidentSession:
                 )
                 arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
             if not (
-                _gguf_verify_capture_prefill_gdn_enabled()
+                use_prefill_gdn_capture
                 or _gguf_verify_capture_score_prefill_enabled()
                 or _gguf_verify_capture_bf16_gdn_out_enabled()
             ):
@@ -16729,7 +16805,7 @@ class Qwen35GGUFResidentSession:
                 )
                 arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
             if (
-                _gguf_verify_capture_prefill_gdn_enabled()
+                use_prefill_gdn_capture
                 or _gguf_verify_capture_score_prefill_enabled()
                 or _gguf_verify_capture_bf16_gdn_out_enabled()
             ):
@@ -19416,6 +19492,7 @@ class Qwen35GGUFResidentSession:
         *,
         stream: int = 0,
         device_result: bool = False,
+        capture_prefill_gdn: bool | None = None,
     ) -> list[Qwen35GGUFBlockVerifyResult] | list[Qwen35GGUFPackedVerifyDeviceResult]:
         """Run one packed target-verifier pass for multiple resident sessions.
 
@@ -19433,8 +19510,14 @@ class Qwen35GGUFResidentSession:
         the retained-decode split-K leaf. Unsupported shapes raise
         ``NotImplementedError`` so the scheduler can fall back to per-slot
         verification.
+
+        ``capture_prefill_gdn`` is the operation's capture-mode input; ``None``
+        keeps this session's frozen owner decision. The packed verifier requires
+        the no-copy producer, so a route that reaches it states that requirement
+        explicitly rather than wrapping the call in an environment write.
         """
 
+        capture_prefill_gdn = self._capture_prefill_gdn_for_call(capture_prefill_gdn)
         stage_timings: dict[str, float] = {}
         self.last_packed_verify_stage_timings_ms = stage_timings
         total_start = time.perf_counter()
@@ -19462,7 +19545,7 @@ class Qwen35GGUFResidentSession:
             raise NotImplementedError("packed target verifier does not support expert sidecars yet")
         if _gguf_verify_f32_residual_enabled():
             raise NotImplementedError("packed target verifier does not support F32 residual diagnostics")
-        if not _gguf_verify_capture_prefill_gdn_enabled():
+        if not capture_prefill_gdn:
             raise NotImplementedError("packed target verifier requires prefill-GDN no-copy capture")
 
         capture_linear_state_rows = bool(job_list[0].get("capture_linear_state_rows", False))
@@ -19689,6 +19772,7 @@ class Qwen35GGUFResidentSession:
                         linear_state_owner=linear_state_owner,
                         direct_linear_state=direct_linear_state,
                         capture_linear_state_rows=capture_linear_state_rows,
+                        capture_prefill_gdn=capture_prefill_gdn,
                         defer_linear_state_commit=defer_linear_state_commit,
                         stream=stream,
                     ),
@@ -19809,6 +19893,17 @@ class Qwen35GGUFResidentSession:
         stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
         return results
 
+    def _linear_rows_operation(self, prefill_gdn_capture: bool):
+        """Bind this verifier pass's capture mode to the linear-row owner."""
+
+        runner = self.runner
+
+        def run_linear_rows(*args, **kwargs):
+            kwargs["prefill_gdn_capture"] = bool(prefill_gdn_capture)
+            return runner._run_linear_attention_prefill_layer_rows(*args, **kwargs)
+
+        return run_linear_rows
+
     def _packed_verify_layer_stack_plan(
         self,
         *,
@@ -19820,6 +19915,7 @@ class Qwen35GGUFResidentSession:
         linear_state_owner: object,
         direct_linear_state: tuple[object, object] | None,
         capture_linear_state_rows: bool,
+        capture_prefill_gdn: bool,
         defer_linear_state_commit: bool,
         stream: int,
     ) -> VerifyLayerStackPlan:
@@ -19841,6 +19937,10 @@ class Qwen35GGUFResidentSession:
             layer_recurrent_states=linear_state_owner.layer_recurrent_states,
         )
         layer_types = tuple(self.runner.weights.config.layer_types)
+        # The capture mode is a property of this verifier pass, not of the
+        # process environment: bind it into the ordinary linear-row operation
+        # so the executor receives it as resolved data.
+        run_linear_rows = self._linear_rows_operation(capture_prefill_gdn)
         bindings: list[VerifyLayer] = []
         for layer_id, layer_type in enumerate(layer_types):
             if layer_type == LINEAR_ATTENTION:
@@ -19874,9 +19974,7 @@ class Qwen35GGUFResidentSession:
                         VerifyOrdinaryLinearLayer(
                             layer_id=layer_id,
                             rows=rows,
-                            run_linear_rows=(
-                                self.runner._run_linear_attention_prefill_layer_rows
-                            ),
+                            run_linear_rows=run_linear_rows,
                             scratch=packed_scratch,
                             decode_scratch=linear_decode_scratch,
                             linear_state_rows=linear_state_rows,
@@ -20004,6 +20102,7 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         advance_state_only: bool = False,
         capture_linear_state_rows: bool = False,
+        capture_prefill_gdn: bool | None = None,
         capture_pre_output_norm_hidden: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_layer_boundary_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
@@ -20049,8 +20148,14 @@ class Qwen35GGUFResidentSession:
         Conv/GDN states for a later :meth:`_commit_verify_linear_state_row`
         call.  This is the llama.cpp-style accept-row lifecycle used by strict
         block verifier diagnostics to avoid accepted-prefix replay.
+
+        ``capture_prefill_gdn`` is the operation's capture-mode input. ``None``
+        keeps this session's frozen owner decision, so a verifier route that
+        requires the no-copy producer states it instead of writing the process
+        environment.
         """
 
+        capture_prefill_gdn = self._capture_prefill_gdn_for_call(capture_prefill_gdn)
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
@@ -20432,6 +20537,7 @@ class Qwen35GGUFResidentSession:
                                     if capture_linear_state_rows
                                     else None
                                 ),
+                                prefill_gdn_capture=capture_prefill_gdn,
                                 commit_final_linear_state=not bool(defer_linear_state_commit),
                                 hidden_f32_ptr=src_f32_chunk_ptr,
                                 out_f32_ptr=dst_f32_chunk_ptr,
@@ -20501,6 +20607,7 @@ class Qwen35GGUFResidentSession:
                             scratch=bulk_scratch,
                             rows=rows,
                             runtime=runtime,
+                            prefill_gdn_capture=capture_prefill_gdn,
                         )
                     input_norm_ptr = next_norm_out_ptr if chain_dense_next_rms else None
                     src, dst = dst, src
@@ -25293,6 +25400,18 @@ class Qwen35GGUFResidentSession:
             memory=StateMemory(runtime, malloc, free),
         )
 
+    def _capture_prefill_gdn_for_call(self, requested: bool | None) -> bool:
+        """Resolve one verifier capture-mode read for this session.
+
+        ``requested`` is the operation's explicit input. ``None`` keeps this
+        session's frozen owner decision, so later ambient mutation cannot
+        retarget a verifier pass.
+        """
+
+        if requested is not None:
+            return bool(requested)
+        return bool(getattr(self, "verifier_prefill_gdn_capture", False))
+
     def _verify_linear_state_row_pair(self, layer_id: int) -> tuple[object, object] | None:
         if (
             not self._verify_linear_conv_state_rows
@@ -28667,6 +28786,7 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         use_wmma_prefill: bool = False,
         capture_linear_state_rows: bool = False,
+        capture_prefill_gdn: bool | None = None,
         capture_pre_output_norm_hidden: bool = False,
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
@@ -28678,6 +28798,7 @@ class Qwen35GGUFResidentSession:
             capture_qwen35_gguf_native_b2_target_graph,
         )
 
+        capture_prefill_gdn = self._capture_prefill_gdn_for_call(capture_prefill_gdn)
         return capture_qwen35_gguf_native_b2_target_graph(
             self,
             input_token_ids,
@@ -28688,6 +28809,7 @@ class Qwen35GGUFResidentSession:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=bool(use_wmma_prefill),
             capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_prefill_gdn=bool(capture_prefill_gdn),
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             defer_linear_state_commit=bool(defer_linear_state_commit),
             device_accept_commit=bool(device_accept_commit),
@@ -28700,6 +28822,7 @@ class Qwen35GGUFResidentSession:
         *,
         request_id: int,
         sampled_accept: bool = False,
+        capture_prefill_gdn: bool | None = None,
     ) -> bool:
         """Capture/cache one strict N2 target graph before a hot cycle.
 
@@ -28709,6 +28832,7 @@ class Qwen35GGUFResidentSession:
         """
 
         tokens = tuple(int(token) for token in input_token_ids)
+        capture_prefill_gdn = self._capture_prefill_gdn_for_call(capture_prefill_gdn)
         budget = len(tokens) - 1
         if budget not in {1, 2, 3, 4, 5, 6, 7}:
             return False
@@ -28724,6 +28848,7 @@ class Qwen35GGUFResidentSession:
                 bulk_attention_mode="native",
                 use_wmma_prefill=False,
                 capture_linear_state_rows=True,
+                capture_prefill_gdn=capture_prefill_gdn,
                 capture_pre_output_norm_hidden=True,
                 defer_linear_state_commit=True,
                 device_accept_commit=True,
@@ -28737,6 +28862,7 @@ class Qwen35GGUFResidentSession:
             bulk_attention_mode="native",
             use_wmma_prefill=False,
             capture_linear_state_rows=True,
+            capture_prefill_gdn=capture_prefill_gdn,
             capture_pre_output_norm_hidden=True,
             defer_linear_state_commit=True,
             device_accept_commit=True,
@@ -28761,6 +28887,7 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "bulk",
         use_wmma_prefill: bool = False,
         capture_linear_state_rows: bool = False,
+        capture_prefill_gdn: bool | None = None,
         capture_pre_output_norm_hidden: bool = False,
         capture_lm_head_logits: bool = False,
         record_stage_timings: bool = False,
@@ -28777,6 +28904,7 @@ class Qwen35GGUFResidentSession:
             verify_qwen35_gguf_native_b2_target,
         )
 
+        capture_prefill_gdn = self._capture_prefill_gdn_for_call(capture_prefill_gdn)
         return verify_qwen35_gguf_native_b2_target(
             self,
             input_token_ids,
@@ -28787,6 +28915,7 @@ class Qwen35GGUFResidentSession:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=bool(use_wmma_prefill),
             capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_prefill_gdn=bool(capture_prefill_gdn),
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             capture_lm_head_logits=bool(capture_lm_head_logits),
             record_stage_timings=bool(record_stage_timings),
@@ -28809,6 +28938,7 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str = "native",
         use_wmma_prefill: bool = False,
         capture_linear_state_rows: bool = True,
+        capture_prefill_gdn: bool | None = None,
         capture_pre_output_norm_hidden: bool = True,
         capture_lm_head_logits: bool = False,
         defer_linear_state_commit: bool = True,
@@ -28822,6 +28952,7 @@ class Qwen35GGUFResidentSession:
             verify_qwen35_gguf_native_target_from_device_proposal,
         )
 
+        capture_prefill_gdn = self._capture_prefill_gdn_for_call(capture_prefill_gdn)
         return verify_qwen35_gguf_native_target_from_device_proposal(
             self,
             device_proposal,
@@ -28832,6 +28963,7 @@ class Qwen35GGUFResidentSession:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=bool(use_wmma_prefill),
             capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_prefill_gdn=bool(capture_prefill_gdn),
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             capture_lm_head_logits=bool(capture_lm_head_logits),
             defer_linear_state_commit=bool(defer_linear_state_commit),
@@ -28863,6 +28995,7 @@ class Qwen35GGUFResidentSession:
         k1_disable_f32_verifier: bool = False,
         sampled_accept: bool = False,
         sampled_accept_state: object | None = None,
+        capture_prefill_gdn: bool | None = None,
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
@@ -28877,6 +29010,7 @@ class Qwen35GGUFResidentSession:
             run_qwen35_gguf_native_mtp_cycle,
         )
 
+        capture_prefill_gdn = self._capture_prefill_gdn_for_call(capture_prefill_gdn)
         return run_qwen35_gguf_native_mtp_cycle(
             self,
             resident_draft,
@@ -28899,6 +29033,7 @@ class Qwen35GGUFResidentSession:
             k1_disable_f32_verifier=bool(k1_disable_f32_verifier),
             sampled_accept=bool(sampled_accept),
             sampled_accept_state=sampled_accept_state,
+            capture_prefill_gdn=bool(capture_prefill_gdn),
         )
 
     def capture_decode_graph(

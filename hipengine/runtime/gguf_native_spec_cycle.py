@@ -749,11 +749,28 @@ def _enqueue_device_proposal_handoff(
         )
 
 
+def _resolve_capture_prefill_gdn(session: Any, requested: bool | None) -> bool:
+    """Resolve one capture-mode input for a spec-cycle operation.
+
+    The session owns the frozen decision; an explicit operation input wins. A
+    fake or partial session without the owner surface keeps its explicit value
+    or the historical decode-order default.
+    """
+
+    resolve = getattr(session, "_capture_prefill_gdn_for_call", None)
+    if callable(resolve):
+        return bool(resolve(requested))
+    if requested is not None:
+        return bool(requested)
+    return bool(getattr(session, "verifier_prefill_gdn_capture", False))
+
+
 def _native_target_configuration_key(
     *,
     bulk_attention_mode: str,
     use_wmma_prefill: bool,
     capture_linear_state_rows: bool,
+    capture_prefill_gdn: bool,
     capture_pre_output_norm_hidden: bool,
     defer_linear_state_commit: bool,
     device_accept_commit: bool,
@@ -776,6 +793,7 @@ def _native_target_configuration_key(
         str(bulk_attention_mode),
         bool(use_wmma_prefill),
         bool(capture_linear_state_rows),
+        bool(capture_prefill_gdn),
         bool(capture_pre_output_norm_hidden),
         bool(defer_linear_state_commit),
         bool(device_accept_commit),
@@ -1035,6 +1053,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         bulk_attention_mode: str,
         use_wmma_prefill: bool,
         capture_linear_state_rows: bool,
+        capture_prefill_gdn: bool,
         capture_pre_output_norm_hidden: bool,
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
@@ -1047,6 +1066,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=use_wmma_prefill,
             capture_linear_state_rows=capture_linear_state_rows,
+            capture_prefill_gdn=capture_prefill_gdn,
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
@@ -1070,6 +1090,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         bulk_attention_mode: str,
         use_wmma_prefill: bool,
         capture_linear_state_rows: bool,
+        capture_prefill_gdn: bool,
         capture_pre_output_norm_hidden: bool,
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
@@ -1088,6 +1109,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=use_wmma_prefill,
             capture_linear_state_rows=capture_linear_state_rows,
+            capture_prefill_gdn=capture_prefill_gdn,
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
@@ -1117,6 +1139,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         bulk_attention_mode: str,
         use_wmma_prefill: bool,
         capture_linear_state_rows: bool,
+        capture_prefill_gdn: bool,
         capture_pre_output_norm_hidden: bool,
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
@@ -1132,6 +1155,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=use_wmma_prefill,
             capture_linear_state_rows=capture_linear_state_rows,
+            capture_prefill_gdn=capture_prefill_gdn,
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
@@ -1597,6 +1621,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
     bulk_attention_mode: str = "bulk",
     use_wmma_prefill: bool = False,
     capture_linear_state_rows: bool = False,
+    capture_prefill_gdn: bool | None = None,
     capture_pre_output_norm_hidden: bool = False,
     capture_lm_head_logits: bool = False,
     record_stage_timings: bool = False,
@@ -1614,6 +1639,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
     """
 
     capture_start = time.perf_counter()
+    capture_prefill_gdn = _resolve_capture_prefill_gdn(session, capture_prefill_gdn)
     tokens = tuple(int(token) for token in input_token_ids)
     rows = len(tokens)
     selected_context_limit = (
@@ -2029,6 +2055,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 use_wmma_prefill=bool(use_wmma_prefill),
                 stream=stream,
                 capture_linear_state_rows=bool(capture_linear_state_rows),
+                capture_prefill_gdn=bool(capture_prefill_gdn),
                 capture_pre_output_norm_hidden=capture_pre_output_rows,
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 _pre_staged_token_ids_ptr=buffers.token_ids.ptr,
@@ -2226,6 +2253,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 bulk_attention_mode=bulk_attention_mode,
                 use_wmma_prefill=bool(use_wmma_prefill),
                 capture_linear_state_rows=bool(capture_linear_state_rows),
+                capture_prefill_gdn=bool(capture_prefill_gdn),
                 capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 device_accept_commit=bool(device_accept_commit),
@@ -2288,6 +2316,7 @@ def run_qwen35_gguf_native_mtp_cycle(
     k1_disable_f32_verifier: bool = False,
     sampled_accept: bool = False,
     sampled_accept_state: Any | None = None,
+    capture_prefill_gdn: bool | None = None,
 ) -> Qwen35GGUFNativeCompleteCycleResult:
     """Own one strict llama-compatible GGUF MTP cycle behind one call.
 
@@ -2302,6 +2331,7 @@ def run_qwen35_gguf_native_mtp_cycle(
     """
 
     call_start = time.perf_counter()
+    capture_prefill_gdn = _resolve_capture_prefill_gdn(session, capture_prefill_gdn)
     budget = int(candidate_budget)
     root = int(root_token)
     start = int(root_position)
@@ -2414,6 +2444,7 @@ def run_qwen35_gguf_native_mtp_cycle(
             bulk_attention_mode=target_mode,
             use_wmma_prefill=False,
             capture_linear_state_rows=True,
+            capture_prefill_gdn=bool(capture_prefill_gdn),
             defer_linear_state_commit=True,
             device_accept_commit=True,
             remaining_decode=remaining,
@@ -2507,6 +2538,7 @@ def verify_qwen35_gguf_native_b2_target(
     bulk_attention_mode: str = "bulk",
     use_wmma_prefill: bool = False,
     capture_linear_state_rows: bool = False,
+    capture_prefill_gdn: bool | None = None,
     capture_pre_output_norm_hidden: bool = False,
     capture_lm_head_logits: bool = False,
     record_stage_timings: bool = False,
@@ -2530,6 +2562,7 @@ def verify_qwen35_gguf_native_b2_target(
         if not device_accept_commit:
             raise ValueError("sampled_accept requires device_accept_commit")
         fallback = False
+    capture_prefill_gdn = _resolve_capture_prefill_gdn(session, capture_prefill_gdn)
     session.last_native_spec_target_submitted = False
     session.last_native_spec_target_fallback_reason = None
     session.last_native_spec_target_capture_ms = 0.0
@@ -2539,6 +2572,7 @@ def verify_qwen35_gguf_native_b2_target(
         "bulk_attention_mode": bulk_attention_mode,
         "use_wmma_prefill": bool(use_wmma_prefill),
         "capture_linear_state_rows": bool(capture_linear_state_rows),
+        "capture_prefill_gdn": bool(capture_prefill_gdn),
         "defer_linear_state_commit": bool(defer_linear_state_commit),
     }
     if capture_pre_output_norm_hidden:
@@ -2597,6 +2631,7 @@ def verify_qwen35_gguf_native_b2_target(
         bulk_attention_mode=bulk_attention_mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_linear_state_rows=bool(capture_linear_state_rows),
+        capture_prefill_gdn=bool(capture_prefill_gdn),
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=bool(device_accept_commit),
@@ -2620,6 +2655,7 @@ def verify_qwen35_gguf_native_b2_target(
                 bulk_attention_mode=bulk_attention_mode,
                 use_wmma_prefill=use_wmma_prefill,
                 capture_linear_state_rows=capture_linear_state_rows,
+                capture_prefill_gdn=bool(capture_prefill_gdn),
                 capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
                 capture_lm_head_logits=capture_lm_head_logits,
                 record_stage_timings=record_stage_timings,
@@ -2675,6 +2711,7 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
     bulk_attention_mode: str = "native",
     use_wmma_prefill: bool = False,
     capture_linear_state_rows: bool = True,
+    capture_prefill_gdn: bool | None = None,
     capture_pre_output_norm_hidden: bool = True,
     capture_lm_head_logits: bool = False,
     defer_linear_state_commit: bool = True,
@@ -2693,6 +2730,7 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
     consumes native parameters, seed and absolute step in ``sampled_accept_state``.
     """
 
+    capture_prefill_gdn = _resolve_capture_prefill_gdn(session, capture_prefill_gdn)
     session.last_native_spec_target_submitted = False
     session.last_native_spec_target_fallback_reason = None
     session.last_native_spec_target_capture_ms = 0.0
@@ -2732,6 +2770,7 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
         bulk_attention_mode=bulk_attention_mode,
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_linear_state_rows=bool(capture_linear_state_rows),
+        capture_prefill_gdn=bool(capture_prefill_gdn),
         capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=True,
