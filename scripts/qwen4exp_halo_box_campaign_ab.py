@@ -57,7 +57,6 @@ Q8_WAVE_ENV = {
     "HIPENGINE_QWEN4_EXP_RAW_VARIANT": "coltile8",
     "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH": "32",
     "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "0",
-    "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
     "HIPENGINE_GGUF_WMMA_PREFILL": "0",
 }
 
@@ -97,12 +96,15 @@ def gr_wave_scope(runner, enabled, *, environment=os.environ):
 
 
 def q8_wave_control_record(runner):
+    from hipengine.runtime.gguf_linear import Q8WMMALayerScope
+
     return {
         "runner_field": "q8_wave_scale_prefill", "before": False, "after": True,
         "published_value": runner.q8_wave_scale_prefill,
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(Q8_WAVE_ENV),
         "forced_runner_fields": {"q8_mmq_prefill_enabled": False},
+        "forced_wmma_layers": Q8WMMALayerScope.empty().to_report(),
         "counted_variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
     }
 
@@ -110,15 +112,18 @@ def q8_wave_control_record(runner):
 @contextlib.contextmanager
 def q8_wave_scope(runner, enabled, *, environment=os.environ):
     """Compare the raw parent and pipelined wave-scale leaf without DPP."""
+    from hipengine.runtime.gguf_linear import (
+        Q8WMMALayerScope, q8_wmma_layer_scope,
+    )
     from hipengine.runtime.qwen4_exp_runner import (
         q8_mmq_prefill_enabled, q8_wave_scale_prefill,
     )
     prior = {key: environment.get(key) for key in Q8_WAVE_ENV}
     try:
         environment.update(Q8_WAVE_ENV)
-        with q8_mmq_prefill_enabled(runner, False), q8_wave_scale_prefill(
-            runner, enabled
-        ):
+        with q8_mmq_prefill_enabled(runner, False), q8_wmma_layer_scope(
+            runner, Q8WMMALayerScope.empty()
+        ), q8_wave_scale_prefill(runner, enabled):
             yield
     finally:
         for key, value in prior.items():

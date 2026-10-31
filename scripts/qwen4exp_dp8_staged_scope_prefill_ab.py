@@ -27,10 +27,11 @@ applies the profile plan, so its baseline would have been a non-shipping
 configuration rather than the one this measurement is meant to price. The gate
 path is used instead: ``register_*``, ``load_gguf_index``, ``resolve_model``,
 ``resolve_runtime_profile``, then ``resolved.construct_generator(factory)``. The
-binder writes the production selectors itself (``Q8_WMMA_LAYERS=""`` off,
-``Q8_DENSE_WIDE=1`` at 16-47), so the baseline arm is the real default and the
-candidate arm differs from it by exactly the staged scope. The bound values are
-recorded in the artifact so a reader can confirm that without re-deriving it.
+binder publishes the production selectors itself (an empty f16 WMMA owner
+scope, ``Q8_DENSE_WIDE=1`` at 16-47), so the baseline arm is the real default and
+the candidate arm differs from it by exactly the staged scope. The bound values
+are recorded in the artifact so a reader can confirm that without re-deriving
+it.
 
 **In-process arm switching is safe here, and the reason is specific.** The
 staged scope is read inside the dispatch function (``_q8_staged_f32_layers()``)
@@ -422,15 +423,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["target_arch"] = str(os.environ.get("HIPENGINE_HIP_ARCH", "gfx1151"))
     # Record what the binder actually bound, so a reader can confirm the
     # baseline arm is the shipping configuration without re-deriving it.
+    from hipengine.runtime.gguf_linear import resolve_q8_wmma_layers
+
     payload["bound_environment"] = {
         name: os.environ.get(name)
         for name in (
-            "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
             "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE",
             "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS",
             STAGED_ENV,
         )
     }
+    payload["bound_wmma_layers"] = resolve_q8_wmma_layers(
+        generator).to_report()
 
     # Construction and the binder resolve a great many dispatches; only the
     # launches below are measured, and the wrap is installed after the warmups

@@ -393,7 +393,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     # The exact Q5_K layer-2 owner that replaced the rejected grouped candidate
     # stays production-bound.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+    assert "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS" not in os.environ
+    assert production_generator.q8_wmma_layer_scope.to_env() == ""
+    assert fake_runner.q8_wmma_layer_scope.to_env() == ""
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
     assert production_generator.q8_mmq_prefill_enabled is True
     assert fake_runner.q8_mmq_prefill_enabled is True
@@ -604,7 +606,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.dense_mmq_vec4_enabled is False
     assert strict_generator.production_moe_prefill_enabled is False
     assert PRODUCTION_MOE_PREFILL_ENV not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+    assert "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS" not in os.environ
+    assert strict_generator.q8_wmma_layer_scope.to_env() == ""
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
     assert strict_generator.q8_mmq_prefill_enabled is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
@@ -861,10 +864,14 @@ def test_binder_reports_a_pre_binder_value_it_discards(
     assert production.binder is not None
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", "32,33,34")
 
+    generator = SimpleNamespace(runner=None)
     with pytest.warns(RuntimeWarning, match="HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"):
-        production.binder(SimpleNamespace(runner=None), production)
+        production.binder(generator, production)
 
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+    # The ambient value is not a process-owned binding any more, so the binder
+    # leaves it untouched and publishes the empty scope as owner state.
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == "32,33,34"
+    assert generator.q8_wmma_layer_scope.to_env() == ""
     assert last_prebinder_conflicts()["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == (
         "32,33,34",
         "",
@@ -931,7 +938,8 @@ def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
     # The f16 WMMA dense route is retired at this scope for this quant; the
     # selector and its env var stay available for explicit opt-in and gating.
     assert PRODUCTION_Q8_WMMA_PREFILL_LAYERS == tuple(range(16, 48))
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+    assert "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS" not in os.environ
+    assert generator.q8_wmma_layer_scope.to_env() == ""
 
 
 @pytest.mark.parametrize("profile,quant", [
@@ -962,7 +970,8 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
     generator = SimpleNamespace(runner=None)
     strict.binder(generator, strict)
 
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+    assert "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS" not in os.environ
+    assert generator.q8_wmma_layer_scope.to_env() == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ""
     assert not hasattr(generator, "norm_f16_publication_enabled")

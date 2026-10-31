@@ -4209,25 +4209,147 @@ _Q8_STAGED_F32_VARIANT = "staged_f32_bm128_bn64_bk32"
 _Q8_WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 
 
-def _q8_wmma_layers_scope() -> frozenset[int] | None:
-    """Parse the f16 WMMA route's layer scope, or ``None`` for every layer.
+@dataclass(frozen=True)
+class Q8WMMALayerScope:
+    """The logical f16 WMMA prefill layer scope.
 
-    Read here purely so the dispatch memoization key can see the scope. The
-    runner is what turns this variable into the context-local weight filter that
-    actually restricts the route; the key cannot observe a ``ContextVar``
-    holding a callable, which is exactly how the teacher arm of a numerical gate
-    came to replay the candidate arm's dispatch. See the note at the cache key.
-
-    Empty means **every layer** here, matching the runner's own reading of this
-    variable (``wmma_prefill_session(True if q8_wmma_layers else None)``): an
-    empty scope removes the filter rather than disabling the route, and the
-    route's enablement is governed separately by ``_WMMA_PREFILL_ENV``. That is
-    the opposite of :func:`_q8_staged_f32_layers`, where empty means off, and
-    the difference is deliberate - it mirrors what the engine does.
+    ``layers is None`` is the empty scope: every layer, no filter. A non-empty
+    frozenset is a real layer selection, including ``frozenset({0})``. The
+    object is the dispatch memo dimension, so equal scopes share a key without
+    depending on a callable, an object identity, or the ambient string.
     """
 
-    raw = os.environ.get(_Q8_WMMA_LAYERS_ENV, "")
-    return _parse_layer_scope(raw)
+    layers: frozenset[int] | None
+
+    @classmethod
+    def parse(cls, raw: str) -> Q8WMMALayerScope:
+        return cls(_parse_layer_scope(raw))
+
+    @classmethod
+    def empty(cls) -> Q8WMMALayerScope:
+        return cls(None)
+
+    @property
+    def is_empty(self) -> bool:
+        return self.layers is None
+
+    def to_env(self) -> str:
+        return "" if self.layers is None else ",".join(
+            str(layer) for layer in sorted(self.layers))
+
+    def to_report(self) -> dict[str, Any]:
+        if self.layers is None:
+            mode = "empty"
+        elif self.layers == frozenset({0}):
+            mode = "layer0"
+        else:
+            mode = "layers"
+        return {
+            "mode": mode,
+            "layers": None if self.layers is None else sorted(self.layers),
+        }
+
+
+_q8_wmma_layer_scope_bound: ContextVar[Q8WMMALayerScope | None] = ContextVar(
+    "gguf_q8_wmma_layer_scope_bound", default=None)
+_Q8_WMMA_LAYER_SCOPE_UNSET = object()
+_Q8_WMMA_LAYER_SCOPE_MISSING = object()
+
+
+def _q8_wmma_layers_bound_scope() -> Q8WMMALayerScope:
+    bound = _q8_wmma_layer_scope_bound.get()
+    if bound is not None:
+        return bound
+    return Q8WMMALayerScope.parse(os.environ.get(_Q8_WMMA_LAYERS_ENV, ""))
+
+
+def _q8_wmma_layers_scope() -> frozenset[int] | None:
+    """Return the f16 WMMA route's logical layers, or ``None`` for every layer.
+
+    Read here purely so the dispatch memoization key can see the scope. The
+    runner binds a typed scope for the chunk it measures, so the key and the
+    weight filter derive from the same decision. Empty means **every layer**
+    here, matching the runner's own reading: an empty scope removes the filter
+    rather than disabling the route, and enablement is governed separately by
+    ``_WMMA_PREFILL_ENV``. That is the opposite of
+    :func:`_q8_staged_f32_layers`, where empty means off.
+    """
+
+    return _q8_wmma_layers_bound_scope().layers
+
+
+def resolve_q8_wmma_layers(owner: Any) -> Q8WMMALayerScope:
+    """Return the scope a generator or runner would use.
+
+    A bound owner is authoritative and never rereads the ambient layer key.
+    ``None`` is the direct/unbound state, where the historical key remains the
+    fallback.
+    """
+
+    bound = getattr(owner, "q8_wmma_layer_scope", None)
+    if bound is not None:
+        if not isinstance(bound, Q8WMMALayerScope):
+            raise TypeError(
+                "q8_wmma_layer_scope must be a Q8WMMALayerScope or None")
+        return bound
+    return _q8_wmma_layers_bound_scope()
+
+
+def _q8_wmma_layer_scope_targets(owner: Any) -> list[Any]:
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    return targets
+
+
+@contextlib.contextmanager
+def q8_wmma_layer_scope(
+    owner: Any,
+    scope: Q8WMMALayerScope | None | object = _Q8_WMMA_LAYER_SCOPE_UNSET,
+):
+    """Override the WMMA layer scope on one owner and its current runner.
+
+    Omitted preserves the current owner value, ``None`` restores the
+    direct/unbound fallback, and a :class:`Q8WMMALayerScope` binds that logical
+    scope. The previous state is restored on exit, including after an
+    exception. This changes no process key and allocates nothing.
+    """
+
+    targets = _q8_wmma_layer_scope_targets(owner)
+    prior = [
+        (target, getattr(
+            target, "q8_wmma_layer_scope", _Q8_WMMA_LAYER_SCOPE_MISSING))
+        for target in targets
+    ]
+    try:
+        if scope is not _Q8_WMMA_LAYER_SCOPE_UNSET:
+            if scope is not None and not isinstance(scope, Q8WMMALayerScope):
+                raise TypeError(
+                    "q8_wmma_layer_scope must be a Q8WMMALayerScope or None")
+            for target in targets:
+                target.q8_wmma_layer_scope = scope
+        yield prior
+    finally:
+        for target, previous in prior:
+            if previous is _Q8_WMMA_LAYER_SCOPE_MISSING:
+                if hasattr(target, "q8_wmma_layer_scope"):
+                    delattr(target, "q8_wmma_layer_scope")
+            else:
+                target.q8_wmma_layer_scope = previous
+
+
+@contextlib.contextmanager
+def q8_wmma_layer_scope_session(scope: Q8WMMALayerScope) -> Iterator[None]:
+    """Bind the typed scope the dispatch memo and weight filter both read."""
+
+    if not isinstance(scope, Q8WMMALayerScope):
+        raise TypeError("q8_wmma_layer_scope_session requires a scope")
+    token = _q8_wmma_layer_scope_bound.set(scope)
+    try:
+        yield
+    finally:
+        _q8_wmma_layer_scope_bound.reset(token)
 
 
 def _q8_staged_f32_layers() -> frozenset[int] | None:
@@ -5044,10 +5166,10 @@ def launch_gguf_linear(
     # false pass: dense-wide overrode both comparison arms. The gate now clears
     # the competing route separately. See WMMA-ROUTE-FALSE-PASS.md under
     # benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/.
-    _wmma_scope = _q8_wmma_layers_scope()
+    _wmma_scope = _q8_wmma_layers_bound_scope()
     _wmma_scope_key = (
         _wmma_scope,
-        _weight_layer_index(weight) if _wmma_scope is not None else None,
+        _weight_layer_index(weight) if not _wmma_scope.is_empty else None,
     )
     cache_key = (
         generation(),

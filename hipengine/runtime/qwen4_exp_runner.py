@@ -183,6 +183,9 @@ from hipengine.runtime.gguf_linear import (
     wide_f16_pair_session,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
+    Q8WMMALayerScope,
+    q8_wmma_layer_scope_session,
+    resolve_q8_wmma_layers,
     wmma_prefill_session,
     wmma_prefill_weight_filter_session,
     GGUF_OUTPUT_F32,
@@ -9302,6 +9305,41 @@ class Qwen4ExpPrefillWorkspace:
         self.closed = True
 
 
+def _q8_wmma_weight_filter(
+    scope: Q8WMMALayerScope,
+):
+    """Build the route's weight filter from the same scope the memo sees."""
+
+    layers = scope.layers
+
+    def select(weight: GGUFDeviceWeight) -> bool:
+        if layers is None:
+            return True
+        parts = weight.spec.slot_path.split(".")
+        return bool(
+            weight.spec.quant_key == "gguf_q8_0"
+            and len(parts) >= 3
+            and parts[0] == "layers"
+            and int(parts[1]) in layers
+        )
+
+    return select
+
+
+@contextlib.contextmanager
+def _q8_wmma_scope_sessions(scope: Q8WMMALayerScope):
+    """Bind one scope to the dispatch memo and the weight filter together."""
+
+    with (
+        q8_wmma_layer_scope_session(scope),
+        wmma_prefill_session(None if scope.is_empty else True),
+        wmma_prefill_weight_filter_session(
+            None if scope.is_empty else _q8_wmma_weight_filter(scope)
+        ),
+    ):
+        yield
+
+
 class Qwen4ExpGGUFResidentModelRunner:
     """Strict c1 text runner for the complete 48-layer Qwen4Exp target."""
 
@@ -9334,6 +9372,10 @@ class Qwen4ExpGGUFResidentModelRunner:
     # fallback; a bound decision never reads it. Resource preparation stays an
     # explicit ``configure_mmq_prefill_resources()`` call.
     q8_mmq_prefill_enabled: bool | None = None
+    # The f16 WMMA dense-Q8 layer scope is the owning runner's decision. An
+    # empty Q8WMMALayerScope means every layer; ``None`` is the unbound/direct
+    # state, where the historical process key remains the fallback.
+    q8_wmma_layer_scope: Q8WMMALayerScope | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -9523,6 +9565,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q4_dp4a_decode_layers: frozenset[int] | None = None,
         production_moe_prefill_enabled: bool | None = None,
         q8_mmq_prefill_enabled: bool | None = None,
+        q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
@@ -9535,6 +9578,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         )
         self.production_moe_prefill_enabled = production_moe_prefill_enabled
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
+        self.q8_wmma_layer_scope = q8_wmma_layer_scope
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
                 "Qwen4Exp runner max_sequence_length must be in "
@@ -11393,31 +11437,13 @@ class Qwen4ExpGGUFResidentModelRunner:
         )
         if selected_raw_variant == "coltile8" and self.q8_wave_scale_prefill:
             selected_raw_variant = "coltile8_wave_scale"
-        q8_wmma_layers_raw = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", ""
-        )
-        q8_wmma_layers = {
-            int(value)
-            for value in q8_wmma_layers_raw.split(",")
-            if value.strip()
-        }
-        def q8_wmma_weight_filter(weight: GGUFDeviceWeight) -> bool:
-            parts = weight.spec.slot_path.split(".")
-            return bool(
-                weight.spec.quant_key == "gguf_q8_0"
-                and len(parts) >= 3
-                and parts[0] == "layers"
-                and int(parts[1]) in q8_wmma_layers
-            )
+        q8_wmma_scope = resolve_q8_wmma_layers(self)
 
         for start in range(0, len(values), self.prefill_chunk_size):
             with (
                 raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
                 raw_k_prefill_variant_session(selected_raw_variant),
-                wmma_prefill_session(True if q8_wmma_layers else None),
-                wmma_prefill_weight_filter_session(
-                    q8_wmma_weight_filter if q8_wmma_layers else None
-                ),
+                _q8_wmma_scope_sessions(q8_wmma_scope),
                 self._q8_mmq_prefill_context(),
                 self._wide_f16_activation_context(),
                 _qwen4_exp_q8_tile_scope(self),

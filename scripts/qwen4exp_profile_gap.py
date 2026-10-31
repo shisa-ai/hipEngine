@@ -9,6 +9,7 @@ and runtime calls are restored before the generator is closed. Diagnostic
 production-profile binder and recorded alongside both bound and effective route
 environments. The Q4 DP4A decode pair is runner state, so its diagnostic
 override is ``--q4-dp4a-decode``/``--q4-dp4a-layers`` rather than an env key.
+The f16 WMMA layer scope is owner state too; use ``--q8-wmma-layers``.
 """
 from __future__ import annotations
 
@@ -32,6 +33,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.kernels import launch_census
+from hipengine.runtime.gguf_linear import (  # noqa: E402
+    Q8WMMALayerScope,
+    q8_wmma_layer_scope,
+    resolve_q8_wmma_layers,
+)
 
 from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     DEFAULT_FIXTURE,
@@ -412,6 +418,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the Q8 MMQ prefill gate is owner state; use "
                 "--q8-mmq-prefill instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS":
+            raise ValueError(
+                "the f16 WMMA layer scope is owner state; use "
+                "--q8-wmma-layers instead of --override"
+            )
         if key in overrides:
             raise ValueError(f"duplicate override for {key}")
         overrides[key] = value
@@ -422,6 +433,7 @@ def _named_profile_intact(
     overrides: dict[str, str],
     production_moe_override: bool | None,
     q8_mmq_override: bool | None = None,
+    q8_wmma_override: Q8WMMALayerScope | None = None,
 ) -> bool:
     """A named profile is intact only when no post-binder override is active."""
 
@@ -429,6 +441,7 @@ def _named_profile_intact(
         not bool(overrides)
         and production_moe_override is None
         and q8_mmq_override is None
+        and q8_wmma_override is None
     )
 
 
@@ -436,11 +449,13 @@ def _configuration_class(
     overrides: dict[str, str],
     production_moe_override: bool | None,
     q8_mmq_override: bool | None = None,
+    q8_wmma_override: Q8WMMALayerScope | None = None,
 ) -> str:
     return (
         "diagnostic_post_binder_override"
         if overrides or production_moe_override is not None
         or q8_mmq_override is not None
+        or q8_wmma_override is not None
         else "named_profile"
     )
 
@@ -450,9 +465,10 @@ def _apply_post_binder_overrides(
 ) -> tuple[dict[str, str | None], dict[str, str | None]]:
     """Apply diagnostic environment overrides after the profile binder.
 
-    Owner-state routes (the Q4 DP4A pair, the production MoE gate and the Q8
-    MMQ prefill gate) are not environment keys and are bound separately. This
-    helper only moves the remaining process-owned diagnostic switches.
+    Owner-state routes (the Q4 DP4A pair, the production MoE gate, the Q8 MMQ
+    prefill gate and the f16 WMMA layer scope) are not environment keys and are
+    bound separately. This helper only moves the remaining process-owned
+    diagnostic switches.
     """
 
     effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
@@ -573,6 +589,15 @@ def build_parser() -> argparse.ArgumentParser:
             "the binder; enabling it prepares the workspace explicitly"
         ),
     )
+    parser.add_argument(
+        "--q8-wmma-layers",
+        default=None,
+        help=(
+            "Explicit f16 WMMA dense-Q8 layer-scope owner override applied "
+            "after the binder; an empty string means every layer and 0 means "
+            "layer 0"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -625,6 +650,14 @@ def main() -> None:
         None if args.q8_mmq_prefill is None
         else args.q8_mmq_prefill == "on"
     )
+    q8_wmma_override = None
+    if args.q8_wmma_layers is not None:
+        try:
+            q8_wmma_override = Q8WMMALayerScope.parse(args.q8_wmma_layers)
+        except ValueError as exc:
+            raise SystemExit(
+                f"invalid --q8-wmma-layers {args.q8_wmma_layers!r}: {exc}"
+            ) from exc
     q4_dp4a_override = None
     if args.q4_dp4a_decode is not None or args.q4_dp4a_layers is not None:
         q4_dp4a_override = (
@@ -733,13 +766,16 @@ def main() -> None:
         "execution_profile_requested": args.execution_profile,
         "execution_profile": resolved.profile.value,
         "configuration_class": _configuration_class(
-            overrides, production_moe_override, q8_mmq_override),
+            overrides, production_moe_override, q8_mmq_override,
+            q8_wmma_override),
         "named_profile_intact": _named_profile_intact(
-            overrides, production_moe_override, q8_mmq_override),
+            overrides, production_moe_override, q8_mmq_override,
+            q8_wmma_override),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
         "production_moe_prefill_enabled": None,
         "q8_mmq_prefill_enabled": None,
+        "q8_wmma_layers": None,
         "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
@@ -792,6 +828,13 @@ def main() -> None:
             # Enabling a scoped diagnostic must not allocate secretly: the
             # script names the cold-path resource operation explicitly.
             runner.configure_mmq_prefill_resources()
+        report["q8_wmma_layers_override"] = (
+            None if q8_wmma_override is None else q8_wmma_override.to_report())
+        if q8_wmma_override is not None:
+            q4_scope.enter_context(
+                q8_wmma_layer_scope(generator, q8_wmma_override))
+        report["q8_wmma_layers"] = resolve_q8_wmma_layers(
+            generator).to_report()
         if q4_dp4a_override is not None:
             from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
 

@@ -80,20 +80,23 @@ FAMILIES: tuple[dict, ...] = (
     },
     {
         "family": "Q8_WMMA_LAYERS_16_47",
-        "env": {
-            "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": ",".join(map(str, range(16, 48)))
+        "env": {},
+        "owner": {
+            "q8_wmma_layers": ",".join(map(str, range(16, 48))),
         },
     },
     {
         "family": "Q8_WMMA_LAYERS_32_47",
-        "env": {
-            "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": ",".join(map(str, range(32, 48)))
+        "env": {},
+        "owner": {
+            "q8_wmma_layers": ",".join(map(str, range(32, 48))),
         },
     },
     {
         "family": "Q8_WMMA_LAYERS_0_47",
-        "env": {
-            "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": ",".join(map(str, range(0, 48)))
+        "env": {},
+        "owner": {
+            "q8_wmma_layers": ",".join(map(str, range(0, 48))),
         },
     },
     {
@@ -160,6 +163,8 @@ def _run(
                 "--production-moe-prefill", owner["production_moe_prefill"]]
         if "q8_mmq_prefill" in owner:
             command += ["--q8-mmq-prefill", owner["q8_mmq_prefill"]]
+        if "q8_wmma_layers" in owner:
+            command += ["--q8-wmma-layers", owner["q8_wmma_layers"]]
     completed = subprocess.run(
         command, cwd=ROOT, capture_output=True, text=True, timeout=3600
     )
@@ -197,6 +202,7 @@ def _summarize(payload: dict, command) -> dict:
         "configuration_class": payload.get("configuration_class"),
         "fell_back_to_strict": payload.get("fell_back_to_strict"),
         "named_profile_intact": payload.get("named_profile_intact"),
+        "q8_wmma_layers": payload.get("q8_wmma_layers"),
         "risk_calls": risk.get("calls"),
         "risk_outputs": outputs,
         "risk_risky": risky,

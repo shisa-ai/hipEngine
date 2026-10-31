@@ -98,3 +98,25 @@ def test_wmma_route_arms_differ_only_in_the_wmma_selector():
     )
     assert candidate[gate.WMMA_LAYERS_ENV] == "16-47"
     assert teacher[gate.WMMA_LAYERS_ENV] == ""
+
+
+def test_wmma_route_scope_is_owner_state_not_a_process_key():
+    """The gate's arms must bind the same typed scope the memo sees."""
+
+    gate = _gate()
+    route = gate.SELECTORS["wmma"]
+
+    assert gate.WMMA_LAYERS_ENV not in route.env_keys
+    assert gate.WMMA_LAYERS_ENV not in route.process_env_for(
+        candidate=True, layers="16-47")
+    normalized = gate._parse_layers("16-47")
+    assert route.wmma_scope_for(
+        candidate=True, layers=normalized).layers == frozenset(range(16, 48))
+    assert route.wmma_scope_for(candidate=False, layers="").is_empty
+
+    for arm in (True, False):
+        with gate._apply_route_env(
+            route, candidate=arm, layers=normalized, generator=type(
+                "Owner", (), {"runner": None})(),
+        ):
+            assert gate.WMMA_LAYERS_ENV not in __import__("os").environ

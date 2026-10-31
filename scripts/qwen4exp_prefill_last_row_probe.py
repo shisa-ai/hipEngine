@@ -65,7 +65,6 @@ SUBJECTS = (
     ("longform-ja-424", LONGFORM_FIXTURE, "long_general_ja_retention_review"),
 )
 
-WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
 DENSE_WIDE_LAYERS = ",".join(str(layer) for layer in range(16, 48))
@@ -76,21 +75,20 @@ class ProbeError(RuntimeError):
 
 
 @contextlib.contextmanager
-def route_environment(*, candidate: bool):
-    """Bind exactly the selectors the gate's `dense_wide` route binds."""
+def route_environment(*, candidate: bool, runner: Any):
+    """Bind the gate's ``dense_wide`` selectors and clear the WMMA owner scope."""
 
-    names = (WMMA_LAYERS_ENV, DENSE_WIDE_ENV, DENSE_WIDE_LAYERS_ENV)
+    from hipengine.runtime.gguf_linear import (
+        Q8WMMALayerScope, q8_wmma_layer_scope, resolve_q8_wmma_layers,
+    )
+
+    names = (DENSE_WIDE_ENV, DENSE_WIDE_LAYERS_ENV)
     previous = {name: os.environ.get(name) for name in names}
-    if candidate:
-        os.environ[WMMA_LAYERS_ENV] = ""
-        os.environ[DENSE_WIDE_ENV] = "1"
-        os.environ[DENSE_WIDE_LAYERS_ENV] = DENSE_WIDE_LAYERS
-    else:
-        os.environ[WMMA_LAYERS_ENV] = ""
-        os.environ[DENSE_WIDE_ENV] = "0"
-        os.environ[DENSE_WIDE_LAYERS_ENV] = ""
+    os.environ[DENSE_WIDE_ENV] = "1" if candidate else "0"
+    os.environ[DENSE_WIDE_LAYERS_ENV] = DENSE_WIDE_LAYERS if candidate else ""
     try:
-        yield
+        with q8_wmma_layer_scope(runner, Q8WMMALayerScope.empty()):
+            yield resolve_q8_wmma_layers(runner)
     finally:
         for name, value in previous.items():
             if value is None:
@@ -219,12 +217,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             captured: dict[str, list[tuple[np.ndarray, np.ndarray, int]]] = {}
             for arm, candidate in (("cleared", False), ("dense_wide", True)):
                 runs: list[tuple[np.ndarray, np.ndarray, int]] = []
-                with route_environment(candidate=candidate):
+                with route_environment(candidate=candidate, runner=runner) as scope:
                     _warm(runner, tokens)
                     for _ in range(int(args.repeats)):
                         runs.append(_one_prefill(runner, tokens))
                 captured[arm] = runs
                 record["arms"][arm] = {
+                    "wmma_layers": scope.to_report(),
                     "step0_token_ids": [run[2] for run in runs],
                     "step0_same_arm_repeats": [
                         _compare(runs[0][0], runs[i][0]) for i in range(1, len(runs))

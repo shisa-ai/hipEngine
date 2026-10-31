@@ -23,6 +23,7 @@ QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 Q8_MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
+Q8_WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 PREBINDER_CONFLICT_ENV = "HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT"
 _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
 # Values this module has written, so a later bind can tell its own previous
@@ -1004,6 +1005,16 @@ def _publish_q8_mmq_prefill(generator: Any, enabled: bool) -> None:
         runner.q8_mmq_prefill_enabled = bool(enabled)
 
 
+def _publish_q8_wmma_layer_scope(generator: Any, scope: Any) -> None:
+    """Publish the f16 WMMA layer scope as owner state, not a process key."""
+
+    _record_owner_transport(Q8_WMMA_LAYERS_ENV, scope.to_env())
+    generator.q8_wmma_layer_scope = scope
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.q8_wmma_layer_scope = scope
+
+
 def _publish_q4_dp4a_decode(
     generator: Any,
     enabled: bool,
@@ -1065,6 +1076,9 @@ def _bind(
         table.configure_mapping_access(mode)
     _publish_production_moe_prefill(generator, production)
     _publish_q8_mmq_prefill(generator, production)
+    from hipengine.runtime.gguf_linear import Q8WMMALayerScope
+
+    _publish_q8_wmma_layer_scope(generator, Q8WMMALayerScope.empty())
     q4_dp4a_decode_layers = (
         frozenset(PRODUCTION_Q4_DP4A_DECODE_LAYERS)
         if production
@@ -1343,7 +1357,6 @@ def _bind(
         # layers is the contention the 2026-09-17 route fix had to resolve. The
         # exact coltile chain stays the registered strict fallback and keeps
         # every layer below 16.
-        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
         "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": (
             "1"
             if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"

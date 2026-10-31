@@ -115,14 +115,20 @@ def test_restoring_the_route_env_removes_keys_that_were_unset(
         _restore_env,
     )
 
+    from types import SimpleNamespace
+
     route = SELECTORS["dense_wide"]
     for key in route.env_keys:
         monkeypatch.delenv(key, raising=False)
     bound = {key: os.environ.get(key) for key in route.env_keys}
-    assert bound == {WMMA_LAYERS_ENV: None, DENSE_WIDE_ENV: None, DENSE_WIDE_LAYERS_ENV: None}
+    assert bound == {DENSE_WIDE_ENV: None, DENSE_WIDE_LAYERS_ENV: None}
+    generator = SimpleNamespace()
     try:
-        _apply_route_env(route, candidate=True, layers=LAYERS)
-        assert os.environ[DENSE_WIDE_ENV] == "1"
+        with _apply_route_env(
+            route, candidate=True, layers=LAYERS, generator=generator,
+        ):
+            assert os.environ[DENSE_WIDE_ENV] == "1"
+            assert generator.q8_wmma_layer_scope.to_env() == ""
     finally:
         _restore_env(bound)
 

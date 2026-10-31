@@ -46,7 +46,12 @@ from hipengine.execution_profiles import (
     build_variant_manifest,
     resolve_runtime_profile,
 )
-from hipengine.runtime.gguf_linear import wmma_prefill_dispatch_recorder
+from hipengine.runtime.gguf_linear import (
+    Q8WMMALayerScope,
+    q8_wmma_layer_scope,
+    resolve_q8_wmma_layers,
+    wmma_prefill_dispatch_recorder,
+)
 
 from scripts.execution_profile_gdn_calibration import (
     CalibrationError,
@@ -641,9 +646,28 @@ class Route:
             key: value.format(layers=layers) for key, value in bindings.items()
         }
 
+    def process_env_for(self, *, candidate: bool, layers: str) -> dict[str, str]:
+        """Return the process-owned selectors, excluding the WMMA owner scope."""
+
+        values = self.env_for(candidate=candidate, layers=layers)
+        values.pop(WMMA_LAYERS_ENV, None)
+        return values
+
+    def wmma_scope_for(
+        self, *, candidate: bool, layers: str,
+    ) -> Q8WMMALayerScope:
+        return Q8WMMALayerScope.parse(
+            self.env_for(candidate=candidate, layers=layers).get(
+                WMMA_LAYERS_ENV, "")
+        )
+
     @property
     def env_keys(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys((*self.candidate_env, *self.teacher_env)))
+        return tuple(
+            key
+            for key in dict.fromkeys((*self.candidate_env, *self.teacher_env))
+            if key != WMMA_LAYERS_ENV
+        )
 
 
 # ``--route`` -> the route to gate. The teacher arm is the exact coltile chain
@@ -804,10 +828,20 @@ def _select_route(name: str) -> Route:
         raise CalibrationError(f"unknown Q8 prefill route {name!r}") from exc
 
 
-def _apply_route_env(route: Route, *, candidate: bool, layers: str) -> None:
-    """Bind every selector the route owns. Empty layers means the exact chain."""
+def _apply_route_env(
+    route: Route, *, candidate: bool, layers: str, generator: Any,
+):
+    """Bind the route's process selectors and its WMMA owner scope.
 
-    os.environ.update(route.env_for(candidate=candidate, layers=layers))
+    Empty layers means the exact chain. The WMMA layer scope is owner state, so
+    it is bound on the generator rather than written to a process key.
+    """
+
+    values = route.env_for(candidate=candidate, layers=layers)
+    raw_wmma = values.pop(WMMA_LAYERS_ENV, "")
+    scope = Q8WMMALayerScope.parse(raw_wmma)
+    os.environ.update(values)
+    return q8_wmma_layer_scope(generator, scope)
 
 
 def _restore_env(bound: Mapping[str, str | None]) -> None:
@@ -894,6 +928,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     if runner is None:
         raise CalibrationError("runner is not resident")
     bound_route_env = {key: os.environ.get(key) for key in route.env_keys}
+    bound_wmma_layers = resolve_q8_wmma_layers(generator)
     # A caller-set value the binder discarded means the intended route never
     # ran and the gate would report a clean null. Fail rather than measure it.
     discarded = last_prebinder_conflicts()
@@ -910,23 +945,31 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     # else moved the output"; four times in one packet that ambiguity produced a
     # measurement attributed to a route that had not engaged.
     engagement: dict[str, list[dict[str, Any]]] = {"teacher": [], "candidate": []}
+    measured_wmma_layers: dict[str, Any] = {"teacher": None, "candidate": None}
     command = ["python3", str(Path(__file__).resolve().relative_to(REPO_ROOT)), *sys.argv[1:]]
     try:
         for position, row in enumerate(cases):
             prompt_id = str(row["id"])
             tokens = [int(t) for t in row["prompt_token_ids"]]
-            _apply_route_env(route, candidate=False, layers="")
-            _warm(runner, tokens)
-            with wmma_prefill_dispatch_recorder(engagement["teacher"]):
-                teacher = _strict_trajectory(runner, tokens, decode_steps)
+            with _apply_route_env(
+                route, candidate=False, layers="", generator=generator,
+            ) as teacher_scope:
+                measured_wmma_layers["teacher"] = teacher_scope.to_report()
+                _warm(runner, tokens)
+                with wmma_prefill_dispatch_recorder(engagement["teacher"]):
+                    teacher = _strict_trajectory(runner, tokens, decode_steps)
             forced = [step["token_id"] for step in teacher[:-1]]
-            _apply_route_env(route, candidate=True, layers=candidate_layers)
-            _warm(runner, tokens)
-            with wmma_prefill_dispatch_recorder(engagement["candidate"]):
-                runs = tuple(
-                    _forced_trajectory(runner, tokens, forced)
-                    for _ in range(int(args.repeat_runs))
-                )
+            with _apply_route_env(
+                route, candidate=True, layers=candidate_layers,
+                generator=generator,
+            ) as candidate_scope:
+                measured_wmma_layers["candidate"] = candidate_scope.to_report()
+                _warm(runner, tokens)
+                with wmma_prefill_dispatch_recorder(engagement["candidate"]):
+                    runs = tuple(
+                        _forced_trajectory(runner, tokens, forced)
+                        for _ in range(int(args.repeat_runs))
+                    )
             captures.append(
                 PromptCalibrationCapture(
                     prompt_id=prompt_id,
@@ -992,7 +1035,8 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         command=command,
         environment={
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-            **route.env_for(candidate=True, layers=candidate_layers),
+            **route.process_env_for(
+                candidate=True, layers=candidate_layers),
         },
         build_profile=route.kind,
         timing_protocol="none_full_logits_only_v1",
@@ -1031,7 +1075,14 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             "name": str(args.route),
             "surface": route.surface,
             "candidate_layers": candidate_layers,
-            "teacher_selector": route.env_for(candidate=False, layers=""),
+            "teacher_selector": route.process_env_for(
+                candidate=False, layers=""),
+            "teacher_wmma_layers": route.wmma_scope_for(
+                candidate=False, layers="").to_report(),
+            "candidate_wmma_layers": route.wmma_scope_for(
+                candidate=True, layers=candidate_layers).to_report(),
+            "bound_wmma_layers": bound_wmma_layers.to_report(),
+            "measured_wmma_layers": measured_wmma_layers,
             "teacher_chain": route.teacher_chain,
             "candidate_chain": route.candidate_chain,
             "warmup_request_after_selector_flip": True,

@@ -258,6 +258,9 @@ def test_main_records_the_runner_owned_premise(
         assert control["before"] is False and control["after"] is True
         assert control["published_value"] is True
         assert control["forced_environment"] == Q8_WAVE_ENV
+        assert control["forced_wmma_layers"] == {
+            "mode": "empty", "layers": None,
+        }
     elif package == "gr-wave-scale":
         from scripts.qwen4exp_halo_box_campaign_ab import GR_WAVE_ENV
         assert control["runner_field"] == "gr_wave_scale"

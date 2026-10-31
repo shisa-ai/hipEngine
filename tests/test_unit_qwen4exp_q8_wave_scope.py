@@ -73,6 +73,7 @@ def test_campaign_scope_binds_owner_and_restores_preemptors(mode, expected):
             assert owner.q8_wave_scale_prefill is expected
             assert all(env[k] == v for k, v in Q8_WAVE_ENV.items())
             assert env[ENV] == "stale"
+            assert owner.q8_wmma_layer_scope.is_empty
             raise RuntimeError("failed")
     assert env == before
     assert owner.q8_wave_scale_prefill is True

@@ -15,7 +15,8 @@ resolution engaged the f16-in sibling or kept the f32-in owner.
 
 The selectors are post-binder: the named production binder writes them during
 its own pass, so they are flipped after the generator is constructed and a
-pre-binder value is inert.
+pre-binder value is inert. The f16 WMMA layer scope is owner state; each arm
+binds it on the generator and records the resolved scope beside its env.
 
 The arms are interleaved round-robin and rotated between repetitions, so clock,
 thermal and allocator drift are shared across arms rather than assigned to one
@@ -33,6 +34,7 @@ arm it favours.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -98,14 +100,26 @@ ARMS: tuple[Arm, ...] = (
     ),
 )
 ARM_ENV_KEYS = (
-    WMMA_LAYERS_ENV,
     DENSE_WIDE_ENV,
     DENSE_WIDE_LAYERS_ENV,
 )
 
 
-def _apply_arm(arm: Arm) -> None:
-    os.environ.update(arm.env)
+def _arm_wmma_scope(arm: Arm):
+    from hipengine.runtime.gguf_linear import Q8WMMALayerScope
+
+    return Q8WMMALayerScope.parse(arm.env.get(WMMA_LAYERS_ENV, ""))
+
+
+@contextlib.contextmanager
+def _apply_arm(arm: Arm, runner: Any):
+    from hipengine.runtime.gguf_linear import q8_wmma_layer_scope
+
+    values = dict(arm.env)
+    values.pop(WMMA_LAYERS_ENV, None)
+    os.environ.update(values)
+    with q8_wmma_layer_scope(runner, _arm_wmma_scope(arm)):
+        yield
 
 
 def _merge_census(target: dict[tuple, int], snapshot: Mapping[str, Any]) -> None:
@@ -223,6 +237,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         runner = generator.runner
         if runner is None:
             raise SystemExit("runner is not resident")
+        from hipengine.runtime.gguf_linear import resolve_q8_wmma_layers
+
+        bound_wmma = resolve_q8_wmma_layers(generator)
         measurements: dict[str, dict[str, list[float]]] = {
             arm.name: {str(row["id"]): [] for row in cases} for arm in ARMS
         }
@@ -232,24 +249,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         tokens: dict[str, dict[str, int]] = {arm.name: {} for arm in ARMS}
         censuses: dict[str, dict[tuple, int]] = {arm.name: {} for arm in ARMS}
         effective_env: dict[str, dict[str, str | None]] = {}
+        effective_wmma: dict[str, dict[str, Any]] = {}
 
         for row in cases:
             case_id = str(row["id"])
             ids = [int(token) for token in row["prompt_token_ids"]]
             for arm in ARMS:
-                _apply_arm(arm)
-                for _ in range(int(args.warmups)):
-                    runner.prefill(ids)
-                    runner.runtime.device_synchronize()
+                with _apply_arm(arm, runner):
+                    for _ in range(int(args.warmups)):
+                        runner.prefill(ids)
+                        runner.runtime.device_synchronize()
             for repetition in range(int(args.repetitions)):
                 order = ARMS[repetition % len(ARMS):] + ARMS[: repetition % len(ARMS)]
                 for arm in order:
-                    _apply_arm(arm)
-                    launch_census.reset()
-                    started = time.perf_counter()
-                    result = runner.prefill(ids)
-                    runner.runtime.device_synchronize()
-                    elapsed = time.perf_counter() - started
+                    with _apply_arm(arm, runner):
+                        launch_census.reset()
+                        started = time.perf_counter()
+                        result = runner.prefill(ids)
+                        runner.runtime.device_synchronize()
+                        elapsed = time.perf_counter() - started
                     measurements[arm.name][case_id].append(elapsed)
                     _merge_census(censuses[arm.name], launch_census.snapshot())
                     digests[arm.name][case_id] = _digest(result)
@@ -265,11 +283,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             effective_env[case_id] = {
                 key: os.environ.get(key) for key in ARM_ENV_KEYS
             }
-        for arm in ARMS:
-            _apply_arm(arm)
-            effective_env[arm.name] = {
-                key: os.environ.get(key) for key in ARM_ENV_KEYS
+            effective_wmma[case_id] = {
+                arm.name: _arm_wmma_scope(arm).to_report() for arm in ARMS
             }
+        for arm in ARMS:
+            with _apply_arm(arm, runner):
+                effective_env[arm.name] = {
+                    key: os.environ.get(key) for key in ARM_ENV_KEYS
+                }
+                effective_wmma[arm.name] = _arm_wmma_scope(arm).to_report()
         provenance = collect_artifact_provenance(
             repo_root=ROOT,
             configured_backend="hip_gfx1151",
@@ -310,7 +332,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         rows = _census_rows(censuses[arm.name])
         arms[arm.name] = {
-            "env": dict(arm.env),
+            "env": {
+                key: value for key, value in arm.env.items()
+                if key != WMMA_LAYERS_ENV
+            },
+            "wmma_layers": _arm_wmma_scope(arm).to_report(),
             "chain": arm.chain,
             "cases": per_case,
             "census": {
@@ -370,6 +396,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
         "bound_arm_env": bound_env,
         "effective_arm_env": effective_env,
+        "effective_arm_wmma_layers": effective_wmma,
+        "bound_wmma_layers": bound_wmma.to_report(),
         "arms": arms,
         "deltas_vs_exact": deltas,
     }
