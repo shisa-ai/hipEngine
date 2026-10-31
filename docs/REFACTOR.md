@@ -3275,13 +3275,16 @@ Owner: `hipengine/generation/registry.py`.
 
 Scope: `GenerationOutput.prompt_tokens`; `_usage` in `hipengine/server/api.py`.
 
-Done when: A real vision checkpoint reports its prefilled length through `usage.prompt_tokens` on
-each supported backend — Qwen4Exp multimodal, Gemma 4 image, Surya OCR — through `LLM.generate()` or
-`hipengine serve`. The contract itself is decided and implemented: `GenerationOutput.prompt_tokens`
-owns the count, `None` falls back to counting the prepared prompt (legacy plugins), a stated `0`
-stays `0`, and `DecodeState.prompt_tokens` / `telemetry.usage["prompt_tokens"]` are diagnostic
-mirrors that never authorize a number. Only that real-model evidence is outstanding; the
-fake-surface contract is covered by `tests/test_unit_server_prompt_token_contract.py` and
+Done when: Complete real-checkpoint prompt-count validation for Gemma 4 image and Surya OCR on
+each supported backend through `LLM.generate()` or `hipengine serve`. The matching Gemma vision
+projector and Surya checkpoint are absent from the checked local model directories; provide those
+inputs, then compare HTTP usage with the generation output and actual expanded prefill length.
+Qwen4Exp gfx1151 HTTP image validation passes; see
+`worklog/entries/20261031T201027.069818Z-lhl-r0494-qwen4exp-real-http-usage-c3cbd6.md`.
+Preserve the implemented contract: `GenerationOutput.prompt_tokens` owns the count, `None`
+falls back to counting the prepared prompt (legacy plugins), a stated `0` stays `0`, and
+`DecodeState.prompt_tokens` / `telemetry.usage["prompt_tokens"]` are diagnostic mirrors that never
+authorize a number. Keep `tests/test_unit_server_prompt_token_contract.py` and
 `tests/test_integration_server_prompt_token_contract.py`.
 
 ### R0495 — Decide CPU-reference vision admission
