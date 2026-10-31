@@ -26,7 +26,10 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
     for flag in ("Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
+    assert generator.q4_dp4a_decode_enabled is False
+    assert generator.q4_dp4a_decode_layers == frozenset(
+        (0, 2, 5, 6, 8, 9, 10, 11) + tuple(range(13, 48)))
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"] == "1"
     # The ordered-v2 leaf is request-local runner state too: the binder
     # publishes the plan's decision on the generator and the runner it built,

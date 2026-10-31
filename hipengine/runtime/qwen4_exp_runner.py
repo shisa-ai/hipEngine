@@ -5139,6 +5139,151 @@ def _qwen4_exp_moe_decode_warp_key(
     return key if is_registered(key) else parent
 
 
+_Q4_DP4A_DECODE_ENV = "HIPENGINE_QWEN4_EXP_Q4_DP4A64"
+_Q4_DP4A_DECODE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"
+_Q4_DP4A_DECODE_FALSE = frozenset({"", "0", "false", "False"})
+_Q4_DP4A_DECODE_VARIANT = (
+    "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out"
+)
+
+
+def _parse_q4_dp4a_decode_layers(
+    value: str | Sequence[int],
+) -> frozenset[int]:
+    """Parse the historical layer list without changing its empty semantics."""
+
+    if isinstance(value, str):
+        return frozenset(
+            int(item) for item in value.split(",") if item.strip()
+        )
+    return frozenset(int(item) for item in value)
+
+
+def _resolve_q4_dp4a_decode(
+    enabled: bool | None,
+    layers: frozenset[int] | None,
+) -> tuple[bool, frozenset[int]]:
+    """Resolve the explicit owner pair, or the direct/unbound env fallback.
+
+    ``enabled is None`` is the only unbound state. A bound ``False`` never
+    reads the process keys, and a bound ``True`` with no layer list means the
+    historical empty scope: every layer, not no layers.
+    """
+
+    if enabled is None:
+        enabled = (
+            os.environ.get(_Q4_DP4A_DECODE_ENV, "")
+            not in _Q4_DP4A_DECODE_FALSE
+        )
+        if layers is None:
+            layers = _parse_q4_dp4a_decode_layers(
+                os.environ.get(_Q4_DP4A_DECODE_LAYERS_ENV, "")
+            )
+    elif layers is None:
+        layers = frozenset()
+    return bool(enabled), frozenset(layers)
+
+
+def q4_dp4a_decode_graph_key(
+    prefix: str,
+    layer: int,
+    decision: tuple[bool, frozenset[int]],
+) -> tuple[str, int, bool, tuple[int, ...]]:
+    """Canonical graph identity for one resolved owner decision."""
+
+    enabled, layers = decision
+    return (prefix, layer, bool(enabled), tuple(sorted(layers)))
+
+
+def _qwen4_exp_q4_dp4a_decode_key(backend: str, quant: str) -> KernelKey:
+    return KernelKey(backend, "linear", quant, _Q4_DP4A_DECODE_VARIANT)
+
+
+def _qwen4_exp_q4_dp4a_decode_scope(
+    *,
+    rows: int,
+    gate_quant: str,
+    up_quant: str,
+    gate_layer: int,
+    enabled: bool,
+    layers: frozenset[int],
+) -> bool:
+    """The DP4A leaf's c1, pair, enabled and layer-scope guards."""
+
+    return bool(
+        rows == 1
+        and gate_quant == up_quant
+        and enabled
+        and (not layers or gate_layer in layers)
+    )
+
+
+def _qwen4_exp_q4_dp4a_decode_selected(
+    *,
+    rows: int,
+    gate_quant: str,
+    up_quant: str,
+    gate_layer: int,
+    enabled: bool,
+    layers: frozenset[int],
+    registered: bool,
+) -> bool:
+    """The scope guards plus registration, in the historical short-circuit order."""
+
+    return _qwen4_exp_q4_dp4a_decode_scope(
+        rows=rows,
+        gate_quant=gate_quant,
+        up_quant=up_quant,
+        gate_layer=gate_layer,
+        enabled=enabled,
+        layers=layers,
+    ) and bool(registered)
+
+
+@contextlib.contextmanager
+def q4_dp4a_decode(
+    owner: Any,
+    enabled: bool | None = None,
+    layers: str | Sequence[int] | None = None,
+):
+    """Override the Q4 DP4A decode pair on one generator or runner.
+
+    A generator target also binds its current runner, so a diagnostic that
+    names the generator does not leave the already-built owner behind. A
+    provided ``enabled`` without a layer list uses the historical empty scope.
+    Omitted fields preserve the owner's current value; both are restored on
+    exit, including on failure.
+    """
+
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    prior = [
+        (
+            target,
+            getattr(target, "q4_dp4a_decode_enabled", None),
+            getattr(target, "q4_dp4a_decode_layers", None),
+        )
+        for target in targets
+    ]
+    parsed = None if layers is None else _parse_q4_dp4a_decode_layers(layers)
+    try:
+        for target in targets:
+            if enabled is not None:
+                target.q4_dp4a_decode_enabled = bool(enabled)
+                target.q4_dp4a_decode_layers = (
+                    frozenset() if parsed is None else parsed
+                )
+            elif parsed is not None:
+                target.q4_dp4a_decode_layers = parsed
+        yield prior
+    finally:
+        for target, prior_enabled, prior_layers in prior:
+            target.q4_dp4a_decode_enabled = prior_enabled
+            target.q4_dp4a_decode_layers = prior_layers
+
+
 def _qwen4_exp_gr_decode_fused_enabled(
     rows: int, branches: int, hidden: int, low_rank: int,
 ) -> bool:
@@ -6032,6 +6177,8 @@ def run_qwen4_exp_moe(
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
+    q4_dp4a_decode_enabled: bool | None = None,
+    q4_dp4a_decode_layers: frozenset[int] | None = None,
     scratch: Qwen4ExpMoEScratch,
     rows: int,
     hidden: int,
@@ -6147,6 +6294,11 @@ def run_qwen4_exp_moe(
     for that side. The pair only shapes that owner's launch, below the exact
     grouped Q4_K chain and the iu8 owner.
 
+    ``q4_dp4a_decode_enabled`` / ``q4_dp4a_decode_layers`` are the owning
+    runner's resolved Q4 DP4A decode pair. ``None`` on both keeps the
+    direct/unbound process-key fallback; a bound pair never reads those keys,
+    and an empty layer set means every layer.
+
     ``q51_wmma_down`` is the owning runner's plan-published admission of the F16
     WMMA compact grouped Q5_1 down owner (see :func:`q51_wmma_down`). It only
     decides below the exact grouped Q5_1 down chain, and the production grouped
@@ -6167,6 +6319,9 @@ def run_qwen4_exp_moe(
             raise ValueError("Qwen4Exp MoE graph requires c1 and an explicit key")
 
         def eager(graph_stream: int) -> None:
+            q4_dp4a_enabled, q4_dp4a_layers = _resolve_q4_dp4a_decode(
+                q4_dp4a_decode_enabled, q4_dp4a_decode_layers
+            )
             run_qwen4_exp_moe(
                 mixed_ptr,
                 weights,
@@ -6175,6 +6330,8 @@ def run_qwen4_exp_moe(
                 q4_pair_prefill=q4_pair_prefill,
                 q4_bundle_prefill=q4_bundle_prefill,
                 q5k_row4_prefill=q5k_row4_prefill,
+                q4_dp4a_decode_enabled=q4_dp4a_enabled,
+                q4_dp4a_decode_layers=q4_dp4a_layers,
                 scratch=scratch,
                 rows=rows,
                 hidden=hidden,
@@ -7168,30 +7325,25 @@ def run_qwen4_exp_moe(
             gate_weight.spec.quant_key,
             "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
         )
-        dp4a_key = KernelKey(
-            backend,
-            "linear",
-            gate_weight.spec.quant_key,
-            "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
-        )
-        dp4a_layers_raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", "")
-        dp4a_layers = {
-            int(value) for value in dp4a_layers_raw.split(",") if value.strip()
-        }
+        dp4a_key = _qwen4_exp_q4_dp4a_decode_key(
+            backend, gate_weight.spec.quant_key)
         gate_parts = gate_weight.spec.slot_path.split(".")
         gate_layer = (
             int(gate_parts[1])
             if len(gate_parts) >= 3 and gate_parts[0] == "layers"
             else -1
         )
-        use_dp4a = bool(
-            rows == 1
-            and gate_weight.spec.quant_key == up_weight.spec.quant_key
-            and os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", "")
-            not in {"", "0", "false", "False"}
-            and (not dp4a_layers or gate_layer in dp4a_layers)
-            and is_registered(dp4a_key)
+        q4_dp4a_enabled, q4_dp4a_layers = _resolve_q4_dp4a_decode(
+            q4_dp4a_decode_enabled, q4_dp4a_decode_layers
         )
+        use_dp4a = _qwen4_exp_q4_dp4a_decode_scope(
+            rows=rows,
+            gate_quant=gate_weight.spec.quant_key,
+            up_quant=up_weight.spec.quant_key,
+            gate_layer=gate_layer,
+            enabled=q4_dp4a_enabled,
+            layers=q4_dp4a_layers,
+        ) and is_registered(dp4a_key)
         fused_silu = bool(
             rows == 1
             and gate_weight.spec.quant_key == up_weight.spec.quant_key
@@ -7492,6 +7644,8 @@ def run_qwen4_exp_dense_qsa_layer(
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
+    q4_dp4a_decode_enabled: bool | None = None,
+    q4_dp4a_decode_layers: frozenset[int] | None = None,
     attention_state: Qwen4ExpDenseAttentionState,
     scratch: Qwen4ExpQSALayerScratch,
     position: int,
@@ -7630,6 +7784,8 @@ def run_qwen4_exp_dense_qsa_layer(
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
+        q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
+        q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
@@ -7672,6 +7828,8 @@ def run_qwen4_exp_qsa_prefill_layer(
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
+    q4_dp4a_decode_enabled: bool | None = None,
+    q4_dp4a_decode_layers: frozenset[int] | None = None,
     attention_state: Qwen4ExpDenseAttentionState,
     index_state: Qwen4ExpQSAIndexDeviceState,
     scratch: Qwen4ExpQSALayerScratch,
@@ -7868,6 +8026,8 @@ def run_qwen4_exp_qsa_prefill_layer(
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
+        q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
+        q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         scratch=scratch.moe,
         rows=rows,
         hidden=hidden,
@@ -7924,6 +8084,8 @@ def run_qwen4_exp_gdn_layer(
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
+    q4_dp4a_decode_enabled: bool | None = None,
+    q4_dp4a_decode_layers: frozenset[int] | None = None,
     conv_state_ptr: int,
     recurrent_state_ptr: int,
     scratch: Qwen4ExpGDNLayerScratch,
@@ -8178,6 +8340,8 @@ def run_qwen4_exp_gdn_layer(
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
+        q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
+        q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
@@ -9000,6 +9164,12 @@ class Qwen4ExpGGUFResidentModelRunner:
     dense_mmq_token64_enabled: bool = False
     dense_mmq_raw_vector_enabled: bool = False
     dense_mmq_vec4_enabled: bool = False
+    # The Q4 DP4A decode pair is the owning runner's decision. ``None`` is the
+    # unbound/direct state, where the historical process keys remain the
+    # fallback; a bound pair never reads them. The empty layer scope keeps its
+    # historical meaning: every layer.
+    q4_dp4a_decode_enabled: bool | None = None
+    q4_dp4a_decode_layers: frozenset[int] | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -9185,10 +9355,18 @@ class Qwen4ExpGGUFResidentModelRunner:
         backend: str = "hip_gfx1151",
         runtime: HipRuntime | None = None,
         moe_graph_enabled: bool | None = None,
+        q4_dp4a_decode_enabled: bool | None = None,
+        q4_dp4a_decode_layers: frozenset[int] | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
         self.backend = str(backend)
+        self.q4_dp4a_decode_enabled = q4_dp4a_decode_enabled
+        self.q4_dp4a_decode_layers = (
+            None
+            if q4_dp4a_decode_layers is None
+            else frozenset(q4_dp4a_decode_layers)
+        )
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
                 "Qwen4Exp runner max_sequence_length must be in "
@@ -10257,6 +10435,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self.position >= self.max_sequence_length:
             raise ValueError("Qwen4Exp dense runner sequence capacity exceeded")
         cfg = self.config
+        q4_dp4a_decision = _resolve_q4_dp4a_decode(
+            self.q4_dp4a_decode_enabled, self.q4_dp4a_decode_layers)
+        q4_dp4a_enabled, q4_dp4a_layers = q4_dp4a_decision
         assert self.state is not None
         assert self.gdn_scratch is not None
         assert self.qsa_scratch is not None
@@ -10428,21 +10609,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                     runtime=self.runtime,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     moe_graph_cache=self.moe_graph_cache,
-                    moe_graph_key=(
-                        "gdn", layer,
-                        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
-                        ),
-                    ),
+                    moe_graph_key=q4_dp4a_decode_graph_key(
+                        "gdn", layer, q4_dp4a_decision),
+                    q4_dp4a_decode_enabled=q4_dp4a_enabled,
+                    q4_dp4a_decode_layers=q4_dp4a_layers,
                     layer_graph_cache=self.layer_graph_cache,
-                    layer_graph_key=(
-                        "gdn", layer,
-                        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
-                        ),
-                    ),
+                    layer_graph_key=q4_dp4a_decode_graph_key(
+                        "gdn", layer, q4_dp4a_decision),
                     q51_down_m1=self.q51_down_m1,
                     q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,
@@ -10495,13 +10668,10 @@ class Qwen4ExpGGUFResidentModelRunner:
                     runtime=self.runtime,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     moe_graph_cache=self.moe_graph_cache,
-                    moe_graph_key=(
-                        "qsa", layer,
-                        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
-                        os.environ.get(
-                            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
-                        ),
-                    ),
+                    moe_graph_key=q4_dp4a_decode_graph_key(
+                        "qsa", layer, q4_dp4a_decision),
+                    q4_dp4a_decode_enabled=q4_dp4a_enabled,
+                    q4_dp4a_decode_layers=q4_dp4a_layers,
                     cache_only=False,
                     qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
                     qsa_wave32=self.qsa_wave32,
@@ -10621,6 +10791,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self.position + count > self.max_sequence_length:
             raise ValueError("Qwen4Exp prefill chunk exceeds sequence capacity")
         cfg = self.config
+        q4_dp4a_decision = _resolve_q4_dp4a_decode(
+            self.q4_dp4a_decode_enabled, self.q4_dp4a_decode_layers)
+        q4_dp4a_enabled, q4_dp4a_layers = q4_dp4a_decision
         assert self.state is not None
         assert self.gdn_prefill_scratch is not None
         assert self.qsa_prefill_scratch is not None
@@ -10832,6 +11005,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
                     gdn_peer_prefill_layers=self.gdn_peer_prefill_layers,
                     gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,
+                    q4_dp4a_decode_enabled=q4_dp4a_enabled,
+                    q4_dp4a_decode_layers=q4_dp4a_layers,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     q51_down_m1=self.q51_down_m1,
                     q51_pair_prefill=self.q51_pair_prefill,
@@ -10887,6 +11062,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     batched_selection=self.qsa_batched_selection,
                     qsa_wave32=self.qsa_wave32,
+                    q4_dp4a_decode_enabled=q4_dp4a_enabled,
+                    q4_dp4a_decode_layers=q4_dp4a_layers,
                     q51_down_m1=self.q51_down_m1,
                     q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,

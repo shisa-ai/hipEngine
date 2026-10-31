@@ -164,7 +164,8 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
         assert key[1] == width
         assert key[2:2 + len(POLICY_FIELDS)] == policy
         assert key[2 + len(POLICY_FIELDS):] == (
-            (frozenset(),) + runner._q4_tile_policy() + runner._q8_tile_policy())
+            (frozenset(),) + runner._q4_tile_policy() + runner._q8_tile_policy()
+            + (runner._q4_dp4a_policy(width),))
 
 
 @pytest.mark.parametrize("field", ("q4_tile_m", "q4_tile_n"))
@@ -183,10 +184,11 @@ def test_a_flipped_tile_changes_the_capture_key(monkeypatch, field):
     _step(runner, QWEN4_EXP_MAX_BATCH_ROWS)
     flipped = [key for _name, _width, _policy, key in seen]
     assert flipped, "the second step dispatched no layer"
+    tail = (runner._q4_tile_policy() + runner._q8_tile_policy()
+            + (runner._q4_dp4a_policy(QWEN4_EXP_MAX_BATCH_ROWS),))
     for before, after in zip(baseline, flipped):
         assert before != after, field
-        assert after[-(len(runner._q4_tile_policy()) + len(runner._q8_tile_policy())):] == (
-            runner._q4_tile_policy() + runner._q8_tile_policy())
+        assert after[-len(tail):] == tail
 
 
 @pytest.mark.parametrize("field", POLICY_FIELDS)

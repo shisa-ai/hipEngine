@@ -23,7 +23,10 @@ def _load_script():
 
 def test_decode_dp4a_candidate_selects_the_kernel_it_counts() -> None:
     candidate = _load_script().CANDIDATES["decode_dp4a_linear"]
-    assert candidate.environment["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
+    assert candidate.q4_dp4a_decode_enabled is True
+    assert candidate.q4_dp4a_decode_layers == frozenset(
+        (0, 2, 5, 6, 8, 9, 10, 11) + tuple(range(13, 48)))
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in candidate.environment
     assert "HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP" not in candidate.environment
     assert candidate.moe_decode_warp == frozenset({"DOWN"})
     assert candidate.candidate_key[-1] == (
@@ -215,8 +218,11 @@ def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
     assert candidate.base_profile == "production"
     assert set(candidate.environment.values()) == {"0"}
     for suffix in ("Q8_MMQ_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
-                   "Q4_DP4A64", "QSA_ORDERED_DECODE", "GDN_COLWARPS_PREFILL"):
+                   "QSA_ORDERED_DECODE", "GDN_COLWARPS_PREFILL"):
         assert candidate.environment["HIPENGINE_QWEN4_EXP_" + suffix] == "0"
+    assert candidate.q4_dp4a_decode_enabled is False
+    assert candidate.q4_dp4a_decode_layers == frozenset()
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in candidate.environment
     for suffix in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL",
                    "GDN_WAVE_NORM", "PLE_MAPPING_ACCESS"):
         assert "HIPENGINE_QWEN4_EXP_" + suffix not in candidate.environment

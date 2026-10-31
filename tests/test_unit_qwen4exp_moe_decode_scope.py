@@ -39,7 +39,10 @@ def test_manifest_and_runner_own_warp_choices(monkeypatch, quant, profile):
     for leg in ("GATE_UP", "DOWN"):
         assert os.environ[f"HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_{leg}"] == "stale"
     if active:
-        assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
+        assert generator.q4_dp4a_decode_enabled is False
+        assert generator.q4_dp4a_decode_layers == frozenset(
+            range(48)) - frozenset({1, 3, 4, 7, 12})
+        assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
 
 
 def test_scope_restores_after_failure_and_preserves_peer():

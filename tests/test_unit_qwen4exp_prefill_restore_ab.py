@@ -29,7 +29,7 @@ def test_shared_graphs_allow_only_reviewed_uncaptured_switches():
         CANDIDATES["q8_blockscale_guarded_ordered"].environment,
     ])
     with pytest.raises(ValueError, match="captured decode"):
-        validate_shared_graphs([{"HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1"}])
+        validate_shared_graphs([{"HIPENGINE_QWEN4_EXP_LAYER_GRAPHS": "0"}])
 
 
 def test_three_arm_order_balances_positions_and_neighbor_directions():

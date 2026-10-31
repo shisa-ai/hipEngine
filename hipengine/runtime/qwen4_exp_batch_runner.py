@@ -124,6 +124,7 @@ from hipengine.runtime.qwen4_exp_batch_state import (
 )
 from hipengine.runtime.qwen4_exp_runner import (
     _qwen4_exp_q8_tile_scope,
+    _resolve_q4_dp4a_decode,
     Qwen4ExpGDNLayerDeviceWeights,
     Qwen4ExpGDNLayerScratch,
     Qwen4ExpGRScratch,
@@ -402,6 +403,8 @@ def run_qwen4_exp_batch_gdn_layer(
     q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
+    q4_dp4a_decode_enabled: bool | None = None,
+    q4_dp4a_decode_layers: frozenset[int] | None = None,
     state: Qwen4ExpBatchGdnState,
     scratch: Qwen4ExpGDNLayerScratch,
     rows: int,
@@ -513,6 +516,8 @@ def run_qwen4_exp_batch_gdn_layer(
             q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
+            q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
+            q4_dp4a_decode_layers=q4_dp4a_decode_layers,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -627,6 +632,8 @@ def _run_layer_ffn(
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
+    q4_dp4a_decode_enabled: bool | None = None,
+    q4_dp4a_decode_layers: frozenset[int] | None = None,
     rows: int,
     branches: int,
     hidden: int,
@@ -697,6 +704,8 @@ def _run_layer_ffn(
         q4_pair_prefill=q4_pair_prefill,
         q4_bundle_prefill=q4_bundle_prefill,
         q5k_row4_prefill=q5k_row4_prefill,
+        q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
+        q4_dp4a_decode_layers=q4_dp4a_decode_layers,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=runtime,
@@ -739,6 +748,8 @@ def run_qwen4_exp_batch_qsa_layer(
     q51_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
+    q4_dp4a_decode_enabled: bool | None = None,
+    q4_dp4a_decode_layers: frozenset[int] | None = None,
     attention_state: Qwen4ExpBatchAttentionState,
     index_state: Qwen4ExpBatchQsaIndexState,
     selection: Qwen4ExpBatchQsaSelectionScratch,
@@ -858,6 +869,8 @@ def run_qwen4_exp_batch_qsa_layer(
             q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
             q5k_row4_prefill=q5k_row4_prefill,
+            q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
+            q4_dp4a_decode_layers=q4_dp4a_decode_layers,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -974,6 +987,12 @@ class Qwen4ExpGGUFBatchRunner:
     q4_out4: bool = True
     q4_bundle_prefill: bool = False
     q4_pair_prefill: bool = False
+    # The Q4 DP4A decode pair is the owning runner's decision. ``None`` on both
+    # fields keeps the direct/unbound process-key fallback; a bound pair is
+    # copied from the generator at batch construction and never reads ambient
+    # state. The pair is part of the captured-segment identity for c1 rows.
+    q4_dp4a_decode_enabled: bool | None = None
+    q4_dp4a_decode_layers: frozenset[int] | None = None
     gr_wave_scale: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder and ``None`` (the dispatch heuristic) on an unbound owner.
@@ -1853,6 +1872,24 @@ class Qwen4ExpGGUFBatchRunner:
 
         return (self.q4_tile_m, self.q4_tile_n)
 
+    def _q4_dp4a_policy(self, rows: int) -> tuple[bool | None, tuple[int, ...]]:
+        """The Q4 DP4A decode decision a captured c1 segment depends on.
+
+        DP4A only selects at ``rows == 1``. At wider rows the decision is inert,
+        so the key carries a stable sentinel and the batch path does not read
+        the ambient pair for a prefill-width segment. A bound pair is resolved
+        without touching the environment; an unbound pair keeps the historical
+        direct fallback, but only for a c1 segment that can select it.
+        """
+
+        if int(rows) != 1:
+            return (None, ())
+        enabled, layers = _resolve_q4_dp4a_decode(
+            getattr(self, "q4_dp4a_decode_enabled", None),
+            getattr(self, "q4_dp4a_decode_layers", None),
+        )
+        return (bool(enabled), tuple(sorted(layers)))
+
     def _q8_tile_policy(self) -> tuple[tuple[int, int] | None]:
         """The Q8_0 dense tile pair a captured layer segment bakes in.
 
@@ -2155,6 +2192,8 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     q5k_row4_prefill=self.q5k_row4_prefill,
+                    q4_dp4a_decode_enabled=self.q4_dp4a_decode_enabled,
+                    q4_dp4a_decode_layers=self.q4_dp4a_decode_layers,
                     state=self.gdn_states[gdn_binding.gdn_state_index],
                     scratch=gdn_scratch,
                     rows=rows,
@@ -2172,7 +2211,8 @@ class Qwen4ExpGGUFBatchRunner:
                     runtime=self.runtime,
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy()
-                    + self._q4_tile_policy() + self._q8_tile_policy(),
+                    + self._q4_tile_policy() + self._q8_tile_policy()
+                    + (self._q4_dp4a_policy(rows),),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -2198,6 +2238,8 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     q5k_row4_prefill=self.q5k_row4_prefill,
+                    q4_dp4a_decode_enabled=self.q4_dp4a_decode_enabled,
+                    q4_dp4a_decode_layers=self.q4_dp4a_decode_layers,
                     attention_state=attention_states[qsa_binding.qsa_state_index],
                     index_state=self.index_states[qsa_binding.qsa_state_index],
                     selection=selection,
@@ -2221,7 +2263,8 @@ class Qwen4ExpGGUFBatchRunner:
                     runtime=self.runtime,
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy()
-                    + self._q4_tile_policy() + self._q8_tile_policy(),
+                    + self._q4_tile_policy() + self._q8_tile_policy()
+                    + (self._q4_dp4a_policy(rows),),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,

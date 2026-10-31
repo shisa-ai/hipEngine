@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -29,12 +29,17 @@ from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
 PREFIX = "HIPENGINE_QWEN4_EXP_"
+Q4_DP4A_ENV_KEYS = frozenset({
+    PREFIX + "Q4_DP4A64", PREFIX + "Q4_DP4A64_LAYERS",
+})
 ARMS = {
     "bound": {},
     "gdn_strict": {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
     "moe_strict": {PREFIX + key: "0" for key in ("PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL")},
     "dense_q8_gr_strict": {PREFIX + key: "0" for key in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN")},
-    "decode_strict": {PREFIX + "Q4_DP4A64": "0"},
+    # Q4 DP4A is owner state now; the arm loop binds it below instead of
+    # writing a process key the bound generator no longer reads.
+    "decode_strict": {},
 }
 ARMS["all_numerics_strict"] = {
     key: value for name, values in ARMS.items() if name != "bound"
@@ -71,6 +76,81 @@ for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
     ARMS["strict_plus_" + flag.lower()] = {}
     ARMS["q8down_off_without_" + flag.lower()] = {
         **ARMS["q8_selected_down_strict"], PREFIX + flag: "0"}
+
+
+#: Arms whose retired Q4_DP4A64 process key disabled DP4A without changing the
+#: layer scope. They now bind the same decision on the owning generator/runner.
+Q4_DP4A_CURRENT_ARMS = frozenset({
+    "decode_strict", "all_numerics_strict", "base_plus_q8_gr_flags",
+    "base_plus_gdn_flags", "base_plus_q8_selected_down_strict",
+    "q8down_off_without_dense", "q8down_off_without_qsa",
+})
+#: Arms whose retired strict binding also published the empty layer scope.
+Q4_DP4A_EMPTY_ARMS = frozenset({
+    "all_flags_strict", "gdn_flags_strict", "base_plus_moe_flags",
+    "q8down_off_without_matrix",
+})
+#: Split arms bind the pair per phase: the strict phase uses the empty scope,
+#: and the production phase leaves the production scope in place.
+Q4_DP4A_SPLIT_ARMS = frozenset({
+    "strict_prefill_production_decode", "production_prefill_strict_decode",
+})
+
+
+def strict_environment(environ):
+    """Capture the strict binding's process keys without the retired Q4 pair."""
+
+    return {
+        key: value for key, value in environ.items()
+        if (key.startswith(PREFIX) or key == "HIPENGINE_GGUF_WMMA_PREFILL")
+        and key not in Q4_DP4A_ENV_KEYS
+    }
+
+
+def q4_dp4a_arm_policy(arm):
+    """Which Q4 DP4A owner binding an arm's retired process key implied.
+
+    ``"empty"`` means the old strict key set the empty layer scope,
+    ``"current"`` means it disabled DP4A but left the production layer scope,
+    ``"split"`` means the phase loop binds it, and ``"preserve"`` means the arm
+    never named the key.
+    """
+
+    if arm in Q4_DP4A_SPLIT_ARMS:
+        return "split"
+    if arm in Q4_DP4A_EMPTY_ARMS or arm.startswith("strict_plus_"):
+        return "empty"
+    if arm in Q4_DP4A_CURRENT_ARMS:
+        return "current"
+    return "preserve"
+
+
+def q4_dp4a_arm_scope(generator, arm):
+    """Bind the arm's Q4 DP4A decision on the generator and its runner."""
+
+    policy = q4_dp4a_arm_policy(arm)
+    if policy == "empty":
+        return q4_dp4a_decode(generator, False, frozenset())
+    if policy == "current":
+        return q4_dp4a_decode(
+            generator, False,
+            getattr(generator, "q4_dp4a_decode_layers", None),
+        )
+    return nullcontext()
+
+
+def q4_dp4a_split_scope(runner, arm, phase):
+    """Bind one split phase's Q4 DP4A decision on the measured runner."""
+
+    if arm not in Q4_DP4A_SPLIT_ARMS:
+        return nullcontext()
+    strict_phase = (
+        (arm == "strict_prefill_production_decode" and phase == "prefill")
+        or (arm == "production_prefill_strict_decode" and phase == "decode")
+    )
+    if not strict_phase:
+        return nullcontext()
+    return q4_dp4a_decode(runner, False, frozenset())
 
 
 def clear_arm_graphs(runner):
@@ -201,8 +281,8 @@ def gr_wave_arm_enabled(arm, published):
 
 
 def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
-                     *, h256_mode=None, register_prefill=None, pair_prefill=None,
-                     wave_prefill=None, gr_wave_prefill=None):
+                     *, arm=None, h256_mode=None, register_prefill=None,
+                     pair_prefill=None, wave_prefill=None, gr_wave_prefill=None):
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
@@ -214,15 +294,17 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                     runner, getattr(runner, "q8_wave_scale_prefill", False)
                     if wave_prefill is None else wave_prefill), gr_wave_scale(
                         runner, getattr(runner, "gr_wave_scale", False)
-                        if gr_wave_prefill is None else gr_wave_prefill):
+                        if gr_wave_prefill is None else gr_wave_prefill), q4_dp4a_split_scope(
+                            runner, arm, "prefill"):
         runner.reset()
         result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    for token in forced_ids:
-        result = runner.step(token)
-        logits.append(np.array(result.logits, dtype=np.float32, copy=True))
+    with q4_dp4a_split_scope(runner, arm, "decode"):
+        for token in forced_ids:
+            result = runner.step(token)
+            logits.append(np.array(result.logits, dtype=np.float32, copy=True))
     return logits
 
 
@@ -250,8 +332,7 @@ def main():
         reset_memory_stats()
         identity = model_identity(args.model_root)
         strict_generator, strict_profile, _ = _make_generator(args, "strict")
-        strict_flags = {key: value for key, value in os.environ.items()
-                        if key.startswith(PREFIX) or key == "HIPENGINE_GGUF_WMMA_PREFILL"}
+        strict_flags = strict_environment(os.environ)
         strict = {}
         tokens = {}
         descriptors = []
@@ -320,6 +401,7 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(q4_dp4a_arm_scope(generator, arm))
                 arm_scope.enter_context(gr_wave_scale(
                     generator.runner, gr_wave_arm_enabled(
                         arm, generator.runner.gr_wave_scale)))
@@ -348,6 +430,7 @@ def main():
                                 pre, dec = dec, pre
                             candidate.extend(split_trajectory(
                                 generator.runner, tokens[key], forced, pre, dec,
+                                arm=arm,
                                 register_prefill=arm != "strict_prefill_production_decode",
                                 pair_prefill=arm != "strict_prefill_production_decode",
                                 wave_prefill=arm != "strict_prefill_production_decode",

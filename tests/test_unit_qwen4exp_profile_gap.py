@@ -52,6 +52,34 @@ def test_parse_overrides_rejects_ambiguous_or_unscoped_values(
         module._parse_overrides(raw)
 
 
+def test_parse_overrides_rejects_the_q4_owner_pair() -> None:
+    module = _load_script()
+
+    for key in (
+        "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
+        "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
+    ):
+        with pytest.raises(ValueError, match="owner state"):
+            module._parse_overrides([f"{key}=1"])
+
+
+def test_q4_owner_override_is_an_explicit_argument() -> None:
+    module = _load_script()
+
+    args = module.build_parser().parse_args(
+        [
+            "--model-root", "/tmp/model",
+            "--mode", "decode",
+            "--output", "/tmp/out.json",
+            "--q4-dp4a-decode", "on",
+            "--q4-dp4a-layers", "0,2,5",
+        ]
+    )
+
+    assert args.q4_dp4a_decode == "on"
+    assert args.q4_dp4a_layers == "0,2,5"
+
+
 def test_apply_post_binder_overrides_records_bound_and_effective_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

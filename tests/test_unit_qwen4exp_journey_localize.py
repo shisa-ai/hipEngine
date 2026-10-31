@@ -4,7 +4,9 @@ import pytest
 
 from scripts.qwen4exp_journey_localize import (
     ARMS, OUTLIER, PREFIX, clear_arm_graphs, gdn_isolation_overrides,
-    phase_peer_scope, serial_gdn, strict_family_overrides,
+    phase_peer_scope, q4_dp4a_arm_policy, q4_dp4a_arm_scope,
+    q4_dp4a_split_scope, serial_gdn, strict_environment,
+    strict_family_overrides,
 )
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 
@@ -39,12 +41,124 @@ def test_split_h256_scope_restores_on_failure(monkeypatch):
 
 def test_localization_disables_only_named_families():
     assert ARMS["bound"] == {}
-    assert ARMS["decode_strict"] == {PREFIX + "Q4_DP4A64": "0"}
-    for name in ("gdn_strict", "moe_strict", "dense_q8_gr_strict", "decode_strict"):
+    # Q4 DP4A is owner state now, so the arm itself carries no process key.
+    assert ARMS["decode_strict"] == {}
+    assert PREFIX + "Q4_DP4A64" not in {
+        key for values in ARMS.values() for key in values}
+    for name in ("gdn_strict", "moe_strict", "dense_q8_gr_strict"):
         assert ARMS[name]
         assert set(ARMS[name].values()) == {"0"}
         for key in ARMS[name]:
             assert ARMS["all_numerics_strict"][key] == "0"
+
+
+def test_strict_environment_drops_the_retired_q4_pair():
+    flags = strict_environment({
+        PREFIX + "Q4_DP4A64": "0",
+        PREFIX + "Q4_DP4A64_LAYERS": "",
+        PREFIX + "Q4_PAIR_PREFILL": "0",
+        "HIPENGINE_GGUF_WMMA_PREFILL": "0",
+        "UNRELATED": "1",
+    })
+    assert flags == {
+        PREFIX + "Q4_PAIR_PREFILL": "0",
+        "HIPENGINE_GGUF_WMMA_PREFILL": "0",
+    }
+
+
+@pytest.mark.parametrize("arm,policy", [
+    ("decode_strict", "current"),
+    ("all_numerics_strict", "current"),
+    ("base_plus_q8_gr_flags", "current"),
+    ("base_plus_gdn_flags", "current"),
+    ("base_plus_q8_selected_down_strict", "current"),
+    ("q8down_off_without_dense", "current"),
+    ("q8down_off_without_qsa", "current"),
+    ("all_flags_strict", "empty"),
+    ("gdn_flags_strict", "empty"),
+    ("base_plus_moe_flags", "empty"),
+    ("q8down_off_without_matrix", "empty"),
+    ("strict_plus_matrix", "empty"),
+    ("strict_plus_gdn", "empty"),
+    ("strict_prefill_production_decode", "split"),
+    ("production_prefill_strict_decode", "split"),
+    ("bound", "preserve"),
+    ("gdn_strict", "preserve"),
+    ("q8_selected_down_strict", "preserve"),
+])
+def test_q4_dp4a_arm_policy_preserves_the_retired_key_semantics(arm, policy):
+    assert q4_dp4a_arm_policy(arm) == policy
+
+
+def test_q4_dp4a_arm_scope_binds_current_or_strict_empty():
+    owner = SimpleNamespace(
+        q4_dp4a_decode_enabled=True,
+        q4_dp4a_decode_layers=frozenset({0, 2}),
+    )
+    with q4_dp4a_arm_scope(owner, "decode_strict"):
+        assert owner.q4_dp4a_decode_enabled is False
+        assert owner.q4_dp4a_decode_layers == frozenset({0, 2})
+    assert owner.q4_dp4a_decode_enabled is True
+    assert owner.q4_dp4a_decode_layers == frozenset({0, 2})
+
+    with q4_dp4a_arm_scope(owner, "strict_plus_matrix"):
+        assert owner.q4_dp4a_decode_enabled is False
+        assert owner.q4_dp4a_decode_layers == frozenset()
+    assert owner.q4_dp4a_decode_enabled is True
+    assert owner.q4_dp4a_decode_layers == frozenset({0, 2})
+
+    with q4_dp4a_arm_scope(owner, "bound"):
+        assert owner.q4_dp4a_decode_enabled is True
+        assert owner.q4_dp4a_decode_layers == frozenset({0, 2})
+
+
+def test_q4_dp4a_split_scope_follows_the_phase_and_restores():
+    runner = SimpleNamespace(
+        q4_dp4a_decode_enabled=False,
+        q4_dp4a_decode_layers=frozenset({0, 2}),
+    )
+    with q4_dp4a_split_scope(
+            runner, "strict_prefill_production_decode", "prefill"):
+        assert runner.q4_dp4a_decode_enabled is False
+        assert runner.q4_dp4a_decode_layers == frozenset()
+    assert runner.q4_dp4a_decode_layers == frozenset({0, 2})
+
+    with q4_dp4a_split_scope(
+            runner, "strict_prefill_production_decode", "decode"):
+        assert runner.q4_dp4a_decode_layers == frozenset({0, 2})
+
+    with q4_dp4a_split_scope(
+            runner, "production_prefill_strict_decode", "prefill"):
+        assert runner.q4_dp4a_decode_layers == frozenset({0, 2})
+    with q4_dp4a_split_scope(
+            runner, "production_prefill_strict_decode", "decode"):
+        assert runner.q4_dp4a_decode_layers == frozenset()
+    assert runner.q4_dp4a_decode_layers == frozenset({0, 2})
+
+
+def test_split_trajectory_binds_q4_dp4a_per_phase(monkeypatch):
+    import numpy as np
+    from scripts import qwen4exp_journey_localize as module
+
+    seen = []
+    result = SimpleNamespace(logits=np.array([1.0], dtype=np.float32))
+    runner = SimpleNamespace(
+        q4_dp4a_decode_enabled=False,
+        q4_dp4a_decode_layers=frozenset({0, 2}),
+        reset=lambda: None,
+        prefill=lambda ids: (
+            seen.append(("prefill", runner.q4_dp4a_decode_layers)) or result),
+        step=lambda token: (
+            seen.append(("step", runner.q4_dp4a_decode_layers)) or result),
+    )
+    monkeypatch.setattr(module, "clear_arm_graphs", lambda runner: None)
+    monkeypatch.setattr(module, "set_flags", lambda flags: None)
+    module.split_trajectory(
+        runner, [3], [5], {}, {},
+        arm="strict_prefill_production_decode",
+    )
+    assert seen == [("prefill", frozenset()), ("step", frozenset({0, 2}))]
+    assert runner.q4_dp4a_decode_layers == frozenset({0, 2})
 
 
 def test_selected_down_control_is_a_single_numerical_override():
@@ -87,7 +201,10 @@ def test_remaining_family_flags_are_taken_from_strict_binding():
     )}
     groups = strict_family_overrides(flags)
     for group in groups.values():
-        assert group[PREFIX + "Q4_DP4A64"] == "0"
+        assert PREFIX + "Q4_DP4A64" not in group
+    assert q4_dp4a_arm_policy("base_plus_moe_flags") == "empty"
+    assert q4_dp4a_arm_policy("base_plus_q8_gr_flags") == "current"
+    assert q4_dp4a_arm_policy("base_plus_gdn_flags") == "current"
     assert groups["base_plus_moe_flags"][PREFIX + "Q4_PAIR_PREFILL"] == "0"
     assert PREFIX + "GDN_REGISTER_PREFILL" not in groups["base_plus_moe_flags"]
     assert groups["base_plus_q8_gr_flags"][PREFIX + "Q8_WAVE_SCALE"] == "0"

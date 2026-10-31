@@ -197,6 +197,12 @@ class Qwen4ExpGGUFTextGenerator:
         self.dense_mmq_token64_enabled = False
         self.dense_mmq_raw_vector_enabled = False
         self.dense_mmq_vec4_enabled = False
+        # The Q4 DP4A decode pair is owner state, not a process switch. ``None``
+        # is the unbound/direct state, where the historical env pair remains
+        # the fallback; the binder publishes the final pair here and on the
+        # runner it finds.
+        self.q4_dp4a_decode_enabled = None
+        self.q4_dp4a_decode_layers = None
         # QSA ordered-v2 sparse decode is request-local too; the binder
         # republishes it with the rest.
         self.qsa_ordered_decode_v2 = False
@@ -374,6 +380,8 @@ class Qwen4ExpGGUFTextGenerator:
             backend=self.backend,
             runtime=runtime,
             moe_graph_enabled=self.moe_graph_enabled,
+            q4_dp4a_decode_enabled=self.q4_dp4a_decode_enabled,
+            q4_dp4a_decode_layers=self.q4_dp4a_decode_layers,
         )
 
     server_plain_ar_max_active_requests = QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
@@ -981,6 +989,10 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q4_exact_grouped_all = bool(
         getattr(generator, "q4_exact_grouped_all", True))
     runner.q4_out4 = bool(getattr(generator, "q4_out4", True))
+    runner.q4_dp4a_decode_enabled = getattr(
+        generator, "q4_dp4a_decode_enabled", None)
+    runner.q4_dp4a_decode_layers = getattr(
+        generator, "q4_dp4a_decode_layers", None)
     runner.q4_bundle_prefill = bool(getattr(generator, "q4_bundle_prefill", False))
     runner.q4_pair_prefill = bool(getattr(generator, "q4_pair_prefill", False))
     runner.q8_wave_scale_prefill = bool(getattr(generator, "q8_wave_scale_prefill", False))

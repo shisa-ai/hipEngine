@@ -567,11 +567,14 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N" not in os.environ
     assert production_generator.q8_wmma_tiles == (64, 32)
     assert fake_runner.q8_wmma_tiles == (64, 32)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
-    assert tuple(
-        int(value)
-        for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"].split(",")
-    ) == PRODUCTION_Q4_DP4A_DECODE_LAYERS
+    assert production_generator.q4_dp4a_decode_enabled is True
+    assert fake_runner.q4_dp4a_decode_enabled is True
+    assert production_generator.q4_dp4a_decode_layers == frozenset(
+        PRODUCTION_Q4_DP4A_DECODE_LAYERS)
+    assert fake_runner.q4_dp4a_decode_layers == frozenset(
+        PRODUCTION_Q4_DP4A_DECODE_LAYERS)
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS" not in os.environ
 
     def weight(layer: int):
         return SimpleNamespace(
@@ -641,8 +644,10 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "0"
     assert strict_generator.gdn_peer_prefill_layers is None
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"] == ""
+    assert strict_generator.q4_dp4a_decode_enabled is False
+    assert strict_generator.q4_dp4a_decode_layers == frozenset()
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS" not in os.environ
     assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=256)
 
 
@@ -654,7 +659,14 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
     generator = resolved.construct_generator(lambda: SimpleNamespace())
     decode = _selection_map(resolved)[("linear", "decode_c1_calibrated_q4_dp4a_43_layers")]
     assert decode["selected_variant"] == "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
+    assert generator.q4_dp4a_decode_enabled is False
+    expected_layers = (
+        frozenset()
+        if profile == ExecutionProfile.STRICT
+        else frozenset(PRODUCTION_Q4_DP4A_DECODE_LAYERS)
+    )
+    assert generator.q4_dp4a_decode_layers == expected_layers
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
     if profile != ExecutionProfile.STRICT:
         # Repair the decode operation, not the complete production composition.
         assert generator.routed_f16_enabled is True

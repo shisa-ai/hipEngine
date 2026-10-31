@@ -45,10 +45,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
+from hipengine.generation.qwen4_exp_profiles import (
+    PRODUCTION_Q4_DP4A_DECODE_LAYERS,
+)
 from hipengine.runtime.qwen4_exp_runner import (
     gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill, gdn_decode_rowsplit,
     moe_decode_warp, gr_f16_direct,
-    q4_exact_grouped_all, q4_exact_grouped_gate,
+    q4_dp4a_decode, q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     routed_f16_enabled as routed_f16,
     qsa_ordered_decode_v2,
@@ -155,6 +158,11 @@ class CandidateSpec:
     # arm that also needs the strict base to launch closes the chain's
     # iu8-risk+repair owner and the expert-grid family with it.
     q4_out4: bool | None = None
+    # Explicit Q4 DP4A decode pair for this arm. ``None`` keeps the base
+    # profile's published owner state; a bound pair is applied on the generator
+    # (and its current runner) before the measured rows and restored on unwind.
+    q4_dp4a_decode_enabled: bool | None = None
+    q4_dp4a_decode_layers: frozenset[int] | None = None
     # Explicit Q4_K exact grouped gate/up gate and its `_ALL` joint term for this
     # arm, same protocol. ``None`` keeps the base profile's publication (both on
     # every plan). ``False`` on the gate is the route to the plain-iu8 and F16
@@ -286,7 +294,8 @@ CANDIDATES = {
         classification="diagnostic",
         mechanism="conservative arithmetic fallback retaining independently exact production owners",
         environment={"HIPENGINE_QWEN4_EXP_" + flag: "0"
-                     for flag in CONSERVATIVE_ARITHMETIC_FLAGS},
+                     for flag in CONSERVATIVE_ARITHMETIC_FLAGS
+                     if flag != "Q4_DP4A64"},
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
         candidate_key=None,
@@ -300,6 +309,8 @@ CANDIDATES = {
         qsa_ordered_decode_v2=False,
         qsa_h256_prefill_mode="parent",
         gdn_peer_prefill=False,
+        q4_dp4a_decode_enabled=False,
+        q4_dp4a_decode_layers=frozenset(),
     ),
     # The risk multiplier as a CONFIGURATION.  The production repair is a
     # bit-parity mechanism, and `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` sets the
@@ -972,9 +983,9 @@ CANDIDATES["decode_dp4a_linear"] = CandidateSpec(
         "the long-context numerical failure; this post-binder candidate is "
         "the explicit route for reevaluating a repair."
     ),
-    environment={
-        "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
-    },
+    environment={},
+    q4_dp4a_decode_enabled=True,
+    q4_dp4a_decode_layers=frozenset(PRODUCTION_Q4_DP4A_DECODE_LAYERS),
     moe_decode_warp=frozenset({"DOWN"}),
     base_profile="production",
     scenario_id="qwen4exp-ud-q4-k-xl-decode-dp4a-linear",
@@ -1652,6 +1663,16 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if candidate_spec.moe_decode_warp is not None:
         dispatch_stack.enter_context(moe_decode_warp(
             candidate_generator.runner, candidate_spec.moe_decode_warp))
+    if (candidate_spec.q4_dp4a_decode_enabled is not None
+            or candidate_spec.q4_dp4a_decode_layers is not None):
+        # The Q4 DP4A pair is owner state now. Bind it on the generator and its
+        # current runner before the measured rows; the profile's own decision
+        # comes back when the stack unwinds.
+        dispatch_stack.enter_context(q4_dp4a_decode(
+            candidate_generator,
+            candidate_spec.q4_dp4a_decode_enabled,
+            candidate_spec.q4_dp4a_decode_layers,
+        ))
     if candidate_spec.gdn_decode_rowsplit is not None:
         dispatch_stack.enter_context(gdn_decode_rowsplit(
             candidate_generator.runner, candidate_spec.gdn_decode_rowsplit))

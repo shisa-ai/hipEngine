@@ -3,9 +3,11 @@
 
 For every family in ``PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`` that the current
 default leaves off, run the same production prefill twice: once as the current
-default (the fallback) and once with that family's fast path enabled. Record the
-wall time and, where the family routes through the exact iu8 risk+repair
-instrument, the repair rate the fast path would have to repair.
+default (the fallback) and once with that family's fast path enabled. A family
+whose switch is request-local runner state passes an explicit ``owner`` argument
+instead of publishing an env key. Record the wall time and, where the family
+routes through the exact iu8 risk+repair instrument, the repair rate the fast
+path would have to repair.
 
 The ranking is by seconds recoverable on the measured prefill, not by any
 historical headline gain. A family that is fast but numerically inadmissible
@@ -109,9 +111,10 @@ FAMILIES: tuple[dict, ...] = (
     },
     {
         "family": "Q4_DP4A64",
-        "env": {
-            "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
-            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": ",".join(
+        "env": {},
+        "owner": {
+            "q4_dp4a_decode": "on",
+            "q4_dp4a_layers": ",".join(
                 map(str, (0, 2, 5, 6, 8, 9, 10, 11) + tuple(range(13, 48)))
             ),
         },
@@ -128,6 +131,7 @@ def _run(
     overrides: dict[str, str],
     output: Path,
     reuse: bool = False,
+    owner: dict[str, str] | None = None,
 ) -> dict:
     if reuse and output.is_file():
         payload = json.loads(output.read_text())
@@ -145,6 +149,9 @@ def _run(
     ]
     for key, value in overrides.items():
         command += ["--override", f"{key}={value}"]
+    if owner:
+        command += ["--q4-dp4a-decode", owner["q4_dp4a_decode"]]
+        command += ["--q4-dp4a-layers", owner["q4_dp4a_layers"]]
     completed = subprocess.run(
         command, cwd=ROOT, capture_output=True, text=True, timeout=3600
     )
@@ -244,7 +251,7 @@ def main() -> int:
         result = _run(
             args.python, args.model_root, args.fixture, args.case_id,
             args.repetitions, entry["env"], args.scratch / f"{name}.json",
-            reuse=args.reuse_scratch,
+            reuse=args.reuse_scratch, owner=entry.get("owner"),
         )
         wall = _median_wall(result)
         if wall is None or fallback_wall is None:
@@ -252,6 +259,7 @@ def main() -> int:
             rows.append({
                 "family": name,
                 "env": entry["env"],
+                "owner": entry.get("owner"),
                 "measured": False,
                 "failure": result.get("stderr_tail") or result.get("returncode"),
             })
@@ -260,6 +268,7 @@ def main() -> int:
         rows.append({
             "family": name,
             "env": entry["env"],
+            "owner": entry.get("owner"),
             "measured": True,
             "candidate_median_s": round(wall, 4),
             "fallback_median_s": round(fallback_wall, 4),

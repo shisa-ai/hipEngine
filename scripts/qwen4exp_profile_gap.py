@@ -7,11 +7,13 @@ instrumentation out of dispatch: ROCTX ranges wrap existing runner entry points
 and runtime calls are restored before the generator is closed. Diagnostic
 ``--override HIPENGINE_KEY=VALUE`` arguments are applied after the named
 production-profile binder and recorded alongside both bound and effective route
-environments.
+environments. The Q4 DP4A decode pair is runner state, so its diagnostic
+override is ``--q4-dp4a-decode``/``--q4-dp4a-layers`` rather than an env key.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import ctypes
 import hashlib
 import json
@@ -52,8 +54,6 @@ ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
     "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
     "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
-    "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
-    "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
     "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT",
 )
 
@@ -396,6 +396,14 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
             raise ValueError("override must have a non-empty key")
         if not key.startswith("HIPENGINE_"):
             raise ValueError(f"override key must start with HIPENGINE_, got {key!r}")
+        if key in {
+            "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
+            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
+        }:
+            raise ValueError(
+                "the Q4 DP4A pair is owner state; use "
+                "--q4-dp4a-decode/--q4-dp4a-layers instead of --override"
+            )
         if key in overrides:
             raise ValueError(f"duplicate override for {key}")
         overrides[key] = value
@@ -514,6 +522,15 @@ def build_parser() -> argparse.ArgumentParser:
             "repeat for multiple keys"
         ),
     )
+    parser.add_argument(
+        "--q4-dp4a-decode",
+        choices=("on", "off"),
+        help="Explicit Q4 DP4A decode owner override applied after the binder",
+    )
+    parser.add_argument(
+        "--q4-dp4a-layers",
+        help="Q4 DP4A layer scope; empty string keeps the historical no-filter scope",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -558,6 +575,12 @@ def main() -> None:
         overrides = _parse_overrides(args.override)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+    q4_dp4a_override = None
+    if args.q4_dp4a_decode is not None or args.q4_dp4a_layers is not None:
+        q4_dp4a_override = (
+            None if args.q4_dp4a_decode is None else args.q4_dp4a_decode == "on",
+            args.q4_dp4a_layers,
+        )
     if args.mode == "prefill" and (args.prompt_file is None) == (args.case_id is None):
         raise SystemExit("prefill mode requires exactly one of --prompt-file or --case-id")
     if args.mode == "decode" and args.case_id is not None:
@@ -672,11 +695,22 @@ def main() -> None:
     }
     reset_memory_stats()
     generator = resolved.construct_generator(factory)
+    q4_scope = contextlib.ExitStack()
     try:
         runner = generator.runner
         report["bound_route_env"], report["route_env"] = (
             _apply_post_binder_overrides(overrides, runner)
         )
+        if q4_dp4a_override is not None:
+            from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
+
+            q4_scope.enter_context(
+                q4_dp4a_decode(runner, *q4_dp4a_override)
+            )
+            report["q4_dp4a_decode_override"] = {
+                "enabled": q4_dp4a_override[0],
+                "layers": q4_dp4a_override[1],
+            }
         if args.mode == "prefill":
             ids = (
                 [int(value) for value in fixture_case["prompt_token_ids"]]
@@ -808,6 +842,7 @@ def main() -> None:
             prompt_tokens = 0
         report["wall_summary"] = _wall_summary(args.mode, prompt_tokens, report["wall_seconds"])
     finally:
+        q4_scope.close()
         generator.close()
     report["memory_after_close"] = memory_stats()
     report["lifecycle"]["after_close"] = report["memory_after_close"]

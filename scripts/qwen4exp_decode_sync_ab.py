@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+from contextlib import ExitStack
 import json
 import os
 import statistics
@@ -44,8 +45,6 @@ def configure_production_routes() -> None:
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35-47",
-            "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1",
-            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": ",".join(map(str, SAFE43_DP4A_LAYERS)),
         }
     )
 
@@ -57,6 +56,7 @@ def main() -> None:
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
+    from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
 
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
     generator = Qwen4ExpGGUFTextGenerator(
@@ -68,7 +68,11 @@ def main() -> None:
         prefill_chunk_size=args.prefill_chunk_size,
     )
     rows: list[dict[str, Any]] = []
+    owner_scope = ExitStack()
     try:
+        owner_scope.enter_context(
+            q4_dp4a_decode(generator, True, SAFE43_DP4A_LAYERS)
+        )
         runner = generator.runner
         runner.configure_mmq_prefill_resources()
         runtime = runner.runtime
@@ -111,6 +115,7 @@ def main() -> None:
             run("no_redundant_sync")
             run("sync")
     finally:
+        owner_scope.close()
         generator.close()
 
     sync_seconds = [row["seconds"] for row in rows if row["mode"] == "sync"]

@@ -34,7 +34,11 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # composition this quant's production plan carries.
     expected = {**PRODUCTION_Q8_QSA_RESTORED_FLAGS, "GR_WIDE": "1"}
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
+        if flag == "Q4_DP4A64":
+            continue
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == expected.get(flag, "0")
+    assert generator.q4_dp4a_decode_enabled is False
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
     # The QSA prefill head leaf is request-local state now, so the recovery
     # pass must not write a process-wide switch for it.
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
@@ -57,7 +61,10 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # pass publishes it on the runner and writes no process key.
     assert generator.forkb_grouped_down is True
     assert "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
+    assert generator.q4_dp4a_decode_enabled is False
+    assert generator.q4_dp4a_decode_layers == frozenset(
+        (0, 2, 5, 6, 8, 9, 10, 11) + tuple(range(13, 48)))
+    assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
     conditional = next(row for row in profile.manifest["selections"]
                        if row["scope"] == "decode_c1_compact_le12_q4_dp4a_enabled_gate_up")
     assert conditional["selected_variant"] == (

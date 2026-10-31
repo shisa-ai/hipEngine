@@ -3966,11 +3966,11 @@ Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 Scope: `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`; `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`; `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`.
 
 **Deferred ownership migration:** replace `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
-`HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`, `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` and
-`HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` with explicit resolved owner state at their consumers. The
-binder still resets the Q8 WMMA layer list to empty; provide a getter and explicit diagnostic
-override instead of requiring callers to know binder order. Test independent owners in both
-construction orders and interleaved requests before removing the environment transport.
+`HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`, and `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` with
+explicit resolved owner state at their consumers. The binder still resets the Q8 WMMA layer list to
+empty; provide a getter and explicit diagnostic override instead of requiring callers to know binder
+order. Test independent owners in both construction orders and interleaved requests before removing
+the environment transport.
 
 ```bash
 python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json

@@ -965,6 +965,20 @@ def _apply_profile_env(values: dict[str, str]) -> None:
         _binder_written[key] = value
 
 
+def _publish_q4_dp4a_decode(
+    generator: Any,
+    enabled: bool,
+    layers: frozenset[int],
+) -> None:
+    """Publish the Q4 DP4A decode pair as owner state, not process keys."""
+
+    pair = (bool(enabled), frozenset(layers))
+    generator.q4_dp4a_decode_enabled, generator.q4_dp4a_decode_layers = pair
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.q4_dp4a_decode_enabled, runner.q4_dp4a_decode_layers = pair
+
+
 def _report_prebinder_conflicts() -> None:
     """Warn, or raise, when a bind discarded a caller-set route variable."""
 
@@ -1011,6 +1025,13 @@ def _bind(
         )
         table.configure_mapping_access(mode)
     _apply_profile_env({PRODUCTION_MOE_PREFILL_ENV: "1" if production else "0"})
+    q4_dp4a_decode_layers = (
+        frozenset(PRODUCTION_Q4_DP4A_DECODE_LAYERS)
+        if production
+        else frozenset()
+    )
+    _publish_q4_dp4a_decode(
+        generator, production, q4_dp4a_decode_layers)
     # Preserve the existing Q4_K_M plan and freeze neighboring experiments.
     # UD-Q4_K_XL overrides its unqualified arithmetic below, before allocating
     # profile resources; the exact optimized owners remain enabled.
@@ -1271,12 +1292,11 @@ def _bind(
         # runner's state now (``gdn_peer_prefill_layers``), published below, so
         # no process key names them and the arithmetic-recovery sweep cannot
         # rewrite them.
-        "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": (
-            ",".join(map(str, PRODUCTION_Q4_DP4A_DECODE_LAYERS))
-            if production
-            else ""
-        ),
+        #
+        # The Q4 DP4A decode pair is the owning generator/runner's state now
+        # (``q4_dp4a_decode_enabled`` / ``q4_dp4a_decode_layers``), published
+        # above. No process key names it, so a direct/unbound caller keeps its
+        # ambient fallback and a bound owner never reads it.
         # Certified 2026-09-17 at layers 16-47 and measured 5.4% below the f16
         # WMMA route at 1K/4K, with that route's own envelope (bit-identical
         # strict and candidate logits digests). The wide route replaces it here
@@ -1527,8 +1547,11 @@ def _bind(
             {
                 "HIPENGINE_QWEN4_EXP_" + flag: "0"
                 for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
+                if flag != "Q4_DP4A64"
             }
         )
+        _publish_q4_dp4a_decode(
+            generator, False, q4_dp4a_decode_layers)
         _apply_profile_env(
             {
                 "HIPENGINE_QWEN4_EXP_" + flag: value
