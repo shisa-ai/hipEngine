@@ -11,7 +11,13 @@ from hipengine.generation.deadline import GenerationCancellationToken
 from hipengine.generation.qwen35_paro import Qwen35ParoResidentModelRunner
 from hipengine.generation.qwen35_paro_mtp2 import Qwen35ParoMTP2Adapter
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
-from test_live_paro_mtp_rollback import _hip_available, _snapshot
+from test_live_paro_mtp_rollback import (
+    _PROVIDER_KEYS,
+    _hip_available,
+    _result_probe,
+    _snapshot,
+    _snapshot_diff,
+)
 
 pytestmark = pytest.mark.skipif(not _hip_available(), reason="HIP runtime is unavailable")
 
@@ -200,6 +206,7 @@ def test_replayed_cycle_restores_state_and_next_request(llm, monkeypatch, length
     monkeypatch.setattr(Qwen35ParoResidentModelRunner, "speculative_graph_available",
                         lambda self, work: True)
     token = GenerationCancellationToken()
+    propose_original = Qwen35ParoMTP2Adapter.propose_batch
     capture_original = Qwen35ParoMTP2Adapter._checkpoint_target
     restore_original = Qwen35ParoMTP2Adapter._restore_target_and_provider
     verify_original = Qwen35ParoResidentSession.verify_chain_bulk_and_commit
@@ -207,19 +214,52 @@ def test_replayed_cycle_restores_state_and_next_request(llm, monkeypatch, length
     injected = []
     restored = []
 
+    def propose(adapter, plan, *args, **kwargs):
+        state = adapter._states[plan.request_ids[0]]
+        # Provider rollback restores this pre-draft point, not the
+        # post-proposal state that exists when the target checkpoint is taken.
+        before = _snapshot(adapter.owner._session, state.proposer)
+        pending["provider"] = {key: before[key] for key in _PROVIDER_KEYS}
+        return propose_original(adapter, plan, *args, **kwargs)
+
     def capture(adapter, state, session):
         capture_original(adapter, state, session)
-        pending["state"] = _snapshot(session, state.proposer)
+        snapshot = _snapshot(session, state.proposer)
+        # Target checkpoint is pre-verify; provider keys are the pre-draft
+        # rollback boundary because the two owners restore different points.
+        snapshot.update(pending["provider"])
+        pending["state"] = snapshot
         row = adapter.owner._row(state.request_id)
         pending["prefix"] = tuple(step.token_id for step in row.generated_steps)
 
     def restore(adapter, state, session):
-        active = state.journal is not None
-        restore_original(adapter, state, session)
-        if active and injected and not restored:
-            assert _snapshot(session, state.proposer) == pending["state"]
-            assert not state.proposer.result_valid
-            restored.append(True)
+        # Record instead of asserting in this hook: the engine catches a
+        # rollback failure, recovers the request, and would otherwise turn a
+        # real mismatch into an empty observation list.
+        observation = None
+        journal_before = state.journal is not None
+        if injected and not restored:
+            observation = {}
+            restored.append(observation)
+        try:
+            restore_original(adapter, state, session)
+        except BaseException as exc:
+            if observation is not None:
+                observation["restore_error"] = exc
+            raise
+        if observation is not None:
+            try:
+                after = _snapshot(session, state.proposer)
+                observation.update(
+                    journal_before=journal_before,
+                    journal_after=state.journal is None,
+                    result_valid=bool(state.proposer.result_valid),
+                    candidate_error=_result_probe(state.proposer),
+                    mismatches=_snapshot_diff(pending["state"], after),
+                )
+            except BaseException as exc:
+                observation["observe_error"] = exc
+                raise
 
     def verify(session, *args, **kwargs):
         result = verify_original(session, *args, **kwargs)
@@ -231,11 +271,24 @@ def test_replayed_cycle_restores_state_and_next_request(llm, monkeypatch, length
         return result
 
     with monkeypatch.context() as patch:
+        patch.setattr(Qwen35ParoMTP2Adapter, "propose_batch", propose)
         patch.setattr(Qwen35ParoMTP2Adapter, "_checkpoint_target", capture)
         patch.setattr(Qwen35ParoMTP2Adapter, "_restore_target_and_provider", restore)
         patch.setattr(Qwen35ParoResidentSession, "verify_chain_bulk_and_commit", verify)
         output = llm.generate_detailed([[9707] * length], replace(params, cancellation_token=token))[0]
-    assert len(injected) == 1 and restored == [True]
+    assert len(injected) == 1
+    assert pending.get("provider") and pending.get("state")
+    assert set(pending["provider"]) <= set(pending["state"])
+    assert len(restored) == 1
+    observation = restored[0]
+    assert observation.get("restore_error") is None
+    assert observation.get("observe_error") is None
+    assert observation["journal_before"] is True
+    assert observation["journal_after"] is True
+    assert observation["result_valid"] is False
+    assert observation["candidate_error"] is not None
+    assert "result-producing advance" in observation["candidate_error"]
+    assert observation["mismatches"] == {}
     assert injected[0], "cancellation/failure must follow at least one committed cycle"
     if action == "cancel":
         assert output.finish_details.cancelled
