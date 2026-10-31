@@ -465,9 +465,13 @@ App-local chat transcripts, creation reservations and continuations live in
 explicit policy and operation inputs; the application translates typed state
 errors and supplies tokenizer metadata at the existing validation point.
 `hipengine/server/session_routes.py` owns authenticated list, delete, fork and
-rollback routes. Snapshot validation and routes remain application-owned;
-snapshot export leases the stored record while holding the session lock through
-payload construction.
+rollback routes; `hipengine/server/session_snapshot_routes.py` owns snapshot
+export and restore. Pure snapshot construction and compatibility validation live
+in `hipengine/server/session_snapshots.py`, with explicit model metadata and
+narrow tokenizer operations. Snapshot export holds the session lock through
+payload construction. `hipengine/server/chat_validation.py` owns shared role,
+tool-call and transcript validation; chat and snapshot callers translate its
+typed errors at their respective HTTP and state boundaries.
 
 ### Layer Diagram
 

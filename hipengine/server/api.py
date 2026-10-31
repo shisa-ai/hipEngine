@@ -137,14 +137,23 @@ from hipengine.server.metrics import (
 # Chat transcript and continuation state lives in its own application-state
 # owner; this module supplies policy values and translates typed state errors.
 from hipengine.server.chat_sessions import (
-    ChatSessionRecord,
     ChatSessionStore,
     ContinuationRecord,
     SessionStateError,
-    _chat_session_message_copy,
-    session_metadata,
+)
+from hipengine.server.chat_validation import (
+    ChatValidationError,
+    chat_message_role,
+    chat_message_tool_calls,
+    validate_chat_message_tool_fields,
+    validate_chat_message_tool_transcript_entry,
 )
 from hipengine.server.session_routes import create_session_router
+from hipengine.server.session_snapshot_routes import create_session_snapshot_router
+from hipengine.server.session_snapshots import (
+    CHAT_SESSION_SNAPSHOT_SCHEMA,
+    SessionSnapshotModel,
+)
 # Readiness payload composition takes a normalized snapshot; engine/service reads,
 # lifecycle state and queue getters stay in this module.
 from hipengine.server.readiness import (
@@ -175,8 +184,6 @@ _SOLO_DISPATCH_SLICE_SECONDS = 0.002
 _THINKING_START_MARKER = "<think>"
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
-_CHAT_MESSAGE_ROLES = ("assistant", "developer", "system", "tool", "user")
-_CHAT_MESSAGE_ROLE_SET = frozenset(_CHAT_MESSAGE_ROLES)
 _LOGPROB_OMISSION_REASON = "backend_omitted_logprob"
 _PROMPT_LOGPROB_OMISSION_REASON = "prompt_logprob_unavailable"
 _CONTINUATION_TTL_SECONDS = 15 * 60
@@ -270,7 +277,6 @@ _AGENTIC_REPLAY_FAILURE_REASONS = frozenset(
     )
 )
 _GENERATION_SCHEDULER_FAIRNESS_POLICY = "fifo_compatible_sampling_key"
-_CHAT_SESSION_SNAPSHOT_SCHEMA = "hipengine.chat_session_snapshot.v1"
 _SPECULATIVE_MTP_SERVING_MODES = ("off", "opt_in", "auto", "enabled")
 _SPECULATIVE_MTP_THINKING_MODES = ("hint", "hard")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
@@ -2061,7 +2067,7 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
         "rollback_target": "message_count",
         "rollback_resident_state_reuse": False,
         "rollback_deep_copies_retained_transcript": True,
-        "snapshot_schema": _CHAT_SESSION_SNAPSHOT_SCHEMA,
+        "snapshot_schema": CHAT_SESSION_SNAPSHOT_SCHEMA,
         "snapshot_export_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_restore_endpoint": "/v1/hipengine/sessions/{session_id}/snapshot",
         "snapshot_includes_transcript": True,
@@ -4758,115 +4764,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     app.state.hipengine_chat_sessions = session_store.sessions
     app.state.hipengine_chat_session_pending = session_store.pending
 
-    def chat_session_snapshot(record: ChatSessionRecord) -> dict[str, Any]:
-        return {
-            "object": "hipengine.session.snapshot",
-            "schema": _CHAT_SESSION_SNAPSHOT_SCHEMA,
-            "model": {
-                "id": config.model_id,
-                "backend": config.backend,
-                "quant": config.quant,
-            },
-            "tokenizer": _tokenizer_compatibility_metadata(
-                getattr(app.state, "hipengine_llm", None)
-            ),
-            "session": {
-                **session_metadata(record),
-                "includes_transcript": True,
-            },
-            "resident_state_reuse": False,
-            "messages": [_chat_session_message_copy(message) for message in record.messages],
-        }
-
-    def restore_chat_session_from_snapshot(session_id: str, snapshot: Mapping[str, Any]) -> ChatSessionRecord:
-        if snapshot.get("object") != "hipengine.session.snapshot":
-            raise OpenAIHTTPError(
-                400,
-                "session snapshot object must be hipengine.session.snapshot",
-                code="invalid_request",
-                param="object",
-            )
-        if snapshot.get("schema") != _CHAT_SESSION_SNAPSHOT_SCHEMA:
-            raise OpenAIHTTPError(
-                400,
-                f"session snapshot schema must be {_CHAT_SESSION_SNAPSHOT_SCHEMA!r}",
-                code="invalid_request",
-                param="schema",
-            )
-        if snapshot.get("resident_state_reuse") is not False:
-            raise OpenAIHTTPError(
-                400,
-                "session snapshot resident_state_reuse must be false",
-                code="invalid_request",
-                param="resident_state_reuse",
-            )
-        model = snapshot.get("model")
-        if not isinstance(model, Mapping):
-            raise OpenAIHTTPError(400, "session snapshot model must be an object", code="invalid_request", param="model")
-        expected_model = {
-            "id": config.model_id,
-            "backend": config.backend,
-            "quant": config.quant,
-        }
-        for key, expected in expected_model.items():
-            if model.get(key) != expected:
-                raise OpenAIHTTPError(
-                    400,
-                    f"session snapshot model.{key} is incompatible with this server",
-                    code="invalid_request",
-                    param=f"model.{key}",
-                )
-        _validate_chat_session_snapshot_tokenizer_metadata(
-            snapshot.get("tokenizer"),
-            current_engine=getattr(app.state, "hipengine_llm", None),
-        )
-        session = snapshot.get("session")
-        if not isinstance(session, Mapping):
-            raise OpenAIHTTPError(
-                400,
-                "session snapshot session must be an object",
-                code="invalid_request",
-                param="session",
-            )
-        if session.get("storage") != "app_local_transcript":
-            raise OpenAIHTTPError(
-                400,
-                "session snapshot storage must be app_local_transcript",
-                code="invalid_request",
-                param="session.storage",
-            )
-        if session.get("resident_state_reuse") is not False:
-            raise OpenAIHTTPError(
-                400,
-                "session snapshot resident_state_reuse must be false",
-                code="invalid_request",
-                param="session.resident_state_reuse",
-            )
-        if session.get("includes_transcript") is not True:
-            raise OpenAIHTTPError(
-                400,
-                "session snapshot includes_transcript must be true",
-                code="invalid_request",
-                param="session.includes_transcript",
-            )
-        snapshot_id = session.get("id")
-        if snapshot_id != session_id:
-            raise OpenAIHTTPError(
-                400,
-                "session snapshot id must match the restore path",
-                code="invalid_request",
-                param="session.id",
-            )
-        messages = _chat_session_snapshot_messages(snapshot.get("messages"))
-        created = _chat_session_snapshot_time(session.get("created"), param="session.created")
-        updated = _chat_session_snapshot_time(session.get("updated"), param="session.updated")
-        return ChatSessionRecord(
-            id=session_id,
-            messages=messages,
-            created=created,
-            updated=updated,
-        )
-
     def route_rejection_extra(
         *,
         requested_model: str | None,
@@ -4906,6 +4803,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if exc.record_rejection:
             _record_openai_error(app.state.hipengine_server_metrics, http_exc)
         return http_exc
+
+    def snapshot_tokenizer_metadata() -> dict[str, Any]:
+        return _tokenizer_compatibility_metadata(getattr(app.state, "hipengine_llm", None))
 
     def current_tokenizer_metadata() -> dict[str, Any] | None:
         engine = getattr(app.state, "hipengine_llm", None)
@@ -6055,6 +5955,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             store=session_store,
             auth_dependency=require_auth,
             error_translator=session_state_http_error,
+        ).routes
+    )
+    app.router.routes.extend(
+        create_session_snapshot_router(
+            store=session_store,
+            auth_dependency=require_auth,
+            error_translator=session_state_http_error,
+            model=SessionSnapshotModel(
+                id=config.model_id,
+                backend=config.backend,
+                quant=config.quant,
+            ),
+            schema=CHAT_SESSION_SNAPSHOT_SCHEMA,
+            snapshot_tokenizer_metadata=snapshot_tokenizer_metadata,
+            current_tokenizer_metadata=current_tokenizer_metadata,
         ).routes
     )
 
@@ -7241,38 +7156,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "object": "hipengine.decode_telemetry",
             "available": True,
             "decode": probe["decode"],
-        }
-
-    @app.get("/v1/hipengine/sessions/{session_id}/snapshot")
-    async def export_session_snapshot(session_id: str, _auth: None = Depends(require_auth)) -> dict[str, Any]:
-        async with session_store.snapshot_record(session_id) as record:
-            if record is None:
-                raise OpenAIHTTPError(
-                    404,
-                    "chat session does not exist",
-                    code="invalid_request",
-                    param="session_id",
-                )
-            return chat_session_snapshot(record)
-
-    @app.post("/v1/hipengine/sessions/{session_id}/snapshot")
-    async def restore_session_snapshot(
-        session_id: str,
-        snapshot: dict[str, Any],
-        _auth: None = Depends(require_auth),
-    ) -> dict[str, Any]:
-        record = restore_chat_session_from_snapshot(session_id, snapshot)
-        try:
-            await session_store.put_if_capacity(record)
-        except SessionStateError as exc:
-            raise session_state_http_error(exc) from exc
-        return {
-            "object": "hipengine.session.restored",
-            "id": session_id,
-            "restored": True,
-            "storage": "app_local_transcript",
-            "resident_state_reuse": False,
-            "message_count": len(record.messages),
         }
 
     if metrics_mode == "prometheus":
@@ -11342,7 +11225,7 @@ def _render_tool_call_for_prompt(tool_call: Mapping[str, Any]) -> str:
     return "".join(rendered)
 
 
-def render_chat_prompt(
+def _render_chat_prompt_unchecked(
     messages: Sequence[ChatMessage | Mapping[str, Any]],
     *,
     tools: Sequence[Mapping[str, Any]] | None = None,
@@ -11356,12 +11239,7 @@ def render_chat_prompt(
     guided_diff: Any | None = None,
     validate_tool_transcript: bool = True,
 ) -> str:
-    """Render OpenAI chat messages to a Qwen-style text prompt.
-
-    This is intentionally tokenizer-independent so the API can stay a thin
-    adapter around ``LLM.generate()``.  Model-specific chat-template rendering
-    can replace this helper once tokenizers are exposed by the runtime.
-    """
+    """Implementation for ``render_chat_prompt``; validation errors stay typed."""
 
     if not messages:
         raise OpenAIHTTPError(400, "messages must contain at least one item", param="messages")
@@ -11396,8 +11274,8 @@ def render_chat_prompt(
             content_value = message.content
             tool_calls = message.tool_calls
             tool_call_id = message.tool_call_id
-        role = _chat_message_role(role_value, param=f"messages[{index}].role")
-        _validate_chat_message_tool_fields(
+        role = chat_message_role(role_value, param=f"messages[{index}].role")
+        validate_chat_message_tool_fields(
             role,
             tool_calls=tool_calls,
             tool_call_id=tool_call_id,
@@ -11405,13 +11283,13 @@ def render_chat_prompt(
         )
         normalized_tool_calls: list[dict[str, Any]] = []
         if role == "assistant" and tool_calls is not None:
-            normalized_tool_calls = _chat_message_tool_calls(
+            normalized_tool_calls = chat_message_tool_calls(
                 tool_calls,
                 message_index=index,
                 context="chat message",
             )
         if validate_tool_transcript:
-            _validate_chat_message_tool_transcript_entry(
+            validate_chat_message_tool_transcript_entry(
                 role,
                 tool_calls=normalized_tool_calls,
                 tool_call_id=tool_call_id,
@@ -11443,142 +11321,51 @@ def render_chat_prompt(
     return "\n".join(rendered)
 
 
-def _chat_message_role(value: Any, *, param: str) -> str:
-    if not isinstance(value, str):
-        raise OpenAIHTTPError(
-            400,
-            f"{param} must be one of: {', '.join(_CHAT_MESSAGE_ROLES)}",
-            code="invalid_request",
-            param=param,
-        )
-    role = value.strip()
-    if role not in _CHAT_MESSAGE_ROLE_SET:
-        raise OpenAIHTTPError(
-            400,
-            f"{param} must be one of: {', '.join(_CHAT_MESSAGE_ROLES)}",
-            code="invalid_request",
-            param=param,
-        )
-    return role
+def _chat_validation_http_error(exc: ChatValidationError) -> OpenAIHTTPError:
+    return OpenAIHTTPError(
+        exc.status_code,
+        exc.message,
+        code=exc.code,
+        param=exc.param,
+    )
 
 
-def _validate_chat_message_tool_fields(
-    role: str,
+def render_chat_prompt(
+    messages: Sequence[ChatMessage | Mapping[str, Any]],
     *,
-    tool_calls: Any,
-    tool_call_id: Any,
-    param_prefix: str,
-) -> None:
-    if tool_calls is not None and role != "assistant":
-        raise OpenAIHTTPError(
-            400,
-            f"{param_prefix}.tool_calls is only supported on assistant messages",
-            code="invalid_request",
-            param=f"{param_prefix}.tool_calls",
-        )
-    if tool_call_id is not None and role != "tool":
-        raise OpenAIHTTPError(
-            400,
-            f"{param_prefix}.tool_call_id is only supported on tool messages",
-            code="invalid_request",
-            param=f"{param_prefix}.tool_call_id",
-        )
-    if role == "tool" and (not isinstance(tool_call_id, str) or not tool_call_id.strip()):
-        raise OpenAIHTTPError(
-            400,
-            f"{param_prefix}.tool_call_id is required for tool messages",
-            code="invalid_request",
-            param=f"{param_prefix}.tool_call_id",
-        )
+    tools: Sequence[Mapping[str, Any]] | None = None,
+    tool_choice: str | Mapping[str, Any] | None = None,
+    thinking: _ThinkingControl | None = None,
+    response_format: Any | None = None,
+    guided_json: Any | None = None,
+    guided_regex: Any | None = None,
+    guided_choice: Any | None = None,
+    guided_patch: Any | None = None,
+    guided_diff: Any | None = None,
+    validate_tool_transcript: bool = True,
+) -> str:
+    """Render OpenAI chat messages to a Qwen-style text prompt.
 
-
-def _chat_message_tool_calls(
-    value: Any,
-    *,
-    message_index: int,
-    context: str,
-) -> list[dict[str, Any]]:
-    param = f"messages[{message_index}].tool_calls"
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {param} must be an array",
-            code="invalid_request",
-            param=param,
+    This is intentionally tokenizer-independent so the API can stay a thin
+    adapter around ``LLM.generate()``.  Model-specific chat-template rendering
+    can replace this helper once tokenizers are exposed by the runtime.
+    """
+    try:
+        return _render_chat_prompt_unchecked(
+            messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            thinking=thinking,
+            response_format=response_format,
+            guided_json=guided_json,
+            guided_regex=guided_regex,
+            guided_choice=guided_choice,
+            guided_patch=guided_patch,
+            guided_diff=guided_diff,
+            validate_tool_transcript=validate_tool_transcript,
         )
-    return [
-        _chat_message_tool_call(
-            call,
-            message_index=message_index,
-            tool_index=tool_index,
-            context=context,
-        )
-        for tool_index, call in enumerate(value)
-    ]
-
-
-def _validate_chat_message_tool_transcript(
-    messages: Sequence[Mapping[str, Any]],
-    *,
-    context: str,
-) -> None:
-    pending_tool_call_ids: set[str] = set()
-    seen_tool_call_ids: set[str] = set()
-    for index, message in enumerate(messages):
-        tool_calls = message.get("tool_calls")
-        _validate_chat_message_tool_transcript_entry(
-            str(message.get("role") or ""),
-            tool_calls=tool_calls if isinstance(tool_calls, Sequence) and not isinstance(tool_calls, (str, bytes)) else [],
-            tool_call_id=message.get("tool_call_id"),
-            message_index=index,
-            context=context,
-            pending_tool_call_ids=pending_tool_call_ids,
-            seen_tool_call_ids=seen_tool_call_ids,
-        )
-
-
-def _validate_chat_message_tool_transcript_entry(
-    role: str,
-    *,
-    tool_calls: Sequence[Mapping[str, Any]],
-    tool_call_id: Any,
-    message_index: int,
-    context: str,
-    pending_tool_call_ids: set[str],
-    seen_tool_call_ids: set[str],
-) -> None:
-    if pending_tool_call_ids and role != "tool":
-        raise OpenAIHTTPError(
-            400,
-            f"{context} messages[{message_index}].role must be 'tool' until prior assistant tool calls are resolved",
-            code="invalid_request",
-            param=f"messages[{message_index}].role",
-        )
-    if role == "assistant":
-        for tool_index, tool_call in enumerate(tool_calls):
-            call_id = str(tool_call.get("id") or "")
-            if call_id in seen_tool_call_ids:
-                param = f"messages[{message_index}].tool_calls[{tool_index}].id"
-                raise OpenAIHTTPError(
-                    400,
-                    f"{context} {param} duplicates a prior assistant tool call id",
-                    code="invalid_request",
-                    param=param,
-                )
-            seen_tool_call_ids.add(call_id)
-            pending_tool_call_ids.add(call_id)
-        return
-    if role != "tool":
-        return
-    call_id = str(tool_call_id or "").strip()
-    if call_id not in pending_tool_call_ids:
-        raise OpenAIHTTPError(
-            400,
-            f"{context} messages[{message_index}].tool_call_id must reference a prior unconsumed assistant tool call",
-            code="invalid_request",
-            param=f"messages[{message_index}].tool_call_id",
-        )
-    pending_tool_call_ids.remove(call_id)
+    except ChatValidationError as exc:
+        raise _chat_validation_http_error(exc) from exc
 
 
 def _validate_model(config: ServerConfig, requested: str | None, *, engine: Any | None = None) -> None:
@@ -13552,33 +13339,6 @@ def _tokenizer_compatibility_metadata(engine: Any | None) -> dict[str, Any]:
     }
 
 
-def _validate_chat_session_snapshot_tokenizer_metadata(
-    value: Any,
-    *,
-    current_engine: Any | None,
-) -> None:
-    if value is None:
-        return
-    if not isinstance(value, Mapping):
-        raise OpenAIHTTPError(
-            400,
-            "session snapshot tokenizer must be an object",
-            code="invalid_request",
-            param="tokenizer",
-        )
-    if current_engine is None:
-        return
-    expected = _tokenizer_compatibility_metadata(current_engine)
-    for key, expected_value in expected.items():
-        if value.get(key) != expected_value:
-            raise OpenAIHTTPError(
-                400,
-                f"session snapshot tokenizer.{key} is incompatible with this server",
-                code="invalid_request",
-                param=f"tokenizer.{key}",
-            )
-
-
 def _tokenize_text(engine: Any, text: str) -> tuple[int, ...]:
     tokenizer = getattr(engine, "tokenize", None)
     if not callable(tokenizer):
@@ -15115,222 +14875,6 @@ def _effective_session_cache_action(
     if reason in _SESSION_UNSAFE_VISIBLE_REASONS or synthetic_tokens > 0:
         return "append_prompt_only"
     return requested_action
-
-
-def _chat_session_snapshot_messages(value: Any) -> tuple[dict[str, Any], ...]:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise OpenAIHTTPError(
-            400,
-            "session snapshot messages must be an array",
-            code="invalid_request",
-            param="messages",
-        )
-    messages = tuple(
-        _chat_session_snapshot_message(item, index=index)
-        for index, item in enumerate(value)
-    )
-    _validate_chat_message_tool_transcript(messages, context="session snapshot")
-    return messages
-
-
-def _chat_session_snapshot_message(value: Any, *, index: int) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
-        raise OpenAIHTTPError(
-            400,
-            f"session snapshot messages[{index}] must be an object",
-            code="invalid_request",
-            param=f"messages[{index}]",
-        )
-    allowed = {"role", "content", "name", "tool_call_id", "tool_calls"}
-    extra = sorted(str(key) for key in value if str(key) not in allowed)
-    if extra:
-        raise OpenAIHTTPError(
-            400,
-            f"session snapshot messages[{index}].{extra[0]} is not supported",
-            code="invalid_request",
-            param=f"messages[{index}].{extra[0]}",
-        )
-    role = _chat_message_role(value.get("role"), param=f"messages[{index}].role")
-    _validate_chat_message_tool_fields(
-        role,
-        tool_calls=value.get("tool_calls"),
-        tool_call_id=value.get("tool_call_id"),
-        param_prefix=f"messages[{index}]",
-    )
-    payload: dict[str, Any] = {"role": role}
-    if "content" in value:
-        payload["content"] = _chat_session_snapshot_content(value.get("content"), message_index=index)
-    for key in ("name", "tool_call_id"):
-        if key in value:
-            payload[key] = _chat_session_snapshot_string(value.get(key), param=f"messages[{index}].{key}")
-    if "tool_calls" in value:
-        payload["tool_calls"] = _chat_message_tool_calls(
-            value.get("tool_calls"),
-            message_index=index,
-            context="session snapshot",
-        )
-    return payload
-
-
-def _chat_session_snapshot_string(value: Any, *, param: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise OpenAIHTTPError(
-            400,
-            f"session snapshot {param} must be a non-empty string",
-            code="invalid_request",
-            param=param,
-        )
-    return value
-
-
-def _chat_session_snapshot_content(value: Any, *, message_index: int) -> str | list[Any] | None:
-    param = f"messages[{message_index}].content"
-    if value is None or isinstance(value, str):
-        return value
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise OpenAIHTTPError(
-            400,
-            f"session snapshot {param} must be text, null, or text content parts",
-            code="invalid_request",
-            param=param,
-        )
-    parts: list[Any] = []
-    for part_index, part in enumerate(value):
-        part_param = f"{param}[{part_index}]"
-        if isinstance(part, str):
-            parts.append(part)
-            continue
-        if not isinstance(part, Mapping):
-            raise OpenAIHTTPError(
-                400,
-                f"session snapshot {part_param} must be a text object",
-                code="invalid_request",
-                param=part_param,
-            )
-        part_type = part.get("type", "text")
-        if part_type != "text":
-            raise OpenAIHTTPError(
-                400,
-                f"session snapshot {part_param}.type must be 'text'",
-                code="invalid_request",
-                param=part_param,
-            )
-        text = part.get("text", "")
-        if not isinstance(text, str):
-            raise OpenAIHTTPError(
-                400,
-                f"session snapshot {part_param}.text must be a string",
-                code="invalid_request",
-                param=f"{part_param}.text",
-            )
-        parts.append(dict(part))
-    return parts
-
-
-def _chat_message_tool_call(
-    value: Any,
-    *,
-    message_index: int,
-    tool_index: int,
-    context: str,
-) -> dict[str, Any]:
-    param = f"messages[{message_index}].tool_calls[{tool_index}]"
-    if not isinstance(value, Mapping):
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {param} must be an object",
-            code="invalid_request",
-            param=param,
-        )
-    allowed = {"id", "type", "function"}
-    extra = sorted(str(key) for key in value if str(key) not in allowed)
-    if extra:
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {param}.{extra[0]} is not supported",
-            code="invalid_request",
-            param=f"{param}.{extra[0]}",
-        )
-    call_id = value.get("id")
-    if not isinstance(call_id, str) or not call_id.strip():
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {param}.id must be a non-empty string",
-            code="invalid_request",
-            param=f"{param}.id",
-        )
-    call_type = value.get("type")
-    if call_type != "function":
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {param}.type must be 'function'",
-            code="invalid_request",
-            param=f"{param}.type",
-        )
-    function = value.get("function")
-    function_param = f"{param}.function"
-    if not isinstance(function, Mapping):
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {function_param} must be an object",
-            code="invalid_request",
-            param=function_param,
-        )
-    function_allowed = {"name", "arguments"}
-    function_extra = sorted(str(key) for key in function if str(key) not in function_allowed)
-    if function_extra:
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {function_param}.{function_extra[0]} is not supported",
-            code="invalid_request",
-            param=f"{function_param}.{function_extra[0]}",
-        )
-    name = function.get("name")
-    if not isinstance(name, str) or not name.strip():
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {function_param}.name must be a non-empty string",
-            code="invalid_request",
-            param=f"{function_param}.name",
-        )
-    arguments = function.get("arguments")
-    if not isinstance(arguments, str):
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {function_param}.arguments must be a string",
-            code="invalid_request",
-            param=f"{function_param}.arguments",
-        )
-    try:
-        json.loads(arguments)
-    except Exception as exc:
-        raise OpenAIHTTPError(
-            400,
-            f"{context} {function_param}.arguments must be valid JSON",
-            code="invalid_request",
-            param=f"{function_param}.arguments",
-        ) from exc
-    return {
-        "id": call_id,
-        "type": "function",
-        "function": {
-            "name": name,
-            "arguments": arguments,
-        },
-    }
-
-
-def _chat_session_snapshot_time(value: Any, *, param: str) -> float:
-    if isinstance(value, bool):
-        value = None
-    if not isinstance(value, (int, float)) or float(value) < 0:
-        raise OpenAIHTTPError(
-            400,
-            f"session snapshot {param} must be a non-negative timestamp",
-            code="invalid_request",
-            param=param,
-        )
-    return float(value)
 
 
 def _chat_request_with_messages(
