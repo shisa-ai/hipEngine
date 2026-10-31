@@ -662,6 +662,8 @@ class LagunaKVCache:
         """Expose the stable scalar publication target to fused producers."""
 
         return self._row_position.ptr
+
+    @property
     def prefill_score_scratch_required(self) -> bool:
         return (
             self.prefill_preappend_role_variants.get(

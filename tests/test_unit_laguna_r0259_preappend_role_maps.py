@@ -550,6 +550,38 @@ def test_r0259_score_replay_roles_fall_back_without_changing_the_route(
     assert bound_runtime.allocations == {}
 
 
+@pytest.mark.parametrize(
+    ("policy", "required"),
+    [
+        ({}, False),
+        ({_GLOBAL_ROLE: _H6N_GLOBAL, _SWA_ROLE: _H6A_SWA}, False),
+        ({_GLOBAL_ROLE: _H6Z_GLOBAL}, True),
+        ({_SWA_ROLE: _H6W_SWA}, True),
+        ({_GLOBAL_ROLE: _H6Z_GLOBAL, _SWA_ROLE: _H6W_SWA}, True),
+    ],
+)
+def test_score_scratch_requirement_is_a_boolean_policy_read(
+    monkeypatch: pytest.MonkeyPatch, policy: dict[str, str], required: bool,
+) -> None:
+    from hipengine.kernels import hip_gfx1100
+
+    monkeypatch.setattr(hip_gfx1100, _BASE, {}, raising=False)
+    monkeypatch.setattr(hip_gfx1100, _DENSE, policy, raising=False)
+    cache, runtime = _allocate()
+    try:
+        assert cache.prefill_score_scratch_required is required
+        # Match the runner's branch: ordinary cached policies must not bind
+        # the unrelated F32 weight scratch just because an accessor is truthy.
+        if cache.prefill_score_scratch_required:
+            cache.bind_prefill_score_scratch(
+                _SCORE_SCRATCH_PTR, _SCORE_SCRATCH_AVAILABLE,
+            )
+        assert cache.prefill_score_scratch_bound is required
+    finally:
+        cache.free()
+    assert runtime.allocations == {}
+
+
 def test_r0259_base_scope_role_is_not_dense_initial_gated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

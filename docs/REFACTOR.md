@@ -808,9 +808,8 @@ source-inspected. Remaining: public bulk-prefill selected function, output/state
 the applicable backend using R0249/R0250's command and missing checkpoint dependency. Include
 starts 0/128/256 and unrelated positions, wrap/partial chunks, verifier/continuation and explicit
 variants. Preserve absent-versus-empty and independent global/SWA override semantics, span-aware
-primitive fallbacks and separately owned online arithmetic. The adjacent
-`prefill_score_scratch_required` method/property mismatch also needs repair and a focused
-regression before closure.
+primitive fallbacks and separately owned online arithmetic. The scratch requirement accessor now
+returns the Boolean the runner consumes; device selection and state remain part of the public gate.
 
 ### R0264 — Laguna full-score long-attention diagnostic retirement
 
