@@ -154,8 +154,9 @@ from hipengine.server.session_snapshots import (
     CHAT_SESSION_SNAPSHOT_SCHEMA,
     SessionSnapshotModel,
 )
+from hipengine.server.model_lifecycle import ModelBuildSpec, ModelLifecycle
 # Readiness payload composition takes a normalized snapshot; engine/service reads,
-# lifecycle state and queue getters stay in this module.
+# readiness state and queue getters stay in this module.
 from hipengine.server.readiness import (
     ReadinessConfig,
     ReadinessQueue,
@@ -5050,31 +5051,47 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if _log_effective_mtp_config(config, engine=engine):
             mtp_effective_state_logged = True
 
+    model_lifecycle = ModelLifecycle(
+        mtp_circuit_breaker=mtp_circuit_breaker,
+        log_effective_mtp=log_effective_mtp_once,
+        shutdown_grace_seconds=config.shutdown_grace_seconds,
+    )
+    model_build_spec = ModelBuildSpec(
+        model=config.model,
+        backend=config.backend,
+        quant=config.quant,
+        execution_profile=config.execution_profile,
+        max_active_requests=config.max_active_requests,
+        max_sequence_length=config.max_context_tokens,
+        dms=config.dms,
+        prefix_cache=prefix_cache_mode,
+        speculative_mtp_serving=config.speculative_mtp_serving,
+        speculative_provider=config.speculative_provider,
+        draft_model=config.draft_model,
+        speculative_candidate_budget=config.speculative_candidate_budget,
+        kv_storage=config.kv_storage,
+        dms_metadata_path=config.dms_metadata_path,
+        kv_scale_dtype=config.kv_scale_dtype,
+        kv_scale_granularity=config.kv_scale_granularity,
+        vision_model=config.vision_model,
+        vae_model=config.vae_model,
+    )
+
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
-            app.state.hipengine_llm = LLM(
-                config.model,
-                backend=config.backend,
-                quant=config.quant,
-                execution_profile=config.execution_profile,
-                max_active_requests=config.max_active_requests,
-                max_sequence_length=config.max_context_tokens,
-                **({"dms": config.dms} if config.dms is not None else {}),
-                prefix_cache=prefix_cache_mode,
-                speculative_mtp_serving=config.speculative_mtp_serving,
-                speculative_provider=config.speculative_provider,
-                draft_model=config.draft_model,
-                speculative_candidate_budget=config.speculative_candidate_budget,
-                kv_storage=config.kv_storage,
-                dms_metadata_path=config.dms_metadata_path,
-                kv_scale_dtype=config.kv_scale_dtype,
-                kv_scale_granularity=config.kv_scale_granularity,
-                vision_model=config.vision_model,
-                vae_model=config.vae_model,
+            engine = model_lifecycle.build_engine(model_build_spec, LLM)
+            app.state.hipengine_llm = engine
+            model_lifecycle.attach_engine(
+                app.state.hipengine_llm,
+                newly_built=True,
+                readiness=app.state.hipengine_readiness,
             )
-            log_effective_mtp_once(app.state.hipengine_llm)
-        mtp_circuit_breaker.attach(app.state.hipengine_llm)
-        app.state.hipengine_readiness.model_loaded = True
+        else:
+            model_lifecycle.attach_engine(
+                app.state.hipengine_llm,
+                newly_built=False,
+                readiness=app.state.hipengine_readiness,
+            )
         return app.state.hipengine_llm
 
     generation_batcher = _GenerationBatcher(
@@ -5915,17 +5932,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     async def shutdown_model() -> None:
         readiness: _ReadinessState = app.state.hipengine_readiness
-        readiness.ready = False
-        readiness.status = "draining"
-        shutdown_result = await generation_batcher.shutdown(
-            grace_seconds=config.shutdown_grace_seconds
+        shutdown_result = await model_lifecycle.shutdown(
+            readiness=readiness,
+            generation_batcher=generation_batcher,
+            engine_getter=lambda: getattr(app.state, "hipengine_llm", None),
+            close_runner=run_in_threadpool,
         )
-        engine = getattr(app.state, "hipengine_llm", None)
-        closer = None if engine is None else getattr(engine, "close", None)
-        if callable(closer):
-            await run_in_threadpool(closer)
         app.state.hipengine_shutdown = shutdown_result
-        readiness.status = "stopped"
+        model_lifecycle.mark_stopped(readiness)
 
     if hasattr(app, "add_event_handler"):
         app.add_event_handler("startup", eager_load_model)

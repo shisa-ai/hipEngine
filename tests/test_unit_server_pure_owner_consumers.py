@@ -2,7 +2,8 @@
 
 ``hipengine.server.schemas``, ``hipengine.server.json_schema``,
 ``hipengine.server.chat_output``, ``hipengine.server.chat_sessions``,
-``hipengine.server.chat_validation``, ``hipengine.server.metrics``,
+``hipengine.server.chat_validation``, ``hipengine.server.model_lifecycle``,
+``hipengine.server.metrics``,
 ``hipengine.server.readiness``,
 ``hipengine.server.session_routes``, ``hipengine.server.session_snapshots`` and
 ``hipengine.server.session_snapshot_routes`` are owners under the HTTP boundary.
@@ -33,6 +34,9 @@ OWNER_PATHS = {
     "hipengine.server.chat_output": REPO_ROOT / "hipengine" / "server" / "chat_output.py",
     "hipengine.server.chat_sessions": REPO_ROOT / "hipengine" / "server" / "chat_sessions.py",
     "hipengine.server.chat_validation": REPO_ROOT / "hipengine" / "server" / "chat_validation.py",
+    "hipengine.server.model_lifecycle": (
+        REPO_ROOT / "hipengine" / "server" / "model_lifecycle.py"
+    ),
     "hipengine.server.metrics": REPO_ROOT / "hipengine" / "server" / "metrics.py",
     "hipengine.server.session_routes": REPO_ROOT / "hipengine" / "server" / "session_routes.py",
     "hipengine.server.session_snapshots": (

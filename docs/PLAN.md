@@ -472,6 +472,11 @@ narrow tokenizer operations. Snapshot export holds the session lock through
 payload construction. `hipengine/server/chat_validation.py` owns shared role,
 tool-call and transcript validation; chat and snapshot callers translate its
 typed errors at their respective HTTP and state boundaries.
+`hipengine/server/model_lifecycle.py` translates the explicit model-build spec,
+attaches the existing breaker and closes the engine after the generation batcher
+drains. Application composition keeps the engine reference and startup stages;
+the generation service remains the sole device scheduler. Shutdown reads the
+engine after draining so a handle created during drain is closed as well.
 
 ### Layer Diagram
 

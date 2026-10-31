@@ -4196,8 +4196,8 @@ Owner: `hipengine/server/multimodal.py`.
 Scope: `hipengine/server/multimodal.py`, `hipengine/server/tool_stream.py`,
 `hipengine/server/api.py`, `hipengine/generation/engine_service.py`.
 
-**Remaining boundary design:** define explicit dependencies for model lifecycle and stream
-translation so `create_app()` composes cohesive owners.
+**Remaining boundary design:** define explicit dependencies for stream translation
+so `create_app()` composes cohesive owners.
 Keep engine/stat collection outside the pure response owners; immutable metrics inputs
 contain normalized consumed values, not raw engine objects or borrowed live maps.
 Preserve transport backpressure and queue admission while keeping device scheduling,
