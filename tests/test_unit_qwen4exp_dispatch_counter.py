@@ -4,7 +4,11 @@ from types import ModuleType
 import pytest
 
 from hipengine.kernels.registry import KernelKey, register, resolve
-from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
+from scripts.qwen4exp_candidate_dispatch import (
+    count_candidate_dispatch,
+    empty_dispatch_counter,
+    shape_records,
+)
 
 
 def test_registered_calls_and_shapes_are_counted_and_restored():
@@ -110,3 +114,84 @@ def test_real_gr_alias_and_candidate_scopes_match():
             shape_positions=spec.dispatch_shape_positions,
         ) as counter:
             assert counter["calls"] == 0
+
+
+def test_uncounted_counter_has_the_shape_every_report_reads():
+    """A noncounted arm's counter must not be a partial dict.
+
+    The layer2 gate and the depth gate assemble ``candidate_dispatch_leaves``
+    from the counter unconditionally, so an arm with
+    ``requires_dispatch_count == False`` used to raise ``KeyError: 'leaves'``
+    while the report was being written.
+    """
+
+    import json
+
+    from scripts.qwen4exp_layer2_profile_gate import CANDIDATES
+
+    counter = empty_dispatch_counter()
+    assert counter == {"calls": 0, "shapes": {}, "leaves": {}}
+    assert shape_records(counter) == []
+    assert json.loads(json.dumps(dict(counter["leaves"]))) == {}
+
+
+def test_noncounted_candidate_report_reads_through_the_gate_helper():
+    from contextlib import ExitStack
+
+    from scripts.qwen4exp_layer2_profile_gate import (
+        CANDIDATES,
+        candidate_dispatch_counter,
+    )
+
+    spec = CANDIDATES["production_baseline"]
+    assert spec.requires_dispatch_count is False
+    with ExitStack() as stack:
+        counter = candidate_dispatch_counter(spec, stack)
+    assert counter["calls"] == 0
+    assert shape_records(counter) == []
+    assert dict(counter["leaves"]) == {}
+
+
+def test_counted_candidate_report_names_its_leaf():
+    from contextlib import ExitStack
+
+    from scripts.qwen4exp_layer2_profile_gate import (
+        CANDIDATES,
+        candidate_dispatch_counter,
+    )
+
+    spec = CANDIDATES["production_gr_up_wide"]
+    assert spec.requires_dispatch_count is True
+    with ExitStack() as stack:
+        counter = candidate_dispatch_counter(spec, stack)
+        assert counter["calls"] == 0
+        assert dict(counter["leaves"]) == {}
+    assert shape_records(counter) == []
+
+
+def test_extra_targets_alone_are_counted(monkeypatch):
+    module = ModuleType("_counter_test_module")
+    seen = []
+    module.leaf = lambda *args: seen.append(args)
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    with count_candidate_dispatch(
+        extra_direct_targets=((module.__name__, "leaf"),),
+    ) as counter:
+        module.leaf(1, 2)
+        module.leaf(3, 4)
+    assert counter["calls"] == 2
+    assert dict(counter["leaves"]) == {f"{module.__name__}.leaf": 2}
+    assert shape_records(counter) == []
+    assert seen == [(1, 2), (3, 4)]
+
+
+def test_extra_targets_reject_shape_positions_without_a_primary(monkeypatch):
+    module = ModuleType("_counter_test_module")
+    module.leaf = lambda *args: None
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    with pytest.raises(ValueError, match="primary candidate target"):
+        with count_candidate_dispatch(
+            shape_positions=(0,),
+            extra_direct_targets=((module.__name__, "leaf"),),
+        ):
+            pytest.fail("shape positions were accepted without a primary target")

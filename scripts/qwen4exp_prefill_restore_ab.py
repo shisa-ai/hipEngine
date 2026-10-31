@@ -26,6 +26,7 @@ from scripts.qwen4exp_canonical_ar_bench import (
 from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
+    gr_wide_arm_scope,
 )
 from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_prefill_head_mode, qsa_h256_prefill_mode,
@@ -75,6 +76,21 @@ OWNERSHIP = {
         "buffers with its own decode state."
     ),
 }
+
+
+def arm_gr_wide(arm, published):
+    """The GR-up wide route this arm's former process key implied.
+
+    ``CandidateSpec.gr_wide`` is the shared declaration of the candidate's
+    former ``HIPENGINE_QWEN4_EXP_GR_WIDE`` value. An arm that never named the
+    key - including the ``before`` reference - ran whatever the production bind
+    had published, so it keeps ``published``.
+    """
+
+    candidate = CANDIDATES.get(arm)
+    if candidate is None or candidate.gr_wide is None:
+        return bool(published)
+    return bool(candidate.gr_wide)
 
 
 def validate_shared_graphs(environments):
@@ -284,6 +300,13 @@ def main():
         report["arm_q8_mmq_prefill_enabled"] = {
             name: mode for name, mode in arm_q8_mmq_modes.items()
             if mode is not None}
+        # The GR-up wide tile is owner state now, so an arm that declared the
+        # other route binds it for its samples and the production route comes
+        # back for the next arm.
+        published_gr_wide = bool(getattr(runner, "gr_wide", False))
+        arm_gr_wide_modes = {
+            name: arm_gr_wide(name, published_gr_wide) for name in args.candidate}
+        report["arm_gr_wide"] = arm_gr_wide_modes
         original_step = runner.step
         last = {}
         names = ("moe_graph_cache", "layer_graph_cache")
@@ -316,6 +339,7 @@ def main():
             )
             with (
                 q8_scope,
+                gr_wide_arm_scope(runner, arm_gr_wide_modes.get(arm)),
                 qsa_prefill_head_mode(runner, arm_head_modes.get(arm)),
                 qsa_h256_prefill_mode(runner, arm_h256_modes.get(arm)),
                 use_workspace(runner, workspace)

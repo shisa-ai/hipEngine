@@ -427,6 +427,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the router-logit producer is owner state; use "
                 "--router-producer-variant instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_GR_WIDE":
+            raise ValueError(
+                "the GR-up wide tile is owner state; use "
+                "--gr-wide instead of --override"
+            )
         if key in overrides:
             raise ValueError(f"duplicate override for {key}")
         overrides[key] = value
@@ -439,6 +444,7 @@ def _named_profile_intact(
     q8_mmq_override: bool | None = None,
     q8_wmma_override: Q8WMMALayerScope | None = None,
     router_producer_override: str | None = None,
+    gr_wide_override: bool | None = None,
 ) -> bool:
     """A named profile is intact only when no post-binder override is active."""
 
@@ -448,6 +454,7 @@ def _named_profile_intact(
         and q8_mmq_override is None
         and q8_wmma_override is None
         and router_producer_override is None
+        and gr_wide_override is None
     )
 
 
@@ -457,6 +464,7 @@ def _configuration_class(
     q8_mmq_override: bool | None = None,
     q8_wmma_override: Q8WMMALayerScope | None = None,
     router_producer_override: str | None = None,
+    gr_wide_override: bool | None = None,
 ) -> str:
     return (
         "diagnostic_post_binder_override"
@@ -464,6 +472,7 @@ def _configuration_class(
         or q8_mmq_override is not None
         or q8_wmma_override is not None
         or router_producer_override is not None
+        or gr_wide_override is not None
         else "named_profile"
     )
 
@@ -613,6 +622,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--gr-wide",
+        choices=("on", "off"),
+        help=(
+            "Explicit GR-up wide tile for this measurement, bound on the owning "
+            "runner after the binder; the plan's published route is restored on "
+            "exit. The rows>256 and low_rank%64==0 guards still apply"
+        ),
+    )
+    parser.add_argument(
         "--q8-wmma-layers",
         default=None,
         help=(
@@ -672,6 +690,9 @@ def main() -> None:
     q8_mmq_override = (
         None if args.q8_mmq_prefill is None
         else args.q8_mmq_prefill == "on"
+    )
+    gr_wide_override = (
+        None if args.gr_wide is None else args.gr_wide == "on"
     )
     q8_wmma_override = None
     if args.q8_wmma_layers is not None:
@@ -790,16 +811,20 @@ def main() -> None:
         "execution_profile": resolved.profile.value,
         "configuration_class": _configuration_class(
             overrides, production_moe_override, q8_mmq_override,
-            q8_wmma_override, args.router_producer_variant),
+            q8_wmma_override, args.router_producer_variant,
+            gr_wide_override),
         "named_profile_intact": _named_profile_intact(
             overrides, production_moe_override, q8_mmq_override,
-            q8_wmma_override, args.router_producer_variant),
+            q8_wmma_override, args.router_producer_variant,
+            gr_wide_override),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
         "production_moe_prefill_enabled": None,
         "q8_mmq_prefill_enabled": None,
         "q8_wmma_layers": None,
         "router_producer_variant": None,
+        "gr_wide_override": gr_wide_override,
+        "gr_wide": None,
         "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
@@ -868,6 +893,11 @@ def main() -> None:
                 runner, args.router_producer_variant))
         report["router_producer_variant"] = getattr(
             runner, "router_producer_variant", None)
+        if gr_wide_override is not None:
+            from hipengine.runtime.qwen4_exp_runner import gr_wide
+
+            q4_scope.enter_context(gr_wide(generator, gr_wide_override))
+        report["gr_wide"] = bool(getattr(runner, "gr_wide", False))
         if q4_dp4a_override is not None:
             from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
 

@@ -19,6 +19,7 @@ def _target(monkeypatch):
     runner = _TargetHarness()
     runner.q8_wave_scale_prefill = False
     runner.gr_wave_scale = False
+    runner.gr_wide = False
     runner.max_sequence_length = 8
     runner.prefill_chunk_size = 2
     runner.position = 0

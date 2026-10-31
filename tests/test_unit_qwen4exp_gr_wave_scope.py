@@ -57,16 +57,20 @@ def test_late_clone_inherits_choice(published):
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_campaign_scope_restores_controls_and_ignores_stale_env(mode, expected):
     from scripts.qwen4exp_halo_box_campaign_ab import GR_WAVE_ENV, route_scope
-    owner = SimpleNamespace(gr_wave_scale=True)
+    owner = SimpleNamespace(gr_wave_scale=True, gr_wide=True)
     env = {ENV: "stale", "HIPENGINE_QWEN4_EXP_GR_WIDE": "1"}
     before = dict(env)
     with pytest.raises(RuntimeError, match="failed"):
         with route_scope("gr-wave-scale", mode, owner, environment=env):
             assert owner.gr_wave_scale is expected
+            # The wide tile preempts the wave-scale owner, so the package closes
+            # it on the runner rather than through a process key.
+            assert owner.gr_wide is False
             assert all(env[key] == value for key, value in GR_WAVE_ENV.items())
             assert env[ENV] == "stale"
             raise RuntimeError("failed")
     assert owner.gr_wave_scale is True
+    assert owner.gr_wide is True
     assert env == before
 
 

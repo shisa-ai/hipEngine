@@ -22,12 +22,28 @@ from scripts.qwen4exp_canonical_ar_bench import (
 )
 from scripts.qwen4exp_halo_box_campaign_ab import summarize_campaign_ab
 from scripts.qwen4exp_ple_gather_ab import pair_sequence
-from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary, CANDIDATES
+from scripts.qwen4exp_layer2_profile_gate import (
+    _make_generator, _state_summary, CANDIDATES, gr_wide_arm_scope,
+)
 from scripts.qwen4exp_journey_localize import set_flags
 from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_h256_prefill_mode,
 )
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
+
+
+def arm_gr_wide(mode, published):
+    """The GR-up wide route this mode's former process value implied.
+
+    The conservative package's environment carried
+    ``HIPENGINE_QWEN4_EXP_GR_WIDE=0``, so its ``after`` samples ran the fused
+    exact parent; the ``before`` reference kept whatever the production bind
+    published.
+    """
+
+    if mode == "before":
+        return bool(published)
+    return bool(CANDIDATES["production_conservative"].gr_wide)
 
 
 def summarize_cost(samples, pairs):
@@ -69,6 +85,10 @@ def main():
         generator, profile, _ = _make_generator(args, "production")
         runner = generator.runner
         overrides = dict(CANDIDATES["production_conservative"].environment)
+        published_gr_wide = bool(getattr(runner, "gr_wide", False))
+        report["arm_gr_wide"] = {
+            mode: arm_gr_wide(mode, published_gr_wide)
+            for mode in ("before", "after")}
         previous = {key: os.environ.get(key) for key in overrides}
         report["arm_overrides"] = {"before": previous, "after": overrides}
         original_step = runner.step
@@ -104,6 +124,7 @@ def main():
             )
             with (
                 q8_scope,
+                gr_wide_arm_scope(runner, arm_gr_wide(mode, published_gr_wide)),
                 qsa_h256_prefill_mode(
                     runner,
                     CANDIDATES["production_conservative"].qsa_h256_prefill_mode

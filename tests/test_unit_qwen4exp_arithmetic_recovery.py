@@ -30,14 +30,17 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     profile = resolve("gguf_ud_q4_k_xl")
     generator = SimpleNamespace()
     profile.binder(generator, profile)
-    # GR_WIDE is closed by the recovery pass and reopened by the F16 route
-    # composition this quant's production plan carries.
-    expected = {**PRODUCTION_Q8_QSA_RESTORED_FLAGS, "GR_WIDE": "1"}
+    # GR_WIDE is a request-local owner route: the recovery pass publishes the
+    # exact parent and the F16 route composition this quant's production plan
+    # carries republishes the wide tile, so no process key is written.
+    expected = dict(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
     owner_flags = {"PRODUCTION_MOE_PREFILL", "Q8_MMQ_PREFILL"}
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
-        if flag == "Q4_DP4A64" or flag in owner_flags:
+        if flag in {"Q4_DP4A64", "GR_WIDE"} or flag in owner_flags:
             continue
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == expected.get(flag, "0")
+    assert "HIPENGINE_QWEN4_EXP_GR_WIDE" not in os.environ
+    assert generator.gr_wide is True
     assert generator.q4_dp4a_decode_enabled is False
     assert generator.production_moe_prefill_enabled is False
     assert generator.q8_mmq_prefill_enabled is False

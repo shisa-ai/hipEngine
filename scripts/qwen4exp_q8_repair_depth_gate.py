@@ -18,13 +18,14 @@ if str(ROOT) not in sys.path:
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _strict_trajectory, _candidate_trajectory, _state_summary,
-    _state_repeat_gate, CANDIDATES,
+    _state_repeat_gate, CANDIDATES, bind_candidate_gr_wide,
+    candidate_dispatch_counter,
 )
 from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _host_metadata, _git_metadata,
 )
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
-from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
+from scripts.qwen4exp_candidate_dispatch import empty_dispatch_counter, shape_records
 
 
 def resolve_allocation_profile():
@@ -189,12 +190,16 @@ def main():
         outputs, states = [], []
         deterministic = True
         dispatch_stack = ExitStack()
-        counter = {"calls": 0, "shapes": {}}
+        counter = empty_dispatch_counter()
         try:
             from hipengine.runtime.qwen4_exp_runner import (
                 q8_mmq_prefill_enabled, qsa_h256_prefill_mode,
                 resolve_q8_mmq_prefill,
             )
+            # The arm's GR-up wide tile is bound on the runner it measures;
+            # dispatch counting on the candidate key proves which projection ran.
+            report["gr_wide"] = bind_candidate_gr_wide(
+                dispatch_stack, generator, spec)
             if spec.q8_mmq_prefill_enabled is not None:
                 dispatch_stack.enter_context(q8_mmq_prefill_enabled(
                     generator, spec.q8_mmq_prefill_enabled))
@@ -204,13 +209,7 @@ def main():
                 generator.runner.configure_mmq_prefill_resources()
             dispatch_stack.enter_context(qsa_h256_prefill_mode(
                 generator.runner, spec.qsa_h256_prefill_mode))
-            if spec.requires_dispatch_count:
-                from hipengine.kernels.registry import KernelKey
-                counter = dispatch_stack.enter_context(count_candidate_dispatch(
-                    key=KernelKey(*spec.candidate_key),
-                    direct_target=spec.direct_dispatch_target,
-                    direct_reference=spec.direct_dispatch_reference,
-                    shape_positions=spec.dispatch_shape_positions))
+            counter = candidate_dispatch_counter(spec, dispatch_stack)
             for case in cases:
                 teacher = teachers[case["id"]]
                 reference = None
@@ -246,6 +245,7 @@ def main():
                 [strict_states[case["id"]] for case in cases], states)
             report["candidate_dispatch_calls"] = counter["calls"]
             report["candidate_dispatch_shapes"] = shape_records(counter)
+            report["candidate_dispatch_leaves"] = dict(counter["leaves"])
             report["candidate_dispatch_shape_positions"] = spec.dispatch_shape_positions
             report["candidate_direct_dispatch_target"] = spec.direct_dispatch_target
             report["candidate_direct_dispatch_reference"] = spec.direct_dispatch_reference

@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, resolve_production_moe_prefill, resolve_q8_mmq_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_production_moe_prefill, resolve_q8_mmq_prefill
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -421,6 +421,135 @@ def gr_wave_arm_enabled(arm, published):
     return published
 
 
+#: The retired GR-up wide key. Both bindings wrote it - the strict bind
+#: published the fused exact parent and the production bind the plan's route -
+#: so the two snapshots this harness builds its arms from carried it too.
+_GR_WIDE_ENV = PREFIX + "GR_WIDE"
+_ENV_FALSE = frozenset({"", "0", "false", "False"})
+
+
+def _env_flag(raw):
+    """Parse one former process value the way the retired reader did."""
+
+    return raw not in _ENV_FALSE
+
+
+def gr_wide_snapshot(flags, *, published):
+    """One former environment snapshot, including the retired wide key.
+
+    ``flags`` is the snapshot the harness captures today and ``published`` is
+    the route the binding that produced it publishes on its runner, which is
+    exactly what the retired key carried at that point.
+    """
+
+    return {**flags, _GR_WIDE_ENV: "1" if published else "0"}
+
+
+def declared_gr_wide():
+    """Candidate arms whose declaration names an explicit GR-up wide route."""
+
+    return {
+        name: bool(candidate.gr_wide)
+        for name, candidate in ((name, CANDIDATES.get(name)) for name in ARMS)
+        if candidate is not None and candidate.gr_wide is not None
+    }
+
+
+#: Former effective GR-up wide route per arm, recorded from the same dicts that
+#: produced each arm's former environment. Seeded with the candidate
+#: declarations; ``main`` records the arms built from the two bindings' former
+#: snapshots and defaults the rest to the production route.
+_GR_WIDE_ARM_VALUES: dict[str, bool] = declared_gr_wide()
+
+
+def migrate_gr_wide_arms(arms, *, production_value, declared=None):
+    """Record each arm's former GR-up wide value, then drop the retired key.
+
+    The retired key was a captured ``GR_*`` process key. An arm whose former
+    environment named it ran that value; an arm whose candidate declaration
+    names it ran the declaration, because the candidate environment carried it
+    before retirement; and an arm that named it nowhere ran whatever the
+    production bind had published - the arm loop's ``bound`` snapshot, which is
+    ``production_value`` here.
+    """
+
+    declared = declared or {}
+    values = dict(declared)
+    for name, env in arms.items():
+        raw = env.pop(_GR_WIDE_ENV, None)
+        if name in values:
+            continue
+        values[name] = bool(production_value) if raw is None else _env_flag(raw)
+    return values
+
+
+def snapshot_arms(strict_snapshot, production_snapshot, *, arms=None):
+    """Build the arms whose former environment came from the two snapshots.
+
+    Both bindings wrote the GR-up wide key, so the strict snapshot carried the
+    strict route and the production snapshot the production route. The arms are
+    built from them exactly as they were from the live environments, so each
+    arm keeps the value its former process key carried.
+    """
+
+    arms = ARMS if arms is None else arms
+    arms["all_flags_strict"] = dict(strict_snapshot)
+    arms["gdn_flags_strict"] = {key: value for key, value in strict_snapshot.items()
+                                if key.startswith(PREFIX + "GDN_")}
+    arms.update(strict_family_overrides(strict_snapshot))
+    arms.update(gdn_isolation_overrides(strict_snapshot, production_snapshot))
+    for family, prefixes in FAMILY_PREFIXES.items():
+        keys = [key for key in strict_snapshot
+                if any(key.startswith(PREFIX + prefix) for prefix in prefixes)]
+        arms["strict_plus_" + family] = {
+            **strict_snapshot, **{key: production_snapshot.get(key) for key in keys}}
+        arms["q8down_off_without_" + family] = {
+            **arms["q8_selected_down_strict"],
+            **{key: strict_snapshot[key] for key in keys}}
+    for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
+        arm = "strict_plus_" + flag.lower()
+        arms[arm] = dict(strict_snapshot)
+        if flag == "Q8_MMQ_PREFILL":
+            _Q8_MMQ_ARM_VALUES[arm] = True
+        else:
+            arms[arm][PREFIX + flag] = "1"
+    return arms
+
+
+def gr_wide_arm_enabled(arm, published):
+    """The GR-up wide route this arm's former process key implied."""
+
+    return _GR_WIDE_ARM_VALUES.get(arm, bool(published))
+
+
+def gr_wide_arm_report(generator, arm):
+    """Name the GR-up wide route that actually ran for this arm."""
+
+    return gr_wide_arm_enabled(
+        arm, bool(getattr(generator.runner, "gr_wide", False)))
+
+
+#: Split arms bind the GR-up wide route per phase: the strict phase ran the
+#: strict snapshot's route, and the production phase kept the production one.
+GR_WIDE_SPLIT_ARMS = frozenset({
+    "strict_prefill_production_decode", "production_prefill_strict_decode",
+})
+
+
+def gr_wide_split_scope(runner, arm, phase):
+    """Bind one split phase's GR-up wide route, as its former flag set did."""
+
+    if arm not in GR_WIDE_SPLIT_ARMS:
+        return nullcontext()
+    strict_phase = (
+        (arm == "strict_prefill_production_decode" and phase == "prefill")
+        or (arm == "production_prefill_strict_decode" and phase == "decode")
+    )
+    if not strict_phase:
+        return nullcontext()
+    return gr_wide(runner, False)
+
+
 def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
                      *, arm=None, h256_mode=None, register_prefill=None,
                      pair_prefill=None, wave_prefill=None, gr_wave_prefill=None):
@@ -438,6 +567,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                         if gr_wave_prefill is None else gr_wave_prefill), q4_dp4a_split_scope(
                             runner, arm, "prefill"), q8_mmq_split_scope(
                             runner, arm, "prefill"), production_moe_split_scope(
+                            runner, arm, "prefill"), gr_wide_split_scope(
                             runner, arm, "prefill"):
         runner.reset()
         result = runner.prefill(prompt_ids)
@@ -446,7 +576,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     set_flags(decode_flags)
     with q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
-            runner, arm, "decode"):
+            runner, arm, "decode"), gr_wide_split_scope(runner, arm, "decode"):
         for token in forced_ids:
             result = runner.step(token)
             logits.append(np.array(result.logits, dtype=np.float32, copy=True))
@@ -478,6 +608,12 @@ def main():
         identity = model_identity(args.model_root)
         strict_generator, strict_profile, _ = _make_generator(args, "strict")
         strict_flags = strict_environment(os.environ)
+        # The retired GR-up wide key was a captured ``GR_*`` process key, so the
+        # strict snapshot carried the strict bind's route. Reconstruct it from
+        # the binding that published it and let ``snapshot_arms`` rebuild the
+        # arms that named it.
+        strict_snapshot = gr_wide_snapshot(
+            strict_flags, published=bool(strict_generator.runner.gr_wide))
         strict = {}
         tokens = {}
         descriptors = []
@@ -498,10 +634,10 @@ def main():
         finally:
             strict_generator.close()
         strict_close = memory_stats()
-        ARMS["all_flags_strict"] = strict_flags
-        ARMS["gdn_flags_strict"] = {key: value for key, value in strict_flags.items()
+        ARMS["all_flags_strict"] = dict(strict_snapshot)
+        ARMS["gdn_flags_strict"] = {key: value for key, value in strict_snapshot.items()
                                    if key.startswith(PREFIX + "GDN_")}
-        ARMS.update(strict_family_overrides(strict_flags))
+        ARMS.update(strict_family_overrides(strict_snapshot))
         strict_logits = np.stack([r["logits"] for p in prompt_rows for r in strict[p["id"]]])
         report = {
             "kind": "journey_incumbent_family_localization", "status": "running",
@@ -517,22 +653,14 @@ def main():
             "arms": {}, "strict_after_close": strict_close,
         }
         generator, production_profile, _ = _make_generator(args, "production")
-        ARMS.update(gdn_isolation_overrides(strict_flags, os.environ))
-        for family, prefixes in FAMILY_PREFIXES.items():
-            keys = [key for key in strict_flags
-                    if any(key.startswith(PREFIX + prefix) for prefix in prefixes)]
-            ARMS["strict_plus_" + family] = {
-                **strict_flags, **{key: os.environ.get(key) for key in keys}}
-            ARMS["q8down_off_without_" + family] = {
-                **ARMS["q8_selected_down_strict"],
-                **{key: strict_flags[key] for key in keys}}
-        for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
-            arm = "strict_plus_" + flag.lower()
-            ARMS[arm] = dict(strict_flags)
-            if flag == "Q8_MMQ_PREFILL":
-                _Q8_MMQ_ARM_VALUES[arm] = True
-            else:
-                ARMS[arm][PREFIX + flag] = "1"
+        production_snapshot = gr_wide_snapshot(
+            os.environ, published=bool(generator.runner.gr_wide))
+        snapshot_arms(strict_snapshot, production_snapshot)
+        # Move every arm's former GR-up wide value onto the owner decision and
+        # drop the retired key, so no arm writes it as a process value.
+        _GR_WIDE_ARM_VALUES.update(migrate_gr_wide_arms(
+            ARMS, production_value=bool(generator.runner.gr_wide),
+            declared=declared_gr_wide()))
         # The strict binding historically published Q8 MMQ off. Bind that owner
         # decision explicitly now that the process key is gone.
         for name in tuple(ARMS):
@@ -562,6 +690,9 @@ def main():
                     # Explicit cold-path preparation for the arm's bound owner.
                     generator.runner.configure_mmq_prefill_resources()
                 arm_scope.enter_context(q4_dp4a_arm_scope(generator, arm))
+                arm_scope.enter_context(gr_wide(
+                    generator.runner, gr_wide_arm_enabled(
+                        arm, getattr(generator.runner, "gr_wide", False))))
                 arm_scope.enter_context(gr_wave_scale(
                     generator.runner, gr_wave_arm_enabled(
                         arm, generator.runner.gr_wave_scale)))
@@ -615,6 +746,7 @@ def main():
                             production_moe_arm_report(generator, arm)),
                         "q8_mmq_prefill_enabled": q8_mmq_arm_report(
                             generator, arm),
+                        "gr_wide": gr_wide_arm_report(generator, arm),
                     },
                     "quality": quality,
                 }

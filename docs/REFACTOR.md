@@ -92,14 +92,17 @@ Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
 Scope: `HIPENGINE_QWEN4_EXP_GR_WIDE`.
 
-Replace `HIPENGINE_QWEN4_EXP_GR_WIDE` with an owner-bound variant input across
-profile construction, runtime dispatch and diagnostics. Preserve profile precedence
-and strict fallback before retiring the environment handoff.
+Owner-bound `gr_wide` selection is implemented across profile construction,
+runtime dispatch and candidate-driven diagnostics. Preserve profile precedence,
+strict fallback, and the `rows > 256` and `low_rank % 64 == 0` capability checks.
 
-Done when: Preserve `rows > 256` and `low_rank % 64 == 0` capability checks. Short default prompts do not
-engage this route; use the canonical depth gate or layer2 gate with `--prompts
-benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl` and independent dispatch counts. A one-hot
-prefill-boundary KL is not a substitute for full-depth numerical/task validation.
+Done when: Finish the canonical depth numerical gate and full task validation,
+with independent dispatch counts for both F32 and F16-direct wide leaves.
+Public generation at 73/257/389 tokens confirms threshold engagement and clean
+teardown, but does not replace that gate. Use the canonical depth gate or
+layer2 gate with `--prompts benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl`.
+A one-hot prefill-boundary KL is not a substitute for full-depth numerical/task
+validation.
 
 ### R0027 — Repair isolated GR-down IU8 drift independently
 

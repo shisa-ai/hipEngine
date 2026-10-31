@@ -253,6 +253,12 @@ def _dense_f16_gemm_selections(*, production: bool) -> tuple[VariantSelection, .
 
 
 _GR_WIDE_PROJECTION_SCOPE = "prefill_rows_ge257_branch4_k_multiple64_gr_up_projection"
+# The GR-up wide tile is the plan's own decision, published as request-local
+# runner state rather than the retired ``HIPENGINE_QWEN4_EXP_GR_WIDE`` key. The
+# retired name is recorded only so a caller value the owner publication makes
+# inert is still reported.
+_GR_WIDE_ENV = "HIPENGINE_QWEN4_EXP_GR_WIDE"
+_GR_WIDE_VARIANT = "dense_wide256_f32_f32_out"
 
 
 def _gr_wide_projection_selection(*, production: bool) -> VariantSelection:
@@ -981,6 +987,32 @@ def _publish_production_moe_prefill(generator: Any, enabled: bool) -> None:
         runner.production_moe_prefill_enabled = bool(enabled)
 
 
+def _gr_wide_projection_selected(manifest: Any) -> bool:
+    """Whether the resolved plan selects the GR-up wide tile.
+
+    Only the F16 route composition carries the wide variant; strict and every
+    other production plan publish the exact ``coltile8_rowbatch4`` parent, and
+    a plan without the row at all publishes the parent too. The dispatch keeps
+    the rows>256 and low_rank%64==0 guards.
+    """
+
+    return any(
+        row["scope"] == _GR_WIDE_PROJECTION_SCOPE
+        and row["selected_variant"] == _GR_WIDE_VARIANT
+        for row in manifest["selections"]
+    )
+
+
+def _publish_gr_wide(generator: Any, enabled: bool) -> None:
+    """Publish the GR-up wide tile as owner state, not a process key."""
+
+    _record_owner_transport(_GR_WIDE_ENV, "1" if enabled else "0")
+    generator.gr_wide = bool(enabled)
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.gr_wide = bool(enabled)
+
+
 def _publish_q8_mmq_prefill(generator: Any, enabled: bool) -> None:
     """Publish the Q8 MMQ prefill workspace gate as owner state."""
 
@@ -1596,7 +1628,7 @@ def _bind(
                 for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
                 if flag not in {
                     "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
-                    "Q8_MMQ_PREFILL",
+                    "Q8_MMQ_PREFILL", "GR_WIDE",
                 }
             }
         )
@@ -1611,15 +1643,13 @@ def _bind(
             }
         )
     f16_routes = production and resolved.manifest.get("quant") in F16_ROUTE_QUANTS
-    _apply_profile_env({"HIPENGINE_QWEN4_EXP_GR_WIDE": "0"})
+    # The GR-up wide tile is the plan's own decision, published on the owning
+    # runner instead of the retired ``HIPENGINE_QWEN4_EXP_GR_WIDE`` key. Every
+    # bind writes it, so a later bind without the composition in the same
+    # process publishes its own route rather than inheriting this one.
+    _publish_gr_wide(
+        generator, _gr_wide_projection_selected(resolved.manifest))
     if f16_routes:
-        gr = next(row for row in resolved.manifest["selections"]
-                  if row["scope"] == _GR_WIDE_PROJECTION_SCOPE)
-        _apply_profile_env({
-            "HIPENGINE_QWEN4_EXP_GR_WIDE": (
-                "1" if gr["selected_variant"] == "dense_wide256_f32_f32_out" else "0"
-            ),
-        })
         # Every key here is written by each bind, so a later bind without the
         # composition in the same process restores its own value.
         dense = next(row for row in resolved.manifest["selections"]

@@ -45,7 +45,7 @@ def test_runner_no_longer_reads_or_launches_the_removed_selector() -> None:
     """The variable must be dead, not merely unreachable.
 
     Unreachability was the state that let a rejected route keep a live env read:
-    on the UD production plan ``GR_WIDE`` binds ahead of the staged branch, so
+    on the UD production plan ``gr_wide`` binds ahead of the staged branch, so
     the branch could not engage there while the flag and its launch stayed
     wired. A re-added read or launch is what this pins out.
     """
@@ -68,7 +68,6 @@ def test_removed_selector_does_not_move_the_surviving_gr_chain(monkeypatch) -> N
     """
 
     runner = _runner()
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GR_WIDE", raising=False)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GR_IU8", raising=False)
     monkeypatch.delenv(REMOVED_ENV, raising=False)
 
@@ -77,10 +76,13 @@ def test_removed_selector_does_not_move_the_surviving_gr_chain(monkeypatch) -> N
     assert runner._qwen4_exp_gr_wide_enabled(1024, 320) is False
 
     monkeypatch.setenv(REMOVED_ENV, "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_WIDE", "0")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_IU8", "0")
     assert runner._qwen4_exp_gr_iu8_enabled(1024) is False
+    # An unbound runner publishes the fused exact parent: the removed route's
+    # arm cannot select the wide tile by itself either.
     assert runner._qwen4_exp_gr_wide_enabled(1024, 320) is False
+    assert runner._qwen4_exp_gr_wide_enabled(
+        1024, 320, published=False) is False
 
 
 def test_strict_gr_fallback_key_stays_registered() -> None:

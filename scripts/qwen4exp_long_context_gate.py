@@ -39,6 +39,7 @@ binding, and the arm needs at least three repeats.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 from dataclasses import replace
 from datetime import datetime, timezone
 import json
@@ -69,6 +70,7 @@ from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator,
     _state_summary,
     _strict_trajectory,
+    gr_wide_arm_scope,
 )
 
 KIND = "qwen4exp_long_context_profile_gate"
@@ -272,6 +274,21 @@ def candidate_arm_kind(spec: Any) -> str:
     """Return the execution arm for a candidate; ``ar_batch`` is never c1."""
 
     return "batch" if str(spec.name) == "qwen4_exp_ar_batch" else "c1"
+
+
+def arm_gr_wide(arm, published):
+    """The GR-up wide route this arm's former process key implied.
+
+    ``CandidateSpec.gr_wide`` is the shared declaration of the candidate's
+    former ``HIPENGINE_QWEN4_EXP_GR_WIDE`` value. The strict reference is not a
+    candidate: it ran the strict bind's route, which is what ``published``
+    already is for the generator it builds.
+    """
+
+    candidate = CANDIDATES.get(arm)
+    if candidate is None or candidate.gr_wide is None:
+        return bool(published)
+    return bool(candidate.gr_wide)
 
 
 def resolve_batch_width(args: argparse.Namespace, spec: Any) -> int | None:
@@ -511,6 +528,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     saved = {key: os.environ.get(key) for key in spec.environment}
     gen, candidate_profile, _ = _make_generator(args, spec.base_profile, spec.quant)
     os.environ.update(spec.environment)
+    # The GR-up wide tile is the owning runner's decision now, so an arm that
+    # declared the other route binds it around the candidate rows and the
+    # candidate profile's route comes back on unwind.
+    candidate_gr_wide = arm_gr_wide(
+        str(args.candidate), bool(getattr(gen.runner, "gr_wide", False)))
+    wide_scope = ExitStack()
+    wide_scope.enter_context(gr_wide_arm_scope(gen.runner, candidate_gr_wide))
     try:
         if batch_candidate:
             from scripts.qwen4exp_ar_batch_candidate import BatchCandidateRequest
@@ -616,6 +640,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     }
                 print(f"candidate repeat {repeat + 1}/{args.candidate_repeats}", flush=True)
     finally:
+        wide_scope.close()
         for key, value in saved.items():
             if value is None:
                 os.environ.pop(key, None)
@@ -685,6 +710,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                       "arm_kind": candidate_arm_kind(spec),
                       "batch_width": batch_width,
                       "base_profile": spec.base_profile,
+                      "gr_wide": candidate_gr_wide,
+                      "gr_wide_override": spec.gr_wide,
                       "environment": dict(spec.environment),
                       "manifest_sha256": candidate_profile.manifest_sha256,
                       "batch_manifest_sha256": (

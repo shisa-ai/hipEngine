@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
-from scripts.qwen4exp_layer2_profile_gate import _make_generator, _state_summary, CANDIDATES
+from scripts.qwen4exp_layer2_profile_gate import (
+    _make_generator, _state_summary, CANDIDATES, gr_wide_arm_scope,
+)
 from scripts.qwen4exp_q8_repair_depth_gate import (
     observe_prefill_chunks, resolve_allocation_profile, validate_chunk_allocation,
 )
@@ -94,6 +96,21 @@ def build_active_prompt(generator, task, *, context_tokens=4096):
     return prompt, metadata
 
 
+def arm_gr_wide(arm, published):
+    """The GR-up wide route this arm's former process key implied.
+
+    ``CandidateSpec.gr_wide`` is the shared declaration of the candidate's
+    former ``HIPENGINE_QWEN4_EXP_GR_WIDE`` value. The ``strict`` arm is not a
+    candidate: it ran the strict bind's route, which is what ``published``
+    already is for the generator that arm builds.
+    """
+
+    candidate = CANDIDATES.get(arm)
+    if candidate is None or candidate.gr_wide is None:
+        return bool(published)
+    return bool(candidate.gr_wide)
+
+
 def main():
     from scripts.gguf_mtp_long_context_task_gate import load_tasks, DEFAULT_SUITE
     from hipengine.core.memory import memory_stats
@@ -157,6 +174,13 @@ def main():
                 if arm != "strict" and spec.q8_mmq_prefill_enabled is not None:
                     owner_scope.enter_context(q8_mmq_prefill_enabled(
                         generator, spec.q8_mmq_prefill_enabled))
+                # The GR-up wide tile is owner state now; every arm binds the
+                # route its former process value implied on the runner it
+                # measures. The strict arm's bind publishes the exact parent.
+                route = arm_gr_wide(
+                    arm, bool(getattr(generator.runner, "gr_wide", False)))
+                owner_scope.enter_context(gr_wide_arm_scope(generator.runner, route))
+                packet.setdefault("gr_wide", {})[arm] = route
                 packet.setdefault("q8_mmq_prefill_enabled", {})[arm] = (
                     resolve_q8_mmq_prefill(generator))
                 if packet["q8_mmq_prefill_enabled"][arm]:
@@ -167,6 +191,8 @@ def main():
                     direct_target=spec.direct_dispatch_target if counted else None,
                     direct_reference=spec.direct_dispatch_reference if counted else None,
                     shape_positions=spec.dispatch_shape_positions if counted else None,
+                    extra_direct_targets=(
+                        spec.extra_direct_dispatch_targets if counted else ()),
                 ) as counter:
                     for task in tasks:
                         prompt, prompt_info = build_active_prompt(generator, task)

@@ -3589,6 +3589,7 @@ def run_qwen4_exp_gr_read(
     pending_write: tuple[int, int, int, bool] | None = None,
     decode_rows: bool = False,
     gr_wave_scale: bool = False,
+    gr_wide: bool = False,
 ) -> Qwen4ExpGRReadDeviceResult:
     """Execute strict grouped GR read using model-neutral resident projections.
 
@@ -3677,6 +3678,7 @@ def run_qwen4_exp_gr_read(
                 norm_weight_ptr, down_weight, up_weight, inject_weight,
                 Qwen4ExpGRScratch(**views, runtime=active_runtime), rows=1,
                 gr_wave_scale=gr_wave_scale,
+                gr_wide=gr_wide,
                 branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,
                 stream=stream, runtime=active_runtime)
         return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,
@@ -3688,7 +3690,7 @@ def run_qwen4_exp_gr_read(
     # on this path and holds inv_rms[rows, branches].
     scale_only = (
         _qwen4_exp_gr_f16_direct_enabled(rows, low_rank)
-        and _qwen4_exp_gr_wide_enabled(rows, low_rank)
+        and _qwen4_exp_gr_wide_enabled(rows, low_rank, gr_wide)
         and not _qwen4_exp_gr_iu8_enabled(rows)
         and branches == 4
         and hidden % 32 == 0
@@ -3733,7 +3735,8 @@ def run_qwen4_exp_gr_read(
         and is_registered(fused_up_key)
     )
     gr_iu8 = fused_up and _qwen4_exp_gr_iu8_enabled(rows)
-    gr_wide = fused_up and not gr_iu8 and _qwen4_exp_gr_wide_enabled(rows, low_rank)
+    gr_wide = fused_up and not gr_iu8 and _qwen4_exp_gr_wide_enabled(
+        rows, low_rank, gr_wide)
     if scale_only and not gr_wide:
         # ``scratch.normalized`` was not written; only the fused wide up
         # epilogue can run without it.
@@ -5058,20 +5061,20 @@ def _qwen4_exp_gr_iu8_down_enabled(rows: int) -> bool:
     )
 
 
-def _qwen4_exp_gr_wide_enabled(rows: int, low_rank: int) -> bool:
-    """Wide-tile GR up route selected by the production F16 composition.
+def _qwen4_exp_gr_wide_enabled(
+    rows: int, low_rank: int, published: bool = False,
+) -> bool:
+    """Wide-tile GR up route published by the owning runner's plan.
 
-    The profile binder enables this after arithmetic recovery for UD production
-    and fast profiles. Its composition gate is distinct from the historical
+    ``published`` is the owning runner's plan decision (see ``gr_wide``): the
+    F16 route composition publishes it on, and every other plan publishes the
+    fused exact parent. Its composition gate is distinct from the historical
     standalone rejection; the prefill-boundary KL screen is not an admission
-    gate. See docs/REFACTOR.md, "GR-Up Wide Tile".
+    gate. The row and rank guards stay here, so a published route never widens
+    below them, and no process key selects this leaf. See docs/REFACTOR.md,
+    "GR-Up Wide Tile".
     """
-    return (
-        rows > 256
-        and low_rank % 64 == 0
-        and os.environ.get("HIPENGINE_QWEN4_EXP_GR_WIDE", "0")
-        not in {"", "0", "false", "False"}
-    )
+    return rows > 256 and low_rank % 64 == 0 and published
 
 
 _GR_F16_DIRECT = contextvars.ContextVar("qwen4_exp_gr_f16_direct", default=True)
@@ -5731,6 +5734,55 @@ def gr_wave_scale(runner: Any, enabled: bool):
         yield
     finally:
         runner.gr_wave_scale = prior
+
+
+def _gr_wide_targets(owner: Any) -> list[Any]:
+    """The owner object plus the runner it currently holds, if any."""
+
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    return targets
+
+
+@contextlib.contextmanager
+def gr_wide(owner: Any, enabled: bool):
+    """Temporarily bind the GR-up wide tile on one owning runner.
+
+    ``enabled`` is the route to bind for the scope. A generator target also
+    binds its current runner, so a harness that holds the generator selects the
+    route its dispatches read. The prior field value of each target is yielded
+    and put back on exit, including on error, so the plan's decision comes
+    back.
+
+    A runner the owner builds or swaps in during the scope inherits the bound
+    route (the binder, the constructor and clone inheritance all copy the
+    generator's field), so the exit also puts that runner back to the owner's
+    prior route. Otherwise an arm's route would outlive the measured window on
+    the owner that serves later rows.
+
+    The runner field is the owner: the profile binder publishes the plan's
+    route to it, the constructor and clone inheritance can set it, and this
+    scope is one way a gate arm names the other route for the work it measures.
+    The rows>256 and low_rank%64==0 guards stay at the dispatch consumer.
+    """
+
+    targets = _gr_wide_targets(owner)
+    owner_prior = bool(getattr(owner, "gr_wide", False))
+    prior = [(target, bool(getattr(target, "gr_wide", False)))
+             for target in targets]
+    try:
+        for target in targets:
+            target.gr_wide = bool(enabled)
+        yield [previous for _, previous in prior]
+    finally:
+        restored = {id(target) for target in targets}
+        for target, previous in prior:
+            target.gr_wide = previous
+        for target in _gr_wide_targets(owner):
+            if id(target) not in restored:
+                target.gr_wide = owner_prior
 
 
 @contextlib.contextmanager
@@ -7834,6 +7886,7 @@ def run_qwen4_exp_dense_qsa_layer(
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
+    gr_wide: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -7930,6 +7983,7 @@ def run_qwen4_exp_dense_qsa_layer(
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=active_runtime,
         gr_wave_scale=gr_wave_scale,
+        gr_wide=gr_wide,
     )
     mixer = run_qwen4_exp_dense_qsa_token_mixer(
         attention_read.mixed.ptr,
@@ -7968,6 +8022,7 @@ def run_qwen4_exp_dense_qsa_layer(
         weights.ffn_gr.inject,
         scratch.ffn_gr,
         gr_wave_scale=gr_wave_scale,
+        gr_wide=gr_wide,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=active_runtime,
         pending_write=pending_write,
@@ -8022,6 +8077,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
+    gr_wide: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -8152,6 +8208,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         weights.attention_gr.inject,
         scratch.attention_gr,
         gr_wave_scale=gr_wave_scale,
+        gr_wide=gr_wide,
         rows=rows,
         branches=branches,
         hidden=hidden,
@@ -8209,6 +8266,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         weights.ffn_gr.inject,
         scratch.ffn_gr,
         gr_wave_scale=gr_wave_scale,
+        gr_wide=gr_wide,
         rows=rows,
         branches=branches,
         hidden=hidden,
@@ -8282,6 +8340,7 @@ def run_qwen4_exp_gdn_layer(
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
+    gr_wide: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -8422,6 +8481,7 @@ def run_qwen4_exp_gdn_layer(
                 rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
                 stream=graph_stream, runtime=active_runtime,
                 gr_wave_scale=gr_wave_scale,
+                gr_wide=gr_wide,
             )
 
         layer_graph.run(
@@ -8455,6 +8515,7 @@ def run_qwen4_exp_gdn_layer(
             stream=stream, runtime=active_runtime,
             pending_write=pending_write,
             gr_wave_scale=gr_wave_scale,
+            gr_wide=gr_wide,
         )
     mixer_output = run_qwen4_exp_gdn_token_mixer(
         attention_read.mixed.ptr,
@@ -8493,6 +8554,7 @@ def run_qwen4_exp_gdn_layer(
                 rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
                 stream=graph_stream, runtime=active_runtime,
                 gr_wave_scale=gr_wave_scale,
+                gr_wide=gr_wide,
             )
 
         layer_graph.run(
@@ -8534,6 +8596,7 @@ def run_qwen4_exp_gdn_layer(
             stream=stream, runtime=active_runtime,
             pending_write=pending_write,
             gr_wave_scale=gr_wave_scale,
+            gr_wide=gr_wide,
         )
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
@@ -9525,6 +9588,12 @@ class Qwen4ExpGGUFResidentModelRunner:
     q4_pair_prefill: bool = False
     q8_wave_scale_prefill: bool = False
     gr_wave_scale: bool = False
+    # The GR-up wide tile is the owning runner's plan decision: the F16 route
+    # composition publishes it on, and every other plan publishes the fused
+    # exact parent. The rows>256 and low_rank%64==0 guards stay at the dispatch
+    # consumer, so a published route never widens below them, and a diagnostic
+    # arm binds this field on the runner it measures.
+    gr_wide: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder for every plan and ``None`` (the dispatch heuristic) on an
     # unbound runner: M is 64 from 512 rows up and 16 below, N is 16. The pair
@@ -10214,6 +10283,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             None,
             output.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
+            gr_wide=self.gr_wide,
             rows=len(tokens),
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -10350,6 +10420,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             None,
             output.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
+            gr_wide=self.gr_wide,
             rows=count,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -10886,6 +10957,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gdn_decode_rowsplit=self.gdn_decode_rowsplit,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
+                    gr_wide=self.gr_wide,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
@@ -10937,6 +11009,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
+                    gr_wide=self.gr_wide,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
@@ -11025,6 +11098,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             None,
             self.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
+            gr_wide=self.gr_wide,
             rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
             low_rank=cfg.residual_low_rank, runtime=self.runtime,
         )
@@ -11278,6 +11352,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
+                    gr_wide=self.gr_wide,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=count,
@@ -11333,6 +11408,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
+                    gr_wide=self.gr_wide,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
@@ -11551,6 +11627,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             None,
             self.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
+            gr_wide=self.gr_wide,
             rows=1,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,

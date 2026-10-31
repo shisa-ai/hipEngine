@@ -767,7 +767,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | retired | Ignored. Scale-only GR reads publish half(mixed) by default. Pair diagnostics use the execution-local `gr_f16_mirror` scope without changing environment state. |
 | `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | retired | Ignored. The supported scale-only norm computes inject logits when an inject projection is present. The separate kernel remains available to parity tests and fallback paths. |
 | `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | retired | Ignored. Supported direct-F16 GR reads use the scale-only norm; incompatible geometry or projection layouts retain the FP32 plane fallback. |
-| `HIPENGINE_QWEN4_EXP_GR_WIDE` | unset (F16 route sets `1`) | Hyper-connection up projection on the F16 wide route. |
+| `HIPENGINE_QWEN4_EXP_GR_WIDE` | retired | No longer read. The manifest publishes the GR-up wide tile on the owning runner (`gr_wide`); diagnostic arms bind that field with `gr_wide(owner, enabled)`, and `--gr-wide` names one for `qwen4exp_profile_gap.py`. The F16 route composition keeps the wide tile, every other plan keeps the fused exact parent, and the rows>256 and low_rank%64==0 guards stay at the dispatch. |
 | `HIPENGINE_QWEN4_EXP_GR_WRITE_NORM` | retired; ignored | Residual writes defer into the next norm for chunks of at least 1,024 rows. Short chunks and incompatible consumers keep separate writes. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` | profile-selected | Q8_0 dense-wide prefill route master switch. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` | profile-selected | Comma-separated layers whose Q8_0 dense projections take the dense-wide prefill route. |

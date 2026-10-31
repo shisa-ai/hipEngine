@@ -63,9 +63,11 @@ Q8_WAVE_ENV = {
 
 GR_WAVE_ENV = {
     "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION": "0",
-    "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
     "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
 }
+#: The GR-up wide tile is request-local runner state now, so the wave-scale
+#: package closes it on the runner it measures rather than through a key.
+GR_WIDE_FIELD = "gr_wide"
 
 
 def gr_wave_control_record(runner):
@@ -74,6 +76,7 @@ def gr_wave_control_record(runner):
         "published_value": runner.gr_wave_scale,
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(GR_WAVE_ENV),
+        "forced_runner_fields": {GR_WIDE_FIELD: False},
         "counted_variant": "coltile2_branch4_rowbatch4_wave_scale_f32_exact",
     }
 
@@ -81,11 +84,11 @@ def gr_wave_control_record(runner):
 @contextlib.contextmanager
 def gr_wave_scope(runner, enabled, *, environment=os.environ):
     """Compare exact GR composites without wide, IU8 or DPP preemption."""
-    from hipengine.runtime.qwen4_exp_runner import gr_wave_scale
+    from hipengine.runtime.qwen4_exp_runner import gr_wide, gr_wave_scale
     prior = {key: environment.get(key) for key in GR_WAVE_ENV}
     try:
         environment.update(GR_WAVE_ENV)
-        with gr_wave_scale(runner, enabled):
+        with gr_wide(runner, False), gr_wave_scale(runner, enabled):
             yield
     finally:
         for key, value in prior.items():

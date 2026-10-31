@@ -79,7 +79,6 @@ ARMS: dict[str, dict[str, str]] = {
     "q8_mmq": {},
     "gr_iu8": {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"},
     "gr_iu8_down": {"HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1"},
-    "gr_wide": {"HIPENGINE_QWEN4_EXP_GR_WIDE": "1"},
     "gdn_colwarps": {
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _L(
@@ -113,10 +112,12 @@ ARMS: dict[str, dict[str, str]] = {
     },
 }
 
-#: Arms whose production grouped-MoE gate is owner state rather than an env key.
+#: Arms whose production selector is request-local owner state rather than an
+#: env key. The child binds the field on the runner it measures.
 OWNER_ARMS: dict[str, dict[str, str]] = {
     "moe": {"production_moe_prefill": "on"},
     "q8_mmq": {"q8_mmq_prefill": "on"},
+    "gr_wide": {"gr_wide": "on"},
     "all_prefill": {
         "production_moe_prefill": "on",
         "q8_mmq_prefill": "on",
@@ -170,6 +171,8 @@ def _run_arm(
             "--production-moe-prefill", owner["production_moe_prefill"]]
     if "q8_mmq_prefill" in owner:
         command += ["--q8-mmq-prefill", owner["q8_mmq_prefill"]]
+    if "gr_wide" in owner:
+        command += ["--gr-wide", owner["gr_wide"]]
 
     started = time.monotonic()
     log = directory / "process.log"
@@ -211,6 +214,7 @@ def _run_arm(
             },
             "production_moe_prefill_enabled": child.get(
                 "production_moe_prefill_enabled"),
+            "gr_wide": child.get("gr_wide"),
             "effective_route_missing_keys": [
                 key for key in sorted(overrides) if key not in route
             ],

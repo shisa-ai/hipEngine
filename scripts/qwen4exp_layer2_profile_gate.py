@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, replace
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -50,7 +50,7 @@ from hipengine.generation.qwen4_exp_profiles import (
 )
 from hipengine.runtime.qwen4_exp_runner import (
     gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill, gdn_decode_rowsplit,
-    moe_decode_warp, gr_f16_direct,
+    moe_decode_warp, gr_f16_direct, gr_wide,
     production_moe_prefill_enabled, resolve_production_moe_prefill,
     q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
     q4_dp4a_decode, q4_exact_grouped_all, q4_exact_grouped_gate,
@@ -67,7 +67,9 @@ from scripts.execution_profile_gdn_calibration import (
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import prompt_sha256
-from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
+from scripts.qwen4exp_candidate_dispatch import (
+    count_candidate_dispatch, empty_dispatch_counter, shape_records,
+)
 from scripts.qwen4exp_canonical_ar_bench import (
     _git_metadata,
     _host_metadata,
@@ -103,6 +105,10 @@ class CandidateSpec:
     count_registered_dispatch: bool = False
     direct_dispatch_target: tuple[str, str] | None = None
     direct_dispatch_reference: tuple[str, str] | None = None
+    # Further module attributes that implement the same mechanism for the same
+    # rows, counted into the same total and named individually. The GR-up wide
+    # tile has two F16-operand epilogues beside its F32 tile.
+    extra_direct_dispatch_targets: tuple[tuple[str, str], ...] = ()
     dispatch_shape_positions: tuple[int, ...] | None = None
     quant: str | None = None
     # Explicit H256 prefill head grouping for this arm. ``None`` keeps whatever
@@ -119,6 +125,13 @@ class CandidateSpec:
     # choice after. The arm's own field is the only selector: no process key
     # names this leaf, so a stale value cannot make the arm measure production.
     router_producer_variant: str | None = None
+    # Explicit GR-up wide tile for this arm, same protocol. ``None`` keeps the
+    # base profile's published route (on for the F16 route composition, the
+    # fused exact parent on every other plan); ``True`` binds the wide tile for
+    # the measured rows and restores the plan's route after. The rows>256 and
+    # low_rank%64==0 guards stay at the dispatch, so a bound route still cannot
+    # widen below them.
+    gr_wide: bool | None = None
     # Explicit GDN serial-prefill owner for this arm, same protocol. ``None``
     # keeps the base profile's published variant (the register parent on a
     # strict base); a wide/narrow name binds that leaf for the measured rows.
@@ -211,14 +224,14 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 # through environment switches.
 
 _F16_ROUTES_OFF = {
-    "HIPENGINE_QWEN4_EXP_GR_WIDE": "0",
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
 }
-#: The cleared composition's router producer is request-local runner state, so
-#: each isolation arm declares it on its own candidate instead.
+#: The cleared composition's router producer and GR-up wide tile are
+#: request-local runner state, so each isolation arm declares them on its own
+#: candidate instead.
 _F16_ROUTES_OFF_ROUTER = "f32_hidden_token_tile4_dpp_exact"
 _ALL_LAYERS = ",".join(map(str, range(48)))
 #: Down-only arms close routed F16 through CandidateSpec.routed_f16_enabled.
@@ -228,7 +241,7 @@ _F16_ROUTE_ARMS = {
     "recovery_plus_dense_wide_all_layers": {
         "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": _ALL_LAYERS,
     },
-    "recovery_plus_gr_wide": {"HIPENGINE_QWEN4_EXP_GR_WIDE": "1"},
+    "recovery_plus_gr_wide": {},
     "recovery_plus_indexer_router_f16": {
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
     },
@@ -263,6 +276,7 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
             ),
             qsa_wmma_enabled=name == "recovery_plus_qsa_wmma",
             routed_f16_enabled=name == "recovery_plus_routed_f16",
+            gr_wide=name == "recovery_plus_gr_wide",
             gr_f16_direct=False,
             gdn_decode_rowsplit=False,
             moe_decode_warp=frozenset(),
@@ -323,7 +337,7 @@ CANDIDATES = {
                      for flag in CONSERVATIVE_ARITHMETIC_FLAGS
                      if flag not in {
                          "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
-                         "Q8_MMQ_PREFILL",
+                         "Q8_MMQ_PREFILL", "GR_WIDE",
                      }},
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
@@ -338,6 +352,7 @@ CANDIDATES = {
         qsa_ordered_decode_v2=False,
         qsa_h256_prefill_mode="parent",
         gdn_peer_prefill=False,
+        gr_wide=False,
         q4_dp4a_decode_enabled=False,
         q4_dp4a_decode_layers=frozenset(),
         production_moe_prefill_enabled=False,
@@ -575,11 +590,11 @@ CANDIDATES = {
         ),
         qsa_wmma_enabled=True,
         routed_f16_enabled=True,
+        gr_wide=True,
         environment={
             "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
                 str(layer) for layer in range(48)
             ),
-            "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
             "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(
                 str(layer) for layer in range(48)
@@ -922,10 +937,10 @@ CANDIDATES["production_gr_up_wide"] = CandidateSpec(
         "the retained exact sigmoid/gated-mean epilogue; dense and GR-down off"
     ),
     environment={
-        "HIPENGINE_QWEN4_EXP_GR_WIDE": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
     },
+    gr_wide=True,
     q8_mmq_prefill_enabled=False,
     base_profile="production", scenario_id="qwen4exp-gr-up-wide-tile",
     candidate_key=("hip_gfx1151", "linear", "gguf_q8_0",
@@ -937,6 +952,16 @@ CANDIDATES["production_gr_up_wide"] = CandidateSpec(
     direct_dispatch_reference=(
         "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide",
         "gguf_q8_0_dense_wide256_f32_f32_out"),
+    # The F16-direct composition takes the fused F16-operand epilogues instead of
+    # the F32 tile whenever its activation workspace is admitted, which is the
+    # shipped route on the UD plan. Counting only the F32 tile would report zero
+    # calls while the wide route runs, so the arm counts the leaves it can take.
+    extra_direct_dispatch_targets=(
+        ("hipengine.runtime.qwen4_exp_runner",
+         "qwen4_exp_gr_up_mean_residual_f16in_f32_out"),
+        ("hipengine.runtime.qwen4_exp_runner",
+         "qwen4_exp_gr_up_mean_f16in_f32_out"),
+    ),
     dispatch_shape_positions=(3, 4, 5),
 )
 CANDIDATES["production_gr_down_restore"] = replace(
@@ -1555,6 +1580,61 @@ def _bind_candidate_q8_mmq_prefill(
     return resolve_q8_mmq_prefill(candidate_generator)
 
 
+def gr_wide_arm_scope(runner: Any, enabled: bool | None):
+    """Bind an arm's explicit GR-up wide route, or keep the runner's route.
+
+    ``None`` means the arm never named the retired
+    ``HIPENGINE_QWEN4_EXP_GR_WIDE`` key, so it ran whatever the profile binder
+    published and the scope leaves that decision in place.
+    """
+
+    if enabled is None:
+        return nullcontext()
+    return gr_wide(runner, enabled)
+
+
+def bind_candidate_gr_wide(
+    dispatch_stack: ExitStack,
+    candidate_generator: Any,
+    candidate_spec: CandidateSpec,
+) -> bool:
+    """Bind the arm's GR-up wide route and return the decision in force.
+
+    ``CandidateSpec.gr_wide`` is the shared declaration of a candidate's former
+    ``HIPENGINE_QWEN4_EXP_GR_WIDE`` value, so every harness that applies a
+    candidate's environment binds the route here instead of copying a key the
+    dispatch no longer reads. The plan's published route comes back on unwind.
+    """
+
+    dispatch_stack.enter_context(gr_wide_arm_scope(
+        candidate_generator.runner, candidate_spec.gr_wide))
+    return bool(getattr(candidate_generator.runner, "gr_wide", False))
+
+
+def candidate_dispatch_counter(
+    candidate_spec: CandidateSpec,
+    dispatch_stack: ExitStack,
+):
+    """Count this candidate's dispatches, or return an empty counter.
+
+    Every report reads ``calls``, ``shapes`` and ``leaves``, so an arm the gate
+    does not count gets the same three keys instead of a partial dict.
+    """
+
+    if not candidate_spec.requires_dispatch_count:
+        return empty_dispatch_counter()
+    from hipengine.kernels.registry import KernelKey
+
+    return dispatch_stack.enter_context(count_candidate_dispatch(
+        key=(KernelKey(*candidate_spec.candidate_key)
+             if candidate_spec.candidate_key is not None else None),
+        direct_target=candidate_spec.direct_dispatch_target,
+        direct_reference=candidate_spec.direct_dispatch_reference,
+        shape_positions=candidate_spec.dispatch_shape_positions,
+        extra_direct_targets=candidate_spec.extra_direct_dispatch_targets,
+    ))
+
+
 def _candidate_owner_provenance(
     candidate_spec: CandidateSpec,
     resolved_enabled: bool,
@@ -1582,6 +1662,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         and candidate_spec.production_moe_prefill_enabled is None
         and candidate_spec.q8_mmq_prefill_enabled is None
         and candidate_spec.router_producer_variant is None
+        and candidate_spec.gr_wide is None
     )
 
 
@@ -1757,6 +1838,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
     if candidate_spec.gr_f16_direct is not None:
         dispatch_stack.enter_context(gr_f16_direct(candidate_spec.gr_f16_direct))
+    # The GR-up wide tile is the plan's decision, so an arm that measures the
+    # other route binds it on this runner and the plan's choice comes back on
+    # unwind. Dispatch counting on the candidate key proves which projection
+    # actually ran.
+    resolved_gr_wide = bind_candidate_gr_wide(
+        dispatch_stack, candidate_generator, candidate_spec)
     if candidate_spec.moe_decode_warp is not None:
         dispatch_stack.enter_context(moe_decode_warp(
             candidate_generator.runner, candidate_spec.moe_decode_warp))
@@ -1837,7 +1924,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # the gate already opened.
         dispatch_stack.enter_context(q4_exact_grouped_all(
             candidate_generator.runner, candidate_spec.q4_exact_grouped_all))
-    counter = {"calls": 0, "shapes": {}}
+    counter = empty_dispatch_counter()
     batch_evidence = None
     batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}
     batch_states: dict[str, list[Mapping[str, Any]]] = {}
@@ -1870,13 +1957,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             if candidate_q8_mmq_prefill_enabled:
                 # Explicit resource preparation for the arm's bound workspace.
                 candidate_generator.runner.configure_mmq_prefill_resources()
-            if candidate_spec.requires_dispatch_count:
-                from hipengine.kernels.registry import KernelKey
-                counter = dispatch_stack.enter_context(count_candidate_dispatch(
-                    key=KernelKey(*candidate_spec.candidate_key) if candidate_spec.candidate_key is not None else None,
-                    direct_target=candidate_spec.direct_dispatch_target,
-                    direct_reference=candidate_spec.direct_dispatch_reference,
-                    shape_positions=candidate_spec.dispatch_shape_positions))
+            counter = candidate_dispatch_counter(candidate_spec, dispatch_stack)
             for number, row in enumerate(prompt_rows, 1):
                 prompt_id = str(row["id"])
                 strict = strict_trajectories[prompt_id]
@@ -2117,6 +2198,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "admission": admission,
         "candidate_dispatch_calls": counter["calls"] if candidate_spec.requires_dispatch_count else None,
         "candidate_dispatch_shapes": shape_records(counter),
+        "candidate_dispatch_leaves": dict(counter["leaves"]),
         "source": source,
         "host": _host_metadata(),
         "command": list(command),
@@ -2137,6 +2219,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             ),
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "router_producer_variant": candidate_spec.router_producer_variant,
+            "gr_wide": resolved_gr_wide,
+            "gr_wide_override": candidate_spec.gr_wide,
             "base_profile": candidate_spec.base_profile,
             "bound_environment": bound_environment,
             "direct_dispatch_target": candidate_spec.direct_dispatch_target,

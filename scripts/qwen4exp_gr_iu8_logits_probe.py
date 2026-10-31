@@ -12,6 +12,7 @@ default changes.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import ctypes
 import hashlib
 import json
@@ -42,12 +43,36 @@ from scripts.qwen4exp_canonical_ar_bench import (
 FLAGS = ("HIPENGINE_QWEN4_EXP_GR_IU8", "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN")
 
 # ``wide`` is a route, not one of the iu8 flags: it swaps the GR up projection
-# for the promoted dense wide tile plus the retained exact epilogue.
+# for the promoted dense wide tile plus the retained exact epilogue. It is
+# request-local runner state, so it is bound on the owning generator rather than
+# through a process key.
 ROUTES = {
     "up": FLAGS[0],
     "down": FLAGS[1],
-    "wide": "HIPENGINE_QWEN4_EXP_GR_WIDE",
+    "wide": "runner.gr_wide",
 }
+
+
+@contextlib.contextmanager
+def _route_scope(generator, route: str, enabled: bool):
+    """Select one diagnostic GR route for the measured prefill."""
+
+    flag = ROUTES[route]
+    if route == "wide":
+        from hipengine.runtime.qwen4_exp_runner import gr_wide
+
+        with gr_wide(generator, enabled):
+            yield
+        return
+    prior = os.environ.get(flag)
+    os.environ[flag] = "1" if enabled else "0"
+    try:
+        yield
+    finally:
+        if prior is None:
+            os.environ.pop(flag, None)
+        else:
+            os.environ[flag] = prior
 
 
 def hip_available() -> bool:
@@ -111,14 +136,13 @@ def main() -> None:
                       or case["id"] == "code-p4096"):
                 continue
             rows = {}
-            flag = ROUTES[a.route]
             for label, enabled in (
-                ("incumbent_a", "0"), ("incumbent_b", "0"),
-                ("candidate_a", "1"), ("candidate_b", "1"),
+                ("incumbent_a", False), ("incumbent_b", False),
+                ("candidate_a", True), ("candidate_b", True),
             ):
-                os.environ[flag] = enabled
-                rows[label] = _prefill_logits(
-                    generator, case["prompt_token_ids"])
+                with _route_scope(generator, a.route, enabled):
+                    rows[label] = _prefill_logits(
+                        generator, case["prompt_token_ids"])
 
             incumbent_b_ok = bool(
                 np.array_equal(rows["incumbent_a"], rows["incumbent_b"]))
@@ -161,7 +185,7 @@ def main() -> None:
             report["cases"].append(entry)
             print(json.dumps(entry), flush=True)
     finally:
-        for flag in (*FLAGS, ROUTES["wide"]):
+        for flag in FLAGS:
             os.environ[flag] = "0"
         generator.close()
     a.output.parent.mkdir(parents=True, exist_ok=True)

@@ -1471,19 +1471,29 @@ def test_ud_gr_wide_projection_binding_matches_manifest() -> None:
     assert row["layer"] == "linear"
     assert row["selected_variant"] == "dense_wide256_f32_f32_out"
     assert row["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
-    production.binder(SimpleNamespace(runner=None), production)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "1"
+    # The route is request-local owner state, not a process key.
+    owner = SimpleNamespace(runner=SimpleNamespace())
+    production.binder(owner, production)
+    assert owner.gr_wide is True
+    assert owner.runner.gr_wide is True
+    assert "HIPENGINE_QWEN4_EXP_GR_WIDE" not in os.environ
     manifest = dict(production.manifest)
     changed = dict(row, selected_variant=row["strict_fallback_variant"])
     manifest["selections"] = [changed if item is row else item for item in manifest["selections"]]
     modified = replace(production, manifest=manifest)
-    modified.binder(SimpleNamespace(runner=None), modified)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "0"
+    modified_owner = SimpleNamespace(runner=SimpleNamespace())
+    modified.binder(modified_owner, modified)
+    assert modified_owner.gr_wide is False
+    assert modified_owner.runner.gr_wide is False
+    # A later bind publishes its own route; the earlier owner keeps its own.
+    assert owner.gr_wide is True
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     strict_row = next(item for item in strict.manifest["selections"] if item["scope"] == scope)
     assert strict_row["selected_variant"] == row["strict_fallback_variant"]
-    strict.binder(SimpleNamespace(runner=None), strict)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WIDE"] == "0"
+    strict_owner = SimpleNamespace(runner=SimpleNamespace())
+    strict.binder(strict_owner, strict)
+    assert strict_owner.gr_wide is False
+    assert strict_owner.runner.gr_wide is False
 
 
 def test_ud_dense_wide_composition_binding_matches_manifest() -> None:
@@ -1571,15 +1581,16 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
     other = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_q4_k_m")
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
-    selectors = ("HIPENGINE_QWEN4_EXP_GR_WIDE",)
     all_layers = ",".join(map(str, range(48)))
 
     owner = SimpleNamespace(runner=SimpleNamespace())
     production.binder(owner, production)
     assert owner.qsa_wmma_enabled is True
     assert owner.runner.qsa_wmma_enabled is True
-    for key in selectors:
-        assert os.environ[key] == "1"
+    # The GR-up wide tile is request-local owner state too.
+    assert owner.gr_wide is True
+    assert owner.runner.gr_wide is True
+    assert "HIPENGINE_QWEN4_EXP_GR_WIDE" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == all_layers
     # The router producer is request-local owner state, not a process key.
@@ -1588,16 +1599,15 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     assert "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT" not in os.environ
 
     # A later bind without the composition restores its own routes.
-    other.binder(SimpleNamespace(), other)
-    for key in selectors:
-        assert os.environ[key] == "0"
+    other_owner = SimpleNamespace(runner=SimpleNamespace())
+    other.binder(other_owner, other)
+    assert other_owner.gr_wide is False
+    assert other_owner.runner.gr_wide is False
     assert other.fell_back_to_strict
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ""
 
     production.binder(SimpleNamespace(), production)
     strict.binder(SimpleNamespace(), strict)
-    for key in selectors:
-        assert os.environ[key] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ""
 
 

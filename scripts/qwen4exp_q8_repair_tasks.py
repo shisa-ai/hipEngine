@@ -21,7 +21,9 @@ if str(ROOT) not in sys.path:
 
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
-from scripts.qwen4exp_layer2_profile_gate import _make_generator, CANDIDATES
+from scripts.qwen4exp_layer2_profile_gate import (
+    _make_generator, CANDIDATES, gr_wide_arm_scope,
+)
 from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
@@ -30,6 +32,21 @@ from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_
 def task_candidate(name):
     spec = CANDIDATES[name]
     return ("q8_fallback" if name == "production_q8_fallback" else name), spec
+
+
+def arm_gr_wide(arm, published):
+    """The GR-up wide route this arm's former process key implied.
+
+    ``CandidateSpec.gr_wide`` is the shared declaration of the candidate's
+    former ``HIPENGINE_QWEN4_EXP_GR_WIDE`` value. The ``strict`` arm is not a
+    candidate: it ran the strict bind's route, which is what ``published``
+    already is for the generator that arm builds.
+    """
+
+    candidate = CANDIDATES.get(arm)
+    if candidate is None or candidate.gr_wide is None:
+        return bool(published)
+    return bool(candidate.gr_wide)
 
 
 def task_dispatch_context(candidate):
@@ -41,6 +58,8 @@ def task_dispatch_context(candidate):
         direct_target=candidate.direct_dispatch_target if counted else None,
         direct_reference=candidate.direct_dispatch_reference if counted else None,
         shape_positions=candidate.dispatch_shape_positions if counted else None,
+        extra_direct_targets=(
+            candidate.extra_direct_dispatch_targets if counted else ()),
     )
 
 
@@ -175,6 +194,14 @@ def main():
                 if name != "strict" and candidate.q8_mmq_prefill_enabled is not None:
                     dispatch_stack.enter_context(q8_mmq_prefill_enabled(
                         generator, candidate.q8_mmq_prefill_enabled))
+                # The GR-up wide tile is owner state now; every arm binds the
+                # route its former process value implied on the runner it
+                # measures. The strict arm's bind publishes the exact parent.
+                route = arm_gr_wide(
+                    name, bool(getattr(generator.runner, "gr_wide", False)))
+                dispatch_stack.enter_context(
+                    gr_wide_arm_scope(generator.runner, route))
+                report["arms"][name]["gr_wide"] = route
                 report["arms"][name]["q8_mmq_prefill_enabled"] = (
                     resolve_q8_mmq_prefill(generator))
                 if report["arms"][name]["q8_mmq_prefill_enabled"]:
