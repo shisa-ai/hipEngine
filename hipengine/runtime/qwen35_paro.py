@@ -19,6 +19,7 @@ from hipengine.dispatch import (
     resolve_paged_attn_prefill,
     resolve_paged_kv_write,
 )
+from hipengine.kernels.backends import resolve_backend
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_v3_compact_varlen,
     aotriton_gate_mul_bf16_to_fp16,
@@ -187,26 +188,10 @@ from hipengine.runtime.qwen35_paro_packed_prefill import (
 from hipengine.runtime.workspace import RuntimeWorkspace
 
 
-# Paged-KV write, paged-attention prefill, and paged-attention decode are the
-# only kernels this runtime resolves through the registry rather than by direct
-# import, so they are the only place a backend key changes the body that runs.
-# The pin to gfx1100 is deliberate and load-bearing, not a stale default.
-#
-# Measured 2026-09-12 on the physical gfx1151 host (Ryzen AI MAX+ 395 / Radeon
-# 8060S) with Qwen3.6-35B-A3B PARO, c=2, prompt 512, 128 decode tokens: the
-# batch-context decode key (paged_attn_decode, w4_paro,
-# bf16_context_batch_c1_exact_spans) is repointed by the gfx1151 package at
-# qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans. Resolving it
-# against hip_gfx1151 instead of this pin breaks the retained
-# native_batch-vs-independent-c1 equality contract deterministically: row 0
-# diverges at decode token 25 of 137 (25/137 equal), reproducing bit-identically
-# across two runs, while the pre-fix pin and the per_row control both reach
-# 137/137. The gfx1151 override is therefore correct for the GGUF route that
-# registers it, and wrong for this PARO path, which keeps its own equality
-# contract on the gfx1100 c1-exact body. Do not "clean this up" without
-# re-running that gate. Guarded by
-# tests/test_unit_qwen35_decode_state.py::test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100.
-_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"
+# PARO's batch context has a separate c1-exact contract from GGUF's context_batch
+# route. Resolve it on the actual backend; the gfx1151 GGUF override must not
+# replace the PARO callable. See the distinct-contract regression in
+# tests/test_unit_qwen35_decode_state.py.
 
 # C3.0c: row counts for which the output-column-tiled pack8 GEMV is instantiated
 # (templated C in the kernel). Other c>1 row counts fall back to the per-row
@@ -565,10 +550,16 @@ class Qwen35ParoDecodeState:
         layer_weights: Qwen35ParoLayerDeviceWeights,
         workspace: RuntimeWorkspace | None = None,
         runtime: HipRuntime | None = None,
+        backend: str = "auto",
     ) -> None:
         self.layer_weights = layer_weights
         self.runtime = runtime
         self.workspace = workspace or RuntimeWorkspace(runtime=runtime)
+        # Registry-backed paged KV/attention keys follow the backend this state
+        # executes on. Production sessions pass their already-resolved backend;
+        # direct callers may leave "auto", which is resolved once per state.
+        self._paged_backend_requested = backend
+        self._paged_backend_resolved: str | None = None
         self._rotate_fuse_ready: set[int] = set()
         # M14.dispatch.1-beta: lazy per-layer cache for the C-side MoE C1
         # dispatcher.  Key: layer_kind ('linear_attention' | 'full_attention').
@@ -587,6 +578,25 @@ class Qwen35ParoDecodeState:
     @property
     def config(self):
         return self.layer_weights.config
+
+    def _paged_kv_backend(self) -> str:
+        """Return the backend key for this state's registry-backed paged kernels.
+
+        An explicit identity is returned verbatim and is never re-detected;
+        ``"auto"`` resolves once per state so a direct caller pays one device
+        probe rather than one per resolution.
+        """
+
+        resolved = self._paged_backend_resolved
+        if resolved is not None:
+            return resolved
+        requested = (self._paged_backend_requested or "auto").strip() or "auto"
+        if requested == "auto":
+            resolved = resolve_backend(requested, warn=False)
+        else:
+            resolved = requested
+        self._paged_backend_resolved = resolved
+        return resolved
 
     def tensor(self, name: str) -> Tensor:
         cached = self._tensor_lookup_cache.get(name)
@@ -2103,7 +2113,7 @@ class Qwen35ParoDecodeState:
             stream=stream,
         )
         write_fn = resolve_paged_kv_write(
-            backend=_PAGED_KV_REGISTRY_BACKEND,
+            backend=self._paged_kv_backend(),
             spans=spans,
             kind=kind,
             source_dtype=source_dtype,
@@ -2240,7 +2250,7 @@ class Qwen35ParoDecodeState:
             raise ValueError("INT8 paged attention decode requires scale metadata")
         gate_tensor = scratch.gate if gate is None else gate
         decode_fn = resolve_paged_attn_decode(
-            backend=_PAGED_KV_REGISTRY_BACKEND,
+            backend=self._paged_kv_backend(),
             spans=spans,
             kind=kind,
         )
@@ -3742,7 +3752,7 @@ class Qwen35ParoDecodeState:
             raise ValueError("INT8 paged attention prefill requires scale metadata")
         gate_tensor = scratch.gate if gate is None else gate
         prefill_fn = resolve_paged_attn_prefill(
-            backend=_PAGED_KV_REGISTRY_BACKEND,
+            backend=self._paged_kv_backend(),
             spans=spans,
             kind=PagedAttnPrefillKind.GQA_GATE_FP16,
         )
@@ -4173,10 +4183,12 @@ class Qwen35ParoDecodeState:
         if spans.max_live_count >= 1024:
             raise NotImplementedError("native batch split-K full-attention decode is not wired")
         gate_tensor = scratch.gate if gate is None else gate
-        context_kind = PagedAttnDecodeKind.CONTEXT_BATCH
+        # PARO's own batch-vs-c1 contract, not the shared ``context_batch`` route
+        # the gfx1151 package repoints at its fixed256 body for GGUF.
+        context_kind = PagedAttnDecodeKind.CONTEXT_BATCH_C1_EXACT
         context_selection = plan_paged_attn_decode(spans, kind=context_kind)
         context_fn = resolve_paged_attn_decode(
-            backend=_PAGED_KV_REGISTRY_BACKEND,
+            backend=self._paged_kv_backend(),
             spans=spans,
             kind=context_kind,
         )

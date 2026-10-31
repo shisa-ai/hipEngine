@@ -4901,6 +4901,21 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
         replace=replace,
     )
+    # PARO's own name for the c1-exact batch-context contract. The shared
+    # ``..._c1_exact_spans`` key above is repointed at the fixed256 body by the
+    # gfx1151 package for the GGUF consumer; PARO resolves this name instead so
+    # it keeps this body under its real backend key. Both names alias to the
+    # same callable here; only the gfx1151 override distinguishes them.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_attn_decode",
+            "w4_paro",
+            "bf16_context_batch_c1_exact_paro_spans",
+        ),
+        qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",

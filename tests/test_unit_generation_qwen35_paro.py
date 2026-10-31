@@ -93,11 +93,61 @@ def test_gfx1151_native_width_profile_is_package_default_with_env_opt_out(
             "target_arch": "gfx1151",
             "model_path": Path("/tmp/model"),
             "kv_dtype": "bf16",
+            "artifact_is_explicit": False,
         }
     ]
 
     monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "0")
     assert qwen35._native_batch_width_profile_for_runner(runner, kv_policy) is None
+
+
+@pytest.mark.parametrize(
+    ("backend", "expected_exact"),
+    [
+        ("hip_gfx1151", (2, 4, 8)),
+        ("hip_gfx1100", (2,)),
+    ],
+)
+def test_native_width_profile_for_runner_derives_backend_domain(
+    monkeypatch: pytest.MonkeyPatch,
+    backend: str,
+    expected_exact: tuple[int, ...],
+) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+    calls: list[dict[str, object]] = []
+
+    def fake_load(_artifact: str, **kwargs):
+        calls.append(dict(kwargs))
+        return object()
+
+    monkeypatch.setattr(qwen35, "load_qwen35_paro_native_batch_width_profile", fake_load)
+    runner = SimpleNamespace(
+        backend=backend,
+        target_arch=backend.removeprefix("hip_"),
+        model=Path("/tmp/model"),
+    )
+
+    assert (
+        qwen35._native_batch_width_profile_for_runner(
+            runner,
+            resolve_kv_policy("bf16"),
+            max_native_width=8,
+        )
+        is not None
+    )
+    assert calls == [
+        {
+            "backend": backend,
+            "target_arch": backend.removeprefix("hip_"),
+            "model_path": Path("/tmp/model"),
+            "kv_dtype": "bf16",
+            "artifact_is_explicit": False,
+            "native_widths": (2, 3, 4, 5, 6, 7, 8),
+            "exact_widths": expected_exact,
+            "max_native_width": 8,
+        }
+    ]
 
 
 def test_paro_resident_prepare_is_idempotent_while_requests_are_registered() -> None:
@@ -2173,7 +2223,9 @@ def test_qwen35_paro_generator_uses_exact_hybrid_c2_without_native_profile(monke
         lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
     )
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
-    monkeypatch.setattr(qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy: None)
+    monkeypatch.setattr(
+        qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy, **kwargs: None
+    )
     generator = qwen35.Qwen35ParoOneTokenGenerator(
         model_path="/tmp/model",
         weight_index=SimpleNamespace(),
@@ -2286,7 +2338,9 @@ def test_qwen35_paro_generator_partitions_unsupported_native_width(monkeypatch) 
         lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
     )
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
-    monkeypatch.setattr(qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy: profile)
+    monkeypatch.setattr(
+        qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy, **kwargs: profile
+    )
     generator = qwen35.Qwen35ParoOneTokenGenerator(
         model_path="/tmp/model",
         weight_index=SimpleNamespace(),
@@ -2393,7 +2447,9 @@ def test_qwen35_paro_generator_caps_c9_diagnostic_profile_to_serial_groups(monke
         lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
     )
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
-    monkeypatch.setattr(qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy: profile)
+    monkeypatch.setattr(
+        qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy, **kwargs: profile
+    )
     generator = qwen35.Qwen35ParoOneTokenGenerator(
         model_path="/tmp/model",
         weight_index=SimpleNamespace(),
@@ -2456,7 +2512,9 @@ def test_qwen35_paro_generator_keeps_sparse_live_slots_native(monkeypatch) -> No
         lambda model, prompt, token_id: (token_rows[prompt][-1], token_rows[prompt]),
     )
     monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
-    monkeypatch.setattr(qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy: profile)
+    monkeypatch.setattr(
+        qwen35, "_native_batch_width_profile_for_runner", lambda runner, kv_policy, **kwargs: profile
+    )
     generator = qwen35.Qwen35ParoOneTokenGenerator(
         model_path="/tmp/model",
         weight_index=SimpleNamespace(),

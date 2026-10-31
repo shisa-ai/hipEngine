@@ -112,7 +112,9 @@ def test_explicit_request_eos_stops_public_generator(monkeypatch, streaming, pro
             raise AssertionError("decode continued past the explicit EOS")
 
     monkeypatch.setattr(generation, "Qwen35ParoResidentSession", Session)
-    monkeypatch.setattr(generation, "_native_batch_width_profile_for_runner", lambda *args: None)
+    monkeypatch.setattr(
+        generation, "_native_batch_width_profile_for_runner", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(generation, "_exact_hybrid_c2_route_blockers", lambda **kwargs: ("test c1 route",))
     generator = generation.Qwen35ParoOneTokenGenerator(
         model_path="/tmp/model", weight_index=SimpleNamespace(), model_plugin=SimpleNamespace(),

@@ -11,11 +11,15 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import KVLiveSpans, KVScaleMetadata
+from hipengine.kernels.hip_gfx1100.attention import register_qwen35_paged_attn_decode_kernels
+from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+from hipengine.kernels.registry import KernelKey, register
 from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap
 from hipengine.loading.qwen35_paro import Qwen35ParoConfig, Qwen35ParoLayerDeviceWeights
 from hipengine.loading.safetensors import TensorInfo
 from hipengine.runtime import Qwen35ParoDecodeState, RuntimeWorkspace
 import hipengine.runtime.qwen35_paro as qwen_runtime
+import hipengine.runtime.qwen35_paro_runner as paro_runner
 
 
 class FakeRuntime:
@@ -112,12 +116,18 @@ def _allocation(name: str, ptr: int, shape: tuple[int, ...], dtype: str) -> Devi
     )
 
 
-def _state(runtime: FakeRuntime, weights: DeviceWeightMap | None = None) -> Qwen35ParoDecodeState:
+def _state(
+    runtime: FakeRuntime,
+    weights: DeviceWeightMap | None = None,
+    *,
+    backend: str = "hip_gfx1100",
+) -> Qwen35ParoDecodeState:
     layer = Qwen35ParoLayerDeviceWeights(config=_config(), layer_id=0, weights=weights or DeviceWeightMap({}))
     return Qwen35ParoDecodeState(
         layer_weights=layer,
         workspace=RuntimeWorkspace(runtime=runtime),
         runtime=runtime,
+        backend=backend,
     )
 
 
@@ -2287,13 +2297,13 @@ def test_qwen35_decode_state_batch_context_resolves_registered_kernel(monkeypatc
     )
 
     assert out is scratch.gated_attn
-    assert state._last_full_attention_context_kernel_variant == "bf16_context_batch_c1_exact_spans"
+    assert state._last_full_attention_context_kernel_variant == "bf16_context_batch_c1_exact_paro_spans"
     assert calls[0] == (
         "resolve",
         {
             "backend": "hip_gfx1100",
             "spans": spans,
-            "kind": qwen_runtime.PagedAttnDecodeKind.CONTEXT_BATCH,
+            "kind": qwen_runtime.PagedAttnDecodeKind.CONTEXT_BATCH_C1_EXACT,
         },
     )
     args, kwargs = calls[1][1], calls[1][2]
@@ -4013,24 +4023,90 @@ def test_qwen35_decode_state_int8_prefill_append_converts_fp16_value_and_passes_
 
 
 
-def test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100(monkeypatch) -> None:
-    """PARO resolves paged-KV/attention keys against gfx1100, and must keep doing so.
+def test_qwen35_decode_state_batch_context_keeps_paro_exact_contract(monkeypatch) -> None:
+    """PARO's batch-context decode keeps its own c1-exact contract, not GGUF's.
 
-    The pin is load-bearing rather than a stale default. Measured 2026-09-12 on
-    the physical gfx1151 host with Qwen3.6-35B-A3B PARO at c=2 / prompt 512 /
-    128 decode tokens, threading the session backend into this resolution
-    repointed ``(paged_attn_decode, w4_paro, bf16_context_batch_c1_exact_spans)``
-    at the gfx1151 ``fixed256`` body and broke the retained
-    native_batch-vs-independent-c1 equality contract: row 0 diverged at decode
-    token 25 of 137, reproducing bit-identically across two runs, while the
-    pinned body and the ``per_row`` control both reached 137/137. The gfx1151
-    override is correct for the GGUF route that registers it; it is wrong here.
+    Measured 2026-09-12 on the physical gfx1151 host with Qwen3.6-35B-A3B PARO
+    at c=2 / prompt 512 / 128 decode tokens: resolving the shared
+    ``(paged_attn_decode, w4_paro, bf16_context_batch_c1_exact_spans)`` key
+    against the session backend selected the gfx1151 ``fixed256`` body and broke
+    the retained native_batch-vs-independent-c1 equality contract - row 0
+    diverged at decode token 25 of 137, bit-identically across two runs, while
+    the c1-exact body and the ``per_row`` control both reached 137/137.
+
+    The distinct ``context_batch_c1_exact`` contract now carries that
+    protection: PARO resolves it on its real session backend, and the gfx1151
+    override for the shared key stays GGUF-only. This test keeps the
+    behavioural protection rather than the constant: on the gfx1151 key PARO
+    must launch the c1-exact leaf and must never launch the fixed256 leaf.
     """
 
-    assert qwen_runtime._PAGED_KV_REGISTRY_BACKEND == "hip_gfx1100"
+    assert not hasattr(qwen_runtime, "_PAGED_KV_REGISTRY_BACKEND")
+
+    register_qwen35_paged_attn_decode_kernels()
+    register_gfx1151_kernels(replace=True)
 
     runtime = FakeRuntime()
-    state = _state(runtime, _full_attention_weights())
+    state = _state(runtime, _full_attention_weights(), backend="hip_gfx1151")
+    scratch = state.reserve_full_attention_scratch(
+        tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16"
+    )
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 4), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    launched: list[str] = []
+
+    # Spy on the two keys through the real registry: the contract key PARO
+    # resolves and the shared key the gfx1151 package repoints for GGUF.
+    register(
+        KernelKey(
+            "hip_gfx1151",
+            "paged_attn_decode",
+            "w4_paro",
+            "bf16_context_batch_c1_exact_paro_spans",
+        ),
+        lambda *args, **kwargs: launched.append("c1_exact"),
+        replace=True,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1151",
+            "paged_attn_decode",
+            "w4_paro",
+            "bf16_context_batch_c1_exact_spans",
+        ),
+        lambda *args, **kwargs: launched.append("fixed256"),
+        replace=True,
+    )
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", lambda *args, **kwargs: None)
+
+    state.decode_full_attention_context_gate_fp16_batch(
+        scratch,
+        key_cache=_tensor(0xE000, (4, 256, 2, 256), "bf16"),
+        value_cache=_tensor(0xF000, (4, 256, 2, 256), "bf16"),
+        spans=spans,
+        rows=2,
+        library={},
+        stream=0,
+    )
+
+    assert launched == ["c1_exact"]
+    assert state._last_full_attention_context_kernel_variant == (
+        "bf16_context_batch_c1_exact_paro_spans"
+    )
+
+
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_qwen35_decode_state_batch_context_resolves_paro_contract_on_session_backend(
+    monkeypatch, backend: str
+) -> None:
+    """The batch-context resolution names PARO's contract and the real backend."""
+
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights(), backend=backend)
     scratch = state.reserve_full_attention_scratch(
         tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16"
     )
@@ -4049,6 +4125,53 @@ def test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100(monkeypatc
     monkeypatch.setattr(qwen_runtime, "resolve_paged_attn_decode", fake_resolve_paged_attn_decode)
     monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", lambda *args, **kwargs: None)
 
+    for _ in range(2):
+        state.decode_full_attention_context_gate_fp16_batch(
+            scratch,
+            key_cache=_tensor(0xE000, (4, 256, 2, 256), "bf16"),
+            value_cache=_tensor(0xF000, (4, 256, 2, 256), "bf16"),
+            spans=spans,
+            rows=2,
+            library={},
+            stream=0,
+        )
+
+    assert [entry["backend"] for entry in seen] == [backend, backend]
+    assert all(
+        entry["kind"] is qwen_runtime.PagedAttnDecodeKind.CONTEXT_BATCH_C1_EXACT
+        for entry in seen
+    )
+    assert all(entry["spans"] is spans for entry in seen)
+
+
+def test_qwen35_decode_state_explicit_backend_is_never_redetected(monkeypatch) -> None:
+    """An explicit backend identity is used verbatim, without a device probe."""
+
+    def fail_resolve_backend(*args, **kwargs):
+        raise AssertionError("explicit backend identity must not be re-resolved")
+
+    monkeypatch.setattr(qwen_runtime, "resolve_backend", fail_resolve_backend)
+
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights(), backend="hip_gfx1151")
+    scratch = state.reserve_full_attention_scratch(
+        tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16"
+    )
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 4), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    seen: list[dict] = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "resolve_paged_attn_decode",
+        lambda **kwargs: seen.append(kwargs) or (lambda *args, **call_kwargs: None),
+    )
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", lambda *args, **kwargs: None)
+
     state.decode_full_attention_context_gate_fp16_batch(
         scratch,
         key_cache=_tensor(0xE000, (4, 256, 2, 256), "bf16"),
@@ -4059,5 +4182,165 @@ def test_qwen35_decode_state_paged_kv_backend_stays_pinned_to_gfx1100(monkeypatc
         stream=0,
     )
 
-    assert len(seen) == 1
-    assert seen[0]["backend"] == "hip_gfx1100"
+    assert seen[0]["backend"] == "hip_gfx1151"
+
+
+def test_qwen35_decode_state_lazy_auto_backend_resolves_once_per_state(monkeypatch) -> None:
+    """Direct callers may leave the backend on auto; it resolves once and is cached."""
+
+    requests: list[tuple[str, bool]] = []
+
+    def fake_resolve_backend(requested="auto", *, warn=True, **_kwargs):
+        requests.append((requested, warn))
+        return "hip_gfx1151"
+
+    monkeypatch.setattr(qwen_runtime, "resolve_backend", fake_resolve_backend)
+
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights(), backend="auto")
+    scratch = state.reserve_full_attention_scratch(
+        tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16"
+    )
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 4), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    seen: list[dict] = []
+
+    monkeypatch.setattr(
+        qwen_runtime,
+        "resolve_paged_attn_decode",
+        lambda **kwargs: seen.append(kwargs) or (lambda *args, **call_kwargs: None),
+    )
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", lambda *args, **kwargs: None)
+
+    for _ in range(2):
+        state.decode_full_attention_context_gate_fp16_batch(
+            scratch,
+            key_cache=_tensor(0xE000, (4, 256, 2, 256), "bf16"),
+            value_cache=_tensor(0xF000, (4, 256, 2, 256), "bf16"),
+            spans=spans,
+            rows=2,
+            library={},
+            stream=0,
+        )
+
+    assert requests == [("auto", False)]
+    assert [entry["backend"] for entry in seen] == ["hip_gfx1151", "hip_gfx1151"]
+
+
+def test_qwen35_decode_state_all_paged_resolutions_use_session_backend(monkeypatch) -> None:
+    """All four registry-backed paged call sites take the state's backend."""
+
+    runtime = FakeRuntime()
+    state = _state(runtime, _full_attention_weights(), backend="hip_gfx1151")
+    scratch = state.reserve_full_attention_scratch(
+        tokens=2, num_splits=1, activation_dtype="fp16", gated_dtype="fp16"
+    )
+    bf16_spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 4), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=8,
+        storage_dtype="bf16",
+    )
+    int8_spans = _int8_spans()
+    seen: list[tuple[str, dict]] = []
+
+    def recorder(name: str):
+        def record(**kwargs):
+            seen.append((name, kwargs))
+            return lambda *args, **call_kwargs: None
+
+        return record
+
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_kv_write", recorder("kv_write"))
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_attn_prefill", recorder("prefill"))
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_attn_decode", recorder("decode"))
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", lambda *args, **kwargs: None)
+
+    state.append_full_attention_kv_fp16_batch(
+        scratch,
+        key_cache=_tensor(0xE000, (1, 256, 2, 256), "bf16"),
+        value_cache=_tensor(0xF000, (1, 256, 2, 256), "bf16"),
+        spans=bf16_spans,
+        rows=2,
+    )
+    state.decode_full_attention_split_gate_fp16(
+        scratch,
+        key_cache=_tensor(0xE000, (2, 256, 2, 256), "int8"),
+        value_cache=_tensor(0xF000, (2, 256, 2, 256), "int8"),
+        spans=int8_spans,
+        chunk_size=256,
+        num_splits=2,
+    )
+    state.prefill_full_attention_int8_gqa_gate_fp16(
+        scratch,
+        key_cache=_tensor(0xE000, (2, 256, 2, 256), "int8"),
+        value_cache=_tensor(0xF000, (2, 256, 2, 256), "int8"),
+        spans=int8_spans,
+        rows=2,
+    )
+    state.decode_full_attention_context_gate_fp16_batch(
+        scratch,
+        key_cache=_tensor(0xE000, (4, 256, 2, 256), "bf16"),
+        value_cache=_tensor(0xF000, (4, 256, 2, 256), "bf16"),
+        spans=bf16_spans,
+        rows=2,
+        library={},
+        stream=0,
+    )
+
+    assert [name for name, _kwargs in seen] == ["kv_write", "decode", "prefill", "decode"]
+    assert all(kwargs["backend"] == "hip_gfx1151" for _name, kwargs in seen)
+    assert seen[0][1]["kind"] is qwen_runtime.PagedKVWriteKind.PROMPT
+    assert seen[1][1]["kind"] is qwen_runtime.PagedAttnDecodeKind.GQA_SPLITK_GATE_FP16
+    assert seen[2][1]["kind"] is qwen_runtime.PagedAttnPrefillKind.GQA_GATE_FP16
+    assert seen[3][1]["kind"] is qwen_runtime.PagedAttnDecodeKind.CONTEXT_BATCH_C1_EXACT
+
+
+def test_qwen35_paro_runner_passes_session_backend_to_decode_state(monkeypatch) -> None:
+    """Every production DecodeState construction site carries the runner backend."""
+
+    constructed: list[dict] = []
+
+    def fake_state(**kwargs):
+        constructed.append(kwargs)
+        return SimpleNamespace(layer_weights=kwargs["layer_weights"])
+
+    monkeypatch.setattr(paro_runner, "Qwen35ParoDecodeState", fake_state)
+    monkeypatch.setattr(
+        paro_runner,
+        "materialize_qwen35_paro_linear_attention_dense_c1_runtime_layer",
+        lambda *args, **kwargs: "linear_weights",
+    )
+    monkeypatch.setattr(
+        paro_runner,
+        "materialize_qwen35_paro_full_attention_dense_c1_runtime_layer",
+        lambda *args, **kwargs: "full_weights",
+    )
+
+    runner = object.__new__(paro_runner.Qwen35ParoNextTokenRunner)
+    runner.backend = "hip_gfx1151"
+    runner.runtime = FakeRuntime()
+    runner.index = object()
+    runner.config = SimpleNamespace(num_experts=0)
+    runner.shared_expert_format = None
+
+    runner._materialize_linear_state(0)
+    runner._materialize_full_state(1)
+
+    session = object.__new__(paro_runner.Qwen35ParoResidentSession)
+    session.backend = "hip_gfx1151"
+    session.runtime = FakeRuntime()
+    session.states = [SimpleNamespace(layer_weights="prefill_weights")]
+    session.prefill_workspace = object()
+    session._prefill_scratch_state = None
+    session._prefill_scratch_owner()
+
+    assert [entry["backend"] for entry in constructed] == [
+        "hip_gfx1151",
+        "hip_gfx1151",
+        "hip_gfx1151",
+    ]

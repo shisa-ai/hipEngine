@@ -1051,10 +1051,6 @@ Done when: separate these policies, migrate actual callers, then run
 batch-width loader tests. Exercise public native and serial c1/c2/c4/c8, sparse slots, staggered
 admission, cancellation and cleanup, with the chosen path reported.
 
-Replace model-identity and measured-range admission checks in the native-width cost loader with
-backend/quant/KV/shape capabilities and recorded concrete failures. Use measured costs only to
-choose among executable variants, not as an artifact allowlist.
-
 ### R0281-D12 — Q5 constructor retirement public validation
 
 Owner: `hipengine/runtime/laguna_gguf_runner.py`.
@@ -2925,30 +2921,6 @@ Done when: profile today's decode path under `OPTIMIZATION.md` before choosing a
 optimization. Run the full profile gate and matched whole-model prefill/decode comparison for any
 arithmetic or performance candidate, keeping the serial strict fallback. Remove this follow-up only
 after the decode work is completed or the lead explicitly retires it.
-
-### R0421 — Separate PARO and GGUF attention-key semantics
-
-Owner: `hipengine/runtime/qwen35_paro.py`.
-
-Scope: `hipengine/runtime/qwen35_paro.py`, `_PAGED_KV_REGISTRY_BACKEND = "hip_gfx1100"`,
-`(paged_attn_decode, w4_paro, bf16_context_batch_c1_exact_spans)`.
-
-**Deferred work:** separate the consumer contracts before replacing the pin. The [recorded same-host
-comparison](../worklog/entries/20260912T044256.896835Z-lhl-paro-paged-kv-backend-pin-load-bearing-e64405.md)
-found deterministic PARO divergence when selecting the gfx1151 override; current-pin and per-row
-controls matched independent c1. This is an observed failure, not missing benchmark coverage.
-Preserve the pin and its regression test; do not substitute the session backend unconditionally.
-
-Done when: define distinct PARO/GGUF variant semantics, then compare the replacement
-against current-pin, repeated replacement and `per_row` arms using
-`scripts/qwen35_batch_retained_bench.py --model <PARO-model> --fixture <derived-1024-token-fixture>
---prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8
---batch-decode-full-attn-path {per_row,native_batch}` on the same gfx1151 host. The linked decision
-specifies the derived fixture and environment. Inspect
-`correctness.generated_token_equality.passed`, not the harness's unrelated promotion-plumbing
-status. Preserve the declared profile and ownership contracts, check both consumers, and only then
-remove the pin. The direct-leaf `qwen35_batch_correctness.py` harness does not exercise this
-registry choice.
 
 ### R0422 — Automatic context-sizing control policy
 

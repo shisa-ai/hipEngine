@@ -19,6 +19,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_int8_per_token_head_batch_spans,
@@ -271,6 +272,69 @@ def test_paged_attn_decode_resolves_batch_context() -> None:
             model_quant="w4_paro",
         )
         is qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans
+    )
+
+
+def test_paro_and_gguf_batch_context_resolve_distinct_owners_on_both_backends() -> None:
+    """PARO's c1-exact contract and GGUF's context-batch route are different keys.
+
+    ``context_batch`` stays the shared GGUF route and is repointed at the
+    gfx1151 fixed256 body by the backend package. ``context_batch_c1_exact``
+    is PARO's own contract name and must resolve the c1-exact leaf on the real
+    backend key rather than through a gfx1100 pin.
+    """
+
+    spans = _bf16_policy_spans()
+    register_qwen35_paged_attn_decode_kernels()
+    register_gfx1151_kernels(replace=True)
+
+    paro_selection = plan_paged_attn_decode(
+        spans,
+        kind=PagedAttnDecodeKind.CONTEXT_BATCH_C1_EXACT,
+        model_quant="w4_paro",
+    )
+    gguf_selection = plan_paged_attn_decode(
+        spans,
+        kind=PagedAttnDecodeKind.CONTEXT_BATCH,
+        model_quant="w4_paro",
+    )
+    assert paro_selection.variant == "bf16_context_batch_c1_exact_paro_spans"
+    assert gguf_selection.variant == "bf16_context_batch_c1_exact_spans"
+    assert paro_selection.key("hip_gfx1151") == KernelKey(
+        "hip_gfx1151",
+        "paged_attn_decode",
+        "w4_paro",
+        "bf16_context_batch_c1_exact_paro_spans",
+    )
+
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        assert (
+            resolve_paged_attn_decode(
+                backend=backend,
+                spans=spans,
+                kind="context_batch_c1_exact",
+                model_quant="w4_paro",
+            )
+            is qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans
+        )
+
+    assert (
+        resolve_paged_attn_decode(
+            backend="hip_gfx1100",
+            spans=spans,
+            kind="context_batch",
+            model_quant="w4_paro",
+        )
+        is qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans
+    )
+    assert (
+        resolve_paged_attn_decode(
+            backend="hip_gfx1151",
+            spans=spans,
+            kind="context_batch",
+            model_quant="w4_paro",
+        )
+        is qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans
     )
 
 

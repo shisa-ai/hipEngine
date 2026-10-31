@@ -19,6 +19,8 @@ def gfx1151_profile() -> NativeBatchWidthProfile:
             (8, 69.254),
         ),
         serial_row_step_ms=14.969,
+        native_widths=(2, 3, 4, 5, 6, 7, 8),
+        exact_widths=(2, 4, 8),
         min_position=512,
         max_position=647,
     )
@@ -55,7 +57,7 @@ def test_batch_width_partition_uses_lowest_cost_exact_cover(
     assert plan.serial_rows == expected_widths.count(1)
 
 
-def test_batch_width_partition_falls_back_to_serial_outside_profile_context(
+def test_batch_width_partition_ignores_measured_position_range(
     gfx1151_profile: NativeBatchWidthProfile,
 ) -> None:
     plan = plan_batch_width_partition(
@@ -64,10 +66,73 @@ def test_batch_width_partition_falls_back_to_serial_outside_profile_context(
         positions=(648, 648, 648, 648),
     )
 
-    assert plan.path == "serial_exact"
+    assert plan.path == "direct_native"
     assert plan.group_widths == (4,)
-    assert plan.groups[0].mode == "serial"
-    assert plan.blockers == ("decode positions are outside the evidenced range 512..647",)
+    assert plan.blockers == ()
+
+
+def test_batch_width_partition_prefers_measured_cost_over_exact_widths() -> None:
+    profile = NativeBatchWidthProfile(
+        source_artifact="benchmarks/results/profile.json",
+        native_step_ms=((2, 25.0), (3, 26.0)),
+        serial_row_step_ms=15.0,
+        native_widths=(2, 3),
+        exact_widths=(2,),
+    )
+
+    plan = plan_batch_width_partition(3, profile=profile, positions=(17, 17, 17))
+
+    assert plan.path == "direct_native"
+    assert plan.group_widths == (3,)
+    assert plan.cost_source == "measured"
+
+
+def test_batch_width_partition_labels_nominal_costs() -> None:
+    profile = NativeBatchWidthProfile(
+        source_artifact="benchmarks/results/profile.json",
+        native_step_ms=(),
+        serial_row_step_ms=1.0,
+        native_widths=(2, 3, 4, 5, 6, 7, 8),
+        exact_widths=(2, 4, 8),
+    )
+
+    plan = plan_batch_width_partition(3, profile=profile, positions=(17, 17, 17))
+
+    assert plan.path == "partitioned_native"
+    assert plan.group_widths == (2, 1)
+    assert plan.cost_source == "nominal"
+
+
+def test_batch_width_partition_nominal_roundoff_prefers_c8() -> None:
+    profile = NativeBatchWidthProfile(
+        source_artifact="benchmarks/results/profile.json",
+        native_step_ms=(),
+        serial_row_step_ms=49.203623078682384,
+        native_widths=(2, 4, 8),
+        exact_widths=(2, 4, 8),
+    )
+
+    plan = plan_batch_width_partition(8, profile=profile, positions=(0,) * 8)
+
+    assert plan.path == "direct_native"
+    assert plan.group_widths == (8,)
+    assert plan.cost_source == "nominal"
+
+
+def test_batch_width_partition_nominal_tie_prefers_c4() -> None:
+    profile = NativeBatchWidthProfile(
+        source_artifact="benchmarks/results/profile.json",
+        native_step_ms=(),
+        serial_row_step_ms=49.203623078682384,
+        native_widths=(2, 4, 8),
+        exact_widths=(2, 4, 8),
+    )
+
+    plan = plan_batch_width_partition(4, profile=profile, positions=(0,) * 4)
+
+    assert plan.path == "direct_native"
+    assert plan.group_widths == (4,)
+    assert plan.cost_source == "nominal"
 
 
 def test_batch_width_partition_falls_back_to_serial_for_blocked_profile() -> None:

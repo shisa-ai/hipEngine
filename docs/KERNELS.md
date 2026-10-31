@@ -100,7 +100,7 @@ Paths below refer to the HIP source families unless a backend is named.
 | `embedding` | `quant/gguf_q6_k_embedding`, `quant/gguf_iq_dense` | Look up quantized token rows. |
 | `activation_quant`, `weight_pack` | `quant/gguf_*` | Prepare packed projection operands. |
 | `paged_kv_write`, `paged_kv_copy` | `attention/paged_kv_write` | Update paged caches. |
-| `full_attn_*`, `paged_attn_*` | `attention/paged_attn_decode` | Compute attention. |
+| `full_attn_*`, `paged_attn_*` | `attention/paged_attn_decode` | Compute attention. PARO's `bf16_context_batch_c1_exact_paro_spans` selects the c1-exact body on both HIP backends; the shared `bf16_context_batch_c1_exact_spans` selects c1-exact on gfx1100 and fixed256 on gfx1151 for GGUF. |
 | `dms_*` | `attention/dms_compact*` | Maintain and attend over compact caches. |
 | `linear_attn_*conv_*`, `gdn_*recurrent*` | `linear_attn/` | Update convolutional and recurrent state. |
 | `qsa_*` | `attention/qwen4_exp_qsa` | Select blocks and compute sparse attention. |

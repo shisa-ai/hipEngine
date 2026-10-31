@@ -126,6 +126,7 @@ from hipengine.runtime.qwen35_paro_batch_width import (
     DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
     QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV,
     load_qwen35_paro_native_batch_width_profile,
+    native_batch_width_domain,
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import (
@@ -1553,6 +1554,7 @@ class Qwen35ParoNextTokenRunner:
             layer_weights=weights,
             workspace=RuntimeWorkspace(runtime=self.runtime),
             runtime=self.runtime,
+            backend=self.backend,
         )
 
     def _materialize_full_state(
@@ -1580,6 +1582,7 @@ class Qwen35ParoNextTokenRunner:
             layer_weights=weights,
             workspace=RuntimeWorkspace(runtime=self.runtime),
             runtime=self.runtime,
+            backend=self.backend,
         )
 
 
@@ -2179,19 +2182,55 @@ class Qwen35ParoResidentSession:
             self.backend
         ):
             return None
+        if int(self.max_batch_size) <= 1:
+            return None
         artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)
-        if artifact is None or not artifact.strip():
+        artifact_is_explicit = bool(artifact and artifact.strip())
+        if not artifact_is_explicit:
             artifact = DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE
+        row_chunk_widths = tuple(
+            width
+            for width in range(2, int(self.max_batch_size) + 1)
+            if _automatic_full_attention_row_chunk_size(width, backend=self.backend) > 0
+        )
+        native_widths, exact_widths = native_batch_width_domain(
+            self.max_batch_size,
+            row_chunk_widths=row_chunk_widths,
+        )
+        config_signature = {
+            "backend": self.backend,
+            "target_arch": self.target_arch,
+            "quant": "w4_paro",
+            "kv_storage": self.kv_storage_dtype.value,
+            "max_batch_size": int(self.max_batch_size),
+            "block_size": int(self.block_size),
+            "max_sequence_length": int(self.max_sequence_length),
+            "hidden_size": int(self.config.hidden_size),
+            "num_hidden_layers": int(self.config.num_hidden_layers),
+            "num_key_value_heads": int(self.config.num_key_value_heads),
+            "head_dim": int(self.config.head_dim),
+            "max_position_embeddings": int(
+                getattr(self.config, "max_position_embeddings", 0) or 0
+            ),
+            "layer_types": tuple(
+                str(value) for value in getattr(self.config, "layer_types", ())
+            ),
+        }
         return load_qwen35_paro_native_batch_width_profile(
             artifact.strip(),
             backend=self.backend,
             target_arch=self.target_arch,
             model_path=self.model,
             kv_dtype=self.kv_storage_dtype.value,
+            native_widths=native_widths,
+            exact_widths=exact_widths,
+            max_native_width=self.max_batch_size,
+            artifact_is_explicit=artifact_is_explicit,
+            config_signature=config_signature,
         )
 
     def native_batch_width_profile(self) -> NativeBatchWidthProfile | None:
-        """Return the identity-matched width profile used by scheduler decode."""
+        """Return the capability-matched width profile used by scheduler decode."""
 
         return self._native_batch_width_profile
 
@@ -4391,6 +4430,7 @@ class Qwen35ParoResidentSession:
                 layer_weights=self.states[0].layer_weights,
                 workspace=self.prefill_workspace,
                 runtime=self.runtime,
+                backend=self.backend,
             )
         return self._prefill_scratch_state
 

@@ -1704,10 +1704,14 @@ _GFX1151_OVERRIDES = {
         "gguf_qwen35",
         "bf16_indexed_singleton_fp16state",
     ): qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16state,
-    # The scalar-tree c1-exact kernel retained for gfx1100/PARO diverges from
-    # gfx1151's established paged-c1 arithmetic at model scale. Keep gfx1151 on
-    # the generic reduction, but pin its geometry to the c4/c8-proven 256-thread
+    # The GGUF short-context batch route. The scalar-tree c1-exact kernel that
+    # gfx1100 registers under this shared name diverges from gfx1151's
+    # established paged-c1 arithmetic at model scale, so this backend keeps the
+    # generic reduction and pins its geometry to the c4/c8-proven 256-thread
     # shape: the generic rows<=2 1024-thread fast path diverges over p512/d128.
+    # PARO does not resolve this name; it owns
+    # ``bf16_context_batch_c1_exact_paro_spans``, which is aliased to the
+    # c1-exact callable below and is deliberately absent from this table.
     (
         "paged_attn_decode",
         "w4_paro",

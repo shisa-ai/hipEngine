@@ -63,6 +63,7 @@ from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
     Qwen35ParoNextTokenRunner,
     Qwen35ParoResidentSession,
+    _automatic_full_attention_row_chunk_size,
     _decode_token_cached,
     _select_token,
 )
@@ -70,6 +71,7 @@ from hipengine.runtime.qwen35_paro_batch_width import (
     DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
     QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV,
     load_qwen35_paro_native_batch_width_profile,
+    native_batch_width_domain,
 )
 
 
@@ -361,18 +363,12 @@ class Qwen35ParoOneTokenGenerator:
                 )
             )
             return list(self.last_generation_outputs)
-        width_profile = _native_batch_width_profile_for_runner(runner, kv_policy)
-        profile_position_blockers = (
-            ()
-            if width_profile is None or width_profile.blockers
-            else _native_profile_prompt_position_blockers(
-                width_profile,
-                model_path=Path(self.model_path),
-                prompts=request.prompts,
-                max_tokens=request.max_tokens,
-            )
+        width_profile = _native_batch_width_profile_for_runner(
+            runner,
+            kv_policy,
+            max_native_width=len(request.prompts),
         )
-        if width_profile is None or width_profile.blockers or profile_position_blockers:
+        if width_profile is None or width_profile.blockers:
             exact_hybrid_blockers = _exact_hybrid_c2_route_blockers(
                 model_path=Path(self.model_path),
                 prompts=request.prompts,
@@ -407,9 +403,9 @@ class Qwen35ParoOneTokenGenerator:
                 cancellation_token=request.cancellation_token,
                 profile=width_profile,
                 route_blockers=(
-                    ("no accepted native batch width profile",)
+                    ("no native batch width profile",)
                     if width_profile is None
-                    else (*width_profile.blockers, *profile_position_blockers)
+                    else width_profile.blockers
                 ),
             )
             self.last_generation_outputs = tuple(outputs)
@@ -745,21 +741,12 @@ class Qwen35ParoOneTokenGenerator:
                 raise ValueError("prompt produced no tokens")
             prompt_rows.append([int(token) for token in prompt_ids])
 
-        start_positions = tuple(len(row) for row in prompt_rows)
-        end_positions = tuple(
-            len(row) + max(0, int(max_tokens) - 2)
-            for row in prompt_rows
-        )
-        position_blockers = tuple(
-            dict.fromkeys(
-                (*profile.position_blockers(start_positions), *profile.position_blockers(end_positions))
-            )
-        )
-        if profile.blockers or position_blockers:
-            raise RuntimeError("isolated native width execution requires an accepted in-range profile")
+        if profile.blockers:
+            raise RuntimeError("isolated native width execution requires a capability-available profile")
         requested_plan = plan_batch_width_partition(
             len(prompts),
             profile=profile,
+            positions=tuple(len(row) for row in prompt_rows),
         )
 
         execution_groups: list[tuple[str, int]] = []
@@ -880,7 +867,8 @@ class Qwen35ParoOneTokenGenerator:
             "group_modes": [mode for mode, _width in execution_groups],
             "max_session_width": max(width for _mode, width in execution_groups),
             "requested_width_plan": requested_plan.to_json_dict(),
-            "position_blockers": list(position_blockers),
+            "cost_source": requested_plan.cost_source,
+            "cost_notes": list(requested_plan.cost_notes),
             "groups": group_metadata,
             "group_count": len(group_metadata),
             "total_wall_ms": total_wall_s * 1000.0,
@@ -1325,7 +1313,7 @@ class Qwen35ParoOneTokenGenerator:
         """Generate a prompt list through the scheduler-owned c>N path.
 
         Native compact prefill runs all admitted rows together when their block
-        table shapes permit it. Decode uses only identity-matched native widths;
+        table shapes permit it. Decode uses capability-matched native widths;
         unsupported live widths are covered by native subgroups plus an exact
         serial remainder. ``last_batch_generation`` records the effective route.
         """
@@ -2337,9 +2325,8 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
     Scheduler slots are transient placement metadata. Each admitted request gets
     one stable model slot in this owner's batch-shaped recurrent/KV allocation;
     scheduler compaction therefore never copies or aliases model state. Greedy
-    decode uses only identity- and position-matched retained widths, while every
-    unsupported width, position, or sampler shape stays on the exact resident
-    row-serial path.
+    decode uses capability-matched retained widths, while every unsupported
+    width or sampler shape stays on the exact resident row-serial path.
     """
 
     def __init__(
@@ -4231,6 +4218,8 @@ def _env_int(name: str, default: int) -> int:
 def _native_batch_width_profile_for_runner(
     runner: Qwen35ParoNextTokenRunner,
     kv_policy: Any,
+    *,
+    max_native_width: int | None = None,
 ) -> NativeBatchWidthProfile | None:
     retained_defaults = bool(
         backend_package_capability(
@@ -4255,37 +4244,55 @@ def _native_batch_width_profile_for_runner(
     ):
         return None
     artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)
-    if artifact is None or not artifact.strip():
+    artifact_is_explicit = bool(artifact and artifact.strip())
+    if not artifact_is_explicit:
         artifact = DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE
+    loader_kwargs: dict[str, Any] = {
+        "backend": runner.backend,
+        "target_arch": runner.target_arch,
+        "model_path": runner.model,
+        "kv_dtype": kv_policy.storage_dtype.value,
+        "artifact_is_explicit": artifact_is_explicit,
+    }
+    config = getattr(runner, "config", None)
+    if config is not None:
+        loader_kwargs["config_signature"] = {
+            "backend": runner.backend,
+            "target_arch": runner.target_arch,
+            "quant": "w4_paro",
+            "kv_storage": kv_policy.storage_dtype.value,
+            "hidden_size": int(config.hidden_size),
+            "num_hidden_layers": int(config.num_hidden_layers),
+            "num_key_value_heads": int(config.num_key_value_heads),
+            "head_dim": int(config.head_dim),
+            "max_position_embeddings": int(
+                getattr(config, "max_position_embeddings", 0) or 0
+            ),
+            "layer_types": tuple(
+                str(value) for value in getattr(config, "layer_types", ())
+            ),
+        }
+    if max_native_width is not None:
+        max_width = int(max_native_width)
+        row_chunk_widths = tuple(
+            width
+            for width in range(2, max_width + 1)
+            if _automatic_full_attention_row_chunk_size(width, backend=runner.backend) > 0
+        )
+        native_widths, exact_widths = native_batch_width_domain(
+            max_width,
+            row_chunk_widths=row_chunk_widths,
+        )
+        loader_kwargs.update(
+            {
+                "native_widths": native_widths,
+                "exact_widths": exact_widths,
+                "max_native_width": max_width,
+            }
+        )
     return load_qwen35_paro_native_batch_width_profile(
         artifact.strip(),
-        backend=runner.backend,
-        target_arch=runner.target_arch,
-        model_path=runner.model,
-        kv_dtype=kv_policy.storage_dtype.value,
-    )
-
-
-def _native_profile_prompt_position_blockers(
-    profile: NativeBatchWidthProfile,
-    *,
-    model_path: Path,
-    prompts: tuple[PromptInput, ...],
-    max_tokens: int,
-) -> tuple[str, ...]:
-    starts: list[int] = []
-    ends: list[int] = []
-    for prompt in prompts:
-        prompt_ids = _prompt_ids(model_path, prompt)
-        starts.append(len(prompt_ids))
-        ends.append(len(prompt_ids) + max(0, int(max_tokens) - 2))
-    return tuple(
-        dict.fromkeys(
-            (
-                *profile.position_blockers(tuple(starts)),
-                *profile.position_blockers(tuple(ends)),
-            )
-        )
+        **loader_kwargs,
     )
 
 
