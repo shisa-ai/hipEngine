@@ -1804,6 +1804,22 @@ def _run_isolated_reference_worker(
                     f"stderr={completed.stderr[-2000:]!r}"
                 )
             payload = json.loads(output_path.read_text(encoding="utf-8"))
+            expected_keys = set(keys)
+            if (
+                set(payload["prompt_rows"]) != expected_keys
+                or set(payload["reference_tokens"]) != expected_keys
+            ):
+                raise RuntimeError(
+                    f"isolated reference worker {worker_index} key coverage drift"
+                )
+            for key in keys:
+                expected_tokens = max(spec.max_tokens for spec in specs_by_key[key])
+                actual_tokens = len(payload["reference_tokens"][key])
+                if actual_tokens != expected_tokens:
+                    raise RuntimeError(
+                        f"isolated reference worker {worker_index} oracle {key} "
+                        f"returned {actual_tokens} token(s); expected {expected_tokens}"
+                    )
             overlap = set(merged_prompt_rows) & set(payload["prompt_rows"])
             if overlap:
                 raise RuntimeError(

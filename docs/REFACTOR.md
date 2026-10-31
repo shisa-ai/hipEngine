@@ -4411,19 +4411,6 @@ graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only 
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
 
-### R0208 — Choose the production-load oracle protocol
-
-Owner: `scripts/gguf_production_load_gate.py`.
-
-Scope: `isolated`; `scripts/gguf_production_load_gate.py`; `tests/test_integration_gguf_production_load_gate.py`.
-
-Done when: Choose whether to retain both `--oracle-mode same_owner` and `isolated` in
-`scripts/gguf_production_load_gate.py`. Check diagnostic consumers before removing either mode.
-Preserve exact reference-key/token coverage, explicit worker failures and final drain/ownership
-checks. Run `tests/test_integration_gguf_production_load_gate.py`,
-`tests/test_unit_concurrency2_production_load.py` and the selected real production-load packet
-before retirement.
-
 ### R0209 — Extract packed-workspace ownership without breaking teardown
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
