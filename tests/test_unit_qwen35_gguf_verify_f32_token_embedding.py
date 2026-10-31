@@ -173,6 +173,11 @@ def _populated_block_path_session() -> object:
         position_buf=SimpleNamespace(ptr=0x7100),
         context_buf=SimpleNamespace(ptr=0x7200),
         hidden_seed_fp32=SimpleNamespace(ptr=0x7300),
+        cos_table=SimpleNamespace(ptr=0x7400),
+        sin_table=SimpleNamespace(ptr=0x7500),
+        full_cache=lambda layer_id: pytest.fail(
+            "unexpected full-attention cache lookup for a linear-only block"
+        ),
     )
     session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
     session.runner = runner
@@ -245,6 +250,9 @@ def test_populated_block_path_mirrors_bf16_and_feeds_requested_f32_seed(
             )
         )
 
+    def unexpected_non_linear_layer(*args, **kwargs) -> None:
+        pytest.fail("unexpected non-linear verifier operation")
+
     def readback(dst, src, nbytes, **kwargs) -> None:
         ctypes.memset(int(dst), 0, int(nbytes))
 
@@ -257,6 +265,12 @@ def test_populated_block_path_mirrors_bf16_and_feeds_requested_f32_seed(
     )
     monkeypatch.setattr(runner_mod, "set_decode_position_i64", lambda *args, **kwargs: None)
     session.runner._run_linear_attention_prefill_layer_rows = run_linear_layer
+    for name in (
+        "_run_native_attention_bulk_ffn_layer_rows",
+        "_run_full_attention_decode_batch_layer_rows",
+        "_run_full_attention_prefill_layer_aotriton",
+    ):
+        setattr(session.runner, name, unexpected_non_linear_layer)
 
     result = session.verify_target_block([3, 1], stream=0)
 

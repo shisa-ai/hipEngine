@@ -3,8 +3,9 @@
 The validators were moved out of ``hipengine/server/api.py`` unchanged into
 ``hipengine/server/json_schema.py``. These checks pin the three properties the
 move depends on: the module has no HTTP application or engine/model/runtime
-dependency, the validator names the application references still resolve to the
-same objects, and the validators keep byte-identical error tuples, messages,
+dependency, the validator names referenced by the application and the
+result-policy owner still resolve to the same objects, and the validators keep
+byte-identical error tuples, messages,
 numeric and boolean rules, local JSON Pointer resolution (including cycle
 detection), JSON-value equality and regular-expression semantics.
 
@@ -48,12 +49,15 @@ BLOCKED_IMPORT_PREFIXES = (
 )
 
 # The subset ``hipengine.server.api`` imports for its own request handling.
-# Consumers import every other validator from this module directly.
+# Result-policy consumers import the remaining validator from this module
+# directly.
 API_APPLICATION_NAMES = (
     "_JSON_SCHEMA_ANNOTATION_KEYWORDS",
     "_validate_json_schema_subset",
-    "_validate_json_schema_value",
 )
+
+# The validator the extracted result-policy owner imports directly.
+RESULT_POLICY_NAMES = ("_validate_json_schema_value",)
 
 PRIVATE_NAMES = (
     "_JSON_SCHEMA_ANNOTATION_KEYWORDS",
@@ -1446,6 +1450,13 @@ def test_api_application_names_are_the_json_schema_objects() -> None:
         assert getattr(api, name) is getattr(json_schema, name), name
         if callable(getattr(json_schema, name)):
             assert getattr(api, name).__module__ == "hipengine.server.json_schema", name
+
+
+def test_result_policy_imports_the_validator_names_its_application_uses() -> None:
+    from hipengine.server import chat_result_policy
+
+    for name in RESULT_POLICY_NAMES:
+        assert getattr(chat_result_policy, name) is getattr(json_schema, name)
 
 
 def test_api_imports_the_validator_names_its_application_uses() -> None:

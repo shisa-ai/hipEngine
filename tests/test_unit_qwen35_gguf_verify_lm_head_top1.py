@@ -379,6 +379,11 @@ def test_block_verifier_lm_head_dtype_matches_singleton_shortcut(
         max_positions=128, hidden_seed_fp32=SimpleNamespace(ptr=0x7000),
         position_host=[0], context_host=[1],
         position_buf=SimpleNamespace(ptr=0x7100), context_buf=SimpleNamespace(ptr=0x7200),
+        cos_table=SimpleNamespace(ptr=0x7300),
+        sin_table=SimpleNamespace(ptr=0x7400),
+        full_cache=lambda layer_id: pytest.fail(
+            "unexpected full-attention cache lookup for an empty layer stack"
+        ),
     )
     for name, ptr in {
         "_prefill_token_buf": 0x3000, "_prefill_hidden_a": 0x4000,
@@ -387,6 +392,17 @@ def test_block_verifier_lm_head_dtype_matches_singleton_shortcut(
         "_verify_logits_buf": 0x9000, "_lm_out_index": 0xA000,
     }.items():
         setattr(session, name, SimpleNamespace(ptr=ptr, nbytes=16 * 64 * 4))
+
+    def unexpected_verifier_layer(*args, **kwargs) -> None:
+        pytest.fail("unexpected verifier layer operation for an empty layer stack")
+
+    for name in (
+        "_run_native_attention_bulk_ffn_layer_rows",
+        "_run_linear_attention_prefill_layer_rows",
+        "_run_full_attention_decode_batch_layer_rows",
+        "_run_full_attention_prefill_layer_aotriton",
+    ):
+        setattr(session.runner, name, unexpected_verifier_layer)
     session._bulk_prefill_scratch = SimpleNamespace(
         rows=16, for_chunk=lambda *args, **kwargs: SimpleNamespace(norm=SimpleNamespace(ptr=0xB000)),
     )

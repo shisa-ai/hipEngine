@@ -8,8 +8,9 @@ move depends on:
 * the owner imports only the standard library and neither the HTTP application
   nor any engine, model, runtime, dispatch or loading module;
 * every moved symbol keeps the exact pre-move AST (the hashes below were taken
-  from ``hipengine/server/api.py`` at the move base), and the parser names the
-  application references resolve to the identical objects;
+  from ``hipengine/server/api.py`` at the move base), and the parser names
+  referenced by the application and the result-policy owner resolve to the
+  identical objects;
 * the parsers keep the byte-level results captured from the pre-move
   implementation: reasoning splits and source spans, chunk-split reasoning and
   terminal markers, prompt-open reasoning, terminal-marker stripping, JSON and
@@ -104,7 +105,8 @@ MOVED_NAMES = (
 OWNER_ONLY_NAMES = ("_XML_FUNCTION_ENVELOPE_RE", "_XML_PARAMETER_RE")
 
 # The subset ``hipengine.server.api`` imports for its own request handling.
-# Consumers import every other owner symbol from this module directly.
+# Result-policy consumers import the remaining parser helpers from this module
+# directly.
 API_APPLICATION_NAMES = (
     "_ParsedChatOutput",
     "_ParsedToolCall",
@@ -112,14 +114,15 @@ API_APPLICATION_NAMES = (
     "_TOOL_CALL_END_MARKER",
     "_TOOL_CALL_START_MARKER",
     "_classify_chat_length_phase",
-    "_find_marker",
     "_parse_chat_tool_calls",
     "_split_reasoning",
     "_strip_chat_terminal_markers",
     "_tool_arguments_json",
-    "_valid_tool_call_blocks",
     "_xml_parameter_is_string_typed",
 )
+
+# The parser helpers the extracted result-policy owner imports directly.
+RESULT_POLICY_NAMES = ("_find_marker", "_valid_tool_call_blocks")
 
 # sha256(ast.dump(node, include_attributes=False))[:16] captured from
 # ``hipengine/server/api.py`` before the move.
@@ -301,6 +304,13 @@ def test_api_reexports_the_identical_object(name: str) -> None:
     import hipengine.server.api as api
 
     assert getattr(api, name) is getattr(chat_output, name)
+
+
+def test_result_policy_imports_the_parser_names_its_application_uses() -> None:
+    from hipengine.server import chat_result_policy
+
+    for name in RESULT_POLICY_NAMES:
+        assert getattr(chat_result_policy, name) is getattr(chat_output, name)
 
 
 def test_owner_loads_without_http_or_engine_modules() -> None:
