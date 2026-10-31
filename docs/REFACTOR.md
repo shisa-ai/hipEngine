@@ -3329,20 +3329,20 @@ implementation-parity test cases only after examining the capture and running th
 Preserve quality coverage throughout; use coordinate-tolerant comparison only if observed bbox-digit
 variation justifies it, not merely to make a failure pass.
 
-### R0494 — Choose one prompt-count output contract
+### R0494 — Report prompt usage from the generation output, not a second count
 
 Owner: `hipengine/generation/registry.py`.
 
-Scope: `telemetry.usage.prompt_tokens`.
+Scope: `GenerationOutput.prompt_tokens`; `_usage` in `hipengine/server/api.py`.
 
-Done when: Deferred interface decision: choose whether the output field or telemetry owns prompt usage
-before removing either representation or the compatibility fallback.
-`GenerationOutput.prompt_tokens` remains optional, and text usage also counts prepared prompt inputs
-through `_usage`. A complete migration must cover ordinary, empty, batch, speculative and multimodal
-outputs, plus legacy plugins that return no count. Keep the fallback until those producers have an
-explicit replacement contract; do not infer image-token counts from raw text. Validate migration
-with the Qwen/Gemma/Surya server multimodal modules, `tests/test_unit_server_prefix_cache_usage.py`
-and public requests.
+Done when: A real vision checkpoint reports its prefilled length through `usage.prompt_tokens` on
+each supported backend — Qwen4Exp multimodal, Gemma 4 image, Surya OCR — through `LLM.generate()` or
+`hipengine serve`. The contract itself is decided and implemented: `GenerationOutput.prompt_tokens`
+owns the count, `None` falls back to counting the prepared prompt (legacy plugins), a stated `0`
+stays `0`, and `DecodeState.prompt_tokens` / `telemetry.usage["prompt_tokens"]` are diagnostic
+mirrors that never authorize a number. Only that real-model evidence is outstanding; the
+fake-surface contract is covered by `tests/test_unit_server_prompt_token_contract.py` and
+`tests/test_integration_server_prompt_token_contract.py`.
 
 ### R0495 — Decide CPU-reference vision admission
 

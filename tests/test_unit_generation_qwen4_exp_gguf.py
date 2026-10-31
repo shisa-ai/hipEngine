@@ -94,6 +94,10 @@ def test_qwen4_exp_generator_runs_bounded_multimodal_override() -> None:
             'describe', 'image', _request(prompts=('describe',), max_tokens=2)
         )
         assert output.generated_token_ids == (4, 5)
+        # The rendered multimodal prompt is 3 tokens; the output field owns that
+        # count and the telemetry entry mirrors it for diagnostics.
+        assert output.prompt_tokens == 3
+        assert output.telemetry.usage == {"prompt_tokens": 3}
         assert runner.steps[0][0:2] == ('prefill', (1, 248056, 2))
         overrides = runner.steps[0][2]['embedding_overrides']
         assert tuple(overrides) == (1,)

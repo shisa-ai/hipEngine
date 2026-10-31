@@ -152,10 +152,10 @@ def test_qwen4_exp_chat_completions_accepts_bounded_png_multimodal_input(
     assert payload["hipengine"]["multimodal"] is True
     assert len(fake.calls) == 1
     assert fake.calls[0][1]["items"][0]["data"].shape == (32, 32, 3)
-    expected = reported if reported is not None else telemetry_count
-    fallback = expected is None
-    if fallback:
-        expected = len(str(fake.calls[0][0]).split())
+    # The output field owns the count; the telemetry mirror is diagnostic and
+    # never authorizes a usage number, so ``telemetry_count`` must not matter.
+    fallback = reported is None
+    expected = len(str(fake.calls[0][0]).split()) if fallback else reported
     assert payload["usage"]["prompt_tokens"] == expected
     assert fake.post_generation_counts == int(fallback)
 

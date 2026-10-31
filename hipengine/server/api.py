@@ -8268,14 +8268,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             message, _parsed_reason = _chat_message_from_parsed(parsed)
             # Prefer the exact multimodal count over a text-only tokenizer
-            # estimate. Both output metadata forms can report a valid zero.
-            reported_prompt_tokens = getattr(detail, "prompt_tokens", None)
-            if reported_prompt_tokens is None:
-                telemetry_usage = getattr(getattr(detail, "telemetry", None), "usage", None) or {}
-                reported_prompt_tokens = telemetry_usage.get("prompt_tokens")
-            if reported_prompt_tokens is None:
-                reported_prompt_tokens = int(await asyncio.to_thread(engine.count_tokens, prompt))
-            prompt_tokens = int(reported_prompt_tokens)
+            # estimate. The output field owns it and a stated zero is a count.
+            prompt_tokens = _reported_prompt_token_count(detail)
+            if prompt_tokens is None:
+                prompt_tokens = int(
+                    await asyncio.to_thread(_prompt_token_count, engine, prompt)
+                )
             completion_tokens = len(generated_ids)
             return {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",
@@ -12454,11 +12452,15 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
     finish_details = getattr(value, "finish_details", None)
     telemetry = getattr(value, "telemetry", None)
     generated_token_ids = getattr(value, "generated_token_ids", None)
+    # A plugin that knows its exact prompt length keeps that count through
+    # coercion; dropping it would silently hand the request to the text fallback.
+    prompt_tokens = getattr(value, "prompt_tokens", None)
     if (
         token_logprobs is not None
         or finish_details is not None
         or telemetry is not None
         or generated_token_ids is not None
+        or prompt_tokens is not None
     ):
         return GenerationOutput(
             text=str(getattr(value, "text", value)),
@@ -12466,6 +12468,7 @@ def _coerce_generation_output(value: Any) -> GenerationOutput:
             finish_details=finish_details,
             telemetry=telemetry,
             generated_token_ids=generated_token_ids,
+            prompt_tokens=prompt_tokens,
         )
     return GenerationOutput(text=str(value))
 
@@ -13215,6 +13218,59 @@ def _prompt_token_count(engine: Any, prompt: PromptInput) -> int:
     if isinstance(prompt, str):
         return _count_tokens_for_admission(engine, prompt)
     return len(prompt)
+
+
+def _reported_prompt_token_count(detail: Any) -> int | None:
+    """Return the generator's exact prompt length, or ``None`` when it did not say.
+
+    ``GenerationOutput.prompt_tokens`` owns the reported count. A stated ``0`` is a
+    real empty prompt, so it stays ``0`` instead of falling back to a text count.
+    The diagnostic mirrors are deliberately not read here: ``DecodeState``
+    defaults its count to ``0`` and telemetry usage is optional, so neither can
+    tell "the prompt was empty" from "this producer does not know".
+    """
+
+    value = getattr(detail, "prompt_tokens", None)
+    if value is None:
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _reported_prompt_token_rows(
+    details: Sequence[GenerationOutput] | None,
+    *,
+    expected_rows: int,
+) -> tuple[int | None, ...] | None:
+    """Return one reported count per row, or ``None`` when the rows do not align."""
+
+    if details is None or len(details) != int(expected_rows):
+        return None
+    return tuple(_reported_prompt_token_count(detail) for detail in details)
+
+
+def _prompt_token_total(
+    engine: Any,
+    prompts: Sequence[PromptInput],
+    *,
+    details: Sequence[GenerationOutput] | None,
+) -> int:
+    """Sum prompt usage, preferring the generator's exact count for each row.
+
+    A row whose producer reports nothing keeps the prepared-prompt count. That is
+    the compatibility path for legacy plugins and for stream chunks that carry no
+    output metadata; it is a fallback, not a second owner of the number.
+    """
+
+    rows = _reported_prompt_token_rows(details, expected_rows=len(prompts))
+    if rows is None:
+        return sum(_prompt_token_count(engine, prompt) for prompt in prompts)
+    return sum(
+        _prompt_token_count(engine, prompt) if reported is None else int(reported)
+        for prompt, reported in zip(prompts, rows, strict=True)
+    )
 
 
 def _prompt_tokenizer_identity(engine: Any) -> str | None:
@@ -16446,7 +16502,7 @@ def _usage(
     prefer_telemetry_counts: bool = False,
 ) -> dict[str, int]:
     counter = getattr(engine, "count_tokens", None)
-    prompt_tokens = sum(_prompt_token_count(engine, prompt) for prompt in prompts)
+    prompt_tokens = _prompt_token_total(engine, prompts, details=details)
     exact_rows = _exact_generated_token_rows(details, expected_rows=len(outputs))
     telemetry_counts = (
         _telemetry_generated_token_counts(details, expected_rows=len(outputs))

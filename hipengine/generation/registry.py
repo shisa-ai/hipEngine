@@ -943,10 +943,18 @@ class GenerationOutput:
     finish_details: FinishDetails | None = None
     telemetry: GenerationTelemetry | None = None
     generated_token_ids: tuple[int, ...] | None = None
-    # Length of the prompt this output was generated from, when the generator
-    # knows it exactly. A vision request's prompt is text *plus* image tokens,
-    # so a text tokenizer count cannot recover it; a serving front end that
-    # reports usage needs the generator to say.
+    # The authoritative prompt length this output was generated from, when the
+    # generator knows it exactly. A vision request's prompt is text *plus* image
+    # tokens, so a text tokenizer count cannot recover it; a serving front end
+    # that reports usage needs the generator to say.
+    #
+    # Contract: this field owns ``usage.prompt_tokens``. ``None`` means the
+    # producer cannot state the length, and only then does the serving front end
+    # fall back to counting the prepared prompt itself (the compatibility path
+    # for legacy plugins). A stated ``0`` is a real empty prompt and is reported
+    # as ``0``. The diagnostic mirrors -- ``DecodeState.prompt_tokens`` and
+    # ``GenerationTelemetry.usage`` -- never authorize a usage number, because
+    # both default to zero when the producer does not know.
     prompt_tokens: int | None = None
 
     def __post_init__(self) -> None:

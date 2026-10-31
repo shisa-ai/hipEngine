@@ -862,14 +862,16 @@ class Qwen4ExpGGUFTextGenerator:
                 length_limit=(request.max_tokens if reason == "length" else None),
                 sampler_mode="greedy_multimodal_mrope",
             ),
+            # The rendered prompt carries the chat template and one vision pad
+            # per encoded patch, so counting the caller's raw text would
+            # understate what the model actually read. The output field owns that
+            # count; the telemetry entry below mirrors it for diagnostics.
+            prompt_tokens=len(token_ids),
             telemetry=GenerationTelemetry(
                 decode_state=DecodeState(
                     prompt_tokens=len(token_ids),
                     generated_tokens=len(generated),
                 ),
-                # The rendered prompt carries the chat template and one vision
-                # pad per encoded patch, so counting the caller's raw text would
-                # understate what the model actually read.
                 usage={"prompt_tokens": len(token_ids)},
             ),
         )
