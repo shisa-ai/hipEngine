@@ -1,22 +1,25 @@
-"""PF-5 RED tests: 32-warp GDN prefill variant (M6 geometry port).
+"""32-warp GDN prefill variant (PF-5 M6 geometry): a retained occupancy diagnostic.
 
 Declaration entry:
 ``worklog/entries/20260903T152319.089915Z-lhl-qwen4exp-pf5-gdn-m6-declaration-55a7d9.md``
+Lever result:
+``benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json``
+(measured loss on gfx1151 at every shape >= 64 rows, bit-exact parity held).
 
-- **Arithmetic class:** T0 candidate. The lever changes launch geometry only
-  (32 warps/block for the S_v=128 GDN recurrence family; halo-box PR11
-  ``gated_delta_net.cu`` lineage). FP32 accumulation order is preserved, so
-  the binding contract is **bit-exact** parity against the registered strict
-  owner ``qwen4_exp_gdn_prefill_f32`` (variant
-  ``qwen4exp_sigmoid_strict_prefill``). If implementation forces a
-  reassociation, the class escalates to T1 and the unit stops.
+- **Arithmetic class:** T0. The lever changes launch geometry only (32 warps/block
+  for the S_v=128 GDN recurrence family; halo-box PR11 ``gated_delta_net.cu``
+  lineage). FP32 accumulation order is preserved, so the binding contract is
+  **bit-exact** parity against the production columnwarps owner
+  ``qwen4_exp_gdn_prefill_columnwarps_f32`` (``<4, 4>``). The serial strict owner
+  ``qwen4_exp_gdn_prefill_f32`` uses a different reduction layout, so it is held
+  to the fixture tolerance envelope instead.
 - **Strict fallback:** the unmodified ``gdn_recurrence_norm_gate``
   (``f32_state``) owner, retained under its registry key.
-
-RED semantics (unmodified path): the candidate function
-``qwen4_exp_gdn_prefill_w32_f32`` and its registry variant
-``qwen4exp_gdn_w32_prefill`` do not exist yet, so both tests below fail
-(ImportError / MissingKernelError). They must pass after the port lands.
+- **Retention:** nothing selects ``qwen4exp_gdn_w32_prefill`` automatically; the
+  profile layer names the rowsplit, tiled16, columnwarps and strict owners. The
+  variant stays registered as a non-default diagnostic so this geometry can be
+  re-measured by explicit key on hardware other than gfx1151, and so its parity
+  contract keeps a live target. It is not a production route.
 """
 
 from __future__ import annotations
@@ -46,11 +49,9 @@ def _hip_available() -> bool:
 def test_qwen4_exp_gdn_w32_prefill_registry_contract() -> None:
     """The w32 prefill variant must be registered on its four-axis key.
 
-    RED on the unmodified path: the candidate function is not implemented, so
-    the import fails (and/or resolve raises MissingKernelError). Note the
-    resolver's fallback chain must NOT satisfy this key: the exact variant
-    must resolve to the candidate function itself, never to the strict owner
-    or a broadened candidate.
+    The exact variant must resolve to the candidate function itself, never to
+    the strict owner or a broadened candidate: a diagnostic that resolves
+    elsewhere measures the wrong kernel. Host-only, so it runs without HIP.
     """
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
         qwen4_exp_gdn_prefill_w32_f32,
@@ -72,21 +73,20 @@ def test_qwen4_exp_gdn_w32_prefill_registry_contract() -> None:
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("v_heads", [32, 48, 64])
 def test_qwen4_exp_gdn_w32_prefill_exact_vs_strict_owner(v_heads: int) -> None:
-    """The w32 prefill variant must be bit-exact vs the production owner (T0).
+    """The w32 prefill variant must be bit-exact vs the columnwarps owner (T0).
 
     Production-like geometry: multi-row prefill (rows=16), H in {32, 48, 64}
     value heads with 16 key heads, S_k = S_v = 128. The 32-warp lever is a
     launch-geometry change inside the column-warp layout (one output column
     per warp, state rows sharded across 32 lanes, warp-shuffle reductions),
-    so the binding T0 oracle is the **production columnwarps owner being
-    replaced** (``qwen4_exp_gdn_prefill_columnwarps_f32``): identical per-warp
+    so the binding T0 oracle is the production columnwarps owner
+    (``qwen4_exp_gdn_prefill_columnwarps_f32``): identical per-warp
     arithmetic, only block composition changes. Measured 2026-09-03: that
     owner is NOT bit-equal to the serial strict kernel at production geometry
     (max abs diff 5.4e-7), so the serial strict kernel is covered by a
     tolerance envelope (atol=1e-6), not by bit-equality.
 
-    RED on the unmodified path: the candidate function does not exist, so the
-    import fails before any GPU work runs.
+    Needs the HIP runtime; skips without it.
     """
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (

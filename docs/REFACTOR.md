@@ -3836,21 +3836,6 @@ incompatible requests. Any changed arithmetic default must pass its profile gate
 source-bound certificate consistency without turning source identity into measured-artifact
 admission.
 
-### R0141 — Decide whether to keep the explicit GDN w32 diagnostic
-
-Owner: `hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.py`.
-
-Scope: `qwen4exp_gdn_w32_prefill`, `qwen4_exp_gdn_prefill_w32_f32`.
-
-**Deferred product decision:** retain the w32 geometry as an explicit occupancy comparison or retire
-it because that diagnostic is no longer wanted.
-
-Done when: If retired, remove the registry entry, wrapper, HIP instantiation and dedicated test together after
-checking all direct consumers. Preserve the strict owner and selected tile16/columnwarp routes. Run
-the applicable lineage, kernel, registry and public-generation checks for that change. If retained,
-keep its exact-parity diagnostic contract; historical RED-first prose is not evidence that the
-implemented symbol is absent.
-
 ### R0147 — Consolidate the Q8 MMQ attention-gate candidate selector
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
