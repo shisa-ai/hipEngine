@@ -270,6 +270,61 @@ def test_native_batch_decode_q5_t16_ignores_retired_switch(
         assert key == _Q5_T16_ROWTILE_SINGLE_WAVE
 
 
+def test_q5_t16_four_wave_rowtile_stays_a_distinct_registered_reference() -> None:
+    """The Q5 rows-2-8 production owner and its four-wave parity parent differ.
+
+    ``GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT`` names the single-wave
+    production owner, while ``t16_gemv_rowtile_bf16_bf16_out`` keeps the
+    four-wave WG128 body that the grouped rows6/rows8 owners and the gfx1151
+    rowtile fallback declare as their parent. Rebinding that name to the
+    single-wave body is the regression this asserts against: a second
+    registration is a parity reference, not an admission gate, so both stay
+    resolvable and keep distinct launch handles.
+    """
+
+    import hipengine.kernels.hip_gfx1100 as gfx1100_package
+    import hipengine.runtime.gguf_linear as gguf_linear
+    from hipengine.kernels.hip_gfx1100.quant import gguf_t16_selected_gemv
+
+    # The production lazy bootstrap, not a fixture registration: this asserts
+    # the package's own name -> body binding.
+    gguf_linear._ensure_linear_kernel_registered(_Q5_T16_ROWTILE)
+    gguf_linear._ensure_linear_kernel_registered(_Q5_T16_ROWTILE_SINGLE_WAVE)
+    reference = resolve(
+        backend=_Q5_T16_ROWTILE.backend,
+        layer=_Q5_T16_ROWTILE.layer,
+        quant=_Q5_T16_ROWTILE.quant,
+        variant=_Q5_T16_ROWTILE.variant,
+        missing="none",
+    )
+    production = resolve(
+        backend=_Q5_T16_ROWTILE_SINGLE_WAVE.backend,
+        layer=_Q5_T16_ROWTILE_SINGLE_WAVE.layer,
+        quant=_Q5_T16_ROWTILE_SINGLE_WAVE.quant,
+        variant=_Q5_T16_ROWTILE_SINGLE_WAVE.variant,
+        missing="none",
+    )
+
+    assert reference is gguf_t16_selected_gemv.gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out
+    assert production is (
+        gguf_t16_selected_gemv.gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out
+    )
+    assert reference is not production
+    assert (
+        gguf_t16_selected_gemv._Q5_DENSE_ROWTILE_BF16
+        != gguf_t16_selected_gemv._Q5_DENSE_ROWTILE_SINGLE_WAVE_BF16
+    )
+    assert gguf_linear._t16_native_rowtile_variant(
+        "gguf_q5_k_t16_v1", backend="hip_gfx1100"
+    ) == (_Q5_T16_ROWTILE_SINGLE_WAVE.variant)
+    assert (
+        gfx1100_package.GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT[
+            "gguf_q5_k_t16_v1"
+        ]["variant"]
+        == _Q5_T16_ROWTILE_SINGLE_WAVE.variant
+    )
+
+
 def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> None:
     """Planar-qmicro Q6T16 true col8 rowtile is now certified through rows 8,
     so native batch decode rewrites rows 5-8 to the rowtile instead of the

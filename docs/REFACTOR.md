@@ -3123,20 +3123,6 @@ replacement device comparison with matching settings on both paths. Keep graph m
 denominator; the paired validator must continue rejecting eager payloads. No product admission
 depends on this choice.
 
-### R0479 — Q5 four-wave parity reference
-
-Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py`.
-
-Scope: `t16_gemv_rowtile_single_wave_bf16_bf16_out`, `t16_gemv_rowtile_bf16_bf16_out`,
-`gguf_t16_selected_gemv.py`.
-
-Done when: Deferred contract migration: keep the distinct reference, or migrate all of those consumers'
-parity contracts before deleting or rebinding it. The clearing checks must compare the grouped and
-direct producers against their replacement reference on device, followed by the applicable
-execution-profile gates for any changed arithmetic default. Dispatch tests alone cannot establish
-that equality. The capability table continues to distinguish the production owner from the
-reference; it is not an admission gate.
-
 ### R0484 — Surya decode fallback and sparse-chunk work
 
 Owner: `hipengine/runtime/surya.py`.

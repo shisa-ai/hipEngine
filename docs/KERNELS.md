@@ -292,6 +292,15 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | Dense Q4 q8_1-dp4a VDR screen | `quant/gguf_q4_k_q8_1_dp4a_vdr_gemv.{hip,py}` | `linear` (leaf screen, not dispatched) | nasone32 k-quant load-reuse port (efa4e8641): subblock-hoisted metadata with activation packs reused across 8 columns, plus an unamortized control with identical thread mapping and f32 order (bit-exact RED contract). 2026-09-09 four-arm leaf on both gfx1100 cards: -50..-76% vs the control inside the dp4a class, but 1.11-1.44x slower than the retained T16 rows=1 owners at every production shape (T16 sits at the DRAM floor), so rejected as a decode replacement; retained as evidence for future integer decode routes. |
 | Dense Q4 int-MMQ prefill screen | `quant/gguf_q4_k_q8_1_mmq_prefill.{hip,py}` | `linear` (leaf screen, not dispatched) | Raw-Q4_K x DS4-Q8_1 bulk-prefill integer MMQ (PP8192-attribution candidate): staged-dp4a 32x32-tile and direct-global iu8-WMMA 32x16-tile consumers, each with bit-exact ctl/vdr siblings (block-header/subblock-metadata hoisting) and a DS4 CPU oracle. 2026-09-09 W7900 six-arm leaf on real Qwen3.8-27B Q4_K_M weights, rows 512/1024/4096: best integer totals (pack + consumes) reach only 0.205-0.542x the retained float T16 prefill owners (9/9 case-rows), load-reuse deltas within +-3%, pack negligible — rejected as a bulk-prefill replacement; retained as leaf evidence for future integer prefill routes. |
 
+### Q5 T16 rowtile references
+
+`linear/gguf_q5_k_t16_v1/t16_gemv_rowtile_bf16_bf16_out` keeps the four-wave
+WG128 implementation separately registered from
+`t16_gemv_rowtile_single_wave_bf16_bf16_out`. Grouped/direct parity comparisons
+use the four-wave reference; gfx1151's rowtile wrapper also uses it outside its
+col8 shape set within the backend's admitted row bands. The single-wave
+production capability does not replace or rebind that reference.
+
 ### Laguna
 
 | Source | Purpose |
