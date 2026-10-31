@@ -2866,23 +2866,6 @@ tests/test_gpu_qwen4_exp_pf4_lever2_fused_combine.py` in the ROCm environment be
 comparison. If retiring by product decision, remove the runtime branch, wrapper, registry entry,
 selector and candidate-only tests together, preserving strict primitives and history.
 
-### R0412 — H256 generic-wave diagnostic retirement
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `qsa_h256_prefill_mode`; `HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL`.
-
-**Deferred decision:** retire generic-wave bisection support when it is no longer needed, or keep it
-as an explicit diagnostic. The lead's accepted prefill/decode tradeoff is not reopened by this
-control migration. Decode performance is separate optimization work, not a reason to undo that
-choice.
-
-Done when: decide whether the generic-wave comparison remains useful. If retiring it,
-remove the `wave` scope value and its campaign/state-gate packages together; preserve page256 and
-the strict `strict_rows_spans` fallback. Run the H256 scope/runtime tests, existing GPU H256 parity
-tests and public `LLM.generate()` with the scalar fallback engaged. Any decode optimization must
-first profile the current path and follow `OPTIMIZATION.md`.
-
 ### R0415 — Register-state GDN decode follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
