@@ -249,8 +249,9 @@ Owner: `hipengine/chat_cli.py`.
 
 Scope: `diagnostics.specdec2_mtp2`, `ar_output_tokens_in_cycles`, `output_accounting`.
 
-Done when: Migrate `gemma4_mtp`, `qwen4_exp_mtp` and `qwen4_exp_serving_mixed` to row-level
-committed output accounting and publish the common per-request diagnostics block. Then remove
+Done when: `qwen4_exp_mtp` now publishes the common per-request committed-output block and
+passes real public LLM route checks (5/8 completion tokens, 4/7 attributed to committed cycles,
+reconciled spans and clean teardown). Migrate `gemma4_mtp` and `qwen4_exp_serving_mixed`, then remove
 `_mtp_draft_counts`' legacy provider/scalar timing readers after blocking and streaming consumers
 migrate. Chat `/bench` now prefers public `output_accounting.mtp_output_tokens`, preserves explicit
 zero, and keeps legacy readers for older providers; see

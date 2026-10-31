@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 import time
+from types import SimpleNamespace
 from typing import Any, Generator
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -32,6 +33,11 @@ from hipengine.loading.qwen4_exp_mtp_materialize import (
     plan_qwen4_exp_mtp_residency,
 )
 from hipengine.runtime.qwen4_exp_mtp import Qwen4ExpGGUFMTPDraftRunner
+from hipengine.speculative.accounting import (
+    record_autoregressive_step,
+    record_speculative_outputs,
+    speculative_output_accounting,
+)
 from hipengine.speculative.registry import (
     SpeculativeProviderCapabilities,
     SpeculativeProviderConfig,
@@ -44,6 +50,10 @@ _SIDECAR_SHA256 = "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb9
 # The depth an omitted caller gets. The adapter accepts 1..4; the registration
 # carries this default so server capability reads need no load.
 _DEFAULT_CANDIDATE_BUDGET = 4
+# Why a scheduler-selected K0 step ran autoregressively. This provider has no
+# planner of its own: the caller's per-step budget is the plan, and zero means
+# a target-only step, so that is the reason the accounting block reports.
+_K0_STEP_REASON = "scheduler_k0"
 
 
 @dataclass(frozen=True)
@@ -344,6 +354,13 @@ class Qwen4ExpMTPTextProvider:
         root_token = generated[0]
         root_hidden = result.hidden_seed
         cycles: list[Qwen4ExpMTPCycle] = []
+        # One duck-typed row object per iterator. The shared accounting helper
+        # writes its counters as attributes and this iterator's terminal
+        # telemetry is the only place they are published, so concurrent
+        # requests on one provider never share a record.
+        accounting = SimpleNamespace()
+        accounting.mtp2_requested_budget = self.candidate_budget
+        accounting.mtp2_candidate_budget = self.candidate_budget
         default_eos = int(self.target_generator.tokenizer.eos_token_id)
         finish = _token_finish(request, generated, grammar, default_eos)
 
@@ -384,6 +401,16 @@ class Qwen4ExpMTPTextProvider:
                 root_hidden = verified.hidden_seed
                 generated.append(root_token)
                 finish = _token_finish(request, generated, grammar, default_eos)
+                # A K0 step emits autoregressive output while the request is
+                # still owned by the plan. It is not a fallback unless
+                # speculative output came first, which the helper decides from
+                # the output position.
+                record_autoregressive_step(
+                    accounting,
+                    plan_reason=_K0_STEP_REASON,
+                    emitted_tokens=len(generated) - step_start,
+                    output_position=step_start,
+                )
                 next_budget = yield Qwen4ExpMTPProgress(
                     token_ids=(root_token,), cycle=None,
                     finished=finish is not None,
@@ -506,6 +533,18 @@ class Qwen4ExpMTPTextProvider:
                     committed_position=int(target_runner.position),
                 )
             )
+            # Attribute this cycle's committed output, never its proposals: the
+            # tokens appended above are the accepted drafts plus the target's
+            # own correction or bonus token, and a cycle cut short by a stop
+            # sequence or the output horizon appended fewer than its budget
+            # allows.
+            record_speculative_outputs(
+                accounting,
+                candidate_count=len(candidates),
+                accepted_count=accepted,
+                visible_count=len(generated) - step_start,
+                output_position=step_start,
+            )
             next_budget = yield Qwen4ExpMTPProgress(
                 token_ids=tuple(generated[step_start:]),
                 cycle=cycles[-1],
@@ -515,6 +554,84 @@ class Qwen4ExpMTPTextProvider:
         self.last_cycles = tuple(cycles)
         proposed = sum(len(cycle.candidates) for cycle in cycles)
         accepted = sum(cycle.accepted for cycle in cycles)
+        diagnostics: dict[str, Any] = {
+            "speculative_provider": self.provider_name,
+            "candidate_budget": self.candidate_budget,
+            "proposed_draft_tokens": proposed,
+            "accepted_draft_tokens": accepted,
+            "draft_acceptance": (
+                float(accepted / proposed) if proposed else 0.0
+            ),
+            "cycles": [
+                {
+                    "start_position": cycle.start_position,
+                    "candidates": list(cycle.candidates),
+                    "accepted": cycle.accepted,
+                    "mismatch_token": cycle.mismatch_token,
+                    "committed_position": cycle.committed_position,
+                }
+                for cycle in cycles
+            ],
+            "target_verify": (
+                "batched_state_rows" if batched_verify else "serial_exact"
+            ),
+            "sampling_algorithm": (
+                "target_draw_match_deterministic_draft" if controlled else "raw_argmax_match"
+            ),
+            "prompt_lookup": prompt_lookup.diagnostics(),
+            "draft_rollback": "cursor_trim",
+            "draft_vocabulary": (
+                draft_runner.draft_vocabulary_diagnostics()
+                if callable(getattr(draft_runner, "draft_vocabulary_diagnostics", None)) else {}
+            ),
+            "target_hidden_handoff": "host",
+            "phase_census": {
+                "cycles": len(cycles),
+                "target_verify_rows": phase_calls.get("target_verify", 0),
+                "target_and_draft_prefill": {
+                    "calls": phase_calls.get("target_and_draft_prefill", 0),
+                    "ms": phase_ms.get("target_and_draft_prefill", 0.0),
+                },
+                "target_prefill_hidden_export": {
+                    "calls": phase_calls.get("target_prefill_hidden_export", 0),
+                    "ms": phase_ms.get("target_prefill_hidden_export", 0.0),
+                },
+                "proposal": {
+                    "calls": phase_calls.get("proposal", 0),
+                    "ms": phase_ms.get("proposal", 0.0),
+                },
+                "target_verify": {
+                    "calls": phase_calls.get("target_verify", 0),
+                    "ms": phase_ms.get("target_verify", 0.0),
+                    "includes_hidden_export": True,
+                },
+                "target_k0": {
+                    "calls": phase_calls.get("target_k0", 0),
+                    "ms": phase_ms.get("target_k0", 0.0),
+                },
+                "acceptance_control": {
+                    "calls": phase_calls.get("acceptance_control", 0),
+                    "ms": phase_ms.get("acceptance_control", 0.0),
+                },
+                "draft_commit_or_rollback": {
+                    "calls": phase_calls.get("draft_commit_or_rollback", 0),
+                    "ms": phase_ms.get("draft_commit_or_rollback", 0.0),
+                },
+                "draft_stages_ms": {
+                    name: elapsed_ms
+                    for name, elapsed_ms in sorted(phase_ms.items())
+                    if name.startswith("draft_")
+                    and name != "draft_commit_or_rollback"
+                },
+            },
+        }
+        # The shared per-request block. This provider's cycles and K0 steps are
+        # the only record of which emitted tokens came from speculation, so it
+        # is published beside the legacy provider diagnostics rather than
+        # replacing them.
+        execution_accounting = speculative_output_accounting(accounting)
+        if execution_accounting is not None:
+            diagnostics["specdec2_mtp2"] = execution_accounting
         telemetry = GenerationTelemetry(
             decode_state=DecodeState(
                 prompt_tokens=len(token_ids),
@@ -532,77 +649,7 @@ class Qwen4ExpMTPTextProvider:
                 "mtp_accepted_draft_tokens": accepted,
                 "mtp_cycles_count": len(cycles),
             },
-            diagnostics={
-                "speculative_provider": self.provider_name,
-                "candidate_budget": self.candidate_budget,
-                "proposed_draft_tokens": proposed,
-                "accepted_draft_tokens": accepted,
-                "draft_acceptance": (
-                    float(accepted / proposed) if proposed else 0.0
-                ),
-                "cycles": [
-                    {
-                        "start_position": cycle.start_position,
-                        "candidates": list(cycle.candidates),
-                        "accepted": cycle.accepted,
-                        "mismatch_token": cycle.mismatch_token,
-                        "committed_position": cycle.committed_position,
-                    }
-                    for cycle in cycles
-                ],
-                "target_verify": (
-                    "batched_state_rows" if batched_verify else "serial_exact"
-                ),
-                "sampling_algorithm": (
-                    "target_draw_match_deterministic_draft" if controlled else "raw_argmax_match"
-                ),
-                "prompt_lookup": prompt_lookup.diagnostics(),
-                "draft_rollback": "cursor_trim",
-                "draft_vocabulary": (
-                    draft_runner.draft_vocabulary_diagnostics()
-                    if callable(getattr(draft_runner, "draft_vocabulary_diagnostics", None)) else {}
-                ),
-                "target_hidden_handoff": "host",
-                "phase_census": {
-                    "cycles": len(cycles),
-                    "target_verify_rows": phase_calls.get("target_verify", 0),
-                    "target_and_draft_prefill": {
-                        "calls": phase_calls.get("target_and_draft_prefill", 0),
-                        "ms": phase_ms.get("target_and_draft_prefill", 0.0),
-                    },
-                    "target_prefill_hidden_export": {
-                        "calls": phase_calls.get("target_prefill_hidden_export", 0),
-                        "ms": phase_ms.get("target_prefill_hidden_export", 0.0),
-                    },
-                    "proposal": {
-                        "calls": phase_calls.get("proposal", 0),
-                        "ms": phase_ms.get("proposal", 0.0),
-                    },
-                    "target_verify": {
-                        "calls": phase_calls.get("target_verify", 0),
-                        "ms": phase_ms.get("target_verify", 0.0),
-                        "includes_hidden_export": True,
-                    },
-                    "target_k0": {
-                        "calls": phase_calls.get("target_k0", 0),
-                        "ms": phase_ms.get("target_k0", 0.0),
-                    },
-                    "acceptance_control": {
-                        "calls": phase_calls.get("acceptance_control", 0),
-                        "ms": phase_ms.get("acceptance_control", 0.0),
-                    },
-                    "draft_commit_or_rollback": {
-                        "calls": phase_calls.get("draft_commit_or_rollback", 0),
-                        "ms": phase_ms.get("draft_commit_or_rollback", 0.0),
-                    },
-                    "draft_stages_ms": {
-                        name: elapsed_ms
-                        for name, elapsed_ms in sorted(phase_ms.items())
-                        if name.startswith("draft_")
-                        and name != "draft_commit_or_rollback"
-                    },
-                },
-            },
+            diagnostics=diagnostics,
         )
         return GenerationOutput(
             text=self.target_generator.tokenizer.decode(
