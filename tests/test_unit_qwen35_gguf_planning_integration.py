@@ -67,3 +67,25 @@ def test_legacy_plan_type_and_capacity_imports_remain_aliases():
         b'hipengine.runtime.qwen35_gguf_planning\n', b'hipengine.runtime.qwen35_gguf_runner\n',
     )
     assert pickle.loads(legacy).to_json_dict() == plan.to_json_dict()
+
+
+def test_runner_does_not_reexport_unconsumed_private_owner_helpers():
+    owners = {
+        planning: (
+            '_CONTEXT_SCALED_SCRATCH_FIELDS',
+            '_GGUF_CAPACITY_RESERVE_MIB_DEFAULT',
+            '_GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT',
+            '_GGUF_TRANSIENT_FIXED_BYTES_DEFAULT',
+            '_gguf_largest_block_aligned_context',
+        ),
+    }
+    from hipengine.runtime import qwen35_gguf_kv as kv
+    owners[kv] = (
+        '_free_gguf_kv_plane_buffer',
+        '_gguf_kv_backing_arena_identity',
+        '_qwen35_gguf_kv_scale_shape',
+    )
+    for owner, names in owners.items():
+        for name in names:
+            assert hasattr(owner, name)
+            assert not hasattr(execution, name)
