@@ -3134,25 +3134,6 @@ execution-profile gates for any changed arithmetic default. Dispatch tests alone
 that equality. The capability table continues to distinguish the production owner from the
 reference; it is not an admission gate.
 
-### R0483 — EVIE/Surya runtime library ownership
-
-Owner: `hipengine/runtime/evie.py`.
-
-Scope: `hipengine/runtime/evie.py`, `hipengine/runtime/surya.py`, `hipengine.kernels.hip_gfx1100`.
-
-**Deferred architecture decision:** preserve explicit library ownership in these specialized
-runners, or migrate both to backend-provided runtime operations. The latter needs a declared
-boundary between the four-axis kernel registry and whole-library construction; a second library
-registry must not silently become a fifth kernel axis. Resolve builders and wrappers together, keep
-injected test libraries and their lifetime semantics, and preserve the existing arithmetic and
-supported HIP targets. Merely changing imports would leave symbol dispatch and ownership duplicated.
-
-Done when: If migrating, document the boundary in `docs/PLAN.md`, test backend selection without loading HIP,
-and run EVIE/Surya live runtime and public API checks, including
-`tests/test_live_evie_gpu_runtime.py`, `tests/test_live_surya_gpu.py`,
-`tests/test_live_surya_public_api.py`, and `tests/test_integration_surya_server_multimodal.py`. If
-explicit ownership is chosen, document that exception and remove this entry.
-
 ### R0484 — Surya decode fallback and sparse-chunk work
 
 Owner: `hipengine/runtime/surya.py`.

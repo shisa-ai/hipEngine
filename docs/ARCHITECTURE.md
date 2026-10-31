@@ -31,6 +31,23 @@ own admission queues, cache leases, cancellation, retained prefixes or speculati
 commit points. Those are subsystem contracts. Do not encode a lifecycle policy as
 a new kernel variant or add model/backend branches to the scheduler.
 
+Whole-library JIT artifacts have a separate ownership boundary. Backend source
+families such as `evie_ops`, `surya_ops`, `qwen35_linear_attn_conv` and
+`qwen35_linear_attn_gdn` compile to shared objects. `hipengine.core.build` owns
+compilation, target-architecture resolution, build identity and the loaded-library
+cache. Repeated builds with the same identity reuse the cached handle until
+explicit invalidation; invalidation does not replace references already held by
+runners.
+
+`EvieRunner` and `SuryaGpuRunner` explicitly hold the library references used by
+their launch wrappers for the runner lifetime. Both accept injected `library`,
+`conv_library` and `gdn_library` handles; Surya additionally builds and holds
+`surya_library`. Their `close()` methods release device resources, not library
+handles. These specialized HIP runtimes use backend-tree builders directly;
+whole-library construction is not a second operation registry or a fifth kernel
+axis. A non-HIP port must provide a backend selection boundary without changing
+these library lifetime contracts.
+
 ## Production request path
 
 ```text

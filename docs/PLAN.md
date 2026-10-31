@@ -437,8 +437,12 @@ or running the candidate that the packet must evaluate.
 Start with [Architecture and subsystem boundaries](ARCHITECTURE.md) for the
 production ownership map and navigation. The four-axis kernel registry selects
 implementations; generation, KV/retention, speculative transactions and resource
-lifetime are separate subsystem boundaries. This plan remains the source of
-architectural invariants and roadmap decisions.
+lifetime are separate subsystem boundaries. Family runtimes explicitly hold the
+JIT shared-library handles they dispatch through; build caching and compilation
+remain in `hipengine.core.build`, not a separate registry axis. The
+[whole-library ownership boundary](ARCHITECTURE.md#kernel-selection-versus-model-and-subsystem-composition)
+also covers EVIE/Surya's specialized HIP builders and injected handles. This plan
+remains the source of architectural invariants and roadmap decisions.
 
 Qwen dense KV and both compact-DMS selections share request validation, session
 acquisition and lease retirement. Their supported compositions remain distinct;
