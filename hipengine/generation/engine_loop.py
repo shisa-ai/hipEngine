@@ -2065,7 +2065,7 @@ def add_engine_loop_config_args(
         "--prefix-cache",
         choices=PREFIX_CACHE_CHOICES,
         default=resolve_prefix_cache_mode(env.get("HIPENGINE_PREFIX_CACHE")),
-        help="Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off)",
+        help=f"Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: {PREFIX_CACHE_DEFAULT})",
     )
 
 

@@ -206,16 +206,6 @@ attribution only. Preserve
 and `admission_basis="implementation"` in both modes. Never invent a fingerprint or use a
 byte-digest match to conflate qwen36-dense and qwen38 execution identity.
 
-### R0059 — Prefix-cache rollback interface
-
-Owner: `hipengine/generation/engine_loop.py`.
-
-Scope: `hipengine/generation/engine_loop.py` — Prefix-cache rollback interface.
-
-Done when: Decide whether to retain `HIPENGINE_PREFIX_CACHE=off` as an environment adapter or replace it with
-an explicit cache policy. Preserve `hipengine serve --prefix-cache off`, caller intent and
-cache-disabled comparisons before retiring the adapter.
-
 ### R0058 — Decide dormant ordered-pair redesign and Q3/Q3 capability
 
 Owner: `hipengine/kernels/hip_gfx1100/fused/gguf_iq4_q4_pair.py`.
