@@ -59,7 +59,6 @@ IU8_EXACT_ENV = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
 PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
 BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
 ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
-PRODUCTION_MOE_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4"
 GATE_ALL_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL"
 GRID64_VARIANT = "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
@@ -87,8 +86,7 @@ RETIRED_KEY_FREE_MODULES = (
 #: Every process key that keeps the rung - or the chain it sits in - from
 #: running, in dispatch order.
 COMPETITOR_ENV = (
-    ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
-    EXPERT_GRID_ENV, PAIR_ENV, BUNDLE_ENV,
+    ROUTED_F16_ENV, IU8_EXACT_ENV, EXPERT_GRID_ENV, PAIR_ENV, BUNDLE_ENV,
 )
 
 @pytest.fixture(autouse=True)
@@ -519,7 +517,11 @@ def _published(monkeypatch):
     resolved = _resolve(ExecutionProfile.PRODUCTION)
     generator = SimpleNamespace(runner=SimpleNamespace())
     resolved.binder(generator, resolved)
-    yield {name: os.environ.get(name) for name in COMPETITOR_ENV}, generator
+    yield {
+        **{name: os.environ.get(name) for name in COMPETITOR_ENV},
+        "production_moe_prefill_enabled": (
+            generator.production_moe_prefill_enabled),
+    }, generator
 
 
 def _gate_up_key(**kwargs):
@@ -580,8 +582,8 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     assert dict(bindings)[FIELD] is False
     assert off == "0"
     assert set(envs) == {
-        PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
-        EXPERT_GRID_ENV}
+        IU8_EXACT_ENV, EXPERT_GRID_ENV}
+    assert dict(bindings)["production_moe_prefill_enabled"] is False
     assert dict(bindings)["routed_f16_enabled"] is False
     assert dict(bindings)["q4_pair_prefill"] is False
     assert dict(bindings)["q4_bundle_prefill"] is False
@@ -608,6 +610,9 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         assert published[BUNDLE_ENV] is None
         assert generator.runner.q4_bundle_prefill is True
         assert published[EXPERT_GRID_ENV] is None   # default 64
+        # UD-Q4_K_XL production publishes the grouped-MoE gate off, so the
+        # rung's closure still depends on the owners above it.
+        assert published["production_moe_prefill_enabled"] is False
         # The chain's own switches are runner state, published on every plan.
         assert generator.runner.q4_exact_grouped_gate is True
         assert generator.runner.q4_exact_grouped_all is True

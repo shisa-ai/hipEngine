@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+from contextlib import ExitStack
 from pathlib import Path
 import sys
 from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +34,90 @@ def test_decode_dp4a_candidate_selects_the_kernel_it_counts() -> None:
     assert candidate.candidate_key[-1] == (
         "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out")
     assert candidate.count_registered_dispatch
+
+
+def test_production_moe_restore_candidate_binds_the_owner_not_a_process_key() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["production_moe_restore"]
+    assert candidate.production_moe_prefill_enabled is True
+    assert "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL" not in candidate.environment
+    assert module._candidate_named_profile_intact(candidate) is False
+
+
+@pytest.mark.parametrize(
+    ("override", "initial", "expected"),
+    [
+        (True, False, True),    # on
+        (False, True, False),   # off overrides an inherited true
+        (False, False, False),  # explicit false
+        (None, True, True),     # preserve an inherited true
+        (None, False, False),   # preserve an inherited false
+    ],
+)
+def test_candidate_production_moe_owner_is_captured_while_bound(
+    override, initial, expected
+) -> None:
+    module = _load_script()
+    generator = SimpleNamespace(
+        production_moe_prefill_enabled=initial,
+        runner=SimpleNamespace(production_moe_prefill_enabled=initial),
+    )
+    spec = SimpleNamespace(production_moe_prefill_enabled=override)
+    stack = ExitStack()
+    try:
+        actual = module._bind_candidate_production_moe_prefill(
+            stack, generator, spec)
+    finally:
+        stack.close()
+
+    assert actual is expected
+    # The report value is captured before the scope is restored.
+    assert generator.production_moe_prefill_enabled is initial
+    assert generator.runner.production_moe_prefill_enabled is initial
+
+
+@pytest.mark.parametrize(
+    ("override", "resolved", "expected"),
+    [
+        (True, True, True),
+        (False, False, False),
+        (None, True, True),
+    ],
+)
+def test_candidate_owner_provenance_reports_the_bound_decision(
+    override, resolved, expected
+) -> None:
+    module = _load_script()
+    fields = module._candidate_owner_provenance(
+        SimpleNamespace(production_moe_prefill_enabled=override), resolved)
+
+    assert fields == {
+        "production_moe_prefill_enabled": expected,
+        "production_moe_prefill_override": override,
+    }
+
+
+@pytest.mark.parametrize(
+    ("environment", "qsa_wmma", "override", "expected"),
+    [
+        ({}, None, None, True),
+        ({}, None, True, False),
+        ({}, None, False, False),
+        ({"HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1"}, None, None, False),
+        ({}, "on", None, False),
+    ],
+)
+def test_candidate_named_profile_intact_rejects_owner_overrides(
+    environment, qsa_wmma, override, expected
+) -> None:
+    module = _load_script()
+    spec = SimpleNamespace(
+        environment=environment,
+        qsa_wmma_enabled=qsa_wmma,
+        production_moe_prefill_enabled=override,
+    )
+
+    assert module._candidate_named_profile_intact(spec) is expected
 
 
 def test_json_value_thaws_nested_immutable_profile_manifest() -> None:

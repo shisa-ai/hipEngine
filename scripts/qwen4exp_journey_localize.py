@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, resolve_production_moe_prefill
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import _make_generator, _strict_trajectory, _candidate_trajectory
@@ -35,7 +35,7 @@ Q4_DP4A_ENV_KEYS = frozenset({
 ARMS = {
     "bound": {},
     "gdn_strict": {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
-    "moe_strict": {PREFIX + key: "0" for key in ("PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL")},
+    "moe_strict": {PREFIX + "Q4_IU8_PREFILL": "0"},
     "dense_q8_gr_strict": {PREFIX + key: "0" for key in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN")},
     # Q4 DP4A is owner state now; the arm loop binds it below instead of
     # writing a process key the bound generator no longer reads.
@@ -76,6 +76,69 @@ for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
     ARMS["strict_plus_" + flag.lower()] = {}
     ARMS["q8down_off_without_" + flag.lower()] = {
         **ARMS["q8_selected_down_strict"], PREFIX + flag: "0"}
+
+
+#: Arms whose former production-MoE process value was 0. The gate is owner
+#: state now, so the arm binds it on the generator/runner instead. The generated
+#: ``strict_plus_*`` family always inherited the strict binding's 0 through its
+#: ``**strict_flags`` base, so every such arm is closed here too.
+PRODUCTION_MOE_OFF_ARMS = frozenset({
+    "moe_strict", "all_numerics_strict", "all_flags_strict",
+    "base_plus_moe_flags", "base_plus_q8_gr_flags", "base_plus_gdn_flags",
+    "base_plus_q8_selected_down_strict", "q8down_off_without_matrix",
+    "production_conservative",
+})
+PRODUCTION_MOE_SPLIT_ARMS = frozenset({
+    "strict_prefill_production_decode", "production_prefill_strict_decode",
+})
+
+
+def production_moe_arm_policy(arm):
+    """Which production-MoE owner binding an arm's former process value meant."""
+
+    if arm in PRODUCTION_MOE_SPLIT_ARMS:
+        return "split"
+    if arm in PRODUCTION_MOE_OFF_ARMS or arm.startswith("strict_plus_"):
+        return "off"
+    return "preserve"
+
+
+def production_moe_arm_scope(generator, arm):
+    """Bind the arm's production-MoE decision on the generator and runner."""
+
+    if production_moe_arm_policy(arm) == "off":
+        return production_moe_prefill_enabled(generator, False)
+    return nullcontext()
+
+
+def production_moe_split_scope(runner, arm, phase):
+    """Bind one split phase's production-MoE decision on the measured runner."""
+
+    if arm not in PRODUCTION_MOE_SPLIT_ARMS:
+        return nullcontext()
+    strict_phase = (
+        (arm == "strict_prefill_production_decode" and phase == "prefill")
+        or (arm == "production_prefill_strict_decode" and phase == "decode")
+    )
+    if not strict_phase:
+        return nullcontext()
+    return production_moe_prefill_enabled(runner, False)
+
+
+def production_moe_arm_report(generator, arm):
+    """Name the owner decision(s) that actually ran for this arm."""
+
+    policy = production_moe_arm_policy(arm)
+    if policy == "off":
+        return False
+    actual = resolve_production_moe_prefill(generator)
+    if policy == "split":
+        strict_prefill = arm == "strict_prefill_production_decode"
+        return {
+            "prefill": False if strict_prefill else actual,
+            "decode": actual if strict_prefill else False,
+        }
+    return actual
 
 
 #: Arms whose retired Q4_DP4A64 process key disabled DP4A without changing the
@@ -295,13 +358,15 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                     if wave_prefill is None else wave_prefill), gr_wave_scale(
                         runner, getattr(runner, "gr_wave_scale", False)
                         if gr_wave_prefill is None else gr_wave_prefill), q4_dp4a_split_scope(
+                            runner, arm, "prefill"), production_moe_split_scope(
                             runner, arm, "prefill"):
         runner.reset()
         result = runner.prefill(prompt_ids)
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with q4_dp4a_split_scope(runner, arm, "decode"):
+    with q4_dp4a_split_scope(runner, arm, "decode"), production_moe_split_scope(
+            runner, arm, "decode"):
         for token in forced_ids:
             result = runner.step(token)
             logits.append(np.array(result.logits, dtype=np.float32, copy=True))
@@ -401,6 +466,7 @@ def main():
                     generator.runner.configure_mmq_prefill_resources()
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(production_moe_arm_scope(generator, arm))
                 arm_scope.enter_context(q4_dp4a_arm_scope(generator, arm))
                 arm_scope.enter_context(gr_wave_scale(
                     generator.runner, gr_wave_arm_enabled(
@@ -448,7 +514,14 @@ def main():
                         [descriptor])["summary"]}
                     for i, descriptor in enumerate(descriptors)
                 ]
-                report["arms"][arm] = {"overrides": ARMS[arm], "quality": quality}
+                report["arms"][arm] = {
+                    "overrides": ARMS[arm],
+                    "owner_overrides": {
+                        "production_moe_prefill_enabled": (
+                            production_moe_arm_report(generator, arm)),
+                    },
+                    "quality": quality,
+                }
                 args.output.write_text(json.dumps(report, indent=2) + "\n")
                 print(arm, quality["summary"], flush=True)
             report["status"] = "completed"

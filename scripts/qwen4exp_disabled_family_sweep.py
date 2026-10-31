@@ -40,7 +40,8 @@ ROOT = Path(__file__).resolve().parents[1]
 FAMILIES: tuple[dict, ...] = (
     {
         "family": "PRODUCTION_MOE_PREFILL",
-        "env": {"HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1"},
+        "env": {},
+        "owner": {"production_moe_prefill": "on"},
     },
     {
         "family": "Q4_IU8_PREFILL",
@@ -150,8 +151,12 @@ def _run(
     for key, value in overrides.items():
         command += ["--override", f"{key}={value}"]
     if owner:
-        command += ["--q4-dp4a-decode", owner["q4_dp4a_decode"]]
-        command += ["--q4-dp4a-layers", owner["q4_dp4a_layers"]]
+        if "q4_dp4a_decode" in owner:
+            command += ["--q4-dp4a-decode", owner["q4_dp4a_decode"]]
+            command += ["--q4-dp4a-layers", owner["q4_dp4a_layers"]]
+        if "production_moe_prefill" in owner:
+            command += [
+                "--production-moe-prefill", owner["production_moe_prefill"]]
     completed = subprocess.run(
         command, cwd=ROOT, capture_output=True, text=True, timeout=3600
     )

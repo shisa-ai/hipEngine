@@ -124,6 +124,7 @@ from hipengine.runtime.qwen4_exp_batch_state import (
 )
 from hipengine.runtime.qwen4_exp_runner import (
     _qwen4_exp_q8_tile_scope,
+    _resolve_production_moe_prefill_enabled,
     _resolve_q4_dp4a_decode,
     Qwen4ExpGDNLayerDeviceWeights,
     Qwen4ExpGDNLayerScratch,
@@ -405,6 +406,7 @@ def run_qwen4_exp_batch_gdn_layer(
     q5k_row4_prefill: bool = False,
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
+    production_moe_prefill_enabled: bool | None = None,
     state: Qwen4ExpBatchGdnState,
     scratch: Qwen4ExpGDNLayerScratch,
     rows: int,
@@ -518,6 +520,7 @@ def run_qwen4_exp_batch_gdn_layer(
             q5k_row4_prefill=q5k_row4_prefill,
             q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
             q4_dp4a_decode_layers=q4_dp4a_decode_layers,
+            production_moe_prefill_enabled=production_moe_prefill_enabled,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -634,6 +637,7 @@ def _run_layer_ffn(
     q5k_row4_prefill: bool = False,
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
+    production_moe_prefill_enabled: bool | None = None,
     rows: int,
     branches: int,
     hidden: int,
@@ -706,6 +710,7 @@ def _run_layer_ffn(
         q5k_row4_prefill=q5k_row4_prefill,
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
+        production_moe_prefill_enabled=production_moe_prefill_enabled,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=runtime,
@@ -750,6 +755,7 @@ def run_qwen4_exp_batch_qsa_layer(
     q5k_row4_prefill: bool = False,
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
+    production_moe_prefill_enabled: bool | None = None,
     attention_state: Qwen4ExpBatchAttentionState,
     index_state: Qwen4ExpBatchQsaIndexState,
     selection: Qwen4ExpBatchQsaSelectionScratch,
@@ -871,6 +877,7 @@ def run_qwen4_exp_batch_qsa_layer(
             q5k_row4_prefill=q5k_row4_prefill,
             q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
             q4_dp4a_decode_layers=q4_dp4a_decode_layers,
+            production_moe_prefill_enabled=production_moe_prefill_enabled,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
@@ -993,6 +1000,11 @@ class Qwen4ExpGGUFBatchRunner:
     # state. The pair is part of the captured-segment identity for c1 rows.
     q4_dp4a_decode_enabled: bool | None = None
     q4_dp4a_decode_layers: frozenset[int] | None = None
+    # The production grouped-MoE prefill gate is the owning runner's decision.
+    # ``None`` keeps the direct/unbound fallback; a bound value never reads the
+    # ambient key. The selector's rows>=16 guard stays at the consumer, so a
+    # c1 capture key is inert and only an active batch width carries it.
+    production_moe_prefill_enabled: bool | None = None
     gr_wave_scale: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder and ``None`` (the dispatch heuristic) on an unbound owner.
@@ -1890,6 +1902,21 @@ class Qwen4ExpGGUFBatchRunner:
         )
         return (bool(enabled), tuple(sorted(layers)))
 
+    def _production_moe_policy(self, rows: int) -> bool:
+        """The production MoE gate a captured segment depends on.
+
+        The selector only activates at ``rows >= 16``. A c1 or narrower segment
+        therefore carries a stable false and never reads the ambient key; an
+        active batch width resolves the owner (or its direct fallback) so a
+        segment built under one decision cannot replay under another.
+        """
+
+        if int(rows) < 16:
+            return False
+        return _resolve_production_moe_prefill_enabled(
+            getattr(self, "production_moe_prefill_enabled", None)
+        )
+
     def _q8_tile_policy(self) -> tuple[tuple[int, int] | None]:
         """The Q8_0 dense tile pair a captured layer segment bakes in.
 
@@ -2194,6 +2221,8 @@ class Qwen4ExpGGUFBatchRunner:
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     q4_dp4a_decode_enabled=self.q4_dp4a_decode_enabled,
                     q4_dp4a_decode_layers=self.q4_dp4a_decode_layers,
+                    production_moe_prefill_enabled=(
+                        self.production_moe_prefill_enabled),
                     state=self.gdn_states[gdn_binding.gdn_state_index],
                     scratch=gdn_scratch,
                     rows=rows,
@@ -2212,7 +2241,8 @@ class Qwen4ExpGGUFBatchRunner:
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy()
                     + self._q4_tile_policy() + self._q8_tile_policy()
-                    + (self._q4_dp4a_policy(rows),),
+                    + (self._q4_dp4a_policy(rows),)
+                    + (self._production_moe_policy(rows),),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
@@ -2240,6 +2270,8 @@ class Qwen4ExpGGUFBatchRunner:
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     q4_dp4a_decode_enabled=self.q4_dp4a_decode_enabled,
                     q4_dp4a_decode_layers=self.q4_dp4a_decode_layers,
+                    production_moe_prefill_enabled=(
+                        self.production_moe_prefill_enabled),
                     attention_state=attention_states[qsa_binding.qsa_state_index],
                     index_state=self.index_states[qsa_binding.qsa_state_index],
                     selection=selection,
@@ -2264,7 +2296,8 @@ class Qwen4ExpGGUFBatchRunner:
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy()
                     + self._q4_tile_policy() + self._q8_tile_policy()
-                    + (self._q4_dp4a_policy(rows),),
+                    + (self._q4_dp4a_policy(rows),)
+                    + (self._production_moe_policy(rows),),
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,

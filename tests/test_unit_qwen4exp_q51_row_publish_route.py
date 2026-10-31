@@ -330,11 +330,13 @@ def test_pair2_control_names_every_preemptor():
     # ds4-MMQ Q5_1 suffix is no longer a preemptor because nothing reads it.
     assert Q51_PAIR2_PREEMPTING_ENV == (
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
-        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     )
-    # The F16 WMMA down owner below the chain is runner state, so the arm
-    # holds it off through the field set rather than a process key.
-    assert Q51_PAIR2_PREEMPTING_FIELDS == ("q51_wmma_down", "routed_f16_enabled")
+    # The F16 WMMA down owner below the chain and the production grouped-MoE
+    # prefill gate are runner state, so the arm holds them off through the field
+    # set rather than process keys.
+    assert Q51_PAIR2_PREEMPTING_FIELDS == (
+        "q51_wmma_down", "routed_f16_enabled",
+        "production_moe_prefill_enabled")
     assert Q51_PAIR2_GATE_FIELD not in Q51_PAIR2_PREEMPTING_ENV
     assert Q51_IU8_EXACT_ENV == "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 
@@ -401,9 +403,11 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
         key: "0" for key in Q51_PAIR2_PREEMPTING_ENV}
     assert "HIPENGINE_QWEN4_EXP_ROUTED_F16" not in record["preempting_owners_previous"]
     assert record["preempting_owner_fields_closed"] == {
-        "q51_wmma_down": False, "routed_f16_enabled": False}
+        "q51_wmma_down": False, "routed_f16_enabled": False,
+        "production_moe_prefill_enabled": False}
     assert record["preempting_owner_fields_previous"] == {
-        "q51_wmma_down": None, "routed_f16_enabled": None}
+        "q51_wmma_down": None, "routed_f16_enabled": None,
+        "production_moe_prefill_enabled": None}
     assert record["pair2_gate"] == {
         "runner_field": Q51_PAIR2_GATE_FIELD,
         "published_value": True,

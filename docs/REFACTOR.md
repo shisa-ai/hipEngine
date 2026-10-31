@@ -48,7 +48,7 @@ Validate with
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
-Scope: `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`; `PRODUCTION_MOE_PREFILL`; `Q4_IU8_PREFILL`.
+Scope: `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`; `PRODUCTION_MOE_PREFILL`; `Q4_IU8_PREFILL`; `HIPENGINE_QWEN4_EXP_Q4_DP4A64`.
 
 **Deferred transport:** publish `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` through resolved runner
 state, with scoped serial diagnostics, before retiring the environment handoff. Preserve
@@ -62,7 +62,7 @@ route engagement.
 - `GR_IU8` and `GR_IU8_DOWN`: R0026/R0027 own their independent correction gates.
 - `Q8_MMQ_PREFILL`: localize the operand role responsible for canonical-depth failure.
 - `runner.gdn_peer_prefill_layers`: require a complete-owner mechanism, not noise-level timing.
-- `Q4_DP4A64`: pass both decode gates from the late-layer production-prefill entry.
+- `Q4_DP4A64`: pass both decode gates from the late-layer production-prefill entry; until then the direct/unbound process fallback remains, and it is removed once every caller binds `q4_dp4a_decode_enabled` on its owner.
 - `QSA_FLASH_PREFILL`: choose a concrete repair or retirement disposition for
   the failed recovery composition.
 
@@ -3963,14 +3963,21 @@ while the MMQ owner is absent.
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
-Scope: `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`; `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`; `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`.
+Scope: `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`; `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`; `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`.
 
-**Deferred ownership migration:** replace `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
-`HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`, and `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` with
-explicit resolved owner state at their consumers. The binder still resets the Q8 WMMA layer list to
-empty; provide a getter and explicit diagnostic override instead of requiring callers to know binder
-order. Test independent owners in both construction orders and interleaved requests before removing
-the environment transport.
+**Remaining ownership migration:** replace `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` and
+`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` with explicit resolved owner state at their consumers. The
+binder still resets the Q8 WMMA layer list to empty; provide a getter and explicit diagnostic
+override instead of requiring callers to know binder order. Test independent owners in both
+construction orders and interleaved requests before removing the environment transport.
+
+**Remaining direct-call migration:** replace the direct/unbound
+`HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` fallback after every in-tree caller reaches the
+consumer through a bound generator or runner. Confirm with
+`grep -RIn "PRODUCTION_MOE_PREFILL\|production_moe_prefill" scripts hipengine tests` that no
+consumer still depends on the ambient value, then remove the parser and its fallback tests and run
+`tests/test_unit_qwen4exp_production_moe_owner_transport.py`. Preserve explicit owner diagnostics
+and the guarded `rows >= 16` selector.
 
 ```bash
 python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json

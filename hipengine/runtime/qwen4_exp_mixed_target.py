@@ -390,6 +390,8 @@ class Qwen4ExpMixedTargetPass:
                         batch, "q4_dp4a_decode_enabled", None),
                     q4_dp4a_decode_layers=getattr(
                         batch, "q4_dp4a_decode_layers", None),
+                    production_moe_prefill_enabled=getattr(
+                        batch, "production_moe_prefill_enabled", None),
                     q4_tile_m=getattr(batch, "q4_tile_m", None),
                     q4_tile_n=getattr(batch, "q4_tile_n", None),
                     q51_down_m1=getattr(batch, "q51_down_m1", False),

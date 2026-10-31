@@ -489,7 +489,6 @@ def test_the_profile_gate_can_bind_the_rung() -> None:
 
 
 ROUTED_F16_ENV = "HIPENGINE_QWEN4_EXP_ROUTED_F16"
-PRODUCTION_MOE_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 #: The retired process switch for the F16 WMMA down owner below the chain;
 #: nothing reads it, and the tests keep the literal to prove it inert.
 WMMA_ENV = "HIPENGINE_QWEN4_EXP_Q5_1_WMMA"
@@ -502,8 +501,7 @@ FOLD_FIELDS = (
 #: Every process key that keeps the rung - or the chain it sits in - from
 #: running, as the dispatch orders them.
 COMPETITOR_ENV = (
-    ROUTED_F16_ENV, PRODUCTION_MOE_ENV, IU8_EXACT_ENV,
-    WMMA_ENV, PAIR_ENV, EXPERT_GRID_ENV,
+    ROUTED_F16_ENV, IU8_EXACT_ENV, WMMA_ENV, PAIR_ENV, EXPERT_GRID_ENV,
 )
 
 
@@ -524,7 +522,9 @@ def _published(monkeypatch):
     resolved.binder(generator, resolved)
     yield {**{name: os.environ.get(name) for name in COMPETITOR_ENV},
            "routed_f16_enabled": generator.routed_f16_enabled,
-           "q51_pair_prefill": generator.q51_pair_prefill}
+           "q51_pair_prefill": generator.q51_pair_prefill,
+           "production_moe_prefill_enabled": (
+               generator.production_moe_prefill_enabled)}
 
 
 def _down_key(**kwargs):
@@ -597,6 +597,9 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         # plan publishes it off through the field and names no process key.
         assert published[WMMA_ENV] is None
         assert published[EXPERT_GRID_ENV] is None   # default 64
+        # UD-Q4_K_XL production publishes the grouped-MoE gate off, so the
+        # rung's closure still depends on the owners above it.
+        assert published["production_moe_prefill_enabled"] is False
 
         # The real predicates, in dispatch order. Routed F16 takes the whole
         # down leg, and the iu8 chain sits above the ladder inside the chain.

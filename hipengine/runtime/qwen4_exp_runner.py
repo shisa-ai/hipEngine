@@ -5423,12 +5423,89 @@ def _qwen4_exp_router_producer_variant(rows: int) -> str | None:
     return requested
 
 
-def _qwen4_exp_production_moe_prefill_enabled(
-    weight: GGUFDeviceWeight, *, rows: int
+_PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
+_PRODUCTION_MOE_PREFILL_FALSE = frozenset({"", "0", "false", "False"})
+_PRODUCTION_MOE_PREFILL_UNSET = object()
+
+
+def _parse_production_moe_prefill_enabled(value: str) -> bool:
+    """Preserve the historical raw false set, including its case handling."""
+
+    return value not in _PRODUCTION_MOE_PREFILL_FALSE
+
+
+def _resolve_production_moe_prefill_enabled(
+    enabled: bool | None,
 ) -> bool:
-    if rows < 16 or os.environ.get(
-        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL", "0"
-    ) in {"", "0", "false", "False"}:
+    """Resolve a bound owner decision, or the direct/unbound ambient fallback."""
+
+    if enabled is not None:
+        return bool(enabled)
+    return _parse_production_moe_prefill_enabled(
+        os.environ.get(_PRODUCTION_MOE_PREFILL_ENV, "0")
+    )
+
+
+def resolve_production_moe_prefill(owner: Any) -> bool:
+    """Return the decision a generator or runner would currently use."""
+
+    return _resolve_production_moe_prefill_enabled(
+        getattr(owner, "production_moe_prefill_enabled", None)
+    )
+
+
+def _production_moe_prefill_targets(owner: Any) -> list[Any]:
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    return targets
+
+
+@contextlib.contextmanager
+def production_moe_prefill_enabled(
+    owner: Any,
+    enabled: bool | None | object = _PRODUCTION_MOE_PREFILL_UNSET,
+):
+    """Override the production grouped-MoE prefill decision on one owner.
+
+    A generator target also binds its current runner. Omitted preserves the
+    current owner value, ``None`` restores the direct/unbound fallback, and a
+    bool binds that decision. The previous state is restored on exit, including
+    after an exception. No allocation or resource work happens here.
+    """
+
+    targets = _production_moe_prefill_targets(owner)
+    prior = [
+        (target, getattr(target, "production_moe_prefill_enabled", None))
+        for target in targets
+    ]
+    try:
+        for target in targets:
+            if enabled is not _PRODUCTION_MOE_PREFILL_UNSET:
+                target.production_moe_prefill_enabled = (
+                    None if enabled is None else bool(enabled)
+                )
+        yield prior
+    finally:
+        for target, previous in prior:
+            target.production_moe_prefill_enabled = previous
+
+
+def _qwen4_exp_production_moe_prefill_enabled(
+    weight: GGUFDeviceWeight, *, rows: int,
+    enabled: bool | None = None,
+) -> bool:
+    """Resolve at the historical guarded consumer point.
+
+    The row guard comes first, so an inactive width never reads the owner or
+    ambient fallback. The slot-path and backend-capability guards follow, in
+    the same order as before. A bound false decision returns before either.
+    """
+
+    if rows < 16:
+        return False
+    if not _resolve_production_moe_prefill_enabled(enabled):
         return False
     parts = weight.spec.slot_path.split(".")
     if len(parts) < 3 or parts[0] != "layers":
@@ -6179,6 +6256,7 @@ def run_qwen4_exp_moe(
     q5k_row4_prefill: bool = False,
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
+    production_moe_prefill_enabled: bool | None = None,
     scratch: Qwen4ExpMoEScratch,
     rows: int,
     hidden: int,
@@ -6332,6 +6410,7 @@ def run_qwen4_exp_moe(
                 q5k_row4_prefill=q5k_row4_prefill,
                 q4_dp4a_decode_enabled=q4_dp4a_enabled,
                 q4_dp4a_decode_layers=q4_dp4a_layers,
+                production_moe_prefill_enabled=production_moe_prefill_enabled,
                 scratch=scratch,
                 rows=rows,
                 hidden=hidden,
@@ -6456,7 +6535,8 @@ def run_qwen4_exp_moe(
         )
 
     production_grouped_moe = _qwen4_exp_production_moe_prefill_enabled(
-        weights["expert_gate"], rows=rows
+        weights["expert_gate"], rows=rows,
+        enabled=production_moe_prefill_enabled,
     )
     exact_grouped_down = (
         not production_grouped_moe
@@ -7646,6 +7726,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q5k_row4_prefill: bool = False,
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
+    production_moe_prefill_enabled: bool | None = None,
     attention_state: Qwen4ExpDenseAttentionState,
     scratch: Qwen4ExpQSALayerScratch,
     position: int,
@@ -7786,6 +7867,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q5k_row4_prefill=q5k_row4_prefill,
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
+        production_moe_prefill_enabled=production_moe_prefill_enabled,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
@@ -7830,6 +7912,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q5k_row4_prefill: bool = False,
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
+    production_moe_prefill_enabled: bool | None = None,
     attention_state: Qwen4ExpDenseAttentionState,
     index_state: Qwen4ExpQSAIndexDeviceState,
     scratch: Qwen4ExpQSALayerScratch,
@@ -8028,6 +8111,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q5k_row4_prefill=q5k_row4_prefill,
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
+        production_moe_prefill_enabled=production_moe_prefill_enabled,
         scratch=scratch.moe,
         rows=rows,
         hidden=hidden,
@@ -8086,6 +8170,7 @@ def run_qwen4_exp_gdn_layer(
     q5k_row4_prefill: bool = False,
     q4_dp4a_decode_enabled: bool | None = None,
     q4_dp4a_decode_layers: frozenset[int] | None = None,
+    production_moe_prefill_enabled: bool | None = None,
     conv_state_ptr: int,
     recurrent_state_ptr: int,
     scratch: Qwen4ExpGDNLayerScratch,
@@ -8342,6 +8427,7 @@ def run_qwen4_exp_gdn_layer(
         q5k_row4_prefill=q5k_row4_prefill,
         q4_dp4a_decode_enabled=q4_dp4a_decode_enabled,
         q4_dp4a_decode_layers=q4_dp4a_decode_layers,
+        production_moe_prefill_enabled=production_moe_prefill_enabled,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
@@ -9170,6 +9256,11 @@ class Qwen4ExpGGUFResidentModelRunner:
     # historical meaning: every layer.
     q4_dp4a_decode_enabled: bool | None = None
     q4_dp4a_decode_layers: frozenset[int] | None = None
+    # The production grouped-MoE prefill gate is the owning runner's decision.
+    # ``None`` is the unbound/direct state, where the historical process key
+    # remains the fallback; a bound decision never reads it. The row>=16 guard
+    # and the layer capability check stay at the dispatch consumer.
+    production_moe_prefill_enabled: bool | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -9357,6 +9448,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         moe_graph_enabled: bool | None = None,
         q4_dp4a_decode_enabled: bool | None = None,
         q4_dp4a_decode_layers: frozenset[int] | None = None,
+        production_moe_prefill_enabled: bool | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
@@ -9367,6 +9459,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             if q4_dp4a_decode_layers is None
             else frozenset(q4_dp4a_decode_layers)
         )
+        self.production_moe_prefill_enabled = production_moe_prefill_enabled
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
                 "Qwen4Exp runner max_sequence_length must be in "
@@ -10613,6 +10706,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         "gdn", layer, q4_dp4a_decision),
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
+                    production_moe_prefill_enabled=self.production_moe_prefill_enabled,
                     layer_graph_cache=self.layer_graph_cache,
                     layer_graph_key=q4_dp4a_decode_graph_key(
                         "gdn", layer, q4_dp4a_decision),
@@ -10672,6 +10766,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                         "qsa", layer, q4_dp4a_decision),
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
+                    production_moe_prefill_enabled=self.production_moe_prefill_enabled,
                     cache_only=False,
                     qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
                     qsa_wave32=self.qsa_wave32,
@@ -11007,6 +11102,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
+                    production_moe_prefill_enabled=self.production_moe_prefill_enabled,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     q51_down_m1=self.q51_down_m1,
                     q51_pair_prefill=self.q51_pair_prefill,
@@ -11064,6 +11160,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     qsa_wave32=self.qsa_wave32,
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,
                     q4_dp4a_decode_layers=q4_dp4a_layers,
+                    production_moe_prefill_enabled=self.production_moe_prefill_enabled,
                     q51_down_m1=self.q51_down_m1,
                     q51_pair_prefill=self.q51_pair_prefill,
                     q51_fold128_prefill=self.q51_fold128_prefill,

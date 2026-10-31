@@ -2,8 +2,8 @@
 
 ``HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`` is the exact, own-selector layer-2 Q5_K
 route (``benchmarks/results/2026-09-09-framework-qwen4exp-q5k-iu8-*``), and the
-certified WMMA-MoE27 transport is ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL``
-with its capability layer list. The grouped-WMMA Q5_K candidate those routes
+certified WMMA-MoE27 transport is the owner field
+``production_moe_prefill_enabled`` with its capability layer list. The grouped-WMMA Q5_K candidate those routes
 replaced failed its complete profile gate
 (``benchmarks/results/2026-08-31-...p1-layer2-grouped-profile-rejected.json``:
 ``status: rejected_correctness_default_off``, binding ``prefill_last`` /

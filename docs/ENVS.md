@@ -801,7 +801,7 @@ use.
 | --- | --- | --- |
 | `HIPENGINE_QWEN4_EXP_BATCHED_POSITION` | `1` | One shared 192B H2D position upload instead of 24 per-layer 8B blocking `set_position` copies per decode step (bit-exact, ~1.3% median TG gain). `0` restores per-layer copies. |
 | `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` | retired | No longer read. Chunked QSA prefill uses batched score/top-k/expansion by default; `qsa_batched_selection(runner, False)` selects the per-row diagnostic fallback on that runner. |
-| `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` | `0` (production binder sets `1`) | Master gate for the production grouped MoE prefill session (rows >= 16, supported quant shapes). |
+| `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` | `0` (direct/unbound callers) | Direct/unbound fallback only. A bound generator or runner never reads it: the production binder publishes `production_moe_prefill_enabled` on both, and `production_moe_prefill_enabled(owner, ...)` overrides that owner state. The rows >= 16 and layer-capability guards stay at the consumer. |
 | `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1` | retired | No longer read. The profile publishes the Q5_1 down M1 choice on its runner; registered strict fallback kernels remain. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | retired | No longer read. Optional compact WMMA down selection is runner-owned; production grouped-MoE admission, tile-map preparation and strict fallback remain unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | retired | No longer read. The owning runner selects the out8 fallback below the expertgrid family; `q51_out8(runner, False)` retains the output1 comparison without changing higher-priority owners. |

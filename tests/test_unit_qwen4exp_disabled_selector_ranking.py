@@ -95,6 +95,9 @@ def test_arms_cover_every_disabled_prefill_selector(module):
         for overrides in module.ARMS.values()
         for key in overrides
     }
+    for owner in module.OWNER_ARMS.values():
+        if "production_moe_prefill" in owner:
+            covered.add("PRODUCTION_MOE_PREFILL")
     assert still_disabled <= covered, sorted(still_disabled - covered)
 
 def test_the_restored_flags_are_not_in_the_disabled_set(module):
@@ -118,6 +121,13 @@ def test_the_restored_flags_are_not_in_the_disabled_set(module):
     still_disabled = [flag for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
                       if flag not in restored]
     assert len(still_disabled) == 8
+
+
+def test_production_moe_is_owner_state_not_an_environment_arm(module):
+    key = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
+    assert all(key not in overrides for overrides in module.ARMS.values())
+    assert module.OWNER_ARMS["moe"] == {"production_moe_prefill": "on"}
+    assert module.OWNER_ARMS["all_prefill"] == {"production_moe_prefill": "on"}
 
 
 def test_baseline_arm_enables_nothing(module):

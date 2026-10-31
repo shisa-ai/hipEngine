@@ -51,6 +51,7 @@ from hipengine.generation.qwen4_exp_profiles import (
 from hipengine.runtime.qwen4_exp_runner import (
     gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill, gdn_decode_rowsplit,
     moe_decode_warp, gr_f16_direct,
+    production_moe_prefill_enabled, resolve_production_moe_prefill,
     q4_dp4a_decode, q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     routed_f16_enabled as routed_f16,
@@ -163,6 +164,11 @@ class CandidateSpec:
     # (and its current runner) before the measured rows and restored on unwind.
     q4_dp4a_decode_enabled: bool | None = None
     q4_dp4a_decode_layers: frozenset[int] | None = None
+    # Explicit production grouped-MoE prefill gate for this arm. ``None`` keeps
+    # the base profile's published owner state; a bound value is applied on the
+    # generator and its current runner before the measured rows and restored on
+    # unwind. The rows>=16 and layer-capability guards remain at the consumer.
+    production_moe_prefill_enabled: bool | None = None
     # Explicit Q4_K exact grouped gate/up gate and its `_ALL` joint term for this
     # arm, same protocol. ``None`` keeps the base profile's publication (both on
     # every plan). ``False`` on the gate is the route to the plain-iu8 and F16
@@ -295,7 +301,7 @@ CANDIDATES = {
         mechanism="conservative arithmetic fallback retaining independently exact production owners",
         environment={"HIPENGINE_QWEN4_EXP_" + flag: "0"
                      for flag in CONSERVATIVE_ARITHMETIC_FLAGS
-                     if flag != "Q4_DP4A64"},
+                     if flag not in {"Q4_DP4A64", "PRODUCTION_MOE_PREFILL"}},
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
         candidate_key=None,
@@ -311,6 +317,7 @@ CANDIDATES = {
         gdn_peer_prefill=False,
         q4_dp4a_decode_enabled=False,
         q4_dp4a_decode_layers=frozenset(),
+        production_moe_prefill_enabled=False,
     ),
     # The risk multiplier as a CONFIGURATION.  The production repair is a
     # bit-parity mechanism, and `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` sets the
@@ -938,9 +945,9 @@ CANDIDATES["production_moe_restore"] = CandidateSpec(
         "window."
     ),
     environment={
-        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
     },
+    production_moe_prefill_enabled=True,
     base_profile="production",
     scenario_id="qwen4exp-ud-q4-k-xl-moe-wmma-restore",
     candidate_key=("hip_gfx1151", "moe_linear", "gguf_q4_k",
@@ -1495,6 +1502,44 @@ def _run_batch_candidate(
     return runs, states, tasks, adapter.evidence
 
 
+def _bind_candidate_production_moe_prefill(
+    dispatch_stack: ExitStack,
+    candidate_generator: Any,
+    candidate_spec: CandidateSpec,
+) -> bool:
+    """Bind the arm's owner gate and return the decision the rows will use."""
+
+    if candidate_spec.production_moe_prefill_enabled is not None:
+        dispatch_stack.enter_context(production_moe_prefill_enabled(
+            candidate_generator,
+            candidate_spec.production_moe_prefill_enabled,
+        ))
+    return resolve_production_moe_prefill(candidate_generator)
+
+
+def _candidate_owner_provenance(
+    candidate_spec: CandidateSpec,
+    resolved_enabled: bool,
+) -> dict[str, bool | None]:
+    """Name the owner decision actually bound for the measured candidate rows."""
+
+    return {
+        "production_moe_prefill_enabled": bool(resolved_enabled),
+        "production_moe_prefill_override": (
+            candidate_spec.production_moe_prefill_enabled),
+    }
+
+
+def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
+    """A candidate is named-profile-intact only when it binds no owner override."""
+
+    return (
+        not candidate_spec.environment
+        and candidate_spec.qsa_wmma_enabled is None
+        and candidate_spec.production_moe_prefill_enabled is None
+    )
+
+
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if not args.model_root.is_dir():
         raise GateError(f"model root does not exist: {args.model_root}")
@@ -1663,6 +1708,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if candidate_spec.moe_decode_warp is not None:
         dispatch_stack.enter_context(moe_decode_warp(
             candidate_generator.runner, candidate_spec.moe_decode_warp))
+    candidate_production_moe_prefill_enabled = (
+        _bind_candidate_production_moe_prefill(
+            dispatch_stack, candidate_generator, candidate_spec))
     if (candidate_spec.q4_dp4a_decode_enabled is not None
             or candidate_spec.q4_dp4a_decode_layers is not None):
         # The Q4 DP4A pair is owner state now. Bind it on the generator and its
@@ -2027,6 +2075,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "classification": candidate_spec.classification,
             "mechanism": candidate_spec.mechanism,
             "environment": dict(candidate_spec.environment),
+            **_candidate_owner_provenance(
+                candidate_spec,
+                candidate_production_moe_prefill_enabled,
+            ),
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "base_profile": candidate_spec.base_profile,
             "bound_environment": bound_environment,
@@ -2054,7 +2106,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "candidate_manifest": _json_value(candidate_profile.manifest),
             "candidate_manifest_sha256": candidate_profile.manifest_sha256,
             "candidate_named_profile_intact": (
-                not candidate_spec.environment and candidate_spec.qsa_wmma_enabled is None),
+                _candidate_named_profile_intact(candidate_spec)),
         },
         "protocol": {
             "prompt_suites": [str(path.resolve()) for path in args.prompts],

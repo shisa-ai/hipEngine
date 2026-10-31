@@ -28,6 +28,10 @@ _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
 # write apart from a value the caller set. Strict-then-production binding in one
 # process is normal and is not a conflict.
 _binder_written: dict[str, str] = {}
+# Owner-state transport has no environment write to overwrite a caller value.
+# Keep the discarded value so the warning is reported once per bind sequence,
+# not on every later bind that sees the same untouched ambient string.
+_owner_binder_discarded: dict[str, str] = {}
 
 
 # Quants whose production plan runs the F16-operand route composition: F16
@@ -965,6 +969,29 @@ def _apply_profile_env(values: dict[str, str]) -> None:
         _binder_written[key] = value
 
 
+def _record_owner_transport(env: str, value: str) -> None:
+    """Record a caller value an owner publication makes inert."""
+
+    previous = os.environ.get(env)
+    if previous is not None and previous != value:
+        if _owner_binder_discarded.get(env) != previous:
+            _last_prebinder_conflicts[env] = (previous, value)
+            _owner_binder_discarded[env] = previous
+    else:
+        _owner_binder_discarded.pop(env, None)
+
+
+def _publish_production_moe_prefill(generator: Any, enabled: bool) -> None:
+    """Publish the grouped-MoE prefill gate as owner state, not a process key."""
+
+    _record_owner_transport(
+        PRODUCTION_MOE_PREFILL_ENV, "1" if enabled else "0")
+    generator.production_moe_prefill_enabled = bool(enabled)
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.production_moe_prefill_enabled = bool(enabled)
+
+
 def _publish_q4_dp4a_decode(
     generator: Any,
     enabled: bool,
@@ -1024,7 +1051,7 @@ def _bind(
             "random" if qualified else "normal",
         )
         table.configure_mapping_access(mode)
-    _apply_profile_env({PRODUCTION_MOE_PREFILL_ENV: "1" if production else "0"})
+    _publish_production_moe_prefill(generator, production)
     q4_dp4a_decode_layers = (
         frozenset(PRODUCTION_Q4_DP4A_DECODE_LAYERS)
         if production
@@ -1547,11 +1574,12 @@ def _bind(
             {
                 "HIPENGINE_QWEN4_EXP_" + flag: "0"
                 for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
-                if flag != "Q4_DP4A64"
+                if flag not in {"Q4_DP4A64", "PRODUCTION_MOE_PREFILL"}
             }
         )
         _publish_q4_dp4a_decode(
             generator, False, q4_dp4a_decode_layers)
+        _publish_production_moe_prefill(generator, False)
         _apply_profile_env(
             {
                 "HIPENGINE_QWEN4_EXP_" + flag: value

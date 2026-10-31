@@ -41,7 +41,6 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
 )
 
 ROUTE_ENV_KEYS = (
-    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
@@ -404,10 +403,35 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the Q4 DP4A pair is owner state; use "
                 "--q4-dp4a-decode/--q4-dp4a-layers instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL":
+            raise ValueError(
+                "the production MoE prefill gate is owner state; use "
+                "--production-moe-prefill instead of --override"
+            )
         if key in overrides:
             raise ValueError(f"duplicate override for {key}")
         overrides[key] = value
     return overrides
+
+
+def _named_profile_intact(
+    overrides: dict[str, str],
+    production_moe_override: bool | None,
+) -> bool:
+    """A named profile is intact only when no post-binder override is active."""
+
+    return not bool(overrides) and production_moe_override is None
+
+
+def _configuration_class(
+    overrides: dict[str, str],
+    production_moe_override: bool | None,
+) -> str:
+    return (
+        "diagnostic_post_binder_override"
+        if overrides or production_moe_override is not None
+        else "named_profile"
+    )
 
 
 def _apply_post_binder_overrides(
@@ -531,6 +555,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--q4-dp4a-layers",
         help="Q4 DP4A layer scope; empty string keeps the historical no-filter scope",
     )
+    parser.add_argument(
+        "--production-moe-prefill",
+        choices=("on", "off"),
+        help=(
+            "Explicit production grouped-MoE prefill owner override applied "
+            "after the binder"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -575,6 +607,10 @@ def main() -> None:
         overrides = _parse_overrides(args.override)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+    production_moe_override = (
+        None if args.production_moe_prefill is None
+        else args.production_moe_prefill == "on"
+    )
     q4_dp4a_override = None
     if args.q4_dp4a_decode is not None or args.q4_dp4a_layers is not None:
         q4_dp4a_override = (
@@ -682,12 +718,13 @@ def main() -> None:
         "fell_back_to_strict": resolved.fell_back_to_strict,
         "execution_profile_requested": args.execution_profile,
         "execution_profile": resolved.profile.value,
-        "configuration_class": (
-            "diagnostic_post_binder_override" if overrides else "named_profile"
-        ),
-        "named_profile_intact": not bool(overrides),
+        "configuration_class": _configuration_class(
+            overrides, production_moe_override),
+        "named_profile_intact": _named_profile_intact(
+            overrides, production_moe_override),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
+        "production_moe_prefill_enabled": None,
         "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
@@ -701,6 +738,24 @@ def main() -> None:
         report["bound_route_env"], report["route_env"] = (
             _apply_post_binder_overrides(overrides, runner)
         )
+        report["production_moe_prefill_override"] = production_moe_override
+        if production_moe_override is not None:
+            from hipengine.runtime.qwen4_exp_runner import (
+                production_moe_prefill_enabled,
+                resolve_production_moe_prefill,
+            )
+
+            q4_scope.enter_context(production_moe_prefill_enabled(
+                generator, production_moe_override))
+            report["production_moe_prefill_enabled"] = (
+                resolve_production_moe_prefill(generator))
+        else:
+            from hipengine.runtime.qwen4_exp_runner import (
+                resolve_production_moe_prefill,
+            )
+
+            report["production_moe_prefill_enabled"] = (
+                resolve_production_moe_prefill(generator))
         if q4_dp4a_override is not None:
             from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
 

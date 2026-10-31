@@ -43,7 +43,6 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 # route -> (env name(s), disabled value)
 ROUTES = {
-    "moe_wmma_27_47": (("HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",), "0"),
     "q8_mmq": (("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",), "0"),
     "q4_iu8": (("HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"), "0"),
@@ -59,6 +58,7 @@ RUNNER_ROUTE_MODES = {
 # down and Q5_1 down M1 selectors are request-local state on the runner, so the
 # ablation binds the field instead of writing a process key nothing reads.
 RUNNER_ROUTE_OFF = {
+    "moe_wmma_27_47": "production_moe_prefill_enabled",
     "decode_dp4a": "q4_dp4a_decode",
     "row4_gemv": "q5k_row4_prefill",
     "q51_down_m1": "q51_down_m1",
@@ -71,8 +71,8 @@ RUNNER_ROUTE_OFF = {
 #:
 #:   * ``runner.routed_f16_enabled`` takes the whole down leg from rows>=2
 #:     on the shipped lane, and the production plan publishes it on;
-#:   * ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`` closes the chain gate from
-#:     rows>=16, published on by the production plan;
+#:   * runner-local ``production_moe_prefill_enabled`` closes the chain gate
+#:     from rows>=16, published on by the production plan;
 #:   * ``HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT`` is the chain's own iu8-risk+repair
 #:     owner above the ladder, published on by the production plan;
 #:   * the Q5_1 WMMA owner below the chain is the owning runner's
@@ -110,8 +110,8 @@ OUT8_SIBLING_FIELDS = (
 #:
 #:   * ``runner.routed_f16_enabled`` takes the whole gate/up leg, and the
 #:     production plan publishes it on;
-#:   * ``HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`` closes the chain gate from
-#:     rows>=16;
+#:   * runner-local ``production_moe_prefill_enabled`` closes the chain gate
+#:     from rows>=16;
 #:   * ``HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT`` is the chain's own iu8-risk+repair
 #:     owner above the ladder, published on by the production plan;
 #:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
@@ -125,7 +125,6 @@ OUT8_SIBLING_FIELDS = (
 #: the rest are the preemptors the arm must close to exercise it. The arm reports
 #: every binding it made rather than implying a single-route delta.
 Q4_OUT4_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
 )
@@ -141,7 +140,8 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
         "0",
     ),
     "q4_out4": ((("q4_out4", False), ("q4_bundle_prefill", False),
-                 ("q4_pair_prefill", False), ("routed_f16_enabled", False)),
+                 ("q4_pair_prefill", False), ("routed_f16_enabled", False),
+                 ("production_moe_prefill_enabled", False)),
                 Q4_OUT4_PREEMPTING_ENV, "0"),
 }
 

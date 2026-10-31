@@ -48,7 +48,6 @@ Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_FIELD = "qsa_h256_prefill_mode"
 Q4_BUNDLE_FIELD = "q4_bundle_prefill"
 Q4_PAIR_ENV = {
-    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID": "64",
 }
@@ -134,6 +133,7 @@ def q4_pair_control_record(runner):
         "forced_runner_fields": {
             "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
             "q4_bundle_prefill": True, "routed_f16_enabled": False,
+            "production_moe_prefill_enabled": False,
         },
     }
 
@@ -142,13 +142,14 @@ def q4_pair_control_record(runner):
 def q4_pair_scope(runner, enabled, *, environment=os.environ):
     """Compare bundle and pair2 inside the same exact grouped chain."""
     from hipengine.runtime.qwen4_exp_runner import (
+        production_moe_prefill_enabled,
         q4_pair_prefill, q4_bundle_prefill, q4_exact_grouped_gate,
         q4_exact_grouped_all, routed_f16_enabled as routed_f16,
     )
     prior = {key: environment.get(key) for key in Q4_PAIR_ENV}
     try:
         environment.update(Q4_PAIR_ENV)
-        with routed_f16(runner, False), q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
+        with production_moe_prefill_enabled(runner, False), routed_f16(runner, False), q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
             yield
     finally:
         for key, value in prior.items():
@@ -698,13 +699,13 @@ GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
 #: reads it.
 Q51_PAIR2_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
-    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
 )
 #: The preemptor the runner carries as a field: the F16 WMMA compact grouped
 #: Q5_1 down owner below the chain (``runner.q51_wmma_down``). The production
 #: plan publishes it off, and the arms bind it off on the runner they measure
 #: so the closure does not depend on that publication staying off.
-Q51_PAIR2_PREEMPTING_FIELDS = ("q51_wmma_down", "routed_f16_enabled")
+Q51_PAIR2_PREEMPTING_FIELDS = (
+    "q51_wmma_down", "routed_f16_enabled", "production_moe_prefill_enabled")
 #: The pair2 chain's own gate. It must stay on for the counted leaf to run, so
 #: the arm records it instead of forcing it. The gate is request-local runner
 #: state, so an arm reads it on the runner it measures, not from the
@@ -983,14 +984,19 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
             f"runner.{Q51_PAIR2_GATE_FIELD} must be on for the grouped pair2 "
             "Q5_1 down chain; without it the counted row-publish leaf cannot "
             "launch")
-    from hipengine.runtime.qwen4_exp_runner import q51_wmma_down, routed_f16_enabled as routed_f16
+    from hipengine.runtime.qwen4_exp_runner import (
+        production_moe_prefill_enabled,
+        q51_wmma_down, routed_f16_enabled as routed_f16,
+    )
 
     previous = {key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV}
     for key in Q51_PAIR2_PREEMPTING_ENV:
         environment[key] = "0"
     try:
         with contextlib.ExitStack() as scope:
-            for manager in (q51_wmma_down, routed_f16):
+            for manager in (
+                production_moe_prefill_enabled, q51_wmma_down, routed_f16
+            ):
                 scope.enter_context(manager(runner, False))
             yield previous
     finally:
@@ -1325,6 +1331,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
             "before arm measures a different parent")
     from hipengine.runtime.qwen4_exp_runner import (
         forkb_grouped_down,
+        production_moe_prefill_enabled,
         q51_down_m1,
         q51_pair_prefill,
         q51_fold128_prefill,
@@ -1351,7 +1358,9 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
                             q8_down_row4_prefill, q8_down_bundle_prefill,
                             q8_down_register):
                 scope.enter_context(manager(runner, False))
-            for manager in (q51_wmma_down,):
+            for manager in (
+                production_moe_prefill_enabled, q51_wmma_down
+            ):
                 scope.enter_context(manager(runner, False))
             scope.enter_context(q51_down_m1(runner, mode == "after"))
             scope.enter_context(forkb_grouped_down(runner, mode == "after"))

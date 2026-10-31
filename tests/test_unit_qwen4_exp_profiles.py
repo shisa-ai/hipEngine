@@ -385,7 +385,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL", "stale")
     production.binder(production_generator, production)
     assert configure_calls == [True]
-    assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
+    assert production_generator.production_moe_prefill_enabled is True
+    assert fake_runner.production_moe_prefill_enabled is True
+    assert PRODUCTION_MOE_PREFILL_ENV not in os.environ
     assert os.environ["HIPENGINE_GGUF_WMMA_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"] == "1"
     # The exact Q5_K layer-2 owner that replaced the rejected grouped candidate
@@ -582,10 +584,14 @@ def test_historical_q4km_binder_structure_not_qualification(
             spec=SimpleNamespace(slot_path=f"layers.{layer}.expert_gate"),
         )
 
-    assert not _qwen4_exp_production_moe_prefill_enabled(weight(26), rows=256)
-    assert _qwen4_exp_production_moe_prefill_enabled(weight(27), rows=256)
-    assert _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=16)
-    assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=15)
+    assert not _qwen4_exp_production_moe_prefill_enabled(
+        weight(26), rows=256, enabled=True)
+    assert _qwen4_exp_production_moe_prefill_enabled(
+        weight(27), rows=256, enabled=True)
+    assert _qwen4_exp_production_moe_prefill_enabled(
+        weight(47), rows=16, enabled=True)
+    assert not _qwen4_exp_production_moe_prefill_enabled(
+        weight(47), rows=15, enabled=True)
 
     strict = _resolve(ExecutionProfile.STRICT)
     assert strict.binder is not None
@@ -594,7 +600,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.dense_mmq_token64_enabled is False
     assert strict_generator.dense_mmq_raw_vector_enabled is False
     assert strict_generator.dense_mmq_vec4_enabled is False
-    assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "0"
+    assert strict_generator.production_moe_prefill_enabled is False
+    assert PRODUCTION_MOE_PREFILL_ENV not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
@@ -648,7 +655,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.q4_dp4a_decode_layers == frozenset()
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS" not in os.environ
-    assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=256)
+    assert not _qwen4_exp_production_moe_prefill_enabled(
+        weight(47), rows=256,
+        enabled=strict_generator.production_moe_prefill_enabled)
 
 
 @pytest.mark.parametrize("profile", [ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION, ExecutionProfile.FAST])

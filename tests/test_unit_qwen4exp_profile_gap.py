@@ -63,6 +63,54 @@ def test_parse_overrides_rejects_the_q4_owner_pair() -> None:
             module._parse_overrides([f"{key}=1"])
 
 
+def test_parse_overrides_rejects_the_production_moe_owner_key() -> None:
+    module = _load_script()
+
+    with pytest.raises(ValueError, match="production MoE prefill gate is owner state"):
+        module._parse_overrides(
+            ["HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL=1"])
+
+
+@pytest.mark.parametrize(
+    ("overrides", "production_moe_override", "intact", "configuration_class"),
+    [
+        ({}, None, True, "named_profile"),
+        ({}, True, False, "diagnostic_post_binder_override"),
+        ({}, False, False, "diagnostic_post_binder_override"),
+        (
+            {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"},
+            None,
+            False,
+            "diagnostic_post_binder_override",
+        ),
+    ],
+)
+def test_production_moe_override_breaks_named_profile_intact(
+    overrides, production_moe_override, intact, configuration_class
+) -> None:
+    module = _load_script()
+
+    assert module._named_profile_intact(
+        overrides, production_moe_override) is intact
+    assert module._configuration_class(
+        overrides, production_moe_override) == configuration_class
+
+
+def test_production_moe_owner_override_is_an_explicit_argument() -> None:
+    module = _load_script()
+
+    args = module.build_parser().parse_args(
+        [
+            "--model-root", "/tmp/model",
+            "--mode", "prefill",
+            "--output", "/tmp/out.json",
+            "--production-moe-prefill", "off",
+        ]
+    )
+
+    assert args.production_moe_prefill == "off"
+
+
 def test_q4_owner_override_is_an_explicit_argument() -> None:
     module = _load_script()
 

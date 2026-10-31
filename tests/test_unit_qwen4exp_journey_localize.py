@@ -4,8 +4,9 @@ import pytest
 
 from scripts.qwen4exp_journey_localize import (
     ARMS, OUTLIER, PREFIX, clear_arm_graphs, gdn_isolation_overrides,
-    phase_peer_scope, q4_dp4a_arm_policy, q4_dp4a_arm_scope,
-    q4_dp4a_split_scope, serial_gdn, strict_environment,
+    phase_peer_scope, production_moe_arm_policy, production_moe_arm_report,
+    production_moe_arm_scope, production_moe_split_scope, q4_dp4a_arm_policy,
+    q4_dp4a_arm_scope, q4_dp4a_split_scope, serial_gdn, strict_environment,
     strict_family_overrides,
 )
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
@@ -88,6 +89,63 @@ def test_strict_environment_drops_the_retired_q4_pair():
 ])
 def test_q4_dp4a_arm_policy_preserves_the_retired_key_semantics(arm, policy):
     assert q4_dp4a_arm_policy(arm) == policy
+
+
+@pytest.mark.parametrize("arm,policy", [
+    ("moe_strict", "off"),
+    ("all_numerics_strict", "off"),
+    ("all_flags_strict", "off"),
+    ("base_plus_moe_flags", "off"),
+    ("production_conservative", "off"),
+    ("strict_plus_matrix", "off"),
+    ("strict_prefill_production_decode", "split"),
+    ("production_prefill_strict_decode", "split"),
+    ("bound", "preserve"),
+    ("decode_strict", "preserve"),
+])
+def test_production_moe_arm_policy_preserves_the_retired_key_semantics(arm, policy):
+    assert production_moe_arm_policy(arm) == policy
+
+
+def test_production_moe_arm_scope_binds_the_generator_and_runner():
+    runner = SimpleNamespace(production_moe_prefill_enabled=True)
+    generator = SimpleNamespace(
+        production_moe_prefill_enabled=True, runner=runner)
+    with production_moe_arm_scope(generator, "moe_strict"):
+        assert generator.production_moe_prefill_enabled is False
+        assert runner.production_moe_prefill_enabled is False
+    assert generator.production_moe_prefill_enabled is True
+    assert runner.production_moe_prefill_enabled is True
+    with production_moe_arm_scope(generator, "bound"):
+        assert generator.production_moe_prefill_enabled is True
+
+
+def test_production_moe_split_scope_follows_the_strict_phase():
+    runner = SimpleNamespace(production_moe_prefill_enabled=True)
+    with production_moe_split_scope(
+            runner, "strict_prefill_production_decode", "prefill"):
+        assert runner.production_moe_prefill_enabled is False
+    assert runner.production_moe_prefill_enabled is True
+    with production_moe_split_scope(
+            runner, "strict_prefill_production_decode", "decode"):
+        assert runner.production_moe_prefill_enabled is True
+    with production_moe_split_scope(
+            runner, "production_prefill_strict_decode", "decode"):
+        assert runner.production_moe_prefill_enabled is False
+    with production_moe_split_scope(runner, "bound", "decode"):
+        assert runner.production_moe_prefill_enabled is True
+
+
+def test_production_moe_arm_report_names_the_owner_decision():
+    generator = SimpleNamespace(production_moe_prefill_enabled=True)
+    assert production_moe_arm_report(generator, "moe_strict") is False
+    assert production_moe_arm_report(generator, "bound") is True
+    assert production_moe_arm_report(
+        generator, "strict_prefill_production_decode") == {
+            "prefill": False, "decode": True}
+    assert production_moe_arm_report(
+        generator, "production_prefill_strict_decode") == {
+            "prefill": True, "decode": False}
 
 
 def test_q4_dp4a_arm_scope_binds_current_or_strict_empty():

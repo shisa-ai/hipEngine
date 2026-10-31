@@ -70,7 +70,7 @@ _L = lambda layers: ",".join(str(layer) for layer in layers)  # noqa: E731
 #   and no candidate in this tree currently does.
 ARMS: dict[str, dict[str, str]] = {
     "baseline": {},
-    "moe": {"HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1"},
+    "moe": {},
     "q4_iu8_fast": {
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": _L(PRODUCTION_Q4_IU8_PREFILL_LAYERS),
@@ -97,7 +97,6 @@ ARMS: dict[str, dict[str, str]] = {
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
     },
     "all_prefill": {
-        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": _L(PRODUCTION_Q4_IU8_PREFILL_LAYERS),
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
@@ -115,10 +114,17 @@ ARMS: dict[str, dict[str, str]] = {
     },
 }
 
+#: Arms whose production grouped-MoE gate is owner state rather than an env key.
+OWNER_ARMS: dict[str, dict[str, str]] = {
+    "moe": {"production_moe_prefill": "on"},
+    "all_prefill": {"production_moe_prefill": "on"},
+}
+
 
 def _run_arm(
     name: str,
     overrides: dict[str, str],
+    owner: dict[str, str],
     *,
     model_root: Path,
     case_id: str,
@@ -156,6 +162,9 @@ def _run_arm(
     ]
     for key, value in overrides.items():
         command += ["--override", f"{key}={value}"]
+    if "production_moe_prefill" in owner:
+        command += [
+            "--production-moe-prefill", owner["production_moe_prefill"]]
 
     started = time.monotonic()
     log = directory / "process.log"
@@ -167,6 +176,7 @@ def _run_arm(
     row: dict = {
         "arm": name,
         "overrides": dict(overrides),
+        "owner_overrides": dict(owner),
         "returncode": completed.returncode,
         "process_seconds": elapsed,
         "command": command,
@@ -194,6 +204,8 @@ def _run_arm(
                 for key in sorted(overrides)
                 if key in route
             },
+            "production_moe_prefill_enabled": child.get(
+                "production_moe_prefill_enabled"),
             "effective_route_missing_keys": [
                 key for key in sorted(overrides) if key not in route
             ],
@@ -257,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
         row = _run_arm(
             name,
             ARMS[name],
+            OWNER_ARMS.get(name, {}),
             model_root=args.model_root,
             case_id=args.case_id,
             fixture=args.fixture,

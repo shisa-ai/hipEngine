@@ -36,7 +36,6 @@ def build_parser() -> argparse.ArgumentParser:
 def configure_production_routes() -> None:
     os.environ.update(
         {
-            "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
@@ -56,7 +55,11 @@ def main() -> None:
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
-    from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
+    from hipengine.runtime.qwen4_exp_runner import (
+        production_moe_prefill_enabled,
+        q4_dp4a_decode,
+        resolve_production_moe_prefill,
+    )
 
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
     generator = Qwen4ExpGGUFTextGenerator(
@@ -68,8 +71,13 @@ def main() -> None:
         prefill_chunk_size=args.prefill_chunk_size,
     )
     rows: list[dict[str, Any]] = []
+    production_moe_enabled = None
     owner_scope = ExitStack()
     try:
+        owner_scope.enter_context(
+            production_moe_prefill_enabled(generator, True)
+        )
+        production_moe_enabled = resolve_production_moe_prefill(generator)
         owner_scope.enter_context(
             q4_dp4a_decode(generator, True, SAFE43_DP4A_LAYERS)
         )
@@ -123,6 +131,7 @@ def main() -> None:
     report = {
         "schema": 1,
         "kind": "qwen4exp_decode_sync_ab",
+        "production_moe_prefill_enabled": production_moe_enabled,
         "steps": args.steps,
         "warmup_steps": args.warmup_steps,
         "sync_median_seconds": statistics.median(sync_seconds),
