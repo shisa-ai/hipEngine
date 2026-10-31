@@ -165,9 +165,11 @@ def _run_suite(argv: list[str], output: Path) -> dict:
     original_argv = sys.argv
     try:
         sys.argv = list(argv)
-        suite.main()
+        exit_code = suite.main()
     finally:
         sys.argv = original_argv
+    if exit_code not in (None, 0):
+        raise SystemExit(f"suite failed with exit code {exit_code}: {output}")
     if not output.exists():
         raise SystemExit(f"suite produced no payload: {output}")
     return json.loads(output.read_text())

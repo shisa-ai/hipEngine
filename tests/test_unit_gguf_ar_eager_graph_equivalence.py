@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts import gguf_ar_eager_graph_equivalence as checker  # noqa: E402
 from scripts.gguf_ar_eager_graph_equivalence import (  # noqa: E402
     ar_rows_by_key,
     compare_ar_token_sequences,
@@ -142,6 +143,42 @@ def test_indexing_rejects_duplicate_row_keys() -> None:
             {"id": "a", "token_ids": [1]},
             {"id": "a", "run": 0, "token_ids": [2]},
         ]))
+
+
+def test_failed_suite_cannot_reuse_a_previous_payload(monkeypatch, tmp_path) -> None:
+    from scripts import qwen36_dense_gguf_suite as suite
+
+    output = tmp_path / "ar-eager.json"
+    original = '{"rows": {"true_ar": [{"id": "old", "token_ids": [1]}]}}'
+    output.write_text(original)
+    previous_argv = sys.argv
+    monkeypatch.setattr(suite, "main", lambda: 1)
+
+    with pytest.raises(SystemExit, match="suite failed with exit code 1"):
+        checker._run_suite([checker.SUITE, "--output", str(output)], output)
+
+    assert sys.argv is previous_argv
+    assert output.read_text() == original
+
+
+def test_successful_suite_loads_its_new_payload_and_restores_argv(
+    monkeypatch, tmp_path,
+) -> None:
+    from scripts import qwen36_dense_gguf_suite as suite
+
+    output = tmp_path / "ar-graph.json"
+    output.write_text('{"old": true}')
+    previous_argv = sys.argv
+    argv = [checker.SUITE, "--output", str(output)]
+
+    def run_suite():
+        assert sys.argv == argv
+        output.write_text('{"fresh": true}')
+        return 0
+
+    monkeypatch.setattr(suite, "main", run_suite)
+    assert checker._run_suite(argv, output) == {"fresh": True}
+    assert sys.argv is previous_argv
 
 
 def test_a_run_key_defaults_to_zero_when_absent() -> None:
