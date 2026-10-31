@@ -494,7 +494,7 @@ def test_adapter_publishes_current_split_view_and_scratch_owns_growth(monkeypatc
         scratch.replace()
 
     monkeypatch.setattr(runner_mod, "_ensure_full_attn_split_rows", grow)
-    selectors = runner_mod._bulk_full_attention_selectors(NS(), scratch, runtime)
+    selectors = runner_mod._bulk_full_attention_selectors(NS(), scratch, runtime, rows=3)
     assert calls == []
 
     split = selectors.ensure_split_rows(3)
@@ -520,7 +520,7 @@ def test_adapter_binds_scratch_for_q8_selected_operation(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(runner_mod, "_try_launch_dense_q8_single_dp4a", fake)
-    selectors = runner_mod._bulk_full_attention_selectors(NS(), scratch, object())
+    selectors = runner_mod._bulk_full_attention_selectors(NS(), scratch, object(), rows=3)
     assert seen == []
 
     assert selectors.try_launch_dense_q8_single_dp4a(

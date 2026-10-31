@@ -556,7 +556,7 @@ def test_adapter_q8_selectors_bind_scratch(monkeypatch):
     monkeypatch.setattr(runner_mod, "_try_launch_dense_q8_triple_dp4a_f32", f32)
     monkeypatch.setattr(runner_mod, "_try_launch_dense_q8_triple_dp4a", bf16)
     scratch = NS()
-    selectors = runner_mod._decode_batch_attention_selectors(NS(), scratch, None)
+    selectors = runner_mod._decode_batch_attention_selectors(NS(), scratch, None, rows=3)
 
     assert calls == []
     assert selectors.try_launch_dense_q8_triple_dp4a_f32(
@@ -580,7 +580,7 @@ def test_adapter_split_workspace_callback_rereads_replacement():
         partial_m=_buf("old_m"),
         partial_l=_buf("old_l"),
     )
-    selectors = runner_mod._decode_batch_attention_selectors(NS(), NS(), workspace)
+    selectors = runner_mod._decode_batch_attention_selectors(NS(), NS(), workspace, rows=3)
 
     first = selectors.split_workspace(3, 256)
     assert first is not None

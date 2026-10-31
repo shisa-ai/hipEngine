@@ -515,3 +515,39 @@ def test_pair_plan_wmma_bulk_library_variant_precedes_quant(monkeypatch) -> None
             },
         ),
     ]
+
+
+def test_pair_plan_explicit_rowtile_policy_beats_ambient(monkeypatch) -> None:
+    """An owner's explicit input wins over the other owner's ambient value."""
+
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1"
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1"
+    )
+    shapes = dict(
+        rows=4,
+        in_features=2048,
+        out_features=8192,
+        out_features_b=4096,
+        use_wmma_prefill=False,
+    )
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "1")
+    gl.clear_gguf_linear_dispatch_cache()
+    strict_plan = gl._resolve_gguf_linear_pair_plan(
+        weight_a, weight_b, **shapes, q8_t16_rowtile_all=False
+    )
+    assert strict_plan.operation == "q8_t16_dual_split"
+    assert strict_plan.q8_split_mode == "exact"
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "0")
+    gl.clear_gguf_linear_dispatch_cache()
+    production_plan = gl._resolve_gguf_linear_pair_plan(
+        weight_a, weight_b, **shapes, q8_t16_rowtile_all=True
+    )
+    assert production_plan.operation == "q8_t16_dual_split"
+    assert production_plan.q8_split_mode == "rowtile"
+    assert production_plan.threads == 128
+    gl.clear_gguf_linear_dispatch_cache()

@@ -1446,6 +1446,14 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at session construction.
     target_verifier_prefill_gdn_capture: bool | None = None
+    # Profile-owned cooperative F32 router policy. ``None`` keeps the
+    # unbound/direct diagnostic environment input read per call.
+    target_router_f32w_coop: bool | None = None
+    target_router_f32w_persistent_counter: bool | None = None
+    # Profile-owned broad Q8T16 rowtile admission. ``True`` admits the backend
+    # package floor, ``False`` forces the exact route, and ``None`` keeps the
+    # unbound/direct diagnostic input and packed-decode session resolution.
+    target_q8_t16_rowtile_all: bool | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -1776,6 +1784,26 @@ class Qwen35GGUFBringupGenerator:
         if requested is None:
             return {}
         return {"target_verifier_prefill_gdn_capture": bool(requested)}
+
+    def _target_router_policy_session_kwargs(self) -> dict[str, Any]:
+        """Carry the owner-bound cooperative F32 router policy into every owner."""
+
+        kwargs: dict[str, Any] = {}
+        coop = getattr(self, "target_router_f32w_coop", None)
+        if coop is not None:
+            kwargs["target_router_f32w_coop"] = bool(coop)
+        persistent = getattr(self, "target_router_f32w_persistent_counter", None)
+        if persistent is not None:
+            kwargs["target_router_f32w_persistent_counter"] = bool(persistent)
+        return kwargs
+
+    def _target_q8_t16_rowtile_all_session_kwargs(self) -> dict[str, Any]:
+        """Carry the owner-bound broad Q8T16 rowtile admission into every owner."""
+
+        requested = getattr(self, "target_q8_t16_rowtile_all", None)
+        if requested is None:
+            return {}
+        return {"target_q8_t16_rowtile_all": bool(requested)}
 
     def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
         signature = getattr(self, "_prepared_kv_signature", None)
@@ -2165,6 +2193,21 @@ class Qwen35GGUFBringupGenerator:
                     target_verifier_prefill_gdn_capture=getattr(
                         self,
                         "target_verifier_prefill_gdn_capture",
+                        None,
+                    ),
+                    target_router_f32w_coop=getattr(
+                        self,
+                        "target_router_f32w_coop",
+                        None,
+                    ),
+                    target_router_f32w_persistent_counter=getattr(
+                        self,
+                        "target_router_f32w_persistent_counter",
+                        None,
+                    ),
+                    target_q8_t16_rowtile_all=getattr(
+                        self,
+                        "target_q8_t16_rowtile_all",
                         None,
                     ),
                 )
@@ -3188,6 +3231,8 @@ class Qwen35GGUFBringupGenerator:
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),
+                    **self._target_router_policy_session_kwargs(),
+                    **self._target_q8_t16_rowtile_all_session_kwargs(),
                     **session_kwargs,
                 )
             except (HipError, MemoryError) as exc:
@@ -3387,6 +3432,8 @@ class Qwen35GGUFBringupGenerator:
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
+                **self._target_router_policy_session_kwargs(),
+                **self._target_q8_t16_rowtile_all_session_kwargs(),
             }
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
@@ -3494,6 +3541,21 @@ class Qwen35GGUFBringupGenerator:
             target_verifier_prefill_gdn_capture=getattr(
                 self,
                 "target_verifier_prefill_gdn_capture",
+                None,
+            ),
+            target_router_f32w_coop=getattr(
+                self,
+                "target_router_f32w_coop",
+                None,
+            ),
+            target_router_f32w_persistent_counter=getattr(
+                self,
+                "target_router_f32w_persistent_counter",
+                None,
+            ),
+            target_q8_t16_rowtile_all=getattr(
+                self,
+                "target_q8_t16_rowtile_all",
                 None,
             ),
         )
@@ -3633,6 +3695,37 @@ class Qwen35GGUFBringupGenerator:
                 requested_capture
             ):
                 raise RuntimeError("cannot change a live verifier capture mode")
+        requested_router = getattr(self, "target_router_f32w_coop", None)
+        if requested_router is not None:
+            live_router = getattr(
+                getattr(session, "runner", None), "router_f32w_coop", None
+            )
+            if live_router is None or bool(live_router) is not bool(
+                requested_router
+            ):
+                raise RuntimeError("cannot change a live router policy")
+        requested_persistent = getattr(
+            self, "target_router_f32w_persistent_counter", None
+        )
+        if requested_persistent is not None:
+            live_persistent = getattr(
+                getattr(session, "runner", None),
+                "router_f32w_persistent_counter",
+                None,
+            )
+            if live_persistent is None or bool(live_persistent) is not bool(
+                requested_persistent
+            ):
+                raise RuntimeError("cannot change a live router counter policy")
+        requested_rowtile_all = getattr(self, "target_q8_t16_rowtile_all", None)
+        if requested_rowtile_all is not None:
+            live_rowtile_all = getattr(
+                getattr(session, "runner", None), "q8_t16_rowtile_all", None
+            )
+            if live_rowtile_all is None or bool(live_rowtile_all) is not bool(
+                requested_rowtile_all
+            ):
+                raise RuntimeError("cannot change a live Q8T16 rowtile policy")
         self._configure_native_sampler(session)
         requested_rowtile = getattr(
             self,
@@ -3952,6 +4045,8 @@ class Qwen35GGUFBringupGenerator:
             **self._target_verifier_rowtile_session_kwargs(),
             **self._target_fp16_recurrent_state_session_kwargs(),
             **self._target_verifier_prefill_gdn_capture_session_kwargs(),
+            **self._target_router_policy_session_kwargs(),
+            **self._target_q8_t16_rowtile_all_session_kwargs(),
         }
         if shared_runner is not None:
             session_kwargs.update(runtime=shared_runner.runtime, shared_runner=shared_runner)
@@ -4059,6 +4154,8 @@ class Qwen35GGUFBringupGenerator:
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
+                **self._target_router_policy_session_kwargs(),
+                **self._target_q8_t16_rowtile_all_session_kwargs(),
             ) as session:
                 self._configure_session(session)
                 native_run = self._generate_greedy_batch(
@@ -4970,6 +5067,21 @@ class Qwen35GGUFBringupGenerator:
                             "target_verifier_prefill_gdn_capture",
                             None,
                         ),
+                        target_router_f32w_coop=getattr(
+                            self,
+                            "target_router_f32w_coop",
+                            None,
+                        ),
+                        target_router_f32w_persistent_counter=getattr(
+                            self,
+                            "target_router_f32w_persistent_counter",
+                            None,
+                        ),
+                        target_q8_t16_rowtile_all=getattr(
+                            self,
+                            "target_q8_t16_rowtile_all",
+                            None,
+                        ),
                     ) as local_runner:
                         resident_slot_count, target_verify_batching = self._generate_prepared_mtp_serving_slots(
                             local_runner,
@@ -5257,6 +5369,8 @@ class Qwen35GGUFBringupGenerator:
                         **self._target_verifier_rowtile_session_kwargs(),
                         **self._target_fp16_recurrent_state_session_kwargs(),
                         **self._target_verifier_prefill_gdn_capture_session_kwargs(),
+                        **self._target_router_policy_session_kwargs(),
+                        **self._target_q8_t16_rowtile_all_session_kwargs(),
                     ),
                     None,
                     False,
@@ -5468,6 +5582,8 @@ class Qwen35GGUFBringupGenerator:
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),
+                    **self._target_router_policy_session_kwargs(),
+                    **self._target_q8_t16_rowtile_all_session_kwargs(),
                 ),
                 None,
                 False,

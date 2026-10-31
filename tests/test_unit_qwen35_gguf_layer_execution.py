@@ -257,6 +257,8 @@ def _selectors(**overrides) -> attn.AttentionSelectors:
         name: _fail(f"selectors.{name}")
         for name in attn.AttentionSelectors.__dataclass_fields__
     }
+    # A policy value, not a lazily resolved callable.
+    fields["q8_t16_rowtile_all"] = None
     fields.update(overrides)
     return attn.AttentionSelectors(**fields)
 
@@ -499,6 +501,7 @@ def test_alpha_beta_leaf_f32_singletons_f32_out_route(monkeypatch) -> None:
         output_dtype="f32",
         stream=7,
         runtime=_RUNTIME,
+        q8_t16_rowtile_all=None,
     )
     assert log.events[1][1] == (layer.weight("ssm_beta"), 0x41, 0x52)
     assert log.events[2][1] == (0x51, 0x31, 1 * 8)
@@ -771,6 +774,7 @@ def test_linear_attention_body_fused_path_launch_order(monkeypatch) -> None:
         out_features_b=768,
         stream=7,
         runtime=_RUNTIME,
+        q8_t16_rowtile_all=None,
     )
     conv_args, conv_kwargs = log.one("alpha_beta_conv")
     assert conv_args[2:] == (
@@ -819,6 +823,7 @@ def test_linear_attention_body_fused_path_launch_order(monkeypatch) -> None:
         activation_dtype="f32",
         stream=7,
         runtime=_RUNTIME,
+        q8_t16_rowtile_all=None,
     )
 
 
@@ -1160,6 +1165,7 @@ def test_full_attention_split_path_launch_order(monkeypatch) -> None:
         out_features_c=256,
         stream=7,
         runtime=_RUNTIME,
+        rowtile_all=None,
     )
     kernel_args, kernel_kwargs = log.one("split_kernel")
     assert kernel_args == (
@@ -1185,7 +1191,14 @@ def test_full_attention_split_path_launch_order(monkeypatch) -> None:
     assert kernel_kwargs == dict(stream=7, library="attn-lib", runtime=_RUNTIME)
     out_args, out_kwargs = log.one("linear")
     assert out_args[1:] == (0x11A, 0x4000)
-    assert out_kwargs == dict(rows=1, in_features=512, out_features=256, stream=7, runtime=_RUNTIME)
+    assert out_kwargs == dict(
+        rows=1,
+        in_features=512,
+        out_features=256,
+        stream=7,
+        runtime=_RUNTIME,
+        q8_t16_rowtile_all=None,
+    )
 
 
 def test_full_attention_reads_split_buffers_after_growth(monkeypatch) -> None:

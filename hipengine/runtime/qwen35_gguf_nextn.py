@@ -547,6 +547,9 @@ class Qwen35GGUFNextNExecutor:
         target_verifier_production_q4_rowtile: bool | None = None,
         target_fp16_recurrent_state: bool | None = None,
         target_verifier_prefill_gdn_capture: bool | None = None,
+        target_router_f32w_coop: bool | None = None,
+        target_router_f32w_persistent_counter: bool | None = None,
+        target_q8_t16_rowtile_all: bool | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
@@ -570,6 +573,11 @@ class Qwen35GGUFNextNExecutor:
         self.target_verifier_prefill_gdn_capture = (
             target_verifier_prefill_gdn_capture
         )
+        self.target_router_f32w_coop = target_router_f32w_coop
+        self.target_router_f32w_persistent_counter = (
+            target_router_f32w_persistent_counter
+        )
+        self.target_q8_t16_rowtile_all = target_q8_t16_rowtile_all
         register_gguf_q3_k_gemv_kernels()
         # Borrowed weights stay owned by the caller (the generator shares one
         # draft block across every provider shape); only self-materialized
@@ -597,6 +605,11 @@ class Qwen35GGUFNextNExecutor:
             owns_resident_weights=False,
             target_fp16_recurrent_state=target_fp16_recurrent_state,
             target_verifier_prefill_gdn_capture=target_verifier_prefill_gdn_capture,
+            target_router_f32w_coop=target_router_f32w_coop,
+            target_router_f32w_persistent_counter=(
+                target_router_f32w_persistent_counter
+            ),
+            target_q8_t16_rowtile_all=target_q8_t16_rowtile_all,
         )
         self.hidden_size = int(self.runner.hidden_size)
         self.vocab_size = int(self.runner.vocab_size)
@@ -617,6 +630,11 @@ class Qwen35GGUFNextNExecutor:
             ),
             target_fp16_recurrent_state=target_fp16_recurrent_state,
             target_verifier_prefill_gdn_capture=target_verifier_prefill_gdn_capture,
+            target_router_f32w_coop=target_router_f32w_coop,
+            target_router_f32w_persistent_counter=(
+                target_router_f32w_persistent_counter
+            ),
+            target_q8_t16_rowtile_all=target_q8_t16_rowtile_all,
         )
         self.scratch = self._batch_session._target_scratch_owner
         if self.scratch is None:

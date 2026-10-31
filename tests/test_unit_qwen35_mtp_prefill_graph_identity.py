@@ -63,7 +63,7 @@ def test_sampled_prefill_graph_survives_later_provider_profile_binding(
     assert graph.launch_ineligibility_reason(
         target, position=23, rows=3, remaining_decode=12, **options,
     ) is None
-    assert graph.configuration_key[-3:-1] == (manifest, "fp32")
+    assert graph.configuration_key[8:10] == (manifest, "fp32")
     # A second observation uses the existing capture rather than recapturing.
     adapter.observe_prefill_result(7, (1, 2, 3), SimpleNamespace(token_id=9))
     assert captured == [graph]

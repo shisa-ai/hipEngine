@@ -777,6 +777,9 @@ def _native_target_configuration_key(
     sampled_accept: bool = False,
     execution_profile_manifest_sha256: str = "legacy",
     recurrent_state_dtype: str = "fp32",
+    router_f32w_coop: bool | None = None,
+    router_f32w_persistent_counter: bool | None = None,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> tuple[object, ...]:
     env = tuple(
         sorted(
@@ -800,8 +803,34 @@ def _native_target_configuration_key(
         bool(sampled_accept),
         manifest_hash,
         state_dtype,
+        None if router_f32w_coop is None else bool(router_f32w_coop),
+        (
+            None
+            if router_f32w_persistent_counter is None
+            else bool(router_f32w_persistent_counter)
+        ),
+        None if q8_t16_rowtile_all is None else bool(q8_t16_rowtile_all),
         env,
     )
+
+
+def _native_target_route_identity(session: Any) -> dict[str, bool | None]:
+    """Return the owner-resolved route selections the target graph captures.
+
+    ``None`` is the unbound/direct diagnostic path: the ambient environment is
+    already part of the configuration key, so an unbound owner adds no second
+    identity. A profile-bound runner contributes its frozen decision explicitly
+    now that the profile no longer publishes it through the environment.
+    """
+
+    runner = getattr(session, "runner", None)
+    return {
+        "router_f32w_coop": getattr(runner, "router_f32w_coop", None),
+        "router_f32w_persistent_counter": getattr(
+            runner, "router_f32w_persistent_counter", None
+        ),
+        "q8_t16_rowtile_all": getattr(runner, "q8_t16_rowtile_all", None),
+    }
 
 
 def _native_target_execution_identity(session: Any) -> tuple[str, str]:
@@ -1073,6 +1102,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             sampled_accept=sampled_accept,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
+            **_native_target_route_identity(session),
         )
         return (
             int(context_limit) == int(self.context_limit)
@@ -1116,6 +1146,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             sampled_accept=sampled_accept,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
+            **_native_target_route_identity(session),
         )
         if expected_key != self.configuration_key:
             return "target_graph_configuration_miss"
@@ -2262,6 +2293,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                     _native_target_execution_identity(session)[0]
                 ),
                 recurrent_state_dtype=_native_target_execution_identity(session)[1],
+                **_native_target_route_identity(session),
             ),
             binding_signature=_native_target_binding_signature(session),
             capture_wall_ms=(time.perf_counter() - capture_start) * 1000.0,

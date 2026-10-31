@@ -23,16 +23,18 @@ gate has not passed, so ``resolve_runtime_profile(profile="batch_invariant")``
 falls back to the strict plan with ``fell_back_to_strict=True``; that flag is
 the clear fail-closed signal until the gate lands.
 
-Each plan carries a ``binder`` that applies the profile cold-path policy to the
-process environment at generator construction. The generator constructor does
-not read these flags; the resident runner reads them lazily at decode, so the
-binder (which runs at construction, before the first decode) is correct. One
-profile per model-owning process, matching the campaign idle/thermal gate.
+Each plan carries a ``binder`` that binds the profile cold-path policy on the
+generator at construction. The generator constructor does not read these
+selectors, and the runtime consumes the bound owner value explicitly: the
+resident runner's FFN predicates read the frozen router policy, and the
+packed-decode step reads the frozen rowtile admission. The process environment
+remains the unbound/direct diagnostic input and is no longer rewritten, so a
+strict and a production owner can coexist in one process. One profile per
+model-owning process still matches the campaign idle/thermal gate.
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from hipengine.execution_profiles import (
@@ -76,20 +78,21 @@ _KV_POLICY = "paged_bf16"
 _GRAPH_POLICY = "serial_c1"
 
 
-def _apply_profile_policy(*, cooperative: bool, rowtile_floor: bool) -> None:
-    """Apply the documented cold-path policy to the process environment.
+def _apply_profile_policy(
+    generator: Any, *, cooperative: bool, rowtile_floor: bool
+) -> None:
+    """Bind the documented cold-path policy on the profile owner.
 
-    ``production`` enables the cooperative persistent F32 router and leaves the
-    rowtile selection on the backend package floor (rows >= 4). ``strict``
-    disables the cooperative router and forces rowtile off.
+    ``production`` enables the cooperative persistent F32 router and admits the
+    backend package rowtile floor (rows >= 4). ``strict`` disables the
+    cooperative router and forces the exact rowtile route. The values are
+    construction-owned on the generator; the ambient environment stays the
+    unbound/direct diagnostic input and is never rewritten here.
     """
 
-    os.environ[ROUTER_COOP_ENV] = "1" if cooperative else "0"
-    os.environ[ROUTER_PERSISTENT_ENV] = "1" if cooperative else "0"
-    if rowtile_floor:
-        os.environ.pop(ROWTILE_ALL_ENV, None)
-    else:
-        os.environ[ROWTILE_ALL_ENV] = "0"
+    generator.target_router_f32w_coop = bool(cooperative)
+    generator.target_router_f32w_persistent_counter = bool(cooperative)
+    generator.target_q8_t16_rowtile_all = bool(rowtile_floor)
 
 
 def _selection(
@@ -199,10 +202,12 @@ def _binder(
     cooperative: bool,
     rowtile_floor: bool,
 ) -> None:
-    """Apply the profile cold-path policy before any decode runs."""
+    """Bind the profile cold-path policy before any decode runs."""
 
-    del generator, resolved
-    _apply_profile_policy(cooperative=cooperative, rowtile_floor=rowtile_floor)
+    del resolved
+    _apply_profile_policy(
+        generator, cooperative=cooperative, rowtile_floor=rowtile_floor
+    )
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:

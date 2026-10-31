@@ -282,9 +282,9 @@ class FfnFlags:
     verify_f32_post_norm_selected_q8_enabled: Fn
     #: ``_gguf_verify_f32_post_norm_shared_q8_enabled()``
     verify_f32_post_norm_shared_q8_enabled: Fn
-    #: ``_gguf_router_f32w_coop_enabled()``
+    #: resolved cooperative F32 router policy (owner-bound or ambient)
     router_f32w_coop_enabled: Fn
-    #: ``_gguf_router_f32w_persistent_counter_enabled()``
+    #: resolved router persistent-counter policy (owner-bound or ambient)
     router_f32w_persistent_counter_enabled: Fn
     #: ``_env_flag(_GGUF_COMPACT_MOE_C1_ENV, False)``
     compact_moe_c1_enabled: Fn

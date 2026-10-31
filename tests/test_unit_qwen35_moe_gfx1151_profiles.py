@@ -10,7 +10,8 @@ These cover PN1 registration semantics of
 - batch_invariant is left unregistered and fails closed to strict;
 - duplicate and missing-plan resolution errors;
 - stable manifest hashes; and
-- the cold-path policy binder applies the documented env policy.
+- the cold-path policy binder binds explicit owner values without rewriting
+  the process environment.
 """
 
 from __future__ import annotations
@@ -218,7 +219,9 @@ def test_strict_plan_requires_a_factory_or_binder() -> None:
         )
 
 
-def test_production_binder_applies_cooperative_policy() -> None:
+def test_production_binder_binds_cooperative_policy_on_the_owner(monkeypatch) -> None:
+    for key in _POLICY_ENV:
+        monkeypatch.setenv(key, "caller")
     _register()
     resolved = _resolution(ExecutionProfile.PRODUCTION)
     generator = resolved.construct_generator(
@@ -227,9 +230,12 @@ def test_production_binder_applies_cooperative_policy() -> None:
         weight_index=None,
         model_plugin=None,
     )
-    assert os.environ.get(ROUTER_COOP_ENV) == "1"
-    assert os.environ.get(ROUTER_PERSISTENT_ENV) == "1"
-    assert ROWTILE_ALL_ENV not in os.environ
+    assert generator.target_router_f32w_coop is True
+    assert generator.target_router_f32w_persistent_counter is True
+    assert generator.target_q8_t16_rowtile_all is True
+    assert {key: os.environ.get(key) for key in _POLICY_ENV} == {
+        key: "caller" for key in _POLICY_ENV
+    }
     assert generator.execution_profile == "production"
     assert generator.execution_profile_manifest_sha256 == resolved.manifest_sha256
     assert generator.execution_profile_strict_manifest_sha256 == (
@@ -241,7 +247,9 @@ def test_production_binder_applies_cooperative_policy() -> None:
     assert resolved.strict_manifest_sha256 == strict_resolved.manifest_sha256
 
 
-def test_strict_binder_applies_exact_policy() -> None:
+def test_strict_binder_binds_exact_policy_on_the_owner(monkeypatch) -> None:
+    for key in _POLICY_ENV:
+        monkeypatch.setenv(key, "caller")
     _register()
     resolved = _resolution(ExecutionProfile.STRICT)
     generator = resolved.construct_generator(
@@ -250,13 +258,12 @@ def test_strict_binder_applies_exact_policy() -> None:
         weight_index=None,
         model_plugin=None,
     )
-    assert os.environ.get(ROUTER_COOP_ENV) == "0"
-    assert os.environ.get(ROUTER_PERSISTENT_ENV) == "0"
-    assert os.environ.get(ROWTILE_ALL_ENV) == "0"
-    assert generator.execution_profile == "strict"
-    assert generator.execution_profile_strict_manifest_sha256 == (
-        generator.execution_profile_manifest_sha256
-    )
+    assert generator.target_router_f32w_coop is False
+    assert generator.target_router_f32w_persistent_counter is False
+    assert generator.target_q8_t16_rowtile_all is False
+    assert {key: os.environ.get(key) for key in _POLICY_ENV} == {
+        key: "caller" for key in _POLICY_ENV
+    }
     assert generator.execution_profile == "strict"
 
 
@@ -278,7 +285,9 @@ def test_binder_leaves_fp16_unbound_for_backend_default(monkeypatch) -> None:
 
 @pytest.mark.parametrize("profile", [ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION])
 @pytest.mark.parametrize("inherited", [None, "0", "1"])
-def test_binder_owns_broad_rowtile_policy_without_rewriting_pair_controls(monkeypatch, profile, inherited) -> None:
+def test_binder_owns_broad_rowtile_policy_without_rewriting_any_env(
+    monkeypatch, profile, inherited
+) -> None:
     pair = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
     col8 = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
     if inherited is None:
@@ -293,7 +302,9 @@ def test_binder_owns_broad_rowtile_policy_without_rewriting_pair_controls(monkey
         lambda **kwargs: SimpleNamespace(kwargs=kwargs),
         model_path="/tmp/fake.gguf", weight_index=None, model_plugin=None,
     )
-    assert os.environ.get(ROWTILE_ALL_ENV) == ("0" if profile == ExecutionProfile.STRICT else None)
+    expected = profile is ExecutionProfile.PRODUCTION
+    assert generator.target_q8_t16_rowtile_all is expected
+    assert os.environ.get(ROWTILE_ALL_ENV) == inherited
     assert os.environ[pair] == "caller-pair"
     assert os.environ[col8] == "caller-column"
     assert generator.execution_profile == profile.value

@@ -135,6 +135,9 @@ class BulkFullAttentionSelectors:
     head_major_buffers: Callable[..., tuple[object, object, int] | None]
     paged_kv_copy_resolve: Callable[..., Callable[..., None] | None]
     ensure_split_rows: Callable[[int], BulkFullAttentionSplitView]
+    # Owner-resolved Q8T16 broad-rowtile policy for this call's row width.
+    # ``None`` keeps the ambient/session resolver.
+    q8_t16_rowtile_all: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -203,6 +206,7 @@ def run_full_attention_prefill_attn_rows(
         out_features_c=geometry.kv_width,
         stream=stream,
         runtime=runtime,
+        rowtile_all=selectors.q8_t16_rowtile_all,
     ):
         launch_gguf_linear(
             layer.weight("attn_q"),
@@ -213,6 +217,7 @@ def run_full_attention_prefill_attn_rows(
             out_features=2 * geometry.q_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         )
         if not launch_gguf_linear_pair(
             layer.weight("attn_k"),
@@ -225,6 +230,7 @@ def run_full_attention_prefill_attn_rows(
             out_features=geometry.kv_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         ):
             launch_gguf_linear(
                 layer.weight("attn_k"),
@@ -235,6 +241,7 @@ def run_full_attention_prefill_attn_rows(
                 out_features=geometry.kv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("attn_v"),
@@ -245,6 +252,7 @@ def run_full_attention_prefill_attn_rows(
                 out_features=geometry.kv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
     qwen35_split_qgate_bf16(
         views.full_q.ptr,
@@ -762,6 +770,7 @@ def run_full_attention_prefill_attn_rows(
             out_features=geometry.hidden_size,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         )
     if gpu_stage_recorder is not None:
         gpu_stage_recorder.mark(f"{stage_prefix}_output")

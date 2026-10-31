@@ -95,6 +95,9 @@ class DecodeBatchAttentionSelectors:
     paged_attn_context_batch: Callable[[], Callable[..., None] | None]
     packed_ar_attention_batch_kernel: Callable[[], Callable[..., None] | None]
     split_workspace: Callable[[int, int], DecodeBatchSplitWorkspace | None]
+    # Owner-resolved Q8T16 broad-rowtile policy for this call's row width.
+    # ``None`` keeps the ambient/session resolver.
+    q8_t16_rowtile_all: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -195,6 +198,7 @@ def run_full_attention_decode_batch_attn_rows(
         out_features_c=geometry.kv_width,
         stream=stream,
         runtime=runtime,
+        rowtile_all=selectors.q8_t16_rowtile_all,
     ):
         launch_gguf_linear(
             layer.weight("attn_q"),
@@ -205,6 +209,7 @@ def run_full_attention_decode_batch_attn_rows(
             out_features=2 * geometry.q_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         )
         if not launch_gguf_linear_pair(
             layer.weight("attn_k"),
@@ -217,6 +222,7 @@ def run_full_attention_decode_batch_attn_rows(
             out_features=geometry.kv_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         ):
             launch_gguf_linear(
                 layer.weight("attn_k"),
@@ -227,6 +233,7 @@ def run_full_attention_decode_batch_attn_rows(
                 out_features=geometry.kv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("attn_v"),
@@ -237,6 +244,7 @@ def run_full_attention_decode_batch_attn_rows(
                 out_features=geometry.kv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
     qwen35_split_qgate_bf16(
         views.full_q.ptr,

@@ -485,6 +485,7 @@ from hipengine.runtime.gguf_linear import (
     q8_t16_dual_wmma_prefill_session,
     q8_t16_pair_rowtile_min_rows_session,
     q8_t16_rowtile_all_session,
+    q8_t16_rowtile_all_session_value,
     wide_f16_activation_enabled,
     wide_f16_activation_session,
     resolve_gguf_linear_dispatch,
@@ -540,7 +541,16 @@ def _layer_runner_method(runner, method_name: str, *args, **kwargs):
     return getattr(runner, method_name)(*args, **kwargs)
 
 
-def _layer_attention_selectors(runner) -> _layer_attn.AttentionSelectors:
+def _owner_rowtile_all(runner, rows: int) -> bool | None:
+    """Resolve one runner's broad-rowtile policy for an explicit row width."""
+
+    resolve = getattr(runner, "_q8_t16_rowtile_all_owner_for_rows", None)
+    return None if resolve is None else resolve(rows)
+
+
+def _layer_attention_selectors(
+    runner, *, rows: int
+) -> _layer_attn.AttentionSelectors:
     """The attention bodies' lazily resolved operations, bound to ``runner``."""
 
     return _layer_attn.AttentionSelectors(
@@ -576,6 +586,7 @@ def _layer_attention_selectors(runner) -> _layer_attn.AttentionSelectors:
         ),
         int8_kv_append_write_fn=_gguf_int8_kv_append_write_fn,
         int8_kv_decode_gate_fn=_gguf_int8_kv_decode_gate_fn,
+        q8_t16_rowtile_all=_owner_rowtile_all(runner, rows),
     )
 
 
@@ -722,6 +733,8 @@ def _bulk_full_attention_selectors(
     runner,
     scratch,
     runtime: Any,
+    *,
+    rows: int,
 ) -> _bulk_attn.BulkFullAttentionSelectors:
     """Lazy selected operations for one bulk prefill attention call."""
 
@@ -760,6 +773,7 @@ def _bulk_full_attention_selectors(
         ),
         paged_kv_copy_resolve=resolve,
         ensure_split_rows=ensure_split_rows,
+        q8_t16_rowtile_all=_owner_rowtile_all(runner, rows),
     )
 
 
@@ -810,6 +824,8 @@ def _decode_batch_attention_selectors(
     runner,
     scratch,
     split_workspace,
+    *,
+    rows: int,
 ) -> _decode_batch_attn.DecodeBatchAttentionSelectors:
     """Lazy selected operations for one decode-batch attention call."""
 
@@ -891,6 +907,7 @@ def _decode_batch_attention_selectors(
             _layer_runner_method, runner, "_packed_ar_attention_batch_kernel"
         ),
         split_workspace=split_workspace_view,
+        q8_t16_rowtile_all=_owner_rowtile_all(runner, rows),
     )
 
 
@@ -985,15 +1002,37 @@ def _layer_ffn_ops(runner) -> _layer_ffn.FfnOps:
     return _layer_ffn.FfnOps(**fields)
 
 
-def _layer_ffn_flags() -> _layer_ffn.FfnFlags:
-    """The FFN env-gated predicates, each a thunk over the current environment."""
+def _layer_ffn_flags(runner) -> _layer_ffn.FfnFlags:
+    """The FFN predicates, each a thunk over the owner or ambient policy.
+
+    A profile-bound runner carries its router decision explicitly; an unbound
+    runner (``None``) keeps the historical per-call diagnostic environment read.
+    """
 
     env_flags = {
         "compact_moe_c1_enabled": (_GGUF_COMPACT_MOE_C1_ENV, False),
         "fused_moe_ffn_enabled": (_GGUF_FUSED_MOE_FFN_ENV, False),
     }
+
+    def owner_flag(name: str, ambient) -> bool:
+        value = getattr(runner, name, None)
+        if value is None:
+            return bool(ambient())
+        return bool(value)
+
     fields: dict[str, object] = {}
     for name in _layer_ffn.FfnFlags.__dataclass_fields__:
+        if name == "router_f32w_coop_enabled":
+            fields[name] = lambda: owner_flag(
+                "router_f32w_coop", _gguf_router_f32w_coop_enabled
+            )
+            continue
+        if name == "router_f32w_persistent_counter_enabled":
+            fields[name] = lambda: owner_flag(
+                "router_f32w_persistent_counter",
+                _gguf_router_f32w_persistent_counter_enabled,
+            )
+            continue
         env = env_flags.get(name)
         if env is None:
             fields[name] = globals()["_gguf_" + name]
@@ -3144,6 +3183,14 @@ class Qwen35GGUFFullStackRunner:
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at construction.
     target_verifier_prefill_gdn_capture: bool | None = None
+    # Profile-owned cooperative F32 router policy. ``None`` keeps the
+    # unbound/direct diagnostic environment input read per call.
+    target_router_f32w_coop: bool | None = None
+    target_router_f32w_persistent_counter: bool | None = None
+    # Profile-owned broad Q8T16 rowtile admission. ``True`` admits the backend
+    # package floor, ``False`` forces the exact route, and ``None`` keeps the
+    # unbound/direct diagnostic input and packed-decode session resolution.
+    target_q8_t16_rowtile_all: bool | None = None
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
@@ -3166,6 +3213,43 @@ class Qwen35GGUFFullStackRunner:
     _verifier_prefill_gdn_capture_frozen: bool = field(
         default=False, init=False, repr=False
     )
+    # Owner-resolved router policy. ``None`` is the unbound/direct diagnostic
+    # path, which keeps the historical per-call environment read.
+    router_f32w_coop: bool | None = field(default=None, init=False)
+    router_f32w_persistent_counter: bool | None = field(default=None, init=False)
+    # Owner-resolved broad-rowtile admission. ``None`` is the unbound/direct
+    # diagnostic path; ``True`` admits the backend package floor.
+    q8_t16_rowtile_all: bool | None = field(default=None, init=False)
+
+    def _q8_t16_rowtile_all_owner_for_packed_rows(self, rows: int) -> bool | None:
+        """Resolve the broad-rowtile policy for the packed-AR decode route."""
+
+        admitted = getattr(self, "q8_t16_rowtile_all", None)
+        if admitted is None:
+            return None
+        if not admitted:
+            return False
+        return _gguf_q8_t16_decode_rowtile_all_for_rows(self.backend, rows=rows)
+
+    def _q8_t16_rowtile_all_owner_for_rows(self, rows: int) -> bool | None:
+        """Resolve one owner's broad-rowtile admission for this call's route.
+
+        The production floor is scoped to the packed-AR decode step, which is
+        the only route the old session wrapped. Verifier, native-row and
+        prefill calls ran outside that session with the ambient input unset, so
+        they must keep the exact route. A strict owner forces ``False``; an
+        unbound owner keeps the ambient/session resolution.
+        """
+
+        admitted = getattr(self, "q8_t16_rowtile_all", None)
+        if admitted is None:
+            return None
+        if not admitted:
+            return False
+        session_value = q8_t16_rowtile_all_session_value()
+        if session_value is None:
+            return False
+        return bool(session_value)
 
     def _freeze_verifier_prefill_gdn_capture(self) -> bool:
         """Resolve the verifier capture mode once, before any session owner."""
@@ -3228,6 +3312,24 @@ class Qwen35GGUFFullStackRunner:
         # The verifier capture mode selects the captured-row producer; freeze it
         # before any weight, session or scratch owner exists.
         self._freeze_verifier_prefill_gdn_capture()
+        # Owner-bound router and rowtile decisions are construction-owned. An
+        # unbound owner keeps ``None`` so the direct diagnostic environment and
+        # packed-decode session resolve exactly as before.
+        self.router_f32w_coop = (
+            None
+            if getattr(self, "target_router_f32w_coop", None) is None
+            else bool(self.target_router_f32w_coop)
+        )
+        self.router_f32w_persistent_counter = (
+            None
+            if getattr(self, "target_router_f32w_persistent_counter", None) is None
+            else bool(self.target_router_f32w_persistent_counter)
+        )
+        self.q8_t16_rowtile_all = (
+            None
+            if getattr(self, "target_q8_t16_rowtile_all", None) is None
+            else bool(self.target_q8_t16_rowtile_all)
+        )
         placement = str(self.token_embedding_placement).strip().lower()
         if placement not in {"device", "host", "auto"}:
             raise ValueError("token_embedding_placement must be 'device', 'host' or 'auto'")
@@ -4802,7 +4904,7 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
             rows=rows,
             start=scratch.start,
-            selectors=_bulk_full_attention_selectors(self, scratch, runtime),
+            selectors=_bulk_full_attention_selectors(self, scratch, runtime, rows=rows),
             policy=_bulk_full_attention_policy(),
             cos_table_ptr=cos_table_ptr,
             sin_table_ptr=sin_table_ptr,
@@ -4918,7 +5020,7 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
             geometry=_layer_attn.AttentionGeometry(hidden_size=self.hidden_size),
-            selectors=_layer_attention_selectors(self),
+            selectors=_layer_attention_selectors(self, rows=rows),
             policy=_layer_attention_policy(),
         )
 
@@ -4943,7 +5045,7 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             stream=stream,
             runtime=runtime,
-            selectors=_layer_attention_selectors(self),
+            selectors=_layer_attention_selectors(self, rows=rows),
             policy=_layer_attention_policy(),
         )
 
@@ -4989,7 +5091,7 @@ class Qwen35GGUFFullStackRunner:
             rows=rows,
             start=int(scratch.start),
             selectors=_decode_batch_attention_selectors(
-                self, scratch, split_workspace
+                self, scratch, split_workspace, rows=rows
             ),
             stream=stream,
             hidden_f32_ptr=hidden_f32_ptr,
@@ -5102,7 +5204,7 @@ class Qwen35GGUFFullStackRunner:
             ),
             backend=self.backend,
             runtime=self.runtime or get_hip_runtime(),
-            selectors=_layer_attention_selectors(self),
+            selectors=_layer_attention_selectors(self, rows=1),
             policy=_layer_attention_policy(),
             hidden_f32_ptr=hidden_f32_ptr,
             input_norm_ptr=input_norm_ptr,
@@ -5344,6 +5446,7 @@ class Qwen35GGUFFullStackRunner:
             out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         ):
             launch_gguf_linear(
                 layer.weight("attn_qkv"),
@@ -5354,6 +5457,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.linear_qkv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
             launch_gguf_linear(
                 layer.weight("attn_gate"),
@@ -5364,6 +5468,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=cfg.ssm_inner_size,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
         self._run_linear_attention_alpha_beta_rows(
             layer,
@@ -5488,6 +5593,7 @@ class Qwen35GGUFFullStackRunner:
             activation_dtype=ssm_out_activation_dtype,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         )
 
     def _full_attn_shared_batch_spans(
@@ -5757,6 +5863,7 @@ class Qwen35GGUFFullStackRunner:
             out_features=2 * self.q_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         )
         norm_row_nbytes = self.hidden_size * DType.BF16.itemsize
         kv_bf16_row_nbytes = self.kv_width * DType.BF16.itemsize
@@ -5803,6 +5910,7 @@ class Qwen35GGUFFullStackRunner:
                         out_features=self.kv_width,
                         stream=stream,
                         runtime=runtime,
+                        q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(1),
                     )
         launch_gguf_linear(
             layer.weight("attn_v"),
@@ -5813,6 +5921,7 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.kv_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         )
         qwen35_split_qgate_bf16(
             scratch.full_q.ptr,
@@ -6117,6 +6226,7 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         )
 
     def _run_linear_attention_attn_rows_indexed_exact(
@@ -6185,6 +6295,7 @@ class Qwen35GGUFFullStackRunner:
             out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         )
         if not pair_fused:
             launch_gguf_linear(
@@ -6196,6 +6307,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.linear_qkv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
             launch_gguf_linear(
                 layer.weight("attn_gate"),
@@ -6206,6 +6318,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=cfg.ssm_inner_size,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
         self._run_linear_attention_alpha_beta_rows(
             layer,
@@ -6300,6 +6413,7 @@ class Qwen35GGUFFullStackRunner:
             activation_dtype=ssm_out_activation_dtype,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         )
 
     def _run_linear_attention_decode_slot_rows_exact(
@@ -6477,6 +6591,7 @@ class Qwen35GGUFFullStackRunner:
             out_features_b=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         ):
             launch_gguf_linear(
                 layer.weight("attn_qkv"),
@@ -6487,6 +6602,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.linear_qkv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
             launch_gguf_linear(
                 layer.weight("attn_gate"),
@@ -6497,6 +6613,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=cfg.ssm_inner_size,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
 
         # Keep the scalar dense reduction association on the two rank-16
@@ -6621,6 +6738,7 @@ class Qwen35GGUFFullStackRunner:
             out_features_c=self.kv_width,
             stream=stream,
             runtime=runtime,
+            rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         ):
             launch_gguf_linear(
                 layer.weight("attn_q"),
@@ -6631,6 +6749,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=2 * self.q_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
             if not launch_gguf_linear_pair(
                 layer.weight("attn_k"),
@@ -6643,6 +6762,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.kv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             ):
                 launch_gguf_linear(
                     layer.weight("attn_k"),
@@ -6653,6 +6773,7 @@ class Qwen35GGUFFullStackRunner:
                     out_features=self.kv_width,
                     stream=stream,
                     runtime=runtime,
+                    q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
                 )
                 launch_gguf_linear(
                     layer.weight("attn_v"),
@@ -6663,6 +6784,7 @@ class Qwen35GGUFFullStackRunner:
                     out_features=self.kv_width,
                     stream=stream,
                     runtime=runtime,
+                    q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
                 )
         qwen35_split_qgate_bf16(
             scratch.full_q.ptr,
@@ -6787,6 +6909,7 @@ class Qwen35GGUFFullStackRunner:
             out_features=self.hidden_size,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
         )
         self._run_post_attention_ffn_rows(
             layer_id,
@@ -7244,6 +7367,7 @@ class Qwen35GGUFFullStackRunner:
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
+        rowtile_all = self._q8_t16_rowtile_all_owner_for_rows(rows)
         cast_library = self._cast_library()
         conv_state = decode_scratch.layer_conv_states[layer_id]
         recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
@@ -7351,6 +7475,7 @@ class Qwen35GGUFFullStackRunner:
                     activation_dtype=GGUF_ACTIVATION_F32,
                     stream=stream,
                     runtime=runtime,
+                    q8_t16_rowtile_all=rowtile_all,
                 )
                 launch_gguf_linear(
                     layer.weight("attn_gate"),
@@ -7362,6 +7487,7 @@ class Qwen35GGUFFullStackRunner:
                     activation_dtype=GGUF_ACTIVATION_F32,
                     stream=stream,
                     runtime=runtime,
+                    q8_t16_rowtile_all=rowtile_all,
                 )
                 pair_fused = True
                 qkv_gate_route = "f32_singletons"
@@ -7395,6 +7521,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features_b=cfg.ssm_inner_size,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=rowtile_all,
             )
         if not pair_fused:
             qkv_gate_route = "fallback"
@@ -7407,6 +7534,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.linear_qkv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("attn_gate"),
@@ -7417,6 +7545,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=cfg.ssm_inner_size,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=rowtile_all,
             )
         if use_f32_linear_projections:
             if not linear_qkv_f32_ready:
@@ -7922,6 +8051,7 @@ class Qwen35GGUFFullStackRunner:
                     activation_dtype=ssm_out_activation_dtype,
                     stream=stream,
                     runtime=runtime,
+                    q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
                 )
             t_stage = _mark_sync_stage(
                 runtime,
@@ -8081,6 +8211,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.hidden_size,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
         t_stage = _mark_sync_stage(
             runtime,
@@ -8212,7 +8343,7 @@ class Qwen35GGUFFullStackRunner:
             ),
             backend=self.backend,
             runtime=runtime,
-            selectors=_layer_attention_selectors(self),
+            selectors=_layer_attention_selectors(self, rows=1),
             policy=_layer_attention_policy(),
             ensure_full_attn_split_rows=lambda rows: _ensure_full_attn_split_rows(
                 scratch, rows, runtime=runtime
@@ -8278,6 +8409,7 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.hidden_size,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=self._q8_t16_rowtile_all_owner_for_rows(rows),
             )
         return attn_out_f32_ptr
 
@@ -8348,7 +8480,7 @@ class Qwen35GGUFFullStackRunner:
             _layer_ffn_geometry(self),
             _layer_ffn_kernels(),
             _layer_ffn_ops(self),
-            _layer_ffn_flags(),
+            _layer_ffn_flags(self),
             layer_id,
             hidden_ptr,
             attn_out_ptr,
@@ -8396,7 +8528,7 @@ class Qwen35GGUFFullStackRunner:
             _layer_ffn_geometry(self),
             _layer_ffn_kernels(),
             _layer_ffn_ops(self),
-            _layer_ffn_flags(),
+            _layer_ffn_flags(self),
             out_ptr,
             scratch,
             runtime=self.runtime,
@@ -8428,7 +8560,7 @@ class Qwen35GGUFFullStackRunner:
             _layer_ffn_geometry(self),
             _layer_ffn_kernels(),
             _layer_ffn_ops(self),
-            _layer_ffn_flags(),
+            _layer_ffn_flags(self),
             gate_weight,
             up_weight,
             down_weight,
@@ -8464,7 +8596,7 @@ class Qwen35GGUFFullStackRunner:
             _layer_ffn_geometry(self),
             _layer_ffn_kernels(),
             _layer_ffn_ops(self),
-            _layer_ffn_flags(),
+            _layer_ffn_flags(self),
             out_ptr,
             scratch,
             rows=rows,
@@ -12842,6 +12974,13 @@ class Qwen35GGUFResidentSession:
     # Profile-owned verifier capture mode. ``None`` inherits the runner's frozen
     # decision, or resolves the unbound/direct environment once.
     target_verifier_prefill_gdn_capture: bool | None = None
+    # Profile-owned cooperative F32 router policy. ``None`` leaves the
+    # unbound/direct diagnostic environment read in place.
+    target_router_f32w_coop: bool | None = None
+    target_router_f32w_persistent_counter: bool | None = None
+    # Profile-owned broad Q8T16 rowtile admission. ``None`` leaves the
+    # unbound/direct diagnostic input and package floor in place.
+    target_q8_t16_rowtile_all: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch = resident_state_field("canonical", "scratch")
     _target_scratch_owner = resident_state_field("canonical", "scratch_owner")
@@ -13316,6 +13455,11 @@ class Qwen35GGUFResidentSession:
                 target_verifier_prefill_gdn_capture=(
                     self.target_verifier_prefill_gdn_capture
                 ),
+                target_router_f32w_coop=self.target_router_f32w_coop,
+                target_router_f32w_persistent_counter=(
+                    self.target_router_f32w_persistent_counter
+                ),
+                target_q8_t16_rowtile_all=self.target_q8_t16_rowtile_all,
             )
             self._owns_runner = True
         else:
@@ -13349,6 +13493,38 @@ class Qwen35GGUFResidentSession:
                     "owner request"
                 )
             self.verifier_prefill_gdn_capture = bool(requested_capture)
+        # A bound owner must not silently ride an unbound or differently
+        # configured shared runner: the runner is the single consumer of these
+        # policies for every session it backs.
+        requested_router = self.target_router_f32w_coop
+        if requested_router is not None:
+            live_router = getattr(self.runner, "router_f32w_coop", None)
+            if live_router is None or bool(live_router) is not bool(requested_router):
+                raise RuntimeError(
+                    "shared runner router policy does not match the owner request"
+                )
+        requested_persistent = self.target_router_f32w_persistent_counter
+        if requested_persistent is not None:
+            live_persistent = getattr(
+                self.runner, "router_f32w_persistent_counter", None
+            )
+            if live_persistent is None or bool(live_persistent) is not bool(
+                requested_persistent
+            ):
+                raise RuntimeError(
+                    "shared runner router counter policy does not match the "
+                    "owner request"
+                )
+        requested_rowtile_all = self.target_q8_t16_rowtile_all
+        if requested_rowtile_all is not None:
+            live_rowtile_all = getattr(self.runner, "q8_t16_rowtile_all", None)
+            if live_rowtile_all is None or bool(live_rowtile_all) is not bool(
+                requested_rowtile_all
+            ):
+                raise RuntimeError(
+                    "shared runner Q8T16 rowtile policy does not match the "
+                    "owner request"
+                )
         # Freeze this experimental T2 axis at session construction so strict
         # and candidate owners can coexist in one numerical evaluator process.
         self.target_verifier_production_q4_rowtile = (
@@ -23974,10 +24150,17 @@ class Qwen35GGUFResidentSession:
         linear_attention_decode_paths: set[str] = set()
         full_attention_decode_paths: set[str] = set()
         linear_attention_decode_batch_plan = self.runner._linear_attention_decode_batch_plan()
-        q8_t16_rowtile_all = _gguf_q8_t16_decode_rowtile_all_for_rows(
-            self.runner.backend,
-            rows=rows,
-        )
+        # Owner-bound runners resolve the broad-rowtile policy explicitly; the
+        # packed-decode session below is the existing unbound/nested fallback.
+        # It is not a second owner source: every decode/verifier launch also
+        # receives the explicit input. Only this packed-AR step carries the
+        # production floor; the session scopes it to this route.
+        q8_t16_rowtile_all = self.runner._q8_t16_rowtile_all_owner_for_packed_rows(rows)
+        if q8_t16_rowtile_all is None:
+            q8_t16_rowtile_all = _gguf_q8_t16_decode_rowtile_all_for_rows(
+                self.runner.backend,
+                rows=rows,
+            )
         q8_t16_pair_rowtile_min_rows = int(
             backend_package_capability(
                 self.runner.backend,
@@ -33173,6 +33356,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
             out_features=shared_ffn,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
         ):
             launch_gguf_linear(
                 layer.weight("ffn_gate_shexp"),
@@ -33183,6 +33367,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
                 out_features=shared_ffn,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
             )
             launch_gguf_linear(
                 layer.weight("ffn_up_shexp"),
@@ -33193,6 +33378,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
                 out_features=shared_ffn,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
             )
         silu_mul_separate_out_bf16(
             scratch.moe_shared_gate.ptr,
@@ -33214,6 +33400,7 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         out_features=hidden_size,
         stream=stream,
         runtime=runtime,
+        q8_t16_rowtile_all=runner._q8_t16_rowtile_all_owner_for_rows(rows),
     )
     if gpu_stage_recorder is not None:
         gpu_stage_recorder.mark(f"{stage_prefix}_shared_down", stage_prefix)

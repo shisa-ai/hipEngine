@@ -2578,6 +2578,12 @@ def set_q8_t16_rowtile_all_enabled(enabled: bool | None) -> None:
     _q8_t16_rowtile_all_session_enabled = None if enabled is None else bool(enabled)
 
 
+def q8_t16_rowtile_all_session_value() -> bool | None:
+    """Return the active packed-AR broad-rowtile value, or ``None``."""
+
+    return _q8_t16_rowtile_all_session_enabled
+
+
 @contextlib.contextmanager
 def q8_t16_rowtile_all_session(enabled: bool | None) -> Iterator[None]:
     """Temporarily select Q8T16 row amortization for one execution owner."""
@@ -2599,13 +2605,17 @@ def _resolve_use_q8_t16_all_rowtile() -> bool:
     return False
 
 
-def _resolve_use_q8_t16_pair_rowtile(*, rows: int) -> bool:
+def _resolve_use_q8_t16_pair_rowtile(
+    *, rows: int, rowtile_all: bool | None = None
+) -> bool:
     raw = os.environ.get(_Q8_T16_PAIR_ROWTILE_ENV, "")
     if raw:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
     min_rows = _q8_t16_pair_rowtile_min_rows_session
     if min_rows is not None and min_rows > 0 and rows >= min_rows:
         return True
+    if rowtile_all is not None:
+        return bool(rowtile_all)
     return _resolve_use_q8_t16_all_rowtile()
 
 
@@ -2623,10 +2633,13 @@ def _use_q8_t16_all_rowtile(
     in_features: int,
     out_features: int | None = None,
     threads: int = 0,
+    rowtile_all: bool | None = None,
 ) -> bool:
     if rows <= 1 or _q8_t16_threads_override_active(threads):
         return False
     if in_features == _Q8_T16_QWEN35_ATTN_IN:
+        if rowtile_all is not None:
+            return bool(rowtile_all)
         return _resolve_use_q8_t16_all_rowtile()
     return False
 
@@ -2649,6 +2662,7 @@ def _use_q8_t16_pair_rowtile(
     out_features_a: int,
     out_features_b: int,
     threads: int = 0,
+    rowtile_all: bool | None = None,
 ) -> bool:
     return (
         rows > 1
@@ -2656,7 +2670,9 @@ def _use_q8_t16_pair_rowtile(
         and out_features_a == _Q8_T16_QWEN35_ATTN_QKV_OUT
         and out_features_b == _Q8_T16_QWEN35_ATTN_GATE_OUT
         and not _q8_t16_threads_override_active(threads)
-        and _resolve_use_q8_t16_pair_rowtile(rows=rows)
+        and _resolve_use_q8_t16_pair_rowtile(
+            rows=rows, rowtile_all=rowtile_all
+        )
     )
 
 
@@ -4618,6 +4634,7 @@ def launch_gguf_linear_decode_rows(
     output_dtype: str = GGUF_OUTPUT_F32,
     reference_rows: int = 1,
     stream: int = 0, runtime=None,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> None:
     """Batch row-independent decode kernels without bypassing parent policy.
 
@@ -4633,7 +4650,8 @@ def launch_gguf_linear_decode_rows(
     parent_records = _GGUF_LINEAR_DISPATCH_RECORDER.get()
     with record_gguf_linear_dispatch() as records:
         launch_gguf_linear(weight, x_ptr, out_ptr, reference_rows, in_features, out_features,
-            activation_dtype=activation_dtype, output_dtype=output_dtype, stream=stream, runtime=runtime)
+            activation_dtype=activation_dtype, output_dtype=output_dtype, stream=stream, runtime=runtime,
+            q8_t16_rowtile_all=q8_t16_rowtile_all)
     if parent_records is not None:
         parent_records.extend(records)
     remaining = rows - reference_rows
@@ -4649,7 +4667,8 @@ def launch_gguf_linear_decode_rows(
         for offset in range(reference_rows, rows, reference_rows):
             launch_gguf_linear(weight, x_ptr + offset * input_stride, out_ptr + offset * output_stride,
                 reference_rows, in_features, out_features, activation_dtype=activation_dtype,
-                output_dtype=output_dtype, stream=stream, runtime=runtime)
+                output_dtype=output_dtype, stream=stream, runtime=runtime,
+                q8_t16_rowtile_all=q8_t16_rowtile_all)
         return
     key = record["key"]
     fn = resolve(**key)
@@ -4684,6 +4703,7 @@ def launch_gguf_linear(
     use_gemv_decode: bool | None = None,
     use_q4_pack8_wmma: bool = False,
     registered_variant: str | None = None,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> None:
     """Launch a GGUF resident linear projection through the kernel registry.
 
@@ -5399,6 +5419,7 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
             threads=threads,
+            rowtile_all=q8_t16_rowtile_all,
         )
     ):
         gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out(
@@ -6874,6 +6895,7 @@ def launch_gguf_linear_pair(
     threads: int = 0,
     registered_decode_only: bool = False,
     registered_decode_variant: str | None = None,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused.
 
@@ -6946,6 +6968,7 @@ def launch_gguf_linear_pair(
                     use_wmma_prefill=use_wmma_prefill,
                     use_gemv_decode=use_gemv_decode,
                     threads=threads,
+                    q8_t16_rowtile_all=q8_t16_rowtile_all,
                 )
             return True
         physical_pad_counts = backend_package_capability(
@@ -7055,6 +7078,7 @@ def launch_gguf_linear_pair(
                             runtime=runtime,
                             use_wmma_prefill=use_wmma_prefill,
                             use_gemv_decode=use_gemv_decode,
+                            q8_t16_rowtile_all=q8_t16_rowtile_all,
                         )
                 return True
 
@@ -7073,6 +7097,7 @@ def launch_gguf_linear_pair(
         threads=threads,
         registered_decode_only=registered_decode_only,
         registered_decode_variant=registered_decode_variant,
+        q8_t16_rowtile_all=q8_t16_rowtile_all,
     )
     return _execute_gguf_linear_pair_plan(
         plan,
@@ -8747,6 +8772,7 @@ def _resolve_gguf_linear_pair_plan(
     threads: int = 0,
     registered_decode_only: bool = False,
     registered_decode_variant: str | None = None,
+    q8_t16_rowtile_all: bool | None = None,
 ) -> _GGUFLinearPairPlan:
     """Resolve one private, pointer-free, launch-local GGUF pair plan.
 
@@ -8989,6 +9015,7 @@ def _resolve_gguf_linear_pair_plan(
             out_features_a=out_features,
             out_features_b=out_features_b,
             threads=threads,
+            rowtile_all=q8_t16_rowtile_all,
         ):
             mode = (
                 "rowtile_col8"
@@ -9852,6 +9879,7 @@ def launch_gguf_linear_triple(
     stream: int = 0,
     runtime=None,
     threads: int = 0,
+    rowtile_all: bool | None = None,
 ) -> bool:
     """Launch a supported same-input triple of GGUF projections."""
 
@@ -9866,6 +9894,7 @@ def launch_gguf_linear_triple(
         out_features_c=out_features_c,
         backend=backend,
         threads=threads,
+        rowtile_all=rowtile_all,
     )
     return _execute_gguf_linear_triple_plan(
         plan,

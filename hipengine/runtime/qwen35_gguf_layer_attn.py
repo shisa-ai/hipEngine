@@ -118,6 +118,9 @@ class AttentionSelectors:
     full_attn_decode_short_batch_fn: Callable[[object], Callable[..., None]]
     int8_kv_append_write_fn: Callable[[object], Callable[..., None]]
     int8_kv_decode_gate_fn: Callable[[object], Callable[..., None]]
+    # Owner-resolved Q8T16 broad-rowtile policy for this call's row width.
+    # ``None`` keeps the ambient/session resolver.
+    q8_t16_rowtile_all: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -295,6 +298,7 @@ def run_linear_attention_alpha_beta_rows(
                 output_dtype=GGUF_OUTPUT_F32,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("ssm_beta"),
@@ -307,6 +311,7 @@ def run_linear_attention_alpha_beta_rows(
                 output_dtype=GGUF_OUTPUT_F32,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
             cast_library = selectors.cast_library()
             f32_to_bf16(
@@ -388,6 +393,7 @@ def run_linear_attention_alpha_beta_rows(
                 activation_dtype=GGUF_ACTIVATION_F32,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("ssm_beta"),
@@ -399,6 +405,7 @@ def run_linear_attention_alpha_beta_rows(
                 activation_dtype=GGUF_ACTIVATION_F32,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
             return "f32_singletons"
     if cfg.is_moe:
@@ -411,6 +418,7 @@ def run_linear_attention_alpha_beta_rows(
             out_features=cfg.ssm_time_step_rank,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         )
         launch_gguf_linear(
             layer.weight("ssm_beta"),
@@ -421,6 +429,7 @@ def run_linear_attention_alpha_beta_rows(
             out_features=cfg.ssm_time_step_rank,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         )
         return "singletons"
     if launch_gguf_linear_pair(
@@ -434,6 +443,7 @@ def run_linear_attention_alpha_beta_rows(
         out_features=cfg.ssm_time_step_rank,
         stream=stream,
         runtime=runtime,
+        q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
     ):
         return "pair"
     launch_gguf_linear(
@@ -445,6 +455,7 @@ def run_linear_attention_alpha_beta_rows(
         out_features=cfg.ssm_time_step_rank,
         stream=stream,
         runtime=runtime,
+        q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
     )
     launch_gguf_linear(
         layer.weight("ssm_beta"),
@@ -455,6 +466,7 @@ def run_linear_attention_alpha_beta_rows(
         out_features=cfg.ssm_time_step_rank,
         stream=stream,
         runtime=runtime,
+        q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
     )
     return "fallback"
 
@@ -515,6 +527,7 @@ def run_linear_attention_attn_only(
         out_features_b=cfg.ssm_inner_size,
         stream=stream,
         runtime=runtime,
+        q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
     )
     if not pair_fused:
         launch_gguf_linear(
@@ -526,6 +539,7 @@ def run_linear_attention_attn_only(
             out_features=geometry.linear_qkv_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         )
         launch_gguf_linear(
             layer.weight("attn_gate"),
@@ -536,6 +550,7 @@ def run_linear_attention_attn_only(
             out_features=cfg.ssm_inner_size,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         )
     if gpu_stage_recorder is not None:
         gpu_stage_recorder.mark(f"{stage_prefix}_qkv_gate")
@@ -659,6 +674,7 @@ def run_linear_attention_attn_only(
         activation_dtype=ssm_out_activation_dtype,
         stream=stream,
         runtime=runtime,
+        q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
     )
     if gpu_stage_recorder is not None:
         gpu_stage_recorder.mark(f"{stage_prefix}_ssm_out")
@@ -741,6 +757,7 @@ def run_full_attention_attn_only(
             out_features_c=geometry.kv_width,
             stream=stream,
             runtime=runtime,
+            rowtile_all=selectors.q8_t16_rowtile_all,
         )
     if not qkv_complete:
         if not kv_write_only:
@@ -753,6 +770,7 @@ def run_full_attention_attn_only(
                 out_features=2 * geometry.q_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
         if not launch_gguf_linear_pair(
             layer.weight("attn_k"),
@@ -765,6 +783,7 @@ def run_full_attention_attn_only(
             out_features=geometry.kv_width,
             stream=stream,
             runtime=runtime,
+            q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
         ):
             launch_gguf_linear(
                 layer.weight("attn_k"),
@@ -775,6 +794,7 @@ def run_full_attention_attn_only(
                 out_features=geometry.kv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
             launch_gguf_linear(
                 layer.weight("attn_v"),
@@ -785,6 +805,7 @@ def run_full_attention_attn_only(
                 out_features=geometry.kv_width,
                 stream=stream,
                 runtime=runtime,
+                q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
             )
     qk_postprocess = selectors.full_attn_qk_postprocess_fn()
     if qk_postprocess is None:
@@ -1120,6 +1141,7 @@ def run_full_attention_attn_only(
         out_features=geometry.hidden_size,
         stream=stream,
         runtime=runtime,
+        q8_t16_rowtile_all=selectors.q8_t16_rowtile_all,
     )
     if gpu_stage_recorder is not None:
         gpu_stage_recorder.mark(f"{stage_prefix}_output")
