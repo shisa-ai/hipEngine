@@ -11,7 +11,6 @@ from hipengine.core.rocblas import Rocblas, get_rocblas
 from hipengine.kernels.hip_gfx1100.convert.cast import (
     bf16_to_fp16,
     fp16_to_bf16,
-    fp16_to_bf16_strided_rows,
     fp16_to_f32,
 )
 from hipengine.kernels.registry import KernelKey, register
@@ -586,6 +585,34 @@ def gguf_q6_k_f16_rocblas_bf16_f32_out(*args, **kwargs) -> None:
     _launch_q6_f16_rocblas("f32", *args, **kwargs)
 
 
+def _launch_source_f16_k16(
+    x_ptr: int, weight_ptr: int, out_ptr: int,
+    rows: int, in_features: int, out_features: int,
+    dst_row_stride: int, dst_col_offset: int,
+    *, stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Consume one bounded F16 tile in parent K16 order, publishing BF16."""
+    parsed_rows = _check_rows(rows)
+    hidden = _check_in_features(in_features)
+    cols = _check_out_features(out_features)
+    stride, offset = int(dst_row_stride), int(dst_col_offset)
+    if cols % 16 or offset < 0 or stride < cols or offset > stride - cols:
+        raise ValueError("invalid tile16 output or destination span")
+    library = library or build_gguf_q6_k_f16_rocblas_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    function = library.hipengine_source_f16_k16_bf16
+    function.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int64] * 5 + [ctypes.c_void_p]
+    function.restype = ctypes.c_int
+    error = function(
+        ctypes.c_void_p(x_ptr), ctypes.c_void_p(weight_ptr), ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(parsed_rows), ctypes.c_int64(hidden), ctypes.c_int64(cols),
+        ctypes.c_int64(stride), ctypes.c_int64(offset), ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def _launch_t16_f16_rocblas(
     output_dtype: str,
     dequantize_tile,
@@ -611,8 +638,11 @@ def _launch_t16_f16_rocblas(
     """Run source-F16 arithmetic from a sole-resident T16 weight layout.
 
     The activation is cast once. Weight columns are dequantized one bounded
-    tile at a time and consumed immediately by rocBLAS; no raw or F16 weight
-    sidecar is retained. Q4T16, Q5T16, and planar Q6T16 share this bounded ABI.
+    tile at a time and consumed immediately in parent K16 accumulation order;
+    no raw or F16 weight sidecar is retained. Q4T16, Q5T16, and planar Q6T16
+    share this bounded ABI. The rocBLAS and output-tile arguments remain for
+    existing callers; the K16 consumer publishes BF16 directly without using
+    that scratch or acquiring a library handle.
     """
 
     parsed_rows = _check_rows(rows)
@@ -635,11 +665,7 @@ def _launch_t16_f16_rocblas(
             library=cast_library,
             runtime=runtime,
         )
-    active_rocblas = rocblas or get_rocblas()
     if output_dtype == "f32":
-        # The bounded path currently writes FP16 rocBLAS output directly into
-        # its BF16-sized destination before a whole-output cast. Keep the F32
-        # route fail-closed until a bounded FP16 output tile is added.
         raise NotImplementedError("T16 F16/rocBLAS F32 output is not yet supported")
     for col_start in range(0, outputs, tile_outputs):
         col_count = min(tile_outputs, outputs - col_start)
@@ -654,25 +680,11 @@ def _launch_t16_f16_rocblas(
             library=dequant_library,
             runtime=runtime,
         )
-        active_rocblas.gemm_ex_rowmajor_nt_fp16_compute_f16(
-            x_f16_ptr,
-            weight_tile_f16_ptr,
-            out_tile_f16_ptr,
-            rows=parsed_rows,
-            in_features=hidden,
-            out_features=col_count,
+        _launch_source_f16_k16(
+            x_f16_ptr, weight_tile_f16_ptr, out_ptr,
+            parsed_rows, hidden, col_count, outputs, col_start,
             stream=stream,
-            solution_index=solution_index,
-        )
-        fp16_to_bf16_strided_rows(
-            out_tile_f16_ptr,
-            out_ptr,
-            parsed_rows,
-            col_count,
-            outputs,
-            col_start,
-            stream=stream,
-            library=cast_library,
+            library=dequant_library,
             runtime=runtime,
         )
 

@@ -1579,7 +1579,7 @@ class T16F16RocblasPrefillSession:
 
     This context never changes resident weight ownership: admitted candidates
     read canonical Q4T16/Q5T16 or planar Q6T16 allocations and dequantize one
-    bounded output tile immediately before rocBLAS consumes it.
+    bounded output tile immediately before the K16 consumer publishes BF16.
     """
 
     min_rows: int
@@ -2183,31 +2183,44 @@ def current_source_f16_slab_spans() -> SourceF16SlabSpans | None:
 def _source_f16_span_owner_admits(
     owner: T16F16RocblasPrefillSession | None,
     *,
+    weight: GGUFDeviceWeight,
+    backend: str | None,
     rows: int,
     in_features: int,
     out_features: int,
-    quant: str,
 ) -> bool:
-    """Whether one request's own owner selects source-F16 at these rows.
+    """Whether this span's own launch would actually take source-F16.
 
-    This mirrors the admission the dispatch rewrite applies after it has
-    accepted the weight: the quant must have a source-F16 route, the physical
-    rows must sit inside the owner's band, and the owner's shape policy must
-    produce a tile. Nothing here reads the slab's aggregate rows.
+    The verdict is the launch's own decision, not a quant/shape/row mirror: the
+    parent dispatch is the same base resolution the launch starts from, and
+    :func:`_source_f16_prefill_decision` applies the single source-F16
+    admission rule to it. An unavailable or incompatible source-F16 variant
+    therefore leaves the span on the ordinary exact route instead of admitting
+    it and failing its launch probe. Nothing here reads the slab's aggregate
+    rows.
     """
 
     if owner is None:
         return False
-    if str(quant) not in _T16_F16_ROCBLAS_ROUTE_BY_QUANT:
-        return False
-    if not int(owner.min_rows) <= int(rows) <= int(owner.max_rows):
-        return False
+    # ``_source_f16_span_launch_supported`` already restricted this launch to
+    # the BF16 activation/output pair the decision assumes.
+    parent = resolve_gguf_linear_dispatch(
+        weight,
+        activation_dtype=GGUF_ACTIVATION_BF16,
+        output_dtype=GGUF_OUTPUT_BF16,
+        backend=_weight_backend(weight, backend=backend),
+        rows=int(rows),
+    )
     return (
-        owner.tile_out_features(
-            int(rows),
-            int(in_features),
-            int(out_features),
-            quant=str(quant),
+        _source_f16_prefill_decision(
+            session=owner,
+            backend=parent.key.backend,
+            quant=parent.key.quant,
+            abi=parent.abi,
+            variant=parent.key.variant,
+            rows=int(rows),
+            in_features=int(in_features),
+            out_features=int(out_features),
         )
         is not None
     )
@@ -5018,16 +5031,16 @@ def _launch_gguf_linear_source_f16_spans(
         # launch. Substituting the aggregate rows here is exactly the
         # substitution this owner exists to prevent.
         return False
-    quant = str(weight.spec.quant_key)
     eligible = tuple(
         span
         for span in spans.spans
         if _source_f16_span_owner_admits(
             span.owner,
+            weight=weight,
+            backend=backend,
             rows=span.rows,
             in_features=in_features,
             out_features=out_features,
-            quant=quant,
         )
     )
     if not eligible:
@@ -12707,6 +12720,63 @@ _T16_F16_ROCBLAS_ROUTE_BY_QUANT = MappingProxyType(
 )
 
 
+def _source_f16_prefill_decision(
+    *,
+    session: T16F16RocblasPrefillSession | None,
+    backend: str,
+    quant: str,
+    abi: str,
+    variant: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> tuple[KernelKey, str] | None:
+    """The single source-F16 admission decision for one parent dispatch.
+
+    Returns the registered changed-arithmetic owner, or ``None`` when the
+    launch must keep its exact parent. ``None`` is the ordinary route, not a
+    failure: a quant outside the declared T16 source-F16 family, a row count
+    outside the owner's band, a shape without a declared tile, a parent that is
+    not the T16 ABI, a variant outside the BF16-output family, and a shape
+    whose selected *and* default variants are both unregistered all mean "run
+    the exact launch". The launch rewrite and the packed-span precheck both
+    call this function, so neither can drift from the other.
+    """
+
+    route = _T16_F16_ROCBLAS_ROUTE_BY_QUANT.get(str(quant))
+    if (
+        session is None
+        or int(rows) < int(session.min_rows)
+        or int(rows) > int(session.max_rows)
+        or abi != "t16"
+        or route is None
+        or not str(variant).endswith("_bf16_bf16_out")
+        or session.tile_out_features(
+            int(rows),
+            int(in_features),
+            int(out_features),
+            quant=str(quant),
+        )
+        is None
+    ):
+        return None
+    assert route is not None
+    default_variant, launch_abi = route
+    selected = session.linear_variant(
+        int(rows),
+        int(in_features),
+        int(out_features),
+        quant=str(quant),
+        default=default_variant,
+    )
+    key = KernelKey(str(backend), "linear", str(quant), selected)
+    if not is_registered(key) and selected != default_variant:
+        key = KernelKey(str(backend), "linear", str(quant), default_variant)
+    if not is_registered(key):
+        return None
+    return key, launch_abi
+
+
 def _q6_t16_f16_rocblas_prefill_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -12716,47 +12786,20 @@ def _q6_t16_f16_rocblas_prefill_dispatch(
 ) -> GGUFLinearDispatch:
     """Select source-F16 arithmetic only inside its bounded owner context."""
 
-    session = _t16_f16_rocblas_prefill_session.get()
-    route = _T16_F16_ROCBLAS_ROUTE_BY_QUANT.get(dispatch.key.quant)
-    if (
-        session is None
-        or int(rows) < int(session.min_rows)
-        or int(rows) > int(session.max_rows)
-        or dispatch.abi != "t16"
-        or route is None
-        or not dispatch.key.variant.endswith("_bf16_bf16_out")
-        or session.tile_out_features(
-            rows,
-            in_features,
-            out_features,
-            quant=dispatch.key.quant,
-        )
-        is None
-    ):
-        return dispatch
-    assert route is not None
-    default_variant, launch_abi = route
-    variant = session.linear_variant(
-        rows,
-        in_features,
-        out_features,
+    decision = _source_f16_prefill_decision(
+        session=_t16_f16_rocblas_prefill_session.get(),
+        backend=dispatch.key.backend,
         quant=dispatch.key.quant,
-        default=default_variant,
+        abi=dispatch.abi,
+        variant=dispatch.key.variant,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
     )
-    key = KernelKey(
-        dispatch.key.backend,
-        "linear",
-        dispatch.key.quant,
-        variant,
-    )
-    if not is_registered(key) and variant != default_variant:
-        key = KernelKey(
-            dispatch.key.backend,
-            "linear",
-            dispatch.key.quant,
-            default_variant,
-        )
-    return GGUFLinearDispatch(key, launch_abi) if is_registered(key) else dispatch
+    if decision is None:
+        return dispatch
+    key, launch_abi = decision
+    return GGUFLinearDispatch(key, launch_abi)
 
 
 def _wmma_prefill_dispatch(

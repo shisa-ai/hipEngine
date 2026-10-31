@@ -81,13 +81,43 @@ def test_dense_backend_policies_are_geometry_keyed() -> None:
         "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
         "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
         "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
-        "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
         "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
         "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
     ):
         policies = backend_package_capability("hip_gfx1100", capability, {})
         assert identity in policies
         assert all(not isinstance(key[0], str) for key in policies)
+
+
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("preset", [None, "gguf_ud_q4_k_m", "gguf-unqualified-manifest"])
+@pytest.mark.parametrize("file_type", [_Q4_K_M, _Q4_K_S, "UNKNOWN"])
+def test_source_f16_admission_uses_geometry_not_artifact_stamp(
+    backend: str, preset: str | None, file_type: str,
+) -> None:
+    runner = _dense_runner(model_name="unfamiliar-compatible-artifact")
+    runner.backend = backend
+    runner.weights.artifact_preset_key = preset
+    runner.weights.file_type_name = file_type
+    policy = gguf_runner._gguf_t16_f16_rocblas_prefill_policy(runner)
+    assert policy is not None
+    assert policy["gguf_q5_k_t16_v1"][(6_144, 5_120)]
+    if backend == "hip_gfx1151":
+        assert "gguf_q4_k_t16_v1" not in policy
+        assert "gguf_q6_k_t16_qmicro_planar_v1" not in policy
+    runner.weights.config.is_moe = True
+    assert gguf_runner._gguf_t16_f16_rocblas_prefill_policy(runner) is None
+    runner.weights.config.is_moe = False
+    runner.weights.geometry = replace(runner.weights.geometry, head_count=20)
+    assert gguf_runner._gguf_t16_f16_rocblas_prefill_policy(runner) is None
+
+
+def test_source_f16_backend_capability_is_geometry_only() -> None:
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        policies = backend_package_capability(
+            backend, "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES", {}
+        )
+        assert policies == {QWEN35_DENSE_H5120_GEOMETRY: True}
 
 
 def test_gfx1100_qwen38_dense_prefill_scratch_row_cap_bounds_declared_context() -> None:

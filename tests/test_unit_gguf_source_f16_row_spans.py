@@ -108,6 +108,7 @@ def _owner(
     q4_tiles: dict[tuple[int, int, int], int] | None = None,
     q5_inplace: frozenset[tuple[int, int, int]] = frozenset(),
     pair_only: dict | None = None,
+    variants: dict | None = None,
     max_rows: int = 4096,
 ) -> T16F16RocblasPrefillSession:
     return T16F16RocblasPrefillSession(
@@ -124,6 +125,7 @@ def _owner(
         q4_tile_out_features_by_shape=q4_tiles or {},
         q5_x_inplace_shapes=q5_inplace,
         pair_only_second_operand_policies=pair_only or {},
+        linear_variant_intervals_by_quant=variants or {},
         dequant_library="dequant-library",
         cast_library="cast-library",
         rocblas="rocblas-handle",
@@ -684,3 +686,197 @@ def test_spans_cannot_nest_inside_a_request_local_owner(calls) -> None:
         with source_f16_slab_spans_session(spans):
             with pytest.raises(ValueError, match="cannot nest"):
                 _launch(weight, 517, out_features=10240)
+
+
+def test_span_without_a_registered_source_variant_keeps_the_slab_launch(
+    monkeypatch, calls
+) -> None:
+    """An unavailable changed-arithmetic variant is the ordinary exact route.
+
+    The span precheck must answer with the launch's own decision, not a
+    quant/shape/row mirror: when neither the selected nor the default source
+    variant is registered, the whole slab runs today's launch at slab rows and
+    the span probe never fires.
+    """
+
+    calls.install("exact", _Q6_EXACT)
+    calls.install("source", _Q6_SOURCE)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    owner = _owner(q6_tiles={(512, 5120, 10240): 2048})
+    spans = _spans(517, (0, 517, 517, owner))
+
+    real_is_registered = gguf_linear_module.is_registered
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "is_registered",
+        lambda key: (
+            False
+            if str(key.variant).startswith("f16_rocblas")
+            else real_is_registered(key)
+        ),
+    )
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    with source_f16_slab_spans_session(spans):
+        _launch(weight, 517, out_features=10240)
+
+    assert calls.labels() == ["exact"]
+    assert calls.calls[0][1][3] == 517
+
+
+def test_span_with_an_incompatible_parent_abi_keeps_the_slab_launch(
+    monkeypatch, calls
+) -> None:
+    """A parent outside the T16 ABI is the ordinary exact route, not a raise."""
+
+    calls.install("exact", _Q6_EXACT)
+    calls.install("source", _Q6_SOURCE)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    owner = _owner(q6_tiles={(512, 5120, 10240): 2048})
+    # 517 rows carries the owner; the 504-row neighbour keeps the slab mixed so
+    # the aggregate launch is the one under test.
+    spans = _spans(1021, (0, 517, 517, owner), (517, 504, 504, None))
+
+    real_resolve = gguf_linear_module.resolve_gguf_linear_dispatch
+
+    def resolve(weight, *, activation_dtype, output_dtype, backend=None, rows=1):
+        dispatch = real_resolve(
+            weight,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            rows=rows,
+        )
+        # The span precheck resolves the parent with no request-local owner
+        # bound; the launch resolves it under the span's owner. Answer the
+        # precheck's 517-row parent with a non-T16 ABI so only the decision
+        # under test changes.
+        if (
+            int(rows) == 517
+            and gguf_linear_module._t16_f16_rocblas_prefill_session.get() is None
+        ):
+            return gguf_linear_module.GGUFLinearDispatch(dispatch.key, "raw")
+        return dispatch
+
+    monkeypatch.setattr(
+        gguf_linear_module, "resolve_gguf_linear_dispatch", resolve
+    )
+    gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    with source_f16_slab_spans_session(spans):
+        _launch(weight, 1021, out_features=10240)
+
+    assert calls.labels() == ["exact"]
+    assert calls.calls[0][1][3] == 1021
+
+
+def test_selected_variant_miss_falls_back_to_the_registered_default(calls) -> None:
+    """A selected-but-unregistered variant still engages through its default."""
+
+    calls.install("exact", _Q6_EXACT)
+    calls.install("source", _Q6_SOURCE)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+    )
+    selected = "f16_rocblas_t16_octet_bf16_bf16_out"
+    assert not gguf_linear_module.is_registered(
+        KernelKey(_BACKEND, "linear", "gguf_q6_k_t16_qmicro_planar_v1", selected)
+    )
+    owner = _owner(
+        q6_tiles={(512, 5120, 10240): 2048},
+        variants={
+            "gguf_q6_k_t16_qmicro_planar_v1": {
+                (5120, 10240): {(512, 4096): selected}
+            }
+        },
+    )
+    spans = _spans(517, (0, 517, 517, owner))
+
+    with source_f16_slab_spans_session(spans):
+        _launch(weight, 517, out_features=10240)
+
+    # The registered default owns the span; the unregistered selected variant
+    # is never resolved (that would raise), and no exact launch runs.
+    assert calls.labels() == ["source"]
+    assert calls.calls[0][1][6] == 517
+
+
+@pytest.mark.parametrize(
+    ("layout", "quant_key", "in_features", "out_features", "tile_slot", "tiles", "source_key"),
+    (
+        (
+            LAYOUT_GGUF_Q4_K_T16,
+            "gguf_q4_k_t16_v1",
+            5120,
+            12288,
+            "q4_tiles",
+            {(512, 5120, 12288): 2048},
+            KernelKey(
+                _BACKEND, "linear", "gguf_q4_k_t16_v1",
+                "f16_rocblas_t16_bf16_bf16_out",
+            ),
+        ),
+        (
+            LAYOUT_GGUF_Q5_K_T16,
+            "gguf_q5_k_t16_v1",
+            6144,
+            5120,
+            "q5_tiles",
+            {(512, 6144, 5120): 1280},
+            _Q5_SOURCE,
+        ),
+        (
+            LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            5120,
+            10240,
+            "q6_tiles",
+            {(512, 5120, 10240): 2048},
+            _Q6_SOURCE,
+        ),
+    ),
+)
+def test_span_precheck_agrees_with_the_launch_rewrite(
+    layout, quant_key, in_features, out_features, tile_slot, tiles, source_key
+) -> None:
+    """The precheck and the launch must reach the same verdict.
+
+    The precheck answers with the launch's own decision, so a span is admitted
+    exactly when the rewrite would change the parent dispatch. This pins the
+    engaged direction: a quant/shape/row mirror that silently stopped
+    admitting would be a missed engagement, not a safety improvement.
+    """
+
+    owner = _owner(**{tile_slot: tiles})
+    weight = _fake_weight(layout=layout, quant_key=quant_key)
+    assert gguf_linear_module.is_registered(source_key)
+
+    parent = gguf_linear_module.resolve_gguf_linear_dispatch(
+        weight, backend=_BACKEND, rows=517
+    )
+    with t16_f16_rocblas_prefill_session(owner):
+        rewritten = gguf_linear_module._q6_t16_f16_rocblas_prefill_dispatch(
+            parent,
+            rows=517,
+            in_features=in_features,
+            out_features=out_features,
+        )
+
+    assert rewritten.key == source_key
+    # The changed-arithmetic ABI is the route's own launch ABI, not the parent's.
+    assert rewritten.abi.endswith("_f16_rocblas")
+    assert gguf_linear_module._source_f16_span_owner_admits(
+        owner,
+        weight=weight,
+        backend=_BACKEND,
+        rows=517,
+        in_features=in_features,
+        out_features=out_features,
+    )

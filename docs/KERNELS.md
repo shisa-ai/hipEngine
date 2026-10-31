@@ -250,7 +250,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `quant/gguf_q8_0_mmq_prefill.hip` | Integer Q8_0 prefill projections and weight packing. |
 | `quant/gguf_q8_0_dp4a_gemv.hip` | Q8_0 projections using packed integer dot products. |
 | `quant/gguf_q5_k_f32_rocblas_prefill.hip` | Expand quantized weights to FP32 for prefill consumers. |
-| `quant/gguf_q6_k_f16_rocblas_prefill.hip` | Dequantize Q4/Q5/Q6 tiles for FP16 rocBLAS projections. |
+| `quant/gguf_q6_k_f16_rocblas_prefill.hip` | Dequantize bounded Q4/Q5/Q6 tiles to F16; T16 consumers accumulate in K16 WMMA order and publish BF16 directly. Raw-Q6 diagnostics retain rocBLAS. |
 | `quant/gguf_q6_k_embedding.hip` | Raw GGUF embedding lookup. |
 | `quant/gguf_x8_selected_gemv.hip` | X8 packed selected-expert projections and head helpers. |
 | `fused/gguf_q6_q4_pair.hip` | Paired Q6_K/Q4_K projections. |

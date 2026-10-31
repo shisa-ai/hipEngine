@@ -12,6 +12,42 @@
 namespace {
 
 using half_t = _Float16;
+using half16_t = half_t __attribute__((ext_vector_type(16)));
+using float8_t = float __attribute__((ext_vector_type(8)));
+
+__global__ void source_f16_k16_bf16_kernel(
+    const half_t* __restrict__ x, const half_t* __restrict__ weight,
+    uint16_t* __restrict__ out, int64_t rows, int64_t hidden,
+    int64_t cols, int64_t dst_stride, int64_t dst_offset) {
+  const int lane = threadIdx.x & 15;
+  const int half_id = threadIdx.x >> 4;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 16;
+  const int64_t col = static_cast<int64_t>(blockIdx.x) * 16 + lane;
+  float8_t acc = {0, 0, 0, 0, 0, 0, 0, 0};
+  // Match the parent projection's single FP32 accumulator in K16 order.
+  // Generic GEMM split/reduction orders can change recurrent trajectories.
+  for (int64_t kk = 0; kk < hidden; kk += 16) {
+    half16_t a, b;
+#pragma unroll
+    for (int i = 0; i < 16; ++i) {
+      a[i] = row_base + lane < rows
+          ? x[(row_base + lane) * hidden + kk + i] : static_cast<half_t>(0);
+      b[i] = col < cols ? weight[col * hidden + kk + i] : static_cast<half_t>(0);
+    }
+    acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, acc);
+  }
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t row = row_base + half_id + 2 * j;
+    if (row < rows && col < cols) {
+      union { float f32; uint32_t u32; } value;
+      value.f32 = acc[j];
+      value.u32 += 0x7FFFU + ((value.u32 >> 16) & 1U);
+      out[row * dst_stride + dst_offset + col] =
+          static_cast<uint16_t>(value.u32 >> 16);
+    }
+  }
+}
 
 constexpr int QK_K = 256;
 constexpr int Q4_K_THREADS = 64;
@@ -589,6 +625,23 @@ bool valid_shape(int64_t in_features, int64_t out_features) {
 }
 
 }  // namespace
+
+extern "C" int hipengine_source_f16_k16_bf16(
+    const half_t* x, const half_t* weight, uint16_t* out,
+    int64_t rows, int64_t hidden, int64_t cols,
+    int64_t dst_stride, int64_t dst_offset, hipStream_t stream) {
+  if (!x || !weight || !out || rows <= 0 || hidden <= 0 || hidden % 16 ||
+      cols <= 0 || cols % 16 || dst_offset < 0 || dst_stride < cols ||
+      dst_offset > dst_stride - cols) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(source_f16_k16_bf16_kernel,
+      dim3(static_cast<unsigned int>((cols + 15) / 16),
+           static_cast<unsigned int>((rows + 15) / 16)),
+      dim3(32), 0, stream, x, weight, out, rows, hidden, cols,
+      dst_stride, dst_offset);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_gguf_q4_k_t16_dequantize_f16_tile_pair(
     const uint8_t* tiles,

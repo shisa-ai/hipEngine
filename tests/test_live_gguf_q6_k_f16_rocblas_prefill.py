@@ -735,7 +735,7 @@ def test_q4_t16_f16_rocblas_passes_cpu_gate() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP/rocBLAS is not available")
-def test_q6_t16_f16_rocblas_matches_raw_source_route_on_tiled_output() -> None:
+def test_q6_t16_f16_k16_passes_raw_source_quality_on_tiled_output() -> None:
     from hipengine.core.hip import get_hip_runtime
 
     rows = 17
@@ -827,7 +827,11 @@ def test_q6_t16_f16_rocblas_matches_raw_source_route_on_tiled_output() -> None:
             free(buffer, runtime=runtime)
         rocblas.close()
     after = memory_stats()
-    np.testing.assert_array_equal(tiled, source)
+    # The raw diagnostic keeps its original rocBLAS arithmetic. The bounded
+    # production chain uses parent-order K16 accumulation and direct BF16,
+    # rather than the raw route's FP16 intermediate publication.
+    result = evaluate_logits(_bf16_to_f32(source), _bf16_to_f32(tiled))
+    assert result.passed, result
     assert after["current_allocated_bytes"] == before["current_allocated_bytes"]
     assert after["active_allocations"] == before["active_allocations"]
 

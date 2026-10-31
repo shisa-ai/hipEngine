@@ -9808,16 +9808,21 @@ def _gguf_t16_f16_rocblas_prefill_policy(
         or bool(getattr(cfg, "is_moe", False))
     ):
         return None
-    identity = _gguf_policy_identity(weights)
+    geometry = getattr(weights, "geometry", None)
+    if geometry is None:
+        geometry = GGUFModelGeometry.try_from_config(cfg)
     admissions = backend_package_capability(
         backend,
         "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",
         {},
     )
+    # Source-F16 consumes materialized T16 operands; file stamps and artifact
+    # presets do not change that ABI. Per-projection quant/layout/shape and row
+    # checks remain in dispatch, with the registered exact fallback intact.
     if (
-        identity is None
+        not isinstance(geometry, GGUFModelGeometry)
         or not isinstance(admissions, Mapping)
-        or not bool(admissions.get(identity, False))
+        or not bool(admissions.get(geometry, False))
     ):
         return None
     normalized_by_quant: dict[str, object] = {}

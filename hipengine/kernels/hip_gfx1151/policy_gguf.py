@@ -956,17 +956,14 @@ GGUF_Q6_PLANAR_PREFILL_SHARED4R3_SHAPES = frozenset(
 GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS = 256
 GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES = GGUF_Q4_T16_DENSE_LOWM_SHAPES
 GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
-    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
-    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): True,
+    QWEN35_DENSE_H5120_GEOMETRY: True,
 }
 # P4 retains changed-arithmetic source-F16 only for the sole-Q5T16 recurrent
 # output. Q6 and Q4 complete pp512 screens lose wall and/or memory, so their
 # exact T16/WMMA owners remain production. The Q5 octet producer consumes one
 # bounded dead-input cast and temporary tile; sole T16 residency is unchanged.
-# Q4_K_S shares the same 48 byte-identical Q5T16 K6144/N5120 recurrent outputs
-# and therefore admits the same source-F16 route (MOSTLY_Q4_K_S added 2026-08-17);
-# the K_S qualification had not extended this K_M-derived prefill policy, leaving
-# all 60 Q5 prefill tensors on the single-wave exact WMMA owner.
+# The materialized Q5T16 layout and projection shape below determine capability;
+# file stamps and preset names are not operands of this route.
 GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (6_144, 5_120): {512: 1_280, 1_024: 1_280, 4_096: 1_024},
 }

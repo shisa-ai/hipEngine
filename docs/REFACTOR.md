@@ -726,16 +726,18 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `q6_f16_*`, `use_t16_f16_rocblas_prefill=False`.
 
-Done when: Dependency: ordinary resident `prefill()` opens the source-F16 context, but packed
-`prefill_batch_native()` does not. Default public serving uses packed prefill, so private-context
-coverage is not evidence of source-F16 execution through that surface. **Clearing action:**
-integrate a request-row-scoped owner with packed scratch lifetimes and ragged requests, then
-exercise `LLM.generate_detailed()` with non-anchor, 512/1K/4K and mixed-length requests on each
-applicable backend. Confirm selected registry variants and exact request/slot ownership, cleanup,
-and the changed-arithmetic execution-profile gates. Keep the ordered pair-only operand policy and Q4
-row ceiling, which preserve known fallback cases. **Decision needed:** retain the quant-neutral
-constructor opt-out as a supported diagnostic or remove it once its callers are migrated; a release
-window alone is not a dependency.
+Done when: complete the remaining gfx1100 public selected-route and numerical checks, plus the
+applicable named-strict profile and task gates on each affected backend. The request-row-scoped
+packed owner and geometry-based admission are implemented. On gfx1151, the repaired bounded K16
+consumer passes the canonical/category-heldout incremental parent comparison and public
+`LLM.generate_detailed()` at non-anchor, 512/1K/4K and mixed lengths with selected-route and cleanup
+evidence; see `worklog/entries/20261031T190151.817522Z-lhl-r0219-k16-accumulation-eecd1d.md`.
+That same-production source-off comparison is not a named-strict profile certification. Run the
+same public shape matrix on gfx1100 with its Q4 row ceiling and ordered pair-only operand policy,
+then evaluate full-logit strict-teacher/category/repeat/isolation and task behavior before closing
+this item. Preserve the supported quant-neutral constructor opt-out for numerical diagnostics;
+automatic source-F16 remains enabled. Do not repeat the completed FP16/FP32/publication-order
+diagnostics or gate compatible artifacts on file identity.
 
 ### R0220 — Dense gfx1151 source-F16 scratch reuse
 
@@ -744,7 +746,11 @@ Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
 Scope: `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES`; `worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md`; `tests/test_unit_qwen35_gguf_prefill_scratch_liveness.py`.
 
 Done when: Dependency: dense gfx1151 has no `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` entry, so its
-activation, weight tile and output planes are independently allocated. The gfx1151 MoE owner-slot
+activation, weight tile and output planes are independently allocated. The bounded K16 consumer
+now publishes BF16 directly, leaving the legacy `q6_f16_out` plane, rocBLAS handle acquisition and
+solution-index forwarding unused by that consumer. Remove those redundant owners and ABI fields
+with their direct callers while preserving raw-Q6 rocBLAS diagnostics; they do not require an
+aliasing experiment. The gfx1151 MoE owner-slot
 policy and gfx1100 dense arena do not establish safe reuse for this geometry. The 2026-08-16
 memory-parity investigation recorded final-logit changes under both dense owner-slot and
 single-arena aliases, plus trajectory divergence in other reuse attempts; dedicated storage
