@@ -24,6 +24,7 @@ Paths in this document are repository-relative.
 | `hipengine/runtime/qwen35_gguf_full_attention_decode_batch.py` | Decode-batch attention through KV write and gated attention over explicit views and selected operations | Output projection, F32 composition, feed-forward execution or workspace allocation |
 | `hipengine/runtime/qwen35_gguf_layer_ffn.py` | Dense and MoE feed-forward execution for scalar and bulk rows over explicit weights, scratch and selected operations | Session state, speculative acceptance or kernel-selection policy |
 | `hipengine/runtime/qwen35_gguf_verify_layer_stack.py` | Packed target layer order, hidden ping-pong and layer-stage marks over invocation-local operation bindings | Embedding, sampling, state scatter, transaction ownership or graph lifetime |
+| `hipengine/runtime/qwen35_gguf_verify_single_layer_stack.py` | Single-session eager target layer order, hidden ping-pong, F32 layer limit, stage marks and captures with per-layer lazy resolvers | Preflight, policy contexts, graph controls, output processing or transaction ownership |
 | `hipengine/runtime/qwen35_gguf_capture.py` | Host diagnostic snapshots, summary schemas and selected-buffer readback | Token setup, layer execution, session mutation or synchronization |
 | `hipengine/runtime/qwen35_gguf_timing.py` | Stage timing accumulation, event handles and wall-clock marker storage | Choosing interval boundaries or scheduling production work |
 | `hipengine/runtime/qwen35_gguf_probe.py` | Standalone one-layer projection diagnostic and its temporary resources | Full-model generation or resident-session ownership |
@@ -204,6 +205,20 @@ borrows live buffers for one synchronous call; neither it nor its bound operatio
 is cached. The session retains embedding, normalization, sampling, state scatter,
 commit/rollback, prefix and graph lifetimes, and recorder cleanup. Binding validation
 precedes the first layer. Aggregate layer times cover execution, not binding resolution.
+
+`qwen35_gguf_verify_single_layer_stack.py` owns the single-session eager target
+layer walk, including the F32 residual-limit transition, sidecar lifetime,
+stage marks and boundary/output captures. Unlike the packed plan, its scratch,
+next-norm weight, linear-state and full-attention cache lookups run lazily at
+individual layer boundaries, preserving partial mutation and failure order.
+Prebuilt graph scratch bypasses chunk resolution; disabled timing adds no clock
+or synchronization calls. The session retains preflight, policy contexts,
+embedding, output processing, readback and transaction ownership.
+
+These layer executors are GGUF-specific: their scratch, quantized weights,
+linear-state row capture and sidecar contracts do not match PARO's rotated W4/
+FP16 state and projection schedule. PARO retains its own layer execution and
+transaction owner rather than borrowing a GGUF session or runner proxy.
 
 Profiler markers for nested MoE calls wrap the execution module's functions.
 The runner's outer attention methods remain the scalar attention marker boundary.

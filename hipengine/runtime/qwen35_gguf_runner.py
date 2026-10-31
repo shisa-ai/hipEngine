@@ -79,6 +79,14 @@ from hipengine.runtime.qwen35_gguf_verify_layer_stack import (
     VerifyOrdinaryLinearLayer,
     run_verify_layer_stack,
 )
+from hipengine.runtime.qwen35_gguf_verify_single_layer_stack import (
+    VerifySingleLayerCapture,
+    VerifySingleLayerGeometry,
+    VerifySingleLayerHidden,
+    VerifySingleLayerScratch,
+    VerifySingleLayerSidecar,
+    run_verify_single_layer_stack,
+)
 from hipengine.runtime.qwen35_gguf_probe import Qwen35GGUFOneLayerProbe
 from hipengine.runtime.qwen35_gguf_results import Qwen35GGUFNextTokenProbeResult
 from hipengine.runtime.qwen35_gguf_prefill_plan import (
@@ -20533,6 +20541,22 @@ class Qwen35GGUFResidentSession:
                 raise RuntimeError(f"negative target block stage timing for {name}: {ms}")
             stage_timings[name] = stage_timings.get(name, 0.0) + float(ms)
 
+        def resolve_initial_state_snapshot(
+            layer_id: int,
+        ) -> tuple[object, object] | None:
+            # The inline loop read and converted this owner count only after
+            # the native branch had resolved its state rows. Keep the read at
+            # that point; a geometry-time conversion would run for every route.
+            if int(
+                getattr(
+                    self,
+                    "_verify_linear_initial_snapshot_users",
+                    0,
+                )
+            ) > 0:
+                return self._verify_linear_initial_snapshot_pair(layer_id)
+            return None
+
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident bulk prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
@@ -20803,213 +20827,141 @@ class Qwen35GGUFResidentSession:
                 and full_attention_prefused_ready
                 and self.runner._rounded_add_rmsnorm_fn(rows=rows) is not None
             )
-            input_norm_ptr: int | None = None
             with (
                 wmma_prefill_session(block_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 native_batch_decode_session(bulk_attention_mode == "native"),
                 self._iq_dense_mmq_verify_context(rows=rows),
             ):
-                for layer_id, layer_type in enumerate(layer_types):
-                    if use_f32_residual and layer_id >= f32_residual_layer_limit:
-                        use_f32_residual = False
-                        src_f32 = None
-                        dst_f32 = None
-                    if sync_stages:
-                        runtime.device_synchronize()
-                    t_layer0 = time.perf_counter() if stage_timings is not None else 0.0
-                    expert_sidecar = None
-                    if (
-                        self.use_expert_sidecar
-                        and bulk_attention_mode == "bulk"
-                        and self.runner.weights.config.is_moe
-                        and not block_wmma_prefill
-                    ):
-                        expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
-                    try:
-                        bulk_scratch = (
-                            _prebuilt_bulk_scratch
-                            if _prebuilt_bulk_scratch is not None
-                            else self._bulk_prefill_scratch.for_chunk(
-                                start,
-                                rows,
-                                total_tokens=end,
+                layer_stack = run_verify_single_layer_stack(
+                    VerifySingleLayerGeometry(
+                        layer_types=tuple(layer_types),
+                        rows=rows,
+                        start=start,
+                        end=end,
+                        scratch_row_start=scratch_row_start,
+                        row_nbytes=row_nbytes,
+                        stream=stream,
+                        f32_residual_layer_limit=f32_residual_layer_limit,
+                        chain_dense_next_rms=chain_dense_next_rms,
+                        bulk_attention_mode=bulk_attention_mode,
+                        capture_linear_state_rows=bool(capture_linear_state_rows),
+                        defer_linear_state_commit=bool(defer_linear_state_commit),
+                        capture_prefill_gdn=capture_prefill_gdn,
+                        verify_f32_post_norm=verify_f32_post_norm,
+                        use_f32_post_norm=use_f32_post_norm,
+                        sync_stages=sync_stages,
+                        sync_stage_timings=bool(sync_stage_timings),
+                        decode_row_scratches=_native_decode_row_scratches,
+                        attention_context_limit=_native_attention_context_limit,
+                        row_views_keep_scalar_caps=row_views_keep_scalar_caps,
+                        capture_layer_ids=frozenset(capture_layer_ids),
+                        capture_layer_boundary_ids=frozenset(
+                            capture_layer_boundary_ids
+                        ),
+                    ),
+                    VerifySingleLayerHidden(
+                        first=src,
+                        first_ptr=src.ptr,
+                        second=dst,
+                        second_ptr=dst.ptr,
+                        first_f32=src_f32,
+                        first_f32_ptr=(
+                            None if src_f32 is None else int(src_f32.ptr)
+                        ),
+                        second_f32=dst_f32,
+                        second_f32_ptr=(
+                            None if dst_f32 is None else int(dst_f32.ptr)
+                        ),
+                        use_f32_residual=use_f32_residual,
+                    ),
+                    VerifySingleLayerScratch(
+                        prebuilt=_prebuilt_bulk_scratch,
+                        resolve_chunk=lambda chunk_start, chunk_rows, total_tokens: (
+                            self._bulk_prefill_scratch.for_chunk(
+                                chunk_start,
+                                chunk_rows,
+                                total_tokens=total_tokens,
                                 runtime=runtime,
                                 stream=stream,
                             )
-                        )
-                        if bulk_attention_mode == "native" and self._verify_conv_out_f32 is not None:
-                            # Prefill may alias QKV -> conv -> BF16 output. The
-                            # native chain consumes these rows concurrently.
-                            bulk_scratch = replace(
-                                bulk_scratch, conv_out=self._verify_conv_out_f32,
+                        ),
+                        native_conv_out=self._verify_conv_out_f32,
+                        decode_scratch=self.scratch,
+                        cos_table=self.scratch.cos_table,
+                        sin_table=self.scratch.sin_table,
+                    ),
+                    VerifySingleLayerSidecar(
+                        load=(
+                            (
+                                lambda layer_id: self._load_expert_sidecar_device_layer(
+                                    layer_id, runtime=runtime
+                                )
                             )
-                        src_chunk_ptr = src.ptr + scratch_row_start * row_nbytes
-                        dst_chunk_ptr = dst.ptr + scratch_row_start * row_nbytes
-                        src_f32_chunk_ptr = None if src_f32 is None else int(src_f32.ptr)
-                        dst_f32_chunk_ptr = None if dst_f32 is None else int(dst_f32.ptr)
-                        next_norm_weight_ptr: int | None = None
-                        next_norm_out_ptr: int | None = None
-                        if chain_dense_next_rms and layer_id + 1 < len(layer_types):
-                            next_norm_weight_ptr = (
-                                self.runner.weights.layer(layer_id + 1)
-                                .weight("attn_norm")
-                                .allocation()
-                                .tensor.ptr
+                            if (
+                                self.use_expert_sidecar
+                                and bulk_attention_mode == "bulk"
+                                and self.runner.weights.config.is_moe
+                                and not block_wmma_prefill
                             )
-                            next_norm_out_ptr = bulk_scratch.norm.ptr
-                        if bulk_attention_mode == "native":
-                            self.runner._run_native_attention_bulk_ffn_layer_rows(
+                            else None
+                        ),
+                        free=lambda expert_sidecar: expert_sidecar.free(
+                            runtime=runtime
+                        ),
+                    ),
+                    VerifySingleLayerCapture(
+                        boundary=lambda layer_id, layer_type, *, hidden_in_ptr, hidden_in_f32_ptr, layer_out_ptr, layer_out_f32_ptr, scratch, prefill_gdn_capture, verify_f32_post_norm: (
+                            self._capture_verify_layer_boundary_rows(
                                 layer_id,
                                 layer_type,
-                                src_chunk_ptr,
-                                dst_chunk_ptr,
-                                bulk_scratch,
+                                hidden_in_ptr=hidden_in_ptr,
+                                hidden_in_f32_ptr=hidden_in_f32_ptr,
+                                layer_out_ptr=layer_out_ptr,
+                                layer_out_f32_ptr=layer_out_f32_ptr,
+                                scratch=scratch,
                                 rows=rows,
-                                start_position=start,
-                                stream=stream,
-                                decode_scratch=self.scratch,
-                                linear_state_rows=(
-                                    self._verify_linear_state_row_pair(layer_id)
-                                    if capture_linear_state_rows
-                                    else None
-                                ),
-                                initial_state_snapshot=(
-                                    self._verify_linear_initial_snapshot_pair(layer_id)
-                                    if capture_linear_state_rows
-                                    and defer_linear_state_commit
-                                    and int(
-                                        getattr(
-                                            self,
-                                            "_verify_linear_initial_snapshot_users",
-                                            0,
-                                        )
-                                    )
-                                    > 0
-                                    else None
-                                ),
-                                commit_final_linear_state=not bool(
-                                    defer_linear_state_commit
-                                ),
-                                hidden_f32_ptr=src_f32_chunk_ptr,
-                                out_f32_ptr=dst_f32_chunk_ptr,
-                                input_norm_ptr=input_norm_ptr,
-                                next_norm_weight_ptr=next_norm_weight_ptr,
-                                next_norm_out_ptr=next_norm_out_ptr,
-                                decode_row_scratches=_native_decode_row_scratches,
-                                attention_context_limit=_native_attention_context_limit,
-                                row_views_keep_scalar_caps=row_views_keep_scalar_caps,
+                                runtime=runtime,
+                                prefill_gdn_capture=prefill_gdn_capture,
                                 verify_f32_post_norm=verify_f32_post_norm,
                             )
-                        elif layer_type == LINEAR_ATTENTION:
-                            self.runner._run_linear_attention_prefill_layer_rows(
-                                layer_id,
-                                src_chunk_ptr,
-                                dst_chunk_ptr,
-                                bulk_scratch,
-                                rows=rows,
-                                stream=stream,
-                                decode_scratch=self.scratch,
-                                expert_sidecar=expert_sidecar,
-                                linear_state_rows=(
-                                    self._verify_linear_state_row_pair(layer_id)
-                                    if capture_linear_state_rows
-                                    else None
-                                ),
-                                prefill_gdn_capture=capture_prefill_gdn,
-                                commit_final_linear_state=not bool(defer_linear_state_commit),
-                                hidden_f32_ptr=src_f32_chunk_ptr,
-                                out_f32_ptr=dst_f32_chunk_ptr,
-                                stage_timings=stage_timings,
-                                sync_stage_timings=sync_stage_timings,
-                                stage_prefix="target_block_linear_attn",
-                                verify_f32_post_norm=verify_f32_post_norm,
-                            )
-                        elif layer_type == FULL_ATTENTION:
-                            key_cache, value_cache = self.scratch.full_cache(layer_id)
-                            layer_scratch = replace(
-                                bulk_scratch,
-                                key_cache=key_cache,
-                                value_cache=value_cache,
-                                cos_table=self.scratch.cos_table,
-                                sin_table=self.scratch.sin_table,
-                            )
-                            if end < 1024:
-                                self.runner._run_full_attention_decode_batch_layer_rows(
-                                    layer_id,
-                                    src_chunk_ptr,
-                                    dst_chunk_ptr,
-                                    layer_scratch,
-                                    stream=stream,
-                                    expert_sidecar=expert_sidecar,
-                                    stage_timings=stage_timings,
-                                    sync_stage_timings=sync_stage_timings,
-                                    stage_prefix="target_block_full_attn",
-                                    hidden_f32_ptr=src_f32_chunk_ptr,
-                                    out_f32_ptr=dst_f32_chunk_ptr,
-                                    verify_f32_post_norm=verify_f32_post_norm,
-                                )
-                            else:
-                                if use_f32_residual:
-                                    raise RuntimeError(
-                                        "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL currently supports "
-                                        "the full-attention decode-batch verifier path only (context < 1024)"
-                                    )
-                                self.runner._run_full_attention_prefill_layer_aotriton(
-                                    layer_id,
-                                    src_chunk_ptr,
-                                    dst_chunk_ptr,
-                                    layer_scratch,
-                                    stream=stream,
-                                    expert_sidecar=expert_sidecar,
-                                    verify_f32_post_norm=verify_f32_post_norm,
-                                )
-                        else:
-                            raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-                    finally:
-                        if expert_sidecar is not None:
-                            expert_sidecar.free(runtime=runtime)
-                        if stage_timings is not None:
-                            layer_ms = (time.perf_counter() - t_layer0) * 1000
-                            if layer_type == LINEAR_ATTENTION:
-                                add_verify_stage("target_block_linear_attn_layers", layer_ms)
-                            elif layer_type == FULL_ATTENTION:
-                                add_verify_stage("target_block_full_attn_layers", layer_ms)
-                            else:
-                                add_verify_stage("target_block_other_layers", layer_ms)
-                            add_verify_stage("target_block_layer_total", layer_ms)
-                    if layer_id in capture_layer_boundary_ids:
-                        layer_boundary_hidden_host[int(layer_id)] = self._capture_verify_layer_boundary_rows(
-                            int(layer_id),
-                            str(layer_type),
-                            hidden_in_ptr=src_chunk_ptr,
-                            hidden_in_f32_ptr=src_f32_chunk_ptr,
-                            layer_out_ptr=dst_chunk_ptr,
-                            layer_out_f32_ptr=dst_f32_chunk_ptr,
-                            scratch=bulk_scratch,
-                            rows=rows,
-                            runtime=runtime,
-                            prefill_gdn_capture=capture_prefill_gdn,
-                            verify_f32_post_norm=use_f32_post_norm,
-                        )
-                    input_norm_ptr = next_norm_out_ptr if chain_dense_next_rms else None
-                    src, dst = dst, src
-                    if use_f32_residual:
-                        src_f32, dst_f32 = dst_f32, src_f32
-                    if layer_id in capture_layer_ids:
-                        if use_f32_residual:
-                            layer_output_hidden_host[int(layer_id)] = _copy_f32_ptr_to_host(
-                                int(src_f32.ptr),
+                        ),
+                        output=lambda layer_id, *, hidden, hidden_f32, use_f32_residual: (
+                            _copy_f32_ptr_to_host(
+                                int(hidden_f32.ptr),
                                 rows * self.runner.hidden_size,
                                 runtime=runtime,
                             ).reshape(rows, self.runner.hidden_size)
-                        else:
-                            layer_output_hidden_host[int(layer_id)] = _copy_bf16_rows_to_host_f32(
-                                src.ptr + start * row_nbytes,
+                            if use_f32_residual
+                            else _copy_bf16_rows_to_host_f32(
+                                hidden.ptr + start * row_nbytes,
                                 rows,
                                 self.runner.hidden_size,
                                 runtime=runtime,
                             )
+                        ),
+                    ),
+                    self.runner._run_native_attention_bulk_ffn_layer_rows,
+                    self.runner._run_linear_attention_prefill_layer_rows,
+                    self.runner._run_full_attention_decode_batch_layer_rows,
+                    self.runner._run_full_attention_prefill_layer_aotriton,
+                    resolve_next_norm_weight=lambda layer_id: (
+                        self.runner.weights.layer(layer_id)
+                        .weight("attn_norm")
+                        .allocation()
+                        .tensor.ptr
+                    ),
+                    resolve_linear_state_rows=self._verify_linear_state_row_pair,
+                    resolve_initial_state_snapshot=resolve_initial_state_snapshot,
+                    resolve_full_attention_cache=self.scratch.full_cache,
+                    synchronize=runtime.device_synchronize,
+                    stage_timings=stage_timings,
+                )
+                src = layer_stack.hidden
+                src_f32 = layer_stack.hidden_f32
+                use_f32_residual = layer_stack.use_f32_residual
+                layer_output_hidden_host = layer_stack.layer_output_hidden
+                layer_boundary_hidden_host = layer_stack.layer_boundary_hidden
                 t_output0 = time.perf_counter() if stage_timings is not None else 0.0
                 final_scratch = (
                     _prebuilt_bulk_scratch

@@ -1,0 +1,1791 @@
+{
+ "bulk-r1": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 1,
+    "start": 0,
+    "stream": 0,
+    "total": 1
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": false,
+    "hidden_f32_ptr": null,
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 1,
+    "scratch": "chunk[0]",
+    "scratch_conv_out": null,
+    "scratch_norm": 768,
+    "scratch_rows": 1,
+    "scratch_start": 0,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 1,
+    "start": 0,
+    "stream": 0,
+    "total": 1
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": false,
+    "hidden_f32_ptr": null,
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": null,
+    "scratch": "chunk[0]",
+    "scratch_conv_out": null,
+    "scratch_norm": 768,
+    "scratch_rows": 1,
+    "scratch_start": 0,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 1,
+    "start": 0,
+    "stream": 0,
+    "total": 1
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 1,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    1,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0
+   ]
+  },
+  "stage_keys": []
+ },
+ "bulk-r3-capture-offset": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 8,
+    "stream": 0,
+    "total": 11
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 3,
+    "scratch": "chunk[8]",
+    "scratch_conv_out": null,
+    "scratch_norm": 776,
+    "scratch_rows": 3,
+    "scratch_start": 8,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": null
+   },
+   {
+    "hidden_in": 160,
+    "hidden_in_f32": null,
+    "kind": "boundary_capture",
+    "layer": 0,
+    "layer_out": 176,
+    "layer_out_f32": null,
+    "layer_type": "linear_attention",
+    "prefill_gdn_capture": false,
+    "scratch": "chunk[8]",
+    "verify_f32_post_norm": false
+   },
+   {
+    "kind": "output_capture",
+    "ptr": 304,
+    "source": "bf16"
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 8,
+    "stream": 0,
+    "total": 11
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": null,
+    "scratch": "chunk[8]",
+    "scratch_conv_out": null,
+    "scratch_norm": 776,
+    "scratch_rows": 3,
+    "scratch_start": 8,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": null
+   },
+   {
+    "hidden_in": 176,
+    "hidden_in_f32": null,
+    "kind": "boundary_capture",
+    "layer": 1,
+    "layer_out": 160,
+    "layer_out_f32": null,
+    "layer_type": "full_attention",
+    "prefill_gdn_capture": false,
+    "scratch": "chunk[8]",
+    "verify_f32_post_norm": false
+   },
+   {
+    "kind": "output_capture",
+    "ptr": 288,
+    "source": "bf16"
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 8,
+    "stream": 0,
+    "total": 11
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 11,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    3,
+    8
+   ],
+   "layer_boundary_keys": [
+    0,
+    1
+   ],
+   "layer_output_keys": [
+    0,
+    1
+   ],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "bulk-r3-timing": {
+  "events": [
+   {
+    "kind": "sync"
+   },
+   {
+    "kind": "sync"
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": true,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "sync"
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": null,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": true,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "sync"
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 7,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    3,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "bulk-r6-f32-limit": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": 1536,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": 1552,
+    "prefill_gdn_capture": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": false
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": 1552,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": 1536,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": false
+   },
+   {
+    "hidden_in": 240,
+    "hidden_in_f32": 1552,
+    "kind": "boundary_capture",
+    "layer": 1,
+    "layer_out": 224,
+    "layer_out_f32": 1536,
+    "layer_type": "full_attention",
+    "prefill_gdn_capture": false,
+    "scratch": "chunk[4]",
+    "verify_f32_post_norm": false
+   },
+   {
+    "kind": "output_capture",
+    "ptr": 1536,
+    "source": "f32"
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "kind": "op",
+    "layer": 2,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": false
+   },
+   {
+    "hidden_in": 224,
+    "hidden_in_f32": null,
+    "kind": "boundary_capture",
+    "layer": 2,
+    "layer_out": 240,
+    "layer_out_f32": null,
+    "layer_type": "linear_attention",
+    "prefill_gdn_capture": false,
+    "scratch": "chunk[4]",
+    "verify_f32_post_norm": false
+   },
+   {
+    "kind": "output_capture",
+    "ptr": 240,
+    "source": "bf16"
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "full_cache",
+    "layer": 3
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "key_cache": "key[3]",
+    "kind": "op",
+    "layer": 3,
+    "op": "full_decode",
+    "out_f32_ptr": null,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[3]",
+    "verify_f32_post_norm": false
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 10,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    6,
+    8
+   ],
+   "layer_boundary_keys": [
+    1,
+    2
+   ],
+   "layer_output_keys": [
+    1,
+    2
+   ],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "bulk-r6-f32-on": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": 1536,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": 1552,
+    "prefill_gdn_capture": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": true
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": 1552,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": 1536,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": true
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 10,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    6,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "bulk-r6-prefill": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 1020,
+    "stream": 0,
+    "total": 1026
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 6,
+    "scratch": "chunk[1020]",
+    "scratch_conv_out": null,
+    "scratch_norm": 1788,
+    "scratch_rows": 6,
+    "scratch_start": 1020,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 1020,
+    "stream": 0,
+    "total": 1026
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": false,
+    "hidden_f32_ptr": null,
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_prefill",
+    "out_f32_ptr": null,
+    "scratch": "chunk[1020]",
+    "scratch_conv_out": null,
+    "scratch_norm": 1788,
+    "scratch_rows": 6,
+    "scratch_start": 1020,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 1020,
+    "stream": 0,
+    "total": 1026
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "kind": "op",
+    "layer": 2,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 6,
+    "scratch": "chunk[1020]",
+    "scratch_conv_out": null,
+    "scratch_norm": 1788,
+    "scratch_rows": 6,
+    "scratch_start": 1020,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 1020,
+    "stream": 0,
+    "total": 1026
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 1026,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    6,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "bulk-r6-state": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "state_rows",
+    "layer": 0
+   },
+   {
+    "commit_final_linear_state": false,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ],
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": null,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 10,
+  "result": {
+   "final_linear_state_committed": false,
+   "hidden_seeds_shape": [
+    6,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": true,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "moe-r3-sidecar": {
+  "events": [
+   {
+    "kind": "sidecar_load",
+    "layer": 0
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": 0,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "sidecar_free",
+    "layer": 0
+   },
+   {
+    "kind": "sidecar_load",
+    "layer": 1
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": 1,
+    "has_stage_timings": true,
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": null,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": null,
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 0,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "sidecar_free",
+    "layer": 1
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 7,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    3,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "native-r3": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 0,
+    "layer_type": "linear_attention",
+    "linear_state_rows": null,
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 1,
+    "layer_type": "full_attention",
+    "linear_state_rows": null,
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 2,
+    "layer_type": "linear_attention",
+    "linear_state_rows": null,
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 3,
+    "layer_type": "full_attention",
+    "linear_state_rows": null,
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 7,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    3,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "native-r3-capture-nodefer": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "state_rows",
+    "layer": 0
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 0,
+    "layer_type": "linear_attention",
+    "linear_state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ],
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "state_rows",
+    "layer": 1
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 1,
+    "layer_type": "full_attention",
+    "linear_state_rows": [
+     "conv_rows[1]",
+     "recurrent_rows[1]"
+    ],
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 3,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 3,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 3,
+    "start": 4,
+    "stream": 0,
+    "total": 7
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 7,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    3,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": true,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "native-r6-chain": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "weight_lookup",
+    "layer": 1
+   },
+   {
+    "attention_context_limit": 16,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": 6,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 0,
+    "layer_type": "linear_attention",
+    "linear_state_rows": null,
+    "next_norm_out_ptr": 772,
+    "next_norm_weight_ptr": 1040,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "weight_lookup",
+    "layer": 2
+   },
+   {
+    "attention_context_limit": 16,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": 6,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": 772,
+    "kind": "op",
+    "layer": 1,
+    "layer_type": "full_attention",
+    "linear_state_rows": null,
+    "next_norm_out_ptr": 772,
+    "next_norm_weight_ptr": 1056,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "attention_context_limit": 16,
+    "commit_final_linear_state": true,
+    "decode_row_scratch_count": 6,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "initial_state_snapshot": null,
+    "input_norm_ptr": 772,
+    "kind": "op",
+    "layer": 2,
+    "layer_type": "linear_attention",
+    "linear_state_rows": null,
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 10,
+  "result": {
+   "final_linear_state_committed": true,
+   "hidden_seeds_shape": [
+    6,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": false,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "native-r6-state": {
+  "events": [
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "state_rows",
+    "layer": 0
+   },
+   {
+    "kind": "state_snapshot",
+    "layer": 0
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": false,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 224,
+    "hidden_out": 240,
+    "initial_state_snapshot": [
+     "conv_snap[0]",
+     "recurrent_snap[0]"
+    ],
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 0,
+    "layer_type": "linear_attention",
+    "linear_state_rows": [
+     "conv_rows[0]",
+     "recurrent_rows[0]"
+    ],
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "state_rows",
+    "layer": 1
+   },
+   {
+    "kind": "state_snapshot",
+    "layer": 1
+   },
+   {
+    "attention_context_limit": null,
+    "commit_final_linear_state": false,
+    "decode_row_scratch_count": null,
+    "decode_scratch": "decode",
+    "hidden_f32_ptr": null,
+    "hidden_in": 240,
+    "hidden_out": 224,
+    "initial_state_snapshot": [
+     "conv_snap[1]",
+     "recurrent_snap[1]"
+    ],
+    "input_norm_ptr": null,
+    "kind": "op",
+    "layer": 1,
+    "layer_type": "full_attention",
+    "linear_state_rows": [
+     "conv_rows[1]",
+     "recurrent_rows[1]"
+    ],
+    "next_norm_out_ptr": null,
+    "next_norm_weight_ptr": null,
+    "op": "native",
+    "out_f32_ptr": null,
+    "row_views_keep_scalar_caps": false,
+    "rows": 6,
+    "scratch": "chunk[4]",
+    "scratch_conv_out": "conv_out_f32",
+    "scratch_norm": 772,
+    "scratch_rows": 6,
+    "scratch_start": 4,
+    "start_position": 4,
+    "stream": 0,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "chunk",
+    "rows": 6,
+    "start": 4,
+    "stream": 0,
+    "total": 10
+   },
+   {
+    "kind": "sync"
+   }
+  ],
+  "position": 10,
+  "result": {
+   "final_linear_state_committed": false,
+   "hidden_seeds_shape": [
+    6,
+    8
+   ],
+   "layer_boundary_keys": [],
+   "layer_output_keys": [],
+   "linear_state_rows_captured": true,
+   "lm_head_logits": false,
+   "pre_output_norm": null,
+   "token_ids": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  "stage_keys": [
+   "target_block_setup",
+   "target_block_embedding",
+   "target_block_linear_attn_layers",
+   "target_block_layer_total",
+   "target_block_full_attn_layers",
+   "target_block_output_norm_hidden",
+   "target_block_lm_head_sample",
+   "target_block_hidden_readback",
+   "target_block_cursor_update"
+  ]
+ },
+ "prebuilt-r3": {
+  "events": [
+   {
+    "commit_final_linear_state": true,
+    "decode_scratch": "decode",
+    "expert_sidecar": null,
+    "has_gpu_stage_recorder": false,
+    "has_stage_timings": false,
+    "hidden_f32_ptr": null,
+    "hidden_in": 160,
+    "hidden_out": 176,
+    "kind": "op",
+    "layer": 0,
+    "linear_state_rows": null,
+    "op": "linear",
+    "out_f32_ptr": null,
+    "prefill_gdn_capture": false,
+    "rows": 3,
+    "scratch": "prebuilt",
+    "scratch_conv_out": null,
+    "scratch_norm": 832,
+    "scratch_rows": 3,
+    "scratch_start": 0,
+    "stage_prefix": "target_block_linear_attn",
+    "stream": 7,
+    "sync_stage_timings": false,
+    "verify_f32_post_norm": null
+   },
+   {
+    "kind": "full_cache",
+    "layer": 1
+   },
+   {
+    "cos_table": "cos",
+    "expert_sidecar": null,
+    "has_stage_timings": false,
+    "hidden_f32_ptr": null,
+    "hidden_in": 176,
+    "hidden_out": 160,
+    "key_cache": "key[1]",
+    "kind": "op",
+    "layer": 1,
+    "op": "full_decode",
+    "out_f32_ptr": null,
+    "scratch": "prebuilt",
+    "scratch_conv_out": null,
+    "scratch_norm": 832,
+    "scratch_rows": 3,
+    "scratch_start": 0,
+    "sin_table": "sin",
+    "stage_prefix": "target_block_full_attn",
+    "stream": 7,
+    "sync_stage_timings": false,
+    "value_cache": "value[1]",
+    "verify_f32_post_norm": null
+   }
+  ],
+  "position": 4,
+  "result": null,
+  "stage_keys": []
+ }
+}

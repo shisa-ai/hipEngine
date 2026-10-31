@@ -1293,6 +1293,11 @@ policy stays in the runner. `qwen35_gguf_verify_layer_stack.py` owns the packed
 target verifier's synchronous layer order, hidden ping-pong and layer-stage marks.
 The session supplies per-operation bindings with explicit arguments and retains
 embedding, output normalization, sampling, state scatter and transaction ownership.
+`qwen35_gguf_verify_single_layer_stack.py` owns the single-session eager verifier's
+ordered layer walk, hidden ping-pong, F32 residual-limit transition, layer-stage
+marks and boundary/output captures. Its narrow resolvers perform scratch, state,
+cache and next-norm lookups at each layer's execution point; the session retains
+preflight, policy contexts, graph controls, output processing and transactions.
 Physical KV layout, backing, byte accounting and allocation/release live in
 `hipengine/runtime/qwen35_gguf_kv.py`, which consumes model configuration rather than an
 executor. Shared scratch sizing, resident byte breakdown and capacity search live
