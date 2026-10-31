@@ -69,7 +69,6 @@ from hipengine.server.api import (
     _THINKING_CLOSE_MARKER,
     _await_with_request_control,
     _backend_scheduler_token_chunks,
-    _chat_session_message_copy,
     _coerce_generation_output,
     _execution_route_for_static_intent,
     _generation_route_for_request,
@@ -95,6 +94,7 @@ from hipengine.server.api import (
     _mtp_response_summary,
 )
 from hipengine.server.chat_output import _parse_chat_tool_calls
+from hipengine.server.chat_sessions import _chat_session_message_copy
 from hipengine.server.metrics import _ServerMetrics
 from hipengine.server.schemas import ChatCompletionRequest, CompletionRequest
 from tests.support.server_api_fakes import (

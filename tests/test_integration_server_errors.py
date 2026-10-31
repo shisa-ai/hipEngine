@@ -69,7 +69,6 @@ from hipengine.server.api import (
     _THINKING_CLOSE_MARKER,
     _await_with_request_control,
     _backend_scheduler_token_chunks,
-    _chat_session_message_copy,
     _coerce_generation_output,
     _execution_route_for_static_intent,
     _generation_route_for_request,

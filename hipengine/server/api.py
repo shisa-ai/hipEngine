@@ -91,8 +91,6 @@ from hipengine.server.schemas import (
     CompletionRequest,
     DetokenizeRequest,
     FitContextRequest,
-    SessionForkRequest,
-    SessionRollbackRequest,
     SongGenerationRequest,
     TokenDiagnosticRequest,
     TokenizeRequest,
@@ -136,6 +134,17 @@ from hipengine.server.metrics import (
     _resident_loop_metric_values,
     _scheduler_metric_values,
 )
+# Chat transcript and continuation state lives in its own application-state
+# owner; this module supplies policy values and translates typed state errors.
+from hipengine.server.chat_sessions import (
+    ChatSessionRecord,
+    ChatSessionStore,
+    ContinuationRecord,
+    SessionStateError,
+    _chat_session_message_copy,
+    session_metadata,
+)
+from hipengine.server.session_routes import create_session_router
 # Readiness payload composition takes a normalized snapshot; engine/service reads,
 # lifecycle state and queue getters stay in this module.
 from hipengine.server.readiness import (
@@ -4703,40 +4712,6 @@ class StartupFailure(RuntimeError):
         self.cause = cause
 
 
-@dataclass(frozen=True)
-class _ContinuationRecord:
-    id: str
-    endpoint: str
-    model_id: str
-    auth_principal: str
-    session_id: str | None
-    tokenizer: dict[str, Any]
-    prompts: tuple[str, ...]
-    generated_texts: tuple[str, ...]
-    created: float
-    expires_at: float
-    response_format: Any | None = None
-    guided_json: Any | None = None
-    guided_regex: Any | None = None
-    guided_choice: Any | None = None
-    guided_patch: Any | None = None
-    guided_diff: Any | None = None
-
-    def resume_prompts(self) -> tuple[str, ...]:
-        return tuple(
-            f"{prompt}{generated}"
-            for prompt, generated in zip(self.prompts, self.generated_texts, strict=True)
-        )
-
-
-@dataclass(frozen=True)
-class _ChatSessionRecord:
-    id: str
-    messages: tuple[dict[str, Any], ...]
-    created: float
-    updated: float
-
-
 def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     """Create a FastAPI app for OpenAI-compatible local inference.
 
@@ -4773,27 +4748,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     if config.debug:
         app.add_middleware(_DebugPayloadMiddleware)
     session_lock = asyncio.Lock()
-    continuation_lock = asyncio.Lock()
-    continuations: dict[str, _ContinuationRecord] = {}
-    app.state.hipengine_continuations = continuations
-    app.state.hipengine_continuation_ttl_seconds = _CONTINUATION_TTL_SECONDS
-    chat_session_lock = asyncio.Lock()
-    chat_sessions: dict[str, _ChatSessionRecord] = {}
-    chat_session_pending: set[str] = set()
-    app.state.hipengine_chat_sessions = chat_sessions
-    app.state.hipengine_chat_session_pending = chat_session_pending
+    session_store = ChatSessionStore(
+        max_sessions=config.max_chat_sessions,
+        continuation_ttl_seconds=_CONTINUATION_TTL_SECONDS,
+        retry_after_seconds=config.queue_retry_after_seconds,
+    )
+    app.state.hipengine_continuations = session_store.continuations
+    app.state.hipengine_continuation_ttl_seconds = session_store.continuation_ttl_seconds
+    app.state.hipengine_chat_sessions = session_store.sessions
+    app.state.hipengine_chat_session_pending = session_store.pending
 
-    def chat_session_metadata(record: _ChatSessionRecord) -> dict[str, Any]:
-        return {
-            "id": record.id,
-            "storage": "app_local_transcript",
-            "resident_state_reuse": False,
-            "message_count": len(record.messages),
-            "created": int(record.created),
-            "updated": int(record.updated),
-        }
-
-    def chat_session_snapshot(record: _ChatSessionRecord) -> dict[str, Any]:
+    def chat_session_snapshot(record: ChatSessionRecord) -> dict[str, Any]:
         return {
             "object": "hipengine.session.snapshot",
             "schema": _CHAT_SESSION_SNAPSHOT_SCHEMA,
@@ -4806,14 +4771,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 getattr(app.state, "hipengine_llm", None)
             ),
             "session": {
-                **chat_session_metadata(record),
+                **session_metadata(record),
                 "includes_transcript": True,
             },
             "resident_state_reuse": False,
             "messages": [_chat_session_message_copy(message) for message in record.messages],
         }
 
-    def restore_chat_session_from_snapshot(session_id: str, snapshot: Mapping[str, Any]) -> _ChatSessionRecord:
+    def restore_chat_session_from_snapshot(session_id: str, snapshot: Mapping[str, Any]) -> ChatSessionRecord:
         if snapshot.get("object") != "hipengine.session.snapshot":
             raise OpenAIHTTPError(
                 400,
@@ -4895,27 +4860,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         messages = _chat_session_snapshot_messages(snapshot.get("messages"))
         created = _chat_session_snapshot_time(session.get("created"), param="session.created")
         updated = _chat_session_snapshot_time(session.get("updated"), param="session.updated")
-        return _ChatSessionRecord(
+        return ChatSessionRecord(
             id=session_id,
             messages=messages,
             created=created,
             updated=updated,
         )
-
-    def chat_session_summary() -> dict[str, Any]:
-        return {
-            "resident_context": True,
-            "active": len(chat_sessions),
-            "pending_creations": len(chat_session_pending),
-            "max_active": None if config.max_chat_sessions is None else int(config.max_chat_sessions),
-            "storage": "app_local_transcript",
-            "resident_state_reuse": False,
-            "total_messages": sum(len(record.messages) for record in chat_sessions.values()),
-            "continuations": {
-                "active": len(continuations),
-                "ttl_seconds": _CONTINUATION_TTL_SECONDS,
-            },
-        }
 
     def route_rejection_extra(
         *,
@@ -4936,243 +4886,32 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             }
         }
 
-    async def reserve_chat_session_if_needed(request: ChatCompletionRequest) -> str | None:
-        session_id = _session_id(request)
-        if session_id is None:
-            return None
-        if request.continuation_id is not None:
-            return None
-        cache_action = _session_cache_action(request)
-        if cache_action in (None, "append_none"):
-            return None
-        async with chat_session_lock:
-            if session_id in chat_sessions:
-                return None
-            if session_id in chat_session_pending:
-                exc = OpenAIHTTPError(
-                    429,
-                    "chat session is being created",
-                    error_type="rate_limit_error",
-                    code="engine_busy",
-                    extra=route_rejection_extra(
-                        requested_model=request.model,
-                        reason="engine_busy",
-                        details={"overload_source": "chat_session_pending"},
-                    ),
-                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
-                )
-                _record_openai_error(app.state.hipengine_server_metrics, exc)
-                raise exc
-            if config.max_chat_sessions is not None and (
-                len(chat_sessions) + len(chat_session_pending)
-            ) >= int(config.max_chat_sessions):
-                exc = OpenAIHTTPError(
-                    429,
-                    "chat session limit is full",
-                    error_type="rate_limit_error",
-                    code="engine_busy",
-                    extra=route_rejection_extra(
-                        requested_model=request.model,
-                        reason="engine_busy",
-                        details={
-                            "overload_source": "chat_session_cap",
-                            "max_active_chat_sessions": int(config.max_chat_sessions),
-                        },
-                    ),
-                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
-                )
-                _record_openai_error(app.state.hipengine_server_metrics, exc)
-                raise exc
-            chat_session_pending.add(session_id)
-            return session_id
-
-    async def release_chat_session_reservation(session_id: str | None) -> None:
-        if session_id is None:
-            return
-        async with chat_session_lock:
-            chat_session_pending.discard(session_id)
-
-    def cleanup_expired_continuations(now: float | None = None) -> None:
-        current = time.time() if now is None else float(now)
-        expired = [
-            continuation_id
-            for continuation_id, record in continuations.items()
-            if record.expires_at <= current
-        ]
-        for continuation_id in expired:
-            continuations.pop(continuation_id, None)
-
-    async def pop_continuation(
-        request: CompletionRequest | ChatCompletionRequest,
-        *,
-        endpoint: str,
-        auth_principal: str,
-    ) -> _ContinuationRecord | None:
-        raw_id = getattr(request, "continuation_id", None)
-        if raw_id is None:
-            return None
-        if not isinstance(raw_id, str) or not raw_id.strip():
-            raise OpenAIHTTPError(
-                400,
-                "continuation_id must be a non-empty string",
-                code="invalid_request",
-                param="continuation_id",
+    def session_state_http_error(exc: SessionStateError) -> OpenAIHTTPError:
+        extra = None
+        if exc.details is not None:
+            extra = route_rejection_extra(
+                requested_model=exc.requested_model,
+                reason="engine_busy",
+                details=exc.details,
             )
-        continuation_id = raw_id.strip()
-        async with continuation_lock:
-            record = continuations.get(continuation_id)
-            if record is None:
-                cleanup_expired_continuations()
-                raise OpenAIHTTPError(
-                    400,
-                    "continuation_id is invalid or has already been consumed",
-                    code="invalid_continuation",
-                    param="continuation_id",
-                )
-            if record.expires_at <= time.time():
-                continuations.pop(continuation_id, None)
-                cleanup_expired_continuations()
-                raise OpenAIHTTPError(
-                    410,
-                    "continuation_id has expired",
-                    code="continuation_expired",
-                    param="continuation_id",
-                )
-            if record.endpoint != endpoint:
-                raise OpenAIHTTPError(
-                    400,
-                    f"continuation_id was created for {record.endpoint}, not {endpoint}",
-                    code="invalid_continuation",
-                    param="continuation_id",
-                )
-            if record.model_id != config.model_id:
-                raise OpenAIHTTPError(
-                    400,
-                    "continuation_id is scoped to a different served model",
-                    code="invalid_continuation",
-                    param="continuation_id",
-                )
-            if record.auth_principal != auth_principal:
-                raise OpenAIHTTPError(
-                    400,
-                    "continuation_id is scoped to a different auth principal",
-                    code="invalid_continuation",
-                    param="continuation_id",
-                )
-            if record.session_id != _session_id(request):
-                raise OpenAIHTTPError(
-                    400,
-                    "continuation_id is scoped to a different session",
-                    code="invalid_continuation",
-                    param="continuation_id",
-                )
-            if endpoint == "chat" and record.session_id is not None:
-                async with chat_session_lock:
-                    if record.session_id not in chat_sessions:
-                        raise OpenAIHTTPError(
-                            400,
-                            "continuation_id is scoped to a deleted session",
-                            code="invalid_continuation",
-                            param="continuation_id",
-                        )
-            current_engine = getattr(app.state, "hipengine_llm", None)
-            if (
-                current_engine is not None
-                and record.tokenizer != _tokenizer_compatibility_metadata(current_engine)
-            ):
-                raise OpenAIHTTPError(
-                    400,
-                    "continuation_id is scoped to a different tokenizer",
-                    code="invalid_continuation",
-                    param="continuation_id",
-                )
-            cleanup_expired_continuations()
-            return continuations.pop(continuation_id)
-
-    async def store_continuation(
-        *,
-        endpoint: str,
-        prompts: Sequence[str],
-        generated_texts: Sequence[str],
-        response_format: Any | None,
-        guided_json: Any | None,
-        guided_regex: Any | None,
-        guided_choice: Any | None,
-        guided_patch: Any | None,
-        guided_diff: Any | None,
-        auth_principal: str,
-        session_id: str | None,
-    ) -> _ContinuationRecord:
-        now = time.time()
-        record = _ContinuationRecord(
-            id=f"gen_{uuid.uuid4().hex}",
-            endpoint=endpoint,
-            model_id=config.model_id,
-            auth_principal=auth_principal,
-            session_id=session_id,
-            tokenizer=_tokenizer_compatibility_metadata(getattr(app.state, "hipengine_llm", None)),
-            prompts=tuple(str(prompt) for prompt in prompts),
-            generated_texts=tuple(str(text) for text in generated_texts),
-            created=now,
-            expires_at=now + _CONTINUATION_TTL_SECONDS,
-            response_format=response_format,
-            guided_json=guided_json,
-            guided_regex=guided_regex,
-            guided_choice=guided_choice,
-            guided_patch=guided_patch,
-            guided_diff=guided_diff,
+        http_exc = OpenAIHTTPError(
+            exc.status_code,
+            exc.message,
+            error_type=exc.error_type,
+            code=exc.code,
+            param=exc.param,
+            extra=extra,
+            headers=exc.headers,
         )
-        async with continuation_lock:
-            cleanup_expired_continuations(now)
-            continuations[record.id] = record
-        return record
+        if exc.record_rejection:
+            _record_openai_error(app.state.hipengine_server_metrics, http_exc)
+        return http_exc
 
-    async def chat_session_prefix_messages(request: ChatCompletionRequest) -> tuple[dict[str, Any], ...]:
-        session_id = _session_id(request)
-        if session_id is None:
-            return ()
-        async with chat_session_lock:
-            record = chat_sessions.get(session_id)
-            if record is None:
-                return ()
-            return tuple(_chat_session_message_copy(message) for message in record.messages)
-
-    async def commit_chat_session(
-        request: ChatCompletionRequest,
-        *,
-        request_messages: Sequence[ChatMessage | Mapping[str, Any]],
-        raw_output: str,
-        visible_message: Mapping[str, Any],
-        cache_action: str | None,
-        reset_session: bool = False,
-        commit_base_messages: Sequence[Mapping[str, Any]] | None = None,
-    ) -> None:
-        session_id = _session_id(request)
-        if session_id is None or cache_action in (None, "append_none"):
-            return
-        prompt_messages = tuple(_chat_message_to_session_dict(message) for message in request_messages)
-        if cache_action == "append_prompt_only":
-            appended = prompt_messages
-        elif cache_action == "append_visible_only":
-            appended = (*prompt_messages, _assistant_visible_session_message(visible_message))
-        elif cache_action == "append_all":
-            appended = (*prompt_messages, {"role": "assistant", "content": str(raw_output)})
-        else:
-            return
-        now = time.time()
-        async with chat_session_lock:
-            previous = chat_sessions.get(session_id)
-            created = now if previous is None or reset_session else previous.created
-            if commit_base_messages is not None:
-                base = tuple(_chat_session_message_copy(message) for message in commit_base_messages)
-            else:
-                base = () if previous is None or reset_session else previous.messages
-            chat_sessions[session_id] = _ChatSessionRecord(
-                id=session_id,
-                messages=(*base, *appended),
-                created=created,
-                updated=now,
-            )
+    def current_tokenizer_metadata() -> dict[str, Any] | None:
+        engine = getattr(app.state, "hipengine_llm", None)
+        if engine is None:
+            return None
+        return _tokenizer_compatibility_metadata(engine)
 
     async def commit_chat_session_error(
         request: ChatCompletionRequest,
@@ -5190,12 +4929,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if effective_cache_action != "append_prompt_only":
             return
         exc.finish_details = {**dict(exc.finish_details), "cache_action": effective_cache_action}
-        await commit_chat_session(
-            request,
+        await session_store.commit(
+            _session_id(request),
+            cache_action=effective_cache_action,
             request_messages=request_messages,
             raw_output="",
             visible_message={"role": "assistant", "content": ""},
-            cache_action=effective_cache_action,
         )
 
     def chat_context_fit_payload(
@@ -5247,7 +4986,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         *,
         apply_context_policy: bool,
     ) -> _ChatContextRender:
-        prefix_messages = tuple(await chat_session_prefix_messages(request))
+        prefix_messages = await session_store.prefix_messages(_session_id(request))
         render_request, prompt, prepared_prompt, thinking = (
             await chat_context_candidate(
                 request,
@@ -6307,6 +6046,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 code="invalid_api_key",
             )
         return f"bearer_sha256:{_sha256_text(config.api_key)}"
+
+    # Attach the router's flat route objects rather than FastAPI's lazy included
+    # router wrapper so existing endpoint introspection over ``app.routes``
+    # keeps seeing concrete paths.
+    app.router.routes.extend(
+        create_session_router(
+            store=session_store,
+            auth_dependency=require_auth,
+            error_translator=session_state_http_error,
+        ).routes
+    )
 
     @app.exception_handler(ResidentPreparationError)
     async def resident_prepare_error_handler(
@@ -7446,7 +7196,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 active_requests=generation_batcher.active_requests(),
                 max_active_requests=generation_batcher.max_active_requests(),
             ),
-            sessions=deepcopy(chat_session_summary()),
+            sessions=deepcopy(session_store.summary()),
             config=ReadinessConfig(
                 chat_default_max_tokens=config.chat_default_max_tokens,
                 kv_storage=config.kv_storage,
@@ -7468,34 +7218,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     async def ready() -> JSONResponse:
         payload = await readiness_payload()
         return JSONResponse(status_code=readiness_http_status(payload), content=payload)
-
-    @app.get("/v1/hipengine/sessions")
-    async def list_sessions(_auth: None = Depends(require_auth)) -> dict[str, Any]:
-        async with chat_session_lock:
-            session_payloads = [
-                chat_session_metadata(record)
-                for record in sorted(
-                    chat_sessions.values(),
-                    key=lambda item: (-item.updated, item.id),
-                )
-            ]
-        async with continuation_lock:
-            cleanup_expired_continuations()
-            active_continuations = len(continuations)
-        return {
-            "object": "hipengine.sessions",
-            "storage": "app_local_transcript",
-            "resident_state_reuse": False,
-            "includes_transcript": False,
-            "active": len(session_payloads),
-            "pending_creations": len(chat_session_pending),
-            "max_active": None if config.max_chat_sessions is None else int(config.max_chat_sessions),
-            "sessions": session_payloads,
-            "continuations": {
-                "active": active_continuations,
-                "ttl_seconds": _CONTINUATION_TTL_SECONDS,
-            },
-        }
 
     @app.get("/v1/hipengine/decode")
     async def decode_telemetry(_auth: None = Depends(require_auth)) -> dict[str, Any]:
@@ -7521,144 +7243,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "decode": probe["decode"],
         }
 
-    @app.delete("/v1/hipengine/sessions/{session_id}")
-    async def delete_session(session_id: str, _auth: None = Depends(require_auth)) -> dict[str, Any]:
-        async with chat_session_lock:
-            deleted = chat_sessions.pop(session_id, None) is not None
-        return {
-            "object": "hipengine.session.deleted",
-            "id": session_id,
-            "deleted": deleted,
-            "storage": "app_local_transcript",
-            "resident_state_reuse": False,
-        }
-
-    @app.post("/v1/hipengine/sessions/{session_id}/fork")
-    async def fork_session(
-        session_id: str,
-        request: SessionForkRequest,
-        _auth: None = Depends(require_auth),
-    ) -> dict[str, Any]:
-        target_id = str(request.id).strip()
-        if not target_id:
-            raise OpenAIHTTPError(
-                400,
-                "target session id must be a non-empty string",
-                code="invalid_request",
-                param="id",
-            )
-        if target_id == session_id:
-            raise OpenAIHTTPError(
-                400,
-                "target session id must differ from source session id",
-                code="invalid_request",
-                param="id",
-            )
-        async with chat_session_lock:
-            source = chat_sessions.get(session_id)
-            if source is None:
-                raise OpenAIHTTPError(
-                    404,
-                    "chat session does not exist",
-                    code="invalid_request",
-                    param="session_id",
-                )
-            if target_id in chat_sessions:
-                raise OpenAIHTTPError(
-                    400,
-                    "target chat session already exists",
-                    code="invalid_request",
-                    param="id",
-                )
-            if (
-                config.max_chat_sessions is not None
-                and len(chat_sessions) >= int(config.max_chat_sessions)
-            ):
-                exc = OpenAIHTTPError(
-                    429,
-                    "chat session limit is full",
-                    error_type="rate_limit_error",
-                    code="engine_busy",
-                    extra=route_rejection_extra(
-                        requested_model=None,
-                        reason="engine_busy",
-                        details={
-                            "overload_source": "chat_session_cap",
-                            "max_active_chat_sessions": int(config.max_chat_sessions),
-                        },
-                    ),
-                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
-                )
-                _record_openai_error(app.state.hipengine_server_metrics, exc)
-                raise exc
-            now = time.time()
-            forked = _ChatSessionRecord(
-                id=target_id,
-                messages=tuple(_chat_session_message_copy(message) for message in source.messages),
-                created=now,
-                updated=now,
-            )
-            chat_sessions[target_id] = forked
-        return {
-            "object": "hipengine.session.forked",
-            "source_id": session_id,
-            "id": target_id,
-            "forked": True,
-            "storage": "app_local_transcript",
-            "resident_state_reuse": False,
-            "message_count": len(forked.messages),
-        }
-
-    @app.post("/v1/hipengine/sessions/{session_id}/rollback")
-    async def rollback_session(
-        session_id: str,
-        request: SessionRollbackRequest,
-        _auth: None = Depends(require_auth),
-    ) -> dict[str, Any]:
-        target_count = int(request.message_count)
-        async with chat_session_lock:
-            record = chat_sessions.get(session_id)
-            if record is None:
-                raise OpenAIHTTPError(
-                    404,
-                    "chat session does not exist",
-                    code="invalid_request",
-                    param="session_id",
-                )
-            previous_count = len(record.messages)
-            if target_count > previous_count:
-                raise OpenAIHTTPError(
-                    400,
-                    "rollback message_count cannot exceed current session message_count",
-                    code="invalid_request",
-                    param="message_count",
-                )
-            rolled_back = target_count != previous_count
-            if rolled_back:
-                now = time.time()
-                record = _ChatSessionRecord(
-                    id=session_id,
-                    messages=tuple(
-                        _chat_session_message_copy(message) for message in record.messages[:target_count]
-                    ),
-                    created=record.created,
-                    updated=now,
-                )
-                chat_sessions[session_id] = record
-        return {
-            "object": "hipengine.session.rolled_back",
-            "id": session_id,
-            "rolled_back": rolled_back,
-            "storage": "app_local_transcript",
-            "resident_state_reuse": False,
-            "previous_message_count": previous_count,
-            "message_count": target_count,
-        }
-
     @app.get("/v1/hipengine/sessions/{session_id}/snapshot")
     async def export_session_snapshot(session_id: str, _auth: None = Depends(require_auth)) -> dict[str, Any]:
-        async with chat_session_lock:
-            record = chat_sessions.get(session_id)
+        async with session_store.snapshot_record(session_id) as record:
             if record is None:
                 raise OpenAIHTTPError(
                     404,
@@ -7675,31 +7262,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         _auth: None = Depends(require_auth),
     ) -> dict[str, Any]:
         record = restore_chat_session_from_snapshot(session_id, snapshot)
-        async with chat_session_lock:
-            is_new = session_id not in chat_sessions
-            if (
-                is_new
-                and config.max_chat_sessions is not None
-                and len(chat_sessions) >= int(config.max_chat_sessions)
-            ):
-                exc = OpenAIHTTPError(
-                    429,
-                    "chat session limit is full",
-                    error_type="rate_limit_error",
-                    code="engine_busy",
-                    extra=route_rejection_extra(
-                        requested_model=None,
-                        reason="engine_busy",
-                        details={
-                            "overload_source": "chat_session_cap",
-                            "max_active_chat_sessions": int(config.max_chat_sessions),
-                        },
-                    ),
-                    headers={"Retry-After": str(config.queue_retry_after_seconds)},
-                )
-                _record_openai_error(app.state.hipengine_server_metrics, exc)
-                raise exc
-            chat_sessions[session_id] = record
+        try:
+            await session_store.put_if_capacity(record)
+        except SessionStateError as exc:
+            raise session_state_http_error(exc) from exc
         return {
             "object": "hipengine.session.restored",
             "id": session_id,
@@ -7719,9 +7285,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 engine=engine,
                 live_snapshot=live_snapshot,
                 generation_batcher=getattr(app.state, "hipengine_generation_batcher", None),
-                chat_sessions=chat_sessions,
-                pending_chat_sessions=chat_session_pending,
-                max_chat_sessions=config.max_chat_sessions,
+                chat_sessions_active=session_store.active_count,
+                chat_sessions_pending=session_store.pending_count,
+                max_chat_sessions=session_store.max_sessions,
                 config=config,
             )
             return PlainTextResponse(
@@ -8410,11 +7976,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             route_unsupported_grammar=True,
         )
         _validate_continuation_resume_request(request)
-        continuation = await pop_continuation(
-            request,
-            endpoint="completion",
-            auth_principal=auth_principal,
-        )
+        try:
+            continuation = await session_store.pop_continuation(
+                request.continuation_id,
+                endpoint="completion",
+                model_id=config.model_id,
+                auth_principal=auth_principal,
+                session_id=_session_id(request),
+                current_tokenizer_metadata=current_tokenizer_metadata,
+            )
+        except SessionStateError as exc:
+            raise session_state_http_error(exc) from exc
         _apply_continuation_defaults(request, continuation)
         prompts = continuation.resume_prompts() if continuation is not None else _normalize_prompts(request.prompt)
         n = _request_n(request)
@@ -8491,8 +8063,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 backend_continuation_eligible=_backend_continuation_eligible(detail),
             ):
                 base_prompt = prompt if continuation is None else continuation.prompts[index]
-                record = await store_continuation(
+                record = await session_store.store_continuation(
                     endpoint="completion",
+                    model_id=config.model_id,
+                    auth_principal=auth_principal,
+                    session_id=_session_id(request),
+                    tokenizer_metadata=_tokenizer_compatibility_metadata(
+                        getattr(app.state, "hipengine_llm", None)
+                    ),
                     prompts=(base_prompt,),
                     generated_texts=(generated_text,),
                     response_format=request.response_format,
@@ -8501,8 +8079,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     guided_choice=request.guided_choice,
                     guided_patch=request.guided_patch,
                     guided_diff=request.guided_diff,
-                    auth_principal=auth_principal,
-                    session_id=_session_id(request),
                 )
                 _attach_continuation_metadata(choice, continuation_id=record.id)
             else:
@@ -8825,13 +8401,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "generated_token_ids": list(generated_ids),
                 },
             }
-        admitted_session_id = await reserve_chat_session_if_needed(request)
         try:
-            continuation = await pop_continuation(
-                request,
-                endpoint="chat",
-                auth_principal=auth_principal,
+            admitted_session_id = await session_store.reserve(
+                _session_id(request),
+                cache_action=_session_cache_action(request),
+                continuation_id=request.continuation_id,
+                requested_model=request.model,
             )
+        except SessionStateError as exc:
+            raise session_state_http_error(exc) from exc
+        try:
+            try:
+                continuation = await session_store.pop_continuation(
+                    request.continuation_id,
+                    endpoint="chat",
+                    model_id=config.model_id,
+                    auth_principal=auth_principal,
+                    session_id=_session_id(request),
+                    current_tokenizer_metadata=current_tokenizer_metadata,
+                )
+            except SessionStateError as exc:
+                raise session_state_http_error(exc) from exc
             _apply_continuation_defaults(request, continuation)
             control = _request_control(config, request, raw_request)
 
@@ -9037,8 +8627,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     backend_continuation_eligible=_backend_continuation_eligible(detail),
                 ):
                     base_prompt = prompt if continuation is None else continuation.prompts[index]
-                    record = await store_continuation(
+                    record = await session_store.store_continuation(
                         endpoint="chat",
+                        model_id=config.model_id,
+                        auth_principal=auth_principal,
+                        session_id=_session_id(request),
+                        tokenizer_metadata=_tokenizer_compatibility_metadata(
+                            getattr(app.state, "hipengine_llm", None)
+                        ),
                         prompts=(base_prompt,),
                         generated_texts=(text,),
                         response_format=request.response_format,
@@ -9047,8 +8643,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         guided_choice=request.guided_choice,
                         guided_patch=request.guided_patch,
                         guided_diff=request.guided_diff,
-                        auth_principal=auth_principal,
-                        session_id=_session_id(request),
                     )
                     _attach_continuation_metadata(choice, continuation_id=record.id)
                 else:
@@ -9058,12 +8652,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     choice["request_id"] = _choice_request_id(response_id, 0, index)
                 choices.append(choice)
                 visible_generated_texts.append(_chat_response_format_text(message))
-                await commit_chat_session(
-                    request,
+                await session_store.commit(
+                    _session_id(request),
+                    cache_action=effective_cache_action,
                     request_messages=request.messages,
                     raw_output=output,
                     visible_message=message,
-                    cache_action=effective_cache_action,
                     reset_session=prepared_prompt.reset_session_on_commit,
                     commit_base_messages=prepared_prompt.commit_base_messages,
                 )
@@ -9115,7 +8709,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             return response
         finally:
-            await release_chat_session_reservation(admitted_session_id)
+            await session_store.release(admitted_session_id)
 
     async def stream_chat_completion_many(
         prompt: str,
@@ -10767,8 +10361,8 @@ def _metrics_snapshot(
     engine: Any | None,
     live_snapshot: Mapping[str, Any],
     generation_batcher: Any | None,
-    chat_sessions: Mapping[str, Any] | None,
-    pending_chat_sessions: set[str] | None,
+    chat_sessions_active: int | None,
+    chat_sessions_pending: int | None,
     max_chat_sessions: int | None,
     config: ServerConfig | None,
 ) -> _MetricsSnapshot:
@@ -10805,10 +10399,8 @@ def _metrics_snapshot(
         pool=pool,
         graph=graph,
         queue=_generation_queue_metric_values(queue or {}),
-        chat_sessions_active=None if chat_sessions is None else len(chat_sessions),
-        chat_sessions_pending=(
-            None if pending_chat_sessions is None else len(pending_chat_sessions)
-        ),
+        chat_sessions_active=chat_sessions_active,
+        chat_sessions_pending=chat_sessions_pending,
         chat_sessions_max_active=max_chat_sessions,
         mtp_serving=_mtp_serving_metric(config, engine),
         scheduler_fairness=_scheduler_metric_values(
@@ -15389,7 +14981,7 @@ def _attach_continuation_metadata(
 
 def _apply_continuation_defaults(
     request: CompletionRequest | ChatCompletionRequest,
-    record: _ContinuationRecord | None,
+    record: ContinuationRecord | None,
 ) -> None:
     if record is None:
         return
@@ -15523,34 +15115,6 @@ def _effective_session_cache_action(
     if reason in _SESSION_UNSAFE_VISIBLE_REASONS or synthetic_tokens > 0:
         return "append_prompt_only"
     return requested_action
-
-
-def _chat_message_to_session_dict(message: ChatMessage | Mapping[str, Any]) -> dict[str, Any]:
-    if isinstance(message, Mapping):
-        payload = dict(message)
-    elif hasattr(message, "model_dump"):
-        payload = message.model_dump(exclude_none=True)
-    else:
-        payload = message.dict(exclude_none=True)
-    return _chat_session_message_copy(
-        {str(key): value for key, value in payload.items() if value is not None}
-    )
-
-
-def _assistant_visible_session_message(message: Mapping[str, Any]) -> dict[str, Any]:
-    payload: dict[str, Any] = {"role": "assistant"}
-    if "content" in message:
-        payload["content"] = deepcopy(message.get("content"))
-    else:
-        payload["content"] = ""
-    tool_calls = message.get("tool_calls")
-    if tool_calls:
-        payload["tool_calls"] = deepcopy(tool_calls)
-    return payload
-
-
-def _chat_session_message_copy(message: Mapping[str, Any]) -> dict[str, Any]:
-    return deepcopy(dict(message))
 
 
 def _chat_session_snapshot_messages(value: Any) -> tuple[dict[str, Any], ...]:

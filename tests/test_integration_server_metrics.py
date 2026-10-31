@@ -69,7 +69,6 @@ from hipengine.server.api import (
     _THINKING_CLOSE_MARKER,
     _await_with_request_control,
     _backend_scheduler_token_chunks,
-    _chat_session_message_copy,
     _coerce_generation_output,
     _execution_route_for_static_intent,
     _generation_route_for_request,
@@ -93,6 +92,7 @@ from hipengine.server.api import (
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
     _mtp_response_summary,
+    _metrics_snapshot,
 )
 from hipengine.server.chat_output import _parse_chat_tool_calls
 from hipengine.server.metrics import _ServerMetrics
@@ -875,3 +875,19 @@ def test_string_value_counts_escapes_label_values_that_would_break_the_format() 
     assert "\\n" in samples[0]
     assert '\\"' in samples[0]
     assert "\n" not in samples[0]
+
+
+def test_metrics_snapshot_preserves_zero_and_none_session_counts() -> None:
+    snapshot = _metrics_snapshot(
+        engine=None,
+        live_snapshot={},
+        generation_batcher=None,
+        chat_sessions_active=0,
+        chat_sessions_pending=0,
+        max_chat_sessions=None,
+        config=None,
+    )
+
+    assert snapshot.chat_sessions_active == 0
+    assert snapshot.chat_sessions_pending == 0
+    assert snapshot.chat_sessions_max_active is None

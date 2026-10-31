@@ -452,6 +452,14 @@ lookup and capability discovery stay in the application. Readiness and health
 payload composition lives in `hipengine/server/readiness.py`; the application
 collects detached startup, service, queue and resource values, while lifecycle
 state and live engine reads remain application-owned.
+App-local chat transcripts, creation reservations and continuations live in
+`hipengine/server/chat_sessions.py`. The store owns their locks and receives
+explicit policy and operation inputs; the application translates typed state
+errors and supplies tokenizer metadata at the existing validation point.
+`hipengine/server/session_routes.py` owns authenticated list, delete, fork and
+rollback routes. Snapshot validation and routes remain application-owned;
+snapshot export leases the stored record while holding the session lock through
+payload construction.
 
 ### Layer Diagram
 
