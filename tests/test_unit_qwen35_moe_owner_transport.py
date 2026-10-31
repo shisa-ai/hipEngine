@@ -998,11 +998,17 @@ def test_graph_identity_reads_the_owner_resolved_policy() -> None:
         "router_f32w_coop": False,
         "router_f32w_persistent_counter": True,
         "q8_t16_rowtile_all": True,
+        "verify_f32_residual": None,
+        "verify_f32_post_norm": None,
+        "q4_t16_dual_silu_r28": None,
     }
     assert cycle_mod._native_target_route_identity(unbound) == {
         "router_f32w_coop": None,
         "router_f32w_persistent_counter": None,
         "q8_t16_rowtile_all": None,
+        "verify_f32_residual": None,
+        "verify_f32_post_norm": None,
+        "q4_t16_dual_silu_r28": None,
     }
 
 

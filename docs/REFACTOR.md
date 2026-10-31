@@ -3890,25 +3890,6 @@ gates across affected geometries, KV layouts and boundary-straddling rows. Verif
 every accepted-prefix state, continuation, rollback and graph/eager route attribution before
 consolidating bounds.
 
-### R0137 — Move profile settings to owners without duplicating admission checks
-
-Owner: `hipengine/execution_profiles.py`.
-
-Scope: `qwen35_dense_gfx1100_profiles.py`, `qwen35_dense_gfx1151_profiles.py`,
-`qwen35_moe_gfx1151_profiles.py`.
-
-**Remaining ownership migration:** move gfx1100 F32 verifier/residual and fused-Q4 selectors
-into explicit fields consumed by their owners. Inventory each actual consumer and binding
-lifetime; do not surround
-every method with an implicit environment context. Preserve ordinary profile plugin composition,
-header identity, construction-time diagnostic inputs, shared-allocation ABI validation and native
-graph configuration identity.
-
-Done when: test two differently configured owners in both construction orders and interleaved
-execution, confirm no settings leak, then exercise public model generation and teardown. For
-certificate changes, run intended-plan, partial-slot and supplied-certificate loader tests in
-`tests/test_live_gguf_ud_admission.py`. Keep construction checks separate from per-token execution
-
 ### R0138 — Complete native adapter ownership without blanket embedding refusal
 
 Owner: `hipengine/runtime/gguf_native_spec_cycle.py`.
@@ -4093,22 +4074,20 @@ Done when: run MTP2 seam tests for declared depth, uncached eager execution and
 singleton/refill behavior; test every affected cache lifecycle before removing fields. Exercise
 public generation with target attribution and all acceptance prefixes.
 
-### R0173 — Retire the R28 rollback without removing shared rowtile machinery
+### R0173 — Verify owner-bound R28 dispatch on gfx1100
 
 Owner: `hipengine/generation/qwen35_dense_gfx1100_profiles.py`.
 
 Scope: `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28`.
 
-**Deferred rollback decision:** retain the explicit comparison or replace its process-global
-transport with owner-bound policy after the release review. Preserve strict-profile selection,
-omitted-profile behavior, periodic exact layers and registered strict fallback. R0137 owns broader
-profile migration. The `_rowtile_variant_policy_env_cache` in `gguf_linear.py` serves multiple
-policies; do not delete it or unrelated tests as though it belonged only to R28. Remove only
-obsolete switch-specific entries and coverage after callers migrate.
+**Remaining hardware check:** exercise strict, production and explicit rollback through public
+generation on gfx1100 in both owner construction orders. Confirm the selected R28 implementation,
+periodic exact-layer schedule, full outputs/state and graph/session teardown. Common transport
+execution on gfx1151 does not exercise the gfx1100 R28 kernel.
 
-Done when: run gfx1100 profile tests, exercise strict/production/rollback in both owner
-construction orders, then verify exact-layer schedule and public R28 dispatch with full-output/state
-and lifecycle checks. Any changed arithmetic selection requires its profile gate.
+Done when: the gfx1100 public comparisons preserve the declared arithmetic selection, strict
+fallback and lifecycle behavior. Do not remove the shared `_rowtile_variant_policy_env_cache`:
+unbound/direct diagnostics and unrelated rowtile policies still use it.
 
 ### RF-1 / R0187 — Finish owner-bound policy resolution using existing profile infrastructure
 
@@ -4120,7 +4099,7 @@ Scope: `hipengine/execution_profiles.py`, `gguf_linear.py`.
 resolved decisions and explicit resource/shape-dependent plans. Identify which values belong to a
 model, session or request and which must vary with live shape. Parse user environment input at
 adapters, not in hot methods; preserve explicit scoped diagnostics without ambient-state leakage.
-R0137 and R0149 own concrete GGUF/Qwen4Exp transport migrations under this goal.
+R0149 owns the remaining concrete Qwen4Exp transport migration under this goal.
 
 Done when: test independently configured owners in both construction orders, interleaved
 requests, strict/production selection and unsupported keys. Verify migrated hot methods no longer

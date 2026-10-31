@@ -1768,6 +1768,7 @@ def test_dense_ffn_rows_bulk_rows_uses_the_pair_silu_composite() -> None:
         q8_1_workspace_ptr=None,
         pair_workspace_ptr=0x203,
         pair_workspace_nbytes=4096,
+        r28_enabled=None,
     )
     assert log.one("q8_1_lookup")[1] == dict(enabled=False, planes=2)
 

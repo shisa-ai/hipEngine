@@ -3188,8 +3188,13 @@ def _q4_t16_physical_dual_silu_variant(
     rows: int,
     *,
     layer_id: int | None = None,
+    r28_enabled: bool | None = None,
 ) -> str | None:
-    """Return a backend-qualified physical fused-FFN retile, if enabled."""
+    """Return a backend-qualified physical fused-FFN retile, if enabled.
+
+    ``r28_enabled`` is the owner-bound R28 decision for this launch. ``None``
+    keeps the unbound/direct environment and its shared policy cache.
+    """
 
     if not q4_t16_physical_extra_rowtiles_enabled():
         return None
@@ -3218,6 +3223,14 @@ def _q4_t16_physical_dual_silu_variant(
                 continue
         enabled_env = policy.get("enabled_env")
         enabled_default = bool(policy.get("enabled_default", False))
+        if (
+            capability == "GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY"
+            and r28_enabled is not None
+        ):
+            # A bound owner never reads or populates the shared ambient cache.
+            if bool(r28_enabled):
+                return variant
+            continue
         if enabled_env is None:
             if enabled_default:
                 return variant
@@ -3301,6 +3314,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
     out_features: int,
     layer_id: int | None = None,
     expanded_metadata: bool = False,
+    r28_enabled: bool | None = None,
 ) -> KernelKey | None:
     """Resolve the operation-complete dense Q4T16 bulk FFN owner."""
 
@@ -3315,6 +3329,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
             dispatch_a.key.backend,
             rows,
             layer_id=layer_id,
+            r28_enabled=r28_enabled,
         )
     if (
         (rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS and physical_variant is None)
@@ -3343,6 +3358,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
                 dispatch_a.key.backend,
                 rows,
                 layer_id=layer_id,
+                r28_enabled=r28_enabled,
             )
         if physical_variant is not None:
             variants.append(physical_variant)
@@ -7160,6 +7176,7 @@ class _GGUFPairSiluPlan:
     use_q4_t16_dual_interleaved: bool
     registered_decode_variant: str | None
     layer_id: int | None
+    r28_enabled: bool | None
     fallback_reason: str | None
 
 
@@ -7179,6 +7196,7 @@ def _resolve_gguf_linear_pair_silu_plan(
     q8_1_workspace_ptr: int | None = None,
     pair_workspace_ptr: int | None = None,
     pair_workspace_nbytes: int = 0,
+    r28_enabled: bool | None = None,
 ) -> _GGUFPairSiluPlan:
     """Resolve one private, launch-local pair-SiLU plan.
 
@@ -7228,6 +7246,7 @@ def _resolve_gguf_linear_pair_silu_plan(
             use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
             registered_decode_variant=registered_decode_variant,
             layer_id=layer_id,
+            r28_enabled=r28_enabled,
             fallback_reason=fallback_reason,
         )
 
@@ -7419,6 +7438,7 @@ def _resolve_gguf_linear_pair_silu_plan(
             out_features=out_features,
             layer_id=layer_id,
             expanded_metadata=use_expanded_qmicro_metadata,
+            r28_enabled=r28_enabled,
         )
         if t16_wmma_key is not None:
             return _plan(
@@ -8090,6 +8110,7 @@ def _execute_gguf_linear_pair_silu_plan(
                     q8_1_workspace_ptr=q8_1_workspace_ptr,
                     pair_workspace_ptr=pair_workspace_ptr,
                     pair_workspace_nbytes=pair_workspace_nbytes,
+                    r28_enabled=plan.r28_enabled,
                 )
                 if not launched:
                     raise RuntimeError(
@@ -8261,6 +8282,7 @@ def launch_gguf_linear_pair_silu(
     q8_1_workspace_ptr: int | None = None,
     pair_workspace_ptr: int | None = None,
     pair_workspace_nbytes: int = 0,
+    r28_enabled: bool | None = None,
 ) -> bool:
     """Launch a registered gate/up pair plus SiLU, or return False."""
 
@@ -8279,6 +8301,7 @@ def launch_gguf_linear_pair_silu(
         q8_1_workspace_ptr=q8_1_workspace_ptr,
         pair_workspace_ptr=pair_workspace_ptr,
         pair_workspace_nbytes=pair_workspace_nbytes,
+        r28_enabled=r28_enabled,
     )
     return _execute_gguf_linear_pair_silu_plan(
         plan,

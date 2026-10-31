@@ -688,6 +688,8 @@ def _probe_bulk_or_native(
     capture_pre_output_norm_hidden: bool,
     capture_layer_output_hidden: list[int],
     capture_layer_boundary_hidden: list[int],
+    verify_f32_residual: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
 ) -> tuple[
     list[int],
     np.ndarray,
@@ -706,6 +708,8 @@ def _probe_bulk_or_native(
         capture_layer_output_hidden=capture_layer_output_hidden,
         capture_layer_boundary_hidden=capture_layer_boundary_hidden,
         record_stage_timings=False,
+        verify_f32_residual=verify_f32_residual,
+        verify_f32_post_norm=verify_f32_post_norm,
     )
     return (
         [int(token) for token in result.token_ids],

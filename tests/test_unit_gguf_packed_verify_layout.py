@@ -1860,6 +1860,7 @@ def test_gguf_packed_ar_exact_linear_attention_slices_slot_state() -> None:
         *,
         hidden_f32_ptr=None,
         stream=0,
+        q8_t16_rowtile_all=None,
     ):
         attention_calls.append(
             (
@@ -1964,6 +1965,7 @@ def test_gguf_packed_ar_exact_linear_attention_dispatches_indexed_batch_plan() -
         state_indices_ptr,
         hidden_f32_ptr=None,
         stream=0,
+        q8_t16_rowtile_all=None,
     ):
         assert scratch_arg is scratch
         batch_calls.append(

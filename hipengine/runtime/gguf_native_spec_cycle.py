@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field as dataclass_field, replace
 import os
 import time
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 from types import SimpleNamespace
 
 import numpy as np
@@ -69,29 +69,6 @@ class NativeSpecTargetGraphUnsupportedError(RuntimeError):
 
 NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS = "target_graph_context_bucket_miss"
 NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS = "target_graph_output_room_miss"
-
-
-def _call_with_f32_verifier_disabled(
-    enabled: bool,
-    callback: Callable[[], Any],
-) -> Any:
-    if not enabled:
-        return callback()
-    names = (
-        "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL",
-        "HIPENGINE_GGUF_VERIFY_F32_POST_NORM",
-    )
-    previous = {name: os.environ.get(name) for name in names}
-    try:
-        for name in names:
-            os.environ[name] = "0"
-        return callback()
-    finally:
-        for name, value in previous.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
 
 
 _COMPLETE_CYCLE_STAGES = (
@@ -765,6 +742,46 @@ def _resolve_capture_prefill_gdn(session: Any, requested: bool | None) -> bool:
     return bool(getattr(session, "verifier_prefill_gdn_capture", False))
 
 
+def _resolve_session_f32_residual(
+    session: Any,
+    requested: bool | None,
+) -> bool:
+    """Resolve one F32 residual read from the actual session owner."""
+
+    resolve = getattr(session, "_verify_f32_residual_for_call", None)
+    if callable(resolve):
+        return bool(resolve(requested))
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _verify_f32_residual_for_call,
+    )
+
+    owner = getattr(session, "runner", None)
+    return _verify_f32_residual_for_call(
+        session if owner is None else owner,
+        requested,
+    )
+
+
+def _resolve_session_f32_post_norm(
+    session: Any,
+    requested: bool | None,
+) -> bool:
+    """Resolve one F32 post-norm read from the actual session owner."""
+
+    resolve = getattr(session, "_verify_f32_post_norm_for_call", None)
+    if callable(resolve):
+        return bool(resolve(requested))
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _verify_f32_post_norm_for_call,
+    )
+
+    owner = getattr(session, "runner", None)
+    return _verify_f32_post_norm_for_call(
+        session if owner is None else owner,
+        requested,
+    )
+
+
 def _native_target_configuration_key(
     *,
     bulk_attention_mode: str,
@@ -780,6 +797,9 @@ def _native_target_configuration_key(
     router_f32w_coop: bool | None = None,
     router_f32w_persistent_counter: bool | None = None,
     q8_t16_rowtile_all: bool | None = None,
+    verify_f32_residual: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
+    q4_t16_dual_silu_r28: bool | None = None,
 ) -> tuple[object, ...]:
     env = tuple(
         sorted(
@@ -810,11 +830,23 @@ def _native_target_configuration_key(
             else bool(router_f32w_persistent_counter)
         ),
         None if q8_t16_rowtile_all is None else bool(q8_t16_rowtile_all),
+        None if verify_f32_residual is None else bool(verify_f32_residual),
+        None if verify_f32_post_norm is None else bool(verify_f32_post_norm),
+        (
+            None
+            if q4_t16_dual_silu_r28 is None
+            else bool(q4_t16_dual_silu_r28)
+        ),
         env,
     )
 
 
-def _native_target_route_identity(session: Any) -> dict[str, bool | None]:
+def _native_target_route_identity(
+    session: Any,
+    *,
+    verify_f32_residual: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
+) -> dict[str, bool | None]:
     """Return the owner-resolved route selections the target graph captures.
 
     ``None`` is the unbound/direct diagnostic path: the ambient environment is
@@ -824,12 +856,41 @@ def _native_target_route_identity(session: Any) -> dict[str, bool | None]:
     """
 
     runner = getattr(session, "runner", None)
+
+    def f32_flag(
+        method_name: str,
+        requested: bool | None,
+        owner_name: str,
+    ) -> bool | None:
+        method = getattr(session, method_name, None)
+        if callable(method):
+            return bool(method(requested))
+        if requested is not None:
+            return bool(requested)
+        value = getattr(runner, owner_name, None)
+        if value is not None:
+            return bool(value)
+        return None
+
     return {
         "router_f32w_coop": getattr(runner, "router_f32w_coop", None),
         "router_f32w_persistent_counter": getattr(
             runner, "router_f32w_persistent_counter", None
         ),
         "q8_t16_rowtile_all": getattr(runner, "q8_t16_rowtile_all", None),
+        "verify_f32_residual": f32_flag(
+            "_verify_f32_residual_for_call",
+            verify_f32_residual,
+            "verify_f32_residual",
+        ),
+        "verify_f32_post_norm": f32_flag(
+            "_verify_f32_post_norm_for_call",
+            verify_f32_post_norm,
+            "verify_f32_post_norm",
+        ),
+        "q4_t16_dual_silu_r28": getattr(
+            runner, "q4_t16_dual_silu_r28", None
+        ),
     }
 
 
@@ -922,12 +983,13 @@ def _validate_capture_admission(
     capture_lm_head_logits: bool,
     record_stage_timings: bool,
     sync_stage_timings: bool,
+    verify_f32_residual: bool | None = None,
 ) -> None:
     from hipengine.runtime.qwen35_gguf_runner import (
-        _gguf_verify_f32_residual_enabled,
         _gguf_verify_f32_token_embedding_enabled,
     )
 
+    residual = _resolve_session_f32_residual(session, verify_f32_residual)
     rows = len(input_token_ids)
     if rows not in {2, 3, 4, 5, 6, 7, 8}:
         raise NativeSpecTargetGraphUnsupportedError(
@@ -1015,7 +1077,7 @@ def _validate_capture_admission(
         )
     # Graphs own their fixed row metadata and unpack it on the capture stream;
     # bulk-prefill metadata thresholds do not apply to this producer.
-    if _gguf_verify_f32_residual_enabled() and _gguf_verify_f32_token_embedding_enabled():
+    if residual and _gguf_verify_f32_token_embedding_enabled():
         raise NativeSpecTargetGraphUnsupportedError(
             "native target graph N1 cannot capture host F32 token-embedding staging"
         )
@@ -1087,6 +1149,8 @@ class Qwen35GGUFNativeB2TargetGraph:
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
         sampled_accept: bool = False,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> bool:
         if self.closed or session is not self.session:
             return False
@@ -1102,7 +1166,11 @@ class Qwen35GGUFNativeB2TargetGraph:
             sampled_accept=sampled_accept,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
-            **_native_target_route_identity(session),
+            **_native_target_route_identity(
+                session,
+                verify_f32_residual=verify_f32_residual,
+                verify_f32_post_norm=verify_f32_post_norm,
+            ),
         )
         return (
             int(context_limit) == int(self.context_limit)
@@ -1125,6 +1193,8 @@ class Qwen35GGUFNativeB2TargetGraph:
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
         sampled_accept: bool = False,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> str | None:
         """Return a stable pre-launch rejection reason for this cached graph."""
 
@@ -1146,7 +1216,11 @@ class Qwen35GGUFNativeB2TargetGraph:
             sampled_accept=sampled_accept,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
-            **_native_target_route_identity(session),
+            **_native_target_route_identity(
+                session,
+                verify_f32_residual=verify_f32_residual,
+                verify_f32_post_norm=verify_f32_post_norm,
+            ),
         )
         if expected_key != self.configuration_key:
             return "target_graph_configuration_miss"
@@ -1175,6 +1249,8 @@ class Qwen35GGUFNativeB2TargetGraph:
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
         sampled_accept: bool = False,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> bool:
         """Return whether the exact live cycle fits this immutable graph owner."""
 
@@ -1191,6 +1267,8 @@ class Qwen35GGUFNativeB2TargetGraph:
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
             sampled_accept=sampled_accept,
+            verify_f32_residual=verify_f32_residual,
+            verify_f32_post_norm=verify_f32_post_norm,
         ) is None
 
     def launch(
@@ -1660,6 +1738,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
     defer_linear_state_commit: bool = False,
     device_accept_commit: bool = False,
     sampled_accept: bool = False,
+    verify_f32_residual: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
 ) -> Qwen35GGUFNativeB2TargetGraph:
     """Capture one fixed B1-B3 target forward without executing it.
 
@@ -1691,6 +1771,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
         capture_lm_head_logits=bool(capture_lm_head_logits),
         record_stage_timings=bool(record_stage_timings),
         sync_stage_timings=bool(sync_stage_timings),
+        verify_f32_residual=verify_f32_residual,
     )
     if device_accept_commit and not (
         bool(capture_linear_state_rows) and bool(defer_linear_state_commit)
@@ -1802,6 +1883,22 @@ def capture_qwen35_gguf_native_b2_target_graph(
             (rows, hidden_size),
             DType.FP32,
         )
+        validate_resources = getattr(
+            session, "_validate_f32_verifier_resources", None
+        )
+        if callable(validate_resources):
+            validate_resources(
+                rows=rows,
+                residual=_resolve_session_f32_residual(
+                    session, verify_f32_residual
+                ),
+                post_norm=_resolve_session_f32_post_norm(
+                    session, verify_f32_post_norm
+                ),
+                hidden_f32_a=hidden_f32_a,
+                hidden_f32_b=hidden_f32_b,
+                scratch=dynamic_scratch,
+            )
         capture_pre_output_rows = bool(capture_pre_output_norm_hidden) or bool(
             device_accept_commit
         )
@@ -2109,6 +2206,16 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 _native_attention_context_limit=(
                     context_limit if native_decode_row_scratches is not None else None
                 ),
+                **(
+                    {}
+                    if verify_f32_residual is None
+                    else {"verify_f32_residual": bool(verify_f32_residual)}
+                ),
+                **(
+                    {}
+                    if verify_f32_post_norm is None
+                    else {"verify_f32_post_norm": bool(verify_f32_post_norm)}
+                ),
             )
             if device_accept_commit:
                 assert accept_buffers is not None
@@ -2293,7 +2400,11 @@ def capture_qwen35_gguf_native_b2_target_graph(
                     _native_target_execution_identity(session)[0]
                 ),
                 recurrent_state_dtype=_native_target_execution_identity(session)[1],
-                **_native_target_route_identity(session),
+                **_native_target_route_identity(
+                    session,
+                    verify_f32_residual=verify_f32_residual,
+                    verify_f32_post_norm=verify_f32_post_norm,
+                ),
             ),
             binding_signature=_native_target_binding_signature(session),
             capture_wall_ms=(time.perf_counter() - capture_start) * 1000.0,
@@ -2349,6 +2460,8 @@ def run_qwen35_gguf_native_mtp_cycle(
     sampled_accept: bool = False,
     sampled_accept_state: Any | None = None,
     capture_prefill_gdn: bool | None = None,
+    verify_f32_residual: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
 ) -> Qwen35GGUFNativeCompleteCycleResult:
     """Own one strict llama-compatible GGUF MTP cycle behind one call.
 
@@ -2386,7 +2499,7 @@ def run_qwen35_gguf_native_mtp_cycle(
         )
     if int(getattr(session, "position", -1)) != start:
         raise ValueError("root_position must match the target session cursor")
-    if not bool(getattr(resident_draft, "_device_chain_enabled", False)):
+    if not callable(getattr(resident_draft, "propose_chain_from_device_seed", None)):
         raise NativeSpecTargetGraphUnsupportedError(
             "native complete cycle requires the device-chained GGUF NextN provider"
         )
@@ -2466,23 +2579,38 @@ def run_qwen35_gguf_native_mtp_cycle(
 
     target_start = time.perf_counter()
     f32_override = bool(k1_disable_f32_verifier and budget == 1)
-    target_result = _call_with_f32_verifier_disabled(
-        f32_override,
-        lambda: session.verify_target_block_native_cycle(
-            [root, *drafts],
-            cycle_id=int(cycle_id),
-            transaction_id=int(transaction_id),
-            request_id=int(request_id),
-            bulk_attention_mode=target_mode,
-            use_wmma_prefill=False,
-            capture_linear_state_rows=True,
-            capture_prefill_gdn=bool(capture_prefill_gdn),
-            defer_linear_state_commit=True,
-            device_accept_commit=True,
-            remaining_decode=remaining,
-            fallback=False,
-            sampled_accept=bool(sampled_accept),
-            sampled_accept_state=sampled_accept_state,
+    target_result = session.verify_target_block_native_cycle(
+        [root, *drafts],
+        cycle_id=int(cycle_id),
+        transaction_id=int(transaction_id),
+        request_id=int(request_id),
+        bulk_attention_mode=target_mode,
+        use_wmma_prefill=False,
+        capture_linear_state_rows=True,
+        capture_prefill_gdn=bool(capture_prefill_gdn),
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+        remaining_decode=remaining,
+        fallback=False,
+        sampled_accept=bool(sampled_accept),
+        sampled_accept_state=sampled_accept_state,
+        **(
+            {"verify_f32_residual": False}
+            if f32_override
+            else (
+                {}
+                if verify_f32_residual is None
+                else {"verify_f32_residual": bool(verify_f32_residual)}
+            )
+        ),
+        **(
+            {"verify_f32_post_norm": False}
+            if f32_override
+            else (
+                {}
+                if verify_f32_post_norm is None
+                else {"verify_f32_post_norm": bool(verify_f32_post_norm)}
+            )
         ),
     )
     if not bool(getattr(target_result, "device_accept_commit", False)):
@@ -2580,6 +2708,8 @@ def verify_qwen35_gguf_native_b2_target(
     remaining_decode: int | None = None,
     sampled_accept: bool = False,
     sampled_accept_state: Any | None = None,
+    verify_f32_residual: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
 ):
     """Run reusable N1/N2 when admitted, otherwise preserve the eager verifier.
 
@@ -2607,6 +2737,10 @@ def verify_qwen35_gguf_native_b2_target(
         "capture_prefill_gdn": bool(capture_prefill_gdn),
         "defer_linear_state_commit": bool(defer_linear_state_commit),
     }
+    if verify_f32_residual is not None:
+        eager_kwargs["verify_f32_residual"] = bool(verify_f32_residual)
+    if verify_f32_post_norm is not None:
+        eager_kwargs["verify_f32_post_norm"] = bool(verify_f32_post_norm)
     if capture_pre_output_norm_hidden:
         eager_kwargs["capture_pre_output_norm_hidden"] = True
     if capture_lm_head_logits:
@@ -2668,6 +2802,8 @@ def verify_qwen35_gguf_native_b2_target(
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=bool(device_accept_commit),
         sampled_accept=bool(sampled_accept),
+        verify_f32_residual=verify_f32_residual,
+        verify_f32_post_norm=verify_f32_post_norm,
     ):
         graph.close()
         cache.pop(cache_key, None)
@@ -2695,6 +2831,8 @@ def verify_qwen35_gguf_native_b2_target(
                 defer_linear_state_commit=defer_linear_state_commit,
                 device_accept_commit=device_accept_commit,
                 sampled_accept=bool(sampled_accept),
+                verify_f32_residual=verify_f32_residual,
+                verify_f32_post_norm=verify_f32_post_norm,
             )
             _cache_native_target_graph(session, cache_key, graph)
             if int(context_limit) == short_alias_limit:
@@ -2750,6 +2888,8 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
     compact_result: bool = False,
     sampled_accept: bool = False,
     sampled_accept_state: Any | None = None,
+    verify_f32_residual: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
 ):
     """Retire a cached proposal and cached N2 target behind one synchronization.
 
@@ -2807,6 +2947,8 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=True,
         sampled_accept=bool(sampled_accept),
+        verify_f32_residual=verify_f32_residual,
+        verify_f32_post_norm=verify_f32_post_norm,
     )
     if reason is not None:
         session.last_native_spec_target_fallback_reason = reason

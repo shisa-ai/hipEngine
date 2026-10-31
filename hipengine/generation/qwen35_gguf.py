@@ -1454,6 +1454,13 @@ class Qwen35GGUFBringupGenerator:
     # package floor, ``False`` forces the exact route, and ``None`` keeps the
     # unbound/direct diagnostic input and packed-decode session resolution.
     target_q8_t16_rowtile_all: bool | None = None
+    # Profile-owned verifier arithmetic diagnostics. ``None`` keeps the
+    # unbound/direct diagnostic environment input for that call.
+    target_verify_f32_residual: bool | None = None
+    target_verify_f32_post_norm: bool | None = None
+    # Profile-owned R28 physical dual-SiLU selector. ``None`` keeps the
+    # unbound/direct diagnostic environment and shared policy cache.
+    target_q4_t16_dual_silu_r28: bool | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -1804,6 +1811,26 @@ class Qwen35GGUFBringupGenerator:
         if requested is None:
             return {}
         return {"target_q8_t16_rowtile_all": bool(requested)}
+
+    def _target_verify_f32_session_kwargs(self) -> dict[str, Any]:
+        """Carry owner-bound verifier F32 diagnostics into every session."""
+
+        kwargs: dict[str, Any] = {}
+        residual = getattr(self, "target_verify_f32_residual", None)
+        if residual is not None:
+            kwargs["target_verify_f32_residual"] = bool(residual)
+        post_norm = getattr(self, "target_verify_f32_post_norm", None)
+        if post_norm is not None:
+            kwargs["target_verify_f32_post_norm"] = bool(post_norm)
+        return kwargs
+
+    def _target_q4_t16_dual_silu_r28_session_kwargs(self) -> dict[str, Any]:
+        """Carry the owner-bound R28 selector into every session."""
+
+        requested = getattr(self, "target_q4_t16_dual_silu_r28", None)
+        if requested is None:
+            return {}
+        return {"target_q4_t16_dual_silu_r28": bool(requested)}
 
     def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
         signature = getattr(self, "_prepared_kv_signature", None)
@@ -2208,6 +2235,21 @@ class Qwen35GGUFBringupGenerator:
                     target_q8_t16_rowtile_all=getattr(
                         self,
                         "target_q8_t16_rowtile_all",
+                        None,
+                    ),
+                    target_verify_f32_residual=getattr(
+                        self,
+                        "target_verify_f32_residual",
+                        None,
+                    ),
+                    target_verify_f32_post_norm=getattr(
+                        self,
+                        "target_verify_f32_post_norm",
+                        None,
+                    ),
+                    target_q4_t16_dual_silu_r28=getattr(
+                        self,
+                        "target_q4_t16_dual_silu_r28",
                         None,
                     ),
                 )
@@ -3233,6 +3275,8 @@ class Qwen35GGUFBringupGenerator:
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                     **self._target_router_policy_session_kwargs(),
                     **self._target_q8_t16_rowtile_all_session_kwargs(),
+                    **self._target_verify_f32_session_kwargs(),
+                    **self._target_q4_t16_dual_silu_r28_session_kwargs(),
                     **session_kwargs,
                 )
             except (HipError, MemoryError) as exc:
@@ -3434,6 +3478,8 @@ class Qwen35GGUFBringupGenerator:
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                 **self._target_router_policy_session_kwargs(),
                 **self._target_q8_t16_rowtile_all_session_kwargs(),
+                **self._target_verify_f32_session_kwargs(),
+                **self._target_q4_t16_dual_silu_r28_session_kwargs(),
             }
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
@@ -3556,6 +3602,21 @@ class Qwen35GGUFBringupGenerator:
             target_q8_t16_rowtile_all=getattr(
                 self,
                 "target_q8_t16_rowtile_all",
+                None,
+            ),
+            target_verify_f32_residual=getattr(
+                self,
+                "target_verify_f32_residual",
+                None,
+            ),
+            target_verify_f32_post_norm=getattr(
+                self,
+                "target_verify_f32_post_norm",
+                None,
+            ),
+            target_q4_t16_dual_silu_r28=getattr(
+                self,
+                "target_q4_t16_dual_silu_r28",
                 None,
             ),
         )
@@ -3726,6 +3787,29 @@ class Qwen35GGUFBringupGenerator:
                 requested_rowtile_all
             ):
                 raise RuntimeError("cannot change a live Q8T16 rowtile policy")
+        for requested_name, live_name, message in (
+            (
+                "target_verify_f32_residual",
+                "verify_f32_residual",
+                "cannot change a live verifier F32 residual policy",
+            ),
+            (
+                "target_verify_f32_post_norm",
+                "verify_f32_post_norm",
+                "cannot change a live verifier F32 post-norm policy",
+            ),
+            (
+                "target_q4_t16_dual_silu_r28",
+                "q4_t16_dual_silu_r28",
+                "cannot change a live R28 policy",
+            ),
+        ):
+            requested = getattr(self, requested_name, None)
+            if requested is None:
+                continue
+            live = getattr(getattr(session, "runner", None), live_name, None)
+            if live is None or bool(live) is not bool(requested):
+                raise RuntimeError(message)
         self._configure_native_sampler(session)
         requested_rowtile = getattr(
             self,
@@ -4047,6 +4131,8 @@ class Qwen35GGUFBringupGenerator:
             **self._target_verifier_prefill_gdn_capture_session_kwargs(),
             **self._target_router_policy_session_kwargs(),
             **self._target_q8_t16_rowtile_all_session_kwargs(),
+            **self._target_verify_f32_session_kwargs(),
+            **self._target_q4_t16_dual_silu_r28_session_kwargs(),
         }
         if shared_runner is not None:
             session_kwargs.update(runtime=shared_runner.runtime, shared_runner=shared_runner)
@@ -4156,6 +4242,8 @@ class Qwen35GGUFBringupGenerator:
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                 **self._target_router_policy_session_kwargs(),
                 **self._target_q8_t16_rowtile_all_session_kwargs(),
+                **self._target_verify_f32_session_kwargs(),
+                **self._target_q4_t16_dual_silu_r28_session_kwargs(),
             ) as session:
                 self._configure_session(session)
                 native_run = self._generate_greedy_batch(
@@ -5082,6 +5170,21 @@ class Qwen35GGUFBringupGenerator:
                             "target_q8_t16_rowtile_all",
                             None,
                         ),
+                        target_verify_f32_residual=getattr(
+                            self,
+                            "target_verify_f32_residual",
+                            None,
+                        ),
+                        target_verify_f32_post_norm=getattr(
+                            self,
+                            "target_verify_f32_post_norm",
+                            None,
+                        ),
+                        target_q4_t16_dual_silu_r28=getattr(
+                            self,
+                            "target_q4_t16_dual_silu_r28",
+                            None,
+                        ),
                     ) as local_runner:
                         resident_slot_count, target_verify_batching = self._generate_prepared_mtp_serving_slots(
                             local_runner,
@@ -5371,6 +5474,8 @@ class Qwen35GGUFBringupGenerator:
                         **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                         **self._target_router_policy_session_kwargs(),
                         **self._target_q8_t16_rowtile_all_session_kwargs(),
+                        **self._target_verify_f32_session_kwargs(),
+                        **self._target_q4_t16_dual_silu_r28_session_kwargs(),
                     ),
                     None,
                     False,
@@ -5584,6 +5689,8 @@ class Qwen35GGUFBringupGenerator:
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),
                     **self._target_router_policy_session_kwargs(),
                     **self._target_q8_t16_rowtile_all_session_kwargs(),
+                    **self._target_verify_f32_session_kwargs(),
+                    **self._target_q4_t16_dual_silu_r28_session_kwargs(),
                 ),
                 None,
                 False,

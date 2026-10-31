@@ -393,6 +393,12 @@ verifier, native-row and prompt-prefill calls keep their exact broad policy.
 Unbound/direct calls retain ambient/session diagnostic resolution,
 and the independent pair-specific floor is unchanged. Native target graph keys
 include the bound route selections.
+The gfx1100 F32 residual/post-norm and R28 selections follow the same construction
+ownership. Verifier operations carry explicit F32 overrides through capture and
+replay; graph identity includes those choices and the owner's R28 selection.
+F32 resource checks inspect the selected buffers and scratch for that invocation.
+Bound R28 dispatch bypasses ambient policy caching; unbound/direct callers keep
+the existing diagnostic environment and cache semantics.
 
 Missing benchmark coverage is not an implementation failure. Within declared
 input, resource and execution contracts, run implemented paths, measure real

@@ -44,9 +44,6 @@ from hipengine import LLM, SamplingParams  # noqa: E402
 from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.runtime.prefill import PrefillConfig  # noqa: E402
-from hipengine.runtime.gguf_native_spec_cycle import (  # noqa: E402
-    _call_with_f32_verifier_disabled,
-)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession  # noqa: E402
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer  # noqa: E402
 from scripts.gguf_mtp_c1c8_server_bench import load_prompt_suite  # noqa: E402
@@ -372,19 +369,19 @@ def _probe_native_graph(
     input_tuple = tuple(int(token) for token in inputs)
     if len(input_tuple) not in {2, 3}:
         raise GateError("qualified production numerical candidate requires K1/K2")
-    result = _call_with_f32_verifier_disabled(
-        len(input_tuple) == 2,
-        lambda: session.verify_target_block_native_cycle(
-            list(input_tuple),
-            fallback=False,
-            bulk_attention_mode="bulk",
-            use_wmma_prefill=False,
-            capture_linear_state_rows=True,
-            capture_lm_head_logits=True,
-            defer_linear_state_commit=True,
-            device_accept_commit=True,
-            remaining_decode=len(input_tuple),
-        ),
+    f32_override = len(input_tuple) == 2
+    result = session.verify_target_block_native_cycle(
+        list(input_tuple),
+        fallback=False,
+        bulk_attention_mode="bulk",
+        use_wmma_prefill=False,
+        capture_linear_state_rows=True,
+        capture_lm_head_logits=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+        remaining_decode=len(input_tuple),
+        verify_f32_residual=False if f32_override else None,
+        verify_f32_post_norm=False if f32_override else None,
     )
     if not bool(getattr(session, "last_native_spec_target_submitted", False)):
         raise GateError("production numerical candidate did not execute the native graph")
@@ -543,20 +540,17 @@ def _capture_graph_eager(
         eager_root = _strict_prefix(session, prompt_tokens, output_index)
         if eager_root != root_token:
             raise GateError("graph/eager strict prefix is not repeatable")
-        eager_tokens, eager_logits, eager_hidden, *_ = (
-            _call_with_f32_verifier_disabled(
-                len(inputs) == 2,
-                lambda: _probe_bulk_or_native(
-                    session,
-                    list(inputs),
-                    mode="bulk",
-                    use_wmma_prefill=False,
-                    capture_linear_state_rows=True,
-                    capture_pre_output_norm_hidden=False,
-                    capture_layer_output_hidden=[],
-                    capture_layer_boundary_hidden=[],
-                ),
-            )
+        eager_tokens, eager_logits, eager_hidden, *_ = _probe_bulk_or_native(
+            session,
+            list(inputs),
+            mode="bulk",
+            use_wmma_prefill=False,
+            capture_linear_state_rows=True,
+            capture_pre_output_norm_hidden=False,
+            capture_layer_output_hidden=[],
+            capture_layer_boundary_hidden=[],
+            verify_f32_residual=False if len(inputs) == 2 else None,
+            verify_f32_post_norm=False if len(inputs) == 2 else None,
         )
         if not (
             np.isfinite(graph_logits).all()

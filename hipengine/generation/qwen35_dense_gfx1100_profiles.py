@@ -43,21 +43,15 @@ _DENSE_FUSED_R28_EVIDENCE = (
     "2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json"
 )
 
-# Process-global profile binding must not mistake a value written by an earlier
-# LLM instance for a user-supplied rollback on the next instance.
-_PROFILE_BOUND_ENV: dict[str, str] = {}
+def _env_bool(name: str, raw: str) -> bool:
+    """Parse one explicit diagnostic rollback with the selector's own syntax."""
 
-
-def _bind_profile_env(name: str, value: str) -> None:
-    os.environ[name] = value
-    _PROFILE_BOUND_ENV[name] = value
-
-
-def _explicit_profile_env(name: str) -> str | None:
-    value = os.environ.get(name)
-    if value is None or _PROFILE_BOUND_ENV.get(name) == value:
-        return None
-    return value
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value")
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
@@ -67,18 +61,17 @@ def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     # The capture mode is an owner decision, not a process-global env write:
     # each verifier operation this generator owns reads it directly.
     generator.target_verifier_prefill_gdn_capture = True
-    _bind_profile_env(VERIFY_F32_RESIDUAL_ENV, "0")
-    _bind_profile_env(VERIFY_F32_POST_NORM_ENV, "0")
-    _bind_profile_env(Q4_FUSED_R28_ENV, "0")
+    generator.target_verify_f32_residual = False
+    generator.target_verify_f32_post_norm = False
+    generator.target_q4_t16_dual_silu_r28 = False
 
 
 def _dense_production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-    explicit_r28 = _explicit_profile_env(Q4_FUSED_R28_ENV)
+    explicit_r28 = os.environ.get(Q4_FUSED_R28_ENV)
     explicit_q6_dp4a = os.environ.get(Q6_DP4A_GROUPED_ENV)
     _strict_binder(generator, resolved)
-    _bind_profile_env(
-        Q4_FUSED_R28_ENV,
-        "1" if explicit_r28 is None else explicit_r28,
+    generator.target_q4_t16_dual_silu_r28 = (
+        True if explicit_r28 is None else _env_bool(Q4_FUSED_R28_ENV, explicit_r28)
     )
     # Snapshot the user's override on this owner; constructing another profile
     # must not change a live generator's arithmetic selection.
@@ -92,8 +85,8 @@ def _dense_production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -
 
 def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     _strict_binder(generator, resolved)
-    _bind_profile_env(VERIFY_F32_RESIDUAL_ENV, "1")
-    _bind_profile_env(VERIFY_F32_POST_NORM_ENV, "1")
+    generator.target_verify_f32_residual = True
+    generator.target_verify_f32_post_norm = True
 
 
 def _key(profile: ExecutionProfile, *, model: str) -> RuntimeProfileKey:

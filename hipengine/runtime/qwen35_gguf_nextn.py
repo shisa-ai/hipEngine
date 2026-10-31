@@ -550,6 +550,9 @@ class Qwen35GGUFNextNExecutor:
         target_router_f32w_coop: bool | None = None,
         target_router_f32w_persistent_counter: bool | None = None,
         target_q8_t16_rowtile_all: bool | None = None,
+        target_verify_f32_residual: bool | None = None,
+        target_verify_f32_post_norm: bool | None = None,
+        target_q4_t16_dual_silu_r28: bool | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
@@ -578,6 +581,9 @@ class Qwen35GGUFNextNExecutor:
             target_router_f32w_persistent_counter
         )
         self.target_q8_t16_rowtile_all = target_q8_t16_rowtile_all
+        self.target_verify_f32_residual = target_verify_f32_residual
+        self.target_verify_f32_post_norm = target_verify_f32_post_norm
+        self.target_q4_t16_dual_silu_r28 = target_q4_t16_dual_silu_r28
         register_gguf_q3_k_gemv_kernels()
         # Borrowed weights stay owned by the caller (the generator shares one
         # draft block across every provider shape); only self-materialized
@@ -610,6 +616,9 @@ class Qwen35GGUFNextNExecutor:
                 target_router_f32w_persistent_counter
             ),
             target_q8_t16_rowtile_all=target_q8_t16_rowtile_all,
+            target_verify_f32_residual=target_verify_f32_residual,
+            target_verify_f32_post_norm=target_verify_f32_post_norm,
+            target_q4_t16_dual_silu_r28=target_q4_t16_dual_silu_r28,
         )
         self.hidden_size = int(self.runner.hidden_size)
         self.vocab_size = int(self.runner.vocab_size)
@@ -635,6 +644,9 @@ class Qwen35GGUFNextNExecutor:
                 target_router_f32w_persistent_counter
             ),
             target_q8_t16_rowtile_all=target_q8_t16_rowtile_all,
+            target_verify_f32_residual=target_verify_f32_residual,
+            target_verify_f32_post_norm=target_verify_f32_post_norm,
+            target_q4_t16_dual_silu_r28=target_q4_t16_dual_silu_r28,
         )
         self.scratch = self._batch_session._target_scratch_owner
         if self.scratch is None:

@@ -233,20 +233,55 @@ def test_native_target_graph_snapshots_mutable_linear_commit_tables(
     np.testing.assert_array_equal(staged[0][1], np.asarray([11, 12], dtype=np.uint64))
 
 
-def test_k1_f32_override_restores_environment_after_failure(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_RESIDUAL", "1")
-    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM", "1")
+def test_k1_f32_override_is_explicit_and_leaves_environment_untouched(
+    monkeypatch,
+) -> None:
+    import os
 
-    def fail():
-        assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"] == "0"
-        assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_POST_NORM"] == "0"
-        raise RuntimeError("test failure")
+    residual_env = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
+    post_norm_env = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
+    monkeypatch.setenv(residual_env, "1")
+    monkeypatch.setenv(post_norm_env, "1")
 
-    with pytest.raises(RuntimeError, match="test failure"):
-        native_cycle_mod._call_with_f32_verifier_disabled(True, fail)
+    class Draft:
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            del hidden_seed_ptr
+            return [201], [[201]], int(kwargs["dense_cache_len"]) + 1
 
-    assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"] == "1"
-    assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_POST_NORM"] == "1"
+    class Context:
+        pending_seed = SimpleNamespace(hidden_ptr=0xA000)
+
+    class Session:
+        position = 17
+        verifier_prefill_gdn_capture = False
+
+        def verify_target_block_native_cycle(self, input_token_ids, **kwargs):
+            del input_token_ids
+            assert kwargs["verify_f32_residual"] is False
+            assert kwargs["verify_f32_post_norm"] is False
+            assert os.environ[residual_env] == "1"
+            assert os.environ[post_norm_env] == "1"
+            raise RuntimeError("target failure")
+
+    with pytest.raises(RuntimeError, match="target failure"):
+        run_qwen35_gguf_native_mtp_cycle(
+            Session(),
+            Draft(),
+            Context(),
+            root_token=101,
+            root_position=17,
+            candidate_budget=1,
+            remaining_decode=7,
+            rope_cos=np.ones((32, 4), dtype=np.float32),
+            rope_sin=np.zeros((32, 4), dtype=np.float32),
+            draft_key_cache=DeviceBuffer(0xC000, 4096),
+            draft_value_cache=DeviceBuffer(0xD000, 4096),
+            draft_cache_len=7,
+            k1_disable_f32_verifier=True,
+        )
+
+    assert os.environ[residual_env] == "1"
+    assert os.environ[post_norm_env] == "1"
 
 
 def test_compact_n2_result_validates_commit_from_visible_tokens_without_row_ids() -> None:
@@ -374,6 +409,7 @@ def test_native_b2_target_uses_exact_python_fallback_for_unsupported_shape() -> 
                 "bulk_attention_mode": "native",
                 "use_wmma_prefill": False,
                 "capture_linear_state_rows": True,
+                "capture_prefill_gdn": False,
                 "defer_linear_state_commit": True,
             },
         )
@@ -515,6 +551,7 @@ def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed(
             "bulk_attention_mode": "bulk",
             "use_wmma_prefill": False,
             "capture_linear_state_rows": True,
+            "capture_prefill_gdn": False,
             "defer_linear_state_commit": True,
             "device_accept_commit": True,
             "remaining_decode": 7,
@@ -624,6 +661,7 @@ def test_native_target_graph_key_separates_profile_manifest_and_state_dtype() ->
         "capture_linear_state_rows": True,
         "capture_prefill_gdn": False,
         "capture_pre_output_norm_hidden": True,
+        "capture_prefill_gdn": False,
         "defer_linear_state_commit": True,
         "device_accept_commit": True,
     }
@@ -809,6 +847,7 @@ def test_native_target_context_miss_falls_back_eager_with_stable_reason() -> Non
                 "bulk_attention_mode": "native",
                 "use_wmma_prefill": False,
                 "capture_linear_state_rows": True,
+                "capture_prefill_gdn": False,
                 "defer_linear_state_commit": True,
                 "capture_pre_output_norm_hidden": True,
             },
@@ -1095,6 +1134,7 @@ def test_native_b2_target_reuses_one_dynamic_graph_across_cycles(monkeypatch) ->
                 "bulk_attention_mode": "bulk",
                 "use_wmma_prefill": False,
                 "capture_linear_state_rows": False,
+                "capture_prefill_gdn": False,
                 "defer_linear_state_commit": False,
             },
         )
@@ -1271,6 +1311,7 @@ def test_rf2_target_graph_cache_separates_short_and_split_k_context_buckets(
                 "bulk_attention_mode": "native",
                 "use_wmma_prefill": False,
                 "capture_linear_state_rows": True,
+                "capture_prefill_gdn": False,
                 "defer_linear_state_commit": True,
                 "capture_pre_output_norm_hidden": True,
             },
@@ -2959,6 +3000,7 @@ def test_native_b2_target_falls_back_before_capture_when_provider_key_is_missing
                 "bulk_attention_mode": "bulk",
                 "use_wmma_prefill": False,
                 "capture_linear_state_rows": False,
+                "capture_prefill_gdn": False,
                 "defer_linear_state_commit": False,
             },
         )

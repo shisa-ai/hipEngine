@@ -1041,6 +1041,9 @@ def _layer_ffn_flags(runner) -> _layer_ffn.FfnFlags:
 
     fields: dict[str, object] = {}
     for name in _layer_ffn.FfnFlags.__dataclass_fields__:
+        if name == "verify_f32_post_norm_enabled":
+            fields[name] = lambda: _verify_f32_post_norm_for_call(runner)
+            continue
         if name == "router_f32w_coop_enabled":
             fields[name] = lambda: owner_flag(
                 "router_f32w_coop", _gguf_router_f32w_coop_enabled
@@ -3210,6 +3213,11 @@ class Qwen35GGUFFullStackRunner:
     # package floor, ``False`` forces the exact route, and ``None`` keeps the
     # unbound/direct diagnostic input and packed-decode session resolution.
     target_q8_t16_rowtile_all: bool | None = None
+    # Profile-owned verifier F32 diagnostics and R28 selector. ``None`` keeps
+    # the unbound/direct diagnostic environment input.
+    target_verify_f32_residual: bool | None = None
+    target_verify_f32_post_norm: bool | None = None
+    target_q4_t16_dual_silu_r28: bool | None = None
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
     host_token_embedding_reader: GGUFReader | None = field(default=None, init=False, repr=False)
@@ -3239,6 +3247,11 @@ class Qwen35GGUFFullStackRunner:
     # Owner-resolved broad-rowtile admission. ``None`` is the unbound/direct
     # diagnostic path; ``True`` admits the backend package floor.
     q8_t16_rowtile_all: bool | None = field(default=None, init=False)
+    # Owner-resolved verifier arithmetic diagnostics and R28 selector. ``None``
+    # is the unbound/direct diagnostic path.
+    verify_f32_residual: bool | None = field(default=None, init=False)
+    verify_f32_post_norm: bool | None = field(default=None, init=False)
+    q4_t16_dual_silu_r28: bool | None = field(default=None, init=False)
 
     def _q8_t16_rowtile_all_owner_for_packed_rows(self, rows: int) -> bool | None:
         """Resolve the broad-rowtile policy for the packed-AR decode route."""
@@ -3342,6 +3355,21 @@ class Qwen35GGUFFullStackRunner:
             None
             if getattr(self, "target_q8_t16_rowtile_all", None) is None
             else bool(self.target_q8_t16_rowtile_all)
+        )
+        self.verify_f32_residual = (
+            None
+            if getattr(self, "target_verify_f32_residual", None) is None
+            else bool(self.target_verify_f32_residual)
+        )
+        self.verify_f32_post_norm = (
+            None
+            if getattr(self, "target_verify_f32_post_norm", None) is None
+            else bool(self.target_verify_f32_post_norm)
+        )
+        self.q4_t16_dual_silu_r28 = (
+            None
+            if getattr(self, "target_q4_t16_dual_silu_r28", None) is None
+            else bool(self.target_q4_t16_dual_silu_r28)
         )
         placement = str(self.token_embedding_placement).strip().lower()
         if placement not in {"device", "host", "auto"}:
@@ -4883,6 +4911,7 @@ class Qwen35GGUFFullStackRunner:
         paged_max_context_len: int | None = None,
         stage_prefix: str = "prefill_full_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> bool:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
@@ -4943,6 +4972,7 @@ class Qwen35GGUFFullStackRunner:
             stage_prefix=f"{stage_prefix}_ffn",
             gpu_stage_recorder=gpu_stage_recorder,
             force_bulk_rows=True,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
         return used_aotriton
 
@@ -5087,6 +5117,7 @@ class Qwen35GGUFFullStackRunner:
         split_workspace: _GGUFPackedARAttentionWorkspace | None = None,
         kv_write_only: bool = False,
         q8_t16_rowtile_all: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> str:
         """Run row-bulk QKV/KV write with the c1-equivalent batch decode attention."""
 
@@ -5164,6 +5195,7 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
             q8_t16_rowtile_all=q8_t16_rowtile_all,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
         return result.attention_route
 
@@ -6474,6 +6506,7 @@ class Qwen35GGUFFullStackRunner:
         sync_stage_timings: bool = False,
         stage_prefix: str = "ar_batch_linear_attn",
         q8_t16_rowtile_all: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> str:
         """Run exact indexed linear attention or its scalar row fallback."""
 
@@ -6584,6 +6617,7 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
             q8_t16_rowtile_all=q8_t16_rowtile_all,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
         return execution_path
 
@@ -6987,6 +7021,7 @@ class Qwen35GGUFFullStackRunner:
         attention_context_limit: int | None = None,
         row_views_keep_scalar_caps: bool = False,
         stream: int = 0,
+        verify_f32_post_norm: bool | None = None,
     ) -> None:
         """Run exact serial attention cores with row-bulk independent work.
 
@@ -7219,6 +7254,7 @@ class Qwen35GGUFFullStackRunner:
                             if next_norm_out_ptr is None
                             else int(next_norm_out_ptr) + row * row_nbytes
                         ),
+                        verify_f32_post_norm=verify_f32_post_norm,
                     )
         else:
             self._run_post_attention_ffn_rows(
@@ -7233,6 +7269,7 @@ class Qwen35GGUFFullStackRunner:
                 out_f32_ptr=out_f32_ptr,
                 next_norm_weight_ptr=next_norm_weight_ptr,
                 next_norm_out_ptr=next_norm_out_ptr,
+                verify_f32_post_norm=verify_f32_post_norm,
             )
 
     def _run_moe_physical_c2_linear_rows_exact(
@@ -7402,6 +7439,7 @@ class Qwen35GGUFFullStackRunner:
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_linear_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> None:
         assert self.weights is not None
         if rows <= 0:
@@ -8122,6 +8160,7 @@ class Qwen35GGUFFullStackRunner:
                 gpu_stage_recorder=gpu_stage_recorder,
                 # Prefill: a one-row chunk must not switch to the decode schedule.
                 force_bulk_rows=True,
+                verify_f32_post_norm=verify_f32_post_norm,
             )
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
@@ -8281,6 +8320,7 @@ class Qwen35GGUFFullStackRunner:
             gpu_stage_recorder=gpu_stage_recorder,
             # Prefill: a one-row chunk must not switch to the decode schedule.
             force_bulk_rows=True,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
@@ -8511,6 +8551,7 @@ class Qwen35GGUFFullStackRunner:
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
         force_bulk_rows: bool = False,
         q8_t16_rowtile_all: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> None:
         """``force_bulk_rows`` keeps a one-row PREFILL on the bulk schedule.
 
@@ -8555,6 +8596,10 @@ class Qwen35GGUFFullStackRunner:
             gpu_stage_recorder=gpu_stage_recorder,
             force_bulk_rows=force_bulk_rows,
             q8_t16_rowtile_all=q8_t16_rowtile_all,
+            verify_f32_post_norm=verify_f32_post_norm,
+            q4_t16_dual_silu_r28=getattr(
+                self, "q4_t16_dual_silu_r28", None
+            ),
         )
 
     def _run_post_attention_moe_c1(
@@ -10843,6 +10888,59 @@ def _gguf_verify_f32_post_norm_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ENV, False)
 
 
+_UNSET_F32_RESOURCE = object()
+
+
+def _owner_bound_flag(
+    owner: object | None,
+    name: str,
+    ambient: Callable[[], bool],
+) -> bool:
+    """Resolve one owner-bound flag, keeping the ambient thunk unread if bound."""
+
+    value = getattr(owner, name, None)
+    if value is not None:
+        return bool(value)
+    return bool(ambient())
+
+
+def _verify_f32_residual_for_call(
+    owner: object | None,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve one verifier F32 residual read: explicit, owner, then ambient.
+
+    The MoE C2 exact-row request scope narrows every source, exactly as it did
+    for the ambient selector.
+    """
+
+    base = (
+        bool(requested)
+        if requested is not None
+        else _owner_bound_flag(
+            owner,
+            "verify_f32_residual",
+            _gguf_verify_f32_residual_enabled,
+        )
+    )
+    return bool(base) and not moe_physical_c2_f32_residual_disabled()
+
+
+def _verify_f32_post_norm_for_call(
+    owner: object | None,
+    requested: bool | None = None,
+) -> bool:
+    """Resolve one verifier F32 post-norm read: explicit, owner, then ambient."""
+
+    if requested is not None:
+        return bool(requested)
+    return _owner_bound_flag(
+        owner,
+        "verify_f32_post_norm",
+        _gguf_verify_f32_post_norm_enabled,
+    )
+
+
 def _gguf_verify_f32_post_norm_router_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_POST_NORM_ROUTER_ENV, True)
 
@@ -13032,6 +13130,11 @@ class Qwen35GGUFResidentSession:
     # Profile-owned broad Q8T16 rowtile admission. ``None`` leaves the
     # unbound/direct diagnostic input and package floor in place.
     target_q8_t16_rowtile_all: bool | None = None
+    # Profile-owned verifier F32 diagnostics and R28 selector. ``None`` keeps
+    # the unbound/direct diagnostic input.
+    target_verify_f32_residual: bool | None = None
+    target_verify_f32_post_norm: bool | None = None
+    target_q4_t16_dual_silu_r28: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch = resident_state_field("canonical", "scratch")
     _target_scratch_owner = resident_state_field("canonical", "scratch_owner")
@@ -13511,6 +13614,9 @@ class Qwen35GGUFResidentSession:
                     self.target_router_f32w_persistent_counter
                 ),
                 target_q8_t16_rowtile_all=self.target_q8_t16_rowtile_all,
+                target_verify_f32_residual=self.target_verify_f32_residual,
+                target_verify_f32_post_norm=self.target_verify_f32_post_norm,
+                target_q4_t16_dual_silu_r28=self.target_q4_t16_dual_silu_r28,
             )
             self._owns_runner = True
         else:
@@ -13576,6 +13682,30 @@ class Qwen35GGUFResidentSession:
                     "shared runner Q8T16 rowtile policy does not match the "
                     "owner request"
                 )
+        for requested, live_name, message in (
+            (
+                self.target_verify_f32_residual,
+                "verify_f32_residual",
+                "shared runner verifier F32 residual policy does not match "
+                "the owner request",
+            ),
+            (
+                self.target_verify_f32_post_norm,
+                "verify_f32_post_norm",
+                "shared runner verifier F32 post-norm policy does not match "
+                "the owner request",
+            ),
+            (
+                self.target_q4_t16_dual_silu_r28,
+                "q4_t16_dual_silu_r28",
+                "shared runner R28 policy does not match the owner request",
+            ),
+        ):
+            if requested is None:
+                continue
+            live = getattr(self.runner, live_name, None)
+            if live is None or bool(live) is not bool(requested):
+                raise RuntimeError(message)
         # Freeze this experimental T2 axis at session construction so strict
         # and candidate owners can coexist in one numerical evaluator process.
         self.target_verifier_production_q4_rowtile = (
@@ -16902,6 +17032,7 @@ class Qwen35GGUFResidentSession:
         rows: int,
         runtime: HipRuntime,
         prefill_gdn_capture: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> dict[str, np.ndarray]:
         """Copy scored bulk-verifier layer internals for parity diagnostics.
 
@@ -16919,6 +17050,9 @@ class Qwen35GGUFResidentSession:
             raise ValueError("rows must be positive")
         use_prefill_gdn_capture = self._capture_prefill_gdn_for_call(
             prefill_gdn_capture
+        )
+        post_norm_for_capture = self._verify_f32_post_norm_for_call(
+            verify_f32_post_norm
         )
 
         def copy_bf16(name: str, ptr: int, shape: tuple[int, ...]) -> tuple[str, np.ndarray]:
@@ -16945,7 +17079,7 @@ class Qwen35GGUFResidentSession:
             hidden_in_f32_ptr is not None
             and hasattr(scratch, "post_norm_f32")
             and _gguf_verify_f32_attention_norm_enabled()
-            and not _gguf_verify_f32_post_norm_enabled()
+            and not post_norm_for_capture
         ):
             key, value = copy_f32(
                 "attn_norm_f32_scratch",
@@ -17054,7 +17188,7 @@ class Qwen35GGUFResidentSession:
         if (
             layer_out_f32_ptr is not None
             and hasattr(scratch, "post_norm_f32")
-            and _gguf_verify_f32_post_norm_enabled()
+            and post_norm_for_capture
         ):
             key, value = copy_f32("attn_post_norm_f32", int(scratch.post_norm_f32.ptr), (row_count, hidden_size))
             arrays[key] = np.ascontiguousarray(value, dtype=np.float32)
@@ -19720,6 +19854,7 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         device_result: bool = False,
         capture_prefill_gdn: bool | None = None,
+        verify_f32_residual: bool | None = None,
     ) -> list[Qwen35GGUFBlockVerifyResult] | list[Qwen35GGUFPackedVerifyDeviceResult]:
         """Run one packed target-verifier pass for multiple resident sessions.
 
@@ -19770,7 +19905,7 @@ class Qwen35GGUFResidentSession:
             )
         if self.use_expert_sidecar:
             raise NotImplementedError("packed target verifier does not support expert sidecars yet")
-        if _gguf_verify_f32_residual_enabled():
+        if self._verify_f32_residual_for_call(verify_f32_residual):
             raise NotImplementedError("packed target verifier does not support F32 residual diagnostics")
         if not capture_prefill_gdn:
             raise NotImplementedError("packed target verifier requires prefill-GDN no-copy capture")
@@ -20337,6 +20472,8 @@ class Qwen35GGUFResidentSession:
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
         defer_linear_state_commit: bool = False,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
         _pre_staged_token_ids_ptr: int | None = None,
         _target_top1_i64_ptr: int | None = None,
         _target_top1_i32_ptr: int | None = None,
@@ -20526,9 +20663,23 @@ class Qwen35GGUFResidentSession:
             if _graph_hidden_f32_b is None
             else _graph_hidden_f32_b
         )
-        use_f32_residual = _gguf_verify_f32_residual_enabled()
-        if use_f32_residual and (verify_hidden_f32_a is None or verify_hidden_f32_b is None):
-            raise RuntimeError("GGUF verifier F32 residual buffers are closed")
+        use_f32_residual = self._verify_f32_residual_for_call(verify_f32_residual)
+        use_f32_post_norm = self._verify_f32_post_norm_for_call(
+            verify_f32_post_norm
+        )
+        selected_bulk_scratch = (
+            _prebuilt_bulk_scratch
+            if _prebuilt_bulk_scratch is not None
+            else self._bulk_prefill_scratch
+        )
+        self._validate_f32_verifier_resources(
+            rows=rows,
+            residual=use_f32_residual,
+            post_norm=use_f32_post_norm,
+            hidden_f32_a=verify_hidden_f32_a,
+            hidden_f32_b=verify_hidden_f32_b,
+            scratch=selected_bulk_scratch,
+        )
         token_ids_buf = self._verify_token_ids_i64
         token_counter_buf = self._verify_token_counter_i64
         if token_ids_buf is None or token_counter_buf is None:
@@ -20748,6 +20899,7 @@ class Qwen35GGUFResidentSession:
                                 decode_row_scratches=_native_decode_row_scratches,
                                 attention_context_limit=_native_attention_context_limit,
                                 row_views_keep_scalar_caps=row_views_keep_scalar_caps,
+                                verify_f32_post_norm=verify_f32_post_norm,
                             )
                         elif layer_type == LINEAR_ATTENTION:
                             self.runner._run_linear_attention_prefill_layer_rows(
@@ -20771,6 +20923,7 @@ class Qwen35GGUFResidentSession:
                                 stage_timings=stage_timings,
                                 sync_stage_timings=sync_stage_timings,
                                 stage_prefix="target_block_linear_attn",
+                                verify_f32_post_norm=verify_f32_post_norm,
                             )
                         elif layer_type == FULL_ATTENTION:
                             key_cache, value_cache = self.scratch.full_cache(layer_id)
@@ -20794,6 +20947,7 @@ class Qwen35GGUFResidentSession:
                                     stage_prefix="target_block_full_attn",
                                     hidden_f32_ptr=src_f32_chunk_ptr,
                                     out_f32_ptr=dst_f32_chunk_ptr,
+                                    verify_f32_post_norm=verify_f32_post_norm,
                                 )
                             else:
                                 if use_f32_residual:
@@ -20808,6 +20962,7 @@ class Qwen35GGUFResidentSession:
                                     layer_scratch,
                                     stream=stream,
                                     expert_sidecar=expert_sidecar,
+                                    verify_f32_post_norm=verify_f32_post_norm,
                                 )
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -20835,6 +20990,7 @@ class Qwen35GGUFResidentSession:
                             rows=rows,
                             runtime=runtime,
                             prefill_gdn_capture=capture_prefill_gdn,
+                            verify_f32_post_norm=use_f32_post_norm,
                         )
                     input_norm_ptr = next_norm_out_ptr if chain_dense_next_rms else None
                     src, dst = dst, src
@@ -25650,6 +25806,93 @@ class Qwen35GGUFResidentSession:
             return bool(requested)
         return bool(getattr(self, "verifier_prefill_gdn_capture", False))
 
+    def _verify_f32_residual_for_call(
+        self,
+        requested: bool | None = None,
+    ) -> bool:
+        """Resolve the verifier F32 residual decision for one operation."""
+
+        return _verify_f32_residual_for_call(
+            getattr(self, "runner", None),
+            requested,
+        )
+
+    def _verify_f32_post_norm_for_call(
+        self,
+        requested: bool | None = None,
+    ) -> bool:
+        """Resolve the verifier F32 post-norm decision for one operation."""
+
+        return _verify_f32_post_norm_for_call(
+            getattr(self, "runner", None),
+            requested,
+        )
+
+    def _q4_t16_dual_silu_r28_for_call(
+        self,
+        requested: bool | None = None,
+    ) -> bool | None:
+        """Resolve the owner-bound R28 selector; ``None`` stays unbound."""
+
+        if requested is not None:
+            return bool(requested)
+        value = getattr(
+            getattr(self, "runner", None),
+            "q4_t16_dual_silu_r28",
+            None,
+        )
+        return None if value is None else bool(value)
+
+    def _validate_f32_verifier_resources(
+        self,
+        *,
+        rows: int,
+        residual: bool,
+        post_norm: bool,
+        hidden_f32_a: object = _UNSET_F32_RESOURCE,
+        hidden_f32_b: object = _UNSET_F32_RESOURCE,
+        scratch: object = _UNSET_F32_RESOURCE,
+    ) -> None:
+        """Verify the buffers selected for this operation cover its rows.
+
+        ``hidden_f32_a``/``hidden_f32_b`` and ``scratch`` are the actual
+        operation inputs: a reusable target graph supplies graph-owned buffers,
+        and the bulk verifier supplies its chunk scratch. Omitted inputs keep
+        the resident defaults for direct callers. The F32 residual pair is
+        required only when the residual path runs; post-norm uses the selected
+        scratch and is required only inside that residual path, so a supported
+        scratch that omits the irrelevant buffer stays valid.
+        """
+
+        if hidden_f32_a is _UNSET_F32_RESOURCE:
+            hidden_f32_a = getattr(self, "_verify_hidden_f32_a", None)
+        if hidden_f32_b is _UNSET_F32_RESOURCE:
+            hidden_f32_b = getattr(self, "_verify_hidden_f32_b", None)
+        if scratch is _UNSET_F32_RESOURCE:
+            scratch = getattr(self, "scratch", None)
+        hidden_size = int(getattr(getattr(self, "runner", None), "hidden_size", 0))
+        required = int(rows) * hidden_size * DType.FP32.itemsize
+        if residual:
+            for name, buffer in (
+                ("hidden_f32_a", hidden_f32_a),
+                ("hidden_f32_b", hidden_f32_b),
+            ):
+                capacity = (
+                    buffer.numel * buffer.dtype.itemsize
+                    if isinstance(buffer, Tensor)
+                    else int(getattr(buffer, "nbytes", 0))
+                )
+                if buffer is None or not int(getattr(buffer, "ptr", 0)) or capacity < required:
+                    raise RuntimeError(
+                        f"GGUF verifier F32 residual {name} is closed or undersized"
+                    )
+        if residual and post_norm:
+            buffer = getattr(scratch, "post_norm_f32", None)
+            if buffer is None or int(getattr(buffer, "nbytes", 0)) < required:
+                raise RuntimeError(
+                    "scratch is missing post_norm_f32 for verifier F32 post-norm diagnostic"
+                )
+
     def _verify_linear_state_row_pair(self, layer_id: int) -> tuple[object, object] | None:
         if (
             not self._verify_linear_conv_state_rows
@@ -29029,6 +29272,8 @@ class Qwen35GGUFResidentSession:
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
         sampled_accept: bool = False,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ):
         """Capture a reusable B1-B3 N1 or N2 native target graph."""
 
@@ -29052,6 +29297,8 @@ class Qwen35GGUFResidentSession:
             defer_linear_state_commit=bool(defer_linear_state_commit),
             device_accept_commit=bool(device_accept_commit),
             sampled_accept=bool(sampled_accept),
+            verify_f32_residual=verify_f32_residual,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
 
     def prepare_native_spec_target_graph(
@@ -29061,6 +29308,8 @@ class Qwen35GGUFResidentSession:
         request_id: int,
         sampled_accept: bool = False,
         capture_prefill_gdn: bool | None = None,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ) -> bool:
         """Capture/cache one strict N2 target graph before a hot cycle.
 
@@ -29091,6 +29340,8 @@ class Qwen35GGUFResidentSession:
                 defer_linear_state_commit=True,
                 device_accept_commit=True,
                 sampled_accept=bool(sampled_accept),
+                verify_f32_residual=verify_f32_residual,
+                verify_f32_post_norm=verify_f32_post_norm,
             ):
                 return True
             existing.close()
@@ -29105,6 +29356,8 @@ class Qwen35GGUFResidentSession:
             defer_linear_state_commit=True,
             device_accept_commit=True,
             sampled_accept=bool(sampled_accept),
+            verify_f32_residual=verify_f32_residual,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
         setattr(self, cache_name, graph)
         cache = getattr(self, "_native_spec_target_graphs", None)
@@ -29135,6 +29388,8 @@ class Qwen35GGUFResidentSession:
         remaining_decode: int | None = None,
         sampled_accept: bool = False,
         sampled_accept_state: object | None = None,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ):
         """Run reusable B1-B3 N1 or N2, else preserve eager fallback."""
 
@@ -29163,6 +29418,8 @@ class Qwen35GGUFResidentSession:
             remaining_decode=(None if remaining_decode is None else int(remaining_decode)),
             sampled_accept=bool(sampled_accept),
             sampled_accept_state=sampled_accept_state,
+            verify_f32_residual=verify_f32_residual,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
 
     def verify_target_from_device_proposal(
@@ -29183,6 +29440,8 @@ class Qwen35GGUFResidentSession:
         compact_result: bool = False,
         sampled_accept: bool = False,
         sampled_accept_state: object | None = None,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ):
         """Retire cached proposal/N2 graphs behind the target synchronization."""
 
@@ -29208,6 +29467,8 @@ class Qwen35GGUFResidentSession:
             compact_result=bool(compact_result),
             sampled_accept=bool(sampled_accept),
             sampled_accept_state=sampled_accept_state,
+            verify_f32_residual=verify_f32_residual,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
 
     def run_native_spec_mtp_cycle(
@@ -29234,6 +29495,8 @@ class Qwen35GGUFResidentSession:
         sampled_accept: bool = False,
         sampled_accept_state: object | None = None,
         capture_prefill_gdn: bool | None = None,
+        verify_f32_residual: bool | None = None,
+        verify_f32_post_norm: bool | None = None,
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
@@ -29272,6 +29535,8 @@ class Qwen35GGUFResidentSession:
             sampled_accept=bool(sampled_accept),
             sampled_accept_state=sampled_accept_state,
             capture_prefill_gdn=bool(capture_prefill_gdn),
+            verify_f32_residual=verify_f32_residual,
+            verify_f32_post_norm=verify_f32_post_norm,
         )
 
     def capture_decode_graph(

@@ -449,9 +449,9 @@ F32 flags select per-stage diagnostic arithmetic to localize divergence.
 | `HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT` | off | Without prefill-GDN capture, rounds chain GDN output to BF16 before `ssm_out`; captured state still comes from the selected chain writer. |
 | `HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL` | off | Without prefill-GDN capture, replays Conv/GDN into temporary state and scores its BF16 output while keeping chain-captured commit rows. Rejects FP16 recurrent state; this does not capture attention scores. |
 | `HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV` | off | Without prefill-GDN capture, converts projected QKV from BF16 to F32 and uses F32 chain Conv. Prefill-GDN capture already selects F32 Conv input. |
-| `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` | unset | Replays the residual stage in F32 (supports a subset of shapes). |
+| `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` | unset | Unbound/direct diagnostic for F32 residual replay (supported shapes only). gfx1100 profiles bind the decision to each generator/runner; verifier operations may explicitly override it without changing the environment. |
 | `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` | all layers | Integer prefix length `N` in `[0, layer_count]`; F32 residual propagation covers `[0, N)` before rejoining BF16. Unset or blank means all layers; comma/range syntax is not supported. |
-| `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` | unset | Replays the post-attention norm in F32. |
+| `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` | unset | Unbound/direct diagnostic for F32 post-attention norm replay within the F32 residual path. gfx1100 profile owners and explicit verifier inputs take precedence. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER` | unset | Replays the post-norm router read in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8` | unset | Replays the selected-Q8 post-norm read in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8` | unset | Replays the shared-Q8 post-norm read in F32. |
@@ -476,7 +476,7 @@ not by backend-branched runtime code.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
-| `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` | false | Default-off screen selecting the dense dual WMMA row32/row48 variants for specdec2 production R28 rows. |
+| `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28` | false | Unbound/direct selector for dense dual WMMA row32/row48 variants at specdec2 R28. The gfx1100 dense production profile snapshots an explicit construction override, otherwise enables R28; strict and MoE profiles bind it off. Bound dispatch bypasses the ambient policy cache. |
 | `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE` | retired | No runtime reader. gfx1100 package policy selects the single-wave owner; the four-wave parity reference remains separately registered. |
 | `HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120` | retired | No runtime reader; fixed-5120 rounded-norm selection follows the backend shape policy. The generic rounded-norm owner remains the fallback for other shapes. |
 

@@ -328,6 +328,8 @@ def run_post_attention_ffn_rows(
     gpu_stage_recorder: StageRecorder | None = None,
     force_bulk_rows: bool = False,
     q8_t16_rowtile_all: bool | None = None,
+    verify_f32_post_norm: bool | None = None,
+    q4_t16_dual_silu_r28: bool | None = None,
 ) -> None:
     """Residual + post-norm, dense or MoE feed-forward, down + residual.
 
@@ -354,6 +356,11 @@ def run_post_attention_ffn_rows(
         raise ValueError("next norm weight and output pointers must be provided together")
     post_norm_f32_ptr: int | None = None
     if f32_residual:
+        post_norm_enabled = (
+            flags.verify_f32_post_norm_enabled()
+            if verify_f32_post_norm is None
+            else bool(verify_f32_post_norm)
+        )
         if hidden_f32_ptr is None or out_f32_ptr is None:
             raise ValueError("hidden_f32_ptr and out_f32_ptr must be provided together")
         post_attention_norm_ptr = layer.weight("post_attention_norm").allocation().tensor.ptr
@@ -383,7 +390,7 @@ def run_post_attention_ffn_rows(
                 stream=stream,
                 runtime=runtime,
             )
-        if flags.verify_f32_post_norm_enabled():
+        if post_norm_enabled:
             if not hasattr(scratch, "post_norm_f32"):
                 raise ValueError("scratch is missing post_norm_f32 for verifier F32 post-norm diagnostic")
             kernels.gguf_rmsnorm_f32_f32_weight_out_f32(
@@ -527,6 +534,7 @@ def run_post_attention_ffn_rows(
         pair_workspace_nbytes=int(
             getattr(scratch.ffn_gate_up, "nbytes", 0)
         ),
+        r28_enabled=q4_t16_dual_silu_r28,
     )
     if not dense_silu_fused:
         if not kernels.launch_gguf_linear_pair(
