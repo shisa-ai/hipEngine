@@ -45,7 +45,10 @@ def ar_rows_by_key(payload: dict) -> dict[tuple[str, int], dict]:
     rows = (payload.get("rows") or {}).get("true_ar") or []
     indexed: dict[tuple[str, int], dict] = {}
     for row in rows:
-        indexed[(str(row["id"]), int(row.get("run", 0)))] = row
+        key = (str(row["id"]), int(row.get("run", 0)))
+        if key in indexed:
+            raise ValueError(f"duplicate true-AR row: {key[0]}#run{key[1]}")
+        indexed[key] = row
     return indexed
 
 def compare_ar_token_sequences(eager: dict, graph: dict) -> dict:
@@ -55,9 +58,16 @@ def compare_ar_token_sequences(eager: dict, graph: dict) -> dict:
     prompt, a run, and a transition index rather than just failing.
     """
 
-    eager_rows = ar_rows_by_key(eager)
-    graph_rows = ar_rows_by_key(graph)
     problems: list[str] = []
+    indexed = {}
+    for name, payload in (("eager", eager), ("graph", graph)):
+        try:
+            indexed[name] = ar_rows_by_key(payload)
+        except ValueError as error:
+            problems.append(f"{name}: {error}")
+            indexed[name] = {}
+    eager_rows = indexed["eager"]
+    graph_rows = indexed["graph"]
     if not eager_rows or not graph_rows:
         problems.append(
             f"missing true-AR rows (eager {len(eager_rows)}, graph {len(graph_rows)})"
@@ -74,6 +84,11 @@ def compare_ar_token_sequences(eager: dict, graph: dict) -> dict:
     for key in sorted(set(eager_rows) & set(graph_rows)):
         eager_tokens = list(eager_rows[key].get("token_ids") or [])
         graph_tokens = list(graph_rows[key].get("token_ids") or [])
+        if not eager_tokens or not graph_tokens:
+            problems.append(
+                f"{key[0]}#run{key[1]}: empty token sequence "
+                f"(eager {len(eager_tokens)}, graph {len(graph_tokens)})"
+            )
         if len(eager_tokens) != len(graph_tokens):
             problems.append(
                 f"{key[0]}#run{key[1]}: length {len(graph_tokens)} != {len(eager_tokens)}"

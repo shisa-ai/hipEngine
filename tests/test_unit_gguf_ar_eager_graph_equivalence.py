@@ -117,6 +117,33 @@ def test_rows_are_indexed_by_id_and_run() -> None:
     assert indexed[("a", 1)]["token_ids"] == [2]
 
 
+def test_empty_token_rows_do_not_certify_any_transitions() -> None:
+    rows = [{"id": "code-1", "run": 0, "token_ids": []}]
+    report = compare_ar_token_sequences(payload(rows), payload(rows))
+    assert report["matched"] is False
+    assert report["compared_transitions"] == 0
+    assert any("empty token" in problem for problem in report["problems"])
+
+
+def test_duplicate_row_keys_do_not_hide_a_divergent_sequence() -> None:
+    eager = payload([
+        {"id": "code-1", "run": 0, "token_ids": [99]},
+        {"id": "code-1", "run": 0, "token_ids": [10]},
+    ])
+    graph = payload([{"id": "code-1", "run": 0, "token_ids": [10]}])
+    report = compare_ar_token_sequences(eager, graph)
+    assert report["matched"] is False
+    assert any("duplicate" in problem for problem in report["problems"])
+
+
+def test_indexing_rejects_duplicate_row_keys() -> None:
+    with pytest.raises(ValueError, match="duplicate"):
+        ar_rows_by_key(payload([
+            {"id": "a", "token_ids": [1]},
+            {"id": "a", "run": 0, "token_ids": [2]},
+        ]))
+
+
 def test_a_run_key_defaults_to_zero_when_absent() -> None:
     indexed = ar_rows_by_key(payload([{"id": "a", "token_ids": [1]}]))
     assert list(indexed) == [("a", 0)]
