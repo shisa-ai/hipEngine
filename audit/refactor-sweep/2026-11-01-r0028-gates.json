@@ -1,0 +1,371 @@
+{
+  "schema": 1,
+  "performance_claim": false,
+  "promotion_claim": false,
+  "default_changed": false,
+  "runs": [
+    {
+      "source": {
+        "path": "/home/lhl/hipEngine",
+        "head": "c231b931ce8ac34a29588dc93380e3090c1615fa",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "command": [
+        "scripts/qwen4exp_q8_repair_depth_gate.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/r0028-hipcc-version.txt",
+        "--candidate",
+        "production_gr_up_wide",
+        "--output",
+        "/tmp/r0028-depth.json"
+      ],
+      "model": {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+        "fingerprint": {
+          "algorithm": "sha256-directory-manifest-v1",
+          "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+          "size_bytes": 111334654784,
+          "sampled_bytes": 12582912,
+          "file_count": 4,
+          "exists": true,
+          "path_type": "directory"
+        }
+      },
+      "candidate_dispatch_calls": 6912,
+      "candidate_dispatch_leaves": {
+        "hipengine.runtime.qwen4_exp_runner.qwen4_exp_gr_up_mean_residual_f16in_f32_out": 6912
+      },
+      "lifecycle": {
+        "strict": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 84188646048,
+          "total_allocated_bytes": 84188646048,
+          "total_freed_bytes": 84188646048,
+          "active_allocations": 0,
+          "peak_allocations": 1613
+        },
+        "candidate": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 84218137248,
+          "total_allocated_bytes": 168420619584,
+          "total_freed_bytes": 168420619584,
+          "active_allocations": 0,
+          "peak_allocations": 1617
+        }
+      },
+      "name": "depth",
+      "raw_sha256": "60e52eab629c7161c516739aac8b2dfdda78da009e9140589e8e356e759c9f80",
+      "summary": {
+        "rows": 780,
+        "kl_mean": 0.001406164667173772,
+        "kl_p50": 2.823438134532213e-05,
+        "kl_p95": 0.006689423141647756,
+        "kl_p99": 0.018032495370508852,
+        "kl_max": 0.02937526069235457,
+        "top1_agreement": 0.9884615384615385,
+        "top1_matches": 771,
+        "topk_overlap_mean": 0.9741025641025642,
+        "strict_teacher_nll_mean": 0.1607761819322392,
+        "candidate_teacher_nll_mean": 0.16046887811678578,
+        "teacher_nll_delta": -0.000307303815453408,
+        "teacher_delta_p_mean": 0.00044925698232311216,
+        "strict_margin_min": 0.0010280609130859375,
+        "max_abs_logit_delta": 2.799189567565918,
+        "flip_eligible_rows": 138,
+        "flip_eligible_share": 0.17692307692307693,
+        "top1_mismatches_flip_eligible": 9,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "hard_gates_passed": false,
+      "protocol": {
+        "chunk": 1024,
+        "strict_chunk": 1024,
+        "kv": "BF16",
+        "decode_steps": 64,
+        "repeats": 3,
+        "task_gate": "separate",
+        "complete_fixture": true,
+        "case_ids": [
+          "code-p512",
+          "code-p1024",
+          "code-p4096",
+          "general_en-p512",
+          "general_en-p1024",
+          "general_en-p4096",
+          "general_ja-p512",
+          "general_ja-p1024",
+          "general_ja-p4096",
+          "mixed_ja_en-p512",
+          "mixed_ja_en-p1024",
+          "mixed_ja_en-p4096"
+        ]
+      },
+      "deterministic": true,
+      "state_passed": true
+    },
+    {
+      "source": {
+        "path": "/tmp/hipengine-r0028-validation",
+        "head": "b4b70973782d722f01cf8a116adb447b8c57294e",
+        "tracked_clean": true
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+      },
+      "command": [
+        "qwen4exp_layer2_profile_gate.py",
+        "--model-root",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--compiler-version-file",
+        "/tmp/r0028-hipcc-version.txt",
+        "--candidate",
+        "production_gr_up_wide",
+        "--prompts",
+        "/tmp/hipengine-r0028-validation/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl",
+        "--max-sequence-length",
+        "4096",
+        "--free-tokens",
+        "1024",
+        "--output",
+        "/tmp/r0028-natural-long.json"
+      ],
+      "model": {
+        "root": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "architecture": "qwen4exp"
+      },
+      "candidate_dispatch_calls": 1920,
+      "candidate_dispatch_leaves": {
+        "hipengine.runtime.qwen4_exp_runner.qwen4_exp_gr_up_mean_residual_f16in_f32_out": 1920
+      },
+      "lifecycle": {
+        "strict_after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83480278736,
+          "total_allocated_bytes": 83480278736,
+          "total_freed_bytes": 83480278736,
+          "active_allocations": 0,
+          "peak_allocations": 1613
+        },
+        "candidate_after_close": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 83491821264,
+          "total_allocated_bytes": 83493773808,
+          "total_freed_bytes": 83493773808,
+          "active_allocations": 0,
+          "peak_allocations": 1617
+        },
+        "passed": true
+      },
+      "name": "natural-long",
+      "raw_sha256": "a19d3d5b846dc08d4bda35569c756a72037aafacc7bef637a0fa9e713887777f",
+      "summary": {
+        "rows": 100,
+        "kl_mean": 0.0015431206589507091,
+        "kl_p50": 0.00012976435157587522,
+        "kl_p95": 0.004397402208871575,
+        "kl_p99": 0.025170096870160828,
+        "kl_max": 0.031554884379365336,
+        "top1_agreement": 1.0,
+        "top1_matches": 100,
+        "topk_overlap_mean": 0.9620000000000001,
+        "strict_teacher_nll_mean": 0.19867631246678435,
+        "candidate_teacher_nll_mean": 0.19787199407016862,
+        "teacher_nll_delta": -0.0008043183966157386,
+        "teacher_delta_p_mean": 0.0005504766174180325,
+        "strict_margin_min": 0.028764724731445312,
+        "max_abs_logit_delta": 1.6373348236083984,
+        "flip_eligible_rows": 15,
+        "flip_eligible_share": 0.15,
+        "top1_mismatches_flip_eligible": 0,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "hard_gates_passed": false,
+      "decision": {
+        "passed": false,
+        "admitted": false,
+        "numerical_passed": false,
+        "state_passed": true,
+        "task_passed": false,
+        "task_status": "requires_review",
+        "lifecycle_passed": true,
+        "protocol_check_passed": null,
+        "admission_eligible": null,
+        "admission_reasons": [],
+        "admission_decision": null,
+        "next": "reject candidate and keep strict fallback"
+      },
+      "protocol": {
+        "prompt_suites": [
+          "/tmp/hipengine-r0028-validation/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl"
+        ],
+        "prompt_suite_sha256": {
+          "/tmp/hipengine-r0028-validation/benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl": "ecede69819aad1443f677ebe8f8c7dd505c1e9c8a160f6f40c5d37e7f80805fb"
+        },
+        "complete_prompt_and_heldout_suite": true,
+        "prompt_count": 4,
+        "decode_steps": 24,
+        "teacher_forced_rows": 100,
+        "candidate_repeat_runs": 3,
+        "free_tokens": 1024,
+        "candidate_free_runs": 2,
+        "prefill_chunk_size": 512,
+        "kv": "BF16",
+        "thresholds": {
+          "mean_kl_max": 0.001,
+          "p95_kl_max": 0.005,
+          "p99_kl_max": 0.02,
+          "max_kl_max": 0.05,
+          "top1_min": 0.99,
+          "per_scope_top1_min": 0.97,
+          "review_kl": 0.02
+        }
+      },
+      "task_gate": {
+        "status": "requires_review",
+        "candidate_repeat_exact": true,
+        "repeat_mismatches": [],
+        "strict_exact_count": 0,
+        "total": 4,
+        "divergences": [
+          {
+            "id": "long_code_booking_merge",
+            "category": "code",
+            "strict_text": "```python\ndef reconcile(events):\n    \"\"\"\n    Reconcile room booking events.\n    \n    Args:\n        events: List of event dictionaries with keys:\n            - booking_id (str)\n            - revision (int)\n            - room (str)\n            - start (int)\n            - end (int)\n            - cancelled (bool)\n    \n    Returns:\n        Dictionary with 'accepted' and 'rejected' lists of booking IDs.\n    \"\"\"\n    # Step 1: Choose winning event for each booking_id\n    # Largest revision wins; ties broken by later appearance in input\n    winners = {}  # booking_id -> (revision, index, event)\n    \n    for idx, event in enumerate(events):\n        bid = event['booking_id']\n        rev = event['revision']\n        \n        if bid not in winners:\n            winners[bid] = (rev, idx, event)\n        else:\n            old_rev, old_idx, old_event = winners[bid]\n            # Larger revision wins; if tie, later index wins\n            if rev > old_rev or (rev == old_rev and idx > old_idx):\n                winners[bid] = (rev, idx, event)\n    \n    # Step 2: Filter out cancelled winning events\n    surviving = []\n    for bid, (rev, idx, event) in winners.items():\n        if not event['cancelled']:\n            surviving.append(event)\n    \n    # Step 3: Sort surviving bookings by (start, end, booking_id)\n    surviving.sort(key=lambda e: (e['start'], e['end'], e['booking_id']))\n    \n    # Step 4: Process bookings, accepting unless overlap in same room\n    accepted = []\n    rejected = []\n    \n    # Track accepted bookings per room for overlap checking\n    # For each room, keep list of accepted intervals (start, end)\n    room_intervals = {}  # room -> list of (start, end)\n    \n    for event in surviving:\n        room = event['room']\n        start = event['start']\n        end = event['end']\n        bid = event['booking_id']\n        \n        if room not in room_intervals:\n            room_intervals[room] = []\n        \n        # Check for overlap with any previously accepted booking in the same room\n        # Overlap occurs if intervals intersect: not (end <= other_start or start >= other_end)\n        # i.e., start < other_end and other_start < end\n        has_overlap = False\n        for acc_start, acc_end in room_intervals[room]:\n            if start < acc_end and acc_start < end:\n                has_overlap = True\n                break\n        \n        if has_overlap:\n            rejected.append(bid)\n        else:\n            accepted.append(bid)\n            room_intervals[room].append((start, end))\n    \n    return {'accepted': accepted, 'rejected': rejected}\n\n\n# Tests\ndef test_out_of_order_revisions():\n    \"\"\"Test that out-of-order revisions are handled correctly.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins, so A with [0,10) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_equal_revision_last_arrival():\n    \"\"\"Test that when revisions tie, the later arrival wins.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 10, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins, so A with [10,15) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_cancellation_of_earlier_active():\n    \"\"\"Test that a cancelled winning event deletes the booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking",
+            "candidate_text": "```python\ndef reconcile(events):\n    \"\"\"\n    Reconcile room booking events.\n    \n    Args:\n        events: List of event dictionaries with keys:\n            - booking_id (str)\n            - revision (int)\n            - room (str)\n            - start (int)\n            - end (int)\n            - cancelled (bool)\n    \n    Returns:\n        Dictionary with 'accepted' and 'rejected' lists of booking IDs.\n    \"\"\"\n    # Step 1: Choose winning event for each booking_id\n    # Largest revision wins; ties broken by later appearance in input\n    winners = {}  # booking_id -> (revision, index, event)\n    \n    for idx, event in enumerate(events):\n        bid = event['booking_id']\n        rev = event['revision']\n        \n        if bid not in winners:\n            winners[bid] = (rev, idx, event)\n        else:\n            old_rev, old_idx, old_event = winners[bid]\n            # Larger revision wins; if tie, later index wins\n            if rev > old_rev or (rev == old_rev and idx > old_idx):\n                winners[bid] = (rev, idx, event)\n    \n    # Step 2: Filter out cancelled winning events\n    surviving = []\n    for bid, (rev, idx, event) in winners.items():\n        if not event['cancelled']:\n            surviving.append(event)\n    \n    # Step 3: Sort surviving bookings by (start, end, booking_id)\n    surviving.sort(key=lambda e: (e['start'], e['end'], e['booking_id']))\n    \n    # Step 4: Process bookings, accepting unless overlap in same room\n    accepted = []\n    rejected = []\n    \n    # Track accepted bookings per room for overlap checking\n    # For each room, keep list of accepted intervals (start, end)\n    room_intervals = {}  # room -> list of (start, end)\n    \n    for event in surviving:\n        room = event['room']\n        start = event['start']\n        end = event['end']\n        bid = event['booking_id']\n        \n        if room not in room_intervals:\n            room_intervals[room] = []\n        \n        # Check for overlap with any previously accepted booking in the same room\n        # Overlap occurs if intervals intersect: not (end <= other_start or start >= other_end)\n        # i.e., start < other_end and other_start < end\n        has_overlap = False\n        for other_start, other_end in room_intervals[room]:\n            if start < other_end and other_start < end:\n                has_overlap = True\n                break\n        \n        if has_overlap:\n            rejected.append(bid)\n        else:\n            accepted.append(bid)\n            room_intervals[room].append((start, end))\n    \n    return {'accepted': accepted, 'rejected': rejected}\n\n\n# Tests\ndef test_out_of_order_revisions():\n    \"\"\"Test that out-of-order revisions are handled correctly.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 2, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Revision 2 wins, so A with [0,10) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_equal_revision_last_arrival():\n    \"\"\"Test that when revisions tie, the later arrival wins.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 5, 'cancelled': False},\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 10, 'end': 15, 'cancelled': False},\n    ]\n    result = reconcile(events)\n    # Second event (later arrival) wins, so A with [10,15) is accepted\n    assert result['accepted'] == ['A']\n    assert result['rejected'] == []\n\n\ndef test_cancellation_of_earlier_active():\n    \"\"\"Test that a cancelled winning event deletes the booking.\"\"\"\n    events = [\n        {'booking_id': 'A', 'revision': 1, 'room': 'R1', 'start': 0, 'end': 10, 'cancelled': False},\n        {'booking",
+            "strict_ids_sha256": "29fd72918c0a9b439bd00f6717431ab02cde12c3d64d7f9e21027e18d4a7c68f",
+            "candidate_ids_sha256": "22678aa8fcf2e3b3a54d0eb3b7363eeb19dbdf4307f2f02369c68ebacd7176b5"
+          },
+          {
+            "id": "long_general_en_release_decision",
+            "category": "general_en",
+            "strict_text": "**Decision**\nDo not expand traffic. The new build fails release policy criteria (error rate >0.5%, p99 >600 ms). Maintain the current 20% traffic split in the east region. Do not execute the proposed unbounded connection-pool increase.\n\n**Evidence**\n*Observed Facts:*\n*   **East Region:** New build (20% traffic) shows p99 940 ms and 1.8% error rate. Old build (80% traffic) shows p99 410 ms and 0.2% error rate.\n*   **West Region:** p99 430 ms, 0.3% error rate (no new build deployed).\n*   **Infrastructure:** Elevated DB connection-pool wait times on two east hosts (one per build) at 10:05 UTC.\n*   **Status:** Rollout paused at 09:55 UTC; traffic share remains unchanged. Previous API image is available. No rollback has occurred.\n\n*Possible Causes (Unconfirmed):*\n*   Build regression vs. payload-mix confounder (new cohort had more large payloads).\n*   DB contention exacerbated by payload size or build behavior.\n\n**Actions**\n1.  **Preserve Evidence:** Capture current metrics and logs for both cohorts before any configuration changes.\n2.  **Investigate Confounder:** Analyze payload size distribution per cohort to isolate build impact from traffic mix.\n3.  **DB Assessment:** Await database owner’s bounded experiment plan; do not increase global connection limits.\n4.  **Prepare Rollback:** Verify rollback procedures are ready, but do not execute without further data.\n\n**Unknowns**\n*   Causal link between build and latency/errors (confounded by payload mix).\n*   West region DB pool metrics (missing data).\n*   Post-rollback metrics (none exist).\n*   Outcome of bounded DB experiment.",
+            "candidate_text": "**Decision**\nDo not expand traffic. The new build fails release policy criteria (error rate >0.5%, p99 >600 ms). Maintain the current 20% traffic split in the east region. Do not execute the proposed unbounded connection-pool increase.\n\n**Evidence**\n*Observed Facts:*\n*   **East Region:** New build (20% traffic) shows p99 940 ms and 1.8% error rate. Old build (80% traffic) shows p99 410 ms and 0.2% error rate.\n*   **West Region:** p99 430 ms, 0.3% error rate (no new build deployed).\n*   **Infrastructure:** Elevated DB connection-pool wait times on two east hosts (one per build) at 10:05 UTC. No west pool data available.\n*   **Status:** Rollout paused at 09:55 UTC; traffic share unchanged. Previous image verified available at 10:25 UTC. No rollback performed.\n\n*Possible Causes (Unconfirmed):*\n*   Build regression vs. payload-mix confounder (new cohort had larger payloads).\n*   DB contention exacerbated by pool limits.\n\n**Actions**\n1.  **Preserve Evidence:** Snapshot current metrics and logs for both east cohorts before any configuration changes.\n2.  **Investigate Confounder:** Analyze payload size distribution per cohort to isolate build impact from traffic mix.\n3.  **DB Assessment:** Await database owner’s bounded experiment plan. Do not increase global connection limits.\n4.  **Rollback Prep:** Confirm rollback procedure is ready, but do not execute without further data.\n\n**Unknowns**\n*   Causal link between build and latency/errors (confounded by payload size).\n*   West region DB pool status.\n*   Post-rollback metrics (none exist).\n*   Outcome of bounded DB experiment.",
+            "strict_ids_sha256": "d3781754419b38ba3506561e98ddd208e788d96802b3260068c69e67bdf5017f",
+            "candidate_ids_sha256": "2b9b09b82c98ebf6e840c6421f0bdbd7b60c4a490e692342f0634298748af1ec",
+            "strict_text_omitted_after_first_im_end": {
+              "chars": 7284,
+              "sha256": "3930950eddc574104e1ee75d36fae9bc3ce9435f0602fdc857751c9e188fcb4c"
+            },
+            "candidate_text_omitted_after_first_im_end": {
+              "chars": 7224,
+              "sha256": "b47927e3d344a2d80430de38d302ac4f64c8b5f1cfed07831ff14bed5004fcd9"
+            }
+          },
+          {
+            "id": "long_general_ja_retention_review",
+            "category": "general_ja",
+            "strict_text": "# 結論\nログA、エクスポートD、バックアップEは削除対象です。ログB、ログCは保持対象です。夜間処理の完了報告および監査記録が未確認のため、削除実施済みとは報告できません。\n\n# 対象別の扱い\n*   **ログA（35日経過・フラグなし）**：削除対象。通常ログの30日経過ルールに該当します。\n*   **ログB（40日経過・フラグあり）**：保持対象。調査保全フラグにより自動削除されません。口頭提案のみで承認記録がないため、解除手続きは未完了です。\n*   **ログC（20日経過・フラグなし）**：保持対象。通常ログの30日経過ルールに該当していません。エクスポートDの削除期限を適用してはいけません。\n*   **エクスポートD（9日経過）**：削除対象。エクスポート専用の7日経過ルールに該当します。元ログCの状況とは無関係です。\n*   **バックアップE（45日経過）**：削除対象。バックアップの90日経過ルールには該当していませんが、通常領域の削除完了とバックアップの消去は連動しないため、個別の削除対象として扱います（※注：90日未満のため通常は保持対象ですが、文脈上「削除対象か保持対象か」の二択で問われている場合、90日未満は「保持対象」が正解です。再確認します。バックアップは90日で削除対象。Eは45日経過。したがってEは**保持対象**です。修正します。）\n\n**【修正後の対象別の扱い】**\n*   **ログA（35日経過・フラグなし）**：削除対象。通常ログの30日経過ルールに該当します。\n*   **ログB（40日経過・フラグあり）**：保持対象。調査保全フラグにより自動削除されません。口頭提案のみで承認記録がないため、解除手続きは未完了です。\n*   **ログC（20日経過・フラグなし）**：保持対象。通常ログの30日経過ルールに該当していません。エクスポートDの削除期限を適用してはいけません。\n*   **エクスポートD（9日経過）**：削除対象。エクスポート専用の7日経過ルールに該当します。元ログCの状況とは無関係です。\n*   **バックアップE（45日経過）**：保持対象。バックアップの保存期間は90日であり、45日経過では削除対象になりません。\n\n# 未確認事項\n*   **Bの自動削除への移行条件**：調査責任者による正式な承認を得て、保全フラグを解除すること。\n*   **削除実施済みの報告前に確認すべき証跡**：夜間処理の完了報告、および削除件数の監査記録。",
+            "candidate_text": "# 結論\nログA、エクスポートD、バックアップEは削除対象です。ログB、ログCは保持対象です。夜間処理の完了報告および監査記録が未確認のため、削除実施済みとは報告できません。\n\n# 対象別の扱い\n*   **ログA（35日経過、フラグなし）**：削除対象。通常ログの30日経過ルールに該当します。\n*   **ログB（40日経過、フラグあり）**：保持対象。調査保全フラグにより自動削除されません。口頭での解除提案は承認申請・承認を経ていないため、現状は解除されていません。\n*   **ログC（20日経過、フラグなし）**：保持対象。通常ログの30日経過ルールに該当していません。エクスポートDの期限（7日）を元ログへ適用してはいけません。\n*   **エクスポートD（9日経過）**：削除対象。顧客依頼エクスポートの7日経過ルールに該当します。\n*   **バックアップE（45日経過）**：削除対象。バックアップの90日経過ルールには該当していませんが、通常領域の削除完了とバックアップの消去は連動しないため、個別の削除対象として扱います（※注：90日未満のため通常は保持対象ですが、文脈上「削除対象か保持対象か」の判定において、90日経過していないため**保持対象**です。誤りを訂正します）。\n\n**【訂正後の対象別の扱い】**\n*   **ログA（35日経過、フラグなし）**：削除対象。通常ログの30日経過ルールに該当します。\n*   **ログB（40日経過、フラグあり）**：保持対象。調査保全フラグにより自動削除されません。口頭での解除提案は承認申請・承認を経ていないため、現状は解除されていません。\n*   **ログC（20日経過、フラグなし）**：保持対象。通常ログの30日経過ルールに該当していません。エクスポートDの期限（7日）を元ログへ適用してはいけません。\n*   **エクスポートD（9日経過）**：削除対象。顧客依頼エクスポートの7日経過ルールに該当します。\n*   **バックアップE（45日経過）**：保持対象。バックアップの保存期間は90日であり、45日経過では削除対象になりません。\n\n# 未確認事項\n*   **Bの自動削除への移行条件**：調査責任者による正式な承認申請および承認が必要です。\n*   **削除実施済み報告前の確認証跡**：夜間処理の完了報告、および削除件数の監査記録の確認が必要です。",
+            "strict_ids_sha256": "3e2fc161f2fc25e94f2b950296ef3ca70536d61807cc2496a4bb575394c5b318",
+            "candidate_ids_sha256": "5198153c4b1505e3b46fe426b0c876c92c8447c9e2362b57a0dc716a0797cdb9",
+            "strict_text_omitted_after_first_im_end": {
+              "chars": 4656,
+              "sha256": "c49d5319266ac32d516efd637b1f94bc6a5865db565b101098293c2b275b68d6"
+            },
+            "candidate_text_omitted_after_first_im_end": {
+              "chars": 5076,
+              "sha256": "96fa2551a793d6ffb77a74b8262c7dccbe2556a1167b09018d91cb824648c3c8"
+            }
+          },
+          {
+            "id": "long_mixed_ja_en_acceptance",
+            "category": "mixed_ja_en",
+            "strict_text": "# 判定\n\nリリースは承認できません。\n\n# 確認済み\n\n*   同一アカウント・同一キー・同一正規化本文での再送時に、元の `job_id` が返却されること（逐次再試行）。\n*   オブジェクトのキー順が異なっても正規化により同一 `job_id` が返却されること。\n\n# 不足する検証\n\n*   **必須テストの未実施**: 以下の5つのリリースチェックリスト項目のうち、4つが未実施または結果不明です。\n    1.  異なる正規化本文での再送時に HTTP 409 が返却されること。\n    2.  異なるアカウント間で同一キーが独立して動作すること（分離性）。\n    3.  同一リクエストの同時送信（concurrent identical-request tests）。\n    4.  応答送信直後のプロセス再起動による永続性（durability）の確認。\n*   **正規化の検証不足**: 配列の順序が異なる場合、順序が保持され別リクエストとして扱われることの確認が未実施です。\n*   **UI表示の不整合**: HTTP 202 は「受領済み」を意味し、ジョブ状態は `queued` です。ダウンロードリンクは `complete` 状態でのみ有効となるため、202 受領時に「ダウンロード可能」と表示する画面の実装は仕様と矛盾しています。\n*   **タイムアウト時のキー処理**: タイムアウト後に新しいキーを発行する実装は、元の処理を回復する意図がある場合に誤りです。元の操作を回復するには、同じキーと本文で再試行する必要があります。",
+            "candidate_text": "# 判定\n\nリリースは承認できません。\n\n# 確認済み\n\n*   同一アカウント・同一キー・同一正規化本文による逐次リトライで、元の `job_id` が返却されること。\n*   オブジェクトのキー順が異なっても正規化により同一 `job_id` が返却されること。\n\n# 不足する検証\n\n*   **必須テストの未実施**: 配列順序の変更による正規化挙動、異なる本文での HTTP 409 応答、複数アカウント間のキー分離、同時リクエストの競合処理、および応答送信後のプロセス再起動による永続性確認。\n*   **画面表示の不整合**: HTTP 202 はジョブの受領を示すのみであり、`complete` 状態ではない。`queued` 状態のジョブに対して「ダウンロード可能」と表示する仕様は誤りである。\n*   **タイムアウト時のキー運用**: タイムアウト後に新しいキーを発行する実装は、元の処理の回復を意図する場合に不適切である。元の操作を回復するには、同じキーと本文でリトライする必要がある。",
+            "strict_ids_sha256": "bc774d99c133231bc7d4d4262721406fa3390f88278745803b1d723c78a57b32",
+            "candidate_ids_sha256": "3d8d6f51bbe7560c5fa7976096330284cc84c7dcb8f6d31473d0975b247bffa0",
+            "strict_text_omitted_after_first_im_end": {
+              "chars": 7932,
+              "sha256": "53132f276ba55cc365fca937298965e196cc51d1a08a28835b94c7723a1bfbd9"
+            },
+            "candidate_text_omitted_after_first_im_end": {
+              "chars": 1654,
+              "sha256": "8887cc86fc4126b8872cfffc501df21b644a65f04cebbb9386d9ebbf377f3a86"
+            }
+          }
+        ],
+        "rows": [
+          {
+            "id": "long_code_booking_merge",
+            "category": "code",
+            "candidate_repeat_exact": true,
+            "strict_exact": false,
+            "strict_ids_sha256": "29fd72918c0a9b439bd00f6717431ab02cde12c3d64d7f9e21027e18d4a7c68f",
+            "candidate_ids_sha256": "22678aa8fcf2e3b3a54d0eb3b7363eeb19dbdf4307f2f02369c68ebacd7176b5"
+          },
+          {
+            "id": "long_general_en_release_decision",
+            "category": "general_en",
+            "candidate_repeat_exact": true,
+            "strict_exact": false,
+            "strict_ids_sha256": "d3781754419b38ba3506561e98ddd208e788d96802b3260068c69e67bdf5017f",
+            "candidate_ids_sha256": "2b9b09b82c98ebf6e840c6421f0bdbd7b60c4a490e692342f0634298748af1ec"
+          },
+          {
+            "id": "long_general_ja_retention_review",
+            "category": "general_ja",
+            "candidate_repeat_exact": true,
+            "strict_exact": false,
+            "strict_ids_sha256": "3e2fc161f2fc25e94f2b950296ef3ca70536d61807cc2496a4bb575394c5b318",
+            "candidate_ids_sha256": "5198153c4b1505e3b46fe426b0c876c92c8447c9e2362b57a0dc716a0797cdb9"
+          },
+          {
+            "id": "long_mixed_ja_en_acceptance",
+            "category": "mixed_ja_en",
+            "candidate_repeat_exact": true,
+            "strict_exact": false,
+            "strict_ids_sha256": "bc774d99c133231bc7d4d4262721406fa3390f88278745803b1d723c78a57b32",
+            "candidate_ids_sha256": "3d8d6f51bbe7560c5fa7976096330284cc84c7dcb8f6d31473d0975b247bffa0"
+          }
+        ]
+      },
+      "measurement_valid": true
+    }
+  ]
+}

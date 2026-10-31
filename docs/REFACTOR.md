@@ -96,11 +96,16 @@ Owner-bound `gr_wide` selection is implemented across profile construction,
 runtime dispatch and candidate-driven diagnostics. Preserve profile precedence,
 strict fallback, and the `rows > 256` and `low_rank % 64 == 0` capability checks.
 
-Done when: Finish the canonical depth numerical gate and full task validation,
-with independent dispatch counts for both F32 and F16-direct wide leaves.
-Public generation at 73/257/389 tokens confirms threshold engagement and clean
-teardown, but does not replace that gate. Use the canonical depth gate or
-layer2 gate with `--prompts benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl`.
+Done when: Localize and repair the composition's failed canonical-depth and
+natural-long numerical comparisons, then finish task review with complete code
+outputs. The reports in
+[`audit/refactor-sweep/2026-11-01-r0028-gates.json`](../audit/refactor-sweep/2026-11-01-r0028-gates.json)
+record actual F16-direct engagement, passing state/repeats/teardown and failed
+numerical limits; they do not isolate GR-wide from the production composition.
+Public generation at 73/257/389 tokens confirms threshold engagement. Keep
+independent counts for both F32 and F16-direct leaves. Use the canonical depth
+gate and layer2 gate with `--prompts
+benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl` after a concrete repair.
 A one-hot prefill-boundary KL is not a substitute for full-depth numerical/task
 validation.
 
