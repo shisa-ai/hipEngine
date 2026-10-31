@@ -930,3 +930,188 @@ def test_full_scratch_failed_reserve_retires_verifier_graphs(monkeypatch, helper
     assert released == ["graph"]
     assert session._verify_graph_last_status == "invalidated"
     assert session._verify_scratch_cache_generation == generation
+
+
+# Scalar canonicalization and post-prefill restoration also replace multiple
+# named buffers. Their old resident objects cannot survive a partial failure.
+def _recovery_session(config, state):
+    session = _liveness_session(config)
+    session.states = [state]
+    session.max_splits = 1
+    session.full_scratch = {}
+    session.linear_scratch = {}
+    session.moe_scratch = {}
+    session.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    return session
+
+
+def _reserve_full(state, rows):
+    return state.reserve_full_attention_scratch(
+        tokens=rows, num_splits=1,
+        activation_dtype=DType.FP16, gated_dtype=DType.FP16,
+    )
+
+
+@pytest.mark.parametrize("family", ["full", "c1", "dense"])
+@pytest.mark.parametrize("fail_after", [0, 2])
+def test_scalar_scratch_failed_reserve_drops_resident_views(monkeypatch, family, fail_after):
+    allocator = _TrackedAllocator()
+    _install_allocator(monkeypatch, allocator)
+    config = _family_config(family)
+    state = _state(config)
+    session = _recovery_session(config, state)
+    if family == "full":
+        resident = _reserve_full(state, 3)
+        mapping = session.full_scratch
+    else:
+        resident = _reserve(session, state, family, 3)
+        mapping = session.moe_scratch
+
+    def canonicalize():
+        if family == "full":
+            return session._full_attention_decode_scratch(0, state)
+        return session._mlp_decode_scratch(0, state)
+
+    def grow():
+        if family == "full":
+            return session._ensure_full_decode_batch_scratch(0, 3)
+        return session._ensure_moe_decode_batch_scratch(0, 3, force_selected_c1_moe=True)
+
+    mapping[0] = resident
+    frees_before = allocator.free_count
+    allocator.fail_on_malloc = allocator.malloc_count + fail_after
+    with pytest.raises(MemoryError):
+        canonicalize()
+    allocator.fail_on_malloc = None
+
+    assert allocator.free_count > frees_before
+    assert 0 not in mapping
+    rebuilt = grow()
+    assert rebuilt is not resident
+    assert all(_points_into_live_allocation(allocator, ptr) for ptr in _scratch_pointers(rebuilt))
+    scalar = canonicalize()
+    rows = scalar.attn_input.shape[0] if family == "full" else scalar.normed.shape[0]
+    assert rows == 1
+    assert all(_points_into_live_allocation(allocator, ptr) for ptr in _scratch_pointers(scalar))
+    mallocs = allocator.malloc_count
+    assert canonicalize() is scalar
+    assert allocator.malloc_count == mallocs
+    _assert_cached_views_are_live(allocator, session)
+    _assert_workspace_holds_one_copy(allocator, state)
+
+
+@pytest.mark.parametrize("family", ["full", "linear", "c1", "dense"])
+@pytest.mark.parametrize("fail_after", [0, 2])
+def test_post_prefill_failed_reserve_drops_resident_views(monkeypatch, family, fail_after):
+    allocator = _TrackedAllocator()
+    _install_allocator(monkeypatch, allocator)
+    config = _family_config(family)
+    config.layer_types = ("full_attention" if family == "full" else "linear_attention",)
+    state = _state(config)
+    session = _recovery_session(config, state)
+    mlp_family = "dense" if family == "dense" else "c1"
+    session.moe_scratch[0] = _reserve(session, state, mlp_family, 3 if family in ("c1", "dense") else 1)
+    if family == "full":
+        session.full_scratch[0] = _reserve_full(state, 3)
+        mapping = session.full_scratch
+    else:
+        session.linear_scratch[0] = _reserve(session, state, "linear", 3)
+        mapping = session.linear_scratch if family == "linear" else session.moe_scratch
+    resident = mapping[0]
+    session._verify_graphs = SpecGraphStageCache(max_entries=4)
+    released = []
+    key = ("post_prefill", family)
+    binding = SpecGraphBinding.build(
+        bucket=(3,), addresses=session._verify_graph_addresses(), configuration=(),
+    )
+    session._verify_graphs.capture(key, binding, lambda: "graph", released.append)
+    unaffected = [(live_map, scratch) for live_map in (
+        session.full_scratch, session.linear_scratch, session.moe_scratch,
+    ) if live_map is not mapping for scratch in live_map.values()]
+    frees_before = allocator.free_count
+    allocator.fail_on_malloc = allocator.malloc_count + fail_after
+    with pytest.raises(MemoryError):
+        session._reserve_decode_scratch_after_prefill()
+    allocator.fail_on_malloc = None
+
+    assert allocator.free_count > frees_before
+    assert 0 not in mapping
+    assert released == ["graph"]
+    assert key not in session._verify_graphs
+    for live_map, scratch in unaffected:
+        # Earlier, successful same-shape reservations may rebuild Python tensor
+        # wrappers without replacing their allocations.
+        assert _scratch_pointers(live_map[0]) == _scratch_pointers(scratch)
+        assert all(_points_into_live_allocation(allocator, ptr) for ptr in _scratch_pointers(live_map[0]))
+    _assert_cached_views_are_live(allocator, session)
+    session._reserve_decode_scratch_after_prefill()
+    assert mapping[0] is not resident
+    for live_map in (session.full_scratch, session.linear_scratch, session.moe_scratch):
+        for scratch in live_map.values():
+            assert all(_points_into_live_allocation(allocator, ptr) for ptr in _scratch_pointers(scratch))
+    mallocs = allocator.malloc_count
+    session._reserve_decode_scratch_after_prefill()
+    assert allocator.malloc_count == mallocs
+    _assert_workspace_holds_one_copy(allocator, state)
+
+
+@pytest.mark.parametrize("helper", ["linear", "grouped", "dense_grouped", "c1", "dense_c1", "moe"])
+@pytest.mark.parametrize("fail_after", [0, 2])
+def test_prefill_family_failed_reserve_drops_resident_views(monkeypatch, helper, fail_after):
+    allocator = _TrackedAllocator()
+    _install_allocator(monkeypatch, allocator)
+    config = _family_config("dense" if helper.startswith("dense") else "c1")
+    state = _state(config)
+    session = _recovery_session(config, state)
+    _attach_prefill_workspace(session)
+    monkeypatch.setattr(runner, "_use_moe_grouped_compact_prefill", lambda tokens: False)
+    method_name = {
+        "linear": "_ensure_linear_prefill_scratch",
+        "grouped": "_ensure_grouped_moe_prefill_scratch",
+        "dense_grouped": "_ensure_grouped_moe_prefill_scratch",
+        "c1": "_ensure_moe_c1_prefill_scratch",
+        "dense_c1": "_ensure_moe_c1_prefill_scratch",
+        "moe": "_ensure_moe_prefill_scratch",
+    }[helper]
+    method = getattr(session, method_name)
+    attribute = "prefill_linear_scratch" if helper == "linear" else "prefill_moe_scratch"
+    resident = method(tokens=3)
+    frees_before = allocator.free_count
+    allocator.fail_on_malloc = allocator.malloc_count + fail_after
+    with pytest.raises(MemoryError):
+        method(tokens=4)
+    allocator.fail_on_malloc = None
+
+    assert allocator.free_count > frees_before
+    assert getattr(session, attribute) is None
+    rebuilt = method(tokens=3)
+    assert rebuilt is not resident
+    assert all(_points_into_live_allocation(allocator, ptr) for ptr in _scratch_pointers(rebuilt))
+    mallocs = allocator.malloc_count
+    assert method(tokens=3) is rebuilt
+    assert allocator.malloc_count == mallocs
+    _assert_workspace_holds_one_copy(allocator, session._prefill_scratch_state)
+
+
+@pytest.mark.parametrize("old_grouped", [False, True])
+def test_prefill_failed_policy_switch_preserves_unrelated_live_view(monkeypatch, old_grouped):
+    allocator = _TrackedAllocator()
+    _install_allocator(monkeypatch, allocator)
+    config = _family_config("c1")
+    session = _recovery_session(config, _state(config))
+    _attach_prefill_workspace(session)
+    c1 = session._ensure_moe_c1_prefill_scratch
+    grouped = session._ensure_grouped_moe_prefill_scratch
+    old_method, new_method = (grouped, c1) if old_grouped else (c1, grouped)
+    kept = old_method(tokens=3)
+    allocator.fail_on_malloc = allocator.malloc_count + 2
+    with pytest.raises(MemoryError):
+        new_method(tokens=4)
+    allocator.fail_on_malloc = None
+
+    assert session.prefill_moe_scratch is kept
+    assert all(_points_into_live_allocation(allocator, ptr) for ptr in _scratch_pointers(kept))
+    mallocs = allocator.malloc_count
+    assert old_method(tokens=3) is kept
+    assert allocator.malloc_count == mallocs
+    _assert_workspace_holds_one_copy(allocator, session._prefill_scratch_state)

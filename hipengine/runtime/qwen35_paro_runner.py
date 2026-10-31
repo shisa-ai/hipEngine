@@ -4507,10 +4507,14 @@ class Qwen35ParoResidentSession:
         scratch = getattr(self, "prefill_linear_scratch", None)
         if scratch is not None and scratch.attn_input.shape[0] >= tokens:
             return scratch
-        scratch = self._prefill_scratch_owner().reserve_linear_attention_scratch(
-            tokens=tokens,
-            activation_dtype=DType.FP16,
-            include_tree_state=False,
+        owner = self._prefill_scratch_owner()
+        scratch = self._reserve_resident_scratch_fail_closed(
+            lambda: setattr(self, "prefill_linear_scratch", None),
+            lambda: owner.reserve_linear_attention_scratch(
+                tokens=tokens,
+                activation_dtype=DType.FP16,
+                include_tree_state=False,
+            ),
         )
         self.prefill_linear_scratch = scratch
         return scratch
@@ -4529,7 +4533,7 @@ class Qwen35ParoResidentSession:
         if scratch is not None and scratch.attn_input.shape[0] == tokens and scratch.query.dtype == query_dtype:
             return scratch
         owner = self._prefill_scratch_owner()
-        scratch = self._reserve_full_scratch_fail_closed(
+        scratch = self._reserve_resident_scratch_fail_closed(
             lambda: setattr(self, "prefill_full_scratch", None),
             lambda: owner.reserve_full_attention_scratch(
                 tokens=tokens,
@@ -4542,22 +4546,18 @@ class Qwen35ParoResidentSession:
         self.prefill_full_scratch = scratch
         return scratch
 
-    def _reserve_full_scratch_fail_closed(
+    def _reserve_resident_scratch_fail_closed(
         self,
         drop_resident: Callable[[], None],
         reserve: Callable[[], Any],
     ):
-        """Reserve full-attention scratch, dropping the resident view on failure.
+        """Drop a resident scratch view if its multi-name reservation fails.
 
-        ``reserve_full_attention_scratch`` is a multi-name reservation: it frees
-        each re-specified name before allocating its replacement, so a failure
-        part-way through has already released buffers the resident
-        ``full_scratch``/``prefill_full_scratch`` object views. Dropping that
-        reference is the minimal cleanup for this family, which has no verifier
-        scratch cache: a direct consumer re-reserves on its next ensure instead
-        of returning the half-replaced object, and the captured graphs are
-        retired before the exception leaves because the live maps no longer
-        describe current allocations.
+        A partial reservation can free some buffers before a later allocation
+        raises. Remove the affected view and retire captured graphs before the
+        exception escapes, so retry must rebuild rather than return freed views.
+        Verifier-cached families use ``_reserve_scratch_fail_closed`` as well to
+        evict the affected cache before reserving.
         """
 
         try:
@@ -4807,23 +4807,34 @@ class Qwen35ParoResidentSession:
         )
         return scratch
 
+    def _reserve_prefill_mlp_scratch(self, expected: type, reserve: Callable[[], Any]):
+        """Keep a different, still-live MLP policy when this reservation fails."""
+
+        def drop() -> None:
+            if isinstance(getattr(self, "prefill_moe_scratch", None), expected):
+                self.prefill_moe_scratch = None
+
+        return self._reserve_resident_scratch_fail_closed(drop, reserve)
+
     def _ensure_grouped_moe_prefill_scratch(self, layer_id: int | None = None, *, tokens: int):
         _ = layer_id
         scratch = getattr(self, "prefill_moe_scratch", None)
         if int(getattr(self.config, "num_experts", 1) or 0) <= 0:
             if isinstance(scratch, Qwen35ParoDenseMlpScratch) and scratch.normed.shape[0] >= tokens:
                 return scratch
-            scratch = self._prefill_scratch_owner().reserve_dense_mlp_scratch(
-                tokens=tokens,
-                activation_dtype=DType.FP16,
+            owner = self._prefill_scratch_owner()
+            scratch = self._reserve_prefill_mlp_scratch(
+                Qwen35ParoDenseMlpScratch,
+                lambda: owner.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16),
             )
             self.prefill_moe_scratch = scratch
             return scratch
         if isinstance(scratch, Qwen35ParoGroupedMoeScratch) and scratch.normed.shape[0] >= tokens:
             return scratch
-        scratch = self._prefill_scratch_owner().reserve_moe_grouped_prefill_scratch(
-            tokens=tokens,
-            activation_dtype=DType.FP16,
+        owner = self._prefill_scratch_owner()
+        scratch = self._reserve_prefill_mlp_scratch(
+            Qwen35ParoGroupedMoeScratch,
+            lambda: owner.reserve_moe_grouped_prefill_scratch(tokens=tokens, activation_dtype=DType.FP16),
         )
         self.prefill_moe_scratch = scratch
         return scratch
@@ -4840,9 +4851,10 @@ class Qwen35ParoResidentSession:
         scratch = getattr(self, "prefill_moe_scratch", None)
         if isinstance(scratch, Qwen35ParoMoeScratch) and scratch.normed.shape[0] >= tokens:
             return scratch
-        scratch = self._prefill_scratch_owner().reserve_moe_c1_scratch(
-            tokens=tokens,
-            activation_dtype=DType.FP16,
+        owner = self._prefill_scratch_owner()
+        scratch = self._reserve_prefill_mlp_scratch(
+            Qwen35ParoMoeScratch,
+            lambda: owner.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16),
         )
         self.prefill_moe_scratch = scratch
         return scratch
@@ -6051,16 +6063,26 @@ class Qwen35ParoResidentSession:
         return last_hidden
     def _reserve_decode_scratch_after_prefill(self) -> None:
         self._clear_verify_scratch_caches()
+        mlp_family = "dense" if int(getattr(self.config, "num_experts", 1) or 0) <= 0 else "c1"
         for layer_id, state in enumerate(self.states):
-            self.moe_scratch[layer_id] = self._reserve_mlp_scratch(state, tokens=1)
+            self.moe_scratch[layer_id] = self._reserve_scratch_fail_closed(
+                layer_id, mlp_family,
+                lambda: self._reserve_mlp_scratch(state, tokens=1),
+            )
             if self.config.layer_types[layer_id] == "linear_attention":
-                self.linear_scratch[layer_id] = state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16)
+                self.linear_scratch[layer_id] = self._reserve_scratch_fail_closed(
+                    layer_id, "linear",
+                    lambda: state.reserve_linear_attention_scratch(tokens=1, activation_dtype=DType.FP16),
+                )
             elif self.config.layer_types[layer_id] == "full_attention":
-                self.full_scratch[layer_id] = state.reserve_full_attention_scratch(
-                    tokens=1,
-                    num_splits=self.max_splits,
-                    activation_dtype=DType.FP16,
-                    gated_dtype=DType.FP16,
+                self.full_scratch[layer_id] = self._reserve_resident_scratch_fail_closed(
+                    lambda: self.full_scratch.pop(layer_id, None),
+                    lambda: state.reserve_full_attention_scratch(
+                        tokens=1,
+                        num_splits=self.max_splits,
+                        activation_dtype=DType.FP16,
+                        gated_dtype=DType.FP16,
+                    ),
                 )
 
     def _restore_decode_scratch_after_prefill(self) -> None:
@@ -6246,7 +6268,7 @@ class Qwen35ParoResidentSession:
         # then re-reserves it instead of reusing a half-replaced view.
         scratch = self.full_scratch.get(layer_id)
         if not isinstance(scratch, Qwen35ParoAttentionScratch) or scratch.attn_input.shape[0] < rows:
-            scratch = self._reserve_full_scratch_fail_closed(
+            scratch = self._reserve_resident_scratch_fail_closed(
                 lambda: self.full_scratch.pop(layer_id, None),
                 lambda: self.states[layer_id].reserve_full_attention_scratch(
                     tokens=rows,
@@ -13926,18 +13948,20 @@ class Qwen35ParoResidentSession:
             scratch = getattr(self, "prefill_moe_scratch", None)
             if isinstance(scratch, Qwen35ParoDenseMlpScratch) and scratch.normed.shape[0] >= tokens:
                 return scratch
-            scratch = self._prefill_scratch_owner().reserve_dense_mlp_scratch(
-                tokens=tokens,
-                activation_dtype=DType.FP16,
+            owner = self._prefill_scratch_owner()
+            scratch = self._reserve_prefill_mlp_scratch(
+                Qwen35ParoDenseMlpScratch,
+                lambda: owner.reserve_dense_mlp_scratch(tokens=tokens, activation_dtype=DType.FP16),
             )
             self.prefill_moe_scratch = scratch
             return scratch
         scratch = getattr(self, "prefill_moe_scratch", None)
         if isinstance(scratch, Qwen35ParoMoeScratch) and scratch.normed.shape[0] >= tokens:
             return scratch
-        scratch = self._prefill_scratch_owner().reserve_moe_c1_scratch(
-            tokens=tokens,
-            activation_dtype=DType.FP16,
+        owner = self._prefill_scratch_owner()
+        scratch = self._reserve_prefill_mlp_scratch(
+            Qwen35ParoMoeScratch,
+            lambda: owner.reserve_moe_c1_scratch(tokens=tokens, activation_dtype=DType.FP16),
         )
         self.prefill_moe_scratch = scratch
         return scratch
@@ -14898,11 +14922,14 @@ class Qwen35ParoResidentSession:
         # Batch scratch split views use row-count-derived offsets. Re-reserve
         # the canonical token-1 layout before entering the scalar c1 route.
         self._invalidate_verify_graph_cache()
-        scratch = state.reserve_full_attention_scratch(
-            tokens=1,
-            num_splits=self.max_splits,
-            activation_dtype=DType.FP16,
-            gated_dtype=DType.FP16,
+        scratch = self._reserve_resident_scratch_fail_closed(
+            lambda: self.full_scratch.pop(layer_id, None),
+            lambda: state.reserve_full_attention_scratch(
+                tokens=1,
+                num_splits=self.max_splits,
+                activation_dtype=DType.FP16,
+                gated_dtype=DType.FP16,
+            ),
         )
         self.full_scratch[layer_id] = scratch
         return scratch
@@ -14921,12 +14948,18 @@ class Qwen35ParoResidentSession:
             # Re-reserving workspace names at a new shape frees the rows=B+1
             # buffers any cached verifier graph holds raw pointers to (#107).
             self._invalidate_verify_graph_cache()
-            scratch = state.reserve_dense_mlp_scratch(tokens=1, activation_dtype=DType.FP16)
+            scratch = self._reserve_scratch_fail_closed(
+                layer_id, "dense",
+                lambda: state.reserve_dense_mlp_scratch(tokens=1, activation_dtype=DType.FP16),
+            )
         else:
             if isinstance(scratch, Qwen35ParoMoeScratch) and scratch.normed.shape[0] == 1:
                 return scratch
             self._invalidate_verify_graph_cache()
-            scratch = state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16)
+            scratch = self._reserve_scratch_fail_closed(
+                layer_id, "c1",
+                lambda: state.reserve_moe_c1_scratch(tokens=1, activation_dtype=DType.FP16),
+            )
         self.moe_scratch[layer_id] = scratch
         return scratch
 
