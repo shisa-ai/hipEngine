@@ -1771,6 +1771,19 @@ def _combined_scope(*scopes):
         yield
 
 
+def mmq_prepack_control_record(runner=None):
+    """Describe the prepack arm and its shared MMQ workspace prerequisite."""
+    return {
+        "runner_field": "q8_mmq_prepack_enabled",
+        "before": False, "after": True,
+        "published_value": getattr(runner, "q8_mmq_prepack_enabled", None),
+        "scope": "per measured run; restored on exit",
+        "prerequisite_owner": {"q8_mmq_prefill_enabled": True},
+        "prerequisite_environment": {},
+        "provisioning": "Workspace and sidecars prepared before either timing arm",
+    }
+
+
 def route_scope(route_package: str, mode: str, runner: Any = None, *,
                 environment: MutableMapping[str, str] = os.environ):
     """The live control a route package needs around its measured run.
@@ -1792,6 +1805,16 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT,
         gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
     )
+
+    if route_package == "q8-mmq-prepack":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("q8-mmq-prepack needs the owning runner")
+        # Only the prerequisite is shared; neither vector child is changed.
+        return mmq_vector_prerequisite(
+            runner, "q8-mmq-vec4" if mode == "after" else "q8-mmq-raw-vector",
+            environment=environment)
 
     if route_package == "dense-wide-padded":
         if runner is None:
@@ -2275,7 +2298,7 @@ def _apply_mode(
         if route_package == "gr-wave-scale":
             return  # route_scope binds the owning runner.
         if route_package == "q8-mmq-prepack":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
+            return  # route_scope binds the owner and admits the MMQ parent.
         if route_package in {"q8-down-row4", "q51-fold128", "q8-down-bundle",
                              "q51-fold-pair"}:
             # Request-local on the runner; ``route_scope`` binds the rung
@@ -3286,10 +3309,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if head_configuration is not None:
             artifact["qsa_wmma"] = head_configuration
         if args.route_package == "q8-mmq-prepack":
-            _apply_mode("after",route_package=args.route_package)
             prepare_start = time.perf_counter()
-            generator.runner.configure_mmq_prefill_resources()
-            owner = generator.runner._q8_mmq_weight_sidecars
+            with route_scope(args.route_package, "after", generator.runner):
+                owner = generator.runner._q8_mmq_weight_sidecars
+            artifact["selection_control"] = mmq_prepack_control_record(generator.runner)
             artifact["sidecar"] = {
                 "prepare_seconds": time.perf_counter()-prepare_start,
                 "bytes": owner.nbytes,

@@ -119,10 +119,9 @@ def test_sidecar_preparation_uses_explicit_owner(monkeypatch, enabled):
     assert runner._q8_mmq_weight_sidecars is published
 
 
-def test_ab_mode_changes_only_prepack_flag():
+def test_ab_mode_does_not_change_prepack_environment():
     from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode
     env = {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL":"1","unrelated":"keep"}
-    for mode,value in (("before","0"),("after","1"),("before","0")):
+    for mode in ("before", "after", "before"):
         _apply_mode(mode,environment=env,route_package="q8-mmq-prepack")
-        assert env == {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL":"1","unrelated":"keep",
-                       "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK":value}
+        assert env == {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL":"1","unrelated":"keep"}

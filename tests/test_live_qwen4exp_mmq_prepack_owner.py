@@ -10,7 +10,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'vector_prerequisite'])
+@pytest.mark.parametrize('interface', ['direct', 'vector_prerequisite', 'prepack_campaign', 'prepack_state_gate'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -55,6 +55,12 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
                 from scripts.qwen4exp_halo_box_campaign_ab import mmq_vector_prerequisite
                 scope = mmq_vector_prerequisite(
                     owner.runner, 'q8-mmq-vec4' if enabled else 'q8-mmq-raw-vector')
+            elif interface == 'prepack_campaign':
+                from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+                scope = route_scope('q8-mmq-prepack', 'after' if enabled else 'before', owner.runner)
+            elif interface == 'prepack_state_gate':
+                from scripts.qwen4exp_row4_state_gate import arm_control
+                scope = arm_control('q8-mmq-prepack', '1' if enabled else '0', owner.runner)
             else:
                 scope = runtime.q8_mmq_prepack_enabled(owner, enabled)
             with runtime.q8_mmq_prefill_enabled(owner, True), scope:

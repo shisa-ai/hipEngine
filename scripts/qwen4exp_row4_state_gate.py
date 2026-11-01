@@ -42,13 +42,14 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q8_DOWN_FORKB_FIELD,Q8_DOWN_ROW4_FIELD,Q8_DOWN_BUNDLE_FIELD,
     q8_mapped_down_control_record,
     q51_fold_control_record,q8_down_ladder_control_record,
-    MMQ_VECTOR_ROUTE_PACKAGES,mmq_token64_control_record,mmq_vector_control_record)
+    MMQ_VECTOR_ROUTE_PACKAGES,mmq_token64_control_record,mmq_vector_control_record,
+    mmq_prepack_control_record)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
                    "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair",
-                   "q8-dpp-reduction"}:
+                   "q8-dpp-reduction", "q8-mmq-prepack"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -238,7 +239,7 @@ def main():
     if args.route_package == "gr-wave-scale":
         flag = ""  # route_scope binds the owning runner.
     if args.route_package == "q8-mmq-prepack":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
+        flag = ""  # route_scope binds the owner and admits the MMQ parent.
     if args.route_package == "q8-mmq-vec4":
         # Request-local on the runner; no env key names this selection.
         flag = ""
@@ -569,11 +570,11 @@ def main():
         }
     try:
         if args.route_package == "q8-mmq-prepack":
-            assert os.environ.get(flag) == "1", "production must bind prepacked MMQ by default"
-            generator.runner.configure_mmq_prefill_resources()
-            report["sidecar_bytes"] = generator.runner._q8_mmq_weight_sidecars.nbytes
-            report["sidecar_count"] = len(generator.runner._q8_mmq_weight_sidecars.mapping)
-            os.environ[flag] = "0"
+            report["selection_control"] = mmq_prepack_control_record(generator.runner)
+            with route_scope(args.route_package, "after", generator.runner):
+                sidecars = generator.runner._q8_mmq_weight_sidecars
+                report["sidecar_bytes"] = sidecars.nbytes
+                report["sidecar_count"] = len(sidecars.mapping)
         if args.route_package in {"qsa-h256-wave", "qsa-h256-page256"}:
             assert generator.runner.qsa_h256_prefill_mode == "page256"
             report["selection_control"] = {
