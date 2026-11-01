@@ -2911,21 +2911,6 @@ wrappers, kernel instantiations and caller arms together, preserving the histori
 replacing them, first implement and test the replacement against the existing exact-repair contract;
 the proposed LDS weight-staging design is not proof of an implemented, exact replacement.
 
-### R0427 — Fixed256 reference and legacy comparison control
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans`,
-`w4_paro/bf16_context_batch_c1_exact_spans`, `..._fixed256_threads_spans`.
-
-Done when: Deferred decision: retain or retire `HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY`, which selects
-the older body inside the Qwen4Exp dense attention path. If retiring that comparison, remove its
-reader and diagnostic overrides together, check the promoted route through public generation and its
-exact-reference tests, and remove only the now-unused Qwen4Exp import. Do not remove the shared
-body, exports or registry entries while their independent consumers remain. Review
-`scripts/qwen4exp_fullattn_prefill_microbench.py` separately from this switch: it calls the
-reference directly and is not made obsolete by removing the switch.
-
 ### R0432 — Dense staged-F32 scope and comparison ownership
 
 Owner: `hipengine/runtime/gguf_linear.py`.
