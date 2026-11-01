@@ -1535,8 +1535,10 @@ def test_ud_gdn_composition_binding_matches_manifest() -> None:
     assert len(rows) == 1
     assert rows[0]["selected_variant"] == "qwen4exp_gdn_rowsplit_prefill"
     assert rows[0]["strict_fallback_variant"] == "qwen4exp_sigmoid_strict_prefill"
-    production.binder(SimpleNamespace(runner=None), production)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == rows[0]["selected_variant"]
+    owner = SimpleNamespace(runner=None)
+    production.binder(owner, production)
+    assert owner.gdn_tile16_variant == rows[0]["selected_variant"]
+    assert "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT" not in os.environ
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     strict_rows = [row for row in strict.manifest["selections"] if row["scope"] == rows[0]["scope"]]
     assert strict_rows[0]["selected_variant"] == rows[0]["strict_fallback_variant"]
@@ -1549,8 +1551,9 @@ def test_ud_gdn_composition_binding_matches_manifest() -> None:
     manifest["selections"] = [changed if row is rows[0] else row
                               for row in production.manifest["selections"]]
     modified = replace(production, manifest=manifest)
-    modified.binder(SimpleNamespace(runner=None), modified)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == changed["selected_variant"]
+    modified_owner = SimpleNamespace(runner=None)
+    modified.binder(modified_owner, modified)
+    assert modified_owner.gdn_tile16_variant == changed["selected_variant"]
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ",".join(map(str, range(7, 32)))
 
 

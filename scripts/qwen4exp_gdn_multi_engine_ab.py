@@ -4,12 +4,12 @@
 One model residency, all 12 canonical cases, production compact-capture path,
 balanced arm order per repetition. The before-arm runs the production
 wave_norm route (recovery-zeroed colwarps gate); the after-arm reopens the
-gate and names the multi variant through the two runtime env overrides the
-engagement probe validated. Engagement is verified by a counting registry
-hook on the multi variant. This candidate changes arithmetic (reassociation
-at fp32 round-off), so cross-arm digests are not expected to match: the
-binding correctness authority is the layer2 production gate, and this A/B
-measures the engine-level performance delta.
+gate and binds the multi variant as the generator's tile-16 prefill owner, the
+same owner slot the engagement probe validated. Engagement is verified by a
+counting registry hook on the multi variant. This candidate changes arithmetic
+(reassociation at fp32 round-off), so cross-arm digests are not expected to
+match: the binding correctness authority is the layer2 production gate, and
+this A/B measures the engine-level performance delta.
 """
 from __future__ import annotations
 
@@ -34,6 +34,9 @@ from hipengine.generation.qwen4_exp_profiles import (
 )
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.kernels.registry import register, registered_keys, resolve
+from hipengine.runtime.qwen4_exp_runner import (
+    gdn_tile16_variant, resolve_gdn_tile16_variant,
+)
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
 from scripts.qwen4exp_canonical_ar_bench import (
@@ -50,7 +53,6 @@ BACKEND = "hip_gfx1151"
 CHUNK_SIZE = 4096
 TRANSITIONS = 128
 COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
-TILE16_ENV = "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"
 
 
 def _arm_summary(rows):
@@ -116,15 +118,22 @@ def main(argv=None) -> int:
 
     register(key, counting, replace=True)
     before_colwarps = os.environ.get(COLWARPS_ENV, "0")
-    before_tile16 = os.environ.get(TILE16_ENV, "")
+    # The tile-16 GDN prefill leaf is the owning generator/runner's state now,
+    # so the before arm restores the value the profile published (the UD lane's
+    # row-split recurrence) instead of a captured process value.
+    before_tile16 = resolve_gdn_tile16_variant(generator)
 
     def set_arm(arm: str) -> None:
         if arm == "after":
             os.environ[COLWARPS_ENV] = "1"
-            os.environ[TILE16_ENV] = VARIANT
         else:
             os.environ[COLWARPS_ENV] = before_colwarps or "0"
-            os.environ[TILE16_ENV] = before_tile16
+
+    def tile16_arm(arm: str):
+        """Bind the tile-16 leaf this arm measures, restoring the published one."""
+
+        return gdn_tile16_variant(
+            generator, VARIANT if arm == "after" else before_tile16)
 
     prefill_kwargs, step_kwargs = _capture_kwargs("compact")
     report: dict = {
@@ -140,7 +149,7 @@ def main(argv=None) -> int:
         "manifest_sha256": profile.manifest_sha256,
         "arms": {
             "before": "production wave_norm (recovery-zeroed colwarps)",
-            "after": "tiled16_multi via colwarps gate + variant name",
+            "after": "tiled16_multi via colwarps gate + owner binding",
         },
         "chunk_size": CHUNK_SIZE,
         "transitions": TRANSITIONS,
@@ -156,11 +165,12 @@ def main(argv=None) -> int:
                 set_arm(arm)
                 for _ in range(args.warmups_per_mode):
                     state["calls"] = 0
-                    _hipengine_case_sample(
-                        runner=generator.runner, case=case, repetition=-1,
-                        transitions=TRANSITIONS,
-                        prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
-                    )
+                    with tile16_arm(arm):
+                        _hipengine_case_sample(
+                            runner=generator.runner, case=case, repetition=-1,
+                            transitions=TRANSITIONS,
+                            prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
+                        )
                     if arm == "after" and state["calls"] <= 0:
                         raise AssertionError((case_id, "multi variant did not engage in warmup"))
             for repetition in range(3):
@@ -168,11 +178,12 @@ def main(argv=None) -> int:
                 for arm in order:
                     set_arm(arm)
                     state["calls"] = 0
-                    row = _hipengine_case_sample(
-                        runner=generator.runner, case=case, repetition=repetition,
-                        transitions=TRANSITIONS,
-                        prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
-                    )
+                    with tile16_arm(arm):
+                        row = _hipengine_case_sample(
+                            runner=generator.runner, case=case, repetition=repetition,
+                            transitions=TRANSITIONS,
+                            prefill_kwargs=prefill_kwargs, step_kwargs=step_kwargs,
+                        )
                     row["multi_calls"] = state["calls"]
                     if arm == "after" and row["multi_calls"] <= 0:
                         raise AssertionError((case_id, "multi variant did not engage"))

@@ -33,6 +33,35 @@ DEFAULT_MODEL = pathlib.Path(
 )
 
 
+def unwrap_owner(owner):
+    """Follow a wrapper chain (``.inner``) to the object that owns the runner."""
+
+    seen = set()
+    while owner is not None and id(owner) not in seen:
+        seen.add(id(owner))
+        inner = getattr(owner, "inner", None)
+        if inner is None or inner is owner:
+            break
+        owner = inner
+    return owner
+
+
+def dispatch_tile16_owner(owner):
+    """The tile-16 GDN prefill owner the dispatch reads for ``owner``.
+
+    The dispatch reads the runner's field, so a generator, a serving wrapper or
+    an ``LLM`` resolves through its runner instead of reporting a cached value.
+    The caller passes whatever object it holds; the answer is always the value
+    in force at call time.
+    """
+
+    from hipengine.runtime.qwen4_exp_runner import resolve_gdn_tile16_variant
+
+    target = unwrap_owner(owner)
+    runner = getattr(target, "runner", None)
+    return resolve_gdn_tile16_variant(runner if runner is not None else target)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-root", type=pathlib.Path, default=DEFAULT_MODEL)
@@ -44,9 +73,13 @@ def main() -> int:
     from hipengine.kernels import registry
 
     predicate_calls = []
-    predicate_env = []
+    predicate_owners = []
     candidate_calls = []
     other_prefill_calls = []
+    # The object the predicate resolves the owner from, set once the generator
+    # exists. The predicate reads it live on every call, so it reports the owner
+    # in force at dispatch time rather than a value cached at construction.
+    probe_owner = {"value": None}
 
     # 1. Wrap the selection predicate that guards the tile16 route.
     original_predicate = runner.qwen4_exp_gdn_tile16_prefill_selected
@@ -56,9 +89,8 @@ def main() -> int:
 
     def counting_predicate(**kwargs):
         result = original_predicate(**kwargs)
-        if len(predicate_env) < 4:
-            predicate_env.append(os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT",
-                                                "<unset>"))
+        if len(predicate_owners) < 4:
+            predicate_owners.append(dispatch_tile16_owner(probe_owner["value"]))
         if len(caller_frames) < 3:
             stack = traceback.extract_stack()[:-1]
             caller_frames.append([f"{f.filename.split('/')[-1]}:{f.lineno}:{f.name}"
@@ -100,8 +132,9 @@ def main() -> int:
         registry.register(key, make(original, key.variant), replace=True)
 
     print(f"wrapped registered GDN prefill variants: {sorted(wrapped)}")
-    print(f"env HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT = "
-          f"{os.environ.get('HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT', '<unset>')}")
+    print(f"owner HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT is generator state now; "
+          f"the retired key reads "
+          f"{os.environ.get('HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT', '<unset>')!r}")
 
     # 3. Run a real prefill+decode through the production profile.
     from hipengine.generation.qwen4_exp_profiles import (
@@ -143,9 +176,10 @@ def main() -> int:
         model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND,
         quant="gguf_q4_k_m", profile=ExecutionProfile.PRODUCTION,
     )
-    profile.binder(type("S", (), {"manifest": profile.manifest})(), profile)
-    print(f"after binder, HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT = "
-          f"{os.environ.get('HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT', '<unset>')}")
+    probe_owner = type("S", (), {"manifest": profile.manifest})()
+    profile.binder(probe_owner, profile)
+    print(f"after binder, published gdn_tile16_variant = "
+          f"{getattr(probe_owner, 'gdn_tile16_variant', '<unset>')!r}")
 
     # Re-wrap after the binder: profile resolution can re-register kernels.
     for key in list(registry.registered_keys()):
@@ -172,20 +206,19 @@ def main() -> int:
 
         registry.register(key, make2(original, key.variant), replace=True)
 
-    # Catch whoever writes the var to "" between construction and dispatch.
+    # Catch whoever re-publishes the owner between construction and dispatch.
     import traceback as _tb
     from hipengine.generation import qwen4_exp_profiles as _prof
-    _orig_apply = _prof._apply_profile_env
+    _orig_publish = _prof._publish_gdn_tile16_variant
     writers = []
 
-    def traced_apply(values):
-        if "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT" in values:
-            writers.append((values["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"],
-                            [f"{f.filename.split('/')[-1]}:{f.lineno}:{f.name}"
-                             for f in _tb.extract_stack()[-5:-1]]))
-        return _orig_apply(values)
+    def traced_publish(generator, variant):
+        writers.append((variant,
+                        [f"{f.filename.split('/')[-1]}:{f.lineno}:{f.name}"
+                         for f in _tb.extract_stack()[-5:-1]]))
+        return _orig_publish(generator, variant)
 
-    _prof._apply_profile_env = traced_apply
+    _prof._publish_gdn_tile16_variant = traced_publish
 
     from hipengine import LLM, SamplingParams
 
@@ -218,8 +251,10 @@ def main() -> int:
 
         registry.register(key, make4(current, key.variant), replace=True)
 
-    # Confirm the wrapper is on the resolve path for the variant the env selects.
-    selected = os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT", "")
+    # Confirm the wrapper is on the resolve path for the leaf the owner names.
+    probe_owner["value"] = llm._get_text_generator()
+    published = dispatch_tile16_owner(probe_owner["value"])
+    selected = published or ""
     if selected:
         probe = registry.resolve(backend="hip_gfx1151", layer="gdn_recurrence_norm_gate",
                                  quant="f32_state", variant=selected)
@@ -247,8 +282,8 @@ def main() -> int:
 
     runner.resolve = logging_resolve
 
-    print(f"AFTER LLM construction, GDN_TILE16_VARIANT = "
-          f"{os.environ.get('HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT', '<unset>')!r}")
+    print(f"AFTER LLM construction, runner.gdn_tile16_variant = "
+          f"{dispatch_tile16_owner(probe_owner['value'])!r}")
 
     prompt_ids = [9707] * args.rows
     llm.generate([prompt_ids],
@@ -269,8 +304,8 @@ def main() -> int:
     for fr in caller_frames:
         print("   " + " <- ".join(reversed(fr)))
 
-    print(f"=== env var seen INSIDE the predicate: {predicate_env} ===")
-    print(f"=== _apply_profile_env writes of GDN_TILE16_VARIANT: {len(writers)} ===")
+    print(f"=== owner seen INSIDE the predicate: {predicate_owners} ===")
+    print(f"=== _publish_gdn_tile16_variant calls: {len(writers)} ===")
     for val, stack in writers[:4]:
         print(f"    -> {val!r}")
         for fr in stack:

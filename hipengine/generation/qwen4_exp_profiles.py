@@ -220,6 +220,14 @@ def _selected_router_producer_variant(*, recovery: bool = False) -> str:
 _GDN_WIDE_VARIANT = "qwen4exp_sigmoid_wave_norm_prefill"
 _GDN_NARROW_VARIANT = "qwen4exp_sigmoid_wave_norm_narrow_prefill"
 _GDN_NARROW_SCOPE = "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128"
+# The tile-16 GDN prefill leaf is request-local generator/runner state
+# (``gdn_tile16_variant``), published from the plan's own tiled-GDN selection.
+# ``None`` keeps the directly imported tile-16 parent, which is what the strict
+# binder publishes; the multi-column owner is the value for every production
+# quant that keeps the columnwarp gate open. The retired process key below is
+# kept only so a stale export is reported as a discarded pre-binder value.
+_GDN_TILE16_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"
+_GDN_TILE16_MULTI_VARIANT = "qwen4exp_gdn_tiled16_multi_prefill"
 _GDN_NARROW_EVIDENCE = (
     "benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md"
 )
@@ -609,12 +617,13 @@ def _production_selections(
             # stays registered as the strict fallback.
             #
             # Unconditional on purpose: the declaration has to name the route the binder
-            # dispatches. The runner reads HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT, and that
-            # binding names the multi-column route for every profile that keeps the
-            # column-warp gate open. The recovery profile closes that gate and deactivates
-            # tiled variants BY NAME below, so its own declaration is replaced with its exact
-            # owner before the manifest is built - an unconditional row therefore leaves the
-            # recovery manifest byte-identical while fixing the profile that dispatches it.
+            # dispatches. The owning generator/runner carries that name now
+            # (``gdn_tile16_variant``), and the binding names the multi-column route for
+            # every profile that keeps the column-warp gate open. The recovery profile
+            # closes that gate and deactivates tiled variants BY NAME below, so its own
+            # declaration is replaced with its exact owner before the manifest is built -
+            # an unconditional row therefore leaves the recovery manifest byte-identical
+            # while fixing the profile that dispatches it.
             # A conditional row is what let the q4_k_m manifest declare the tiled16 route
             # while 1350 dispatches of the multi-column route ran underneath it.
             "qwen4exp_gdn_tiled16_multi_prefill",
@@ -1054,6 +1063,23 @@ def _publish_q8_down_variant(generator: Any, variant: str) -> None:
         runner.q8_down_variant = variant
 
 
+def _publish_gdn_tile16_variant(generator: Any, variant: str | None) -> None:
+    """Publish the tile-16 GDN prefill owner as owner state.
+
+    ``None`` is the unbound parent, so an empty selector and an absent one are
+    the same decision and the dispatch keeps the directly imported tile-16
+    leaf. The generator carries it so a runner built later (a serving clone)
+    inherits the plan's value instead of a diagnostic binding.
+    """
+
+    _record_owner_transport(
+        _GDN_TILE16_VARIANT_ENV, "" if variant is None else variant)
+    generator.gdn_tile16_variant = variant
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.gdn_tile16_variant = variant
+
+
 def _publish_q4_dp4a_decode(
     generator: Any,
     enabled: bool,
@@ -1475,19 +1501,13 @@ def _bind(
         # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
         # Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
-        # The tile16 variant is consulted only inside the colwarps gate above, so
-        # it must be bound exactly where that gate is open. Since the tiled16_multi
-        # admission passed the full layer2 production envelope on the UD lane
-        # (2026-10-08, all aggregates and scopes, prefill_to_c1 top-1 18/18,
-        # eligible for automatic admission; wave_norm remains the registered
-        # strict fallback and a diagnostic arm pins the columnwarp parent on the
-        # runner it measures), GDN_COLWARPS_PREFILL is no longer recovery-zeroed
-        # for UD and the multi variant is named for every production quant.
-        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": (
-            "qwen4exp_gdn_tiled16_multi_prefill"
-            if production
-            else ""
-        ),
+        # The tile16 leaf is consulted only inside the colwarps gate above, and
+        # it is the owning generator/runner's state now
+        # (``gdn_tile16_variant``), published below, so no process key names
+        # it. The multi-column owner is the plan's value for every production
+        # quant that keeps the gate open; the UD lane's f16-route composition
+        # row overrides it in the same publication, and the strict binder
+        # publishes None (the directly imported tile-16 parent).
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
             ",".join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
             if production
@@ -1665,6 +1685,18 @@ def _bind(
             }
         )
     f16_routes = production and resolved.manifest.get("quant") in F16_ROUTE_QUANTS
+    # The tile-16 GDN prefill leaf is the plan's own decision, published on the
+    # owning generator/runner instead of the retired
+    # ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` key. The multi-column owner is
+    # the value for every production quant that keeps the columnwarp gate open,
+    # and the f16-route composition below names the UD lane's own tiled-GDN
+    # selection instead (the row-split recurrence). Every other plan, and
+    # every plan that falls back to the strict binder, publishes None so the
+    # dispatch keeps the directly imported tile-16 parent. Every bind publishes
+    # its own value, so a later bind in the same process cannot inherit this
+    # one.
+    gdn_tile16_variant = (
+        _GDN_TILE16_MULTI_VARIANT if production else None)
     # The GR-up wide tile is the plan's own decision, published on the owning
     # runner instead of the retired ``HIPENGINE_QWEN4_EXP_GR_WIDE`` key. Every
     # bind writes it, so a later bind without the composition in the same
@@ -1688,8 +1720,9 @@ def _bind(
         first, last = map(int, gdn["scope"].rsplit("layers", 1)[1].split("_"))
         _apply_profile_env({
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(first, last + 1))),
-            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": gdn["selected_variant"],
         })
+        gdn_tile16_variant = gdn["selected_variant"]
+    _publish_gdn_tile16_variant(generator, gdn_tile16_variant)
     # The grouped Q8_0 expert-down owner is the plan's own decision, published
     # on the owning generator/runner instead of the retired
     # ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`` key: the restoration pass above

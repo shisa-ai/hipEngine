@@ -22,7 +22,8 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
 from scripts.qwen4exp_layer2_profile_gate import (
-    _make_generator, _state_summary, CANDIDATES, bind_candidate_q8_down_variant,
+    _make_generator, _state_summary, CANDIDATES,
+    bind_candidate_gdn_tile16_variant, bind_candidate_q8_down_variant,
     gr_wide_arm_scope,
 )
 from scripts.qwen4exp_q8_repair_depth_gate import (
@@ -188,6 +189,13 @@ def main():
                 if arm != "strict":
                     packet.setdefault("q8_down_variant", {})[arm] = (
                         bind_candidate_q8_down_variant(
+                            owner_scope, generator, spec))
+                    # The tile-16 GDN prefill owner is a candidate declaration
+                    # as well, so the candidate arm binds the leaf it names and
+                    # the base profile's owner comes back on unwind. The
+                    # strict arm keeps the strict plan's published parent.
+                    packet.setdefault("gdn_tile16_variant", {})[arm] = (
+                        bind_candidate_gdn_tile16_variant(
                             owner_scope, generator, spec))
                 packet.setdefault("q8_mmq_prefill_enabled", {})[arm] = (
                     resolve_q8_mmq_prefill(generator))

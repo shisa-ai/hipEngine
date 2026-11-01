@@ -24,7 +24,8 @@ def test_multi_restoration_changes_only_the_gdn_variant():
     assert candidate.classification == "T2"
     assert candidate.count_registered_dispatch
     assert candidate.candidate_key[-1] == "qwen4exp_gdn_tiled16_multi_prefill"
-    assert candidate.environment == {
-        **parent.environment,
-        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
-    }
+    # The leaf is the candidate's declared owner binding, so the environment is
+    # identical to the parent arm it was restored from.
+    assert candidate.environment == parent.environment
+    assert candidate.gdn_tile16_variant == "qwen4exp_gdn_tiled16_multi_prefill"
+    assert parent.gdn_tile16_variant == "qwen4exp_gdn_tiled16_dpp_prefill"

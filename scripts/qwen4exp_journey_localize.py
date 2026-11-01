@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, gdn_tile16_variant, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_gdn_tile16_variant, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill
 from hipengine.runtime.qwen4_exp_runner import Q8_DOWN_WMMA_VARIANT
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
@@ -334,7 +334,6 @@ def gdn_isolation_overrides(strict_flags, production_flags):
         "strict_plus_gdn_serial": {**isolated, **ARMS["gdn_strict"]},
         "strict_plus_gdn_multi": {
             **isolated,
-            PREFIX + "GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
         },
     }
 
@@ -590,6 +589,70 @@ def q8_down_arm_report(generator, arm):
     return resolve_q8_down_variant(generator)
 
 
+#: The tile-16 GDN prefill leaf this arm measures. The retired
+#: ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` key used to carry it, so an arm
+#: whose former environment named a leaf keeps that leaf here and the arm loop
+#: binds it on the runner it measures. Seeded from the candidate declarations,
+#: which is where the multi-column and DPP arms now name their leaf.
+_GDN_TILE16_MULTI_VARIANT = "qwen4exp_gdn_tiled16_multi_prefill"
+
+
+def declared_gdn_tile16_variants():
+    """Arms whose candidate declaration names a tile-16 GDN prefill owner."""
+
+    return {
+        name: candidate.gdn_tile16_variant
+        for name, candidate in ((name, CANDIDATES.get(name)) for name in ARMS)
+        if candidate is not None and candidate.gdn_tile16_variant is not None
+    }
+
+
+_GDN_TILE16_ARM_VARIANTS: dict[str, str] = declared_gdn_tile16_variants()
+#: ``strict_plus_gdn_multi`` is built by :func:`gdn_isolation_overrides` from
+#: the production GDN flag set plus one named leaf, so it has no candidate
+#: declaration to inherit from.
+_GDN_TILE16_ARM_VARIANTS["strict_plus_gdn_multi"] = _GDN_TILE16_MULTI_VARIANT
+
+
+def declare_gdn_tile16_owner(variant, *, arms=None):
+    """Name the tile-16 GDN prefill leaf a probe's arms measure.
+
+    A diagnostic probe that counts or samples one registered leaf declares it
+    here, so its arms bind that leaf instead of the plan's published owner. The
+    map is the same one the arm loop reads, so the declaration, the binding and
+    the report cannot drift apart.
+    """
+
+    for arm in (ARMS if arms is None else arms):
+        _GDN_TILE16_ARM_VARIANTS[arm] = variant
+
+
+def gdn_tile16_arm_variant(arm):
+    """The tile-16 GDN prefill owner this arm measures, or ``None``."""
+
+    return _GDN_TILE16_ARM_VARIANTS.get(arm)
+
+
+def gdn_tile16_arm_scope(generator, arm):
+    """Bind the tile-16 GDN prefill owner this arm measures.
+
+    ``None`` leaves the plan's published owner in place; a named leaf is bound
+    for the arm's samples and the published owner comes back on exit. The
+    columnwarp gate and the admission decision stay at the dispatch.
+    """
+
+    variant = gdn_tile16_arm_variant(arm)
+    if variant is None:
+        return nullcontext()
+    return gdn_tile16_variant(generator, variant)
+
+
+def gdn_tile16_arm_report(generator, arm):
+    """Name the tile-16 GDN prefill owner that actually ran for this arm."""
+
+    return resolve_gdn_tile16_variant(generator)
+
+
 #: Split arms bind the GR-up wide route per phase: the strict phase ran the
 #: strict snapshot's route, and the production phase kept the production one.
 GR_WIDE_SPLIT_ARMS = frozenset({
@@ -748,6 +811,7 @@ def main():
                 arm_scope.enter_context(production_moe_arm_scope(generator, arm))
                 arm_scope.enter_context(q8_mmq_arm_scope(generator, arm))
                 arm_scope.enter_context(q8_down_arm_scope(generator, arm))
+                arm_scope.enter_context(gdn_tile16_arm_scope(generator, arm))
                 if resolve_q8_mmq_prefill(generator):
                     # Explicit cold-path preparation for the arm's bound owner.
                     generator.runner.configure_mmq_prefill_resources()
@@ -809,6 +873,7 @@ def main():
                         "q8_mmq_prefill_enabled": q8_mmq_arm_report(
                             generator, arm),
                         "q8_down_variant": q8_down_arm_report(generator, arm),
+                        "gdn_tile16_variant": gdn_tile16_arm_report(generator, arm),
                         "gr_wide": gr_wide_arm_report(generator, arm),
                     },
                     "quality": quality,

@@ -9,8 +9,10 @@ import fcntl
 import hashlib
 import json
 import os
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -48,6 +50,95 @@ def pair_sequence(case_index, pairs):
         result.extend(("before", "after") if (case_index + pair) % 2 == 0
                       else ("after", "before"))
     return tuple(result)
+
+
+def dpp_library(report):
+    """Build the DPP candidate library and record its identity."""
+
+    from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
+        build_qwen4_exp_gdn_dpp,
+    )
+
+    library = build_qwen4_exp_gdn_dpp()
+    report["kind"] = "qwen4exp_gdn_complete_model_ab"
+    report["candidate_library_sha256"] = hashlib.sha256(
+        Path(library._name).read_bytes()).hexdigest()
+    return library
+
+
+@contextmanager
+def measurement_scope(generator, args, report, transitions):
+    """Prepare the A/B harness and restore every mutation on exit.
+
+    The tile-16 owner binding and the DPP library build both live inside this
+    scope, so a setup failure - the library build runs hipcc/JIT - restores the
+    generator's published owner instead of leaving the measured generator
+    silently switched to the directly imported parent. The gather hook, the
+    step recorder and the module-level GDN prefill symbol are registered on the
+    same stack, so the caller's guarded ``try`` owns the whole setup.
+
+    ``gdn_dpp`` bypasses the production registry selector on purpose, so the
+    control arm cannot silently select DPP: the owner is bound to the directly
+    imported parent for the measured window and the published owner comes back
+    on exit, including after an exception.
+    """
+
+    import hipengine.runtime.qwen4_exp_runner as runner_module
+    from hipengine.runtime.qwen4_exp_runner import gdn_tile16_variant
+
+    original_gdn = runner_module.qwen4_exp_gdn_prefill_tiled16_f32
+    state = {"dpp_calls": 0, "last": {}}
+    with ExitStack() as stack:
+        dpp_candidate = None
+        if args.method == "gdn_dpp":
+            stack.enter_context(gdn_tile16_variant(generator, None))
+            dpp_candidate = dpp_library(report)
+        table = generator._resident.ple_table
+        original_gather = table.gather_rows
+        original_step = generator.runner.step
+        stack.callback(setattr, table, "gather_rows", original_gather)
+        stack.callback(
+            setattr, runner_module, "qwen4_exp_gdn_prefill_tiled16_f32",
+            original_gdn)
+
+        def step(*a, **kw):
+            result = original_step(*a, **kw)
+            state["last"]["result"] = result
+            return result
+
+        generator.runner.step = step
+        stack.callback(setattr, generator.runner, "step", original_step)
+
+        def dpp(*a, **kw):
+            state["dpp_calls"] += 1
+            return original_gdn(*a, **{**kw, "library": dpp_candidate})
+
+        def sample(mode, case, rep):
+            if table.telemetry() is not None or table._random_access_requested_mode != "off":
+                raise ValueError("unqualified telemetry/advice configuration")
+            if args.method == "gdn_dpp":
+                runner_module.qwen4_exp_gdn_prefill_tiled16_f32 = (
+                    original_gdn if mode == "before" else dpp)
+            else:
+                select_gather_arm(table, original_gather, mode=mode,
+                                  method=args.method, cache_mode=args.cache_mode)
+            previous_dpp_calls = state["dpp_calls"]
+            row = _hipengine_case_sample(generator.runner, case=case, repetition=rep, transitions=transitions)
+            if args.method == "gdn_dpp":
+                row["dpp_calls"] = state["dpp_calls"] - previous_dpp_calls
+                if (row["dpp_calls"] > 0) != (mode == "after"):
+                    raise ValueError("DPP candidate did not engage")
+            logits = np.asarray(state["last"]["result"].logits)
+            if not logits.size or not np.isfinite(logits).all():
+                raise ValueError("missing/nonfinite final logits")
+            state_summary = _state_summary(generator.runner)
+            if not state_summary["finite"]:
+                raise ValueError("nonfinite final state")
+            row.update(mode=mode, final_logits_sha256=hashlib.sha256(logits.tobytes()).hexdigest(),
+                       final_state_sha256=state_summary["state_sha256"])
+            return row
+
+        yield SimpleNamespace(table=table, sample=sample, state=state)
 
 
 def main():
@@ -106,87 +197,32 @@ def main():
             "samples": [],
         }
         generator, profile, _ = _make_generator(args, "production")
-        import hipengine.runtime.qwen4_exp_runner as runner_module
-        original_gdn = runner_module.qwen4_exp_gdn_prefill_tiled16_f32
-        dpp_calls = 0
-        dpp_library = None
-        if args.method == "gdn_dpp":
-            # Explicit parent/candidate library A/B bypasses the production
-            # registry selector so the control cannot silently select DPP.
-            os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] = ""
-            from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import build_qwen4_exp_gdn_dpp
-            dpp_library = build_qwen4_exp_gdn_dpp()
-            report["kind"] = "qwen4exp_gdn_complete_model_ab"
-            report["candidate_library_sha256"] = hashlib.sha256(Path(dpp_library._name).read_bytes()).hexdigest()
-        table = generator._resident.ple_table
-        original_gather = table.gather_rows
-        original_step = generator.runner.step
-        last = {}
-
-        def step(*a, **kw):
-            result = original_step(*a, **kw)
-            last["result"] = result
-            return result
-
-        generator.runner.step = step
-
-        def dpp(*a, **kw):
-            nonlocal dpp_calls
-            dpp_calls += 1
-            return original_gdn(*a, **{**kw, "library": dpp_library})
-
-        def sample(mode, case, rep):
-            if table.telemetry() is not None or table._random_access_requested_mode != "off":
-                raise ValueError("unqualified telemetry/advice configuration")
-            if args.method == "gdn_dpp":
-                runner_module.qwen4_exp_gdn_prefill_tiled16_f32 = original_gdn if mode == "before" else dpp
-            else:
-                select_gather_arm(table, original_gather, mode=mode,
-                                  method=args.method, cache_mode=args.cache_mode)
-            previous_dpp_calls = dpp_calls
-            row = _hipengine_case_sample(generator.runner, case=case, repetition=rep, transitions=transitions)
-            if args.method == "gdn_dpp":
-                row["dpp_calls"] = dpp_calls - previous_dpp_calls
-                if (row["dpp_calls"] > 0) != (mode == "after"):
-                    raise ValueError("DPP candidate did not engage")
-            logits = np.asarray(last["result"].logits)
-            if not logits.size or not np.isfinite(logits).all():
-                raise ValueError("missing/nonfinite final logits")
-            state = _state_summary(generator.runner)
-            if not state["finite"]:
-                raise ValueError("nonfinite final state")
-            row.update(mode=mode, final_logits_sha256=hashlib.sha256(logits.tobytes()).hexdigest(),
-                       final_state_sha256=state["state_sha256"])
-            return row
-
         try:
-            for case in cases:
-                index = case_indices[case["id"]]
-                warm = [sample(mode, case, -1) for mode in arm_sequence(index)[:2]]
-                for field in ("output_token_ids_sha256", "final_logits_sha256", "final_state_sha256"):
-                    if warm[0][field] != warm[1][field]:
-                        raise ValueError(f"warmup differs: {case['id']} {field}")
-                counts = {"before": 0, "after": 0}
-                order = pair_sequence(index, pairs)
-                for slot, mode in enumerate(order):
-                    row = sample(mode, case, counts[mode])
-                    counts[mode] += 1
-                    row["sequence_slot"] = slot
+            with measurement_scope(generator, args, report, transitions) as harness:
+                for case in cases:
+                    index = case_indices[case["id"]]
+                    warm = [harness.sample(mode, case, -1) for mode in arm_sequence(index)[:2]]
                     for field in ("output_token_ids_sha256", "final_logits_sha256", "final_state_sha256"):
-                        if row[field] != warm[0][field]:
-                            raise ValueError(f"measured state/output differs: {case['id']} {field}")
-                    report["samples"].append(row)
-                    args.output.write_text(json.dumps(report, indent=2) + "\n")
-                    print(case["id"], mode, slot, row["prefill_tok_s"], row["decode_tok_s"], flush=True)
+                        if warm[0][field] != warm[1][field]:
+                            raise ValueError(f"warmup differs: {case['id']} {field}")
+                    counts = {"before": 0, "after": 0}
+                    order = pair_sequence(index, pairs)
+                    for slot, mode in enumerate(order):
+                        row = harness.sample(mode, case, counts[mode])
+                        counts[mode] += 1
+                        row["sequence_slot"] = slot
+                        for field in ("output_token_ids_sha256", "final_logits_sha256", "final_state_sha256"):
+                            if row[field] != warm[0][field]:
+                                raise ValueError(f"measured state/output differs: {case['id']} {field}")
+                        report["samples"].append(row)
+                        args.output.write_text(json.dumps(report, indent=2) + "\n")
+                        print(case["id"], mode, slot, row["prefill_tok_s"], row["decode_tok_s"], flush=True)
             report["summary"] = summarize_campaign_ab(
                 report["samples"], repetitions_per_mode=pairs,
             )
             report["exact_final_logits_and_state"] = True
             report["status"] = "completed"
         finally:
-            runner_module.qwen4_exp_gdn_prefill_tiled16_f32 = original_gdn
-            table.gather_rows = original_gather
-            generator.runner.step = original_step
             generator.close()
             report["after_close"] = memory_stats()
             report["manifest_sha256"] = profile.manifest_sha256

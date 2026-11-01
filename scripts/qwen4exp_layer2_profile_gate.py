@@ -60,6 +60,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     qsa_prefill_head_mode, qsa_h256_prefill_mode, qsa_wmma_attention,
     router_producer_variant,
     q8_down_variant, resolve_q8_down_variant,
+    gdn_tile16_variant, resolve_gdn_tile16_variant,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -134,6 +135,15 @@ class CandidateSpec:
     # no process key names this leaf, so a stale value cannot make the arm
     # measure production.
     q8_down_variant: str | None = None
+    # Explicit tile-16 GDN prefill owner for this arm, same protocol. ``None``
+    # keeps the base profile's published owner (the f16-route plan's tiled-GDN
+    # composition row on UD production, the multi-column owner on every other
+    # production plan, the directly imported tile-16 parent on strict); a name
+    # binds that registered leaf for the measured rows and the plan's choice
+    # comes back after. ``""`` binds the parent, which is how an arm pins the
+    # pre-multi-column route. The columnwarp gate and the admission decision
+    # stay at the dispatch, so a bound owner still cannot run outside them.
+    gdn_tile16_variant: str | None = None
     # Explicit GR-up wide tile for this arm, same protocol. ``None`` keeps the
     # base profile's published route (on for the F16 route composition, the
     # fused exact parent on every other plan); ``True`` binds the wide tile for
@@ -236,8 +246,11 @@ _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
     "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
-    "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
 }
+#: The cleared composition's tile-16 GDN owner is request-local runner state, so
+#: the isolation arms declare it on their own candidate instead of carrying it
+#: in the environment above.
+_F16_ROUTES_OFF_TILE16 = "qwen4exp_gdn_tiled16_multi_prefill"
 #: The cleared composition's router producer and GR-up wide tile are
 #: request-local runner state, so each isolation arm declares them on its own
 #: candidate instead.
@@ -278,6 +291,7 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
                 "binder" + (", plus " + ", ".join(sorted(extra)) if extra else "")
             ),
             environment={**_F16_ROUTES_OFF, **extra},
+            gdn_tile16_variant=_F16_ROUTES_OFF_TILE16,
             router_producer_variant=(
                 "f32_hidden_f16_wmma_gemm"
                 if name == "recovery_plus_indexer_router_f16"
@@ -514,8 +528,8 @@ CANDIDATES = {
         ),
         environment={
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
-            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
         },
+        gdn_tile16_variant="qwen4exp_gdn_tiled16_multi_prefill",
         base_profile="production",
         scenario_id="qwen4exp-gdn-tiled16-multi",
         candidate_key=(
@@ -667,9 +681,9 @@ CANDIDATES = {
         environment={
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
-            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_dpp_prefill",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
         },
+        gdn_tile16_variant="qwen4exp_gdn_tiled16_dpp_prefill",
         base_profile="strict",
         scenario_id="qwen4exp-ud-q4-k-xl-gdn-isolated",
         gdn_register_prefill=True,
@@ -684,9 +698,8 @@ CANDIDATES = {
         name="gdn_multi_column",
         classification="T1",
         mechanism="eight state columns per warp in admitted tiled16 GDN suffix",
-        environment={
-            "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
-        },
+        environment={},
+        gdn_tile16_variant="qwen4exp_gdn_tiled16_multi_prefill",
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-gdn-multi-column",
         candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
@@ -865,8 +878,8 @@ CANDIDATES["production_gdn_multi_restore"] = replace(
     scenario_id="qwen4exp-production-gdn-multi-restoration",
     environment={
         **CANDIDATES["production_gdn_restore"].environment,
-        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_multi_prefill",
     },
+    gdn_tile16_variant="qwen4exp_gdn_tiled16_multi_prefill",
     candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                    "qwen4exp_gdn_tiled16_multi_prefill"),
 )
@@ -905,12 +918,11 @@ CANDIDATES["production_gdn_tiled16_q4km"] = CandidateSpec(
               "the tiled16 route the binder selected before the multi-column "
               "binding was repaired - the attribution control for "
               "production_gdn_multi_q4km",
-    environment={
-        "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": "qwen4exp_gdn_tiled16_prefill",
-    },
+    environment={},
     base_profile="production",
     quant="gguf_q4_k_m",
     scenario_id="qwen4exp-q4-k-m-gdn-tiled16-control",
+    gdn_tile16_variant="qwen4exp_gdn_tiled16_prefill",
     candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                    "qwen4exp_gdn_tiled16_prefill"),
     fallback_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
@@ -1633,7 +1645,7 @@ def bind_candidate_gr_wide(
 #: Candidate fields that are owner-bound decisions rather than process keys.
 #: ``None`` means "keep what the base profile published", so only a non-None
 #: value is a change an arm makes.
-_OWNER_FIELD_NAMES = ("q8_down_variant",)
+_OWNER_FIELD_NAMES = ("q8_down_variant", "gdn_tile16_variant")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1670,6 +1682,41 @@ def bind_candidate_q8_down_variant(
         dispatch_stack.enter_context(q8_down_variant(
             candidate_generator, candidate_spec.q8_down_variant))
     return resolve_q8_down_variant(candidate_generator)
+
+
+def gdn_tile16_variant_arm_scope(owner: Any, variant: str | None):
+    """Bind an arm's explicit tile-16 GDN prefill owner, or keep the published one.
+
+    ``None`` means the arm never named a leaf, so it ran whatever the profile
+    binder published and the scope leaves that decision in place. A name binds
+    that registered leaf for the measured window and the published owner comes
+    back on unwind, including after an exception.
+    """
+
+    if variant is None:
+        return nullcontext()
+    return gdn_tile16_variant(owner, variant)
+
+
+def bind_candidate_gdn_tile16_variant(
+    dispatch_stack: ExitStack,
+    candidate_generator: Any,
+    candidate_spec: CandidateSpec,
+) -> str | None:
+    """Bind the arm's tile-16 GDN prefill owner and return the leaf in force.
+
+    ``CandidateSpec.gdn_tile16_variant`` is the shared declaration of a
+    candidate's former ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` value, so
+    every harness that applies a candidate's environment binds the owner here
+    instead of copying a key the dispatch no longer reads. ``None`` leaves the
+    base profile's published owner in place; the plan's choice comes back on
+    unwind.
+    """
+
+    if candidate_spec.gdn_tile16_variant is not None:
+        dispatch_stack.enter_context(gdn_tile16_variant(
+            candidate_generator, candidate_spec.gdn_tile16_variant))
+    return resolve_gdn_tile16_variant(candidate_generator)
 
 
 def bind_candidate_qsa_head_mode(
@@ -1928,6 +1975,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # comes back on unwind. Dispatch counting on the candidate key proves which
     # leaf actually ran.
     bind_candidate_q8_down_variant(
+        dispatch_stack, candidate_generator, candidate_spec)
+    # The tile-16 GDN prefill owner is the plan's decision too: an arm that
+    # names a different leaf binds it on this generator and the plan's owner
+    # comes back on unwind. Dispatch counting on the candidate key proves which
+    # leaf actually ran.
+    bind_candidate_gdn_tile16_variant(
         dispatch_stack, candidate_generator, candidate_spec)
     if candidate_spec.moe_decode_warp is not None:
         dispatch_stack.enter_context(moe_decode_warp(

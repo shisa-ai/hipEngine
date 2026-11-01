@@ -19,7 +19,8 @@ from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profil
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _strict_trajectory, _candidate_trajectory, _state_summary,
     _state_repeat_gate, CANDIDATES, bind_candidate_gr_wide,
-    bind_candidate_q8_down_variant, candidate_dispatch_counter,
+    bind_candidate_gdn_tile16_variant, bind_candidate_q8_down_variant,
+    candidate_dispatch_counter,
 )
 from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _host_metadata, _git_metadata,
@@ -204,6 +205,11 @@ def main():
             # process key; bind it on the runner this arm measures so a
             # block-scale arm cannot silently run the plan's guarded default.
             report["q8_down_variant"] = bind_candidate_q8_down_variant(
+                dispatch_stack, generator, spec)
+            # The tile-16 GDN prefill owner is a candidate declaration too, so
+            # bind it on the runner this arm measures and let the base profile's
+            # owner come back on unwind.
+            report["gdn_tile16_variant"] = bind_candidate_gdn_tile16_variant(
                 dispatch_stack, generator, spec)
             if spec.q8_mmq_prefill_enabled is not None:
                 dispatch_stack.enter_context(q8_mmq_prefill_enabled(

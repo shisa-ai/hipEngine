@@ -4826,6 +4826,78 @@ def q8_down_variant(
             target.q8_down_variant = previous
 
 
+# The tile-16 GDN prefill leaf is a name, not a bool: inside the columnwarp
+# gate the plan publishes which registered recurrence owner serves the chunk, so
+# the multi-column, DPP and plain tile-16 names all travel one owner slot
+# instead of a process-wide switch. An unbound or empty owner keeps the
+# directly imported parent, which is the leaf every build resolved before the
+# registered tile-16 names existed.
+_GDN_TILE16_VARIANT_UNSET = object()
+
+
+def _qwen4_exp_gdn_tile16_variant(variant: str | None) -> str | None:
+    """Resolve the tile-16 GDN prefill owner for one dispatch.
+
+    ``None`` and ``""`` both mean the directly imported
+    ``qwen4_exp_gdn_prefill_tiled16_f32`` parent, which is what an unbound
+    runner and every strict bind publish. Any other name is returned unchanged,
+    so an unknown name fails loudly at the registry instead of being rewritten
+    to a fallback. Nothing here reads the process environment: the owner state
+    is the only input.
+    """
+
+    if variant is None:
+        return None
+    name = str(variant)
+    return name or None
+
+
+def resolve_gdn_tile16_variant(owner: Any) -> str | None:
+    """Return the tile-16 prefill owner a generator or runner would use."""
+
+    return _qwen4_exp_gdn_tile16_variant(
+        getattr(owner, "gdn_tile16_variant", None))
+
+
+def _gdn_tile16_variant_targets(owner: Any) -> list[Any]:
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    return targets
+
+
+@contextlib.contextmanager
+def gdn_tile16_variant(
+    owner: Any, variant: str | None | object = _GDN_TILE16_VARIANT_UNSET,
+):
+    """Bind the tile-16 GDN prefill owner for a diagnostic arm.
+
+    A generator target also binds its current runner. Omitted preserves the
+    current owner value, ``None`` (or ``""``) restores the directly imported
+    parent, and a name binds that registered leaf. The binding is a mutable
+    owner field, so it stays in force for as long as the scope is open and the
+    published value is restored on exit, including after an exception. The
+    columnwarp gate and the serial owners below it are untouched: this scope
+    only decides which leaf runs *inside* an open gate.
+    """
+
+    targets = _gdn_tile16_variant_targets(owner)
+    prior = [
+        (target, getattr(target, "gdn_tile16_variant", None))
+        for target in targets
+    ]
+    try:
+        if variant is not _GDN_TILE16_VARIANT_UNSET:
+            bound = _qwen4_exp_gdn_tile16_variant(variant)
+            for target in targets:
+                target.gdn_tile16_variant = bound
+        yield prior
+    finally:
+        for target, previous in prior:
+            target.gdn_tile16_variant = previous
+
+
 def _qwen4_exp_gdn_prefill_key(
     key: KernelKey, *, rows: int = 0, num_k_heads: int = 0,
     num_v_heads: int = 0, head_dim: int = 0, variant: str | None = None,
@@ -8455,6 +8527,7 @@ def run_qwen4_exp_gdn_layer(
     prefill_variant: str | None = None,
     gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
+    gdn_tile16_variant: str | None = None,
     gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
     gdn_decode_rowsplit: bool = False,
@@ -8487,6 +8560,11 @@ def run_qwen4_exp_gdn_layer(
 
     ``gdn_tile16_prefill`` is the owning runner's tile-16 prefill decision (see
     :func:`gdn_tile16_prefill`), forwarded to the token mixer.
+
+    ``gdn_tile16_variant`` is the owning runner's tile-16 prefill owner (see
+    :func:`gdn_tile16_variant`), forwarded to the token mixer: it names the
+    registered leaf inside the columnwarp gate and leaves the directly imported
+    parent in place when unbound.
 
     ``gdn_peer_prefill_layers`` is the owning runner's peer prefill scope (see
     :func:`gdn_peer_prefill`), forwarded to the token mixer.
@@ -8616,6 +8694,7 @@ def run_qwen4_exp_gdn_layer(
         prefill_variant=prefill_variant,
         gdn_register_prefill=gdn_register_prefill,
         gdn_tile16_prefill=gdn_tile16_prefill,
+        gdn_tile16_variant=gdn_tile16_variant,
         gdn_peer_prefill_layers=gdn_peer_prefill_layers,
         gdn_exact_bulk_conv=gdn_exact_bulk_conv,
         gdn_decode_rowsplit=gdn_decode_rowsplit,
@@ -8928,6 +9007,7 @@ def run_qwen4_exp_gdn_token_mixer(
     prefill_variant: str | None = None,
     gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
+    gdn_tile16_variant: str | None = None,
     gdn_peer_prefill_layers: str | None = None,
     gdn_exact_bulk_conv: bool = True,
     gdn_decode_rowsplit: bool = False,
@@ -8940,6 +9020,11 @@ def run_qwen4_exp_gdn_token_mixer(
     ``gdn_tile16_prefill`` is the owning runner's tile-16 decision (see
     :func:`gdn_tile16_prefill`): False pins the columnwarp parent inside the
     columnwarp gate for a diagnostic arm.
+    ``gdn_tile16_variant`` is the owning runner's tile-16 prefill owner (see
+    :func:`gdn_tile16_variant`): inside an open columnwarp gate it names the
+    registered recurrence leaf (multi-column, DPP, or the plain tile-16 name),
+    and an unbound or empty owner keeps the directly imported tile-16 parent.
+    No process key selects this leaf.
     ``gdn_peer_prefill_layers`` is the owning runner's peer prefill scope (see
     :func:`gdn_peer_prefill`): the peer owner takes the layers inside it and
     everything else, including an unbound runner, keeps the serial owners.
@@ -9078,7 +9163,7 @@ def run_qwen4_exp_gdn_token_mixer(
             )
         )
         if colwarps_prefill:
-            tile16_variant = os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT")
+            tile16_variant = _qwen4_exp_gdn_tile16_variant(gdn_tile16_variant)
             tile16 = (
                 resolve(
                     backend=weights["attn_qkv"].backend,
@@ -9613,6 +9698,16 @@ class Qwen4ExpGGUFResidentModelRunner:
     # parent on the one runner it measures; a fresh runner or a serving clone
     # inherits this default, never that binding.
     gdn_tile16_prefill: bool = True
+    # GDN tile-16 prefill owner inside that gate: the plan publishes which
+    # registered recurrence leaf serves the chunk (the multi-column owner on
+    # every plan that keeps the gate open, the f16-route plan's own tiled
+    # composition row on the UD lane), and ``None`` keeps the directly imported
+    # tile-16 parent, which is what every strict bind publishes. Like the
+    # admission decision above, the prefill chunk path is its only reader: a
+    # decode row and the batch GDN mixer never reach it. A diagnostic scope
+    # binds this field on the one runner it measures; a fresh runner or a
+    # serving clone inherits the published value, never that binding.
+    gdn_tile16_variant: str | None = None
     # GDN peer prefill owner's layer scope, published by the profile binder as a
     # request-local decision rather than a process-wide switch. ``None`` (an
     # unbound runner, strict, and every plan that falls back to the strict
@@ -11463,6 +11558,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gdn_decode_rowsplit=self.gdn_decode_rowsplit,
                     gdn_register_prefill=self.gdn_register_prefill,
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
+                    gdn_tile16_variant=self.gdn_tile16_variant,
                     gdn_peer_prefill_layers=self.gdn_peer_prefill_layers,
                     gdn_exact_bulk_conv=self.gdn_exact_bulk_conv,
                     q4_dp4a_decode_enabled=q4_dp4a_enabled,

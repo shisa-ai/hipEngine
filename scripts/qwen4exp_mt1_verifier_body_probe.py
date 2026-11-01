@@ -187,7 +187,14 @@ def measure_qsa_attention() -> dict:
 
 
 def measure_gdn_layer() -> dict:
-    """Rows>1 GDN layer (output + conv/recurrent state) vs serial rows=1."""
+    """Rows>1 GDN layer (output + conv/recurrent state) vs serial rows=1.
+
+    This probe never resolves a runtime profile or constructs a generator, so it
+    has no published tile-16 owner to forward and calls the layer with the
+    documented default (the directly imported parent). The tile-16 branch also
+    stays closed here because nothing opens the colwarps prefill gate in this
+    process, so the rows>1 measurement is the serial prefill route either way.
+    """
 
     from hipengine.core.memory import free
     from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32

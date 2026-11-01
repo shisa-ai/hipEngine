@@ -799,10 +799,16 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
 
     assert ENV not in restore.SHARED_DECODE_SAFE_ENV
     assert WMMA_GATE in restore.SHARED_DECODE_SAFE_ENV
-    assert restore.SHARED_DECODE_SAFE_OWNER_FIELDS == {"q8_down_variant"}
+    # The GDN tile-16 prefill owner is the same kind of decision as the Q8_0
+    # down owner: a prefill-or-uncaptured-attention selector, so graph identity
+    # ignores it and a candidate may bind it.
+    assert restore.SHARED_DECODE_SAFE_OWNER_FIELDS == {
+        "q8_down_variant", "gdn_tile16_variant"}
 
     restore.validate_shared_graphs(
         [{WMMA_GATE: "1"}], [{"q8_down_variant": WMMA}])
+    restore.validate_shared_graphs(
+        [], [{"gdn_tile16_variant": "qwen4exp_gdn_tiled16_multi_prefill"}])
     with pytest.raises(ValueError, match="captured decode units"):
         restore.validate_shared_graphs([{"HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1"}])
     with pytest.raises(ValueError, match="captured decode units"):

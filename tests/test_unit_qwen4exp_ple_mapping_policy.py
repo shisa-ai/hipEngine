@@ -101,15 +101,15 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     # binder owns the row-split GDN variant. The multi-column route remains
     # the production owner for non-F16 quantizations below.
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
-        "qwen4exp_gdn_rowsplit_prefill")
+    assert generator.gdn_tile16_variant == "qwen4exp_gdn_rowsplit_prefill"
+    assert "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT" not in os.environ
     profile.manifest["selections"] = [
         {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant,
          "registry_quant": r.registry_quant}
         for r in _strict_selections(recovery=True)
     ]
     _bind(generator, profile, production=False)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == ""
+    assert generator.gdn_tile16_variant is None
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS", "normal")
     profile.manifest["selections"] = [
         {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant,
@@ -130,6 +130,5 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     # colwarps gate is open, so this is where the binding has to appear. This test
     # pins the binding, so it moves with the default.
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT"] == (
-        "qwen4exp_gdn_tiled16_multi_prefill")
+    assert generator.gdn_tile16_variant == "qwen4exp_gdn_tiled16_multi_prefill"
     assert calls[-1] == "normal"

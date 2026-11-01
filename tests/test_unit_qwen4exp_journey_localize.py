@@ -4,6 +4,7 @@ import pytest
 
 from scripts.qwen4exp_journey_localize import (
     ARMS, OUTLIER, PREFIX, clear_arm_graphs, gdn_isolation_overrides,
+    gdn_tile16_arm_variant,
     phase_peer_scope, production_moe_arm_policy, production_moe_arm_report,
     production_moe_arm_scope, production_moe_split_scope, q4_dp4a_arm_policy,
     q4_dp4a_arm_scope, q4_dp4a_split_scope, q8_mmq_arm_report,
@@ -341,7 +342,10 @@ def test_gdn_isolation_keeps_other_families_strict():
     # columnwarp value is what tells the arm loop to do that.
     assert serial_gdn(arms["strict_plus_gdn_serial"]) is True
     assert serial_gdn(arms["strict_plus_gdn"]) is False
-    assert arms["strict_plus_gdn_multi"][PREFIX + "GDN_TILE16_VARIANT"] == (
+    # The multi arm's leaf is a declared binding, not a process value: the
+    # retired key stays out of the arm and the arm loop binds the owner.
+    assert PREFIX + "GDN_TILE16_VARIANT" not in arms["strict_plus_gdn_multi"]
+    assert gdn_tile16_arm_variant("strict_plus_gdn_multi") == (
         "qwen4exp_gdn_tiled16_multi_prefill"
     )
 

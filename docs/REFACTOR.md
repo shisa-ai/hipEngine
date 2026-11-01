@@ -153,10 +153,11 @@ The truncated Japanese pair is not completed evidence. Do not rerun the unchange
 promote it solely from its numerical envelope; any revised composition needs complete numerical,
 task and depth gates with accurate route attribution.
 
-Done when: Preserve multi-column, DPP and serial strict registered owners, profile-bound selection and
-diagnostic comparisons. `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` still transports profile selection;
-retire that environment handoff only when an owner-bound construction input preserves all profile
-and diagnostic callers.
+Done when: Resolve the composition-task decision with complete outputs and
+accurate route attribution. If a revised composition is selected, run its full
+numerical, state, depth and task gates. Preserve the registered multi-column,
+DPP and serial strict comparisons; passing owner-transport checks does not
+resolve the R02 task finding.
 
 ### R0060 — Bind historical dense serving evidence when its artifact is available
 
