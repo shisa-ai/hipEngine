@@ -325,6 +325,18 @@ def _provenance() -> dict[str, Any]:
     }
 
 
+def bound_owner_record(owner: Any) -> dict[str, Any]:
+    """Report resolved baseline controls independently of legacy process pins."""
+    from hipengine.runtime.gguf_linear import (
+        resolve_q8_dense_wide_policy, resolve_q8_wmma_layers,
+    )
+    runner = getattr(owner, 'runner', owner)
+    return {
+        'bound_dense_wide_policy': resolve_q8_dense_wide_policy(runner).to_report(),
+        'bound_wmma_layers': resolve_q8_wmma_layers(owner).to_report(),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -421,10 +433,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise BenchmarkError("generator is not resident")
     payload["resolved_backend"] = str(getattr(runner, "backend", None))
     payload["target_arch"] = str(os.environ.get("HIPENGINE_HIP_ARCH", "gfx1151"))
-    # Record what the binder actually bound, so a reader can confirm the
-    # baseline arm is the shipping configuration without re-deriving it.
-    from hipengine.runtime.gguf_linear import resolve_q8_wmma_layers
-
+    # Keep the process snapshot for historical comparisons; explicit owner
+    # records below are authoritative for the measured baseline.
     payload["bound_environment"] = {
         name: os.environ.get(name)
         for name in (
@@ -433,8 +443,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             STAGED_ENV,
         )
     }
-    payload["bound_wmma_layers"] = resolve_q8_wmma_layers(
-        generator).to_report()
+    payload.update(bound_owner_record(generator))
 
     # Construction and the binder resolve a great many dispatches; only the
     # launches below are measured, and the wrap is installed after the warmups

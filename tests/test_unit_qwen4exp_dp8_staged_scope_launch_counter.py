@@ -22,7 +22,10 @@ from typing import Any
 import pytest
 
 from hipengine.runtime import gguf_linear
+from types import SimpleNamespace
+
 from scripts.qwen4exp_dp8_staged_scope_prefill_ab import (
+    bound_owner_record,
     STAGED_VARIANT,
     BenchmarkError,
     _layer_census,
@@ -69,6 +72,16 @@ def _install(
     key = _cache_key(layer=layer, generation=generation)
     cache[key] = ("raw", fn, "linear", "gguf_q8_0", variant)
     return key
+
+
+def test_baseline_record_uses_bound_owner_not_stale_environment(monkeypatch):
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE', '0')
+    owner = SimpleNamespace(
+        q8_dense_wide_policy=gguf_linear.Q8DenseWidePolicy(True, frozenset({0, 47})),
+        q8_wmma_layer_scope=gguf_linear.Q8WMMALayerScope.empty())
+    report = bound_owner_record(owner)
+    assert report['bound_dense_wide_policy'] == {'enabled': True, 'layers': [0, 47]}
+    assert report['bound_wmma_layers'] == {'mode': 'empty', 'layers': None}
 
 
 def test_counter_sees_launches_through_a_warm_cache(dispatch_cache: Any) -> None:
