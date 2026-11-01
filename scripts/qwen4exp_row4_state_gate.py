@@ -49,7 +49,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
                    "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair",
-                   "q8-dpp-reduction", "q8-mmq-prepack"}:
+                   "q8-dpp-reduction", "q8-mmq-prepack", "q8-wmma-down"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -58,12 +58,6 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # Request-local on the runner; ``route_scope`` admits the MMQ parent
         # prerequisite and binds the arm around the measured prefill.
         return
-    if package == "q5k-iu8-exact":
-        # The q5k opt-out arm de-groups layer 2 entirely (its only grouped
-        # entry is the q5k flag), which also changes that layer's Q8_0 down
-        # route selection. Pin the #19 q8-wmma-down T1 route off in BOTH arms
-        # so this gate keeps isolating the q5k gate/up arithmetic alone.
-        environment["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] = "0"
     if package == "dense-wide-padded":
         # route_scope binds the runner's parent for both registry arms.
         return
@@ -136,6 +130,11 @@ def arm_control(package, enabled, runner, *, environment=os.environ):
     """
 
     with ExitStack() as scope:
+        if package == "q5k-iu8-exact":
+            # The opt-out de-groups layer 2; keep its Q8 down route fixed so
+            # both arms isolate only the Q5_K gate/up arithmetic.
+            from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled
+            scope.enter_context(q8_selected_down_enabled(runner, False))
         scope.enter_context(route_scope(
             package, "after" if enabled == "1" else "before", runner,
             environment=environment,
@@ -227,7 +226,7 @@ def main():
     if args.route_package == "gr-iu8-down":
         flag = "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"
     if args.route_package == "q8-wmma-down":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
+        flag = ""  # arm_control binds the owning runner.
     if args.route_package == "q8-wave-scale":
         flag = ""  # route_scope binds the owning runner.
     if args.route_package == "q8-dpp-reduction":
@@ -722,9 +721,8 @@ def main():
                 "production must publish the down-register selection")
             assert generator.runner.routed_f16_enabled is True, (
                 "production must bind the preempting routed F16 down")
-            assert os.environ.get(
-                "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "") not in {
-                "", "0"}, (
+            from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down
+            assert resolve_q8_selected_down(generator.runner), (
                 "production must bind the preempting Q8_0 WMMA down")
             assert getattr(generator.runner, Q8_DOWN_FORKB_FIELD, False), (
                 "the Q8_0 expert-down chain gate must be on")
