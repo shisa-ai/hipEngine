@@ -56,6 +56,19 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
     return environment, attention
 
 
+def split_selected_q8_down_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Keep selected-down owner requests out of both process-write stages."""
+    key = 'HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN'
+    return ({name: value for name, value in values.items() if name != key},
+            {name: value for name, value in values.items() if name == key})
+
+
+def bind_selected_q8_down_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Use the profile-gap binder's parser and effective-value report."""
+    from scripts.qwen4exp_profile_gap import bind_selected_q8_down_override as bind
+    return bind(stack, owner, overrides)
+
+
 def split_flash_prefill_overrides(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
     """Keep flash requests out of construction and post-binder process writes."""
     keys = {'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS'}
@@ -116,6 +129,7 @@ def main() -> int:
     try:
         overrides, attention_override = split_owner_overrides(args.override)
         overrides, generic_wmma_override = split_generic_wmma_override(overrides)
+        overrides, selected_down_overrides = split_selected_q8_down_override(overrides)
         overrides, flash_overrides = split_flash_prefill_overrides(overrides)
     except ValueError as exc:
         parser.error(str(exc))
@@ -207,6 +221,8 @@ def main() -> int:
             attention_override_scope(generator, attention_override))
         artifact['owner_overrides'].update(bind_generic_wmma_override(
             owner_stack, generator, generic_wmma_override))
+        artifact['owner_overrides'].update(bind_selected_q8_down_override(
+            owner_stack, generator, selected_down_overrides))
         artifact['owner_overrides'].update(bind_flash_prefill_override(
             owner_stack, generator, flash_overrides))
         _write_json(args.output, artifact)
