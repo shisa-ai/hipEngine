@@ -2896,7 +2896,7 @@ and profile publication still need to move to it. Remove profile writes of
 the unbound low-level environment fallback remains a comparison interface.
 Profile-gap and candidate AR generic flash overrides bind the same paired owner
 policy, preserving omitted axes and recording actual policy without process
-writes.
+writes. Decode-sync binds its flash-on suffix policy on the measured owner.
 The focused guard regression is:
 
 ```bash

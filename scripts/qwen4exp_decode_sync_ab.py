@@ -40,10 +40,16 @@ def configure_production_routes() -> None:
         {
             "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
-            "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1",
-            "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35-47",
         }
     )
+
+
+def bind_production_flash(stack: ExitStack, generator: Any) -> dict[str, Any]:
+    """Bind the diagnostic's flash suffix without changing process inputs."""
+    from hipengine.runtime.qwen4_exp_runner import QSAFlashPrefillPolicy, qsa_flash_prefill
+    policy = QSAFlashPrefillPolicy(True, "35-47")
+    stack.enter_context(qsa_flash_prefill(generator, policy))
+    return {"enabled": policy.enabled, "layers": policy.layers}
 
 
 def bind_production_gdn(stack: ExitStack, generator: Any) -> str:
@@ -86,6 +92,7 @@ def main() -> None:
     owner_scope = ExitStack()
     try:
         gdn_layers = bind_production_gdn(owner_scope, generator)
+        flash_policy = bind_production_flash(owner_scope, generator)
         owner_scope.enter_context(
             production_moe_prefill_enabled(generator, True)
         )
@@ -146,6 +153,7 @@ def main() -> None:
         "schema": 1,
         "kind": "qwen4exp_decode_sync_ab",
         "gdn_colwarps_layers": gdn_layers,
+        "qsa_flash_prefill_policy": flash_policy,
         "production_moe_prefill_enabled": production_moe_enabled,
         "q8_mmq_prefill_enabled": q8_mmq_enabled,
         "steps": args.steps,

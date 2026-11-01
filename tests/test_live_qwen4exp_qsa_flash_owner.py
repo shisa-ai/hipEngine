@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'decode_sync'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_flash_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -45,7 +45,14 @@ def test_public_flash_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS', '' if enabled else 'all')
             policy = runtime.QSAFlashPrefillPolicy(enabled, '35-47')
             with ExitStack() as scopes:
-                if interface in {'profile_gap', 'candidate_ar'}:
+                expected_enabled = enabled
+                if interface == 'decode_sync':
+                    from scripts.qwen4exp_decode_sync_ab import bind_production_flash
+                    report = bind_production_flash(scopes, owner)
+                    assert report == {'enabled': True, 'layers': '35-47'}
+                    expected_enabled = True
+                    policy = owner.qsa_flash_prefill_policy
+                elif interface in {'profile_gap', 'candidate_ar'}:
                     if interface == 'candidate_ar':
                         from scripts.qwen4exp_candidate_ar import bind_flash_prefill_override
                     else:
@@ -65,7 +72,7 @@ def test_public_flash_owner(monkeypatch, length, interface):
                     captures.clear()
                     launches.clear()
                     output = llm.generate_detailed([[1] * length], params)
-                    assert bool(launches) is enabled
+                    assert bool(launches) is expected_enabled
                     assert os.environ['HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL'] == ambient
                     assert os.environ['HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS'] == ('' if enabled else 'all')
                     assert captures and all(np.isfinite(row).all() for row in captures)
