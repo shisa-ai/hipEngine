@@ -266,20 +266,31 @@ Q4_DP4A_SPLIT_ARMS = frozenset({
 })
 
 
+def generic_wmma_baseline_scope(owner):
+    """Preserve the generic WMMA-off baseline shared by both profile bindings.
+
+    Every localizer arm, including both split phases, inherited this choice.
+    It is not an ablated family; keep it owner-local instead of in snapshots.
+    """
+    from hipengine.runtime.qwen4_exp_runner import gguf_wmma_prefill
+    return gguf_wmma_prefill(owner, False)
+
+
 def strict_environment(environ):
     """Capture the strict binding's process keys without the retired keys.
 
     The Q4 DP4A pair and the Q8 MMQ prefill gate are bound per arm, and the
     GR-up DPP key is retired: the strict bind publishes that decision on its
     runner and the arms reconstruct it from ``gr_dpp_snapshot``, so a stale
-    caller value must not ride the snapshot into a phase environment.
+    caller value must not ride the snapshot into a phase environment. Generic
+    WMMA's shared off baseline is bound separately on the owner.
     """
 
     # ``_GR_DPP_ENV`` is defined with the GR-up migration below; the name is
     # resolved when this runs, not when the module loads.
     return {
         key: value for key, value in environ.items()
-        if (key.startswith(PREFIX) or key == "HIPENGINE_GGUF_WMMA_PREFILL")
+        if key.startswith(PREFIX)
         and key not in Q4_DP4A_ENV_KEYS
         and key != _Q8_MMQ_ENV
         and key != _GR_DPP_ENV
@@ -1032,7 +1043,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+    with generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
@@ -1053,7 +1064,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
+    with generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"), gr_dpp_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
@@ -1116,7 +1127,8 @@ def main():
             for row in prompt_rows:
                 key = row["id"]
                 tokens[key] = build_chat_prompt(strict_generator.tokenizer, row["prompt"])
-                strict[key] = _strict_trajectory(strict_generator.runner, tokens[key], 32 if key == OUTLIER else 0)
+                with generic_wmma_baseline_scope(strict_generator):
+                    strict[key] = _strict_trajectory(strict_generator.runner, tokens[key], 32 if key == OUTLIER else 0)
                 for step, sample in enumerate(strict[key]):
                     descriptors.append(RowDescriptor(
                         scenario_id="journey-family-localization", scenario_step=len(descriptors),
@@ -1207,6 +1219,7 @@ def main():
                 os.environ.update(ARMS[arm])
                 candidate = []
                 arm_scope = ExitStack()
+                arm_scope.enter_context(generic_wmma_baseline_scope(generator))
                 arm_scope.enter_context(production_moe_arm_scope(generator, arm))
                 arm_scope.enter_context(q8_mmq_arm_scope(generator, arm))
                 arm_scope.enter_context(q8_down_arm_scope(generator, arm))
@@ -1248,6 +1261,7 @@ def main():
                     # Captured inside the arm scope: the value the measured rows
                     # ran under, not the publication the unwind put back.
                     effective_gr_dpp = gr_dpp_arm_report(generator, arm)
+                    effective_generic_wmma = generator.runner.gguf_wmma_prefill_enabled
                     for row in prompt_rows:
                         key = row["id"]
                         forced = [r["token_id"] for r in strict[key][:-1]]
@@ -1277,6 +1291,7 @@ def main():
                     for i, descriptor in enumerate(descriptors)
                 ]
                 owner_overrides = {
+                    "gguf_wmma_prefill_enabled": effective_generic_wmma,
                     "production_moe_prefill_enabled": (
                         production_moe_arm_report(generator, arm)),
                     "q8_mmq_prefill_enabled": q8_mmq_arm_report(

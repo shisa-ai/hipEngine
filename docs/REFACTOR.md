@@ -2884,8 +2884,9 @@ Generic GGUF WMMA prefill enablement also accepts optional generator/runner stat
 and a restoring scope. Profile-gap translates its generic WMMA `--override`
 into that owner state without process writes. Candidate AR likewise separates
 and binds generic WMMA overrides. The campaign Q8 wave comparison closes the
-generic preemptor on its runner; localizer callers and profile publication
-still need migration.
+generic preemptor on its runner. The localizer binds its shared generic-WMMA-off
+baseline on each reference/arm/phase owner without snapshotting the key. Profile
+publication still needs migration.
 The focused guard regression is:
 
 ```bash

@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign', 'journey'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_generic_wmma_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -42,7 +42,7 @@ def test_public_generic_wmma_owner(monkeypatch, length, interface):
         assert owner.gguf_wmma_prefill_enabled is owner.runner.gguf_wmma_prefill_enabled is None
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
-            ambient = '1' if interface == 'campaign' else ('0' if enabled else '1')
+            ambient = '1' if interface in {'campaign', 'journey'} else ('0' if enabled else '1')
             monkeypatch.setenv('HIPENGINE_GGUF_WMMA_PREFILL', ambient)
             # Isolate generic WMMA from the production wide route, which replaces
             # its supported raw Q8 leaves above 256 rows.
@@ -50,7 +50,12 @@ def test_public_generic_wmma_owner(monkeypatch, length, interface):
                 ExitStack() as stack,
                 linear.q8_dense_wide_policy(owner, linear.Q8DenseWidePolicy(False, None)),
             ):
-                if interface == 'campaign':
+                if interface == 'journey':
+                    from scripts.qwen4exp_journey_localize import generic_wmma_baseline_scope
+                    stack.enter_context(generic_wmma_baseline_scope(owner))
+                    expected_wmma = False
+                    assert owner.gguf_wmma_prefill_enabled is owner.runner.gguf_wmma_prefill_enabled is False
+                elif interface == 'campaign':
                     from scripts.qwen4exp_halo_box_campaign_ab import route_scope
                     stack.enter_context(route_scope(
                         'q8-wave-scale', 'after' if enabled else 'before', owner.runner))
@@ -68,7 +73,7 @@ def test_public_generic_wmma_owner(monkeypatch, length, interface):
                     assert report['gguf_wmma_prefill_enabled'] is enabled
                 else:
                     stack.enter_context(runtime.gguf_wmma_prefill(owner, enabled))
-                if interface != 'campaign':
+                if interface not in {'campaign', 'journey'}:
                     expected_wmma = enabled
                 repeats = []
                 for _ in range(2):

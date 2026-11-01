@@ -71,7 +71,6 @@ def test_strict_environment_drops_the_retired_q4_pair():
     })
     assert flags == {
         PREFIX + "Q4_PAIR_PREFILL": "0",
-        "HIPENGINE_GGUF_WMMA_PREFILL": "0",
     }
 
 
