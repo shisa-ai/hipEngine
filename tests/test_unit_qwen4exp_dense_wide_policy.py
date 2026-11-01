@@ -1,4 +1,5 @@
 """Wide prefill ownership is explicit while unbound diagnostics keep env fallback."""
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -63,3 +64,45 @@ def test_policy_drives_real_selector_independently_of_env(monkeypatch, layer, se
 def test_invalid_owner_policy_fails_loudly():
     with pytest.raises(TypeError, match='Q8DenseWidePolicy'):
         gl.resolve_q8_dense_wide_policy(SimpleNamespace(q8_dense_wide_policy='yes'))
+
+
+@pytest.mark.parametrize('name', ['exact', 'wmma-16-47', 'wide-16-47'])
+def test_dense_arm_binds_wide_owner_without_environment_writes(monkeypatch, name):
+    from scripts.qwen4exp_dense_route_ab import ARMS, _apply_arm, DENSE_WIDE_ENV
+    monkeypatch.setenv(DENSE_WIDE_ENV, 'ambient')
+    prior = gl.Q8DenseWidePolicy(True, frozenset({2}))
+    owner = SimpleNamespace(q8_dense_wide_policy=prior)
+    arm = next(arm for arm in ARMS if arm.name == name)
+    with _apply_arm(arm, owner):
+        policy = gl.resolve_q8_dense_wide_policy(owner)
+        assert policy.enabled is (name == 'wide-16-47')
+        assert os.environ[DENSE_WIDE_ENV] == 'ambient'
+    assert owner.q8_dense_wide_policy is prior
+    assert policy.to_report() == {
+        'enabled': name == 'wide-16-47',
+        'layers': list(range(16, 48)) if name == 'wide-16-47' else None,
+    }
+
+
+def test_wide_policy_report_preserves_all_and_layer_zero():
+    assert gl.Q8DenseWidePolicy(True, None).to_report() == {'enabled': True, 'layers': None}
+    assert gl.Q8DenseWidePolicy(True, {0}).to_report() == {'enabled': True, 'layers': [0]}
+
+
+@pytest.mark.parametrize('route_name', ['wmma', 'dense_wide', 'staged_f32'])
+@pytest.mark.parametrize('candidate', [False, True])
+def test_layer_gate_binds_wide_owner_and_restores(monkeypatch, route_name, candidate):
+    from scripts import execution_profile_q8_wmma_prefill_layers_gate as gate
+    monkeypatch.setenv(gate.DENSE_WIDE_ENV, 'ambient')
+    owner = SimpleNamespace(q8_dense_wide_policy=gl.Q8DenseWidePolicy(True, None))
+    prior = owner.q8_dense_wide_policy
+    route = gate.SELECTORS[route_name]
+    saved = {key: os.environ.get(key) for key in route.env_keys}
+    try:
+        with gate._apply_route_env(route, candidate=candidate, layers='0', generator=owner):
+            policy = gl.resolve_q8_dense_wide_policy(owner)
+            assert policy.enabled is (route_name == 'dense_wide' and candidate)
+            assert os.environ[gate.DENSE_WIDE_ENV] == 'ambient'
+    finally:
+        gate._restore_env(saved)
+    assert owner.q8_dense_wide_policy is prior

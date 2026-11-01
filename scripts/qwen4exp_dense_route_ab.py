@@ -6,17 +6,16 @@ Three arms, one process, one model load, interleaved:
 ===============  ==================================================
 ``exact``        both selectors cleared -> the exact coltile chain
 ``wmma-16-47``   the named production default -> ``wmma_prefill_*``
-``wide-16-47``   ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE=1`` at 16-47
+``wide-16-47``   explicit dense-wide owner enabled at 16-47
 ===============  ==================================================
 
 The wide arm's activation hoist is owned by the execution profile, so it is
 not a post-binder switch: the arm's launch census shows whether the profile's
 resolution engaged the f16-in sibling or kept the f32-in owner.
 
-The selectors are post-binder: the named production binder writes them during
-its own pass, so they are flipped after the generator is constructed and a
-pre-binder value is inert. The f16 WMMA layer scope is owner state; each arm
-binds it on the generator and records the resolved scope beside its env.
+The WMMA layer scope and dense-wide policy are explicit owner state. Each arm
+binds both on the generator, restores them on exit and records their resolved
+values; no process key selects either owner.
 
 The arms are interleaved round-robin and rotated between repetitions, so clock,
 thermal and allocator drift are shared across arms rather than assigned to one
@@ -111,14 +110,21 @@ def _arm_wmma_scope(arm: Arm):
     return Q8WMMALayerScope.parse(arm.env.get(WMMA_LAYERS_ENV, ""))
 
 
+def _arm_wide_policy(arm: Arm):
+    from hipengine.runtime.gguf_linear import Q8DenseWidePolicy, Q8WMMALayerScope
+
+    return Q8DenseWidePolicy(
+        arm.env.get(DENSE_WIDE_ENV, '0') == '1',
+        Q8WMMALayerScope.parse(arm.env.get(DENSE_WIDE_LAYERS_ENV, '')).layers or None,
+    )
+
+
 @contextlib.contextmanager
 def _apply_arm(arm: Arm, runner: Any):
-    from hipengine.runtime.gguf_linear import q8_wmma_layer_scope
+    from hipengine.runtime.gguf_linear import q8_wmma_layer_scope, q8_dense_wide_policy
 
-    values = dict(arm.env)
-    values.pop(WMMA_LAYERS_ENV, None)
-    os.environ.update(values)
-    with q8_wmma_layer_scope(runner, _arm_wmma_scope(arm)):
+    with (q8_wmma_layer_scope(runner, _arm_wmma_scope(arm)),
+          q8_dense_wide_policy(runner, _arm_wide_policy(arm))):
         yield
 
 
@@ -237,9 +243,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         runner = generator.runner
         if runner is None:
             raise SystemExit("runner is not resident")
-        from hipengine.runtime.gguf_linear import resolve_q8_wmma_layers
+        from hipengine.runtime.gguf_linear import (
+            resolve_q8_wmma_layers, resolve_q8_dense_wide_policy)
 
         bound_wmma = resolve_q8_wmma_layers(generator)
+        bound_wide = resolve_q8_dense_wide_policy(generator).to_report()
         measurements: dict[str, dict[str, list[float]]] = {
             arm.name: {str(row["id"]): [] for row in cases} for arm in ARMS
         }
@@ -250,6 +258,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         censuses: dict[str, dict[tuple, int]] = {arm.name: {} for arm in ARMS}
         effective_env: dict[str, dict[str, str | None]] = {}
         effective_wmma: dict[str, dict[str, Any]] = {}
+        effective_wide: dict[str, dict[str, Any]] = {}
 
         for row in cases:
             case_id = str(row["id"])
@@ -291,7 +300,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 effective_env[arm.name] = {
                     key: os.environ.get(key) for key in ARM_ENV_KEYS
                 }
-                effective_wmma[arm.name] = _arm_wmma_scope(arm).to_report()
+                effective_wmma[arm.name] = resolve_q8_wmma_layers(runner).to_report()
+                effective_wide[arm.name] = resolve_q8_dense_wide_policy(runner).to_report()
         provenance = collect_artifact_provenance(
             repo_root=ROOT,
             configured_backend="hip_gfx1151",
@@ -334,9 +344,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         arms[arm.name] = {
             "env": {
                 key: value for key, value in arm.env.items()
-                if key != WMMA_LAYERS_ENV
+                if key not in {WMMA_LAYERS_ENV, DENSE_WIDE_ENV, DENSE_WIDE_LAYERS_ENV}
             },
             "wmma_layers": _arm_wmma_scope(arm).to_report(),
+            "dense_wide_policy": _arm_wide_policy(arm).to_report(),
             "chain": arm.chain,
             "cases": per_case,
             "census": {
@@ -396,8 +407,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
         "bound_arm_env": bound_env,
         "effective_arm_env": effective_env,
+        "environment_snapshots_are_not_owner_selection": True,
         "effective_arm_wmma_layers": effective_wmma,
         "bound_wmma_layers": bound_wmma.to_report(),
+        "bound_dense_wide_policy": bound_wide,
+        "effective_arm_dense_wide_policy": effective_wide,
         "arms": arms,
         "deltas_vs_exact": deltas,
     }

@@ -3987,6 +3987,10 @@ class Q8DenseWidePolicy:
     enabled: bool
     layers: frozenset[int] | None
 
+    def to_report(self) -> dict[str, Any]:
+        return {'enabled': self.enabled,
+                'layers': None if self.layers is None else sorted(self.layers)}
+
     def __post_init__(self) -> None:
         object.__setattr__(self, 'enabled', bool(self.enabled))
         if self.layers is not None:

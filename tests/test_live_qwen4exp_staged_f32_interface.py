@@ -177,7 +177,7 @@ class _Harness:
                 assert self.linear.resolve_q8_wmma_layers(
                     self.generator).is_empty
                 assert self.linear.resolve_q8_wmma_layers(self.runner).is_empty
-                assert os.environ[self.gate.DENSE_WIDE_ENV] == '0'
+                assert self.linear.resolve_q8_dense_wide_policy(self.generator).enabled is False
                 assert os.environ[DPP_ENV] == '0'
                 assert self.linear._resolve_use_q4k_rowtile(None) is False
                 assert self.module.resolve_q8_mmq_prefill(self.runner) is False

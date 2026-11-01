@@ -49,6 +49,9 @@ from hipengine.execution_profiles import (
 )
 from hipengine.runtime.gguf_linear import (
     Q8WMMALayerScope,
+    Q8DenseWidePolicy,
+    q8_dense_wide_policy,
+    resolve_q8_dense_wide_policy,
     q8_wmma_layer_scope,
     q4k_rowtile_session,
     resolve_q8_wmma_layers,
@@ -616,9 +619,8 @@ def _parse_layers(raw: str) -> str:
 class Route:
     """One layer-scoped Q8_0 dense prefill route this gate can measure.
 
-    Both routes are post-binder selectors: the named production binder writes
-    their env keys during its own pass, so a value set before construction is
-    inert and only a post-binder flip is effective.
+    Both arms bind WMMA and dense-wide owner policies after construction.
+    Remaining process selectors are recorded separately.
 
     ``dense_wide`` clears the WMMA selector in **both** arms. The production
     default binds WMMA to the same layer window this route is gated at, so
@@ -653,6 +655,8 @@ class Route:
 
         values = self.env_for(candidate=candidate, layers=layers)
         values.pop(WMMA_LAYERS_ENV, None)
+        values.pop(DENSE_WIDE_ENV, None)
+        values.pop(DENSE_WIDE_LAYERS_ENV, None)
         if STAGED_F32_LAYERS_ENV in values:
             values["HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"] = "0"
         return values
@@ -665,12 +669,19 @@ class Route:
                 WMMA_LAYERS_ENV, "")
         )
 
+    def wide_policy_for(self, *, candidate: bool, layers: str) -> Q8DenseWidePolicy:
+        values = self.env_for(candidate=candidate, layers=layers)
+        return Q8DenseWidePolicy(
+            values.get(DENSE_WIDE_ENV, '0') == '1',
+            Q8WMMALayerScope.parse(values.get(DENSE_WIDE_LAYERS_ENV, '')).layers or None,
+        )
+
     @property
     def env_keys(self) -> tuple[str, ...]:
         return tuple(
             key
             for key in dict.fromkeys((*self.candidate_env, *self.teacher_env))
-            if key != WMMA_LAYERS_ENV
+            if key not in {WMMA_LAYERS_ENV, DENSE_WIDE_ENV, DENSE_WIDE_LAYERS_ENV}
         )
 
 
@@ -707,8 +718,7 @@ SELECTORS: dict[str, Route] = {
             DENSE_WIDE_LAYERS_ENV: "",
         },
         surface=(
-            f"post-binder {WMMA_LAYERS_ENV}; "
-            f"{DENSE_WIDE_ENV} cleared in both arms"
+            "explicit WMMA owner scope; dense-wide owner disabled in both arms"
         ),
         min_engaging_rows=ROUTE_ROW_FLOORS["wmma"],
     ),
@@ -729,8 +739,7 @@ SELECTORS: dict[str, Route] = {
             DENSE_WIDE_LAYERS_ENV: "",
         },
         surface=(
-            f"post-binder {DENSE_WIDE_ENV} + {DENSE_WIDE_LAYERS_ENV}; "
-            f"{WMMA_LAYERS_ENV} cleared in both arms"
+            "explicit dense-wide owner policy; WMMA owner cleared in both arms"
         ),
         min_engaging_rows=ROUTE_ROW_FLOORS["dense_wide"],
     ),
@@ -761,7 +770,7 @@ SELECTORS: dict[str, Route] = {
         },
         surface=(
             f"post-binder {STAGED_F32_LAYERS_ENV}; "
-            f"{WMMA_LAYERS_ENV} and {DENSE_WIDE_ENV} cleared in both arms"
+            "WMMA owner cleared and dense-wide owner disabled in both arms"
         ),
     ),
     # Historical composition: staged on the named exact-parent scope, with
@@ -792,8 +801,8 @@ SELECTORS: dict[str, Route] = {
         },
         surface=(
             f"post-binder {STAGED_F32_LAYERS_ENV} with {WMMA_LAYERS_ENV}=16-47 "
-            f"held in the candidate arm only; teacher is the exact chain; "
-            f"{DENSE_WIDE_ENV} cleared in both arms"
+            "held in the candidate arm only; teacher is the exact chain; "
+            "dense-wide owner disabled in both arms"
         ),
     ),
     "staged_f32_over_wmma": Route(
@@ -818,7 +827,7 @@ SELECTORS: dict[str, Route] = {
         },
         surface=(
             f"post-binder {STAGED_F32_LAYERS_ENV} over a {WMMA_LAYERS_ENV}=16-47 "
-            f"teacher; {DENSE_WIDE_ENV} cleared in both arms"
+            "teacher; dense-wide owner disabled in both arms"
         ),
         min_engaging_rows=ROUTE_ROW_FLOORS["staged_f32_over_wmma"],
     ),
@@ -836,15 +845,14 @@ def _select_route(name: str) -> Route:
 def _apply_route_env(
     route: Route, *, candidate: bool, layers: str, generator: Any,
 ):
-    """Bind the route's process selectors and its WMMA owner scope.
-
-    Empty layers means the exact chain. The WMMA layer scope is owner state, so
-    it is bound on the generator rather than written to a process key.
-    """
+    """Bind process selectors, excluding explicit WMMA and dense-wide owners."""
 
     values = route.env_for(candidate=candidate, layers=layers)
     raw_wmma = values.pop(WMMA_LAYERS_ENV, "")
     scope = Q8WMMALayerScope.parse(raw_wmma)
+    wide = route.wide_policy_for(candidate=candidate, layers=layers)
+    values.pop(DENSE_WIDE_ENV, None)
+    values.pop(DENSE_WIDE_LAYERS_ENV, None)
     os.environ.update(values)
     staged = STAGED_F32_LAYERS_ENV in values
     dpp_key = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
@@ -857,6 +865,7 @@ def _apply_route_env(
                 os.environ[dpp_key] = "0"
                 scope_stack.enter_context(q4k_rowtile_session(False))
             scope_stack.enter_context(q8_wmma_layer_scope(generator, scope))
+            scope_stack.enter_context(q8_dense_wide_policy(generator, wide))
             yield resolve_q8_wmma_layers(generator)
     finally:
         if staged:
@@ -947,8 +956,7 @@ def _run_gate(
             prefill_chunk_size=int(args.prefill_chunk_size),
         )
 
-    # Construct first: the named binder writes the selector as "" during its own
-    # pass, so only a post-binder flip is effective.
+    # Construct first, then bind diagnostic owner policies on the live generator.
     generator = lifetime.enter_context(contextlib.closing(
         resolved.construct_generator(factory)))
     runner = generator.runner
@@ -956,6 +964,7 @@ def _run_gate(
         raise CalibrationError("runner is not resident")
     bound_route_env = {key: os.environ.get(key) for key in route.env_keys}
     bound_wmma_layers = resolve_q8_wmma_layers(generator)
+    bound_dense_wide = resolve_q8_dense_wide_policy(generator).to_report()
     # A caller-set value the binder discarded means the intended route never
     # ran and the gate would report a clean null. Fail rather than measure it.
     discarded = last_prebinder_conflicts()
@@ -973,6 +982,7 @@ def _run_gate(
     # measurement attributed to a route that had not engaged.
     engagement: dict[str, list[dict[str, Any]]] = {"teacher": [], "candidate": []}
     measured_wmma_layers: dict[str, Any] = {"teacher": None, "candidate": None}
+    measured_dense_wide: dict[str, Any] = {"teacher": None, "candidate": None}
     command = ["python3", str(Path(__file__).resolve().relative_to(REPO_ROOT)), *sys.argv[1:]]
     try:
         for position, row in enumerate(cases):
@@ -982,6 +992,7 @@ def _run_gate(
                 route, candidate=False, layers="", generator=generator,
             ) as teacher_scope:
                 measured_wmma_layers["teacher"] = teacher_scope.to_report()
+                measured_dense_wide['teacher'] = resolve_q8_dense_wide_policy(generator).to_report()
                 _warm(runner, tokens)
                 with wmma_prefill_dispatch_recorder(engagement["teacher"]):
                     teacher = _strict_trajectory(runner, tokens, decode_steps)
@@ -991,6 +1002,7 @@ def _run_gate(
                 generator=generator,
             ) as candidate_scope:
                 measured_wmma_layers["candidate"] = candidate_scope.to_report()
+                measured_dense_wide['candidate'] = resolve_q8_dense_wide_policy(generator).to_report()
                 _warm(runner, tokens)
                 with wmma_prefill_dispatch_recorder(engagement["candidate"]):
                     runs = tuple(
@@ -1108,6 +1120,8 @@ def _run_gate(
                 candidate=True, layers=candidate_layers).to_report(),
             "bound_wmma_layers": bound_wmma_layers.to_report(),
             "measured_wmma_layers": measured_wmma_layers,
+            "bound_dense_wide_policy": bound_dense_wide,
+            "measured_dense_wide_policy": measured_dense_wide,
             "teacher_chain": route.teacher_chain,
             "candidate_chain": route.candidate_chain,
             "warmup_request_after_selector_flip": True,

@@ -10,7 +10,8 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-def test_public_explicit_wide_policy_restores_after_requests(monkeypatch):
+@pytest.mark.parametrize('interface', ['direct', 'layer_gate', 'dense_ab'])
+def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import gguf_linear as gl
     from hipengine.runtime import qwen4_exp_runner as runner_module
@@ -42,9 +43,21 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch):
                                 speculative_mtp=False)
         for enabled in (False, True):
             policy = gl.Q8DenseWidePolicy(enabled, frozenset(range(16, 48)))
-            with (gl.q8_dense_wide_policy(generator, policy),
+            if interface == 'direct':
+                control = gl.q8_dense_wide_policy(generator, policy)
+            elif interface == 'layer_gate':
+                from scripts import execution_profile_q8_wmma_prefill_layers_gate as gate
+                control = gate._apply_route_env(
+                    gate.SELECTORS['dense_wide'], candidate=enabled,
+                    layers=','.join(map(str, range(16, 48))), generator=generator)
+            else:
+                from scripts.qwen4exp_dense_route_ab import ARMS, _apply_arm
+                arm_name = 'wide-16-47' if enabled else 'exact'
+                control = _apply_arm(next(arm for arm in ARMS if arm.name == arm_name), generator)
+            with (control,
                   runner_module.q8_mmq_prefill_enabled(generator, False),
                   gl.q4k_rowtile_session(False)):
+                policy = gl.resolve_q8_dense_wide_policy(generator)
                 results = []
                 for _ in range(2):
                     policies.clear()
