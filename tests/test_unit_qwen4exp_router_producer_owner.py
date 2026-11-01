@@ -228,6 +228,7 @@ def test_layer2_arms_declare_the_producer_on_the_candidate() -> None:
     assert not _candidate_named_profile_intact(
         SimpleNamespace(
             environment={}, qsa_wmma_enabled=None,
+            qsa_flash_prefill_enabled=None,
             production_moe_prefill_enabled=None,
             q8_mmq_prefill_enabled=None,
             q8_mmq_attn_gate_enabled=None,

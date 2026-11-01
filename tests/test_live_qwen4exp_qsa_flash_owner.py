@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'decode_sync', 'layer2', 'journey'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'decode_sync', 'layer2', 'journey', 'profile'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_flash_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -37,7 +37,7 @@ def test_public_flash_owner(monkeypatch, length, interface):
         runners = list(serving._all_runners)
         if all(owner.runner is not r for r in runners):
             runners.append(owner.runner)
-        assert owner.qsa_flash_prefill_policy is None
+        original_flash = owner.qsa_flash_prefill_policy
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
             ambient = '0' if enabled else '1'
@@ -46,7 +46,13 @@ def test_public_flash_owner(monkeypatch, length, interface):
             policy = runtime.QSAFlashPrefillPolicy(enabled, '35-47')
             with ExitStack() as scopes:
                 expected_enabled = enabled
-                if interface == 'journey':
+                if interface == 'profile':
+                    expected_enabled = False
+                    policy = original_flash
+                    assert policy is not None and policy.enabled is False
+                    assert policy.layers == ','.join(map(str, range(35, 48)))
+                    assert owner.runner.qsa_flash_prefill_policy == policy
+                elif interface == 'journey':
                     from scripts import qwen4exp_journey_localize as journey
                     monkeypatch.setattr(journey, '_FLASH_ARM_VALUES', {'public': policy})
                     actual = scopes.enter_context(journey.flash_arm_scope(owner, 'public'))
@@ -93,8 +99,8 @@ def test_public_flash_owner(monkeypatch, length, interface):
                 assert repeats[0][0] == repeats[1][0]
                 for a, b in zip(repeats[0][1], repeats[1][1], strict=True):
                     np.testing.assert_array_equal(a, b)
-            assert owner.qsa_flash_prefill_policy is None
-            assert all(r.qsa_flash_prefill_policy is None for r in runners)
+            assert owner.qsa_flash_prefill_policy == original_flash
+            assert all(r.qsa_flash_prefill_policy == original_flash for r in runners)
     finally:
         llm.close()
     hip.device_synchronize()

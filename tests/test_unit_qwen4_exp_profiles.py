@@ -555,13 +555,10 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert fake_runner.gdn_colwarps_layers == production_generator.gdn_colwarps_layers
     assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL"] == "1"
-    assert tuple(
-        int(value)
-        for value in os.environ[
-            "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS"
-        ].split(",")
-    ) == PRODUCTION_QSA_FLASH_PREFILL_LAYERS
+    assert production_generator.qsa_flash_prefill_policy.enabled is True
+    assert tuple(map(int, production_generator.qsa_flash_prefill_policy.layers.split(','))) == (
+        PRODUCTION_QSA_FLASH_PREFILL_LAYERS)
+    assert fake_runner.qsa_flash_prefill_policy == production_generator.qsa_flash_prefill_policy
     # The GDN peer owner's gate and layer scope are request-local runner state
     # published from the certified scope, so the binder writes no process-wide
     # switch for them and the leftover value above is neither read nor rewritten.

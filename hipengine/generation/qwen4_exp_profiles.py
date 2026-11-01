@@ -1197,6 +1197,21 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_flash_prefill(generator: Any, *, production: bool, quant: str | None) -> None:
+    """Publish the effective pair after the UD arithmetic-recovery decision."""
+    from hipengine.runtime.qwen4_exp_runner import QSAFlashPrefillPolicy
+    enabled = production and not (
+        quant == 'gguf_ud_q4_k_xl' and 'QSA_FLASH_PREFILL' in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
+    layers = ','.join(map(str, PRODUCTION_QSA_FLASH_PREFILL_LAYERS)) if production else ''
+    policy = QSAFlashPrefillPolicy(enabled, layers)
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', '1' if enabled else '0')
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS', layers)
+    generator.qsa_flash_prefill_policy = policy
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.qsa_flash_prefill_policy = policy
+
+
 def _publish_gdn_colwarps_layers(generator: Any, layers: str) -> None:
     """Publish the plan's layer scope without changing a peer's diagnostics."""
     _record_owner_transport('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', layers)
@@ -1653,13 +1668,7 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
         # Columnwarp prefill enablement and layer scope publish on the owner
         # below. Decode retains its separately tuned rows==1 owner.
-        # Certified QSA flash prefill suffix.
-        "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": (
-            ",".join(map(str, PRODUCTION_QSA_FLASH_PREFILL_LAYERS))
-            if production
-            else ""
-        ),
+        # Flash prefill's effective pair publishes on owners after UD recovery.
     }.items():
         profile_env[key] = value
     _apply_profile_env(profile_env)
@@ -1809,7 +1818,7 @@ def _bind(
                 if flag not in {
                     "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                     "Q8_MMQ_PREFILL", "GR_WIDE",
-                    _GDN_COLWARPS_PREFILL_FLAG,
+                    _GDN_COLWARPS_PREFILL_FLAG, "QSA_FLASH_PREFILL",
                 }
             }
         )
@@ -1823,6 +1832,7 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    _publish_flash_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
     # The GDN columnwarp enablement gate is the plan's decision, published on
     # the owning generator/runner instead of the retired
     # ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` key. Production opens it; the
