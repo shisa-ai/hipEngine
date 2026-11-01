@@ -2957,6 +2957,15 @@ Done when: Deferred removal decision: decide whether UD still needs an explicit 
 comparison route and whether the Q4_K_M recovery plan still needs the shared implementation. Verify
 both quant bindings and user-facing execution before removing any UD-specific route.
 
+The maintained capability decision is to keep the registered multi-column,
+row-split, DPP and strict references; R0039 owns the independent composition
+quality decision. The local Q4_K_M files are `qwen35`/`qwen35moe`, not
+`qwen4_exp`, so they cannot exercise this profile's public fallback. The
+remaining check needs a Qwen4Exp Q4_K_M checkpoint: load it through
+`hipengine.LLM(..., execution_profile="production")`, verify the resolved strict
+fallback and actual GDN leaf, then generate and close. Do not substitute a
+similarly named model or count the CPU binder test as that public execution.
+
 ### R0462 — QSA gather storage and variable-span follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
