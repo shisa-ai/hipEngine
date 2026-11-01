@@ -3912,7 +3912,8 @@ def _raw_k_prefill_rowbatch_dispatch(
 # The wide kernel stages BK = 64 K-elements per LDS tile, so ``_launch`` raises
 # on any other K. Keep the constant next to the selector that has to honour it.
 def _variant_scoped_library(
-    libraries: Mapping[str, ctypes.CDLL] | None, key: KernelKey
+    libraries: Mapping[str, ctypes.CDLL] | None, key: KernelKey,
+    *, fallback_keys: tuple[str, ...] | None = None,
 ) -> ctypes.CDLL | None:
     """Resolve a caller-supplied library for a dispatch key.
 
@@ -3920,12 +3921,20 @@ def _variant_scoped_library(
     library: ``dense_wide256`` is exported from ``gguf_q8_0_dense_wide.so``
     while the coltile family lives in the q8_0 gemv library, so a map keyed only
     by quant would resolve a library that does not export the symbol. The
-    variant-scoped key wins, and the quant key remains the fallback.
+    variant-scoped key wins, and the quant key remains the fallback. Composite
+    callers can supply their existing ordered fallback keys explicitly; that
+    preserves mixed-quant and companion-library lookup without guessing an ABI.
     """
 
     if libraries is None:
         return None
-    return libraries.get(f"{key.quant}:{key.variant}", libraries.get(key.quant))
+    variant_key = f"{key.quant}:{key.variant}"
+    if variant_key in libraries:
+        return libraries[variant_key]
+    for fallback in (key.quant,) if fallback_keys is None else fallback_keys:
+        if fallback in libraries:
+            return libraries[fallback]
+    return None
 
 
 # The wide kernel stages BK = 64 K-elements per LDS tile, so ``_launch`` raises
@@ -8886,9 +8895,9 @@ def _execute_gguf_linear_pair_silu_plan(
         variant=pair_key.variant,
     )
     kwargs = {"stream": stream, "runtime": runtime}
-    library = (
-        None if libraries is None or plan.library_key is None
-        else libraries.get(plan.library_key)
+    library = _variant_scoped_library(
+        libraries, pair_key,
+        fallback_keys=() if plan.library_key is None else (plan.library_key,),
     )
     if library is not None:
         kwargs["library"] = library
@@ -9480,6 +9489,10 @@ def _pair_plan_library(
     plan: _GGUFLinearPairPlan,
     libraries: Mapping[str, ctypes.CDLL] | None,
 ):
+    if plan.pair_key is not None:
+        return _variant_scoped_library(
+            libraries, plan.pair_key, fallback_keys=plan.library_keys,
+        )
     if libraries is None:
         return None
     for key in plan.library_keys:

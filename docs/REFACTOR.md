@@ -2887,12 +2887,6 @@ exact fallback. Any extension of changed-arithmetic production defaults follows
 `docs/EXECUTION-PROFILES.md`; missing historical measurements are not a reason to refuse an explicit
 evaluation.
 
-**Library-lookup dependency:** ordinary linear launch paths use `_variant_scoped_library`; pair and
-fused paths still contain quant-only lookups. Before giving one of those families a separate shared
-object, route its lookup through the helper and test variant-key precedence, quant-key fallback and
-absent overrides through the affected launcher. A common quant key does not establish that a library
-exports every variant's symbol.
-
 **Deferred census-interface decision:** keep explicitly bounded per-module coverage or define a
 registry-wide launch record. The three dense families listed in `hipengine/kernels/launch_census.py`
 record launches; routed kernels and graph replay are outside that contract. A registry-boundary

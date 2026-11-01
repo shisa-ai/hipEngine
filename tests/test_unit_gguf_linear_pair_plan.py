@@ -57,7 +57,18 @@ def _gfx1151_pair_key() -> KernelKey:
     )
 
 
-def test_pair_plan_registered_decode_operation_operands_and_library() -> None:
+@pytest.mark.parametrize('libraries,expected_library', [
+    ({'gguf_q4_k': 'pair-library'}, 'pair-library'),
+    ({'gguf_q4_k': 'pair-library',
+      'gguf_q4_k:pack8_dual_decode_bf16_bf16_out': 'variant-library'}, 'variant-library'),
+    ({'gguf_q4_k': 'pair-library',
+      'gguf_q4_k:pack8_dual_decode_bf16_bf16_out': None}, None),
+    ({}, None),
+    (None, None),
+])
+def test_pair_plan_registered_decode_operation_operands_and_library(
+    libraries, expected_library,
+) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
@@ -95,7 +106,7 @@ def test_pair_plan_registered_decode_operation_operands_and_library() -> None:
             200,
             300,
             stream=7,
-            libraries={"gguf_q4_k": "pair-library"},
+            libraries=libraries,
             runtime="runtime-sentinel",
         )
     finally:
@@ -108,7 +119,7 @@ def test_pair_plan_registered_decode_operation_operands_and_library() -> None:
             {
                 "stream": 7,
                 "runtime": "runtime-sentinel",
-                "library": "pair-library",
+                **({'library': expected_library} if expected_library is not None else {}),
             },
         )
     ]

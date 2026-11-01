@@ -491,6 +491,27 @@ def test_pair_silu_plan_executes_exact_operands(
     assert events[0][2] == expected_args
 
 
+@pytest.mark.parametrize('mode', ['variant', 'quant', 'absent', 'none'])
+def test_pair_silu_variant_library_precedes_legacy_key(monkeypatch, mode):
+    weight_a = _Weight('a', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    weight_b = _Weight('b', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    _patch(monkeypatch, dispatch_a=_dispatch(Q4_PACK8_DECODE),
+           dispatch_b=_dispatch(Q4_PACK8_DECODE))
+    plan = _resolve(weight_a, weight_b, rows=1)
+    assert plan.pair_key is not None
+    libraries = {} if mode != 'none' else None
+    if mode in {'quant', 'variant'}:
+        libraries[plan.library_key] = 'legacy-library'
+    if mode == 'variant':
+        key = plan.pair_key
+        libraries[f'{key.quant}:{key.variant}'] = 'variant-library'
+    events = []
+    assert _execute(plan, weight_a, weight_b, events=events,
+                    monkeypatch=monkeypatch, libraries=libraries)
+    expected = {'variant': 'variant-library', 'quant': 'legacy-library'}.get(mode)
+    assert events[0][3].get('library') == expected
+
+
 def test_pair_silu_plan_declines_unrelated_decode(monkeypatch):
     _patch(
         monkeypatch,
