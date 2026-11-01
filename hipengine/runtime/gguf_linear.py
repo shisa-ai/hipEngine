@@ -3977,6 +3977,77 @@ def _parse_layer_scope(raw: str) -> frozenset[int] | None:
     return scope
 
 
+@dataclass(frozen=True)
+class Q8DenseWidePolicy:
+    """One owner's wide-route enablement and logical layer scope.
+
+    ``layers=None`` means every layer; disabling the route is independent.
+    """
+
+    enabled: bool
+    layers: frozenset[int] | None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, 'enabled', bool(self.enabled))
+        if self.layers is not None:
+            object.__setattr__(self, 'layers', frozenset(int(x) for x in self.layers))
+
+
+_q8_dense_wide_policy_bound: ContextVar[Q8DenseWidePolicy | None] = ContextVar(
+    'gguf_q8_dense_wide_policy_bound', default=None)
+_Q8_DENSE_WIDE_POLICY_MISSING = object()
+
+
+def resolve_q8_dense_wide_policy(owner: Any) -> Q8DenseWidePolicy:
+    """Resolve explicit owner state, otherwise the direct diagnostic inputs."""
+    policy = getattr(owner, 'q8_dense_wide_policy', None)
+    if policy is not None:
+        if not isinstance(policy, Q8DenseWidePolicy):
+            raise TypeError('q8_dense_wide_policy must be a Q8DenseWidePolicy or None')
+        return policy
+    bound = _q8_dense_wide_policy_bound.get()
+    if bound is not None:
+        return bound
+    return Q8DenseWidePolicy(
+        os.environ.get(_Q8_DENSE_WIDE_ENV, '0') not in {'', '0', 'false', 'False'},
+        _parse_layer_scope(os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, '')),
+    )
+
+
+@contextlib.contextmanager
+def q8_dense_wide_policy_session(policy: Q8DenseWidePolicy):
+    if not isinstance(policy, Q8DenseWidePolicy):
+        raise TypeError('q8_dense_wide_policy_session requires a Q8DenseWidePolicy')
+    token = _q8_dense_wide_policy_bound.set(policy)
+    try:
+        yield
+    finally:
+        _q8_dense_wide_policy_bound.reset(token)
+
+
+@contextlib.contextmanager
+def q8_dense_wide_policy(owner: Any, policy: Q8DenseWidePolicy | None):
+    """Temporarily replace generator/runner policy, restoring missing fields."""
+    if policy is not None and not isinstance(policy, Q8DenseWidePolicy):
+        raise TypeError('q8_dense_wide_policy must be a Q8DenseWidePolicy or None')
+    targets = [owner]
+    runner = getattr(owner, 'runner', None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    prior = [(target, getattr(target, 'q8_dense_wide_policy',
+                              _Q8_DENSE_WIDE_POLICY_MISSING)) for target in targets]
+    try:
+        for target in targets:
+            target.q8_dense_wide_policy = policy
+        yield resolve_q8_dense_wide_policy(owner)
+    finally:
+        for target, previous in reversed(prior):
+            if previous is _Q8_DENSE_WIDE_POLICY_MISSING:
+                delattr(target, 'q8_dense_wide_policy')
+            else:
+                target.q8_dense_wide_policy = previous
+
+
 def _q8_dense_wide_layers() -> frozenset[int] | None:
     """Parse the layer scope for the wide route, or ``None`` for every layer.
 
@@ -3987,6 +4058,9 @@ def _q8_dense_wide_layers() -> frozenset[int] | None:
     shape: the certified plan for ``gguf_ud_q4_k_xl`` binds 16-47 explicitly.
     """
 
+    bound = _q8_dense_wide_policy_bound.get()
+    if bound is not None:
+        return bound.layers
     return _parse_layer_scope(os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, ""))
 
 
@@ -4026,6 +4100,9 @@ def _q8_dense_wide_enabled() -> bool:
     default is the exact chain.
     """
 
+    bound = _q8_dense_wide_policy_bound.get()
+    if bound is not None:
+        return bound.enabled
     return os.environ.get(_Q8_DENSE_WIDE_ENV, "0") not in {
         "",
         "0",

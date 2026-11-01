@@ -170,7 +170,6 @@ from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
     _invalidate_wide_f16_pair,
-    _q8_dense_wide_enabled,
     _wide_f16_consumer_key,
     dense_f16_gemm_session,
     dense_wide_tail_session,
@@ -183,6 +182,9 @@ from hipengine.runtime.gguf_linear import (
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
     Q8WMMALayerScope,
+    Q8DenseWidePolicy,
+    resolve_q8_dense_wide_policy,
+    q8_dense_wide_policy_session,
     q8_wmma_layer_scope_session,
     resolve_q8_wmma_layers,
     wmma_prefill_weight_filter_session,
@@ -9869,6 +9871,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     # empty Q8WMMALayerScope means every layer; ``None`` is the unbound/direct
     # state, where the historical process key remains the fallback.
     q8_wmma_layer_scope: Q8WMMALayerScope | None = None
+    # None preserves unbound environment diagnostics until the binder migrates.
+    q8_dense_wide_policy: Q8DenseWidePolicy | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -10105,6 +10109,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         router_producer_variant: str | None = None,
         q8_mmq_prefill_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
+        q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
@@ -10119,6 +10124,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.router_producer_variant = router_producer_variant
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
+        self.q8_dense_wide_policy = q8_dense_wide_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
                 "Qwen4Exp runner max_sequence_length must be in "
@@ -10336,7 +10342,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         """
         self._require_open()
         # Qualified against the production F32-input owner; retain an opt-out.
-        if not _q8_dense_wide_enabled() or not wide_f16_activation_enabled(True):
+        if not resolve_q8_dense_wide_policy(self).enabled or not wide_f16_activation_enabled(True):
             return self._wide_f16_pair_scopes(
                 wide_f16_activation_session(False), enabled=False)
         buffer = getattr(self, "_wide_f16_activation_buffer", None)
@@ -12009,6 +12015,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
                 raw_k_prefill_variant_session(selected_raw_variant),
                 _q8_wmma_scope_sessions(q8_wmma_scope),
+                q8_dense_wide_policy_session(resolve_q8_dense_wide_policy(self)),
                 self._q8_mmq_prefill_context(),
                 self._wide_f16_activation_context(),
                 _qwen4_exp_q8_tile_scope(self),

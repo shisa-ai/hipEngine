@@ -2889,8 +2889,10 @@ evaluation.
 
 Done when: migrate wide-route diagnostic callers and the layer-scope gate with R0425's explicit
 owner-field migration, preserving selected-route reporting, caller overrides and strict/production
-isolation. Keep the registered exact fallback. Do not remove environment selectors before their
-consumers have the replacement control. The census scope and repair diagnostics are supported
+isolation. Keep the registered exact fallback. The explicit `Q8DenseWidePolicy` runner field,
+`resolve_q8_dense_wide_policy` getter and `q8_dense_wide_policy` diagnostic scope are available;
+the binder and its script consumers still need migration. Do not remove environment selectors before
+their consumers have the replacement control. The census scope and repair diagnostics are supported
 interfaces documented in `docs/ENVS.md` and `docs/KERNELS.md`, not pending removals.
 
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
