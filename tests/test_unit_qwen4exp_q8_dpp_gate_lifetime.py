@@ -195,7 +195,8 @@ def test_dpp_route_scope_exposes_family_and_restores_preemptors(enabled, raises)
                          owner, environment=env):
             assert env['HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE'] == '1'
             assert owner.q8_dense_wide_policy.enabled is False
-            assert env['HIPENGINE_GGUF_WMMA_PREFILL'] == '0'
+            assert owner.gguf_wmma_prefill_enabled is False
+            assert 'HIPENGINE_GGUF_WMMA_PREFILL' not in env
             assert env[DPP_ENV] == ('1' if enabled else '0')
             assert owner.q8_wave_scale_prefill is True
             assert owner.q8_mmq_prefill_enabled is False

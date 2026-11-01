@@ -2885,8 +2885,10 @@ and a restoring scope. Profile-gap translates its generic WMMA `--override`
 into that owner state without process writes. Candidate AR likewise separates
 and binds generic WMMA overrides. The campaign Q8 wave comparison closes the
 generic preemptor on its runner. The localizer binds its shared generic-WMMA-off
-baseline on each reference/arm/phase owner without snapshotting the key. Profile
-publication still needs migration.
+baseline on each reference/arm/phase owner without snapshotting the key. Profiles
+publish the same generic-WMMA-off decision on owners without process writes.
+The remaining IU8, flash-prefill and selected-WMMA-down controls still require
+owner transport.
 The focused guard regression is:
 
 ```bash

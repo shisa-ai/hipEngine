@@ -389,7 +389,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.production_moe_prefill_enabled is True
     assert fake_runner.production_moe_prefill_enabled is True
     assert PRODUCTION_MOE_PREFILL_ENV not in os.environ
-    assert os.environ["HIPENGINE_GGUF_WMMA_PREFILL"] == "0"
+    assert production_generator.gguf_wmma_prefill_enabled is False
+    assert fake_runner.gguf_wmma_prefill_enabled is False
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"] == "1"
     # The exact Q5_K layer-2 owner that replaced the rejected grouped candidate
     # stays production-bound.
