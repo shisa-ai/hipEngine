@@ -139,7 +139,7 @@ def main() -> None:
 
         def arm_trajectory(
             environment: dict[str, str], case, *, q8_mmq_owner=None,
-            gdn_colwarps_owner=None, gdn_layers_owner=None,
+            gdn_colwarps_owner=None, gdn_layers_owner=None, gr_spec=None,
         ):
             """Run one arm, recording per-step routing and logits evidence."""
 
@@ -187,7 +187,8 @@ def main() -> None:
                     if q8_mmq_owner is not None
                     else q8_mmq_prefill_enabled(generator)
                 )
-                with owner_scope, gdn_layers_arm_scope(generator, gdn_layers_owner), gdn_colwarps_prefill_arm_scope(
+                from scripts.qwen4exp_layer2_profile_gate import candidate_gr_iu8_scope
+                with candidate_gr_iu8_scope(generator, gr_spec), owner_scope, gdn_layers_arm_scope(generator, gdn_layers_owner), gdn_colwarps_prefill_arm_scope(
                         generator, gdn_colwarps_owner):
                     if resolve_q8_mmq_prefill(generator):
                         generator.runner.configure_mmq_prefill_resources()
@@ -221,13 +222,16 @@ def main() -> None:
         try:
             for case in cases:
                 print("strict", case["id"], flush=True)
-                strict = arm_trajectory({"HIPENGINE_QWEN4_EXP_GR_IU8": "0"}, case)
+                from dataclasses import replace
+                strict = arm_trajectory({}, case, gr_spec=replace(
+                    spec, gr_iu8_up=False, gr_iu8_down=None))
                 print("candidate", case["id"], flush=True)
                 candidate = arm_trajectory(
                     dict(spec.environment), case,
                     q8_mmq_owner=spec.q8_mmq_prefill_enabled,
                     gdn_colwarps_owner=arm_gdn_colwarps(spec),
                     gdn_layers_owner=spec.gdn_colwarps_layers,
+                    gr_spec=spec,
                 )
                 strict, strict_gdn_colwarps = strict
                 candidate, candidate_gdn_colwarps = candidate

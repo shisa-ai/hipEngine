@@ -125,6 +125,8 @@ class CandidateSpec:
     # None preserves the profile; an explicit gate preserves its layer scope.
     qsa_flash_prefill_enabled: bool | None = None
     q8_selected_down_enabled: bool | None = None
+    gr_iu8_up: bool | None = None
+    gr_iu8_down: bool | None = None
     # None preserves the base profile; parent, wave or page256 binds one arm.
     qsa_h256_prefill_mode: str | None = None
     # Explicit router-logit producer for this arm, same protocol. ``None`` keeps
@@ -385,10 +387,12 @@ CANDIDATES = {
                          "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                          "Q8_MMQ_PREFILL", "GR_WIDE",
                          "GDN_COLWARPS_PREFILL", "QSA_FLASH_PREFILL",
-                         "Q8_0_SELECTED_WMMA_DOWN",
+                         "Q8_0_SELECTED_WMMA_DOWN", "GR_IU8", "GR_IU8_DOWN",
                      }},
         q8_selected_down_enabled=False,
         gdn_colwarps_prefill=False,
+        gr_iu8_up=False,
+        gr_iu8_down=False,
         qsa_flash_prefill_enabled=False,
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
@@ -869,11 +873,9 @@ CANDIDATES["q8_blockscale_guarded_quad"] = replace(
 CANDIDATES["q8_blockscale_guarded_restore"] = replace(
     CANDIDATES["q8_blockscale_guarded_quad"], name="q8_blockscale_guarded_restore",
     scenario_id="qwen4exp-q8-blockscale-guarded-dense-qsa",
-    environment={
-        **CANDIDATES["q8_blockscale_guarded_quad"].environment,
-        "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
-        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
-    },
+    environment={**CANDIDATES["q8_blockscale_guarded_quad"].environment},
+    gr_iu8_up=True,
+    gr_iu8_down=True,
     qsa_ordered_decode=True,
     qsa_ordered_decode_v2=True,
 )
@@ -954,10 +956,9 @@ CANDIDATES["production_gdn_tiled16_q4km"] = CandidateSpec(
 CANDIDATES["production_gr_up_restore"] = CandidateSpec(
     name="production_gr_up_restore", classification="T2",
     mechanism="GR-up three-plane IU8 projection plus existing sigmoid/mean; dense and GR-down off",
-    environment={
-        "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
-        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
-    },
+    environment={},
+    gr_iu8_up=True,
+    gr_iu8_down=False,
     q8_mmq_prefill_enabled=False,
     base_profile="production", scenario_id="qwen4exp-gr-up-restoration",
     candidate_key=("hip_gfx1151", "linear", "gguf_q8_0", "iu8_wmma_prefill_f32_f32_out"),
@@ -975,10 +976,9 @@ CANDIDATES["production_gr_up_wide"] = CandidateSpec(
         "GR-up wide-row 256-column tile (F16 operands, F32 accumulate) plus "
         "the retained exact sigmoid/gated-mean epilogue; dense and GR-down off"
     ),
-    environment={
-        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
-        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "0",
-    },
+    environment={},
+    gr_iu8_up=False,
+    gr_iu8_down=False,
     gr_wide=True,
     q8_mmq_prefill_enabled=False,
     base_profile="production", scenario_id="qwen4exp-gr-up-wide-tile",
@@ -1007,11 +1007,9 @@ CANDIDATES["production_gr_down_restore"] = replace(
     CANDIDATES["production_gr_up_restore"], name="production_gr_down_restore",
     mechanism="GR-down three-plane IU8 projection; dense and GR-up off",
     scenario_id="qwen4exp-gr-down-restoration",
-    environment={
-        **CANDIDATES["production_gr_up_restore"].environment,
-        "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
-        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
-    },
+    environment={**CANDIDATES["production_gr_up_restore"].environment},
+    gr_iu8_up=False,
+    gr_iu8_down=True,
     fallback_key=("hip_gfx1151", "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
 )
 CANDIDATES["production_moe_restore"] = CandidateSpec(
@@ -1710,7 +1708,7 @@ def bind_candidate_gdn_layers(stack, generator, spec) -> str:
 _OWNER_FIELD_NAMES = (
     "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
     "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
-    "qsa_flash_prefill_enabled", "q8_selected_down_enabled")
+    "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1823,6 +1821,27 @@ def bind_candidate_gdn_colwarps_prefill(
     return resolve_gdn_colwarps_prefill(candidate_generator)
 
 
+def bind_candidate_gr_iu8(stack, owner, spec):
+    """Bind requested projection axes, preserving omitted base choices."""
+    from scripts.qwen4exp_profile_gap import bind_gr_iu8_override
+    overrides = {key: '1' if value else '0' for key, value in (
+        ('HIPENGINE_QWEN4_EXP_GR_IU8', spec.gr_iu8_up),
+        ('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', spec.gr_iu8_down)) if value is not None}
+    return bind_gr_iu8_override(stack, owner, overrides)['gr_iu8_policy']
+
+
+@contextmanager
+def candidate_gr_iu8_scope(owner, spec):
+    """Restore the measured owner's projection choices after each arm."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
+    with ExitStack() as stack:
+        if spec is None:
+            policy = resolve_gr_iu8_policy(getattr(owner, 'gr_iu8_policy', None))
+            yield {'up': policy.up, 'down': policy.down}
+        else:
+            yield bind_candidate_gr_iu8(stack, owner, spec)
+
+
 def bind_candidate_selected_q8_down(stack, owner, spec):
     """Bind a candidate gate or preserve the base owner's effective choice."""
     from hipengine.runtime.qwen4_exp_runner import (
@@ -1884,6 +1903,8 @@ def bind_candidate_owners(
         dispatch_stack.enter_context(qsa_ordered_decode_v2(
             runner, candidate_spec.qsa_ordered_decode_v2))
     return {
+        "gr_iu8_policy": bind_candidate_gr_iu8(
+            dispatch_stack, candidate_generator, candidate_spec),
         "q8_selected_down_enabled": bind_candidate_selected_q8_down(
             dispatch_stack, candidate_generator, candidate_spec),
         "qsa_flash_prefill_policy": bind_candidate_flash(
@@ -1981,6 +2002,8 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         and candidate_spec.qsa_wmma_enabled is None
         and candidate_spec.qsa_flash_prefill_enabled is None
         and candidate_spec.q8_selected_down_enabled is None
+        and candidate_spec.gr_iu8_up is None
+        and candidate_spec.gr_iu8_down is None
         and candidate_spec.production_moe_prefill_enabled is None
         and candidate_spec.q8_mmq_prefill_enabled is None
         and candidate_spec.q8_mmq_attn_gate_enabled is None
@@ -2190,6 +2213,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # other route binds it on this runner and the plan's choice comes back on
     # unwind. Dispatch counting on the candidate key proves which projection
     # actually ran.
+    resolved_gr_iu8 = bind_candidate_gr_iu8(
+        dispatch_stack, candidate_generator, candidate_spec)
     resolved_selected_down = bind_candidate_selected_q8_down(
         dispatch_stack, candidate_generator, candidate_spec)
     resolved_flash = bind_candidate_flash(
@@ -2603,6 +2628,7 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "router_producer_variant": candidate_spec.router_producer_variant,
             "q8_dense_wide_policy": resolved_dense_wide,
+            "gr_iu8_policy": resolved_gr_iu8,
             "q8_selected_down_enabled": resolved_selected_down,
             "qsa_flash_prefill_policy": resolved_flash,
             "gdn_colwarps_layers": resolved_gdn_layers,

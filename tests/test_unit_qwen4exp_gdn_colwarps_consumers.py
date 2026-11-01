@@ -186,7 +186,8 @@ def test_the_shared_graph_inventory_admits_the_gate_but_not_captured_units():
 
     assert candidate_owner_changes(SERIAL_CANDIDATE) == {
         "gdn_colwarps_prefill": False, "qsa_ordered_decode": False,
-        "qsa_flash_prefill_enabled": False, "q8_selected_down_enabled": False}
+        "qsa_flash_prefill_enabled": False, "q8_selected_down_enabled": False,
+        "gr_iu8_up": False, "gr_iu8_down": False}
 
     prefill_restore_ab.validate_shared_graphs(
         [], [candidate_owner_changes(SERIAL_CANDIDATE)])

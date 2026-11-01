@@ -25,7 +25,7 @@ from scripts.qwen4exp_ple_gather_ab import pair_sequence
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, CANDIDATES, gr_wide_arm_scope,
     gdn_colwarps_prefill_arm_scope, gdn_layers_arm_scope, candidate_flash_scope,
-    candidate_selected_q8_down_scope,
+    candidate_selected_q8_down_scope, candidate_gr_iu8_scope,
 )
 from scripts.qwen4exp_journey_localize import set_flags
 from hipengine.runtime.qwen4_exp_runner import (
@@ -163,6 +163,8 @@ def main():
                 else q8_mmq_prefill_enabled(runner)
             )
             with (
+                candidate_gr_iu8_scope(runner, CANDIDATES['production_conservative']
+                                       if mode == 'after' else None) as gr_policy,
                 candidate_selected_q8_down_scope(runner, CANDIDATES['production_conservative']
                                                  if mode == 'after' else None) as selected_down,
                 candidate_flash_scope(runner, CANDIDATES['production_conservative']
@@ -187,6 +189,7 @@ def main():
                 # Read inside the scope: the gate these samples ran under.
                 row["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
                     runner)
+                row['gr_iu8_policy'] = gr_policy
                 row['q8_selected_down_enabled'] = selected_down
                 row['qsa_flash_prefill_policy'] = flash_policy
                 row["qsa_ordered_decode"] = resolve_qsa_ordered_decode(runner)

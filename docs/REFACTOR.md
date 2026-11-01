@@ -2920,6 +2920,9 @@ keep their process fallback pending diagnostic and profile publication migration
 The profile-gap and candidate autoregressive GR overrides bind and report the
 pair on their measured owners, preserving omitted axes and leaving both ambient
 keys untouched. The candidate splits them out before both process-write stages.
+Layer-two candidates declare independent optional GR-up/down axes and bind the
+effective pair in their owner helper and measured runner. Shared-graph inventory,
+prefill-restore, conservative-cost and GR router localization use those choices.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

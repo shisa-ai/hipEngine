@@ -28,6 +28,7 @@ from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
     candidate_owner_changes, dense_wide_layers_arm_scope, gdn_layers_arm_scope,
     gdn_colwarps_prefill_arm_scope, candidate_flash_scope, candidate_selected_q8_down_scope,
+    candidate_gr_iu8_scope,
     gdn_tile16_variant_arm_scope,
     gr_wide_arm_scope,
     q8_down_variant_arm_scope,
@@ -60,7 +61,7 @@ SHARED_DECODE_SAFE_ENV = frozenset()
 SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset(
     {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
      "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
-     "qsa_flash_prefill_enabled", "q8_selected_down_enabled"})
+     "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down"})
 SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
@@ -447,6 +448,7 @@ def main():
                 else q8_mmq_prefill_enabled(runner)
             )
             with (
+                candidate_gr_iu8_scope(runner, CANDIDATES.get(arm)) as gr_policy,
                 candidate_selected_q8_down_scope(runner, CANDIDATES.get(arm)) as selected_down,
                 candidate_flash_scope(runner, CANDIDATES.get(arm)) as flash_policy,
                 q8_scope,
@@ -479,6 +481,7 @@ def main():
                 row["active_chunk_size"] = runner.prefill_chunk_size
                 row['gdn_colwarps_layers'] = resolve_gdn_colwarps_layers(runner)
                 row["q8_dense_wide_policy"] = resolve_q8_dense_wide_policy(runner).to_report()
+                row['gr_iu8_policy'] = gr_policy
                 row["q8_selected_down_enabled"] = selected_down
                 row["q8_down_variant"] = resolve_q8_down_variant(runner)
                 row["gdn_tile16_variant"] = resolve_gdn_tile16_variant(runner)

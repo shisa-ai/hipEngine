@@ -104,9 +104,9 @@ def test_real_gr_alias_and_candidate_scopes_match():
         assert spec.requires_dispatch_count
         assert spec.classification == "T2"
         assert spec.dispatch_shape_positions == (3, 4, 5)
-        assert spec.environment == {
-            "HIPENGINE_QWEN4_EXP_" + flag: "1" if flag == enabled else "0"
-            for flag in ("GR_IU8", "GR_IU8_DOWN")}
+        assert spec.environment == {}
+        assert spec.gr_iu8_up is (enabled == 'GR_IU8')
+        assert spec.gr_iu8_down is (enabled == 'GR_IU8_DOWN')
         assert spec.q8_mmq_prefill_enabled is False
         with count_candidate_dispatch(
             key=KernelKey(*spec.candidate_key), direct_target=spec.direct_dispatch_target,

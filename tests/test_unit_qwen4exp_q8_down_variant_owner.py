@@ -841,6 +841,7 @@ def test_the_shared_graph_inventory_lists_only_actual_owner_changes():
     assert gate.candidate_owner_changes(
         gate.CANDIDATES["production_conservative"]
     ) == {"gdn_colwarps_prefill": False, "qsa_ordered_decode": False,
-          "qsa_flash_prefill_enabled": False, "q8_selected_down_enabled": False}
+          "qsa_flash_prefill_enabled": False, "q8_selected_down_enabled": False,
+          "gr_iu8_up": False, "gr_iu8_down": False}
     # A ``None`` entry is not a change even when it is passed explicitly.
     restore.validate_shared_graphs([], [{"q8_down_variant": None}])
