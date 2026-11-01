@@ -5856,6 +5856,37 @@ def _resolve_q8_mmq_prefill_enabled(enabled: bool | None) -> bool:
     )
 
 
+def resolve_q8_mmq_prepack(owner: Any) -> bool:
+    """Resolve the owner's prepack choice or the exact unbound ``1`` input."""
+    enabled = getattr(owner, 'q8_mmq_prepack_enabled', None)
+    return (os.environ.get('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK', '0') == '1'
+            if enabled is None else bool(enabled))
+
+
+@contextlib.contextmanager
+def q8_mmq_prepack_enabled(owner: Any, enabled: bool | None):
+    """Bind a prepack choice without allocating or discarding owned sidecars.
+
+    Call ``configure_mmq_prefill_resources()`` explicitly before running a
+    newly enabled prepacked route. Both generator and current runner restore
+    their prior decisions on exit, including after an exception.
+    """
+    targets = _q8_mmq_prefill_targets(owner)
+    missing = object()
+    prior = [(target, getattr(target, 'q8_mmq_prepack_enabled', missing))
+             for target in targets]
+    try:
+        for target in targets:
+            target.q8_mmq_prepack_enabled = None if enabled is None else bool(enabled)
+        yield resolve_q8_mmq_prepack(owner)
+    finally:
+        for target, previous in prior:
+            if previous is missing:
+                delattr(target, 'q8_mmq_prepack_enabled')
+            else:
+                target.q8_mmq_prepack_enabled = previous
+
+
 def resolve_q8_mmq_prefill(owner: Any) -> bool:
     """Return the Q8 MMQ prefill decision a generator or runner would use."""
 
@@ -9901,6 +9932,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     # fallback; a bound decision never reads it. Resource preparation stays an
     # explicit ``configure_mmq_prefill_resources()`` call.
     q8_mmq_prefill_enabled: bool | None = None
+    # The same choice controls sidecar preparation and prefill session entry.
+    q8_mmq_prepack_enabled: bool | None = None
     # The f16 WMMA dense-Q8 layer scope is the owning runner's decision. An
     # empty Q8WMMALayerScope means every layer; ``None`` is the unbound/direct
     # state, where the historical process key remains the fallback.
@@ -10144,6 +10177,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         production_moe_prefill_enabled: bool | None = None,
         router_producer_variant: str | None = None,
         q8_mmq_prefill_enabled: bool | None = None,
+        q8_mmq_prepack_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
         q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
     ) -> None:
@@ -10159,6 +10193,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.production_moe_prefill_enabled = production_moe_prefill_enabled
         self.router_producer_variant = router_producer_variant
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
+        self.q8_mmq_prepack_enabled = q8_mmq_prepack_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
         self.q8_dense_wide_policy = q8_dense_wide_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
@@ -10424,9 +10459,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         return workspace
 
     def _configure_q8_mmq_weight_sidecars(self) -> None:
-        if self._q8_mmq_weight_sidecars is not None or os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "0"
-        ) != "1" or self._q8_mmq_library is None:
+        if (self._q8_mmq_weight_sidecars is not None
+                or not resolve_q8_mmq_prepack(self) or self._q8_mmq_library is None):
             return
         from hipengine.runtime.gguf_q8_mmq_sidecars import Q8MMQWeightSidecars
         owner = Q8MMQWeightSidecars(runtime=self.runtime,library=self._q8_mmq_library)
@@ -10537,7 +10571,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             else (None, None, None)
         )
         prepacked = None
-        if enabled and os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "0") == "1":
+        if enabled and resolve_q8_mmq_prepack(self):
             if self._q8_mmq_weight_sidecars is None:
                 raise RuntimeError("Q8 MMQ prepacked route requires prepared sidecar ownership")
             prepacked = self._q8_mmq_weight_sidecars.mapping

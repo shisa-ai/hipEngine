@@ -96,6 +96,29 @@ def test_runner_admission_scope_and_reuse(monkeypatch):
     assert len(prepared) == 2
 
 
+@pytest.mark.parametrize('enabled', [False, True])
+def test_sidecar_preparation_uses_explicit_owner(monkeypatch, enabled):
+    from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
+    from hipengine.runtime import gguf_q8_mmq_sidecars as sidecars
+    prepared = []
+    class FakeOwner:
+        def __init__(self, **kwargs): pass
+        def prepare(self, value): prepared.append(value)
+        def close(self): pass
+    monkeypatch.setattr(sidecars, 'Q8MMQWeightSidecars', FakeOwner)
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK', '0' if enabled else '1')
+    runner = SimpleNamespace(q8_mmq_prepack_enabled=enabled,
+        _q8_mmq_weight_sidecars=None, _q8_mmq_library=object(), runtime=object(),
+        gdn_bindings={0: SimpleNamespace(mixer=SimpleNamespace(projections={
+            'attn_qkv': weight(), 'ssm_out': weight(raw=200, k=6144, n=2560)}))})
+    Qwen4ExpGGUFResidentModelRunner._configure_q8_mmq_weight_sidecars(runner)
+    assert bool(prepared) is enabled
+    published = runner._q8_mmq_weight_sidecars
+    runner.q8_mmq_prepack_enabled = False
+    Qwen4ExpGGUFResidentModelRunner._configure_q8_mmq_weight_sidecars(runner)
+    assert runner._q8_mmq_weight_sidecars is published
+
+
 def test_ab_mode_changes_only_prepack_flag():
     from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode
     env = {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL":"1","unrelated":"keep"}
