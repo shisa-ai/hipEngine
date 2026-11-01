@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'decode_sync'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'decode_sync', 'layer2'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_flash_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -46,7 +46,15 @@ def test_public_flash_owner(monkeypatch, length, interface):
             policy = runtime.QSAFlashPrefillPolicy(enabled, '35-47')
             with ExitStack() as scopes:
                 expected_enabled = enabled
-                if interface == 'decode_sync':
+                if interface == 'layer2':
+                    from dataclasses import replace
+                    from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, bind_candidate_flash
+                    scopes.enter_context(runtime.qsa_flash_prefill(
+                        owner, runtime.QSAFlashPrefillPolicy(True, '35-47')))
+                    spec = replace(CANDIDATES['production_conservative'], qsa_flash_prefill_enabled=enabled)
+                    report = bind_candidate_flash(scopes, owner, spec)
+                    assert report == {'enabled': enabled, 'layers': '35-47'}
+                elif interface == 'decode_sync':
                     from scripts.qwen4exp_decode_sync_ab import bind_production_flash
                     report = bind_production_flash(scopes, owner)
                     assert report == {'enabled': True, 'layers': '35-47'}

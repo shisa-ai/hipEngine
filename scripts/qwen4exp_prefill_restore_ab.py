@@ -27,7 +27,7 @@ from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
     candidate_owner_changes, dense_wide_layers_arm_scope, gdn_layers_arm_scope,
-    gdn_colwarps_prefill_arm_scope,
+    gdn_colwarps_prefill_arm_scope, candidate_flash_scope,
     gdn_tile16_variant_arm_scope,
     gr_wide_arm_scope,
     q8_down_variant_arm_scope,
@@ -63,7 +63,8 @@ SHARED_DECODE_SAFE_ENV = frozenset(
 # selects the c1 H256 decode route, so it is not a captured decode unit either.
 SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset(
     {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
-     "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers"})
+     "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
+     "qsa_flash_prefill_enabled"})
 SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
@@ -450,6 +451,7 @@ def main():
                 else q8_mmq_prefill_enabled(runner)
             )
             with (
+                candidate_flash_scope(runner, CANDIDATES.get(arm)) as flash_policy,
                 q8_scope,
                 arm_dense_wide_scope(runner, arm),
                 arm_gdn_layers_scope(runner, arm),
@@ -485,6 +487,7 @@ def main():
                 # Read inside the scope: the gate these samples ran under.
                 row["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
                     runner)
+                row['qsa_flash_prefill_policy'] = flash_policy
                 row["qsa_ordered_decode"] = resolve_qsa_ordered_decode(runner)
             logits = np.asarray(last["result"].logits)
             state = _state_summary(runner)

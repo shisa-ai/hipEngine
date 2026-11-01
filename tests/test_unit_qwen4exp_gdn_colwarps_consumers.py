@@ -185,7 +185,8 @@ def test_the_shared_graph_inventory_admits_the_gate_but_not_captured_units():
     """The conservative arm changes only prefill-or-uncaptured selectors."""
 
     assert candidate_owner_changes(SERIAL_CANDIDATE) == {
-        "gdn_colwarps_prefill": False, "qsa_ordered_decode": False}
+        "gdn_colwarps_prefill": False, "qsa_ordered_decode": False,
+        "qsa_flash_prefill_enabled": False}
 
     prefill_restore_ab.validate_shared_graphs(
         [], [candidate_owner_changes(SERIAL_CANDIDATE)])

@@ -132,6 +132,7 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         gr_wide=None,
         q8_dense_wide_layers=None,
         gdn_colwarps_layers=None,
+        qsa_flash_prefill_enabled=None,
     )
 
     assert module._candidate_named_profile_intact(spec) is expected

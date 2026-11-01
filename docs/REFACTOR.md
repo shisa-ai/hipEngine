@@ -2897,6 +2897,9 @@ the unbound low-level environment fallback remains a comparison interface.
 Profile-gap and candidate AR generic flash overrides bind the same paired owner
 policy, preserving omitted axes and recording actual policy without process
 writes. Decode-sync binds its flash-on suffix policy on the measured owner.
+Layer2's conservative candidate declares its flash gate on the owner, preserving
+its layer scope; the shared candidate path and per-arm diagnostics bind that
+declaration without process writes.
 The focused guard regression is:
 
 ```bash

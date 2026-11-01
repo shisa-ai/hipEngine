@@ -122,6 +122,8 @@ class CandidateSpec:
     # ``qsa_prefill_head_mode`` around the measured rows and restores it after.
     qsa_prefill_head_mode: str | None = None
     qsa_wmma_enabled: bool | None = None
+    # None preserves the profile; an explicit gate preserves its layer scope.
+    qsa_flash_prefill_enabled: bool | None = None
     # None preserves the base profile; parent, wave or page256 binds one arm.
     qsa_h256_prefill_mode: str | None = None
     # Explicit router-logit producer for this arm, same protocol. ``None`` keeps
@@ -382,9 +384,10 @@ CANDIDATES = {
                      if flag not in {
                          "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                          "Q8_MMQ_PREFILL", "GR_WIDE",
-                         "GDN_COLWARPS_PREFILL",
+                         "GDN_COLWARPS_PREFILL", "QSA_FLASH_PREFILL",
                      }},
         gdn_colwarps_prefill=False,
+        qsa_flash_prefill_enabled=False,
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
         candidate_key=None,
@@ -1706,7 +1709,8 @@ def bind_candidate_gdn_layers(stack, generator, spec) -> str:
 #: value is a change an arm makes.
 _OWNER_FIELD_NAMES = (
     "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
-    "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers")
+    "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
+    "qsa_flash_prefill_enabled")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1819,6 +1823,25 @@ def bind_candidate_gdn_colwarps_prefill(
     return resolve_gdn_colwarps_prefill(candidate_generator)
 
 
+def bind_candidate_flash(stack, owner, spec):
+    """Bind an explicit flash gate while preserving the owner's layer scope."""
+    from scripts.qwen4exp_profile_gap import bind_flash_prefill_override
+    overrides = {} if spec.qsa_flash_prefill_enabled is None else {
+        'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL': '1' if spec.qsa_flash_prefill_enabled else '0'}
+    return bind_flash_prefill_override(stack, owner, overrides)['qsa_flash_prefill_policy']
+
+
+@contextmanager
+def candidate_flash_scope(owner, spec):
+    """Scope a candidate's flash gate; an absent candidate keeps the base policy."""
+    with ExitStack() as stack:
+        if spec is None:
+            policy = getattr(owner, 'qsa_flash_prefill_policy', None)
+            yield None if policy is None else {'enabled': policy.enabled, 'layers': policy.layers}
+        else:
+            yield bind_candidate_flash(stack, owner, spec)
+
+
 def bind_candidate_owners(
     dispatch_stack: ExitStack,
     candidate_generator: Any,
@@ -1842,6 +1865,8 @@ def bind_candidate_owners(
         dispatch_stack.enter_context(qsa_ordered_decode_v2(
             runner, candidate_spec.qsa_ordered_decode_v2))
     return {
+        "qsa_flash_prefill_policy": bind_candidate_flash(
+            dispatch_stack, candidate_generator, candidate_spec),
         "q8_dense_wide_policy": bind_candidate_dense_wide(
             dispatch_stack, candidate_generator, candidate_spec),
         "qsa_ordered_decode": bool(getattr(runner, "qsa_ordered_decode", False)),
@@ -1933,6 +1958,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
     return (
         not candidate_spec.environment
         and candidate_spec.qsa_wmma_enabled is None
+        and candidate_spec.qsa_flash_prefill_enabled is None
         and candidate_spec.production_moe_prefill_enabled is None
         and candidate_spec.q8_mmq_prefill_enabled is None
         and candidate_spec.q8_mmq_attn_gate_enabled is None
@@ -2142,6 +2168,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # other route binds it on this runner and the plan's choice comes back on
     # unwind. Dispatch counting on the candidate key proves which projection
     # actually ran.
+    resolved_flash = bind_candidate_flash(
+        dispatch_stack, candidate_generator, candidate_spec)
     resolved_dense_wide = bind_candidate_dense_wide(
         dispatch_stack, candidate_generator, candidate_spec)
     resolved_gr_wide = bind_candidate_gr_wide(
@@ -2551,6 +2579,7 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "router_producer_variant": candidate_spec.router_producer_variant,
             "q8_dense_wide_policy": resolved_dense_wide,
+            "qsa_flash_prefill_policy": resolved_flash,
             "gdn_colwarps_layers": resolved_gdn_layers,
             "gdn_colwarps_layers_override": candidate_spec.gdn_colwarps_layers,
             "q8_dense_wide_layers_override": candidate_spec.q8_dense_wide_layers,

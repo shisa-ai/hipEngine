@@ -1219,6 +1219,8 @@ def main():
                 os.environ.update(ARMS[arm])
                 candidate = []
                 arm_scope = ExitStack()
+                from scripts.qwen4exp_layer2_profile_gate import candidate_flash_scope
+                arm_scope.enter_context(candidate_flash_scope(generator, CANDIDATES.get(arm)))
                 arm_scope.enter_context(generic_wmma_baseline_scope(generator))
                 arm_scope.enter_context(production_moe_arm_scope(generator, arm))
                 arm_scope.enter_context(q8_mmq_arm_scope(generator, arm))
