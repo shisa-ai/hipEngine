@@ -134,8 +134,12 @@ class Qwen4ExpMTPTextProvider:
                     runtime=target_generator.runner.runtime,
                 )
                 # The draft layer is a c1 H256 QSA decode consumer, so it runs
-                # the target's plan-published ordered-v2 decision rather than a
-                # process-wide switch of its own.
+                # the target's plan-published ordered decode prerequisite and
+                # its ordered-v2 decision rather than a process-wide switch of
+                # its own.
+                draft_runner.qsa_ordered_decode = bool(
+                    getattr(target_generator.runner, "qsa_ordered_decode", False)
+                )
                 draft_runner.qsa_ordered_decode_v2 = bool(
                     getattr(target_generator.runner, "qsa_ordered_decode_v2", False)
                 )

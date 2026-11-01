@@ -36,10 +36,12 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     assert generator.q4_dp4a_decode_layers == frozenset(
         (0, 2, 5, 6, 8, 9, 10, 11) + tuple(range(13, 48)))
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"] == "1"
-    # The ordered-v2 leaf is request-local runner state too: the binder
-    # publishes the plan's decision on the generator and the runner it built,
-    # and writes no process-wide switch for it.
+    # The ordered sparse-decode prerequisite is request-local runner state too:
+    # the binder publishes the plan's decision on the generator and the runner
+    # it built, and writes no process-wide switch for it.
+    assert generator.qsa_ordered_decode is True
+    assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE" not in os.environ
+    # The ordered-v2 leaf rides that prerequisite as its own published field.
     assert generator.qsa_ordered_decode_v2 is True
     assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2" not in os.environ
     selected = {(r["layer"], r["scope"]): r["selected_variant"]

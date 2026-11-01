@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_colwarps_prefill, gdn_peer_prefill, gdn_register_prefill, gdn_tile16_variant, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_gdn_colwarps_prefill, resolve_gdn_tile16_variant, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_colwarps_prefill, gdn_peer_prefill, gdn_register_prefill, gdn_tile16_variant, qsa_h256_prefill_mode, qsa_ordered_decode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_gdn_colwarps_prefill, resolve_gdn_tile16_variant, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill, resolve_qsa_ordered_decode
 from hipengine.runtime.qwen4_exp_runner import Q8_DOWN_WMMA_VARIANT
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
@@ -695,6 +695,98 @@ def gr_wide_arm_report(generator, arm):
         arm, bool(getattr(generator.runner, "gr_wide", False)))
 
 
+# The ordered sparse-decode prerequisite was a captured ``QSA_*`` process key,
+# so each binding's former snapshot carried one value: the strict bind's off,
+# the production bind's on. Reconstruct each snapshot from the binding that
+# published it, let the arm builders copy the value through their own
+# construction, then drop the key and bind the owner decision the arm loop
+# measures. No arm is classified by name.
+_QSA_ORDERED_ENV = PREFIX + "QSA_ORDERED_DECODE"
+
+
+def qsa_ordered_snapshot(flags, *, published):
+    """One former environment snapshot, including the retired ordered key.
+
+    ``flags`` is the snapshot the harness captures today and ``published`` is
+    the route the binding that produced it publishes on its runner, which is
+    exactly what the retired key carried at that point.
+    """
+
+    return {**flags, _QSA_ORDERED_ENV: "1" if published else "0"}
+
+
+def declared_qsa_ordered_decode():
+    """Candidate arms whose declaration names an explicit ordered route."""
+
+    return {
+        name: bool(candidate.qsa_ordered_decode)
+        for name, candidate in ((name, CANDIDATES.get(name)) for name in ARMS)
+        if candidate is not None and candidate.qsa_ordered_decode is not None
+    }
+
+
+#: Former effective ordered route per arm, recorded from the same dicts that
+#: produced each arm's former environment. Seeded with the candidate
+#: declarations; ``main`` records the arms built from the two bindings' former
+#: snapshots and defaults the rest to the production route.
+_QSA_ORDERED_ARM_VALUES: dict[str, bool] = declared_qsa_ordered_decode()
+
+
+def migrate_qsa_ordered_arms(arms, *, production_value, declared=None):
+    """Record each arm's former ordered route, then drop the retired key.
+
+    The retired key was a captured ``QSA_*`` process key. An arm whose former
+    environment named it ran that value - including an arm built from a
+    binding's snapshot and a family arm that overlaid the production slice - an
+    arm whose candidate declaration names it ran the declaration, because the
+    candidate environment carried it before retirement; and an arm that named
+    it nowhere ran whatever the production bind had published - the arm loop's
+    ``bound`` snapshot, which is ``production_value`` here.
+    """
+
+    declared = declared or {}
+    values = dict(declared)
+    for name, env in arms.items():
+        raw = env.pop(_QSA_ORDERED_ENV, None)
+        if name in values:
+            continue
+        values[name] = bool(production_value) if raw is None else _env_flag(raw)
+    return values
+
+
+def arm_qsa_ordered_decode(arm, published):
+    """The ordered sparse-decode route this arm's former process key implied."""
+
+    candidate = CANDIDATES.get(arm)
+    if candidate is not None and candidate.qsa_ordered_decode is not None:
+        return bool(candidate.qsa_ordered_decode)
+    return _QSA_ORDERED_ARM_VALUES.get(arm, bool(published))
+
+
+def qsa_ordered_arm_report(generator, arm):
+    """Name the ordered route that actually ran for this arm.
+
+    Read inside the arm scope, so a split arm reports the value its decode
+    phase ran under rather than the publication the unwind put back; the arm
+    loop names the other phase beside it.
+    """
+
+    return resolve_qsa_ordered_decode(generator.runner)
+
+
+def qsa_ordered_split_scope(runner, arm, phase):
+    """Bind one split phase's ordered route, as its former flag set did.
+
+    A split arm's former environment carried the strict snapshot's value in its
+    strict phase and the production bind's in the other, so only the strict
+    phase closes the route and the plan's own decision comes back on exit.
+    """
+
+    if arm not in SPLIT_PHASE_ARMS or not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    return qsa_ordered_decode(runner, False)
+
+
 def declared_q8_down_variants():
     """Arms whose candidate declaration names a grouped Q8_0 down owner.
 
@@ -859,6 +951,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                             runner, arm, "prefill"), production_moe_split_scope(
                             runner, arm, "prefill"), gr_wide_split_scope(
                             runner, arm, "prefill"), gdn_colwarps_split_scope(
+                            runner, arm, "prefill"), qsa_ordered_split_scope(
                             runner, arm, "prefill"):
         runner.reset()
         result = runner.prefill(prompt_ids)
@@ -869,6 +962,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
             runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
             runner, arm, "decode"), gdn_colwarps_split_scope(
+            runner, arm, "decode"), qsa_ordered_split_scope(
             runner, arm, "decode"):
         for token in forced_ids:
             result = runner.step(token)
@@ -903,13 +997,20 @@ def main():
         # The strict bind's published gate is what its former key carried; read
         # it from the owner, before the generator closes.
         strict_gate = bool(strict_generator.gdn_colwarps_prefill)
+        # The ordered sparse-decode prerequisite was a captured ``QSA_*``
+        # process key too, so the strict snapshot carried the strict bind's
+        # route. Read it from the owner before the generator closes.
+        strict_ordered = resolve_qsa_ordered_decode(strict_generator.runner)
         strict_flags = strict_environment(os.environ)
         # The retired GR-up wide key was a captured ``GR_*`` process key, so the
         # strict snapshot carried the strict bind's route. Reconstruct it from
         # the binding that published it and let ``snapshot_arms`` rebuild the
         # arms that named it.
-        strict_snapshot = gr_wide_snapshot(
-            strict_flags, published=bool(strict_generator.runner.gr_wide))
+        strict_snapshot = qsa_ordered_snapshot(
+            gr_wide_snapshot(
+                strict_flags,
+                published=bool(strict_generator.runner.gr_wide)),
+            published=strict_ordered)
         strict = {}
         tokens = {}
         descriptors = []
@@ -949,8 +1050,10 @@ def main():
             "arms": {}, "strict_after_close": strict_close,
         }
         generator, production_profile, _ = _make_generator(args, "production")
-        production_snapshot = gr_wide_snapshot(
-            os.environ, published=bool(generator.runner.gr_wide))
+        production_snapshot = qsa_ordered_snapshot(
+            gr_wide_snapshot(
+                os.environ, published=bool(generator.runner.gr_wide)),
+            published=resolve_qsa_ordered_decode(generator.runner))
         snapshot_arms(strict_snapshot, production_snapshot)
         # The production bind's published gate is the plan's own decision; an arm
         # that named nothing ran it, and so did its peer scope.
@@ -967,6 +1070,14 @@ def main():
         _GR_WIDE_ARM_VALUES.update(migrate_gr_wide_arms(
             ARMS, production_value=bool(generator.runner.gr_wide),
             declared=declared_gr_wide()))
+        # Same for the ordered sparse-decode prerequisite: the arms above were
+        # built from the two bindings' former snapshots, so each one carries the
+        # value its construction implied. Record it, then bind the owner
+        # decision the arm loop measures instead of a process key.
+        published_ordered = resolve_qsa_ordered_decode(generator.runner)
+        _QSA_ORDERED_ARM_VALUES.update(migrate_qsa_ordered_arms(
+            ARMS, production_value=published_ordered,
+            declared=declared_qsa_ordered_decode()))
         # The strict binding historically published Q8 MMQ off. Bind that owner
         # decision explicitly now that the process key is gone.
         for name in tuple(ARMS):
@@ -1015,11 +1126,16 @@ def main():
                         arm, generator.runner.gdn_register_prefill)))
                 arm_scope.enter_context(qsa_h256_prefill_mode(
                     generator.runner, h256_arm_mode(arm)))
+                arm_scope.enter_context(qsa_ordered_decode(
+                    generator.runner,
+                    arm_qsa_ordered_decode(arm, published_ordered)))
                 if serial_gdn(arm, published_gate):
                     arm_scope.enter_context(
                         gdn_peer_prefill(generator.runner, False))
                 with arm_scope, gdn_colwarps_arm_scope(
                         generator, arm) as effective_gdn_colwarps:
+                    effective_qsa_ordered = qsa_ordered_arm_report(
+                        generator, arm)
                     for row in prompt_rows:
                         key = row["id"]
                         forced = [r["token_id"] for r in strict[key][:-1]]
@@ -1058,6 +1174,7 @@ def main():
                     # Captured inside the arm scope: the value the measured
                     # rows ran under, not the publication the unwind put back.
                     "gdn_colwarps_prefill": effective_gdn_colwarps,
+                    "qsa_ordered_decode": effective_qsa_ordered,
                     "gr_wide": gr_wide_arm_report(generator, arm),
                 }
                 if arm in SPLIT_PHASE_ARMS:
@@ -1067,6 +1184,14 @@ def main():
                         phase: (
                             False if split_phase_is_strict(arm, phase)
                             else effective_gdn_colwarps)
+                        for phase in ("prefill", "decode")
+                    }
+                    # The ordered route only moves in the strict phase; the
+                    # other phase runs the plan's own published decision.
+                    owner_overrides["qsa_ordered_decode_phases"] = {
+                        phase: (
+                            False if split_phase_is_strict(arm, phase)
+                            else effective_qsa_ordered)
                         for phase in ("prefill", "decode")
                     }
                 report["arms"][arm] = {

@@ -3019,16 +3019,6 @@ and cache/ stream ownership; run numerical repair parity and public same-profile
 adopted change. Earlier fixed-cost estimates are historical hypotheses, not a fresh promise of
 recoverable wall time. Kernel traces follow the cached- build protocol in `docs/OPTIMIZATION.md`.
 
-### R0450 — Ordered QSA prerequisite ownership
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE`.
-
-Done when: Move `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` into explicit profile/runner ownership with its
-campaign and drift callers. Preserve non-ordered, ordered-v1 and runner-owned three-pass-v2 routes.
-Verify scalar and batched public route selection independently before deleting the reader.
-
 ### R0446 — Launch-library lifetime and environment observation
 
 Owner: `hipengine/core/build.py`.

@@ -24,7 +24,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q8_DOWN_FORKB_FIELD,
     Q8_DOWN_PREEMPTING_ENV,
     Q8_DOWN_ROW4_FIELD,
-    QSA_ORDERED_DECODE_ENV,
+    QSA_ORDERED_DECODE_FIELD,
     ROW4_ENGAGEMENT_EXEMPT,
     _apply_mode,
     q51_fold_control_record,
@@ -554,20 +554,26 @@ def test_the_decode_arm_keeps_its_binding_until_the_block_ends():
     # those steps, which is the block's exit.
     from scripts.qwen4exp_row4_state_gate import arm_control
 
-    env = {QSA_ORDERED_DECODE_ENV: "1", "other": "keep"}
-    owner = SimpleNamespace(qsa_ordered_decode_v2=False)
+    env = {"other": "keep"}
+    owner = SimpleNamespace(
+        **{QSA_ORDERED_DECODE_FIELD: True, "qsa_ordered_decode_v2": False})
     with arm_control("qsa-ordered-v2", "1", owner, environment=env):
         assert owner.qsa_ordered_decode_v2 is True
-        assert env == {QSA_ORDERED_DECODE_ENV: "1", "other": "keep"}
+        # The ordered prerequisite is the plan's published owner state, so the
+        # arm rides it and writes no process key.
+        assert getattr(owner, QSA_ORDERED_DECODE_FIELD) is True
+        assert env == {"other": "keep"}
     assert owner.qsa_ordered_decode_v2 is False
-    assert env == {QSA_ORDERED_DECODE_ENV: "1", "other": "keep"}
+    assert getattr(owner, QSA_ORDERED_DECODE_FIELD) is True
+    assert env == {"other": "keep"}
 
 
 def test_a_failed_decode_releases_the_decode_arm():
     from scripts.qwen4exp_row4_state_gate import arm_control
 
-    env = {QSA_ORDERED_DECODE_ENV: "1"}
-    owner = SimpleNamespace(qsa_ordered_decode_v2=False)
+    env = {}
+    owner = SimpleNamespace(
+        **{QSA_ORDERED_DECODE_FIELD: True, "qsa_ordered_decode_v2": False})
     closed = []
     with pytest.raises(RuntimeError, match="decode failed"):
         with arm_control("qsa-ordered-v2", "1", owner, environment=env) as scope:
@@ -575,7 +581,7 @@ def test_a_failed_decode_releases_the_decode_arm():
             raise RuntimeError("decode failed")
     assert closed == [True]
     assert owner.qsa_ordered_decode_v2 is False
-    assert env == {QSA_ORDERED_DECODE_ENV: "1"}
+    assert env == {}
 
 
 def test_the_gate_enters_the_arm_control_under_a_with_block():

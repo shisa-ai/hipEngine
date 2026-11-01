@@ -217,8 +217,10 @@ class Qwen4ExpGGUFTextGenerator:
         # direct/unbound state, where the historical process key remains the
         # fallback; an empty scope object means every layer.
         self.q8_wmma_layer_scope = None
-        # QSA ordered-v2 sparse decode is request-local too; the binder
-        # republishes it with the rest.
+        # QSA ordered sparse decode is request-local too; the binder
+        # republishes it with the rest. The ordered-v2 leaf rides it and is
+        # published independently.
+        self.qsa_ordered_decode = False
         self.qsa_ordered_decode_v2 = False
         # The exact grouped Q5_1 down chain's own gate is published by every
         # plan, so an unbound generator keeps it on: a batch owner built before
@@ -989,6 +991,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
         getattr(generator, "qsa_prefill_head_mode", "parent"))
     runner.qsa_h256_prefill_mode = str(
         getattr(generator, "qsa_h256_prefill_mode", "parent"))
+    runner.qsa_ordered_decode = bool(
+        getattr(generator, "qsa_ordered_decode", False))
     runner.qsa_ordered_decode_v2 = bool(
         getattr(generator, "qsa_ordered_decode_v2", False))
     runner.moe_decode_warp = getattr(generator, "moe_decode_warp", frozenset())

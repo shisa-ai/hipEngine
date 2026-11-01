@@ -314,9 +314,13 @@ def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
     candidate = _load_script().CANDIDATES["production_conservative"]
     assert candidate.base_profile == "production"
     assert set(candidate.environment.values()) == {"0"}
-    for suffix in ("Q8_0_SELECTED_WMMA_DOWN", "QSA_ORDERED_DECODE"):
-        assert candidate.environment["HIPENGINE_QWEN4_EXP_" + suffix] == "0"
+    assert candidate.environment[
+        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "0"
     assert candidate.gdn_colwarps_prefill is False
+    # The ordered sparse-decode prerequisite is owner state now, so the arm
+    # declares it instead of zeroing a process key.
+    assert candidate.qsa_ordered_decode is False
+    assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE" not in candidate.environment
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in candidate.environment
     assert candidate.q8_mmq_prefill_enabled is False
     assert candidate.q4_dp4a_decode_enabled is False
@@ -334,12 +338,17 @@ def test_ordered_v2_candidates_bind_the_runner_field() -> None:
         assert candidate.qsa_ordered_decode_v2 is True
         # The leaf is request-local, so the arm names the field, not a switch.
         assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2" not in candidate.environment
-        # The v1 route it rides is still an ordinary environment decision.
-        assert candidate.environment["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"] == "1"
-    # The conservative arm keeps the ordered v1 parent its env zeroing selects.
-    assert module.CANDIDATES["production_conservative"].qsa_ordered_decode_v2 is False
-    # A candidate that does not name it keeps the base profile's decision.
+        # The ordered route it rides is owner state now too.
+        assert candidate.qsa_ordered_decode is True
+        assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE" not in candidate.environment
+    # The conservative arm keeps the non-ordered sparse decode owner, so it
+    # declares both the route and the leaf off.
+    conservative = module.CANDIDATES["production_conservative"]
+    assert conservative.qsa_ordered_decode_v2 is False
+    assert conservative.qsa_ordered_decode is False
+    # A candidate that does not name them keeps the base profile's decision.
     assert module.CANDIDATES["q8_blockscale"].qsa_ordered_decode_v2 is None
+    assert module.CANDIDATES["q8_blockscale"].qsa_ordered_decode is None
 
 
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:

@@ -38,13 +38,13 @@ from hipengine.models import resolve_model
 from hipengine.runtime.qwen4_exp_runner import qsa_ordered_decode_v2
 from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture
 
-# The v2 leaf is request-local runner state now: the probe binds the owning
-# runner's ``qsa_ordered_decode_v2`` per measured arm instead of writing a
-# process-wide switch. The ordered v1 route it rides is still the profile's
-# process-wide decision, so the probe records it and refuses to measure an arm
+# The v2 leaf and the ordered route it rides are request-local runner state
+# now: the probe binds the owning runner's ``qsa_ordered_decode_v2`` per
+# measured arm instead of writing a process-wide switch, records the
+# prerequisite the plan published on that runner, and refuses to measure an arm
 # that would run the unordered decode parent at zero counted launches.
 CONTROL_FIELD = "qsa_ordered_decode_v2"
-PREREQUISITE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
+PREREQUISITE_FIELD = "qsa_ordered_decode"
 
 
 @contextlib.contextmanager
@@ -107,11 +107,11 @@ def main():
         backend="hip_gfx1151", max_sequence_length=4352,
         prefill_chunk_size=1024))
     runner = generator.runner
-    if os.environ.get(PREREQUISITE_ENV, "0") in {"", "0", "false", "False"}:
+    if not getattr(runner, PREREQUISITE_FIELD, False):
         raise ValueError(
             "qsa-ordered-v2 needs the ordered v1 route the leaf rides; "
-            f"{PREREQUISITE_ENV} is off, so both arms would measure the "
-            "unordered decode parent")
+            f"{PREREQUISITE_FIELD} is off on this runner, so both arms would "
+            "measure the unordered decode parent")
     key = KernelKey("hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
                     "strict_ordered_three_pass_v2_spans")
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant,
@@ -137,7 +137,7 @@ def main():
             "on": True,
             "scope": "per measured arm; the plan's value is restored on exit",
             "prerequisite": {
-                PREREQUISITE_ENV: os.environ.get(PREREQUISITE_ENV),
+                PREREQUISITE_FIELD: getattr(runner, PREREQUISITE_FIELD, None),
             },
         },
         "protocol": (

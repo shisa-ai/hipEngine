@@ -74,6 +74,13 @@ class Qwen4ExpMTPDraftSnapshot:
 class Qwen4ExpGGUFMTPDraftRunner:
     """One request-owned dense MTP draft with model-capacity admission."""
 
+    # QSA ordered sparse-decode prerequisite for the draft layer, published by
+    # the target runner's provider at construction (see
+    # ``qwen4_exp_runner.qsa_ordered_decode``). The draft is a c1 H256 QSA
+    # decode consumer, so it mirrors the owning runner's plan-published value
+    # instead of reading a process-wide switch; an unpublished draft keeps the
+    # non-ordered sparse owner.
+    qsa_ordered_decode: bool = False
     # QSA ordered-v2 sparse-decode selection for the draft layer, published by
     # the target runner's provider at construction (see
     # ``qwen4_exp_runner.qsa_ordered_decode_v2``). The draft is a c1 H256 QSA
@@ -544,6 +551,7 @@ class Qwen4ExpGGUFMTPDraftRunner:
             top_k=self.config.expert_used_count,
             runtime=self.runtime,
             cache_only=cache_only,
+            qsa_ordered_decode=self.qsa_ordered_decode,
             qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
         )
         finish_stage("draft_cache_only" if cache_only else "draft_layer", started)

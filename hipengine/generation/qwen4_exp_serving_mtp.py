@@ -46,8 +46,12 @@ class Qwen4ExpServingMTP:
                 max_sequence_length=self.generator.runner.max_sequence_length,
                 backend=self.generator.backend, runtime=self.generator.runner.runtime,
             )
-            # Mirror the target runner's plan-published ordered-v2 QSA decode
-            # decision; the draft is a c1 H256 decode consumer of the same plan.
+            # Mirror the target runner's plan-published ordered decode
+            # prerequisite and ordered-v2 decision; the draft is a c1 H256
+            # decode consumer of the same plan.
+            draft.qsa_ordered_decode = bool(
+                getattr(self.generator.runner, "qsa_ordered_decode", False)
+            )
             draft.qsa_ordered_decode_v2 = bool(
                 getattr(self.generator.runner, "qsa_ordered_decode_v2", False)
             )

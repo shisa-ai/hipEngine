@@ -33,8 +33,9 @@ from scripts.qwen4exp_layer2_profile_gate import (
     q8_down_variant_arm_scope,
 )
 from hipengine.runtime.qwen4_exp_runner import (
-    q8_mmq_prefill_enabled, qsa_prefill_head_mode, qsa_h256_prefill_mode,
-    resolve_gdn_colwarps_prefill,
+    q8_mmq_prefill_enabled, qsa_ordered_decode, qsa_prefill_head_mode,
+    qsa_h256_prefill_mode,
+    resolve_gdn_colwarps_prefill, resolve_qsa_ordered_decode,
     resolve_gdn_tile16_variant, resolve_q8_down_variant, resolve_q8_mmq_prefill,
 )
 from scripts.qwen4exp_journey_localize import set_flags
@@ -48,19 +49,20 @@ from scripts.qwen4exp_q8_repair_depth_gate import (
 SHARED_DECODE_SAFE_ENV = frozenset(
     "HIPENGINE_QWEN4_EXP_" + flag for flag in (
         "Q8_0_SELECTED_WMMA_DOWN",
-        "QSA_ORDERED_DECODE",
     )
 )
 # Owner-bound fields that are the same kind of prefill-or-uncaptured-attention
 # decision as the keys above. The grouped Q8_0 expert-down owner, the tile-16
-# GDN prefill owner and the GDN columnwarp admission gate are request-local
-# runner state now, so a candidate names them here instead of writing the
-# retired ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT``,
-# ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` and
-# ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` keys. The gate only admits the
-# tiled prefill branch; decode never reads it.
+# GDN prefill owner, the GDN columnwarp admission gate and the ordered sparse
+# decode prerequisite are request-local runner state now, so a candidate names
+# them here instead of writing the retired ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT``,
+# ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT``,
+# ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` and
+# ``HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE`` keys. The ordered prerequisite only
+# selects the c1 H256 decode route, so it is not a captured decode unit either.
 SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset(
-    {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill"})
+    {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
+     "qsa_ordered_decode"})
 SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
@@ -123,6 +125,22 @@ def arm_gdn_colwarps(arm):
     if candidate is None:
         return None
     return candidate.gdn_colwarps_prefill
+
+
+def arm_qsa_ordered_scope(runner, declared):
+    """Bind this arm's ordered sparse-decode route, or keep the published one.
+
+    ``CandidateSpec.qsa_ordered_decode`` is ``None`` for every arm that names
+    no change, and the owner scope reads an explicit ``None`` as
+    ``bool(None)``. Passing that value through would close ordered decode on
+    the production reference arm and on every arm that only moves some other
+    decision, so an undeclared route enters no scope at all and the plan's own
+    publication stays in force.
+    """
+
+    if declared is None:
+        return nullcontext()
+    return qsa_ordered_decode(runner, declared)
 
 
 def validate_shared_graphs(environments, owner_fields=()):
@@ -339,6 +357,14 @@ def main():
                           for name in args.candidate}
         report["arm_h256_modes"] = {
             name: mode for name, mode in arm_h256_modes.items() if mode is not None}
+        # The ordered sparse-decode prerequisite is request-local runner state
+        # too, so an arm that declared it binds the route for its samples and
+        # the plan's published decision comes back for the next arm.
+        arm_qsa_ordered_decode = {
+            name: CANDIDATES[name].qsa_ordered_decode for name in args.candidate}
+        report["arm_qsa_ordered_decode"] = {
+            name: value for name, value in arm_qsa_ordered_decode.items()
+            if value is not None}
         arm_q8_mmq_modes = {
             name: CANDIDATES[name].q8_mmq_prefill_enabled
             for name in args.candidate
@@ -419,6 +445,8 @@ def main():
                     runner, arm_gdn_colwarps_gates.get(arm)),
                 qsa_prefill_head_mode(runner, arm_head_modes.get(arm)),
                 qsa_h256_prefill_mode(runner, arm_h256_modes.get(arm)),
+                arm_qsa_ordered_scope(
+                    runner, arm_qsa_ordered_decode.get(arm)),
                 use_workspace(runner, workspace)
                 if workspace is not None else nullcontext(),
             ):
@@ -438,6 +466,7 @@ def main():
                 # Read inside the scope: the gate these samples ran under.
                 row["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
                     runner)
+                row["qsa_ordered_decode"] = resolve_qsa_ordered_decode(runner)
             logits = np.asarray(last["result"].logits)
             state = _state_summary(runner)
             if not logits.size or not np.isfinite(logits).all() or not state["finite"]:

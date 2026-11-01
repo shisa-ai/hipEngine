@@ -28,7 +28,8 @@ from scripts.qwen4exp_layer2_profile_gate import (
 )
 from scripts.qwen4exp_journey_localize import set_flags
 from hipengine.runtime.qwen4_exp_runner import (
-    q8_mmq_prefill_enabled, qsa_h256_prefill_mode, resolve_gdn_colwarps_prefill,
+    q8_mmq_prefill_enabled, qsa_h256_prefill_mode, qsa_ordered_decode,
+    resolve_gdn_colwarps_prefill, resolve_qsa_ordered_decode,
 )
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
@@ -59,6 +60,22 @@ def arm_gdn_colwarps(mode):
     if mode == "before":
         return None
     return CANDIDATES["production_conservative"].gdn_colwarps_prefill
+
+
+def arm_qsa_ordered_decode(mode, published):
+    """The ordered sparse-decode route this mode's former process value implied.
+
+    The conservative package's environment carried
+    ``HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE=0``, so its ``after`` samples ran
+    the non-ordered sparse decode owner and its ``before`` reference kept
+    whatever the production bind published. The declaration is the source of
+    truth now that the key is gone; a pair that inherited the base route would
+    compare it with itself.
+    """
+
+    if mode == "before":
+        return bool(published)
+    return bool(CANDIDATES["production_conservative"].qsa_ordered_decode)
 
 
 def summarize_cost(samples, pairs):
@@ -101,11 +118,16 @@ def main():
         runner = generator.runner
         overrides = dict(CANDIDATES["production_conservative"].environment)
         published_gr_wide = bool(getattr(runner, "gr_wide", False))
+        published_qsa_ordered = bool(
+            getattr(runner, "qsa_ordered_decode", False))
         report["arm_gr_wide"] = {
             mode: arm_gr_wide(mode, published_gr_wide)
             for mode in ("before", "after")}
         report["arm_gdn_colwarps_prefill"] = {
             mode: arm_gdn_colwarps(mode) for mode in ("before", "after")}
+        report["arm_qsa_ordered_decode"] = {
+            mode: arm_qsa_ordered_decode(mode, published_qsa_ordered)
+            for mode in ("before", "after")}
         previous = {key: os.environ.get(key) for key in overrides}
         report["arm_overrides"] = {"before": previous, "after": overrides}
         original_step = runner.step
@@ -149,12 +171,15 @@ def main():
                     CANDIDATES["production_conservative"].qsa_h256_prefill_mode
                     if mode == "after" else None,
                 ),
+                qsa_ordered_decode(
+                    runner, arm_qsa_ordered_decode(mode, published_qsa_ordered)),
             ):
                 row = _hipengine_case_sample(
                     runner, case=case, repetition=rep, transitions=fixture["decode_transitions"])
                 # Read inside the scope: the gate these samples ran under.
                 row["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
                     runner)
+                row["qsa_ordered_decode"] = resolve_qsa_ordered_decode(runner)
             logits = np.asarray(last["result"].logits)
             state = _state_summary(runner)
             if not logits.size or not np.isfinite(logits).all() or not state["finite"]:

@@ -167,11 +167,11 @@ def test_restore_arm_scope_restores_after_an_exception():
 def test_restore_inventory_names_the_tile16_field():
     changes = candidate_owner_changes(CANDIDATES["gdn_multi_column"])
     assert changes["gdn_tile16_variant"] == MULTI
-    # The conservative arm closes the columnwarp gate as owner state now, so the
-    # closed gate is an actual change it inventories.
+    # The conservative arm closes both the columnwarp gate and the ordered
+    # sparse-decode route; both owner changes must be inventoried.
     assert candidate_owner_changes(
         CANDIDATES["production_conservative"]) == {
-        "gdn_colwarps_prefill": False}
+        "gdn_colwarps_prefill": False, "qsa_ordered_decode": False}
     assert candidate_owner_changes(CANDIDATES["production_baseline"]) == {}
 
 

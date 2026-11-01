@@ -113,14 +113,15 @@ def test_the_restored_flags_are_not_in_the_disabled_set(module):
 
     recovery = set(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
     restored = set(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
-    # H256 prefill, head grouping, ordered-v2 decode and GDN peer scope
-    # are runner-owned, not recovery or restored environment values.
-    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 10
-    assert len(PRODUCTION_Q8_QSA_RESTORED_FLAGS) == 3
-    # Two selectors are restored; Q8_DOWN_VARIANT is a companion value.
+    # H256 prefill, head grouping, both ordered-decode decisions and GDN peer
+    # scope are runner-owned, not recovery or restored environment values.
+    assert len(PRODUCTION_ARITHMETIC_RECOVERY_FLAGS) == 9
+    assert len(PRODUCTION_Q8_QSA_RESTORED_FLAGS) == 2
+    # One selector is restored; Q8_DOWN_VARIANT is a companion value.
     # Q4 decode now keeps the strict owner after the long-context failure.
     assert "Q4_DP4A64" in recovery - restored
-    assert len(restored & recovery) == 2
+    assert len(restored & recovery) == 1
+    assert "QSA_ORDERED_DECODE" not in recovery | restored
     assert restored - recovery == {"Q8_DOWN_VARIANT"}
     still_disabled = [flag for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
                       if flag not in restored]

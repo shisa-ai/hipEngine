@@ -736,10 +736,12 @@ Q51_IU8_EXACT_ENV = "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 Q51_FOLD128_FIELD = "q51_fold128_prefill"
 Q51_FOLD_PAIR_FIELD = "q51_fold_pair_prefill"
 
-#: The ordered-decode route the v2 leaf rides. The leaf is request-local runner
-#: state now, but this v1 switch still decides whether any ordered decode runs,
-#: so both arms of the v2 package record it and it must stay on.
-QSA_ORDERED_DECODE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
+#: The ordered sparse-decode prerequisite the v2 leaf rides. The prerequisite
+#: and the leaf are both request-local runner state now
+#: (``qsa_ordered_decode`` / ``qsa_ordered_decode_v2``), so no process key
+#: names them: both arms record the prerequisite the plan published on the
+#: runner they measure, and it must stay on.
+QSA_ORDERED_DECODE_FIELD = "qsa_ordered_decode"
 
 
 def q51_pair2_control_record(runner=None, *, environment=os.environ):
@@ -951,11 +953,12 @@ def q51_register_cache_control_record(runner=None, *, environment=os.environ):
 def qsa_ordered_decode_v2_control_record(runner=None, *, environment=os.environ):
     """The recorded control for the ordered-v2 sparse decode arm.
 
-    The arm moves one decision - the v2 three-pass leaf - and holds the v1
-    ordered route fixed: the leaf only exists inside it, so both arms record
-    that switch instead of forcing it. The value the arm binds is recorded
-    beside the plan's own published value, so a reader cannot mistake the
-    production binding for the arm's own state.
+    The arm moves one decision - the v2 three-pass leaf - and holds the
+    ordered sparse-decode prerequisite fixed: the leaf only exists inside that
+    route, so both arms record the prerequisite the plan published on the
+    runner they measure instead of forcing it. The value the arm binds is
+    recorded beside it, so a reader cannot mistake the production binding for
+    the arm's own state.
     """
 
     return {
@@ -964,16 +967,18 @@ def qsa_ordered_decode_v2_control_record(runner=None, *, environment=os.environ)
         "after": True,
         "scope": "per measured run; restored on exit",
         "prerequisite": {
-            QSA_ORDERED_DECODE_ENV: environment.get(QSA_ORDERED_DECODE_ENV),
+            QSA_ORDERED_DECODE_FIELD: (
+                None if runner is None
+                else getattr(runner, QSA_ORDERED_DECODE_FIELD, None)),
         },
         "published_value": (
             None if runner is None
             else getattr(runner, "qsa_ordered_decode_v2", None)),
         "reason": (
             "the v2 leaf is the c1 H256 indexed sparse decode owner inside the "
-            "ordered route, so both arms record the v1 switch as the "
-            "prerequisite they ride; the before arm keeps the registered v1 "
-            "ordered parent and the plan's value comes back on exit"),
+            "ordered route, so both arms record the ordered prerequisite they "
+            "ride; the before arm keeps the registered v1 ordered parent and "
+            "the plan's value comes back on exit"),
     }
 
 
@@ -1913,15 +1918,15 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError(
                 f"{route_package} needs the owning runner; binding no selection "
                 "would measure the plan's own ordered decode route")
-        # The v2 leaf only exists inside the ordered route, whose v1 switch the
-        # profile owns. Both arms record it; an arm that left it off would
-        # measure the unordered decode parent at zero counted launches.
-        if environment.get(QSA_ORDERED_DECODE_ENV, "0") in {
-                "", "0", "false", "False"}:
+        # The v2 leaf only exists inside the ordered route, which the plan
+        # publishes on this runner. Both arms record it; an arm whose runner
+        # left it off would measure the unordered decode parent at zero
+        # counted launches.
+        if not getattr(runner, QSA_ORDERED_DECODE_FIELD, False):
             raise ValueError(
                 f"{route_package} needs the ordered v1 route the leaf rides; "
-                f"{QSA_ORDERED_DECODE_ENV} is off, so both arms would measure "
-                "the unordered decode parent")
+                f"{QSA_ORDERED_DECODE_FIELD} is off on this runner, so both "
+                "arms would measure the unordered decode parent")
         return qsa_ordered_decode_v2(runner, mode == "after")
     if route_package in {"gdn-narrow", "gdn-wave-norm"}:
         if mode not in {"before", "after"}:

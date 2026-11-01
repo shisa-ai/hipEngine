@@ -803,7 +803,8 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
     # same kind of decision as the Q8_0 down owner: prefill-or-uncaptured
     # selectors, so graph identity ignores them and a candidate may bind them.
     assert restore.SHARED_DECODE_SAFE_OWNER_FIELDS == {
-        "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill"}
+        "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
+        "qsa_ordered_decode"}
 
     restore.validate_shared_graphs(
         [{WMMA_GATE: "1"}], [{"q8_down_variant": WMMA}])
@@ -829,10 +830,10 @@ def test_the_shared_graph_inventory_lists_only_actual_owner_changes():
     assert gate.candidate_owner_changes(
         gate.CANDIDATES["production_baseline"]
     ) == {}
-    # The conservative arm closes the columnwarp gate, which is a real owner
-    # change and must be inventoried rather than dropped.
+    # The conservative arm closes the columnwarp gate and ordered sparse
+    # decode route; both real owner changes must be inventoried.
     assert gate.candidate_owner_changes(
         gate.CANDIDATES["production_conservative"]
-    ) == {"gdn_colwarps_prefill": False}
+    ) == {"gdn_colwarps_prefill": False, "qsa_ordered_decode": False}
     # A ``None`` entry is not a change even when it is passed explicitly.
     restore.validate_shared_graphs([], [{"q8_down_variant": None}])

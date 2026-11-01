@@ -182,10 +182,10 @@ def test_prefill_restore_binds_the_declared_gate_and_restores_publication():
 
 
 def test_the_shared_graph_inventory_admits_the_gate_but_not_captured_units():
-    """A candidate whose only owner change is the gate keeps shared graphs."""
+    """The conservative arm changes only prefill-or-uncaptured selectors."""
 
     assert candidate_owner_changes(SERIAL_CANDIDATE) == {
-        "gdn_colwarps_prefill": False}
+        "gdn_colwarps_prefill": False, "qsa_ordered_decode": False}
 
     prefill_restore_ab.validate_shared_graphs(
         [], [candidate_owner_changes(SERIAL_CANDIDATE)])

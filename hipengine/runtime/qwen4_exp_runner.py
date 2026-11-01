@@ -2370,6 +2370,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     device_position_owned: bool = False,
     attention_context_limit: int | None = None,
     cache_only: bool = False,
+    qsa_ordered_decode: bool = False,
     qsa_ordered_decode_v2: bool = False,
     qsa_wave32: bool = True,
     eps: float = 1e-6,
@@ -2378,12 +2379,20 @@ def run_qwen4_exp_dense_qsa_token_mixer(
 ) -> DeviceBuffer | None:
     """Append exact scalar cache state; optionally omit the unused attention output.
 
+    ``qsa_ordered_decode`` is the owning runner's plan-published ordered sparse
+    decode prerequisite (see :func:`qsa_ordered_decode`). ``False`` keeps the
+    non-ordered sparse owner; ``True`` runs the ordered route when
+    ``head_dim`` is 256, and it never selects anything on a cache-only call or
+    on decode positions the index state has not made sparse. An unbound caller
+    keeps the non-ordered owner.
+
     ``qsa_ordered_decode_v2`` is the owning runner's plan-published ordered-v2
     sparse-decode decision (see :func:`qsa_ordered_decode_v2`). It only selects
-    the v2 three-pass leaf inside the ordered route's own guards - the v1 switch
-    must be on, ``head_dim`` must be 256, and the selection must be 1..4096 rows
-    - and never on a cache-only call or on decode positions the index state has
-    not made sparse. An unbound caller keeps the v1 ordered parent.
+    the v2 three-pass leaf inside the ordered route's own guards - the ordered
+    prerequisite must be on, ``head_dim`` must be 256, and the selection must
+    be 1..4096 rows - and never on a cache-only call or on decode positions the
+    index state has not made sparse. An unbound caller keeps the ordered-v1
+    parent.
 
     ``qsa_wave32`` is the owning runner's H128 sparse-attention decision (see
     :func:`qsa_wave32`) and defaults to the production wave32 owner, so an
@@ -2551,16 +2560,13 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             runtime=active_runtime,
         )
     else:
-        ordered_decode = (
-            head_dim == 256
-            and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE", "0")
-            not in {"", "0", "false", "False"}
-        )
-        # The v2 leaf is the owning runner's plan-published decision, not a
-        # process-wide switch: the v1 switch above stays the prerequisite that
-        # decides whether any ordered decode runs at all, the H256/count guards
-        # stay dispatch-time, and an unbound caller keeps the v1 parent. The
-        # registered v1 parent remains the fallback for an unavailable v2 leaf.
+        ordered_decode = bool(head_dim == 256 and qsa_ordered_decode)
+        # The ordered route and its v2 leaf are the owning runner's
+        # plan-published decisions, not a process-wide switch: the ordered
+        # prerequisite above decides whether any ordered decode runs at all,
+        # the H256/count guards stay dispatch-time, and an unbound caller keeps
+        # the non-ordered owner. The registered v1 parent remains the fallback
+        # for an unavailable v2 leaf.
         if ordered_decode:
             scores, coefficients = scratch.ordered_attention_scratch(
                 query_heads=query_heads, selected_count=selected_count
@@ -2760,10 +2766,54 @@ def _qwen4_exp_qsa_wave32_selected(*, head_dim: int, published: bool) -> bool:
     return bool(head_dim == 128 and published)
 
 
+# QSA ordered sparse-decode prerequisite. The production plan publishes the
+# ordered route for the c1 H256 indexed sparse decode scope; the binder
+# publishes that decision to the owning runner, and the dispatch-time selector
+# keeps its geometry guard (head_dim 256) with the registered non-ordered owner
+# below it. The ordered-v2 leaf rides this prerequisite as its own decision. It
+# is request-local state, so a diagnostic arm binds it on the runner it
+# measures instead of writing a process-wide switch.
+_QSA_ORDERED_DECODE_UNSET = object()
+
+
+@contextlib.contextmanager
+def qsa_ordered_decode(
+    owner: Any, enabled: bool | object = _QSA_ORDERED_DECODE_UNSET,
+):
+    """Bind the QSA ordered sparse-decode prerequisite for a diagnostic arm.
+
+    ``False`` keeps the non-ordered sparse owner and ``True`` runs the ordered
+    route inside its own guards; leaving ``enabled`` unset keeps whatever the
+    plan published. The binding is a mutable owner field, so it stays in force
+    for as long as the scope is open and the published value is restored on
+    exit, including on an exception. The ordered-v2 leaf below it keeps its own
+    field.
+    """
+
+    prior = getattr(owner, "qsa_ordered_decode", False)
+    if enabled is not _QSA_ORDERED_DECODE_UNSET:
+        owner.qsa_ordered_decode = bool(enabled)
+    try:
+        yield prior
+    finally:
+        owner.qsa_ordered_decode = prior
+
+
+def resolve_qsa_ordered_decode(owner: Any) -> bool:
+    """The ordered sparse-decode prerequisite a generator or runner publishes.
+
+    ``False`` for an unbound owner, so a direct caller keeps the non-ordered
+    sparse owner. The geometry guard and the ordered-v2 leaf stay at the
+    dispatch.
+    """
+
+    return bool(getattr(owner, "qsa_ordered_decode", False))
+
+
 # QSA ordered-v2 sparse-decode selection. The production plan publishes the
 # ordered-v2 leaf for the c1 H256 indexed sparse decode scope; the binder
 # publishes that decision to the owning runner, and the dispatch-time selector
-# keeps its guards - the v1 ordered switch as prerequisite, head_dim 256, and a
+# keeps its guards - the ordered prerequisite, head_dim 256, and a
 # selection of 1..4096 positions - with the registered v1 parent as fallback.
 # The fused coefficients+values sibling stays a separate env diagnostic over
 # this decision. It is request-local state, so a diagnostic arm binds it on the
@@ -2799,9 +2849,9 @@ def _qwen4_exp_qsa_ordered_decode_v2(
     """The dispatch-time guard on the ordered-v2 sparse decode leaf.
 
     The leaf is the c1 H256 indexed sparse decode owner, so it needs the ordered
-    v1 route as its prerequisite, ``head_dim`` 256, a selection of 1..4096
-    positions and the owning runner's published decision. Anything else keeps
-    the registered v1 ordered parent.
+    prerequisite, ``head_dim`` 256, a selection of 1..4096 positions and the
+    owning runner's published decision. Anything else keeps the registered v1
+    ordered parent.
     """
 
     return bool(
@@ -8147,6 +8197,7 @@ def run_qwen4_exp_dense_qsa_layer(
     moe_graph_cache: MoeGraphCache | None = None,
     moe_graph_key: object | None = None,
     cache_only: bool = False,
+    qsa_ordered_decode: bool = False,
     qsa_ordered_decode_v2: bool = False,
     qsa_wave32: bool = True,
     q51_down_m1: bool = False,
@@ -8171,6 +8222,11 @@ def run_qwen4_exp_dense_qsa_layer(
     q8_down_variant: str | None = None,
 ) -> DeviceBuffer | None:
     """Execute a QSA+MoE layer, or only its independent cache-state writes.
+
+    ``qsa_ordered_decode`` is the owning runner's plan-published ordered sparse
+    decode prerequisite, forwarded to the token mixer (see
+    :func:`qsa_ordered_decode`); it selects nothing on a cache-only call and
+    only for the head_dim 256 geometry.
 
     ``qsa_ordered_decode_v2`` is the owning runner's plan-published ordered-v2
     sparse-decode decision, forwarded to the token mixer (see
@@ -8226,6 +8282,7 @@ def run_qwen4_exp_dense_qsa_layer(
         device_position_owned=device_position_owned,
         attention_context_limit=attention_context_limit,
         cache_only=cache_only,
+        qsa_ordered_decode=qsa_ordered_decode,
         qsa_ordered_decode_v2=qsa_ordered_decode_v2,
         qsa_wave32=qsa_wave32,
         stream=stream, runtime=active_runtime,
@@ -9759,11 +9816,18 @@ class Qwen4ExpGGUFResidentModelRunner:
     # preemption. Both the c1 decode path and the prefill chunk path forward it,
     # so a diagnostic binds the parent on the one runner it measures.
     qsa_wave32: bool = True
+    # QSA ordered sparse-decode prerequisite, published by the profile binder
+    # from the plan's own c1 H256 indexed sparse decode row: True on a
+    # production plan, False on every plan that keeps the non-ordered sparse
+    # decode owner. The dispatch-time selector keeps the H256 guard, and the
+    # ordered-v2 leaf below it stays independent. A diagnostic scope may
+    # outrank it.
+    qsa_ordered_decode: bool = False
     # QSA ordered-v2 sparse decode, published by the profile binder from the
     # plan's own c1 H256 indexed sparse decode row: True on a production plan,
     # False on every plan that keeps the ordered v1 parent. The dispatch-time
-    # selector keeps the v1 switch, H256 and 1..4096 guards. A diagnostic scope
-    # may outrank it.
+    # selector keeps the ordered prerequisite, H256 and 1..4096 guards. A
+    # diagnostic scope may outrank it.
     qsa_ordered_decode_v2: bool = False
     # Scalar D128 decode choice from the manifest; batch indexed decode is separate.
     gdn_decode_rowsplit: bool = False
@@ -11318,6 +11382,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     production_moe_prefill_enabled=self.production_moe_prefill_enabled,
                     router_producer_variant=self.router_producer_variant,
                     cache_only=False,
+                    qsa_ordered_decode=self.qsa_ordered_decode,
                     qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
                     qsa_wave32=self.qsa_wave32,
                     q51_down_m1=self.q51_down_m1,

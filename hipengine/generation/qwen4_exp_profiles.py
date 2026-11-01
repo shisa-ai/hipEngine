@@ -121,12 +121,12 @@ PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "Q4_DP4A64",
     "QSA_FLASH_PREFILL",
-    "QSA_ORDERED_DECODE", "GR_WIDE",
+    "GR_WIDE",
 )
-# The QSA prefill head grouping and the ordered-v2 sparse decode leaf are
-# request-local runner state published from the plan's own selection below, so
-# they are not environment flags the arithmetic-recovery or restoration passes
-# can rewrite.
+# The QSA prefill head grouping, the ordered sparse-decode prerequisite and the
+# ordered-v2 sparse decode leaf are request-local runner state published from
+# the plan's own selection below, so they are not environment flags the
+# arithmetic-recovery or restoration passes can rewrite.
 _ARITHMETIC_RECOVERY_EVIDENCE = (
     "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json"
 )
@@ -137,7 +137,6 @@ _Q4_DECODE_RECOVERY_EVIDENCE = "benchmarks/results/20261022-qwen38fn-q4-decode-r
 PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
     "Q8_0_SELECTED_WMMA_DOWN": "1",
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
-    "QSA_ORDERED_DECODE": "1",
 }
 # The grouped Q8_0 expert-down owner is request-local generator/runner state
 # published from the plan's own selection (``q8_down_variant``), so the
@@ -150,6 +149,11 @@ _Q8_DOWN_WMMA_VARIANT = "selected_grouped_wmma_prefill_bf16_bf16_out"
 # process key.
 _GDN_COLWARPS_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
 _GDN_COLWARPS_PREFILL_FLAG = "GDN_COLWARPS_PREFILL"
+# The ordered sparse-decode prerequisite is owner state too
+# (``qsa_ordered_decode``): production runs the ordered route and every plan
+# that keeps the non-ordered sparse owner publishes False. The retired process
+# key is named here only so a caller-set value is recorded as discarded.
+_QSA_ORDERED_DECODE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
 _PROCESS_RESTORED_Q8_QSA_FLAGS = {
     flag: value
     for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
@@ -1123,6 +1127,24 @@ def _publish_gdn_colwarps_prefill(generator: Any, enabled: bool) -> None:
         runner.gdn_colwarps_prefill = bool(enabled)
 
 
+def _publish_qsa_ordered_decode(generator: Any, enabled: bool) -> None:
+    """Publish the ordered sparse-decode prerequisite as owner state.
+
+    The retired ``HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE`` key was the process
+    transport for this decision. Every production plan published it on and the
+    UD recovery pass closed then restored it inside the same bind, so the net
+    published value is the plan's own. The ordered-v2 leaf keeps its own field
+    and the dispatch keeps the H256 guard.
+    """
+
+    _record_owner_transport(
+        _QSA_ORDERED_DECODE_ENV, "1" if enabled else "0")
+    generator.qsa_ordered_decode = bool(enabled)
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.qsa_ordered_decode = bool(enabled)
+
+
 def _publish_q4_dp4a_decode(
     generator: Any,
     enabled: bool,
@@ -1253,9 +1275,17 @@ def _bind(
     qsa_prefill_head_mode = "quad" if production else "parent"
     # Scalar H256 sparse-prefill fallback; WMMA still owns eligible chunks.
     qsa_h256_prefill_mode = "page256" if production else "parent"
+    # QSA ordered sparse decode prerequisite, published as request-local state
+    # on the owning runner rather than a process-wide switch. It is the route
+    # selector for the c1 H256 indexed sparse decode scope: the dispatch-time
+    # selector still guards it on head_dim 256, and the ordered-v2 leaf below it
+    # keeps its own decision. The binder publishes what the retired switch
+    # bound - on for every production plan, off for the strict binder that every
+    # plan falling back to it runs.
+    qsa_ordered_decode = bool(production)
     # QSA ordered-v2 sparse decode, published as request-local state on the
     # owning runner rather than a process-wide switch. It is the c1 H256
-    # indexed sparse decode leaf of the ordered route: the v1 ordered switch
+    # indexed sparse decode leaf of the ordered route: the ordered prerequisite
     # above it stays the prerequisite that decides whether any ordered decode
     # runs, the fused coefficients+values sibling stays a separate diagnostic,
     # and the dispatch-time selector still guards the leaf on head_dim 256 and a
@@ -1560,7 +1590,6 @@ def _bind(
             if production
             else ""
         ),
-        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1" if production else "0",
     }.items():
         profile_env[key] = value
     _apply_profile_env(profile_env)
@@ -1739,6 +1768,15 @@ def _bind(
             recovery_flags=PRODUCTION_ARITHMETIC_RECOVERY_FLAGS,
         ),
     )
+    # The ordered sparse-decode prerequisite is the plan's decision, published
+    # on the owning generator/runner instead of the retired
+    # ``HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE`` key. Production runs the
+    # ordered route; the UD recovery pass closed the retired key and then
+    # restored it inside the same bind, so the net published value is the plan's
+    # own: on for a production plan, off for every plan that keeps the
+    # non-ordered sparse decode owner. The ordered-v2 leaf rides this
+    # prerequisite and keeps its own field.
+    _publish_qsa_ordered_decode(generator, qsa_ordered_decode)
     f16_routes = production and resolved.manifest.get("quant") in F16_ROUTE_QUANTS
     # The tile-16 GDN prefill leaf is the plan's own decision, published on the
     # owning generator/runner instead of the retired

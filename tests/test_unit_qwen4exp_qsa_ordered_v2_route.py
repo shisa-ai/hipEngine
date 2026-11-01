@@ -15,7 +15,7 @@ from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.kernels.registry import KernelKey, is_registered
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
-    QSA_ORDERED_DECODE_ENV,
+    QSA_ORDERED_DECODE_FIELD,
     _apply_mode,
     qsa_ordered_decode_v2_control_record,
     route_scope,
@@ -69,17 +69,20 @@ def test_the_binder_publishes_on_the_runner_it_finds(monkeypatch):
     assert RETIRED_V2_ENV not in os.environ
 
 
-def test_the_recovery_and_restoration_tables_do_not_carry_the_leaf():
-    # The leaf is request-local now, so neither table may rewrite it; the v1
-    # route it rides stays an ordinary recovery switch.
+def test_the_recovery_and_restoration_tables_do_not_carry_the_leaf(monkeypatch):
+    # The leaf and the ordered route it rides are request-local now, so neither
+    # table may rewrite either one. The route stays on in production through the
+    # owner publication, not through a recovery switch.
     from scripts.qwen4exp_layer2_profile_gate import CONSERVATIVE_ARITHMETIC_FLAGS
 
     for table in (PRODUCTION_ARITHMETIC_RECOVERY_FLAGS,
                   tuple(PRODUCTION_Q8_QSA_RESTORED_FLAGS),
                   CONSERVATIVE_ARITHMETIC_FLAGS):
         assert "QSA_ORDERED_DECODE_V2" not in table
-    assert "QSA_ORDERED_DECODE" in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
-    assert PRODUCTION_Q8_QSA_RESTORED_FLAGS["QSA_ORDERED_DECODE"] == "1"
+        assert "QSA_ORDERED_DECODE" not in table
+    generator, _ = _bind(monkeypatch, ExecutionProfile.PRODUCTION)
+    assert generator.qsa_ordered_decode is True
+    assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE" not in os.environ
 
 
 # --- dispatch-time guards ---------------------------------------------------
@@ -503,21 +506,26 @@ def test_campaign_arm_writes_no_process_switch():
 
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_route_scope_binds_the_runner_selection(mode, expected):
-    owner = SimpleNamespace(qsa_ordered_decode_v2=None)
-    env = {QSA_ORDERED_DECODE_ENV: "1", RETIRED_V2_ENV: "1"}
+    owner = SimpleNamespace(
+        **{QSA_ORDERED_DECODE_FIELD: True, "qsa_ordered_decode_v2": None})
+    env = {RETIRED_V2_ENV: "1"}
     with route_scope("qsa-ordered-v2", mode, owner, environment=env):
         assert owner.qsa_ordered_decode_v2 is expected
-        # Prerequisite and retired controls are not rewritten by the scope.
-        assert env == {QSA_ORDERED_DECODE_ENV: "1", RETIRED_V2_ENV: "1"}
+        # The prerequisite is the runner's published owner state, so the scope
+        # rides it and rewrites neither it nor the retired v2 key.
+        assert getattr(owner, QSA_ORDERED_DECODE_FIELD) is True
+        assert env == {RETIRED_V2_ENV: "1"}
     assert owner.qsa_ordered_decode_v2 is None
-    assert env == {QSA_ORDERED_DECODE_ENV: "1", RETIRED_V2_ENV: "1"}
+    assert getattr(owner, QSA_ORDERED_DECODE_FIELD) is True
+    assert env == {RETIRED_V2_ENV: "1"}
 
 
 @pytest.mark.parametrize("mode", ["before", "after"])
 @pytest.mark.parametrize("prior", ["1", None])
 def test_the_campaign_arm_ignores_retired_fused_control(mode, prior):
-    owner = SimpleNamespace(qsa_ordered_decode_v2=None)
-    env = {QSA_ORDERED_DECODE_ENV: "1"}
+    owner = SimpleNamespace(
+        **{QSA_ORDERED_DECODE_FIELD: True, "qsa_ordered_decode_v2": None})
+    env = {}
     if prior is not None:
         env[FUSED_ENV] = prior
     with route_scope("qsa-ordered-v2", mode, owner, environment=env):
@@ -528,7 +536,7 @@ def test_the_campaign_arm_ignores_retired_fused_control(mode, prior):
 
 def test_control_record_omits_retired_fused_control():
     record = qsa_ordered_decode_v2_control_record(
-        environment={QSA_ORDERED_DECODE_ENV: "1", FUSED_ENV: "1"})
+        environment={FUSED_ENV: "1"})
     assert "fused_sibling" not in record
 
 
@@ -559,25 +567,22 @@ def test_the_drift_probe_records_only_live_controls():
 
     assert not hasattr(probe, "QSA_ORDERED_V2_FUSED_ENV")
     assert probe.CONTROL_FIELD == "qsa_ordered_decode_v2"
-    assert probe.PREREQUISITE_ENV == QSA_ORDERED_DECODE_ENV
+    assert probe.PREREQUISITE_FIELD == QSA_ORDERED_DECODE_FIELD
+    assert not hasattr(probe, "PREREQUISITE_ENV")
 
 
 def test_route_scope_rejects_the_arm_without_its_runner():
     with pytest.raises(ValueError, match="needs the owning runner"):
-        route_scope("qsa-ordered-v2", "after",
-                    environment={QSA_ORDERED_DECODE_ENV: "1"})
+        route_scope("qsa-ordered-v2", "after", environment={})
 
 
-@pytest.mark.parametrize("env", [
-    {QSA_ORDERED_DECODE_ENV: "0"},
-    {QSA_ORDERED_DECODE_ENV: "false"},
-    {},
-])
-def test_route_scope_rejects_the_arm_without_the_v1_route(env):
+@pytest.mark.parametrize("prerequisite", [False, None, "absent"])
+def test_route_scope_rejects_the_arm_without_the_v1_route(prerequisite):
+    owner = SimpleNamespace(qsa_ordered_decode_v2=False)
+    if prerequisite != "absent":
+        setattr(owner, QSA_ORDERED_DECODE_FIELD, prerequisite)
     with pytest.raises(ValueError, match="ordered v1 route"):
-        route_scope("qsa-ordered-v2", "after",
-                    SimpleNamespace(qsa_ordered_decode_v2=False),
-                    environment=env)
+        route_scope("qsa-ordered-v2", "after", owner, environment={})
 
 
 def test_state_gate_arm_writes_no_process_switch():
@@ -589,12 +594,15 @@ def test_state_gate_arm_writes_no_process_switch():
 
 def test_the_control_record_names_the_field_and_the_prerequisite():
     record = qsa_ordered_decode_v2_control_record(
-        SimpleNamespace(qsa_ordered_decode_v2=True),
-        environment={QSA_ORDERED_DECODE_ENV: "1"})
+        SimpleNamespace(
+            **{QSA_ORDERED_DECODE_FIELD: True, "qsa_ordered_decode_v2": True}))
     assert record["runner_field"] == "qsa_ordered_decode_v2"
     assert record["before"] is False
     assert record["after"] is True
-    assert record["prerequisite"] == {QSA_ORDERED_DECODE_ENV: "1"}
+    assert record["prerequisite"] == {QSA_ORDERED_DECODE_FIELD: True}
     assert record["published_value"] is True
-    # An arm without a runner records no published value rather than guessing.
-    assert qsa_ordered_decode_v2_control_record()["published_value"] is None
+    # An arm without a runner records no published value rather than guessing,
+    # and it records no prerequisite it never read either.
+    without_runner = qsa_ordered_decode_v2_control_record()
+    assert without_runner["published_value"] is None
+    assert without_runner["prerequisite"] == {QSA_ORDERED_DECODE_FIELD: None}

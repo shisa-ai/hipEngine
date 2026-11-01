@@ -814,7 +814,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_RAW_VARIANT` | `coltile8` | Raw-Q rowbatch prefill variant selector. |
 | `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` | `32` | Row-batch size for raw Q4 prompt-prefill row owners; `0`/`false` disables, `1` selects 32. |
 | `HIPENGINE_QWEN4_EXP_QSA_WAVE32` | retired | No longer read. H128 sparse decode and prefill fallback selection is runner-owned; `qsa_wave32(runner, False)` selects the wave64 diagnostic parent without changing H256 routes. |
-| `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` | `0` | Opt-in ordered sparse-attention decode route for head_dim 256. |
+| `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` | retired | No longer read. The profile publishes `qsa_ordered_decode` on its generator and scalar target/draft runners: production on, strict off. `qsa_ordered_decode(runner, False)` selects the non-ordered sparse diagnostic parent. H256 admission, the independent ordered-v2 leaf and batch rows-attention selection are unchanged. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` | retired | No longer read. The owning target/draft runner carries ordered-v2 selection; the v1 prerequisite, geometry/count guards and separate fused diagnostic remain. |
 | `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR` | retired | No longer read. The resolved profile publishes prefill head grouping on the owning runner; scoped diagnostics may select pair or quad without changing independent batch attention selection. |
 | `HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` | retired; ignored | Runner-owned `qsa_h256_prefill_mode` now selects `parent`, `wave`, or `page256`. Production publishes `page256`, strict publishes `parent`; diagnostic scopes restore the prior mode on exit. |

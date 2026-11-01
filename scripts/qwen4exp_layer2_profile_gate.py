@@ -56,7 +56,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     q4_dp4a_decode, q4_exact_grouped_all, q4_exact_grouped_gate,
     q4_out4, q51_exact_grouped_down, q51_out8, q51_wmma_down,
     routed_f16_enabled as routed_f16,
-    qsa_ordered_decode_v2,
+    qsa_ordered_decode, qsa_ordered_decode_v2,
     qsa_prefill_head_mode, qsa_h256_prefill_mode, qsa_wmma_attention,
     router_producer_variant,
     q8_down_variant, resolve_q8_down_variant,
@@ -168,6 +168,12 @@ class CandidateSpec:
     gdn_decode_rowsplit: bool | None = None
     gr_f16_direct: bool | None = None
     moe_decode_warp: frozenset[str] | None = None
+    # Explicit QSA ordered sparse-decode prerequisite for this arm, same
+    # protocol. ``None`` keeps the base profile's published decision (on for a
+    # production base, off on a strict one); the gate binds a non-None value
+    # around the measured rows and restores it after. The ordered-v2 leaf below
+    # it keeps its own independent field.
+    qsa_ordered_decode: bool | None = None
     # Explicit QSA ordered-v2 sparse decode selection for this arm, same
     # protocol. ``None`` keeps the base profile's published decision (on for a
     # production base, the ordered v1 parent on a strict one); the gate binds a
@@ -243,11 +249,12 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
     "QSA_FLASH_PREFILL",
-    "QSA_ORDERED_DECODE", "GR_WIDE",
+    "GR_WIDE",
 )
-# The QSA prefill head grouping, the ordered-v2 sparse decode leaf and the GDN
-# peer prefill owner's layer scope are request-local runner state, so this gate
-# arms them through CandidateSpec.qsa_prefill_head_mode,
+# The QSA prefill head grouping, the ordered sparse-decode prerequisite, the
+# ordered-v2 sparse decode leaf and the GDN peer prefill owner's layer scope are
+# request-local runner state, so this gate arms them through
+# CandidateSpec.qsa_prefill_head_mode, CandidateSpec.qsa_ordered_decode,
 # CandidateSpec.qsa_ordered_decode_v2 and CandidateSpec.gdn_peer_prefill, not
 # through environment switches.
 
@@ -376,12 +383,14 @@ CANDIDATES = {
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
         candidate_key=None,
         fallback_key=None,
-        # The conservative arm keeps the ordered v1 parent the env zeroing above
-        # selects, so the v2 leaf it rides is bound off explicitly rather than
-        # left at the production base's published value. The GDN peer prefill
-        # owner is request-local state rather than one of those flags, so the
-        # arm closes its scope explicitly: on the UD base that is a no-op, and on
-        # any lane that publishes a scope it keeps the arm conservative.
+        # The conservative arm keeps the non-ordered sparse decode owner, so it
+        # binds that prerequisite off explicitly rather than leaving the
+        # production base's published route, and binds the v2 leaf off with it.
+        # The GDN peer prefill owner is request-local state rather than one of
+        # those flags, so the arm closes its scope explicitly: on the UD base
+        # that is a no-op, and on any lane that publishes a scope it keeps the
+        # arm conservative.
+        qsa_ordered_decode=False,
         qsa_ordered_decode_v2=False,
         qsa_h256_prefill_mode="parent",
         gdn_peer_prefill=False,
@@ -861,15 +870,15 @@ CANDIDATES["q8_blockscale_guarded_restore"] = replace(
         **CANDIDATES["q8_blockscale_guarded_quad"].environment,
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
-        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1",
     },
+    qsa_ordered_decode=True,
     qsa_ordered_decode_v2=True,
 )
 CANDIDATES["q8_blockscale_guarded_ordered"] = replace(
     CANDIDATES["q8_blockscale_guarded_quad"], name="q8_blockscale_guarded_ordered",
     scenario_id="qwen4exp-q8-blockscale-guarded-qsa-ordered",
-    environment={**CANDIDATES["q8_blockscale_guarded_quad"].environment,
-                 "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1"},
+    environment={**CANDIDATES["q8_blockscale_guarded_quad"].environment},
+    qsa_ordered_decode=True,
     qsa_ordered_decode_v2=True,
 )
 CANDIDATES["production_gdn_restore"] = replace(
@@ -1656,7 +1665,8 @@ def bind_candidate_gr_wide(
 #: ``None`` means "keep what the base profile published", so only a non-None
 #: value is a change an arm makes.
 _OWNER_FIELD_NAMES = (
-    "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill")
+    "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
+    "qsa_ordered_decode")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1781,7 +1791,16 @@ def bind_candidate_owners(
     unwinds, and the returned values are the ones the measured rows ran under.
     """
 
+    runner = getattr(candidate_generator, "runner", candidate_generator)
+    if candidate_spec.qsa_ordered_decode is not None:
+        dispatch_stack.enter_context(qsa_ordered_decode(
+            runner, candidate_spec.qsa_ordered_decode))
+    if candidate_spec.qsa_ordered_decode_v2 is not None:
+        dispatch_stack.enter_context(qsa_ordered_decode_v2(
+            runner, candidate_spec.qsa_ordered_decode_v2))
     return {
+        "qsa_ordered_decode": bool(getattr(runner, "qsa_ordered_decode", False)),
+        "qsa_ordered_decode_v2": bool(getattr(runner, "qsa_ordered_decode_v2", False)),
         "q8_down_variant": bind_candidate_q8_down_variant(
             dispatch_stack, candidate_generator, candidate_spec),
         "gdn_tile16_variant": bind_candidate_gdn_tile16_variant(
@@ -2089,6 +2108,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # the base profile's published variant is restored on exit.
         dispatch_stack.enter_context(gdn_prefill_variant(
             candidate_generator.runner, candidate_spec.gdn_prefill_variant))
+    if candidate_spec.qsa_ordered_decode is not None:
+        # The ordered sparse decode prerequisite is request-local state too, so
+        # the arm binds it and the profile's own decision comes back on unwind.
+        dispatch_stack.enter_context(qsa_ordered_decode(
+            candidate_generator.runner, candidate_spec.qsa_ordered_decode))
     if candidate_spec.qsa_ordered_decode_v2 is not None:
         # And for the ordered-v2 sparse decode leaf: request-local state, so the
         # arm binds it and the profile's own decision comes back on unwind.
