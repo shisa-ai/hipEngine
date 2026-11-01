@@ -1,4 +1,5 @@
 """Public generation obeys owner prepacking in both MMQ resource consumers."""
+import os
 import numpy as np
 import pytest
 from tests.test_live_qwen4exp_staged_f32_interface import (
@@ -9,8 +10,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'vector_prerequisite'])
 @pytest.mark.parametrize('length', [73, 273, 517])
-def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, length):
+def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.runtime import gguf_linear as linear
@@ -49,8 +51,13 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK', '0' if enabled else '1')
-            with (runtime.q8_mmq_prefill_enabled(owner, True),
-                  runtime.q8_mmq_prepack_enabled(owner, enabled)):
+            if interface == 'vector_prerequisite':
+                from scripts.qwen4exp_halo_box_campaign_ab import mmq_vector_prerequisite
+                scope = mmq_vector_prerequisite(
+                    owner.runner, 'q8-mmq-vec4' if enabled else 'q8-mmq-raw-vector')
+            else:
+                scope = runtime.q8_mmq_prepack_enabled(owner, enabled)
+            with runtime.q8_mmq_prefill_enabled(owner, True), scope:
                 owner.runner.configure_mmq_prefill_resources()
                 sidecars = owner.runner._q8_mmq_weight_sidecars
                 assert sidecars is not None
@@ -62,6 +69,7 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
                     assert leaves, 'no actual MMQ launch observed'
                     assert any('prepacked' in name for name in leaves) is enabled, set(leaves)
                     assert owner.runner.q8_mmq_prepack_enabled is enabled
+                    assert os.environ['HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK'] == ('0' if enabled else '1')
                     assert owner.runner._q8_mmq_weight_sidecars is sidecars
                     assert captures and all(np.isfinite(row).all() for row in captures)
                     repeats.append((tuple(output[0].generated_token_ids), [r.copy() for r in captures]))

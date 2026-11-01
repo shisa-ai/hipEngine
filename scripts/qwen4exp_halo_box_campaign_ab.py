@@ -1595,7 +1595,7 @@ def mmq_vector_prerequisite(runner, route_package, *, environment=os.environ):
     the shipped UD lane: the profile binds the parent owner off, and a prefill
     session with no workspace launches nothing. The arm
     therefore admits the parent, provisions its workspace (and, for the vec4
-    arm, the prepacked mapping), restores the caller's switches on exit and
+    arm, the prepacked mapping), restores the caller's owner decisions on exit and
     fails loudly when the prerequisite cannot be met - an arm that binds the
     child without the parent measures the scalar owner at zero calls and would
     report it as the candidate.
@@ -1608,44 +1608,39 @@ def mmq_vector_prerequisite(runner, route_package, *, environment=os.environ):
 
     if route_package not in MMQ_VECTOR_ROUTE_PACKAGES:
         raise ValueError(f"{route_package} is not an MMQ vector arm")
-    from hipengine.runtime.qwen4_exp_runner import q8_mmq_prefill_enabled
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_mmq_prefill_enabled, q8_mmq_prepack_enabled,
+    )
     raw = route_package == "q8-mmq-raw-vector"
-    forced = {MMQ_PREPACK_ENV: "0" if raw else "1"}
-    previous = {key: environment.get(key) for key in forced}
-    for key, value in forced.items():
-        environment[key] = value
-    try:
-        configure = getattr(runner, "configure_mmq_prefill_resources", None)
-        if not callable(configure):
+    prerequisite = {"q8_mmq_prefill_enabled": True,
+                    "q8_mmq_prepack_enabled": not raw}
+    previous = {key: getattr(runner, key, None) for key in prerequisite}
+    configure = getattr(runner, "configure_mmq_prefill_resources", None)
+    if not callable(configure):
+        raise ValueError(
+            f"{route_package} needs the owning runner's MMQ provisioner; "
+            "binding the child alone would measure the scalar parent")
+    with (q8_mmq_prefill_enabled(runner, True),
+          q8_mmq_prepack_enabled(runner, not raw)):
+        configure()
+        if not getattr(runner, "_q8_mmq_buffers", ()):
             raise ValueError(
-                f"{route_package} needs the owning runner's MMQ provisioner; "
-                "binding the child alone would measure the scalar parent")
-        with q8_mmq_prefill_enabled(runner, True):
-            configure()
-            if not getattr(runner, "_q8_mmq_buffers", ()):
+                "the Q8 MMQ parent did not provision a workspace, so the "
+                "arm would measure the scalar owner at zero calls; bind "
+                "q8_mmq_prefill_enabled=True and call "
+                "configure_mmq_prefill_resources()")
+        if not raw:
+            sidecars = getattr(runner, "_q8_mmq_weight_sidecars", None)
+            if sidecars is None or not getattr(sidecars, "mapping", None):
                 raise ValueError(
-                    "the Q8 MMQ parent did not provision a workspace, so the "
-                    "arm would measure the scalar owner at zero calls; bind "
-                    "q8_mmq_prefill_enabled=True and call "
-                    "configure_mmq_prefill_resources()")
-            if not raw:
-                sidecars = getattr(runner, "_q8_mmq_weight_sidecars", None)
-                if sidecars is None or not getattr(sidecars, "mapping", None):
-                    raise ValueError(
-                        "the prepacked MMQ mapping did not provision, so the "
-                        "vec4 arm would measure the raw owner at zero calls; "
-                        f"it needs {MMQ_PREPACK_ENV}=1 and prepared sidecars")
-            yield {
-                "forced": forced,
-                "previous": previous,
-                "prerequisite_owner": {"q8_mmq_prefill_enabled": True},
-            }
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                environment.pop(key, None)
-            else:
-                environment[key] = value
+                    "the prepacked MMQ mapping did not provision, so the "
+                    "vec4 arm would measure the raw owner at zero calls; "
+                    "it needs q8_mmq_prepack_enabled=True and prepared sidecars")
+        yield {
+            "forced": {}, "previous": {},
+            "prerequisite_owner": prerequisite,
+            "prerequisite_previous_owner": previous,
+        }
 
 
 def mmq_vector_control_record(route_package, runner=None, *, environment=os.environ):
@@ -1653,15 +1648,18 @@ def mmq_vector_control_record(route_package, runner=None, *, environment=os.envi
 
     raw = route_package == "q8-mmq-raw-vector"
     field = "dense_mmq_raw_vector_enabled" if raw else "dense_mmq_vec4_enabled"
-    forced = {MMQ_PREPACK_ENV: "0" if raw else "1"}
+    prerequisite = {"q8_mmq_prefill_enabled": True,
+                    "q8_mmq_prepack_enabled": not raw}
     record = {
         "runner_field": field,
         "before": False,
         "after": True,
         "scope": "per measured run; restored on exit",
-        "prerequisite_environment": forced,
-        "prerequisite_previous": {key: environment.get(key) for key in forced},
-        "prerequisite_owner": {"q8_mmq_prefill_enabled": True},
+        "prerequisite_environment": {},
+        "prerequisite_previous": {},
+        "prerequisite_owner": prerequisite,
+        "prerequisite_previous_owner": {
+            key: getattr(runner, key, None) for key in prerequisite},
         "published_value": (
             None if runner is None else getattr(runner, field, None)),
         "provisioning": (
@@ -1697,7 +1695,8 @@ def mmq_vector_control_record(route_package, runner=None, *, environment=os.envi
 def mmq_token64_control_record(runner=None, *, environment=os.environ):
     """The recorded control for the token64 leg and the parent it rides."""
 
-    forced = {MMQ_PREPACK_ENV: "0"}
+    prerequisite = {"q8_mmq_prefill_enabled": True,
+                    "q8_mmq_prepack_enabled": False}
     return {
         "runner_field": "dense_mmq_token64_enabled",
         "before": False,
@@ -1705,9 +1704,11 @@ def mmq_token64_control_record(runner=None, *, environment=os.environ):
         "scope": "per measured run; restored on exit",
         "parent_field": "dense_mmq_raw_vector_enabled",
         "parent_bound_value": True,
-        "prerequisite_environment": forced,
-        "prerequisite_previous": {key: environment.get(key) for key in forced},
-        "prerequisite_owner": {"q8_mmq_prefill_enabled": True},
+        "prerequisite_environment": {},
+        "prerequisite_previous": {},
+        "prerequisite_owner": prerequisite,
+        "prerequisite_previous_owner": {
+            key: getattr(runner, key, None) for key in prerequisite},
         "published_value": (
             None if runner is None
             else getattr(runner, "dense_mmq_token64_enabled", None)),

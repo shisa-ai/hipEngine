@@ -45,7 +45,7 @@ def select(monkeypatch, *, rows=512, variant=PREFILL, registered=True):
 
 
 class ProvisioningRunner:
-    """A runner stand-in whose provisioner honours the env the scope forces."""
+    """A runner stand-in whose provisioner honours explicit owner decisions."""
 
     def __init__(self, environment, *, workspace=True, sidecars=True):
         self.environment = environment
@@ -54,6 +54,7 @@ class ProvisioningRunner:
         self._q8_mmq_buffers = ()
         self._q8_mmq_weight_sidecars = None
         self.q8_mmq_prefill_enabled = None
+        self.q8_mmq_prepack_enabled = None
         self.dense_mmq_token64_enabled = False
         self.dense_mmq_raw_vector_enabled = True
         self.dense_mmq_vec4_enabled = True
@@ -62,13 +63,13 @@ class ProvisioningRunner:
     def configure_mmq_prefill_resources(self):
         self.provisions.append({
             "q8_mmq_prefill_enabled": self.q8_mmq_prefill_enabled,
-            MMQ_PREPACK_ENV: self.environment.get(MMQ_PREPACK_ENV),
+            "q8_mmq_prepack_enabled": self.q8_mmq_prepack_enabled,
         })
         if self.q8_mmq_prefill_enabled is True and self._workspace:
             self._q8_mmq_buffers = (object(),)
         if (
             self.q8_mmq_prefill_enabled is True
-            and self.environment.get(MMQ_PREPACK_ENV) == "1"
+            and self.q8_mmq_prepack_enabled is True
             and self._sidecars
         ):
             self._q8_mmq_weight_sidecars = SimpleNamespace(
@@ -191,7 +192,8 @@ def test_the_campaign_arm_binds_parent_then_candidate():
         # mapping. The ambient key is inert and unchanged.
         assert owner.q8_mmq_prefill_enabled is True
         assert env[MMQ_PREFILL_ENV] == "0"
-        assert env[MMQ_PREPACK_ENV] == "0"
+        assert env[MMQ_PREPACK_ENV] == "1"
+        assert owner.q8_mmq_prepack_enabled is False
         assert owner._q8_mmq_buffers
         assert owner._q8_mmq_weight_sidecars is None
     assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "1"}
@@ -241,7 +243,7 @@ def test_the_prerequisite_admits_provisions_and_restores_the_parent():
     with mmq_vector_prerequisite(owner, "q8-mmq-raw-vector", environment=env) as record:
         assert owner.q8_mmq_prefill_enabled is True
         assert record["prerequisite_owner"] == {
-            "q8_mmq_prefill_enabled": True}
+            "q8_mmq_prefill_enabled": True, "q8_mmq_prepack_enabled": False}
         assert MMQ_PREFILL_ENV not in record["forced"]
         assert owner._q8_mmq_buffers
     assert env == {MMQ_PREFILL_ENV: "0", "other": "keep"}
@@ -268,10 +270,10 @@ def test_the_control_record_names_the_field_and_the_prerequisite():
     assert record["before"] is False
     assert record["after"] is True
     assert record["published_value"] is True
-    assert record["prerequisite_environment"] == {MMQ_PREPACK_ENV: "0"}
-    assert record["prerequisite_previous"] == {MMQ_PREPACK_ENV: "1"}
+    assert record["prerequisite_environment"] == {}
+    assert record["prerequisite_previous"] == {}
     assert record["prerequisite_owner"] == {
-        "q8_mmq_prefill_enabled": True}
+        "q8_mmq_prefill_enabled": True, "q8_mmq_prepack_enabled": False}
     assert record["scope"] == "per measured run; restored on exit"
 
 

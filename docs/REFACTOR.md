@@ -2869,7 +2869,9 @@ callers retain the ambient diagnostic fallback. The unused GDN decode-layer
 key is no longer written or advertised by profiles and diagnostics; decode uses
 its existing `gdn_decode_rowsplit` owner. MMQ weight prepacking has an explicit
 `q8_mmq_prepack_enabled` owner field and restoring scope shared by preparation
-and session entry; its diagnostic callers and profile binder still need migration.
+and session entry; vector/raw-vector/token64 diagnostic prerequisites now bind
+and report that field without process mutation. The prepack comparison callers
+and profile binder still need migration.
 Continue with the remaining profile-owned environment controls before closing
 this entry.
 The focused guard regression is:
