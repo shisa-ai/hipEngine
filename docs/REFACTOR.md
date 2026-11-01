@@ -2882,8 +2882,9 @@ Profile-gap attention overrides also bind owner state, explicitly enable the
 parent before preparation, and reject a conflicting explicit parent-off request.
 Generic GGUF WMMA prefill enablement also accepts optional generator/runner state
 and a restoring scope. Profile-gap translates its generic WMMA `--override`
-into that owner state without process writes; the remaining diagnostic callers
-and profile publication still need migration.
+into that owner state without process writes. Candidate AR likewise separates
+and binds generic WMMA overrides; campaign/localizer callers and profile
+publication still need migration.
 The focused guard regression is:
 
 ```bash

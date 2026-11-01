@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_generic_wmma_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -53,6 +53,10 @@ def test_public_generic_wmma_owner(monkeypatch, length, interface):
                     from scripts.qwen4exp_profile_gap import bind_generic_wmma_override
                     report = bind_generic_wmma_override(stack, owner, {
                         'HIPENGINE_GGUF_WMMA_PREFILL': '1' if enabled else '0'})
+                    assert report['gguf_wmma_prefill_enabled'] is enabled
+                elif interface == 'candidate_ar':
+                    from scripts.qwen4exp_candidate_ar import bind_generic_wmma_override
+                    report = bind_generic_wmma_override(stack, owner, enabled)
                     assert report['gguf_wmma_prefill_enabled'] is enabled
                 else:
                     stack.enter_context(runtime.gguf_wmma_prefill(owner, enabled))

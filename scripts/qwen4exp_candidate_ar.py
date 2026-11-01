@@ -4,8 +4,9 @@
 This mirrors ``scripts/qwen4exp_canonical_ar_bench.py``'s ``hipengine`` mode
 but lets the caller force a diagnostic routing override. The attention-gate
 ``--override`` binds generator/runner owner state and prepares the required MMQ
-workspace before sampling; it does not change the process key. Other overrides
-remain post-binder environment inputs. This runner produces diagnostic samples,
+workspace before sampling; it does not change the process key. Generic WMMA
+``--override`` also binds owner state. Other overrides remain post-binder
+environment inputs. This runner produces diagnostic samples,
 not production benchmark evidence.
 
 Usage:
@@ -54,6 +55,21 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
     return environment, attention
 
 
+def split_generic_wmma_override(values: dict[str, str]) -> tuple[dict[str, str], bool | None]:
+    """Separate generic WMMA using its low-level boolean parser."""
+    environment = dict(values)
+    raw = environment.pop('HIPENGINE_GGUF_WMMA_PREFILL', None)
+    return environment, None if raw is None else raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def bind_generic_wmma_override(stack: ExitStack, owner, enabled: bool | None):
+    """Keep the generic WMMA choice on the measured owner until stack exit."""
+    from hipengine.runtime.qwen4_exp_runner import gguf_wmma_prefill
+    if enabled is not None:
+        stack.enter_context(gguf_wmma_prefill(owner, enabled))
+    return {'gguf_wmma_prefill_enabled': getattr(owner, 'gguf_wmma_prefill_enabled', None)}
+
+
 @contextmanager
 def attention_override_scope(owner, enabled: bool | None):
     """Prepare the explicit MMQ parent and restore both choices after sampling."""
@@ -85,6 +101,7 @@ def main() -> int:
 
     try:
         overrides, attention_override = split_owner_overrides(args.override)
+        overrides, generic_wmma_override = split_generic_wmma_override(overrides)
     except ValueError as exc:
         parser.error(str(exc))
     os.environ.update(overrides)
@@ -173,6 +190,8 @@ def main() -> int:
     try:
         artifact['owner_overrides'] = owner_stack.enter_context(
             attention_override_scope(generator, attention_override))
+        artifact['owner_overrides'].update(bind_generic_wmma_override(
+            owner_stack, generator, generic_wmma_override))
         _write_json(args.output, artifact)
         for warmup in range(args.warmups):
             for case in _measurement_order(cases, warmup):
