@@ -26,12 +26,13 @@ from scripts.qwen4exp_canonical_ar_bench import (
 from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
-    candidate_owner_changes,
+    candidate_owner_changes, dense_wide_layers_arm_scope,
     gdn_colwarps_prefill_arm_scope,
     gdn_tile16_variant_arm_scope,
     gr_wide_arm_scope,
     q8_down_variant_arm_scope,
 )
+from hipengine.runtime.gguf_linear import resolve_q8_dense_wide_policy
 from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_ordered_decode, qsa_prefill_head_mode,
     qsa_h256_prefill_mode,
@@ -62,7 +63,7 @@ SHARED_DECODE_SAFE_ENV = frozenset(
 # selects the c1 H256 decode route, so it is not a captured decode unit either.
 SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset(
     {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
-     "qsa_ordered_decode"})
+     "qsa_ordered_decode", "q8_dense_wide_layers"})
 SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
@@ -94,6 +95,13 @@ OWNERSHIP = {
         "buffers with its own decode state."
     ),
 }
+
+
+def arm_dense_wide_scope(runner, arm):
+    """Bind the candidate's layer-only wide declaration, keeping the reference."""
+    spec = CANDIDATES.get(arm)
+    return dense_wide_layers_arm_scope(
+        runner, None if spec is None else spec.q8_dense_wide_layers)
 
 
 def arm_gr_wide(arm, published):
@@ -436,6 +444,7 @@ def main():
             )
             with (
                 q8_scope,
+                arm_dense_wide_scope(runner, arm),
                 gr_wide_arm_scope(runner, arm_gr_wide_modes.get(arm)),
                 q8_down_variant_arm_scope(
                     runner, arm_q8_down_variants.get(arm)),
@@ -461,6 +470,7 @@ def main():
                         transitions=fixture["decode_transitions"])
                 row["prefill_chunks"] = chunks
                 row["active_chunk_size"] = runner.prefill_chunk_size
+                row["q8_dense_wide_policy"] = resolve_q8_dense_wide_policy(runner).to_report()
                 row["q8_down_variant"] = resolve_q8_down_variant(runner)
                 row["gdn_tile16_variant"] = resolve_gdn_tile16_variant(runner)
                 # Read inside the scope: the gate these samples ran under.

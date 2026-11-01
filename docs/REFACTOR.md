@@ -2892,7 +2892,10 @@ owner-field migration, preserving selected-route reporting, caller overrides and
 isolation. Keep the registered exact fallback. The explicit `Q8DenseWidePolicy` runner field,
 `resolve_q8_dense_wide_policy` getter and `q8_dense_wide_policy` diagnostic scope are available;
 the dense-route A/B, layer gate, last-row probe, profile-gap, disabled-family sweep
-and halo-box Q8 wave-scale/DPP scopes now bind and report this owner explicitly. The binder and remaining diagnostic consumers
+and halo-box Q8 wave-scale/DPP scopes now bind and report this owner explicitly. Layer-2
+candidates declare `q8_dense_wide_layers`; the gate, shared candidate consumers and
+prefill-restore A/B bind the layer-only override while preserving enablement. The binder
+and remaining diagnostic consumers
 still need migration. Do not remove environment selectors before
 their consumers have the replacement control. The census scope and repair diagnostics are supported
 interfaces documented in `docs/ENVS.md` and `docs/KERNELS.md`, not pending removals.

@@ -48,6 +48,9 @@ from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_Q4_DP4A_DECODE_LAYERS,
 )
+from hipengine.runtime.gguf_linear import (
+    Q8DenseWidePolicy, q8_dense_wide_policy, resolve_q8_dense_wide_policy,
+)
 from hipengine.runtime.qwen4_exp_runner import (
     gdn_peer_prefill, gdn_prefill_variant, gdn_register_prefill, gdn_decode_rowsplit,
     moe_decode_warp, gr_f16_direct, gr_wide,
@@ -238,6 +241,9 @@ class CandidateSpec:
     # chunks the exact grouped Q5_1 down chain already owns.
     q4_exact_grouped_gate: bool | None = None
     q4_exact_grouped_all: bool | None = None
+    # Layer-only override: preserve the base owner's enablement. None keeps
+    # its scope; an empty tuple explicitly means all layers.
+    q8_dense_wide_layers: tuple[int, ...] | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -260,7 +266,6 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
-    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(13, 48))),
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
 }
 #: The cleared composition's tile-16 GDN owner is request-local runner state, so
@@ -276,9 +281,7 @@ _ALL_LAYERS = ",".join(map(str, range(48)))
 _F16_ROUTE_ARMS = {
     "recovery_plan": {},
     "recovery_plus_routed_f16": {},
-    "recovery_plus_dense_wide_all_layers": {
-        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": _ALL_LAYERS,
-    },
+    "recovery_plus_dense_wide_all_layers": {},
     "recovery_plus_gr_wide": {},
     "recovery_plus_indexer_router_f16": {
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
@@ -307,6 +310,8 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
                 "binder" + (", plus " + ", ".join(sorted(extra)) if extra else "")
             ),
             environment={**_F16_ROUTES_OFF, **extra},
+            q8_dense_wide_layers=(tuple(range(48)) if name == 'recovery_plus_dense_wide_all_layers'
+                                  else tuple(range(13, 48))),
             gdn_tile16_variant=_F16_ROUTES_OFF_TILE16,
             router_producer_variant=(
                 "f32_hidden_f16_wmma_gemm"
@@ -632,10 +637,8 @@ CANDIDATES = {
         qsa_wmma_enabled=True,
         routed_f16_enabled=True,
         gr_wide=True,
+        q8_dense_wide_layers=tuple(range(48)),
         environment={
-            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
-                str(layer) for layer in range(48)
-            ),
             "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(
                 str(layer) for layer in range(48)
@@ -1659,12 +1662,29 @@ def bind_candidate_gr_wide(
     return bool(getattr(candidate_generator.runner, "gr_wide", False))
 
 
+def dense_wide_layers_arm_scope(owner, layers):
+    """Override only layer scope; None leaves the base owner's policy intact."""
+    if layers is None:
+        return nullcontext()
+    runner = getattr(owner, 'runner', owner)
+    prior = resolve_q8_dense_wide_policy(runner)
+    return q8_dense_wide_policy(owner, Q8DenseWidePolicy(
+        prior.enabled, frozenset(layers) or None))
+
+
+def bind_candidate_dense_wide(stack, generator, spec) -> dict[str, Any]:
+    """Bind a layer-only diagnostic override and report the measured policy."""
+    runner = getattr(generator, 'runner', generator)
+    stack.enter_context(dense_wide_layers_arm_scope(generator, spec.q8_dense_wide_layers))
+    return resolve_q8_dense_wide_policy(runner).to_report()
+
+
 #: Candidate fields that are owner-bound decisions rather than process keys.
 #: ``None`` means "keep what the base profile published", so only a non-None
 #: value is a change an arm makes.
 _OWNER_FIELD_NAMES = (
     "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
-    "qsa_ordered_decode")
+    "qsa_ordered_decode", "q8_dense_wide_layers")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1677,7 +1697,8 @@ def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
     """
 
     return {
-        name: getattr(candidate_spec, name)
+        name: (list(getattr(candidate_spec, name)) if name == 'q8_dense_wide_layers'
+               else getattr(candidate_spec, name))
         for name in _OWNER_FIELD_NAMES
         if getattr(candidate_spec, name) is not None
     }
@@ -1797,6 +1818,8 @@ def bind_candidate_owners(
         dispatch_stack.enter_context(qsa_ordered_decode_v2(
             runner, candidate_spec.qsa_ordered_decode_v2))
     return {
+        "q8_dense_wide_policy": bind_candidate_dense_wide(
+            dispatch_stack, candidate_generator, candidate_spec),
         "qsa_ordered_decode": bool(getattr(runner, "qsa_ordered_decode", False)),
         "qsa_ordered_decode_v2": bool(getattr(runner, "qsa_ordered_decode_v2", False)),
         "q8_down_variant": bind_candidate_q8_down_variant(
@@ -1886,6 +1909,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         and candidate_spec.q8_mmq_prefill_enabled is None
         and candidate_spec.router_producer_variant is None
         and candidate_spec.gr_wide is None
+        and candidate_spec.q8_dense_wide_layers is None
     )
 
 
@@ -2088,6 +2112,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # other route binds it on this runner and the plan's choice comes back on
     # unwind. Dispatch counting on the candidate key proves which projection
     # actually ran.
+    resolved_dense_wide = bind_candidate_dense_wide(
+        dispatch_stack, candidate_generator, candidate_spec)
     resolved_gr_wide = bind_candidate_gr_wide(
         dispatch_stack, candidate_generator, candidate_spec)
     # The grouped Q8_0 expert-down owner is the plan's decision too: an arm that
@@ -2489,6 +2515,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             ),
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "router_producer_variant": candidate_spec.router_producer_variant,
+            "q8_dense_wide_policy": resolved_dense_wide,
+            "q8_dense_wide_layers_override": candidate_spec.q8_dense_wide_layers,
             "gr_wide": resolved_gr_wide,
             "gr_wide_override": candidate_spec.gr_wide,
             "base_profile": candidate_spec.base_profile,

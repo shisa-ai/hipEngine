@@ -126,6 +126,7 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         q8_mmq_prefill_enabled=None,
         router_producer_variant=None,
         gr_wide=None,
+        q8_dense_wide_layers=None,
     )
 
     assert module._candidate_named_profile_intact(spec) is expected

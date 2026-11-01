@@ -10,7 +10,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'layer_gate', 'dense_ab', 'last_row_probe', 'profile_gap'])
+@pytest.mark.parametrize('interface', ['direct', 'layer_gate', 'dense_ab', 'last_row_probe', 'profile_gap', 'layer2', 'restore_ab'])
 def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import gguf_linear as gl
@@ -50,6 +50,29 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
                 control = gate._apply_route_env(
                     gate.SELECTORS['dense_wide'], candidate=enabled,
                     layers=','.join(map(str, range(16, 48))), generator=generator)
+            elif interface in {'layer2', 'restore_ab'}:
+                from contextlib import contextmanager, ExitStack
+                from dataclasses import replace
+                from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, bind_candidate_dense_wide
+
+                @contextmanager
+                def layer2_control():
+                    prior = gl.Q8DenseWidePolicy(enabled, frozenset({7}))
+                    spec = replace(CANDIDATES['production_baseline'],
+                                   q8_dense_wide_layers=tuple(range(16, 48)))
+                    with gl.q8_dense_wide_policy(generator, prior):
+                        with ExitStack() as stack:
+                            if interface == 'restore_ab':
+                                from scripts.qwen4exp_prefill_restore_ab import arm_dense_wide_scope
+                                with monkeypatch.context() as patch:
+                                    patch.setitem(CANDIDATES, 'test_public_wide', spec)
+                                    stack.enter_context(arm_dense_wide_scope(generator, 'test_public_wide'))
+                            else:
+                                report = bind_candidate_dense_wide(stack, generator, spec)
+                                assert report == policy.to_report()
+                            yield
+                        assert generator.q8_dense_wide_policy is prior
+                control = layer2_control()
             elif interface == 'profile_gap':
                 from scripts.qwen4exp_profile_gap import _wide_owner_override
                 control = _wide_owner_override(generator, enabled, ','.join(map(str, range(16, 48))))
@@ -63,7 +86,7 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
             with (control,
                   runner_module.q8_mmq_prefill_enabled(generator, False),
                   gl.q4k_rowtile_session(False)):
-                policy = gl.resolve_q8_dense_wide_policy(generator)
+                policy = gl.resolve_q8_dense_wide_policy(generator.runner)
                 results = []
                 for _ in range(2):
                     policies.clear()
