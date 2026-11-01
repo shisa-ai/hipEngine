@@ -375,6 +375,7 @@ def _capacity_prefill_rows_resolver(runner):
             max_sequence_length=int(max_positions),
             total_memory_bytes=int(total_memory_bytes),
             target_arch=getattr(runner, "target_arch", None),
+            backend=runner.backend,
             geometry_chunk_sizes=geometry_chunks,
         )
         return int(probe._prefill_scratch_rows(int(max_positions)))

@@ -2911,22 +2911,6 @@ wrappers, kernel instantiations and caller arms together, preserving the histori
 replacing them, first implement and test the replacement against the existing exact-repair contract;
 the proposed LDS weight-staging design is not proof of an implemented, exact replacement.
 
-### R0439 — Architecture chunk fallback ownership
-
-Owner: `hipengine/runtime/prefill.py`.
-
-Scope: `hipengine/runtime/prefill.py` — Architecture chunk fallback ownership.
-
-Done when: Deferred policy decision: make the architecture fallback geometry-aware or move its supported
-shapes into backend-owned policies shared by the applicable runners. Do not copy GGUF's
-quant-specific setting into PARO based only on hidden size, or remove the fallback without defining
-unknown-geometry behavior. Declare the proposed geometry/quant contract, compare PARO prefill on the
-same host with explicit chunk overrides, then migrate both consumers without changing manual-config
-precedence. Run chunk-precedence, GGUF prefill-plan and row-cap tests, plus public generation on the
-affected GGUF and PARO paths. Check short, chunk-boundary and long inputs and reported versus
-executed sizes. Numerical or performance claims require the corresponding profile/benchmark checks;
-missing measurements do not prevent explicit evaluation.
-
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.

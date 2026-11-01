@@ -1,11 +1,9 @@
 """Backend identity and capability policy declarations for hip_gfx1151.
 
 This module owns the gfx1151 backend key, target architecture, admission layer
-surface, and the non-GGUF capability/policy defaults (Qwen4Exp graph and PARO
-batch width). It is a move-only extraction from
-``hipengine.kernels.hip_gfx1151``: declaration values, provenance comments, and
-default/fallback semantics are unchanged. The backend package re-exports every
-declaration explicitly for import compatibility.
+surface, and shared prefill plus non-GGUF capability/policy defaults (Qwen4Exp
+graph and PARO batch width). Declaration values, provenance and fallback
+semantics are owned here; backend registration remains separate.
 
 The declarations are data only. They import no kernel bodies, touch no registry,
 and select no variant at import time; backend registration remains owned by
@@ -24,6 +22,12 @@ BACKEND = "hip_gfx1151"
 # repeating it.
 STAGED_F32_VARIANT = "staged_f32_bm128_bn64_bk32"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
+
+# Shared architecture fallback for Qwen3.5 GGUF and PARO linear/MoE prefill.
+# Applies to every geometry/quant unless a more specific consumer policy is
+# supplied; manual PrefillConfig fields suppress all automatic policies.
+# Preserves sol_r1 gfx1151 prefill recovery (2026-07) from runtime/prefill.py.
+PREFILL_CHUNK_SIZES = (256, 256)
 
 # Concrete GGUF consumer layers this backend registers (UD-U1 F3 admission
 # metadata; see the hip_gfx1100 declaration for the contract).  The gfx1151
@@ -78,6 +82,7 @@ __all__ = [
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",
     "PARO_RETAINED_BATCH_DEFAULTS",
     "PARO_SPECDEC2_MTP2_C1",
+    "PREFILL_CHUNK_SIZES",
     "QWEN4_EXP_MOE_GRAPH",
     "QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS",
     "QWEN4_EXP_PRODUCTION_Q8_PREFILL_LAYERS",

@@ -18,12 +18,6 @@ _LOW_MEMORY_MID_CONTEXT_MIN_TOKENS = 52 * 1024
 _LOW_MEMORY_FULL_CONTEXT_MIN_TOKENS = 131_072
 _LOW_MEMORY_TOTAL_BYTES = 26 * _GIB
 _DEFAULT_BUDGET_FRACTION = 0.55
-_ARCH_CHUNK_PROFILES: dict[str, dict[str, int]] = {
-    "gfx1151": {
-        "linear_chunk_size": 256,
-        "moe_chunk_size": 256,
-    },
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +32,9 @@ class PrefillConfig:
     policy, except 52K-class prompts on 24GB-class cards reduce the
     full-attention query chunk to 1024 rows and 128K-class prompts use
     conservative 768-token chunks to preserve transient scratch headroom while
-    keeping AOTriton on for long-context full attention.  AOTriton is
+    keeping AOTriton on for long-context full attention. Backend fallback
+    chunks can override the automatic linear/MoE sizes (gfx1151: 256/256);
+    a consumer's geometry/quant policy is more specific. AOTriton is
     a baseline vendored runtime dependency for the gfx1100
     Qwen3.5/PARO path; the measured crossover policy uses AOTriton attention
     once prompts reach 512 tokens.
@@ -99,6 +95,7 @@ def resolve_prefill_config_for_sequence(
     max_sequence_length: int,
     total_memory_bytes: int = 0,
     target_arch: str | None = None,
+    backend: str | None = None,
     geometry_chunk_sizes: tuple[int, int] | None = None,
 ) -> tuple[PrefillConfig, dict[str, object]]:
     """Resolve profile-derived chunk sizes for single-request prefill.
@@ -113,8 +110,12 @@ def resolve_prefill_config_for_sequence(
 
     1. ``geometry_chunk_sizes`` from the backend package
        (``GGUF_PREFILL_CHUNK_SIZES_BY_GEOMETRY``),
-    2. the architecture profile (``_ARCH_CHUNK_PROFILES[target_arch]``),
+    2. the backend's shared ``PREFILL_CHUNK_SIZES`` fallback,
     3. the shape/memory policy for the remaining fields.
+
+    The shared backend fallback is independent of model geometry and quant;
+    GGUF's more specific policy is never inferred for PARO. Unknown target
+    architectures without an explicit backend keep the shape/memory policy.
 
     Geometry and architecture policies set only ``linear_chunk_size`` and
     ``moe_chunk_size``. Manual configurations do not receive automatic
@@ -153,7 +154,7 @@ def resolve_prefill_config_for_sequence(
         return config, tuning
 
     arch_key = str(target_arch or "").strip().lower()
-    arch_profile = _ARCH_CHUNK_PROFILES.get(arch_key)
+    arch_profile = _backend_chunk_profile(backend, arch_key)
     geometry_profile = _geometry_profile_dict(geometry_chunk_sizes)
 
     if max_sequence < int(config.chunk_tune_min_tokens):
@@ -233,6 +234,25 @@ def resolve_prefill_config_for_sequence(
     tuning["chunk_sizes"] = _chunk_sizes_dict(tuned)
     tuning["applied"] = bool(tuned != base)
     return tuned, tuning
+
+
+def _backend_chunk_profile(
+    backend: str | None, target_arch: str,
+) -> dict[str, int] | None:
+    from hipengine.kernels.backends import (
+        HIP_BACKEND_TARGET_ARCH, CUDA_BACKEND_TARGET_ARCH, backend_package_capability,
+    )
+
+    # Preserve arch-only direct callers without keeping policy values in the
+    # runtime. Unknown architectures have no automatic backend fallback.
+    selected = backend or next(
+        (name for name, arch in HIP_BACKEND_TARGET_ARCH.items() if arch == target_arch),
+        None,
+    )
+    if selected not in HIP_BACKEND_TARGET_ARCH and selected not in CUDA_BACKEND_TARGET_ARCH:
+        return None
+    sizes = backend_package_capability(selected, "PREFILL_CHUNK_SIZES", None)
+    return _geometry_profile_dict(sizes)
 
 
 _MANUAL_CHUNK_FIELDS: tuple[str, ...] = (

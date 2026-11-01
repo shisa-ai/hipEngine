@@ -2115,6 +2115,7 @@ class Qwen35ParoResidentSession:
             max_sequence_length=length,
             total_memory_bytes=total_memory_bytes,
             target_arch=getattr(self, "target_arch", None),
+            backend=getattr(self, "backend", None),
         )
 
     def close(self) -> None:

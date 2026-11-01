@@ -14048,6 +14048,7 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=int(self.scratch.max_positions),
             total_memory_bytes=int(total_memory_bytes),
             target_arch=self.runner.target_arch,
+            backend=self.backend,
             geometry_chunk_sizes=_gguf_prefill_chunk_sizes_for(self.backend, self.runner.weights),
         )
         self._token_host = np.empty((self.max_batch_size,), dtype=np.int64)

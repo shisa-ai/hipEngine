@@ -103,9 +103,16 @@ No object-identity cache can reuse a stale policy or geometry result. DMS head-m
 KV sizing also shares its admission/size helper with the real allocator.
 
 Serving capacity adapters resolve the same architecture, geometry and memory
-chunk policy as session construction before choosing prefill rows. The plan prices
-initial owners, not later split-query growth; workspaces track those additional
-owners separately. Context-dependent layer selection and speculative workspace
+chunk policy as session construction before choosing prefill rows. The single
+resolver in `hipengine/runtime/prefill.py` applies manual whole-config precedence first,
+then geometry/quant policy, backend fallback and shape/memory defaults. gfx1151
+owns its shared `(256, 256)` linear/MoE fallback in `policy_capability.py`; GGUF
+may supply a more specific geometry/quant row. PARO uses the shared fallback,
+not GGUF's quant row inferred from hidden size. Unknown geometry uses the backend
+fallback; absent backend policy leaves shape/memory defaults. These sizes govern
+single-request native prefill; packed serving slabs have scheduler-owned ranges.
+The plan prices initial owners, not later split-query growth; workspaces track
+those additional owners separately. Context-dependent layer selection and speculative workspace
 costs still enter capacity search through caller-supplied callbacks.
 
 Existing imports from `qwen35_gguf_runner` are aliases to the planning definitions.

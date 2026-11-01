@@ -32,6 +32,7 @@ from hipengine.kernels.registry import registered_keys, resolve
 
 CAPABILITY_NAMES = {
     "BACKEND",
+    "PREFILL_CHUNK_SIZES",
     "STAGED_F32_VARIANT",
     "TARGET_ARCH",
     "GGUF_CONSUMER_LAYERS",
