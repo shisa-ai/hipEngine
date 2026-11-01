@@ -178,10 +178,12 @@ def test_layer2_gate_binds_a_declared_arm_mode_on_the_candidate_runner():
             stack, generator, gate.CANDIDATES["production_baseline"]) == "pair"
         assert runner.qsa_prefill_head_mode == "pair"
 
-    # The helper is on the measured path: ``run`` enters it on the stack that
-    # unwinds with the measured rows, so the binding cannot be dropped from the
-    # gate while this helper keeps passing.
-    tree = ast.parse(inspect.getsource(gate.run))
+    # The measured implementation enters the binding on the stack that
+    # unwinds with the measured rows. The public wrapper adds teacher isolation.
+    wrapper = ast.parse(inspect.getsource(gate.run))
+    assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+               and node.func.id == "_run" for node in ast.walk(wrapper))
+    tree = ast.parse(inspect.getsource(gate._run))
     bound = [
         node
         for node in ast.walk(tree)

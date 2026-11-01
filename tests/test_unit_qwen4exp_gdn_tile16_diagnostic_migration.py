@@ -377,7 +377,7 @@ def test_ab_measurement_scope_without_the_library_arm_binds_nothing():
 
 #: (script module, function that sets up the arm, helper it must call).
 CONSUMER_CALL_SITES = (
-    ("qwen4exp_layer2_profile_gate.py", "run",
+    ("qwen4exp_layer2_profile_gate.py", "_run",
      "bind_candidate_gdn_tile16_variant"),
     # These four bind every declared owner through one call, so the tile-16
     # helper is reached through it rather than by name.
