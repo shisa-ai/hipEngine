@@ -50,6 +50,7 @@ from hipengine.execution_profiles import (
 from hipengine.runtime.gguf_linear import (
     Q8WMMALayerScope,
     q8_wmma_layer_scope,
+    q4k_rowtile_session,
     resolve_q8_wmma_layers,
     wmma_prefill_dispatch_recorder,
 )
@@ -652,6 +653,8 @@ class Route:
 
         values = self.env_for(candidate=candidate, layers=layers)
         values.pop(WMMA_LAYERS_ENV, None)
+        if STAGED_F32_LAYERS_ENV in values:
+            values["HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"] = "0"
         return values
 
     def wmma_scope_for(
@@ -843,8 +846,21 @@ def _apply_route_env(
     raw_wmma = values.pop(WMMA_LAYERS_ENV, "")
     scope = Q8WMMALayerScope.parse(raw_wmma)
     os.environ.update(values)
-    with q8_wmma_layer_scope(generator, scope):
-        yield resolve_q8_wmma_layers(generator)
+    staged = STAGED_F32_LAYERS_ENV in values
+    dpp_key = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
+    prior_dpp = os.environ.get(dpp_key)
+    try:
+        with contextlib.ExitStack() as scope_stack:
+            if staged:
+                # Both arms need the exact parent: the rowtile/DPP rewrites
+                # otherwise preempt the staged selector before it can run.
+                os.environ[dpp_key] = "0"
+                scope_stack.enter_context(q4k_rowtile_session(False))
+            scope_stack.enter_context(q8_wmma_layer_scope(generator, scope))
+            yield resolve_q8_wmma_layers(generator)
+    finally:
+        if staged:
+            _restore_env({dpp_key: prior_dpp})
 
 
 def _restore_env(bound: Mapping[str, str | None]) -> None:
@@ -856,6 +872,13 @@ def _restore_env(bound: Mapping[str, str | None]) -> None:
 
 
 def run_gate(args: argparse.Namespace) -> dict[str, Any]:
+    with contextlib.ExitStack() as lifetime:
+        return _run_gate(args, lifetime)
+
+
+def _run_gate(
+    args: argparse.Namespace, lifetime: contextlib.ExitStack,
+) -> dict[str, Any]:
     os.environ.setdefault("HIPENGINE_HIP_ARCH", "gfx1151")
     if args.require_cached_build:
         os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
@@ -926,7 +949,8 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
 
     # Construct first: the named binder writes the selector as "" during its own
     # pass, so only a post-binder flip is effective.
-    generator = resolved.construct_generator(factory)
+    generator = lifetime.enter_context(contextlib.closing(
+        resolved.construct_generator(factory)))
     runner = generator.runner
     if runner is None:
         raise CalibrationError("runner is not resident")
@@ -1047,8 +1071,6 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         repetitions=int(args.repeat_runs),
         profiler={"enabled": False, "kind": None, "command": None},
     )
-    generator.close()
-
     quality = evaluated["quality"]
     quality_passed = bool(
         quality.get("hard_gates_passed")
@@ -1090,6 +1112,9 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             "candidate_chain": route.candidate_chain,
             "warmup_request_after_selector_flip": True,
             "selector_restored_after_capture": True,
+            "rowtile_disabled_in_both_arms": (
+                STAGED_F32_LAYERS_ENV in route.candidate_env
+            ),
         },
         "protocol": {
             "model_root": str(model_root),

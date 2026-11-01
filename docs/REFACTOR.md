@@ -2911,20 +2911,6 @@ wrappers, kernel instantiations and caller arms together, preserving the histori
 replacing them, first implement and test the replacement against the existing exact-repair contract;
 the proposed LDS weight-staging design is not proof of an implemented, exact replacement.
 
-### R0432 — Dense staged-F32 scope and comparison ownership
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `staged_f32_bm128_bn64_bk32`, `_raw_k_staged_f32_dispatch`;
-`HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS`.
-
-**Deferred decision:** retain this evaluation interface, choose a new production composition, or
-retire its runtime selector.
-
-Done when: Keep the existing interface regressions: empty/unset staged scope means off, `0` means layer zero,
-and scope plus owning layer participates in the dispatch cache key. Runtime and backend variant
-constants agree without an eager backend import.
-
 ### R0434 — Pack8 GEMV width controls and exact-thread ownership
 
 Owner: `hipengine/runtime/gguf_linear.py`.

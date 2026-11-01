@@ -776,7 +776,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` | retired | No longer read. The execution profile publishes `q8_down_variant` on its generator and runners: UD production uses the guarded blockscale fallback; other plans and unbound calls use the unguarded WMMA parent. Diagnostic arms bind `q8_down_variant(owner, variant)`. The separate `Q8_0_SELECTED_WMMA_DOWN` gate, guarded risk-buffer ABI and strict fallback chain are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` | `1` | VALU DPP wave reduction in the Q8_0 coltile leaf; `0` restores the shuffle tree. |
 | `HIPENGINE_QWEN4_EXP_Q8_DPU_REDUCTION` | unset | Recorded in host-speed probe provenance only. |
-| `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Comma-separated layers on the staged-F32 Q8_0 route (candidate). |
+| `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Layer-scoped staged-F32 Q8_0 comparison interface; empty/unset is off, `0` selects layer zero. Replaces exact F32 parents only; disable rowtile for rows 2–8 and Q8 DPP reduction above that band to expose those parents. WMMA/dense-wide routes must also be cleared in the comparison scope. |
 | `HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET` | `0` | `1` runs explicit MTP verification and AR peers in one shared batch target pass. Off by default because it measures slower than separate execution (`docs/REFACTOR.md`). |
 | `HIPENGINE_QWEN4_EXP_RISK_DIAGNOSTICS` | unset | Records iu8 risk/repair counts; synchronizes the stream, diagnostics only. |
 | `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` | unset | Policy for a caller-set route variable that conflicts with the profile binder. |
