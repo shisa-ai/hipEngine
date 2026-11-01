@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey', 'campaign', 'state', 'wave_preemptor', 'dpp_preemptor'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey', 'campaign', 'state', 'probe', 'wave_preemptor', 'dpp_preemptor'])
 @pytest.mark.parametrize('length', [17, 255, 256, 257, 389])
 def test_public_gr_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -45,7 +45,11 @@ def test_public_gr_iu8_owner(monkeypatch, length, interface):
             policy = runtime.GRIU8Policy(up, down)
             with ExitStack() as scopes:
                 def bind(target):
-                    if interface in {'wave_preemptor', 'dpp_preemptor'}:
+                    if interface == 'probe':
+                        from scripts.qwen4exp_gr_iu8_logits_probe import _route_scope
+                        scopes.enter_context(runtime.gr_iu8(target, runtime.GRIU8Policy(False, False)))
+                        scopes.enter_context(_route_scope(target, 'down' if down else 'up', up or down))
+                    elif interface in {'wave_preemptor', 'dpp_preemptor'}:
                         from scripts.qwen4exp_halo_box_campaign_ab import route_scope
                         scopes.enter_context(runtime.gr_iu8(target, policy))
                         package = 'gr-wave-scale' if interface == 'wave_preemptor' else 'gr-dpp-reduction'

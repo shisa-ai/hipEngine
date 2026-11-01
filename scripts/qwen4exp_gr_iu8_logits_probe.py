@@ -42,13 +42,10 @@ from scripts.qwen4exp_canonical_ar_bench import (
 
 FLAGS = ("HIPENGINE_QWEN4_EXP_GR_IU8", "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN")
 
-# ``wide`` is a route, not one of the iu8 flags: it swaps the GR up projection
-# for the promoted dense wide tile plus the retained exact epilogue. It is
-# request-local runner state, so it is bound on the owning generator rather than
-# through a process key.
+# Each route is request-local runner state, bound on the owning generator.
 ROUTES = {
-    "up": FLAGS[0],
-    "down": FLAGS[1],
+    "up": "runner.gr_iu8_policy.up",
+    "down": "runner.gr_iu8_policy.down",
     "wide": "runner.gr_wide",
 }
 
@@ -57,22 +54,28 @@ ROUTES = {
 def _route_scope(generator, route: str, enabled: bool):
     """Select one diagnostic GR route for the measured prefill."""
 
-    flag = ROUTES[route]
     if route == "wide":
         from hipengine.runtime.qwen4_exp_runner import gr_wide
 
         with gr_wide(generator, enabled):
             yield
         return
-    prior = os.environ.get(flag)
-    os.environ[flag] = "1" if enabled else "0"
-    try:
+    from hipengine.runtime.qwen4_exp_runner import GRIU8Policy, gr_iu8, resolve_gr_iu8_policy
+    policy = resolve_gr_iu8_policy(getattr(generator, 'gr_iu8_policy', None))
+    selected = (GRIU8Policy(enabled, policy.down) if route == 'up'
+                else GRIU8Policy(policy.up, enabled))
+    with gr_iu8(generator, selected):
         yield
-    finally:
-        if prior is None:
-            os.environ.pop(flag, None)
-        else:
-            os.environ[flag] = prior
+
+
+def _route_record(generator, route):
+    if route == 'wide':
+        return {'owner_field': 'gr_wide', 'published_value': generator.gr_wide}
+    from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
+    policy = resolve_gr_iu8_policy(getattr(generator, 'gr_iu8_policy', None))
+    return {"owner_field": "gr_iu8_policy", 'axis': route,
+            'incumbent': False, 'candidate': True, 'other_axis': 'preserve',
+            'published_value': {'up': policy.up, 'down': policy.down}}
 
 
 def hip_available() -> bool:
@@ -122,6 +125,7 @@ def main() -> None:
         "command": sys.argv,
         "arithmetic_class": "T1_production_candidate",
         "flag": ROUTES[a.route],
+        "control": _route_record(generator, a.route),
         "runtime_default_changed": False,
         "fixture_sha256": digest,
         "manifest_sha256": resolved.manifest_sha256,
@@ -185,8 +189,6 @@ def main() -> None:
             report["cases"].append(entry)
             print(json.dumps(entry), flush=True)
     finally:
-        for flag in FLAGS:
-            os.environ[flag] = "0"
         generator.close()
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(report, indent=2) + "\n")

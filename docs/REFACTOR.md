@@ -2928,7 +2928,8 @@ overlays, then bind and report owner choices for both full and split trajectorie
 Campaign and state gates bind only the requested GR projection axis, preserve the
 other choice, report the effective pair and restore owners without teardown writes.
 GR wave-scale and DPP comparisons close IU8-up on their measured owners while
-preserving IU8-down; their control records name the owner preemptor.
+preserving IU8-down; their control records name the owner preemptor. The logits
+probe binds only its requested GR axis and restores it without teardown writes.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
