@@ -788,6 +788,56 @@ def gr_dpp_arm_report(generator, arm):
         arm, bool(getattr(generator.runner, "gr_dpp_reduction", False)))
 
 
+_GR_IU8_KEYS = (PREFIX + 'GR_IU8', PREFIX + 'GR_IU8_DOWN')
+_GR_IU8_ARM_VALUES = {}
+_GR_IU8_STRICT_POLICY = None
+
+
+def gr_iu8_owner_policy(owner):
+    """Read the effective pair from the owner or the direct-call fallback."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
+    return resolve_gr_iu8_policy(getattr(owner, 'gr_iu8_policy', None))
+
+
+def gr_iu8_snapshot(flags, *, published):
+    """Reconstruct both snapshot axes from the owner that produced them."""
+    return {**flags, **{key: '1' if value else '0' for key, value in
+                       zip(_GR_IU8_KEYS, (published.up, published.down))}}
+
+
+def migrate_gr_iu8_arms(arms, *, production_value, declared=None):
+    """Extract each arm's paired choices after family overlays are built."""
+    from hipengine.runtime.qwen4_exp_runner import GRIU8Policy
+    declared = declared or {}
+    values = {}
+    for name, env in arms.items():
+        axes = []
+        for index, prior in enumerate((production_value.up, production_value.down)):
+            raw = env.pop(_GR_IU8_KEYS[index], None)
+            value = prior if raw is None else _env_flag(raw)
+            requested = declared.get(name, (None, None))[index]
+            axes.append(value if requested is None else requested)
+        values[name] = GRIU8Policy(*axes)
+    return values
+
+
+@contextmanager
+def gr_iu8_arm_scope(owner, arm):
+    """Bind and report the reconstructed pair, restoring each owner's value."""
+    from hipengine.runtime.qwen4_exp_runner import gr_iu8
+    policy = _GR_IU8_ARM_VALUES.get(arm, gr_iu8_owner_policy(owner))
+    with gr_iu8(owner, policy):
+        yield policy
+
+
+def gr_iu8_split_scope(owner, arm, phase):
+    """Only the strict phase replaces the current arm's projection pair."""
+    if arm not in SPLIT_PHASE_ARMS or not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    from hipengine.runtime.qwen4_exp_runner import gr_iu8
+    return gr_iu8(owner, _GR_IU8_STRICT_POLICY)
+
+
 _SELECTED_DOWN_ENV = PREFIX + 'Q8_0_SELECTED_WMMA_DOWN'
 _SELECTED_DOWN_ARM_VALUES = {}
 _SELECTED_DOWN_STRICT_VALUE = False
@@ -1136,7 +1186,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with selected_down_split_scope(runner, arm, 'prefill'), flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+    with gr_iu8_split_scope(runner, arm, 'prefill'), selected_down_split_scope(runner, arm, 'prefill'), flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
@@ -1157,7 +1207,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with selected_down_split_scope(runner, arm, 'decode'), flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
+    with gr_iu8_split_scope(runner, arm, 'decode'), selected_down_split_scope(runner, arm, 'decode'), flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"), gr_dpp_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
@@ -1202,7 +1252,9 @@ def main():
         # route. Read it from the owner before the generator closes.
         strict_ordered = resolve_qsa_ordered_decode(strict_generator.runner)
         strict_flags = strict_environment(os.environ)
-        global _FLASH_STRICT_POLICY, _SELECTED_DOWN_STRICT_VALUE
+        global _FLASH_STRICT_POLICY, _SELECTED_DOWN_STRICT_VALUE, _GR_IU8_STRICT_POLICY
+        _GR_IU8_STRICT_POLICY = gr_iu8_owner_policy(strict_generator)
+        strict_flags = gr_iu8_snapshot(strict_flags, published=_GR_IU8_STRICT_POLICY)
         from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down
         _SELECTED_DOWN_STRICT_VALUE = resolve_q8_selected_down(strict_generator)
         strict_flags = selected_down_snapshot(strict_flags, published=_SELECTED_DOWN_STRICT_VALUE)
@@ -1270,7 +1322,13 @@ def main():
             production_snapshot, published=flash_owner_policy(generator))
         production_snapshot = selected_down_snapshot(
             production_snapshot, published=resolve_q8_selected_down(generator))
+        production_snapshot = gr_iu8_snapshot(
+            production_snapshot, published=gr_iu8_owner_policy(generator))
         snapshot_arms(strict_snapshot, production_snapshot)
+        _GR_IU8_ARM_VALUES.update(migrate_gr_iu8_arms(
+            ARMS, production_value=gr_iu8_owner_policy(generator),
+            declared={name: (spec.gr_iu8_up, spec.gr_iu8_down)
+                      for name, spec in CANDIDATES.items()}))
         _SELECTED_DOWN_ARM_VALUES.update(migrate_selected_down_arms(
             ARMS, production_value=resolve_q8_selected_down(generator),
             declared={name: spec.q8_selected_down_enabled
@@ -1282,7 +1340,8 @@ def main():
                       for name, spec in CANDIDATES.items()
                       if spec.qsa_flash_prefill_enabled is not None}))
         strict_flags = {key: value for key, value in strict_flags.items()
-                        if key not in _FLASH_KEYS and key != _SELECTED_DOWN_ENV}
+                        if key not in _FLASH_KEYS and key != _SELECTED_DOWN_ENV
+                        and key not in _GR_IU8_KEYS}
         # The production bind's published gate is the plan's own decision; an arm
         # that named nothing ran it, and so did its peer scope.
         published_gate = bool(generator.gdn_colwarps_prefill)
@@ -1334,6 +1393,7 @@ def main():
                 os.environ.update(ARMS[arm])
                 candidate = []
                 arm_scope = ExitStack()
+                effective_gr_iu8 = arm_scope.enter_context(gr_iu8_arm_scope(generator, arm))
                 effective_selected_down = arm_scope.enter_context(selected_down_arm_scope(generator, arm))
                 effective_flash = arm_scope.enter_context(flash_arm_scope(generator, arm))
                 arm_scope.enter_context(generic_wmma_baseline_scope(generator))
@@ -1408,6 +1468,7 @@ def main():
                     for i, descriptor in enumerate(descriptors)
                 ]
                 owner_overrides = {
+                    "gr_iu8_policy": {'up': effective_gr_iu8.up, 'down': effective_gr_iu8.down},
                     "q8_selected_down_enabled": effective_selected_down,
                     "qsa_flash_prefill_policy": {
                         'enabled': effective_flash.enabled, 'layers': effective_flash.layers},
@@ -1426,6 +1487,11 @@ def main():
                     "gr_dpp_reduction": effective_gr_dpp,
                 }
                 if arm in SPLIT_PHASE_ARMS:
+                    owner_overrides['gr_iu8_policy_phases'] = {
+                        phase: {'up': policy.up, 'down': policy.down}
+                        for phase in ('prefill', 'decode')
+                        for policy in [(_GR_IU8_STRICT_POLICY if split_phase_is_strict(arm, phase)
+                                        else effective_gr_iu8)]}
                     owner_overrides['q8_selected_down_enabled_phases'] = {
                         phase: (_SELECTED_DOWN_STRICT_VALUE if split_phase_is_strict(arm, phase)
                                 else effective_selected_down)
