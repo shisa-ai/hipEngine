@@ -632,7 +632,8 @@ def test_the_wave_scale_campaign_closes_dpp_on_the_measured_owner() -> None:
         # on the runner as well.
         assert owner.gr_wide is False
         assert RETIRED_ENV not in environment
-        assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "0"
+        assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "1"
+        assert owner.gr_iu8_policy.up is False
     assert getattr(owner, FIELD) is True
     assert owner.gr_wave_scale is True
     assert owner.gr_wide is True
@@ -667,7 +668,8 @@ def test_the_dpp_campaign_binds_the_owner_and_refuses_an_arm_without_one() -> No
         # leaf is what both arms actually run.
         assert owner.gr_wide is False, (
             "the wide tile preempts the fused-up branch")
-        assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "0", (
+        assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "1"
+        assert owner.gr_iu8_policy.up is False, (
             "the iu8 projection preempts the fused-up branch")
     assert getattr(owner, FIELD) is False
     assert owner.gr_wide is True
@@ -774,7 +776,8 @@ def test_the_dpp_package_binds_each_arm_and_closes_both_preemptors(
         assert owner.gr_wave_scale is True, (
             "the before arm must be the wave-scale parent, not the base")
         assert owner.gr_wide is False
-        assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "0"
+        assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "1"
+        assert owner.gr_iu8_policy.up is False
     assert getattr(owner, FIELD) is False
     assert owner.gr_wave_scale is True
     assert owner.gr_wide is True

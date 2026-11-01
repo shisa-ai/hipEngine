@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey', 'campaign', 'state'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey', 'campaign', 'state', 'wave_preemptor', 'dpp_preemptor'])
 @pytest.mark.parametrize('length', [17, 255, 256, 257, 389])
 def test_public_gr_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -45,7 +45,13 @@ def test_public_gr_iu8_owner(monkeypatch, length, interface):
             policy = runtime.GRIU8Policy(up, down)
             with ExitStack() as scopes:
                 def bind(target):
-                    if interface in {'campaign', 'state'}:
+                    if interface in {'wave_preemptor', 'dpp_preemptor'}:
+                        from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+                        scopes.enter_context(runtime.gr_iu8(target, policy))
+                        package = 'gr-wave-scale' if interface == 'wave_preemptor' else 'gr-dpp-reduction'
+                        scopes.enter_context(route_scope(package, 'after' if up else 'before', target))
+                        assert target.gr_iu8_policy == runtime.GRIU8Policy(False, down)
+                    elif interface in {'campaign', 'state'}:
                         scopes.enter_context(runtime.gr_iu8(target, runtime.GRIU8Policy(False, False)))
                         package = 'gr-iu8-down' if down else 'gr-iu8'
                         if interface == 'campaign':
@@ -82,9 +88,10 @@ def test_public_gr_iu8_owner(monkeypatch, length, interface):
                     calls.clear()
                     captures.clear()
                     output = llm.generate_detailed([[1] * length], params)
-                    assert bool(calls) is ((up or down) and length > 256)
+                    effective_up = up and interface not in {'wave_preemptor', 'dpp_preemptor'}
+                    assert bool(calls) is ((effective_up or down) and length > 256)
                     if calls:
-                        assert all(k < n if up else k > n for _, k, n in calls)
+                        assert all(k < n if effective_up else k > n for _, k, n in calls)
                     assert os.environ['HIPENGINE_QWEN4_EXP_GR_IU8'] == ('0' if up else '1')
                     assert os.environ['HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'] == ('0' if down else '1')
                     assert captures and all(np.isfinite(row).all() for row in captures)

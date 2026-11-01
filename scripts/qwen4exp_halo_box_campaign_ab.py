@@ -60,9 +60,16 @@ Q8_WAVE_ENV = {
 }
 
 
-GR_WAVE_ENV = {
-    "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
-}
+GR_WAVE_ENV = {}
+
+
+def gr_iu8_preemptor_record(runner):
+    """The exact GR composites close only the up projection preemptor."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
+    policy = resolve_gr_iu8_policy(getattr(runner, 'gr_iu8_policy', None))
+    return {'runner_field': 'gr_iu8_policy', 'up': False, 'down': 'preserve',
+            'published_value': {'up': policy.up, 'down': policy.down}}
+
 #: The GR-up wide tile is request-local runner state now, so the wave-scale
 #: package closes it on the runner it measures rather than through a key.
 GR_WIDE_FIELD = "gr_wide"
@@ -74,6 +81,7 @@ GR_DPP_FIELD = "gr_dpp_reduction"
 def gr_wave_control_record(runner):
     return {
         "runner_field": "gr_wave_scale", "before": False, "after": True,
+        "gr_iu8_preemptor": gr_iu8_preemptor_record(runner),
         "published_value": runner.gr_wave_scale,
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(GR_WAVE_ENV),
@@ -87,18 +95,10 @@ def gr_wave_scope(runner, enabled, *, environment=os.environ):
     """Compare exact GR composites with wide, IU8 and DPP closed on the owner."""
     from hipengine.runtime.qwen4_exp_runner import (
         gr_dpp_reduction, gr_wide, gr_wave_scale)
-    prior = {key: environment.get(key) for key in GR_WAVE_ENV}
-    try:
-        environment.update(GR_WAVE_ENV)
-        with (gr_wide(runner, False), gr_dpp_reduction(runner, False),
-              gr_wave_scale(runner, enabled)):
-            yield
-    finally:
-        for key, value in prior.items():
-            if value is None:
-                environment.pop(key, None)
-            else:
-                environment[key] = value
+    with (route_scope('gr-iu8', 'before', runner),
+          gr_wide(runner, False), gr_dpp_reduction(runner, False),
+          gr_wave_scale(runner, enabled)):
+        yield
 
 
 def gr_dpp_control_record(runner):
@@ -106,6 +106,7 @@ def gr_dpp_control_record(runner):
 
     return {
         "runner_field": GR_DPP_FIELD, "before": False, "after": True,
+        "gr_iu8_preemptor": gr_iu8_preemptor_record(runner),
         "published_value": bool(getattr(runner, GR_DPP_FIELD, False)),
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(GR_WAVE_ENV),
@@ -134,18 +135,10 @@ def gr_dpp_scope(runner, enabled, *, environment=os.environ):
 
     from hipengine.runtime.qwen4_exp_runner import (
         gr_dpp_reduction, gr_wide, gr_wave_scale)
-    prior = {key: environment.get(key) for key in GR_WAVE_ENV}
-    try:
-        environment.update(GR_WAVE_ENV)
-        with (gr_wide(runner, False), gr_dpp_reduction(runner, enabled),
-              gr_wave_scale(runner, True)):
-            yield
-    finally:
-        for key, value in prior.items():
-            if value is None:
-                environment.pop(key, None)
-            else:
-                environment[key] = value
+    with (route_scope('gr-iu8', 'before', runner),
+          gr_wide(runner, False), gr_dpp_reduction(runner, enabled),
+          gr_wave_scale(runner, True)):
+        yield
 
 
 def q8_wave_control_record(runner):

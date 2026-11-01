@@ -128,7 +128,7 @@ def test_gr_dpp_scope_binds_one_leaf_per_arm_and_restores_every_field() -> None:
 
     Both arms hold the wave-scale parent on and close the two preemptors, so
     the sibling and the parent counts are the same GR-read surface. The scope
-    must put every field and the pinned key back on exit.
+    must put every field back on exit without rewriting process inputs.
     """
 
     module = _load_script()
@@ -143,7 +143,8 @@ def test_gr_dpp_scope_binds_one_leaf_per_arm_and_restores_every_field() -> None:
             assert runner.gr_dpp_reduction is sibling
             assert runner.gr_wave_scale is True
             assert runner.gr_wide is False
-            assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "0"
+            assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "1"
+            assert runner.gr_iu8_policy.up is False
         assert runner.gr_dpp_reduction is True
         assert runner.gr_wave_scale is False
         assert runner.gr_wide is True
