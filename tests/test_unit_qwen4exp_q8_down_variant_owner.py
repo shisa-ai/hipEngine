@@ -777,10 +777,11 @@ def test_the_campaign_binds_the_leaf_its_counter_counts():
     with route_scope("q8-wmma-down", "after", runner):
         assert runner.q8_down_variant == WMMA
     assert runner.q8_down_variant == GUARDED
-    # The gate is a separate flag and stays a process key for the arm.
+    # The separate gate is also owner-local and follows the arm.
     runner = SimpleNamespace()
     with route_scope("q8-wmma-down", "before", runner):
         assert runner.q8_down_variant == WMMA
+        assert runner.q8_selected_down_enabled is False
 
 
 def test_the_state_gate_arm_control_binds_the_counted_leaf():
@@ -790,7 +791,8 @@ def test_the_state_gate_arm_control_binds_the_counted_leaf():
     env: dict[str, str] = {}
     with arm_control("q8-wmma-down", "1", runner, environment=env):
         assert runner.q8_down_variant == WMMA
-        assert env[WMMA_GATE] == "1"
+        assert runner.q8_selected_down_enabled is True
+        assert WMMA_GATE not in env
     assert runner.q8_down_variant == GUARDED
 
 

@@ -1105,8 +1105,7 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
 Q8_DOWN_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
 )
-#: The Q8_0 WMMA down gate. It stays the arm's process key: it decides whether
-#: the grouped chain reaches the owner at all.
+#: Low-level compatibility key; campaign arms bind the selected-down owner gate.
 Q8_WMMA_DOWN_GATE = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
 #: The leaf the ``q8-wmma-down`` arm's counter counts. Which owner the dispatch
 #: resolves once that gate is open is request-local runner state
@@ -1862,15 +1861,10 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         if runner is None:
             raise ValueError("q8-wmma-down needs the owning runner")
-        from hipengine.runtime.qwen4_exp_runner import q8_down_variant
-        # The counted leaf launches only when the gate is open and the dispatch
-        # resolves it, so the live control holds both halves: the gate is the
-        # arm's process key (the same value the mode binding writes, so the A/B
-        # is unchanged) and the owner is request-local runner state.
+        from hipengine.runtime.qwen4_exp_runner import q8_down_variant, q8_selected_down_enabled
+        # Both the admission gate and counted leaf follow this measured owner.
         return _combined_scope(
-            _pinned_env(
-                environment, Q8_WMMA_DOWN_GATE,
-                "1" if mode == "after" else "0"),
+            q8_selected_down_enabled(runner, mode == "after"),
             q8_down_variant(runner, Q8_WMMA_DOWN_VARIANT),
         )
 
@@ -2292,7 +2286,7 @@ def _apply_mode(
         if route_package == "gr-iu8-down":
             flag = "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"
         if route_package == "q8-wmma-down":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
+            return  # route_scope binds the owning runner.
         if route_package == "q8-wave-scale":
             return  # route_scope binds the owning runner.
         if route_package == "gr-wave-scale":
@@ -3113,6 +3107,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
         artifact["selection_control"] = q8_down_ladder_control_record(
             args.route_package, generator.runner)
+    if args.route_package == "q8-wmma-down":
+        artifact["selection_control"] = {
+            "runner_field": "q8_selected_down_enabled", "before": False, "after": True,
+            "published_value": getattr(generator.runner, "q8_selected_down_enabled", None),
+            "counted_variant": Q8_WMMA_DOWN_VARIANT,
+            "scope": "per measured run; restored on exit",
+        }
     if args.route_package == "pf13":
         artifact["selection_control"] = pf13_control_record(
             generator.runner)
@@ -3131,6 +3132,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         with route_scope(args.route_package, mode, generator.runner):
             row = _hipengine_case_sample(
                 generator.runner, case=case, repetition=repetition, transitions=transitions)
+            if args.route_package == "q8-wmma-down":
+                from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down
+                row["q8_selected_down_enabled"] = resolve_q8_selected_down(generator.runner)
         if args.route_package == "chunk1024":
             validate_chunk_coverage(observed_chunks,int(case["prompt_tokens"]),
                                     generator.runner.prefill_chunk_size)

@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey', 'layer_probe'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey', 'layer_probe', 'campaign'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_selected_q8_down_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,7 +44,11 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', ambient)
             with ExitStack() as scopes:
-                if interface == 'layer_probe':
+                if interface == 'campaign':
+                    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+                    scopes.enter_context(route_scope(
+                        'q8-wmma-down', 'after' if enabled else 'before', owner))
+                elif interface == 'layer_probe':
                     from scripts.qwen4exp_q8_localize import selected_down_layer_kwargs
                     original_moe = runtime.run_qwen4_exp_moe
                     def layer_call(mixed_ptr, weights, **kwargs):
@@ -86,7 +90,10 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
                     # independent grouped fallback at larger prompt shapes.
                     scopes.enter_context(runtime.routed_f16_enabled(runner, False))
                     if runner is not owner.runner:
-                        if interface == 'logits_probe':
+                        if interface == 'campaign':
+                            scopes.enter_context(route_scope(
+                                'q8-wmma-down', 'after' if enabled else 'before', runner))
+                        elif interface == 'logits_probe':
                             scopes.enter_context(selected_down_probe_scope(runner, enabled))
                         else:
                             scopes.enter_context(runtime.q8_selected_down_enabled(

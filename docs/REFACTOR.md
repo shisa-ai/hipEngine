@@ -2904,6 +2904,8 @@ selected-down snapshots from the binding owners, extracts each arm's effective
 gate, and scopes the strict and production split phases independently. The
 per-layer Q8 probe changes the selected-down call argument only for the named
 layer, preserving incoming choices on other layers and leaving the process alone.
+The campaign selected-down arm binds and reports its gate alongside its counted
+leaf on the measured owner; its mode setup does not write that process key.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
