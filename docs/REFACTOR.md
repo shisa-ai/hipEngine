@@ -2927,21 +2927,6 @@ affected GGUF and PARO paths. Check short, chunk-boundary and long inputs and re
 executed sizes. Numerical or performance claims require the corresponding profile/benchmark checks;
 missing measurements do not prevent explicit evaluation.
 
-### R0442 — DPP family comparison control
-
-Owner: `scripts/qwen4exp_row4_state_gate.py`.
-
-Scope: `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION`; `scripts/qwen4exp_row4_state_gate.py`; `scripts/qwen4exp_layer2_profile_gate.py`.
-
-Done when: Deferred interface decision: retain `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` or migrate its
-state-gate, checked-row and campaign consumers to explicit variant selection before deleting it. The
-flag remains default-on and part of dispatch-cache identity. The shuffle-tree parent is a live
-numerical reference; do not make every template instantiation DPP merely to remove the runtime flag.
-Check `scripts/qwen4exp_row4_state_gate.py`, the checked-full-row diagnostics,
-`scripts/qwen4exp_layer2_profile_gate.py` and `scripts/qwen4exp_halo_box_campaign_ab.py` together.
-Preserve fallback semantics, run DPP/checked-row parity and cache tests, and confirm public dispatch
-before retiring the selector.
-
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.

@@ -1827,6 +1827,13 @@ def bind_candidate_qsa_head_mode(
     return getattr(candidate_generator.runner, "qsa_prefill_head_mode", None)
 
 
+def bind_checked_q8_comparison(stack, generator, candidate_spec):
+    """Expose the checked candidate's Q8 chain instead of dense-wide/WMMA."""
+    if candidate_spec.name == "dense_q8_checked_full_rows":
+        from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+        stack.enter_context(route_scope("q8-dpp-reduction", "after", generator.runner))
+
+
 def candidate_dispatch_counter(
     candidate_spec: CandidateSpec,
     dispatch_stack: ExitStack,
@@ -2192,6 +2199,7 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     batch_states: dict[str, list[Mapping[str, Any]]] = {}
     batch_tasks: dict[str, list[dict[str, Any]]] = {}
     try:
+        bind_checked_q8_comparison(dispatch_stack, candidate_generator, candidate_spec)
         if batch_candidate:
             (
                 batch_runs,

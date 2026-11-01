@@ -58,6 +58,7 @@ Q8_WAVE_ENV = {
     "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH": "32",
     "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "0",
     "HIPENGINE_GGUF_WMMA_PREFILL": "0",
+    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "0",
 }
 
 
@@ -1891,6 +1892,19 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         if runner is None:
             raise ValueError("gr-dpp-reduction needs the owning runner")
         return gr_dpp_scope(runner, mode == "after", environment=environment)
+
+    if route_package == "q8-dpp-reduction":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("q8-dpp-reduction needs the owning runner")
+        # Both arms expose the same wave-scale chain. The family key is bound
+        # after its scope's stand-down, then restored before that scope exits.
+        return _combined_scope(
+            q8_wave_scope(runner, True, environment=environment),
+            _pinned_env(environment, "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION",
+                        "1" if mode == "after" else "0"),
+        )
 
     if route_package == "q8-wave-scale":
         if mode not in {"before", "after"}:

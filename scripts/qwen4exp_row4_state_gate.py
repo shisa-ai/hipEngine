@@ -47,7 +47,8 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
-                   "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair"}:
+                   "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair",
+                   "q8-dpp-reduction"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -159,6 +160,10 @@ def main():
         p.error("--include-heldouts is scoped to gdn-narrow/dense-wide-padded")
     if not 1 <= args.decode_steps <= 128:
         p.error("--decode-steps must be in 1..128")
+    # Other packages restore their binder-published default. The DPP key is
+    # caller-owned: capture its value or absence before setup and arm writes.
+    restored_flag = (os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION")
+                     if args.route_package == "q8-dpp-reduction" else "1")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
@@ -397,6 +402,23 @@ def main():
         # The arm selects the leaf through the runner's published variant, so
         # engagement is counted on the kernel that actually ran.
         register(gdn_narrow_key, counted_narrow, replace=True)
+    q8_checked_key = None
+    q8_checked_original = None
+    if args.route_package == "q8-dpp-reduction":
+        # Complete qualified rows may select the checked sibling instead of
+        # the generic DPP leaf. Count both members of the controlled family.
+        q8_checked_key = KernelKey(
+            key.backend, key.layer, key.quant,
+            "coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out")
+        q8_checked_original = resolve(
+            backend=q8_checked_key.backend, layer=q8_checked_key.layer,
+            quant=q8_checked_key.quant, variant=q8_checked_key.variant)
+
+        def counted_q8_checked(*a, **kw):
+            calls[0] += 1
+            return q8_checked_original(*a, **kw)
+
+        register(q8_checked_key, counted_q8_checked, replace=True)
     if args.route_package == "gr-dpp-reduction":
         # The sibling's control is the wave-scale parent, so the control arm
         # counts the parent it actually ran. Without this the arm's zero DPP
@@ -799,11 +821,10 @@ def main():
                 "published_value": generator.runner.q8_mapped_down,
             }
         if args.route_package == "q8-dpp-reduction":
-            # The DPP leaf's flag is read with a "1" default rather than bound by
-            # the profile, so its production default is asserted through the
-            # default instead of through a binder-set value.
-            os.environ.setdefault(flag, "1")
-            assert os.environ[flag] == "1", "production must select the retained route without an override"
+            # Arms override the caller's value themselves. Detect a profile
+            # binder taking ownership before restoring the captured value.
+            assert os.environ.get(flag) == restored_flag, (
+                "the DPP key must still hold the caller's value before the arms bind it")
         if args.route_package in {"q4-bundle", "prefill-bundle"}:
             assert generator.runner.q4_bundle_prefill is True
             report["selection_control"] = {
@@ -1096,8 +1117,13 @@ def main():
                 "mmq-token64", "q51-fold128", "q51-fold-pair",
                 "q8-down-row4", "q8-down-bundle",
             }:
-                os.environ[flag] = "1"
+                if restored_flag is None:
+                    os.environ.pop(flag, None)
+                else:
+                    os.environ[flag] = restored_flag
             register(key, original, replace=True)
+        if q8_checked_original is not None:
+            register(q8_checked_key, q8_checked_original, replace=True)
         if gr_k320_original is not None:
             register(gr_k320_key, gr_k320_original, replace=True)
         if gr_wave_original is not None:
