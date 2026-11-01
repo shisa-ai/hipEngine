@@ -66,12 +66,16 @@ def test_late_clone_inherits_wave_choice(published):
 def test_campaign_scope_binds_owner_and_restores_preemptors(mode, expected):
     from scripts.qwen4exp_halo_box_campaign_ab import route_scope, Q8_WAVE_ENV
     prior_policy = linear.Q8DenseWidePolicy(True, frozenset({16, 47}))
-    owner = SimpleNamespace(q8_wave_scale_prefill=True, q8_dense_wide_policy=prior_policy)
-    env = {ENV: "stale", "HIPENGINE_QWEN4_EXP_RAW_VARIANT": "rowbatch"}
+    owner = SimpleNamespace(q8_wave_scale_prefill=True, q8_dense_wide_policy=prior_policy,
+                            gguf_wmma_prefill_enabled=True)
+    env = {ENV: "stale", "HIPENGINE_QWEN4_EXP_RAW_VARIANT": "rowbatch",
+           "HIPENGINE_GGUF_WMMA_PREFILL": "1"}
     before = dict(env)
     with pytest.raises(RuntimeError, match="failed"):
         with route_scope("q8-wave-scale", mode, owner, environment=env):
             assert owner.q8_wave_scale_prefill is expected
+            assert owner.gguf_wmma_prefill_enabled is False
+            assert env['HIPENGINE_GGUF_WMMA_PREFILL'] == '1'
             assert all(env[k] == v for k, v in Q8_WAVE_ENV.items())
             assert env[ENV] == "stale"
             assert owner.q8_wmma_layer_scope.is_empty
@@ -80,6 +84,7 @@ def test_campaign_scope_binds_owner_and_restores_preemptors(mode, expected):
     assert owner.q8_dense_wide_policy is prior_policy
     assert env == before
     assert owner.q8_wave_scale_prefill is True
+    assert owner.gguf_wmma_prefill_enabled is True
 
 
 def test_campaign_record_names_explicit_wide_preemptor():
@@ -87,6 +92,8 @@ def test_campaign_record_names_explicit_wide_preemptor():
     record = q8_wave_control_record(SimpleNamespace(q8_wave_scale_prefill=True))
     assert record['forced_dense_wide_policy'] == {'enabled': False, 'layers': None}
     assert 'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE' not in record['forced_environment']
+    assert 'HIPENGINE_GGUF_WMMA_PREFILL' not in record['forced_environment']
+    assert record['forced_runner_fields']['gguf_wmma_prefill_enabled'] is False
 
 
 @pytest.mark.parametrize("arm,expected", [

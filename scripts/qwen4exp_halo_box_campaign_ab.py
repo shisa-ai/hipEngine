@@ -57,7 +57,6 @@ Q8_WAVE_ENV = {
     "HIPENGINE_QWEN4_EXP_RAW_VARIANT": "coltile8",
     "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH": "32",
     "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "0",
-    "HIPENGINE_GGUF_WMMA_PREFILL": "0",
 }
 
 
@@ -157,7 +156,8 @@ def q8_wave_control_record(runner):
         "published_value": runner.q8_wave_scale_prefill,
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(Q8_WAVE_ENV),
-        "forced_runner_fields": {"q8_mmq_prefill_enabled": False},
+        "forced_runner_fields": {"q8_mmq_prefill_enabled": False,
+                                 "gguf_wmma_prefill_enabled": False},
         "forced_wmma_layers": Q8WMMALayerScope.empty().to_report(),
         "forced_dense_wide_policy": Q8DenseWidePolicy(False, None).to_report(),
         "counted_variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
@@ -172,12 +172,12 @@ def q8_wave_scope(runner, enabled, *, environment=os.environ):
         Q8WMMALayerScope, q8_wmma_layer_scope,
     )
     from hipengine.runtime.qwen4_exp_runner import (
-        q8_mmq_prefill_enabled, q8_wave_scale_prefill,
+        gguf_wmma_prefill, q8_mmq_prefill_enabled, q8_wave_scale_prefill,
     )
     prior = {key: environment.get(key) for key in Q8_WAVE_ENV}
     try:
         environment.update(Q8_WAVE_ENV)
-        with q8_mmq_prefill_enabled(runner, False), q8_wmma_layer_scope(
+        with gguf_wmma_prefill(runner, False), q8_mmq_prefill_enabled(runner, False), q8_wmma_layer_scope(
             runner, Q8WMMALayerScope.empty()
         ), q8_dense_wide_policy(runner, Q8DenseWidePolicy(False, None)), q8_wave_scale_prefill(runner, enabled):
             yield

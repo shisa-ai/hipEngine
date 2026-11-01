@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_generic_wmma_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -42,14 +42,22 @@ def test_public_generic_wmma_owner(monkeypatch, length, interface):
         assert owner.gguf_wmma_prefill_enabled is owner.runner.gguf_wmma_prefill_enabled is None
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
-            monkeypatch.setenv('HIPENGINE_GGUF_WMMA_PREFILL', '0' if enabled else '1')
+            ambient = '1' if interface == 'campaign' else ('0' if enabled else '1')
+            monkeypatch.setenv('HIPENGINE_GGUF_WMMA_PREFILL', ambient)
             # Isolate generic WMMA from the production wide route, which replaces
             # its supported raw Q8 leaves above 256 rows.
             with (
                 ExitStack() as stack,
                 linear.q8_dense_wide_policy(owner, linear.Q8DenseWidePolicy(False, None)),
             ):
-                if interface == 'profile_gap':
+                if interface == 'campaign':
+                    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+                    stack.enter_context(route_scope(
+                        'q8-wave-scale', 'after' if enabled else 'before', owner.runner))
+                    expected_wmma = False
+                    assert owner.runner.gguf_wmma_prefill_enabled is False
+                    assert owner.runner.q8_wave_scale_prefill is enabled
+                elif interface == 'profile_gap':
                     from scripts.qwen4exp_profile_gap import bind_generic_wmma_override
                     report = bind_generic_wmma_override(stack, owner, {
                         'HIPENGINE_GGUF_WMMA_PREFILL': '1' if enabled else '0'})
@@ -60,14 +68,16 @@ def test_public_generic_wmma_owner(monkeypatch, length, interface):
                     assert report['gguf_wmma_prefill_enabled'] is enabled
                 else:
                     stack.enter_context(runtime.gguf_wmma_prefill(owner, enabled))
+                if interface != 'campaign':
+                    expected_wmma = enabled
                 repeats = []
                 for _ in range(2):
                     selections.clear()
                     launches.clear()
                     captures.clear()
                     output = llm.generate_detailed([[1] * length], params)
-                    assert bool(launches) is enabled, sorted(set(selections))
-                    assert os.environ['HIPENGINE_GGUF_WMMA_PREFILL'] == ('0' if enabled else '1')
+                    assert bool(launches) is expected_wmma, sorted(set(selections))
+                    assert os.environ['HIPENGINE_GGUF_WMMA_PREFILL'] == ambient
                     assert captures and all(np.isfinite(row).all() for row in captures)
                     repeats.append((tuple(output[0].generated_token_ids), [r.copy() for r in captures]))
                 assert repeats[0][0] == repeats[1][0]
