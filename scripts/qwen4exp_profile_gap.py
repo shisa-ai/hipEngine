@@ -60,8 +60,6 @@ ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES",
     "HIPENGINE_QWEN4_EXP_PLE_WARM",
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
-    "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
-    "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
 )
 
 
@@ -526,19 +524,43 @@ def _apply_post_binder_overrides(
 ) -> tuple[dict[str, str | None], dict[str, str | None]]:
     """Apply diagnostic environment overrides after the profile binder.
 
-    Owner-state routes are bound separately. Attention and generic WMMA keys
-    keep their legacy ``--override`` spelling but use explicit owner binders.
+    Owner-state routes are bound separately. Attention, generic WMMA and flash
+    keys keep their legacy ``--override`` spelling with explicit owner binders.
     This helper only moves remaining process-owned diagnostic switches.
     """
 
     overrides = {key: value for key, value in overrides.items()
                  if key not in {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
-                                "HIPENGINE_GGUF_WMMA_PREFILL"}}
+                                "HIPENGINE_GGUF_WMMA_PREFILL",
+                                "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
+                                "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS"}}
     effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
     bound = {key: os.environ.get(key) for key in effective_route_keys}
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_flash_prefill_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, Any]:
+    """Bind requested flash axes, preserving the current omitted values."""
+    from hipengine.runtime.qwen4_exp_runner import QSAFlashPrefillPolicy, qsa_flash_prefill
+    enabled_key = 'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL'
+    layers_key = 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS'
+    policy = getattr(owner, 'qsa_flash_prefill_policy', None)
+    if enabled_key in overrides or layers_key in overrides:
+        if policy is None:
+            policy = QSAFlashPrefillPolicy(
+                os.environ.get(enabled_key, '0') not in {'', '0', 'false', 'False'},
+                os.environ.get(layers_key, 'all'))
+        policy = QSAFlashPrefillPolicy(
+            overrides[enabled_key] not in {'', '0', 'false', 'False'}
+            if enabled_key in overrides else policy.enabled,
+            overrides.get(layers_key, policy.layers))
+        stack.enter_context(qsa_flash_prefill(owner, policy))
+    return {'qsa_flash_prefill_policy': None if policy is None else {
+        'enabled': policy.enabled, 'layers': policy.layers}}
 
 
 def bind_generic_wmma_override(
@@ -1019,6 +1041,7 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_flash_prefill_override(q4_scope, generator, overrides))
         report.update(bind_generic_wmma_override(q4_scope, generator, overrides))
         report.update(bind_attention_override(
             q4_scope, generator, overrides, q8_mmq_override))

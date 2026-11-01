@@ -11,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
 @pytest.mark.parametrize('length', [17, 73, 273])
-def test_public_flash_owner(monkeypatch, length):
+def test_public_flash_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.core.hip import get_hip_runtime
@@ -44,7 +45,14 @@ def test_public_flash_owner(monkeypatch, length):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS', '' if enabled else 'all')
             policy = runtime.QSAFlashPrefillPolicy(enabled, '35-47')
             with ExitStack() as scopes:
-                scopes.enter_context(runtime.qsa_flash_prefill(owner, policy))
+                if interface == 'profile_gap':
+                    from scripts.qwen4exp_profile_gap import bind_flash_prefill_override
+                    report = bind_flash_prefill_override(scopes, owner, {
+                        'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL': '1' if enabled else '0',
+                        'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS': policy.layers})
+                    assert report['qsa_flash_prefill_policy'] == {'enabled': enabled, 'layers': policy.layers}
+                else:
+                    scopes.enter_context(runtime.qsa_flash_prefill(owner, policy))
                 for runner in runners:
                     scopes.enter_context(runtime.qsa_wmma_attention(runner, False))
                     if runner is not owner.runner:

@@ -2894,6 +2894,8 @@ and profile publication still need to move to it. Remove profile writes of
 `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` and
 `HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS` after those callers bind owner policies;
 the unbound low-level environment fallback remains a comparison interface.
+Profile-gap's generic flash overrides now bind the paired owner policy,
+preserving omitted axes and recording actual policy without process writes.
 The focused guard regression is:
 
 ```bash
