@@ -1,0 +1,70 @@
+"""Public generic WMMA owner selection with opposite ambient input."""
+import os
+import numpy as np
+import pytest
+from tests.test_live_qwen4exp_staged_f32_interface import (
+    MODEL, CONTEXT, _hip_available, _unwrap, _install_logit_capture,
+)
+
+pytestmark = pytest.mark.skipif(
+    not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
+
+
+@pytest.mark.parametrize('length', [17, 73, 273])
+def test_public_generic_wmma_owner(monkeypatch, length):
+    from hipengine import LLM, SamplingParams
+    from hipengine.runtime import qwen4_exp_runner as runtime
+    from hipengine.runtime import gguf_linear as linear
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import memory_stats
+    hip = get_hip_runtime()
+    hip.device_synchronize()
+    before = memory_stats()
+    captures, launches, selections = [], [], []
+    _install_logit_capture(monkeypatch, captures)
+    original_select = linear._wmma_prefill_dispatch
+    def select(dispatch, **kwargs):
+        result = original_select(dispatch, **kwargs)
+        selections.append((kwargs['use_wmma'], dispatch.key.variant, result.abi))
+        return result
+    monkeypatch.setattr(linear, '_wmma_prefill_dispatch', select)
+    original = linear._LAUNCH_ABI['wmma_raw']
+    def launch(*args, **kwargs):
+        launches.append(True)
+        return original(*args, **kwargs)
+    monkeypatch.setitem(linear._LAUNCH_ABI, 'wmma_raw', launch)
+    llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
+              max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
+    try:
+        owner = _unwrap(llm._get_text_generator())
+        assert owner.gguf_wmma_prefill_enabled is owner.runner.gguf_wmma_prefill_enabled is None
+        params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
+        for enabled in (False, True):
+            monkeypatch.setenv('HIPENGINE_GGUF_WMMA_PREFILL', '0' if enabled else '1')
+            # Isolate generic WMMA from the production wide route, which replaces
+            # its supported raw Q8 leaves above 256 rows.
+            with (
+                runtime.gguf_wmma_prefill(owner, enabled),
+                linear.q8_dense_wide_policy(owner, linear.Q8DenseWidePolicy(False, None)),
+            ):
+                repeats = []
+                for _ in range(2):
+                    selections.clear()
+                    launches.clear()
+                    captures.clear()
+                    output = llm.generate_detailed([[1] * length], params)
+                    assert bool(launches) is enabled, sorted(set(selections))
+                    assert os.environ['HIPENGINE_GGUF_WMMA_PREFILL'] == ('0' if enabled else '1')
+                    assert captures and all(np.isfinite(row).all() for row in captures)
+                    repeats.append((tuple(output[0].generated_token_ids), [r.copy() for r in captures]))
+                assert repeats[0][0] == repeats[1][0]
+                assert len(repeats[0][1]) == len(repeats[1][1])
+                for a, b in zip(repeats[0][1], repeats[1][1], strict=True):
+                    np.testing.assert_array_equal(a, b)
+            assert owner.gguf_wmma_prefill_enabled is owner.runner.gguf_wmma_prefill_enabled is None
+    finally:
+        llm.close()
+    hip.device_synchronize()
+    after = memory_stats()
+    for key in ('current_allocated_bytes', 'active_allocations'):
+        assert after[key] == before[key]

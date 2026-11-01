@@ -188,6 +188,7 @@ from hipengine.runtime.gguf_linear import (
     q8_wmma_layer_scope_session,
     resolve_q8_wmma_layers,
     wmma_prefill_weight_filter_session,
+    wmma_prefill_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
     launch_gguf_linear_decode_rows,
@@ -9906,11 +9907,36 @@ def _q8_wmma_weight_filter(
 
 
 @contextlib.contextmanager
-def _q8_wmma_scope_sessions(scope: Q8WMMALayerScope):
-    """Bind one scope to the dispatch memo and the weight filter together."""
+def gguf_wmma_prefill(owner: Any, enabled: bool | None):
+    """Bind generic WMMA enablement on one owner, restoring absent attributes."""
+    missing = object()
+    targets = [owner]
+    current = getattr(owner, 'runner', None)
+    if current is not None and current is not owner:
+        targets.append(current)
+    prior = [(target, getattr(target, 'gguf_wmma_prefill_enabled', missing))
+             for target in targets]
+    try:
+        for target in targets:
+            target.gguf_wmma_prefill_enabled = None if enabled is None else bool(enabled)
+        yield
+    finally:
+        for target, previous in prior:
+            if previous is missing:
+                delattr(target, 'gguf_wmma_prefill_enabled')
+            else:
+                target.gguf_wmma_prefill_enabled = previous
 
+
+@contextlib.contextmanager
+def _q8_wmma_scope_sessions(scope: Q8WMMALayerScope, owner: Any = None):
+    """Bind the Q8 scope, generic owner enablement and matching weight filter."""
+
+    enabled = getattr(owner, 'gguf_wmma_prefill_enabled', None)
     with (
         q8_wmma_layer_scope_session(scope),
+        contextlib.nullcontext() if enabled is None else wmma_prefill_session(
+            True if not scope.is_empty else enabled),
         wmma_prefill_weight_filter_session(
             None if scope.is_empty else _q8_wmma_weight_filter(scope)
         ),
@@ -9961,6 +9987,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # empty Q8WMMALayerScope means every layer; ``None`` is the unbound/direct
     # state, where the historical process key remains the fallback.
     q8_wmma_layer_scope: Q8WMMALayerScope | None = None
+    gguf_wmma_prefill_enabled: bool | None = None
     # None preserves unbound environment diagnostics until the binder migrates.
     q8_dense_wide_policy: Q8DenseWidePolicy | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
@@ -10203,6 +10230,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q8_mmq_prepack_enabled: bool | None = None,
         q8_mmq_attn_gate_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
+        gguf_wmma_prefill_enabled: bool | None = None,
         q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
     ) -> None:
         self.resident = resident
@@ -10220,6 +10248,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.q8_mmq_prepack_enabled = q8_mmq_prepack_enabled
         self.q8_mmq_attn_gate_enabled = q8_mmq_attn_gate_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
+        self.gguf_wmma_prefill_enabled = gguf_wmma_prefill_enabled
         self.q8_dense_wide_policy = q8_dense_wide_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
@@ -12113,7 +12142,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             with (
                 raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
                 raw_k_prefill_variant_session(selected_raw_variant),
-                _q8_wmma_scope_sessions(q8_wmma_scope),
+                _q8_wmma_scope_sessions(q8_wmma_scope, self),
                 q8_dense_wide_policy_session(resolve_q8_dense_wide_policy(self)),
                 self._q8_mmq_prefill_context(),
                 self._wide_f16_activation_context(),

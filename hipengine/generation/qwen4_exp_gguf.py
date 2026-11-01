@@ -219,6 +219,7 @@ class Qwen4ExpGGUFTextGenerator:
         # direct/unbound state, where the historical process key remains the
         # fallback; an empty scope object means every layer.
         self.q8_wmma_layer_scope = None
+        self.gguf_wmma_prefill_enabled = None
         self.q8_dense_wide_policy = None
         # QSA ordered sparse decode is request-local too; the binder
         # republishes it with the rest. The ordered-v2 leaf rides it and is
@@ -421,6 +422,7 @@ class Qwen4ExpGGUFTextGenerator:
             q8_mmq_prepack_enabled=self.q8_mmq_prepack_enabled,
             q8_mmq_attn_gate_enabled=self.q8_mmq_attn_gate_enabled,
             q8_wmma_layer_scope=self.q8_wmma_layer_scope,
+            gguf_wmma_prefill_enabled=self.gguf_wmma_prefill_enabled,
             q8_dense_wide_policy=self.q8_dense_wide_policy,
         )
 
@@ -1049,6 +1051,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q8_mmq_attn_gate_enabled = getattr(generator, 'q8_mmq_attn_gate_enabled', None)
     runner.q8_mmq_prefill_enabled = getattr(
         generator, "q8_mmq_prefill_enabled", None)
+    runner.gguf_wmma_prefill_enabled = getattr(generator, 'gguf_wmma_prefill_enabled', None)
     runner.q8_wmma_layer_scope = getattr(
         generator, "q8_wmma_layer_scope", None)
     runner.q8_dense_wide_policy = getattr(
