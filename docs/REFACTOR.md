@@ -2870,7 +2870,9 @@ key is no longer written or advertised by profiles and diagnostics; decode uses
 its existing `gdn_decode_rowsplit` owner. MMQ weight prepacking is also published
 on generator/runner owners without process writes; its diagnostic scopes preserve
 explicit raw/prepacked control and shared resource ownership. Continue with the
-remaining profile-owned environment controls before closing this entry.
+remaining profile-owned environment controls before closing this entry. MMQ
+attention-gate policy now accepts an explicit generator/runner owner choice;
+its diagnostic writers and profile publication still require migration.
 The focused guard regression is:
 
 ```bash

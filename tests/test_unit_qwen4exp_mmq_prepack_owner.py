@@ -37,7 +37,7 @@ def test_session_uses_owner_not_opposite_environment(monkeypatch, enabled):
     mapping = {(100, 2560, 10240): (500, 200)}
     calls = []
     monkeypatch.setattr(runtime, 'q8_mmq_prefill_session', lambda **kw: calls.append(kw))
-    monkeypatch.setattr(runtime, '_qwen4_exp_q8_mmq_policy', lambda policy: policy)
+    monkeypatch.setattr(runtime, '_qwen4_exp_q8_mmq_policy', lambda policy, **kwargs: policy)
     owner = SimpleNamespace(q8_mmq_prefill_enabled=True, q8_mmq_prepack_enabled=enabled,
         _q8_mmq_buffers=buffers, _q8_mmq_weight_sidecars=SimpleNamespace(mapping=mapping),
         _q8_mmq_policy=object(), _q8_mmq_library=object(),

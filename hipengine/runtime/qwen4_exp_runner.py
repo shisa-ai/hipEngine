@@ -5657,7 +5657,29 @@ def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
     return rows <= 256
 
 
-def _qwen4_exp_q8_mmq_policy(policy):
+@contextlib.contextmanager
+def q8_mmq_attn_gate_enabled(owner: Any, enabled: bool | None):
+    """Override one owner's MMQ attention-gate policy without changing resources."""
+    missing = object()
+    targets = [owner]
+    runner = getattr(owner, 'runner', None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    prior = [(target, getattr(target, 'q8_mmq_attn_gate_enabled', missing))
+             for target in targets]
+    try:
+        for target in targets:
+            target.q8_mmq_attn_gate_enabled = None if enabled is None else bool(enabled)
+        yield
+    finally:
+        for target, previous in prior:
+            if previous is missing:
+                delattr(target, 'q8_mmq_attn_gate_enabled')
+            else:
+                target.q8_mmq_attn_gate_enabled = previous
+
+
+def _qwen4_exp_q8_mmq_policy(policy, *, attn_gate_enabled: bool | None = None):
     """Add the P3 attention-gate shape only for an explicit candidate run.
 
     Also applies the #28 R12 plane-count candidate env per prefill (the
@@ -5667,11 +5689,11 @@ def _qwen4_exp_q8_mmq_policy(policy):
 
     if policy is None:
         return None
-    if os.environ.get(
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "0"
-    ) in {"", "0", "false", "False"}:
-        pass
-    else:
+    if attn_gate_enabled is None:
+        attn_gate_enabled = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "0"
+        ) not in {"", "0", "false", "False"}
+    if attn_gate_enabled:
         minimums = dict(policy.min_rows)
         minimums[(2560, 6144)] = 64
         policy = replace(policy, min_rows=minimums)
@@ -9934,6 +9956,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q8_mmq_prefill_enabled: bool | None = None
     # The same choice controls sidecar preparation and prefill session entry.
     q8_mmq_prepack_enabled: bool | None = None
+    q8_mmq_attn_gate_enabled: bool | None = None
     # The f16 WMMA dense-Q8 layer scope is the owning runner's decision. An
     # empty Q8WMMALayerScope means every layer; ``None`` is the unbound/direct
     # state, where the historical process key remains the fallback.
@@ -10178,6 +10201,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         router_producer_variant: str | None = None,
         q8_mmq_prefill_enabled: bool | None = None,
         q8_mmq_prepack_enabled: bool | None = None,
+        q8_mmq_attn_gate_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
         q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
     ) -> None:
@@ -10194,6 +10218,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.router_producer_variant = router_producer_variant
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
         self.q8_mmq_prepack_enabled = q8_mmq_prepack_enabled
+        self.q8_mmq_attn_gate_enabled = q8_mmq_attn_gate_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
         self.q8_dense_wide_policy = q8_dense_wide_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
@@ -10584,7 +10609,10 @@ class Qwen4ExpGGUFResidentModelRunner:
                 risk_indices_ptr=0 if risk_indices is None else risk_indices.ptr,
                 risk_indices_nbytes=0 if risk_indices is None else risk_indices.nbytes,
                 policy=(
-                    _qwen4_exp_q8_mmq_policy(self._q8_mmq_policy)
+                    _qwen4_exp_q8_mmq_policy(
+                        self._q8_mmq_policy,
+                        attn_gate_enabled=getattr(self, 'q8_mmq_attn_gate_enabled', None),
+                    )
                     if enabled
                     else None
                 ),
