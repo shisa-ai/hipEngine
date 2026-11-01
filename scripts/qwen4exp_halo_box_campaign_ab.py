@@ -1785,6 +1785,17 @@ def mmq_prepack_control_record(runner=None):
     }
 
 
+def gr_iu8_control_record(package, runner):
+    """Describe the changed projection and the independent published pair."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
+    policy = resolve_gr_iu8_policy(getattr(runner, 'gr_iu8_policy', None))
+    return {'runner_field': 'gr_iu8_policy',
+            'axis': 'up' if package == 'gr-iu8' else 'down',
+            'before': False, 'after': True,
+            'published_value': {'up': policy.up, 'down': policy.down},
+            'scope': 'per measured run; restored on exit'}
+
+
 def route_scope(route_package: str, mode: str, runner: Any = None, *,
                 environment: MutableMapping[str, str] = os.environ):
     """The live control a route package needs around its measured run.
@@ -1806,6 +1817,17 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT,
         gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
     )
+
+    if route_package in {'gr-iu8', 'gr-iu8-down'}:
+        if mode not in {'before', 'after'}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError(f"{route_package} needs the owning runner")
+        from hipengine.runtime.qwen4_exp_runner import GRIU8Policy, gr_iu8, resolve_gr_iu8_policy
+        prior = resolve_gr_iu8_policy(getattr(runner, 'gr_iu8_policy', None))
+        policy = (GRIU8Policy(mode == 'after', prior.down) if route_package == 'gr-iu8'
+                  else GRIU8Policy(prior.up, mode == 'after'))
+        return gr_iu8(runner, policy)
 
     if route_package == "q8-mmq-prepack":
         if mode not in {"before", "after"}:
@@ -2283,10 +2305,8 @@ def _apply_mode(
             # Request-local on the runner; ``route_scope`` records the ordered
             # v1 prerequisite and binds the leaf.
             return
-        if route_package == "gr-iu8":
-            flag = "HIPENGINE_QWEN4_EXP_GR_IU8"
-        if route_package == "gr-iu8-down":
-            flag = "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"
+        if route_package in {"gr-iu8", "gr-iu8-down"}:
+            return  # route_scope binds only the requested projection axis.
         if route_package == "q8-wmma-down":
             return  # route_scope binds the owning runner.
         if route_package == "q8-wave-scale":
@@ -3109,6 +3129,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
         artifact["selection_control"] = q8_down_ladder_control_record(
             args.route_package, generator.runner)
+    if args.route_package in {'gr-iu8', 'gr-iu8-down'}:
+        artifact['selection_control'] = gr_iu8_control_record(args.route_package, generator.runner)
     if args.route_package == "q8-wmma-down":
         artifact["selection_control"] = {
             "runner_field": "q8_selected_down_enabled", "before": False, "after": True,
@@ -3134,6 +3156,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         with route_scope(args.route_package, mode, generator.runner):
             row = _hipengine_case_sample(
                 generator.runner, case=case, repetition=repetition, transitions=transitions)
+            if args.route_package in {'gr-iu8', 'gr-iu8-down'}:
+                from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
+                policy = resolve_gr_iu8_policy(generator.runner.gr_iu8_policy)
+                row['gr_iu8_policy'] = {'up': policy.up, 'down': policy.down}
             if args.route_package == "q8-wmma-down":
                 from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down
                 row["q8_selected_down_enabled"] = resolve_q8_selected_down(generator.runner)
@@ -3401,17 +3427,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_json(args.output, artifact)
         return 0
     finally:
-        if args.route_package == "gr-iu8":
-            os.environ["HIPENGINE_QWEN4_EXP_GR_IU8"] = "0"
-        else:
-            _apply_mode("after", route_package=args.route_package)
+        _apply_mode("after", route_package=args.route_package)
         if original_chunk is not None:
             generator.runner._prefill_chunk = original_chunk
             generator.runner.prefill_chunk_size = args.prefill_chunk_size
         if gr_iu8_module is not None:
             gr_iu8_module.gguf_q8_0_iu8_wmma_prefill_f32_f32 = original_row4
-            if args.route_package == "gr-iu8-down":
-                os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = "0"
         elif original_row4 is not None:
             register(row4_key, original_row4, replace=True)
         if gr_k320_original is not None:

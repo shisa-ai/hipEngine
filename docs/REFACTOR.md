@@ -2925,6 +2925,8 @@ effective pair in their owner helper and measured runner. Shared-graph inventory
 prefill-restore, conservative-cost and GR router localization use those choices.
 Journey arms reconstruct the pair from each binding's snapshot and family
 overlays, then bind and report owner choices for both full and split trajectories.
+Campaign and state gates bind only the requested GR projection axis, preserve the
+other choice, report the effective pair and restore owners without teardown writes.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

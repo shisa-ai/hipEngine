@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey', 'campaign', 'state'])
 @pytest.mark.parametrize('length', [17, 255, 256, 257, 389])
 def test_public_gr_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -45,7 +45,16 @@ def test_public_gr_iu8_owner(monkeypatch, length, interface):
             policy = runtime.GRIU8Policy(up, down)
             with ExitStack() as scopes:
                 def bind(target):
-                    if interface == 'journey':
+                    if interface in {'campaign', 'state'}:
+                        scopes.enter_context(runtime.gr_iu8(target, runtime.GRIU8Policy(False, False)))
+                        package = 'gr-iu8-down' if down else 'gr-iu8'
+                        if interface == 'campaign':
+                            from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+                            scopes.enter_context(route_scope(package, 'after' if up or down else 'before', target))
+                        else:
+                            from scripts.qwen4exp_row4_state_gate import arm_control
+                            scopes.enter_context(arm_control(package, '1' if up or down else '0', target))
+                    elif interface == 'journey':
                         from scripts import qwen4exp_journey_localize as journey
                         monkeypatch.setitem(journey._GR_IU8_ARM_VALUES, 'public-test', policy)
                         assert scopes.enter_context(journey.gr_iu8_arm_scope(target, 'public-test')) == policy

@@ -49,7 +49,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
                    "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair",
-                   "q8-dpp-reduction", "q8-mmq-prepack", "q8-wmma-down"}:
+                   "q8-dpp-reduction", "q8-mmq-prepack", "q8-wmma-down", "gr-iu8", "gr-iu8-down"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -221,10 +221,8 @@ def main():
     if args.route_package == "qsa-ordered-v2":
         # Request-local on the runner; no env key names this selection.
         flag = ""
-    if args.route_package == "gr-iu8":
-        flag = "HIPENGINE_QWEN4_EXP_GR_IU8"
-    if args.route_package == "gr-iu8-down":
-        flag = "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"
+    if args.route_package in {"gr-iu8", "gr-iu8-down"}:
+        flag = ""  # arm_control binds only the requested projection axis.
     if args.route_package == "q8-wmma-down":
         flag = ""  # arm_control binds the owning runner.
     if args.route_package == "q8-wave-scale":
@@ -568,6 +566,9 @@ def main():
             "memory_scope":"Shared larger allocation;not an allocation-size A/B",
         }
     try:
+        if args.route_package in {'gr-iu8', 'gr-iu8-down'}:
+            from scripts.qwen4exp_halo_box_campaign_ab import gr_iu8_control_record
+            report['selection_control'] = gr_iu8_control_record(args.route_package, generator.runner)
         if args.route_package == "q8-mmq-prepack":
             report["selection_control"] = mmq_prepack_control_record(generator.runner)
             with route_scope(args.route_package, "after", generator.runner):
@@ -620,7 +621,7 @@ def main():
             # around it, so the published value is the premise both arms ride.
             assert generator.runner.gr_dpp_reduction is True
             report["selection_control"] = gr_dpp_control_record(generator.runner)
-        if args.route_package in {"q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+        if args.route_package in {"q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "q8-wmma-down"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.
@@ -878,6 +879,11 @@ def main():
                         args.route_package, enabled,
                         generator.runner) as case_scope:
                     first = generator.runner.prefill(case["prompt_token_ids"])
+                    gr_policy = None
+                    if args.route_package in {'gr-iu8', 'gr-iu8-down'}:
+                        from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
+                        policy = resolve_gr_iu8_policy(generator.runner.gr_iu8_policy)
+                        gr_policy = {'up': policy.up, 'down': policy.down}
                     prefill_invoked = calls[0] - start_calls
                     prefill_wave = gr_wave_calls[0] - start_gr_wave
                     # Every other arm's control only covers its measured
@@ -1065,6 +1071,7 @@ def main():
                     assert prefill_state == baseline[3], case["id"]
                 assert state["finite"]
                 summaries.append({
+                    "gr_iu8_policy": gr_policy,
                     "enabled": enabled, "state_sha256": state["state_sha256"],
                     "layout_sha256": state["layout_sha256"],
                     "prefill_logits_sha256": hashlib.sha256(logits).hexdigest(),
