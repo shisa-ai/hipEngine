@@ -464,6 +464,7 @@ def _named_profile_intact(
     gr_wide_override: bool | None = None,
     gdn_colwarps_override: bool | None = None,
     q8_wide_override: Q8DenseWidePolicy | bool | None = None,
+    gdn_layers_override: str | None = None,
 ) -> bool:
     """A named profile is intact only when no post-binder override is active."""
 
@@ -476,6 +477,7 @@ def _named_profile_intact(
         and gr_wide_override is None
         and gdn_colwarps_override is None
         and q8_wide_override is None
+        and gdn_layers_override is None
     )
 
 
@@ -488,6 +490,7 @@ def _configuration_class(
     gr_wide_override: bool | None = None,
     gdn_colwarps_override: bool | None = None,
     q8_wide_override: Q8DenseWidePolicy | bool | None = None,
+    gdn_layers_override: str | None = None,
 ) -> str:
     return (
         "diagnostic_post_binder_override"
@@ -498,6 +501,7 @@ def _configuration_class(
         or gr_wide_override is not None
         or gdn_colwarps_override is not None
         or q8_wide_override is not None
+        or gdn_layers_override is not None
         else "named_profile"
     )
 
@@ -530,6 +534,19 @@ def _wide_owner_override(owner: Any, enabled: bool | None, layers: str | None):
     )
     with q8_dense_wide_policy(owner, policy):
         yield policy
+
+
+@contextlib.contextmanager
+def _gdn_layers_owner_override(owner: Any, layers: str | None):
+    """Preserve an omitted scope; bind an explicit one for the measured window."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        gdn_colwarps_layers, resolve_gdn_colwarps_layers,
+    )
+    if layers is None:
+        yield resolve_gdn_colwarps_layers(owner)
+    else:
+        with gdn_colwarps_layers(owner, layers) as selected:
+            yield selected
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -684,6 +701,11 @@ def build_parser() -> argparse.ArgumentParser:
             "gate is restored on exit. The layer allowlist and the tile-16 "
             "admission decision stay at the dispatch"
         ),
+    )
+    parser.add_argument(
+        '--gdn-colwarps-layers',
+        help='GDN columnwarp prefill layer scope bound on the measured owner; '
+             'empty or all selects every layer, and indices or ranges narrow it',
     )
     parser.add_argument(
         "--q8-wmma-layers",
@@ -879,11 +901,13 @@ def main() -> None:
         "configuration_class": _configuration_class(
             overrides, production_moe_override, q8_mmq_override,
             q8_wmma_override, args.router_producer_variant,
-            gr_wide_override, gdn_colwarps_override, q8_wide_override),
+            gr_wide_override, gdn_colwarps_override, q8_wide_override,
+            args.gdn_colwarps_layers),
         "named_profile_intact": _named_profile_intact(
             overrides, production_moe_override, q8_mmq_override,
             q8_wmma_override, args.router_producer_variant,
-            gr_wide_override, gdn_colwarps_override, q8_wide_override),
+            gr_wide_override, gdn_colwarps_override, q8_wide_override,
+            args.gdn_colwarps_layers),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
         "production_moe_prefill_enabled": None,
@@ -978,6 +1002,11 @@ def main() -> None:
 
             q4_scope.enter_context(gr_wide(generator, gr_wide_override))
         report["gr_wide"] = bool(getattr(runner, "gr_wide", False))
+        from hipengine.runtime.qwen4_exp_runner import resolve_gdn_colwarps_layers
+        report['bound_gdn_colwarps_layers'] = resolve_gdn_colwarps_layers(generator)
+        report['gdn_colwarps_layers_override'] = args.gdn_colwarps_layers
+        report['gdn_colwarps_layers'] = q4_scope.enter_context(
+            _gdn_layers_owner_override(generator, args.gdn_colwarps_layers))
         if gdn_colwarps_override is not None:
             from hipengine.runtime.qwen4_exp_runner import (
                 gdn_colwarps_prefill, resolve_gdn_colwarps_prefill,

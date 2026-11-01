@@ -178,11 +178,10 @@ FAMILIES: tuple[dict, ...] = (
     },
     {
         "family": "GDN_COLWARPS_PREFILL",
-        "env": {
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
-        },
+        "env": {},
         "owner": {
             "gdn_colwarps_prefill": "on",
+            "gdn_colwarps_layers": ",".join(map(str, range(27, 48))),
         },
     },
     {
@@ -244,6 +243,8 @@ def _run(
             command += ['--q8-dense-wide', owner['q8_dense_wide']]
         if 'q8_dense_wide_layers' in owner:
             command += ['--q8-dense-wide-layers', owner['q8_dense_wide_layers']]
+        if 'gdn_colwarps_layers' in owner:
+            command += ['--gdn-colwarps-layers', owner['gdn_colwarps_layers']]
         if "gdn_colwarps_prefill" in owner:
             command += [
                 "--gdn-colwarps-prefill", owner["gdn_colwarps_prefill"]]
@@ -415,6 +416,16 @@ def _attribution(result: dict, entry: dict, env: dict[str, str]) -> tuple[bool |
             checks.append(matches)
             notes.append('the dense-wide owner resolved to the requested policy' if matches
                          else 'the dense-wide owner resolved to a different policy')
+    if 'gdn_colwarps_layers' in owner:
+        selected = result.get('gdn_colwarps_layers')
+        checks.append(None if selected is None else selected == owner['gdn_colwarps_layers'])
+        notes.append('the GDN layer owner matches the requested scope' if checks[-1] is True
+                     else 'the child did not confirm the requested GDN layer scope')
+    if 'gdn_colwarps_prefill' in owner:
+        selected = result.get('gdn_colwarps_prefill')
+        checks.append(None if selected is None else selected is (owner['gdn_colwarps_prefill'] == 'on'))
+        notes.append('the GDN admission owner matches the requested gate' if checks[-1] is True
+                     else 'the child did not confirm the requested GDN admission gate')
     if not checks:
         return None, (
             "this arm's owner state has no confirmation field this driver reads"
@@ -452,6 +463,8 @@ def _summarize(payload: dict, command) -> dict:
         "fell_back_to_strict": payload.get("fell_back_to_strict"),
         "named_profile_intact": payload.get("named_profile_intact"),
         "q8_wmma_layers": payload.get("q8_wmma_layers"),
+        "gdn_colwarps_layers": payload.get('gdn_colwarps_layers'),
+        "gdn_colwarps_prefill": payload.get('gdn_colwarps_prefill'),
         "q8_dense_wide_policy": payload.get('q8_dense_wide_policy'),
         "risk_calls": risk.get("calls"),
         "risk_outputs": outputs,

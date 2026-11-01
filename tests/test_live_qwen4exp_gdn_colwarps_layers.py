@@ -9,8 +9,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
 @pytest.mark.parametrize('length', [73, 273, 517])
-def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, length):
+def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import memory_stats
@@ -49,7 +50,12 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS',
                                'all' if scope == '999' else '999')
             repeated = []
-            with module.gdn_colwarps_layers(owner, scope):
+            if interface == 'profile_gap':
+                from scripts.qwen4exp_profile_gap import _gdn_layers_owner_override
+                binding = _gdn_layers_owner_override(owner, scope)
+            else:
+                binding = module.gdn_colwarps_layers(owner, scope)
+            with binding:
                 for _ in range(2):
                     captures.clear()
                     tiled.clear()
