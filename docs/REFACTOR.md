@@ -2887,23 +2887,11 @@ exact fallback. Any extension of changed-arithmetic production defaults follows
 `docs/EXECUTION-PROFILES.md`; missing historical measurements are not a reason to refuse an explicit
 evaluation.
 
-**Deferred census-interface decision:** keep explicitly bounded per-module coverage or define a
-registry-wide launch record. The three dense families listed in `hipengine/kernels/launch_census.py`
-record launches; routed kernels and graph replay are outside that contract. A registry-boundary
-migration must first define role/shape metadata and whether a record counts capture or replay, then
-prevent double counting when removing module-level calls. Preserve
-`tests/test_unit_gguf_launch_census_coverage.py` and add coverage for the newly claimed families. An
-empty row is not evidence that an uncovered family did not run.
-
-Done when: Deferred diagnostic-retention decision: keep or retire the bitmap repair and j32 tile
-experiments together with their callers. Bitmap repair is called by
-`scripts/qwen4exp_repair_cost_structure.py` and
-`tests/test_gpu_qwen4exp_q4_iu8_row_bitmap_repair.py`; the Q4_K/Q5_1 j32 wrappers are called by
-`scripts/qwen4exp_moe_main_kernel_cost.py` and `tests/test_gpu_qwen4exp_q4_iu8_j32_tile.py`. These
-are diagnostic consumers, not production selection. If retiring them, remove exports, registrations,
-wrappers, kernel instantiations and caller arms together, preserving the historical artifacts. If
-replacing them, first implement and test the replacement against the existing exact-repair contract;
-the proposed LDS weight-staging design is not proof of an implemented, exact replacement.
+Done when: migrate wide-route diagnostic callers and the layer-scope gate with R0425's explicit
+owner-field migration, preserving selected-route reporting, caller overrides and strict/production
+isolation. Keep the registered exact fallback. Do not remove environment selectors before their
+consumers have the replacement control. The census scope and repair diagnostics are supported
+interfaces documented in `docs/ENVS.md` and `docs/KERNELS.md`, not pending removals.
 
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
 

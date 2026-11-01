@@ -792,7 +792,7 @@ use.
 | `HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K` | retired | Ignored. The F16 wide route selects the registered 128x128 WGP sibling at rows ≥ 1024, K ≥ 4096 and N ≥ 1024; otherwise it keeps the parent. |
 | `HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS` | retired | Ignored. Dense-wide launches use the WGP-mode build for 257–1024 rows. Explicit build profiles and supplied libraries remain available to diagnostics. |
 | `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` | retired | Ignored. Selected Q4_K T16 gate+up uses the tile8 owner; the 16-column wrapper remains a direct numerical reference. |
-| `HIPENGINE_KERNEL_CENSUS` | unset | Records launch shapes and roles (never pointers or data) for kernel census reports. |
+| `HIPENGINE_KERNEL_CENSUS` | unset | Records launch shapes and roles (never pointers or data) from `gguf_k_gemv`, `gguf_q8_0_prefill` and `gguf_q8_0_dense_wide` wrappers. This bounded census counts host wrapper calls, not graph replays or routed/MoE execution; absent rows do not prove those paths were unused. |
 | `HIPENGINE_NO_MCUMODE_FAMILIES` | unset | Comma-separated kernel families built without CU mode; part of the build cache key. |
 
 ### Qwen4Exp decode and state
