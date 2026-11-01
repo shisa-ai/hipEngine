@@ -27,7 +27,7 @@ neither the owner-transported axes here (the three f16 WMMA layer scopes and
 instrument, and it writes a per-arm report instead of this per-family one. Do
 not delete this driver while those packets are cited as its output.
 
-The ``Q8_WMMA_LAYERS_*`` arms clear ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE``. The
+The ``Q8_WMMA_LAYERS_*`` arms disable the explicit dense-wide owner. The
 production plan binds the wide-row route over layers 13-47 and that route claims
 the WMMA-rewritten parent wherever its own scope covers the layer, so an arm
 that leaves it bound measures the wide route under a WMMA name. Clearing it is
@@ -79,13 +79,9 @@ CONTROL_FAMILY = "NOOP_OVERRIDE_CONTROL"
 #: the exact value an inert override can repeat.
 CONTROL_KEY = "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"
 
-#: Clearing the wide route is what makes a WMMA scope arm run WMMA. The gate
-#: clears both the enable flag and the scope for the same reason
-#: (``scripts/execution_profile_q8_wmma_prefill_layers_gate.py``).
-WMMA_ARM_ENV: dict[str, str] = {
-    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "0",
-    "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": "",
-}
+#: Clearing the wide owner makes a WMMA scope arm run WMMA. The companion
+#: enablement and layer arguments are explicit owner controls, not process keys.
+WMMA_ARM_ENV: dict[str, str] = {}
 
 # Each entry: family name, the env key that enables it, the value that enables
 # it, and any companion key/value the family needs. The GDN peer prefill family
@@ -139,11 +135,10 @@ FAMILIES: tuple[dict, ...] = (
         # plan now binds 13-47 (PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS), so this
         # arm is a narrowing of the live route rather than its current scope.
         "family": "Q8_DENSE_WIDE_16_47",
-        "env": {
-            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": "1",
-            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(
-                map(str, range(16, 48))
-            ),
+        "env": {},
+        "owner": {
+            "q8_dense_wide": "on",
+            "q8_dense_wide_layers": ",".join(map(str, range(16, 48))),
         },
     },
     {
@@ -151,6 +146,8 @@ FAMILIES: tuple[dict, ...] = (
         "env": dict(WMMA_ARM_ENV),
         "owner": {
             "q8_wmma_layers": ",".join(map(str, range(16, 48))),
+            "q8_dense_wide": "off",
+            "q8_dense_wide_layers": "",
         },
     },
     {
@@ -158,6 +155,8 @@ FAMILIES: tuple[dict, ...] = (
         "env": dict(WMMA_ARM_ENV),
         "owner": {
             "q8_wmma_layers": ",".join(map(str, range(32, 48))),
+            "q8_dense_wide": "off",
+            "q8_dense_wide_layers": "",
         },
     },
     {
@@ -165,6 +164,8 @@ FAMILIES: tuple[dict, ...] = (
         "env": dict(WMMA_ARM_ENV),
         "owner": {
             "q8_wmma_layers": ",".join(map(str, range(0, 48))),
+            "q8_dense_wide": "off",
+            "q8_dense_wide_layers": "",
         },
     },
     {
@@ -239,6 +240,10 @@ def _run(
             command += ["--q8-mmq-prefill", owner["q8_mmq_prefill"]]
         if "q8_wmma_layers" in owner:
             command += ["--q8-wmma-layers", owner["q8_wmma_layers"]]
+        if 'q8_dense_wide' in owner:
+            command += ['--q8-dense-wide', owner['q8_dense_wide']]
+        if 'q8_dense_wide_layers' in owner:
+            command += ['--q8-dense-wide-layers', owner['q8_dense_wide_layers']]
         if "gdn_colwarps_prefill" in owner:
             command += [
                 "--gdn-colwarps-prefill", owner["gdn_colwarps_prefill"]]
@@ -397,6 +402,19 @@ def _attribution(result: dict, entry: dict, env: dict[str, str]) -> tuple[bool |
         else:
             checks.append(False)
             notes.append("the owner scope resolved to different layers")
+    if 'q8_dense_wide' in owner or 'q8_dense_wide_layers' in owner:
+        policy = result.get('q8_dense_wide_policy')
+        if not isinstance(policy, dict):
+            checks.append(False if isinstance(result.get('bound_route_env'), dict) else None)
+            notes.append('the child did not report the resolved dense-wide policy')
+        else:
+            matches = (
+                ('q8_dense_wide' not in owner or policy.get('enabled') is (owner['q8_dense_wide'] == 'on'))
+                and ('q8_dense_wide_layers' not in owner or policy.get('layers') ==
+                     (sorted({int(x) for x in owner['q8_dense_wide_layers'].split(',') if x}) or None)))
+            checks.append(matches)
+            notes.append('the dense-wide owner resolved to the requested policy' if matches
+                         else 'the dense-wide owner resolved to a different policy')
     if not checks:
         return None, (
             "this arm's owner state has no confirmation field this driver reads"
@@ -434,6 +452,7 @@ def _summarize(payload: dict, command) -> dict:
         "fell_back_to_strict": payload.get("fell_back_to_strict"),
         "named_profile_intact": payload.get("named_profile_intact"),
         "q8_wmma_layers": payload.get("q8_wmma_layers"),
+        "q8_dense_wide_policy": payload.get('q8_dense_wide_policy'),
         "risk_calls": risk.get("calls"),
         "risk_outputs": outputs,
         "risk_risky": risky,

@@ -10,7 +10,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'layer_gate', 'dense_ab', 'last_row_probe'])
+@pytest.mark.parametrize('interface', ['direct', 'layer_gate', 'dense_ab', 'last_row_probe', 'profile_gap'])
 def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import gguf_linear as gl
@@ -50,6 +50,9 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
                 control = gate._apply_route_env(
                     gate.SELECTORS['dense_wide'], candidate=enabled,
                     layers=','.join(map(str, range(16, 48))), generator=generator)
+            elif interface == 'profile_gap':
+                from scripts.qwen4exp_profile_gap import _wide_owner_override
+                control = _wide_owner_override(generator, enabled, ','.join(map(str, range(16, 48))))
             elif interface == 'last_row_probe':
                 from scripts.qwen4exp_prefill_last_row_probe import route_environment
                 control = route_environment(candidate=enabled, runner=generator)

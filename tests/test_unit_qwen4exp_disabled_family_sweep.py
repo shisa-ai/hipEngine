@@ -84,6 +84,8 @@ def _owner_pairs(command: list[str]) -> dict[str, str]:
         ("--q4-dp4a-decode", "q4_dp4a_decode"),
         ("--q4-dp4a-layers", "q4_dp4a_layers"),
         ("--q8-wmma-layers", "q8_wmma_layers"),
+        ('--q8-dense-wide', 'q8_dense_wide'),
+        ('--q8-dense-wide-layers', 'q8_dense_wide_layers'),
         ("--production-moe-prefill", "production_moe_prefill"),
         ("--q8-mmq-prefill", "q8_mmq_prefill"),
     ):
@@ -127,6 +129,10 @@ def _fake_child(monkeypatch: pytest.MonkeyPatch, calls: list[list[str]]) -> None
                     }),
                 }
             ),
+            "q8_dense_wide_policy": {
+                'enabled': owner.get('q8_dense_wide', 'on') == 'on',
+                'layers': sorted({int(x) for x in owner.get('q8_dense_wide_layers', ','.join(map(str, range(13, 48)))).split(',') if x}) or None,
+            },
             "risk_diagnostics": {
                 "calls": 1,
                 "by_role": {
@@ -227,8 +233,9 @@ def test_the_wmma_scope_arms_clear_the_wide_route() -> None:
         "Q8_WMMA_LAYERS_0_47",
     ):
         env = _family(name)["env"]
-        assert env.get(WIDE_ENV) == "0", name
-        assert env.get(WIDE_LAYERS_ENV) == "", name
+        assert env == {}, name
+        assert _family(name)['owner']['q8_dense_wide'] == 'off'
+        assert _family(name)['owner']['q8_dense_wide_layers'] == ''
         assert WMMA_ENV not in env, (
             f"{name}: the scope is owner state, not an environment value"
         )
@@ -287,16 +294,17 @@ def test_each_axis_builds_the_child_command_it_names(
 
     for name in ("Q8_WMMA_LAYERS_16_47", "Q8_WMMA_LAYERS_32_47", "Q8_WMMA_LAYERS_0_47"):
         overrides = _override_pairs(by_family[name])
-        assert overrides[WIDE_ENV] == "0", name
-        assert overrides[WIDE_LAYERS_ENV] == "", name
+        assert overrides == {}, name
+        assert _owner_pairs(by_family[name])['q8_dense_wide'] == 'off'
+        assert _owner_pairs(by_family[name])['q8_dense_wide_layers'] == ''
         assert WMMA_ENV not in overrides, name
         assert _owner_pairs(by_family[name])["q8_wmma_layers"] == (
             _family(name)["owner"]["q8_wmma_layers"]
         )
 
-    wide = _override_pairs(by_family["Q8_DENSE_WIDE_16_47"])
-    assert wide[WIDE_ENV] == "1"
-    assert wide[WIDE_LAYERS_ENV] == ",".join(map(str, range(16, 48)))
+    wide = _owner_pairs(by_family["Q8_DENSE_WIDE_16_47"])
+    assert wide['q8_dense_wide'] == "on"
+    assert wide['q8_dense_wide_layers'] == ",".join(map(str, range(16, 48)))
 
     # The control repeats the binder's value, so it is inert by construction.
     assert _override_pairs(by_family["NOOP_OVERRIDE_CONTROL"]) == {
@@ -406,7 +414,7 @@ def test_a_requested_value_the_child_did_not_apply_is_not_attributed(
             if "q8_wmma_layers" in owner
             else None
         )
-        # The wide clear is NOT applied; an unrelated key moves instead.
+        # Wide disable is NOT applied; an unrelated key moves instead.
         effective = dict(BOUND_ROUTE_ENV)
         if arm != "fallback":
             effective["HIPENGINE_QWEN4_EXP_GR_IU8"] = "1"
@@ -420,6 +428,7 @@ def test_a_requested_value_the_child_did_not_apply_is_not_attributed(
                 None if requested is None
                 else {"mode": "layers", "layers": requested}
             ),
+            'q8_dense_wide_policy': {'enabled': True, 'layers': list(range(13, 48))},
             "risk_diagnostics": {"by_role": {}},
             "logits_sha256": arm,
             "token_id": 1,
@@ -435,10 +444,10 @@ def test_a_requested_value_the_child_did_not_apply_is_not_attributed(
 
     row = artifact["families"][0]
     assert row["family"] == "Q8_WMMA_LAYERS_16_47"
-    # The scope matched; that must not rescue an unapplied environment clear.
+    # The scope matched; that must not rescue an unapplied owner disable.
     assert row["owner_scope_bound"] is True
     assert row["attribution_verified"] is False
-    assert WIDE_ENV in row["attribution_note"]
+    assert 'dense-wide owner' in row["attribution_note"]
     assert artifact["ranked_by_seconds_recoverable"] == []
     assert [item["family"] for item in artifact["ranking_excludes"]] == [
         "Q8_WMMA_LAYERS_16_47"
@@ -446,10 +455,10 @@ def test_a_requested_value_the_child_did_not_apply_is_not_attributed(
     assert artifact["total_seconds_recoverable"] == 0.0
 
 
-def test_a_requested_key_absent_from_the_route_env_is_not_attributed(
+def test_a_requested_policy_absent_from_the_report_is_not_attributed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
-    """A requested key the child never reports cannot be called applied."""
+    """A requested owner policy the child never reports cannot be called applied."""
 
     def fake_run(command, **kwargs):
         output = Path(command[command.index("--output") + 1])
@@ -479,8 +488,7 @@ def test_a_requested_key_absent_from_the_route_env_is_not_attributed(
 
     row = artifact["families"][0]
     assert row["attribution_verified"] is False
-    assert WIDE_ENV in row["attribution_note"]
-    assert "absent" in row["attribution_note"]
+    assert 'did not report' in row["attribution_note"]
     assert artifact["ranked_by_seconds_recoverable"] == []
 
 
@@ -544,6 +552,7 @@ def test_an_owner_scope_mismatch_is_excluded_from_the_ranking(
             "bound_route_env": dict(BOUND_ROUTE_ENV),
             "route_env": {**BOUND_ROUTE_ENV, **overrides},
             "q8_wmma_layers": resolved if "q8_wmma_layers" in owner else None,
+            'q8_dense_wide_policy': {'enabled': False, 'layers': None},
             "risk_diagnostics": {"by_role": {}},
             "logits_sha256": arm,
             "token_id": 1,

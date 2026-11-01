@@ -10,6 +10,9 @@ production-profile binder and recorded alongside both bound and effective route
 environments. The Q4 DP4A decode pair is runner state, so its diagnostic
 override is ``--q4-dp4a-decode``/``--q4-dp4a-layers`` rather than an env key.
 The f16 WMMA layer scope is owner state too; use ``--q8-wmma-layers``.
+Dense-wide diagnostics use ``--q8-dense-wide`` and ``--q8-dense-wide-layers``;
+omitted axes preserve the bound policy. Legacy process overrides remain available
+for callers not yet migrated.
 """
 from __future__ import annotations
 
@@ -35,6 +38,9 @@ if str(ROOT) not in sys.path:
 from hipengine.kernels import launch_census
 from hipengine.runtime.gguf_linear import (  # noqa: E402
     Q8WMMALayerScope,
+    Q8DenseWidePolicy,
+    q8_dense_wide_policy,
+    resolve_q8_dense_wide_policy,
     q8_wmma_layer_scope,
     resolve_q8_wmma_layers,
 )
@@ -450,6 +456,7 @@ def _named_profile_intact(
     router_producer_override: str | None = None,
     gr_wide_override: bool | None = None,
     gdn_colwarps_override: bool | None = None,
+    q8_wide_override: Q8DenseWidePolicy | bool | None = None,
 ) -> bool:
     """A named profile is intact only when no post-binder override is active."""
 
@@ -461,6 +468,7 @@ def _named_profile_intact(
         and router_producer_override is None
         and gr_wide_override is None
         and gdn_colwarps_override is None
+        and q8_wide_override is None
     )
 
 
@@ -472,6 +480,7 @@ def _configuration_class(
     router_producer_override: str | None = None,
     gr_wide_override: bool | None = None,
     gdn_colwarps_override: bool | None = None,
+    q8_wide_override: Q8DenseWidePolicy | bool | None = None,
 ) -> str:
     return (
         "diagnostic_post_binder_override"
@@ -481,6 +490,7 @@ def _configuration_class(
         or router_producer_override is not None
         or gr_wide_override is not None
         or gdn_colwarps_override is not None
+        or q8_wide_override is not None
         else "named_profile"
     )
 
@@ -501,6 +511,18 @@ def _apply_post_binder_overrides(
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+@contextlib.contextmanager
+def _wide_owner_override(owner: Any, enabled: bool | None, layers: str | None):
+    """Override specified axes only; restore the owner's policy on exit."""
+    prior = resolve_q8_dense_wide_policy(owner)
+    policy = Q8DenseWidePolicy(
+        prior.enabled if enabled is None else enabled,
+        prior.layers if layers is None else Q8WMMALayerScope.parse(layers).layers or None,
+    )
+    with q8_dense_wide_policy(owner, policy):
+        yield policy
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -605,6 +627,14 @@ def build_parser() -> argparse.ArgumentParser:
             "Explicit production grouped-MoE prefill owner override applied "
             "after the binder"
         ),
+    )
+    parser.add_argument(
+        '--q8-dense-wide', choices=('on', 'off'),
+        help='Explicit dense-wide owner enablement; omitted preserves the bound value',
+    )
+    parser.add_argument(
+        '--q8-dense-wide-layers',
+        help='Dense-wide layers; empty means all layers, 0 selects layer zero',
     )
     parser.add_argument(
         "--q8-mmq-prefill",
@@ -716,6 +746,14 @@ def main() -> None:
         None if args.gdn_colwarps_prefill is None
         else args.gdn_colwarps_prefill == "on"
     )
+    q8_wide_override = (
+        None if args.q8_dense_wide is None and args.q8_dense_wide_layers is None
+        else args.q8_dense_wide == 'on')
+    if args.q8_dense_wide_layers is not None:
+        try:
+            Q8WMMALayerScope.parse(args.q8_dense_wide_layers)
+        except ValueError as exc:
+            raise SystemExit(f'invalid --q8-dense-wide-layers: {exc}') from exc
     q8_wmma_override = None
     if args.q8_wmma_layers is not None:
         try:
@@ -834,11 +872,11 @@ def main() -> None:
         "configuration_class": _configuration_class(
             overrides, production_moe_override, q8_mmq_override,
             q8_wmma_override, args.router_producer_variant,
-            gr_wide_override, gdn_colwarps_override),
+            gr_wide_override, gdn_colwarps_override, q8_wide_override),
         "named_profile_intact": _named_profile_intact(
             overrides, production_moe_override, q8_mmq_override,
             q8_wmma_override, args.router_producer_variant,
-            gr_wide_override, gdn_colwarps_override),
+            gr_wide_override, gdn_colwarps_override, q8_wide_override),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
         "production_moe_prefill_enabled": None,
@@ -901,6 +939,17 @@ def main() -> None:
             # Enabling a scoped diagnostic must not allocate secretly: the
             # script names the cold-path resource operation explicitly.
             runner.configure_mmq_prefill_resources()
+        report['bound_dense_wide_policy'] = resolve_q8_dense_wide_policy(generator).to_report()
+        report['q8_dense_wide_override'] = {
+            'enabled': args.q8_dense_wide,
+            'layers': args.q8_dense_wide_layers,
+        }
+        if q8_wide_override is not None:
+            q4_scope.enter_context(_wide_owner_override(
+                generator,
+                None if args.q8_dense_wide is None else args.q8_dense_wide == 'on',
+                args.q8_dense_wide_layers))
+        report['q8_dense_wide_policy'] = resolve_q8_dense_wide_policy(generator).to_report()
         report["q8_wmma_layers_override"] = (
             None if q8_wmma_override is None else q8_wmma_override.to_report())
         if q8_wmma_override is not None:
