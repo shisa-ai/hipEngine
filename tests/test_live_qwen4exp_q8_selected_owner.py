@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey', 'layer_probe', 'campaign', 'sorted_preemptor', 'mapped_preemptor', 'pf13_preemptor', 'state_gate', 'state_q5k_isolation'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey', 'layer_probe', 'campaign', 'sorted_preemptor', 'mapped_preemptor', 'pf13_preemptor', 'state_gate', 'state_q5k_isolation', 'profile'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_selected_q8_down_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -28,6 +28,7 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
         launches.append(True)
         return original(*args, **kwargs)
     monkeypatch.setattr(runtime, '_run_qwen4_exp_q8_wmma_down', launch)
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', '0')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
@@ -37,14 +38,18 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
         runners = list(serving._all_runners)
         if all(owner.runner is not r for r in runners):
             runners.append(owner.runner)
-        assert owner.q8_selected_down_enabled is None
-        assert all(r.q8_selected_down_enabled is None for r in runners)
+        assert owner.q8_selected_down_enabled is True
+        assert all(r.q8_selected_down_enabled is True for r in runners)
+        assert os.environ['HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN'] == '0'
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', ambient)
             with ExitStack() as scopes:
-                if interface.startswith('state_'):
+                if interface == 'profile':
+                    if not enabled:
+                        scopes.enter_context(runtime.q8_selected_down_enabled(owner, False))
+                elif interface.startswith('state_'):
                     from scripts.qwen4exp_row4_state_gate import arm_control
                     def bind_state(target):
                         scopes.enter_context(runtime.q8_selected_down_enabled(target, True))
@@ -114,7 +119,10 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
                     # independent grouped fallback at larger prompt shapes.
                     scopes.enter_context(runtime.routed_f16_enabled(runner, False))
                     if runner is not owner.runner:
-                        if interface.startswith('state_'):
+                        if interface == 'profile':
+                            if not enabled:
+                                scopes.enter_context(runtime.q8_selected_down_enabled(runner, False))
+                        elif interface.startswith('state_'):
                             bind_state(runner)
                         elif interface.endswith('_preemptor'):
                             bind_preemptor(runner)
@@ -138,8 +146,8 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
                 assert repeats[0][0] == repeats[1][0]
                 for a, b in zip(repeats[0][1], repeats[1][1], strict=True):
                     np.testing.assert_array_equal(a, b)
-            assert owner.q8_selected_down_enabled is None
-            assert all(r.q8_selected_down_enabled is None for r in runners)
+            assert owner.q8_selected_down_enabled is True
+            assert all(r.q8_selected_down_enabled is True for r in runners)
     finally:
         llm.close()
     hip.device_synchronize()

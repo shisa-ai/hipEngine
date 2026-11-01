@@ -47,13 +47,9 @@ from scripts.qwen4exp_q8_repair_depth_gate import (
 )
 
 
-SHARED_DECODE_SAFE_ENV = frozenset(
-    "HIPENGINE_QWEN4_EXP_" + flag for flag in (
-        "Q8_0_SELECTED_WMMA_DOWN",
-    )
-)
-# Owner-bound fields that are the same kind of prefill-or-uncaptured-attention
-# decision as the keys above. The grouped Q8_0 expert-down owner, the tile-16
+SHARED_DECODE_SAFE_ENV = frozenset()
+# Owner-bound fields are prefill-or-uncaptured-attention decisions. The grouped
+# Q8_0 expert-down owner, the tile-16
 # GDN prefill owner, the GDN columnwarp admission gate and the ordered sparse
 # decode prerequisite are request-local runner state now, so a candidate names
 # them here instead of writing the retired ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT``,

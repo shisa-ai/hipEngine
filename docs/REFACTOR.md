@@ -2910,6 +2910,10 @@ Sorted/register, mapped-down and PF-1/PF-3 diagnostic preemptor closures also
 bind selected-down off on their measured owners and record it as a field. The
 row4 state gate also scopes its Q5_K isolation pin on the owner and checks the
 production prerequisite through the effective owner rather than the environment.
+Profiles publish the effective selected-down Boolean on generators and runners,
+including UD recovery/restoration, without writing the direct-call environment
+fallback. Shared-graph candidates name the owner field, and selector reports
+read the effective owner rather than stale process provenance.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

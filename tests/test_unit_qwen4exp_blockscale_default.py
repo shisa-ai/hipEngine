@@ -16,7 +16,8 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
         quant="gguf_ud_q4_k_xl", profile=ExecutionProfile.PRODUCTION)
     generator = SimpleNamespace()
     profile.binder(generator, profile)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
+    assert generator.q8_selected_down_enabled is True
+    assert "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN" not in os.environ
     # The Q8_0 grouped-down fallback key is owner state: the plan publishes the
     # guarded block-scale owner on the owning generator and runner, and no
     # process key carries it.
@@ -50,7 +51,7 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     for scope in ("grouped_prefill_rows_lt512_q8_0_expert_down",
                   "grouped_prefill_rows_ge512_q8_0_expert_down"):
         # The grouped Q8_0 down scopes run the routed F16 GEMM; the guarded
-        # blockscale owner the env still names serves the rows it declines.
+        # blockscale owner the generator names serves the rows it declines.
         assert selected[("linear", scope)] == (
             "selected_routed_f16_wmma_prefill_bf16_bf16_out")
     assert selected[("linear", "prefill_rows_ge512_token_major_mapped_q8_down")] == (

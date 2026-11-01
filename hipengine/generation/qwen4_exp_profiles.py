@@ -157,7 +157,7 @@ _QSA_ORDERED_DECODE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
 _PROCESS_RESTORED_Q8_QSA_FLAGS = {
     flag: value
     for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
-    if flag not in {"Q8_DOWN_VARIANT"}
+    if flag not in {"Q8_DOWN_VARIANT", "Q8_0_SELECTED_WMMA_DOWN"}
 }
 _Q8_QSA_RESTORATION_EVIDENCE = (
     "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json"
@@ -1197,6 +1197,22 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_selected_q8_down(generator: Any, *, production: bool, quant: str | None) -> None:
+    """Publish the gate after the UD recovery and restoration decisions."""
+    enabled = production
+    if production and quant == 'gguf_ud_q4_k_xl':
+        flag = 'Q8_0_SELECTED_WMMA_DOWN'
+        if flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
+            enabled = False
+        if flag in PRODUCTION_Q8_QSA_RESTORED_FLAGS:
+            enabled = PRODUCTION_Q8_QSA_RESTORED_FLAGS[flag] not in {'', '0', 'false', 'False'}
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', '1' if enabled else '0')
+    generator.q8_selected_down_enabled = enabled
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.q8_selected_down_enabled = enabled
+
+
 def _publish_flash_prefill(generator: Any, *, production: bool, quant: str | None) -> None:
     """Publish the effective pair after the UD arithmetic-recovery decision."""
     from hipengine.runtime.qwen4_exp_runner import QSAFlashPrefillPolicy
@@ -1559,9 +1575,7 @@ def _bind(
         # selections are request-local runner state now (``q51_down_m1`` /
         # ``forkb_grouped_down`` above), so no process key names them. Strict
         # keeps the preceding owners as registered fallbacks.
-        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": (
-            "1" if production else "0"
-        ),
+        # Selected Q8 down enablement and its grouped variant publish on owners.
         # The grouped Q8_0 expert-down owner was this pair's other half; it is
         # the owning generator/runner's state now (``q8_down_variant``),
         # published below, so no process key names it.
@@ -1819,6 +1833,7 @@ def _bind(
                     "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                     "Q8_MMQ_PREFILL", "GR_WIDE",
                     _GDN_COLWARPS_PREFILL_FLAG, "QSA_FLASH_PREFILL",
+                    "Q8_0_SELECTED_WMMA_DOWN",
                 }
             }
         )
@@ -1832,6 +1847,7 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    _publish_selected_q8_down(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_flash_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
     # The GDN columnwarp enablement gate is the plan's decision, published on
     # the owning generator/runner instead of the retired

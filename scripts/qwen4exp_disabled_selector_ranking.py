@@ -203,6 +203,9 @@ def _run_arm(
     bound = child.get("bound_route_env") or {}
     flash_keys = {'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS'}
     flash_policy = child.get('qsa_flash_prefill_policy')
+    selected_key = 'HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN'
+    selected_down = child.get('q8_selected_down_enabled')
+    owner_keys = flash_keys | {selected_key}
     row.update(
         {
             "status": "measured",
@@ -217,7 +220,7 @@ def _run_arm(
             "effective_route": {
                 key: route.get(key)
                 for key in sorted(overrides)
-                if key in route and key not in flash_keys
+                if key in route and key not in owner_keys
             },
             "production_moe_prefill_enabled": child.get(
                 "production_moe_prefill_enabled"),
@@ -225,14 +228,16 @@ def _run_arm(
             "gdn_colwarps_layers": child.get("gdn_colwarps_layers"),
             "gdn_colwarps_prefill": child.get("gdn_colwarps_prefill"),
             "qsa_flash_prefill_policy": flash_policy,
+            "q8_selected_down_enabled": selected_down,
             "effective_route_missing_keys": [
                 key for key in sorted(overrides)
                 if ((key in flash_keys and flash_policy is None)
-                    or (key not in flash_keys and key not in route))
+                    or (key == selected_key and selected_down is None)
+                    or (key not in owner_keys and key not in route))
             ],
             "baseline_route": {
                 key: bound.get(key)
-                for key in sorted(ARMS["all_prefill"]) if key not in flash_keys
+                for key in sorted(ARMS["all_prefill"]) if key not in owner_keys
             },
         }
     )

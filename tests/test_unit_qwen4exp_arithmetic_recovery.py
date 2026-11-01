@@ -34,7 +34,8 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # exact parent and the F16 route composition this quant's production plan
     # carries republishes the wide tile, so no process key is written.
     expected = dict(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
-    owner_flags = {"PRODUCTION_MOE_PREFILL", "Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL"}
+    owner_flags = {"PRODUCTION_MOE_PREFILL", "Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL",
+                   "Q8_0_SELECTED_WMMA_DOWN"}
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
         if flag in {"Q4_DP4A64", "GR_WIDE"} or flag in owner_flags:
             continue
@@ -45,6 +46,8 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     assert generator.production_moe_prefill_enabled is False
     assert generator.q8_mmq_prefill_enabled is False
     assert generator.qsa_flash_prefill_policy.enabled is False
+    assert generator.q8_selected_down_enabled is True
+    assert "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
@@ -95,7 +98,8 @@ def test_failed_q4km_profile_binding_uses_strict(monkeypatch):
     assert profile.fell_back_to_strict
     assert generator.q8_mmq_prefill_enabled is False
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "0"
+    assert generator.q8_selected_down_enabled is False
+    assert "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN" not in os.environ
 
 
 def test_production_ud_owner_and_quarantined_q4km_binding(monkeypatch):

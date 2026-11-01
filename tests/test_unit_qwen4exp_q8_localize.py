@@ -13,7 +13,7 @@ def test_interventions_count_real_selection_and_restore_hooks(monkeypatch, tmp_p
     down_flag = module.localize.PREFIX + "Q8_0_SELECTED_WMMA_DOWN"
     observed = []
     cleared = []
-    moe = lambda *a, **kw: observed.append(module.os.environ.get(down_flag))
+    moe = lambda *a, **kw: observed.append(kw.get('q8_selected_down_enabled'))
     monkeypatch.setattr(linear, "_q8_mmq_prefill_dispatch", dispatch)
     monkeypatch.setattr(runner, "run_qwen4_exp_moe", moe)
     output = tmp_path / "result.json"
@@ -38,7 +38,7 @@ def test_interventions_count_real_selection_and_restore_hooks(monkeypatch, tmp_p
 
     monkeypatch.setattr(module.localize, "main", run)
     module.main()
-    assert observed == ["0"]
+    assert observed == [False]
     assert cleared == ["graphs", "dispatch"]
     assert linear._q8_mmq_prefill_dispatch is dispatch
     assert runner.run_qwen4_exp_moe is moe
