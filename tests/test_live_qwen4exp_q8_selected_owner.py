@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_selected_q8_down_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,7 +44,14 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', ambient)
             with ExitStack() as scopes:
-                if interface == 'layer2':
+                if interface == 'journey':
+                    from scripts import qwen4exp_journey_localize as journey
+                    monkeypatch.setattr(journey, '_SELECTED_DOWN_ARM_VALUES', {'public': enabled})
+                    monkeypatch.setattr(journey, '_SELECTED_DOWN_STRICT_VALUE', enabled)
+                    assert scopes.enter_context(journey.selected_down_arm_scope(owner, 'public')) is enabled
+                    scopes.enter_context(journey.selected_down_split_scope(
+                        owner, 'strict_prefill_production_decode', 'prefill'))
+                elif interface == 'layer2':
                     from dataclasses import replace
                     from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, bind_candidate_selected_q8_down
                     spec = replace(CANDIDATES['production_baseline'], q8_selected_down_enabled=enabled)

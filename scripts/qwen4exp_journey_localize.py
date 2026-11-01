@@ -295,6 +295,7 @@ def strict_environment(environ):
         and key != _Q8_MMQ_ENV
         and key != _GR_DPP_ENV
         and key not in _FLASH_KEYS
+        and key != _SELECTED_DOWN_ENV
     }
 
 
@@ -787,6 +788,46 @@ def gr_dpp_arm_report(generator, arm):
         arm, bool(getattr(generator.runner, "gr_dpp_reduction", False)))
 
 
+_SELECTED_DOWN_ENV = PREFIX + 'Q8_0_SELECTED_WMMA_DOWN'
+_SELECTED_DOWN_ARM_VALUES = {}
+_SELECTED_DOWN_STRICT_VALUE = False
+
+
+def selected_down_snapshot(flags, *, published):
+    """Reconstruct the former gate from the owner that produced the snapshot."""
+    return {**flags, _SELECTED_DOWN_ENV: '1' if published else '0'}
+
+
+def migrate_selected_down_arms(arms, *, production_value, declared=None):
+    """Extract each constructed arm's gate without changing the process."""
+    declared = declared or {}
+    values = {}
+    for name, env in arms.items():
+        raw = env.pop(_SELECTED_DOWN_ENV, None)
+        enabled = production_value if raw is None else _env_flag(raw)
+        values[name] = declared.get(name, enabled)
+    return values
+
+
+@contextmanager
+def selected_down_arm_scope(owner, arm):
+    """Bind and report the arm's gate, restoring all owners on unwind."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_selected_down_enabled, resolve_q8_selected_down,
+    )
+    enabled = _SELECTED_DOWN_ARM_VALUES.get(arm, resolve_q8_selected_down(owner))
+    with q8_selected_down_enabled(owner, enabled):
+        yield enabled
+
+
+def selected_down_split_scope(owner, arm, phase):
+    """Bind the strict snapshot only in the split arm's strict phase."""
+    if arm not in SPLIT_PHASE_ARMS or not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled
+    return q8_selected_down_enabled(owner, _SELECTED_DOWN_STRICT_VALUE)
+
+
 _FLASH_ENABLE = PREFIX + 'QSA_FLASH_PREFILL'
 _FLASH_LAYERS = PREFIX + 'QSA_FLASH_LAYERS'
 _FLASH_KEYS = (_FLASH_ENABLE, _FLASH_LAYERS)
@@ -1095,7 +1136,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+    with selected_down_split_scope(runner, arm, 'prefill'), flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
@@ -1116,7 +1157,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
+    with selected_down_split_scope(runner, arm, 'decode'), flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"), gr_dpp_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
@@ -1161,7 +1202,10 @@ def main():
         # route. Read it from the owner before the generator closes.
         strict_ordered = resolve_qsa_ordered_decode(strict_generator.runner)
         strict_flags = strict_environment(os.environ)
-        global _FLASH_STRICT_POLICY
+        global _FLASH_STRICT_POLICY, _SELECTED_DOWN_STRICT_VALUE
+        from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down
+        _SELECTED_DOWN_STRICT_VALUE = resolve_q8_selected_down(strict_generator)
+        strict_flags = selected_down_snapshot(strict_flags, published=_SELECTED_DOWN_STRICT_VALUE)
         _FLASH_STRICT_POLICY = flash_owner_policy(strict_generator)
         strict_flags = flash_snapshot(strict_flags, published=_FLASH_STRICT_POLICY)
         # The retired GR-up wide key was a captured ``GR_*`` process key, so the
@@ -1224,14 +1268,21 @@ def main():
             published=resolve_qsa_ordered_decode(generator.runner))
         production_snapshot = flash_snapshot(
             production_snapshot, published=flash_owner_policy(generator))
+        production_snapshot = selected_down_snapshot(
+            production_snapshot, published=resolve_q8_selected_down(generator))
         snapshot_arms(strict_snapshot, production_snapshot)
+        _SELECTED_DOWN_ARM_VALUES.update(migrate_selected_down_arms(
+            ARMS, production_value=resolve_q8_selected_down(generator),
+            declared={name: spec.q8_selected_down_enabled
+                      for name, spec in CANDIDATES.items()
+                      if spec.q8_selected_down_enabled is not None}))
         _FLASH_ARM_VALUES.update(migrate_flash_arms(
             ARMS, production_value=flash_owner_policy(generator),
             declared={name: spec.qsa_flash_prefill_enabled
                       for name, spec in CANDIDATES.items()
                       if spec.qsa_flash_prefill_enabled is not None}))
         strict_flags = {key: value for key, value in strict_flags.items()
-                        if key not in _FLASH_KEYS}
+                        if key not in _FLASH_KEYS and key != _SELECTED_DOWN_ENV}
         # The production bind's published gate is the plan's own decision; an arm
         # that named nothing ran it, and so did its peer scope.
         published_gate = bool(generator.gdn_colwarps_prefill)
@@ -1283,6 +1334,7 @@ def main():
                 os.environ.update(ARMS[arm])
                 candidate = []
                 arm_scope = ExitStack()
+                effective_selected_down = arm_scope.enter_context(selected_down_arm_scope(generator, arm))
                 effective_flash = arm_scope.enter_context(flash_arm_scope(generator, arm))
                 arm_scope.enter_context(generic_wmma_baseline_scope(generator))
                 arm_scope.enter_context(production_moe_arm_scope(generator, arm))
@@ -1356,6 +1408,7 @@ def main():
                     for i, descriptor in enumerate(descriptors)
                 ]
                 owner_overrides = {
+                    "q8_selected_down_enabled": effective_selected_down,
                     "qsa_flash_prefill_policy": {
                         'enabled': effective_flash.enabled, 'layers': effective_flash.layers},
                     "gguf_wmma_prefill_enabled": effective_generic_wmma,
@@ -1373,6 +1426,10 @@ def main():
                     "gr_dpp_reduction": effective_gr_dpp,
                 }
                 if arm in SPLIT_PHASE_ARMS:
+                    owner_overrides['q8_selected_down_enabled_phases'] = {
+                        phase: (_SELECTED_DOWN_STRICT_VALUE if split_phase_is_strict(arm, phase)
+                                else effective_selected_down)
+                        for phase in ('prefill', 'decode')}
                     owner_overrides['qsa_flash_prefill_policy_phases'] = {
                         phase: {'enabled': policy.enabled, 'layers': policy.layers}
                         for phase in ('prefill', 'decode')

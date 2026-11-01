@@ -2899,7 +2899,9 @@ The selected Q8 logits probe scopes its gate and candidate leaf on the measured
 owner, restores both between samples and closes its generator on exit.
 Layer2 candidates declare selected-down enablement on their owner fields; the
 shared binder, prefill restore comparison and conservative-cost comparison bind
-and report that decision without process writes.
+and report that decision without process writes. Journey localization reconstructs
+selected-down snapshots from the binding owners, extracts each arm's effective
+gate, and scopes the strict and production split phases independently.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
