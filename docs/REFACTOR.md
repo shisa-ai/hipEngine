@@ -2888,7 +2888,12 @@ generic preemptor on its runner. The localizer binds its shared generic-WMMA-off
 baseline on each reference/arm/phase owner without snapshotting the key. Profiles
 publish the same generic-WMMA-off decision on owners without process writes.
 The remaining IU8, flash-prefill and selected-WMMA-down controls still require
-owner transport.
+owner transport. QSA flash prefill accepts an optional paired enable/layer
+policy on generator/runner owners with a restoring scope; diagnostic callers
+and profile publication still need to move to it. Remove profile writes of
+`HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` and
+`HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS` after those callers bind owner policies;
+the unbound low-level environment fallback remains a comparison interface.
 The focused guard regression is:
 
 ```bash

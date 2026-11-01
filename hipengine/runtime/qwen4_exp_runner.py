@@ -2970,6 +2970,51 @@ def qwen4_exp_qsa_h256_wave_prefill_selected(
     )
 
 
+@dataclass(frozen=True)
+class QSAFlashPrefillPolicy:
+    """Paired flash-prefill enablement and global layer scope."""
+
+    enabled: bool
+    layers: str = "all"
+
+
+@contextlib.contextmanager
+def qsa_flash_prefill(owner: Any, policy: QSAFlashPrefillPolicy | None):
+    """Temporarily bind flash policy on a generator and its current runner."""
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    missing = object()
+    previous = [(target, getattr(target, "qsa_flash_prefill_policy", missing))
+                for target in targets]
+    try:
+        for target in targets:
+            target.qsa_flash_prefill_policy = policy
+        yield
+    finally:
+        for target, value in reversed(previous):
+            if value is missing:
+                delattr(target, "qsa_flash_prefill_policy")
+            else:
+                target.qsa_flash_prefill_policy = value
+
+
+def qsa_flash_prefill_selected(
+    weight: GGUFDeviceWeight, policy: QSAFlashPrefillPolicy | None, *,
+    dense_rows: int = 1, head_dim: int = 256, kv_heads: int = 2,
+) -> bool:
+    """Keep geometry guards and the unbound legacy environment parser."""
+    if dense_rows <= 0 or head_dim != 256 or kv_heads * head_dim != 512:
+        return False
+    if policy is None:
+        enabled = os.environ.get("HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL", "0") not in {"", "0", "false", "False"}
+        layers = os.environ.get("HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS", "all")
+    else:
+        enabled, layers = policy.enabled, policy.layers
+    return enabled and _qwen4_exp_layer_scope_contains(weight.spec.slot_path, layers)
+
+
 def run_qwen4_exp_qsa_prefill_token_mixer(
     mixed_ptr: int,
     weights: Qwen4ExpQSAMixerDeviceWeights,
@@ -2991,6 +3036,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     index_rotary_dim: int,
     rope_positions_ptr: int | None = None,
     cache_only: bool = False,
+    qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None,
     qsa_wmma_enabled: bool = False,
     h256_mode: str = "parent",
     head_mode: str | None = _QSA_HEAD_PARENT,
@@ -3168,17 +3214,9 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     if cache_only:
         return None
     dense_rows = max(0, min(count, index_state.dense_equivalent_limit - start))
-    qsa_flash = (
-        dense_rows > 0
-        and head_dim == 256
-        and kv_heads * head_dim == 512
-        and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL", "0")
-        not in {"", "0", "false", "False"}
-        and _qwen4_exp_layer_allowed(
-            weights.projections["attn_q"],
-            env_name="HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
-            default="all",
-        )
+    qsa_flash = qsa_flash_prefill_selected(
+        weights.projections["attn_q"], qsa_flash_prefill_policy,
+        dense_rows=dense_rows, head_dim=head_dim, kv_heads=kv_heads,
     )
     # WMMA attention (fast profile): F16 K/V gathered once per chunk for
     # this layer, then one dense launch and one masked sparse launch.
@@ -8546,6 +8584,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     top_k: int,
     rope_positions_ptr: int | None = None,
     head_mode: str | None = _QSA_HEAD_PARENT,
+    qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None,
     qsa_wmma_enabled: bool = False,
     h256_mode: str = "parent",
     batched_selection: bool = True,
@@ -8679,6 +8718,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         rope_positions_ptr=rope_positions_ptr,
         head_mode=head_mode,
         qsa_wmma_enabled=qsa_wmma_enabled,
+        qsa_flash_prefill_policy=qsa_flash_prefill_policy,
         h256_mode=h256_mode,
         batched_selection=batched_selection,
         qsa_wave32=qsa_wave32,
@@ -9988,6 +10028,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # state, where the historical process key remains the fallback.
     q8_wmma_layer_scope: Q8WMMALayerScope | None = None
     gguf_wmma_prefill_enabled: bool | None = None
+    qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None
     # None preserves unbound environment diagnostics until the binder migrates.
     q8_dense_wide_policy: Q8DenseWidePolicy | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
@@ -10231,6 +10272,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q8_mmq_attn_gate_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
         gguf_wmma_prefill_enabled: bool | None = None,
+        qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None,
         q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
     ) -> None:
         self.resident = resident
@@ -10249,6 +10291,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.q8_mmq_attn_gate_enabled = q8_mmq_attn_gate_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
         self.gguf_wmma_prefill_enabled = gguf_wmma_prefill_enabled
+        self.qsa_flash_prefill_policy = qsa_flash_prefill_policy
         self.q8_dense_wide_policy = q8_dense_wide_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
@@ -11997,6 +12040,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
                     qsa_wmma_enabled=self.qsa_wmma_enabled,
+                    qsa_flash_prefill_policy=self.qsa_flash_prefill_policy,
                     h256_mode=self.qsa_h256_prefill_mode,
                     q5k_row4_prefill=self.q5k_row4_prefill,
                     batched_selection=self.qsa_batched_selection,
