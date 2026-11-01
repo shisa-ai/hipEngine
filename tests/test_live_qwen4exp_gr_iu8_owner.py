@@ -11,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
 @pytest.mark.parametrize('length', [17, 255, 256, 257, 389])
-def test_public_gr_iu8_owner(monkeypatch, length):
+def test_public_gr_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.core.hip import get_hip_runtime
@@ -43,9 +44,18 @@ def test_public_gr_iu8_owner(monkeypatch, length):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', '0' if down else '1')
             policy = runtime.GRIU8Policy(up, down)
             with ExitStack() as scopes:
-                scopes.enter_context(runtime.gr_iu8(owner, policy))
+                def bind(target):
+                    if interface == 'profile_gap':
+                        from scripts.qwen4exp_profile_gap import bind_gr_iu8_override
+                        report = bind_gr_iu8_override(scopes, target, {
+                            'HIPENGINE_QWEN4_EXP_GR_IU8': '1' if up else '0',
+                            'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN': '1' if down else '0'})
+                        assert report['gr_iu8_policy'] == {'up': up, 'down': down}
+                    else:
+                        scopes.enter_context(runtime.gr_iu8(target, policy))
+                bind(owner)
                 for runner in runners:
-                    scopes.enter_context(runtime.gr_iu8(runner, policy))
+                    bind(runner)
                 repeats = []
                 for _ in range(2):
                     calls.clear()
