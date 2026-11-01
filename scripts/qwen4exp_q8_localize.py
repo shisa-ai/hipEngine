@@ -49,6 +49,13 @@ def define_arms():
     return defined
 
 
+def selected_down_layer_kwargs(kwargs, *, active_layer, disabled_layer):
+    """Close only the named layer's call gate, preserving the caller's state."""
+    if disabled_layer == active_layer:
+        return {**kwargs, 'q8_selected_down_enabled': False}
+    return dict(kwargs)
+
+
 def main():
     from hipengine.runtime import gguf_linear as linear
     from hipengine.runtime import qwen4_exp_runner as runner
@@ -77,15 +84,11 @@ def main():
         nonlocal active_layer
         previous_layer = active_layer
         active_layer = weights["expert_down"].spec.slot_path.split(".")[1]
-        flag = localize.PREFIX + "Q8_0_SELECTED_WMMA_DOWN"
-        previous = os.environ.get(flag)
-        disable = os.environ.get(LAYER_FLAG) == active_layer
+        call_kwargs = selected_down_layer_kwargs(
+            kwargs, active_layer=active_layer, disabled_layer=os.environ.get(LAYER_FLAG))
         try:
-            if disable:
-                os.environ[flag] = "0"
-            return original_moe(mixed_ptr, weights, **kwargs)
+            return original_moe(mixed_ptr, weights, **call_kwargs)
         finally:
-            localize.set_flags({flag: previous})
             active_layer = previous_layer
 
     def resolve(*args, **kwargs):

@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey', 'layer_probe'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_selected_q8_down_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,7 +44,17 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', ambient)
             with ExitStack() as scopes:
-                if interface == 'journey':
+                if interface == 'layer_probe':
+                    from scripts.qwen4exp_q8_localize import selected_down_layer_kwargs
+                    original_moe = runtime.run_qwen4_exp_moe
+                    def layer_call(mixed_ptr, weights, **kwargs):
+                        layer = weights['expert_down'].spec.slot_path.split('.')[1]
+                        return original_moe(mixed_ptr, weights, **selected_down_layer_kwargs(
+                            kwargs, active_layer=layer, disabled_layer=None if enabled else layer))
+                    monkeypatch.setattr(runtime, 'run_qwen4_exp_moe', layer_call)
+                    scopes.callback(setattr, runtime, 'run_qwen4_exp_moe', original_moe)
+                    scopes.enter_context(runtime.q8_selected_down_enabled(owner, True))
+                elif interface == 'journey':
                     from scripts import qwen4exp_journey_localize as journey
                     monkeypatch.setattr(journey, '_SELECTED_DOWN_ARM_VALUES', {'public': enabled})
                     monkeypatch.setattr(journey, '_SELECTED_DOWN_STRICT_VALUE', enabled)
@@ -79,7 +89,8 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
                         if interface == 'logits_probe':
                             scopes.enter_context(selected_down_probe_scope(runner, enabled))
                         else:
-                            scopes.enter_context(runtime.q8_selected_down_enabled(runner, enabled))
+                            scopes.enter_context(runtime.q8_selected_down_enabled(
+                                runner, True if interface == 'layer_probe' else enabled))
                 repeats = []
                 for _ in range(2):
                     captures.clear()

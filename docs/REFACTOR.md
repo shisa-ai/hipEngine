@@ -2901,7 +2901,9 @@ Layer2 candidates declare selected-down enablement on their owner fields; the
 shared binder, prefill restore comparison and conservative-cost comparison bind
 and report that decision without process writes. Journey localization reconstructs
 selected-down snapshots from the binding owners, extracts each arm's effective
-gate, and scopes the strict and production split phases independently.
+gate, and scopes the strict and production split phases independently. The
+per-layer Q8 probe changes the selected-down call argument only for the named
+layer, preserving incoming choices on other layers and leaving the process alone.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
