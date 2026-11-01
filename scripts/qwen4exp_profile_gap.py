@@ -416,6 +416,12 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the production MoE prefill gate is owner state; use "
                 "--production-moe-prefill instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK":
+            raise ValueError(
+                "MMQ prepacking is owner-bound; use "
+                "q8_mmq_prepack_enabled(owner, enabled) and explicitly call "
+                "configure_mmq_prefill_resources() instead of --override"
+            )
         if key == "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL":
             raise ValueError(
                 "the Q8 MMQ prefill gate is owner state; use "

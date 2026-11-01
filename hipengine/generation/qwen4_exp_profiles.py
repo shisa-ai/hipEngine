@@ -1103,6 +1103,15 @@ def _publish_gr_dpp_reduction(generator: Any, enabled: bool) -> None:
         runner.gr_dpp_reduction = bool(enabled)
 
 
+def _publish_q8_mmq_prepack(generator: Any, enabled: bool) -> None:
+    """Publish weight-prepack ownership without changing ambient input."""
+    _record_owner_transport("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "1" if enabled else "0")
+    generator.q8_mmq_prepack_enabled = bool(enabled)
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.q8_mmq_prepack_enabled = bool(enabled)
+
+
 def _publish_q8_mmq_prefill(generator: Any, enabled: bool) -> None:
     """Publish the Q8 MMQ prefill workspace gate as owner state."""
 
@@ -1277,6 +1286,7 @@ def _bind(
         table.configure_mapping_access(mode)
     _publish_production_moe_prefill(generator, production)
     _publish_q8_mmq_prefill(generator, production)
+    _publish_q8_mmq_prepack(generator, production)
     from hipengine.runtime.gguf_linear import Q8WMMALayerScope
 
     _publish_q8_wmma_layer_scope(generator, Q8WMMALayerScope.empty())
@@ -1547,7 +1557,7 @@ def _bind(
         # row, so no process key names it. The registered wave-scale owner
         # remains the strict fallback through the runtime resolver, while the
         # profile's declared strict fallback is the unscaled fused parent.
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
+        # Weight prepacking is published on generator/runner owners above.
         # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
         # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
         # profile binds them and no runner reads them.

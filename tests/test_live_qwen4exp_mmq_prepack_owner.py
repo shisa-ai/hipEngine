@@ -1,5 +1,6 @@
 """Public generation obeys owner prepacking in both MMQ resource consumers."""
 import os
+from contextlib import nullcontext
 import numpy as np
 import pytest
 from tests.test_live_qwen4exp_staged_f32_interface import (
@@ -10,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'vector_prerequisite', 'prepack_campaign', 'prepack_state_gate'])
+@pytest.mark.parametrize('interface', ['direct', 'vector_prerequisite', 'prepack_campaign', 'prepack_state_gate', 'profile_default'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -40,18 +41,22 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
             return launch
         return fn
     monkeypatch.setattr(linear, 'resolve', resolved)
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK', '0')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
         owner = _unwrap(llm._get_text_generator())
-        assert owner.q8_mmq_prepack_enabled is None
+        assert owner.q8_mmq_prepack_enabled is owner.runner.q8_mmq_prepack_enabled is True
+        assert os.environ['HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK'] == '0'
         with (runtime.q8_mmq_prefill_enabled(owner, True),
               runtime.q8_mmq_prepack_enabled(owner, True)):
             owner.runner.configure_mmq_prefill_resources()
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
-        for enabled in (False, True):
+        for enabled in ((True,) if interface == 'profile_default' else (False, True)):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK', '0' if enabled else '1')
-            if interface == 'vector_prerequisite':
+            if interface == 'profile_default':
+                scope = nullcontext()
+            elif interface == 'vector_prerequisite':
                 from scripts.qwen4exp_halo_box_campaign_ab import mmq_vector_prerequisite
                 scope = mmq_vector_prerequisite(
                     owner.runner, 'q8-mmq-vec4' if enabled else 'q8-mmq-raw-vector')
@@ -83,7 +88,7 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
                 assert len(repeats[0][1]) == len(repeats[1][1])
                 for a, b in zip(repeats[0][1], repeats[1][1], strict=True):
                     np.testing.assert_array_equal(a, b)
-            assert owner.q8_mmq_prepack_enabled is owner.runner.q8_mmq_prepack_enabled is None
+            assert owner.q8_mmq_prepack_enabled is owner.runner.q8_mmq_prepack_enabled is True
     finally:
         llm.close()
     hip.device_synchronize()

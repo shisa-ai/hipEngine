@@ -425,7 +425,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.gr_dpp_reduction is False
     assert fake_runner.gr_dpp_reduction is False
     assert "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
+    assert production_generator.q8_mmq_prepack_enabled is True
+    assert fake_runner.q8_mmq_prepack_enabled is True
     # The two vector children are request-local runner state: the production
     # binder selects them without writing a process-wide switch.
     assert fake_runner.dense_mmq_raw_vector_enabled is True
@@ -628,7 +629,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE" not in os.environ
     assert strict_generator.gr_wave_scale is False
     assert "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "0"
+    assert strict_generator.q8_mmq_prepack_enabled is False
     assert strict_generator.q8_down_row4_prefill is False
     assert strict_generator.q8_down_bundle_prefill is False
     assert "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN" not in os.environ

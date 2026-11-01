@@ -2867,14 +2867,10 @@ on generator/runner owners, including the manifest-selected F16 window, without
 process writes. Diagnostics bind and report explicit restoring scopes; unbound
 callers retain the ambient diagnostic fallback. The unused GDN decode-layer
 key is no longer written or advertised by profiles and diagnostics; decode uses
-its existing `gdn_decode_rowsplit` owner. MMQ weight prepacking has an explicit
-`q8_mmq_prepack_enabled` owner field and restoring scope shared by preparation
-and session entry; vector/raw-vector/token64 diagnostic prerequisites now bind
-and report that field without process mutation. The separate prepack comparison
-also binds the owner and prepares shared resources before either timing arm;
-only the profile binder still needs migration.
-Continue with the remaining profile-owned environment controls before closing
-this entry.
+its existing `gdn_decode_rowsplit` owner. MMQ weight prepacking is also published
+on generator/runner owners without process writes; its diagnostic scopes preserve
+explicit raw/prepacked control and shared resource ownership. Continue with the
+remaining profile-owned environment controls before closing this entry.
 The focused guard regression is:
 
 ```bash

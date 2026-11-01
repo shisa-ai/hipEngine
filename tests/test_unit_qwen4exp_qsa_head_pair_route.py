@@ -103,7 +103,7 @@ def test_state_gate_hands_the_runner_to_the_scoped_control():
 
     calls = [
         node
-        for node in ast.walk(ast.parse(inspect.getsource(qwen4exp_row4_state_gate)))
+        for node in ast.walk(ast.parse(inspect.getsource(qwen4exp_row4_state_gate.arm_control)))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "route_scope"
@@ -113,6 +113,19 @@ def test_state_gate_hands_the_runner_to_the_scoped_control():
         assert len(call.args) == 3, "route_scope needs the arm's runner"
         runner_arg = call.args[2]
         assert isinstance(runner_arg, ast.Name) and runner_arg.id == "runner"
+
+    # Main may also prepare shared prepack resources before timing. That
+    # separate scope receives the generator's real runner, not a runnerless arm.
+    preparation = [
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(qwen4exp_row4_state_gate.main)))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "route_scope"
+    ]
+    for call in preparation:
+        assert len(call.args) == 3
+        assert ast.dump(call.args[2]) == ast.dump(ast.parse("generator.runner", mode="eval").body)
 
     entered = [
         node
