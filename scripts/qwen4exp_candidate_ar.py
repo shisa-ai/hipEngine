@@ -2,11 +2,11 @@
 """Run the canonical p512 AR fixture through hipEngine with a candidate route.
 
 This mirrors ``scripts/qwen4exp_canonical_ar_bench.py``'s ``hipengine`` mode
-but lets the caller force a candidate routing override (e.g.
-``HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1``) that the production profile
-binder would otherwise reset to 0. It is a diagnostic candidate runner only —
-never a retained claim — used to measure whether a layer-2 routing change moves
-the p512 ledger before deciding whether the full production gate is worth it.
+but lets the caller force a diagnostic routing override. The attention-gate
+``--override`` binds generator/runner owner state and prepares the required MMQ
+workspace before sampling; it does not change the process key. Other overrides
+remain post-binder environment inputs. This runner produces diagnostic samples,
+not production benchmark evidence.
 
 Usage:
   python3 scripts/qwen4exp_candidate_ar.py hipengine \
@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack, contextmanager
 import os
 import sys
 from pathlib import Path
@@ -38,6 +39,38 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
 )
 
 
+def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | None]:
+    """Preserve CLI spelling while separating the attention owner decision."""
+    environment = {}
+    attention = None
+    for raw in values:
+        key, sep, value = raw.partition('=')
+        if not sep:
+            raise ValueError(f"--override must be KEY=VALUE, got {raw!r}")
+        if key == 'HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE':
+            attention = value not in {'', '0', 'false', 'False'}
+        else:
+            environment[key] = value
+    return environment, attention
+
+
+@contextmanager
+def attention_override_scope(owner, enabled: bool | None):
+    """Prepare the explicit MMQ parent and restore both choices after sampling."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_mmq_attn_gate_enabled, q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
+    )
+    with ExitStack() as stack:
+        if enabled is not None:
+            stack.enter_context(q8_mmq_prefill_enabled(owner, True))
+            stack.enter_context(q8_mmq_attn_gate_enabled(owner, enabled))
+            owner.runner.configure_mmq_prefill_resources()
+        yield {
+            'q8_mmq_attn_gate_enabled': getattr(owner, 'q8_mmq_attn_gate_enabled', None),
+            'q8_mmq_prefill_enabled': resolve_q8_mmq_prefill(owner),
+        }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -50,11 +83,11 @@ def main() -> int:
     parser.add_argument("--compiler-version-file", type=Path)
     args = parser.parse_args()
 
-    for raw in args.override:
-        key, sep, value = raw.partition("=")
-        if not sep:
-            raise SystemExit(f"--override must be KEY=VALUE, got {raw!r}")
-        os.environ[key] = value
+    try:
+        overrides, attention_override = split_owner_overrides(args.override)
+    except ValueError as exc:
+        parser.error(str(exc))
+    os.environ.update(overrides)
 
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
@@ -90,10 +123,8 @@ def main() -> int:
         profile=ExecutionProfile.PRODUCTION,
     )
 
-    # The production binder resets candidate routing envs to their certified
-    # values during construct_generator, so the override is reapplied on the
-    # fully-constructed generator (the runner reads these envs at MoE-call time).
-    overrides = dict(item.partition("=")[::2] for item in args.override)
+    # Only ambient controls are reapplied after the profile binder. The
+    # attention decision is bound below on the fully constructed owner.
 
     def construct(base_factory, **kwargs):
         generator = resolved.construct_generator(base_factory, **kwargs)
@@ -138,7 +169,11 @@ def main() -> int:
     }
     _write_json(args.output, artifact)
     generator = construct(factory)
+    owner_stack = ExitStack()
     try:
+        artifact['owner_overrides'] = owner_stack.enter_context(
+            attention_override_scope(generator, attention_override))
+        _write_json(args.output, artifact)
         for warmup in range(args.warmups):
             for case in _measurement_order(cases, warmup):
                 row = _hipengine_case_sample(
@@ -167,7 +202,10 @@ def main() -> int:
         artifact["memory_before_close"] = memory_stats()
         _write_json(args.output, artifact)
     finally:
-        generator.close()
+        try:
+            owner_stack.close()
+        finally:
+            generator.close()
     print(
         json.dumps(
             {"kind": artifact["kind"], "status": artifact["status"], "output": str(args.output)},

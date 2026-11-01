@@ -2875,6 +2875,8 @@ attention-gate policy now accepts an explicit generator/runner owner choice;
 its remaining diagnostic writers and profile publication still require migration.
 The layer-2 attention candidate binds the attention owner and MMQ parent
 explicitly, prepares resources before measurement, and records owner provenance.
+The candidate AR runner translates its existing attention `--override` into the
+same owner policy and workspace preparation without writing that process key.
 The focused guard regression is:
 
 ```bash
