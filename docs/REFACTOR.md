@@ -2868,38 +2868,6 @@ isolation before closing the migration. The focused guard regression is:
 uv run pytest tests/test_unit_qwen4_exp_profiles.py -k 'pre_binder or previous_bind'
 ```
 
-### R0426 — Wide-row prefill controls and diagnostic ownership
-
-Owner: `hipengine/generation/qwen4_exp_profiles.py`.
-
-Scope: `F16_ROUTE_Q8_DENSE_WIDE_PREFILL_LAYERS`, `PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS`,
-`_q8_dense_wide_dispatch`.
-
-**Deferred control-interface decision:** retain diagnostic selectors or replace them with explicit
-profile/runner controls. `scripts/qwen4exp_dense_route_ab.py` and
-`scripts/qwen4exp_disabled_family_sweep.py` exercise WMMA through the explicit
-`Q8WMMALayerScope` owner, independently of the wide-route alternatives. Do not
-delete shared kernels because one profile no longer selects them. Migrate the
-wide-route diagnostic callers and layer-scope gate with R0425's owner-field
-migration before removing `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` or its layer
-control. Keep the registered
-exact fallback. Any extension of changed-arithmetic production defaults follows
-`docs/EXECUTION-PROFILES.md`; missing historical measurements are not a reason to refuse an explicit
-evaluation.
-
-Done when: migrate wide-route diagnostic callers and the layer-scope gate with R0425's explicit
-owner-field migration, preserving selected-route reporting, caller overrides and strict/production
-isolation. Keep the registered exact fallback. The explicit `Q8DenseWidePolicy` runner field,
-`resolve_q8_dense_wide_policy` getter and `q8_dense_wide_policy` diagnostic scope are available;
-the dense-route A/B, layer gate, last-row probe, profile-gap, disabled-family sweep
-and halo-box Q8 wave-scale/DPP scopes now bind and report this owner explicitly. Layer-2
-candidates declare `q8_dense_wide_layers`; the gate, shared candidate consumers and
-prefill-restore A/B bind the layer-only override while preserving enablement. The binder
-and remaining diagnostic consumers
-still need migration. Do not remove environment selectors before
-their consumers have the replacement control. The census scope and repair diagnostics are supported
-interfaces documented in `docs/ENVS.md` and `docs/KERNELS.md`, not pending removals.
-
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.

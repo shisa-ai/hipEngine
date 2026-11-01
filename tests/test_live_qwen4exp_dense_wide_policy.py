@@ -41,6 +41,7 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
         serving.prepare(max_sequence_length=CONTEXT)
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True,
                                 speculative_mtp=False)
+        bound_policy = generator.q8_dense_wide_policy
         for enabled in (False, True):
             policy = gl.Q8DenseWidePolicy(enabled, frozenset(range(16, 48)))
             if interface == 'direct':
@@ -105,7 +106,7 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
                 assert len(results[0][1]) == len(results[1][1])
                 for a, b in zip(results[0][1], results[1][1], strict=True):
                     np.testing.assert_array_equal(a, b)
-            assert getattr(generator, 'q8_dense_wide_policy', None) is None
+            assert generator.q8_dense_wide_policy is bound_policy
     finally:
         llm.close()
     runtime.device_synchronize()

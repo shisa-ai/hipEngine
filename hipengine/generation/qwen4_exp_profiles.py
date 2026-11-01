@@ -1005,6 +1005,27 @@ def _record_owner_transport(env: str, value: str) -> None:
         _owner_binder_discarded.pop(env, None)
 
 
+def _publish_dense_wide_policy(generator: Any, manifest: Any) -> None:
+    """Publish the plan's dense-wide variant and layer scope without process writes."""
+    from hipengine.runtime.gguf_linear import Q8DenseWidePolicy
+
+    enabled, layers = False, None
+    for row in manifest['selections']:
+        if row['scope'].startswith('prefill_rows_ge257_k_multiple64_dense_wide_layers'):
+            if row['selected_variant'] == 'dense_wide256_f32_f32_out':
+                first, last = map(int, row['scope'].rsplit('layers', 1)[1].split('_'))
+                enabled, layers = True, frozenset(range(first, last + 1))
+            break
+    policy = Q8DenseWidePolicy(enabled, layers)
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE', '1' if enabled else '0')
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS',
+                            ','.join(map(str, sorted(layers))) if layers else '')
+    generator.q8_dense_wide_policy = policy
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.q8_dense_wide_policy = policy
+
+
 def _publish_production_moe_prefill(generator: Any, enabled: bool) -> None:
     """Publish the grouped-MoE prefill gate as owner state, not a process key."""
 
@@ -1532,23 +1553,7 @@ def _bind(
         # (``q4_dp4a_decode_enabled`` / ``q4_dp4a_decode_layers``), published
         # above. No process key names it, so a direct/unbound caller keeps its
         # ambient fallback and a bound owner never reads it.
-        # Certified 2026-09-17 at layers 16-47 and measured 5.4% below the f16
-        # WMMA route at 1K/4K, with that route's own envelope (bit-identical
-        # strict and candidate logits digests). The wide route replaces it here
-        # rather than sitting beside it: both families selectable for the same
-        # layers is the contention the 2026-09-17 route fix had to resolve. The
-        # exact coltile chain stays the registered strict fallback and keeps
-        # every layer below 16.
-        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": (
-            "1"
-            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
-            else "0"
-        ),
-        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": (
-            ",".join(map(str, PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS))
-            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
-            else ""
-        ),
+        # Dense-wide variant and scope are published on the owner below.
         # Certified iu8-WMMA gate/up suffix within the WMMA-MoE27 route.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
@@ -1840,18 +1845,9 @@ def _bind(
     # inheriting this one.
     _publish_gr_dpp_reduction(
         generator, _gr_dpp_reduction_selected(resolved.manifest))
+    _publish_dense_wide_policy(generator, resolved.manifest)
     if f16_routes:
-        # Every key here is written by each bind, so a later bind without the
-        # composition in the same process restores its own value.
-        dense = next(row for row in resolved.manifest["selections"]
-                     if row["scope"].startswith("prefill_rows_ge257_k_multiple64_dense_wide_layers"))
-        first, last = map(int, dense["scope"].rsplit("layers", 1)[1].split("_"))
-        _apply_profile_env({
-            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE": (
-                "1" if dense["selected_variant"] == "dense_wide256_f32_f32_out" else "0"
-            ),
-            "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS": ",".join(map(str, range(first, last + 1))),
-        })
+        # GDN layer composition remains process-owned.
         gdn = next(row for row in resolved.manifest["selections"]
                    if row["scope"].startswith("prefill_rows_ge2_d128_tiled_gdn_layers"))
         first, last = map(int, gdn["scope"].rsplit("layers", 1)[1].split("_"))

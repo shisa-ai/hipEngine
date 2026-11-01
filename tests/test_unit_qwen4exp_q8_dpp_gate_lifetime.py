@@ -193,7 +193,8 @@ def test_dpp_route_scope_exposes_family_and_restores_preemptors(enabled, raises)
     def run():
         with route_scope('q8-dpp-reduction', 'after' if enabled else 'before',
                          owner, environment=env):
-            assert env['HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE'] == '0'
+            assert env['HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE'] == '1'
+            assert owner.q8_dense_wide_policy.enabled is False
             assert env['HIPENGINE_GGUF_WMMA_PREFILL'] == '0'
             assert env[DPP_ENV] == ('1' if enabled else '0')
             assert owner.q8_wave_scale_prefill is True
@@ -222,7 +223,8 @@ def test_checked_layer2_candidate_uses_the_shared_isolation_scope(monkeypatch):
     with ExitStack() as stack:
         layer2.bind_checked_q8_comparison(
             stack, generator, layer2.CANDIDATES['dense_q8_checked_full_rows'])
-        assert os.environ['HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE'] == '0'
+        assert os.environ['HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE'] == '1'
+        assert owner.q8_dense_wide_policy.enabled is False
         assert os.environ[DPP_ENV] == '1'
         assert owner.q8_wave_scale_prefill is True
         assert owner.q8_mmq_prefill_enabled is False

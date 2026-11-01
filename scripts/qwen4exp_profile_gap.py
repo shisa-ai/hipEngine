@@ -11,8 +11,8 @@ environments. The Q4 DP4A decode pair is runner state, so its diagnostic
 override is ``--q4-dp4a-decode``/``--q4-dp4a-layers`` rather than an env key.
 The f16 WMMA layer scope is owner state too; use ``--q8-wmma-layers``.
 Dense-wide diagnostics use ``--q8-dense-wide`` and ``--q8-dense-wide-layers``;
-omitted axes preserve the bound policy. Legacy process overrides remain available
-for callers not yet migrated.
+omitted axes preserve the bound policy. Legacy dense-wide process overrides are
+rejected because a bound owner would ignore them.
 """
 from __future__ import annotations
 
@@ -422,6 +422,13 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the Q8 MMQ prefill gate is owner state; use "
                 "--q8-mmq-prefill instead of --override"
             )
+        if key in {
+            'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE',
+            'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS',
+        }:
+            raise ValueError(
+                'dense-wide policy is owner state; use '
+                '--q8-dense-wide/--q8-dense-wide-layers instead of --override')
         if key == "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS":
             raise ValueError(
                 "the f16 WMMA layer scope is owner state; use "

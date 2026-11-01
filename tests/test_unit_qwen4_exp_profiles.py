@@ -690,7 +690,7 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
     if profile != ExecutionProfile.STRICT:
         # Repair the decode operation, not the complete production composition.
         assert generator.routed_f16_enabled is True
-        assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
+        assert generator.q8_dense_wide_policy.enabled is True
         assert generator.qsa_wmma_enabled is True
         # The Q5_1 row-publish publication is the fallback selection for its
         # scope, not the owner that runs: the routed F16 WMMA down owns it, the
@@ -935,10 +935,8 @@ def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:
     production.binder(generator, production)
 
     assert PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS == tuple(range(13, 48))
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(
-        str(n) for n in range(48)
-    )
+    assert generator.q8_dense_wide_policy.enabled is True
+    assert generator.q8_dense_wide_policy.layers == frozenset(range(48))
     assert not hasattr(generator, "norm_f16_publication_enabled")
     # The f16 WMMA dense route is retired at this scope for this quant; the
     # selector and its env var stay available for explicit opt-in and gating.
@@ -977,8 +975,8 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
 
     assert "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS" not in os.environ
     assert generator.q8_wmma_layer_scope.to_env() == ""
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ""
+    assert generator.q8_dense_wide_policy.enabled is False
+    assert generator.q8_dense_wide_policy.layers is None
     assert not hasattr(generator, "norm_f16_publication_enabled")
 
 
@@ -1329,8 +1327,9 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
         profile=requested,
     )
     assert resolved.binder is not None
-    resolved.binder(SimpleNamespace(runner=None), resolved)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
+    generator = SimpleNamespace(runner=None)
+    resolved.binder(generator, resolved)
+    assert generator.q8_dense_wide_policy.enabled is True
 
     candidate = KernelKey(
         QWEN4_EXP_BACKEND, "linear", "gguf_q8_0", "dense_wide256_f32_f32_out"
@@ -1355,10 +1354,12 @@ def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() ->
             )
         )
 
-    for layer in (0, 12, 13, 16, 47):
-        assert _q8_dense_wide_dispatch(
-            parent, rows=1024, in_features=2560, out_features=640, weight=weight(layer)
-        ) == GGUFLinearDispatch(candidate, "raw"), layer
+    from hipengine.runtime.gguf_linear import q8_dense_wide_policy_session
+    with q8_dense_wide_policy_session(generator.q8_dense_wide_policy):
+        for layer in (0, 12, 13, 16, 47):
+            assert _q8_dense_wide_dispatch(
+                parent, rows=1024, in_features=2560, out_features=640, weight=weight(layer)
+            ) == GGUFLinearDispatch(candidate, "raw"), layer
 
     for rows in (1, 256):
         assert (
@@ -1511,24 +1512,25 @@ def test_ud_dense_wide_composition_binding_matches_manifest() -> None:
     row = next(row for row in production.manifest["selections"] if row["scope"] == scope)
     assert row["selected_variant"] == "dense_wide256_f32_f32_out"
     assert row["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
-    production.binder(SimpleNamespace(runner=None), production)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(map(str, range(48)))
+    owner = SimpleNamespace(runner=None)
+    production.binder(owner, production)
+    assert owner.q8_dense_wide_policy.enabled is True
+    assert owner.q8_dense_wide_policy.layers == frozenset(range(48))
     manifest = dict(production.manifest)
     changed = dict(row, scope="prefill_rows_ge257_k_multiple64_dense_wide_layers7_31")
     manifest["selections"] = [changed if item is row else item for item in manifest["selections"]]
     modified = replace(production, manifest=manifest)
-    modified.binder(SimpleNamespace(runner=None), modified)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ",".join(map(str, range(7, 32)))
+    modified.binder(owner, modified)
+    assert owner.q8_dense_wide_policy.layers == frozenset(range(7, 32))
     changed["selected_variant"] = row["strict_fallback_variant"]
-    modified.binder(SimpleNamespace(runner=None), modified)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
+    modified.binder(owner, modified)
+    assert owner.q8_dense_wide_policy.enabled is False
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     strict_row = next(item for item in strict.manifest["selections"] if item["scope"] == scope)
     assert strict_row["selected_variant"] == row["strict_fallback_variant"]
-    strict.binder(SimpleNamespace(runner=None), strict)
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ""
+    strict.binder(owner, strict)
+    assert owner.q8_dense_wide_policy.enabled is False
+    assert owner.q8_dense_wide_policy.layers is None
 
 
 def test_ud_gdn_composition_binding_matches_manifest() -> None:
@@ -1599,7 +1601,7 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     assert owner.gr_wide is True
     assert owner.runner.gr_wide is True
     assert "HIPENGINE_QWEN4_EXP_GR_WIDE" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == all_layers
+    assert owner.q8_dense_wide_policy.layers == frozenset(range(48))
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == all_layers
     # The router producer is request-local owner state, not a process key.
     assert owner.router_producer_variant == "f32_hidden_f16_wmma_gemm"
