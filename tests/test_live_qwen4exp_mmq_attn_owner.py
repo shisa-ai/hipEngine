@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'layer2', 'candidate_ar', 'profile_gap'])
+@pytest.mark.parametrize('interface', ['direct', 'layer2', 'candidate_ar', 'profile_gap', 'profile'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_attention_gate_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -29,11 +29,13 @@ def test_public_attention_gate_owner(monkeypatch, length, interface):
         launches.append((rows, hidden, outputs))
         return original(fn, weight, x, out, rows, hidden, outputs, kwargs)
     monkeypatch.setitem(linear._LAUNCH_ABI, 'raw_mmq_d4x3_f32', launch)
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE', '1')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
         owner = _unwrap(llm._get_text_generator())
-        assert owner.q8_mmq_attn_gate_enabled is owner.runner.q8_mmq_attn_gate_enabled is None
+        assert owner.q8_mmq_attn_gate_enabled is owner.runner.q8_mmq_attn_gate_enabled is False
+        assert os.environ['HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE'] == '1'
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         with runtime.q8_mmq_prefill_enabled(owner, True), runtime.q8_mmq_prepack_enabled(owner, False):
             owner.runner.configure_mmq_prefill_resources()
@@ -58,6 +60,9 @@ def test_public_attention_gate_owner(monkeypatch, length, interface):
                         spec = replace(CANDIDATES['q8_mmq_attn_gate'],
                                        q8_mmq_attn_gate_enabled=enabled)
                         assert bind_candidate_q8_mmq_attn_gate(stack, owner, spec) is enabled
+                    elif interface == 'profile' and not enabled:
+                        # No attention diagnostic scope: use the shipped profile.
+                        assert owner.runner.q8_mmq_attn_gate_enabled is False
                     else:
                         stack.enter_context(runtime.q8_mmq_attn_gate_enabled(owner, enabled))
                     repeats = []
@@ -74,7 +79,7 @@ def test_public_attention_gate_owner(monkeypatch, length, interface):
                     assert len(repeats[0][1]) == len(repeats[1][1])
                     for a, b in zip(repeats[0][1], repeats[1][1], strict=True):
                         np.testing.assert_array_equal(a, b)
-                assert owner.q8_mmq_attn_gate_enabled is owner.runner.q8_mmq_attn_gate_enabled is None
+                assert owner.q8_mmq_attn_gate_enabled is owner.runner.q8_mmq_attn_gate_enabled is False
     finally:
         llm.close()
     hip.device_synchronize()

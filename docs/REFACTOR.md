@@ -2871,8 +2871,9 @@ its existing `gdn_decode_rowsplit` owner. MMQ weight prepacking is also publishe
 on generator/runner owners without process writes; its diagnostic scopes preserve
 explicit raw/prepacked control and shared resource ownership. Continue with the
 remaining profile-owned environment controls before closing this entry. MMQ
-attention-gate policy now accepts an explicit generator/runner owner choice;
-its remaining diagnostic writers and profile publication still require migration.
+attention-gate policy now accepts an explicit generator/runner owner choice.
+Profiles publish their existing false choice on each owner without process
+writes, and the plane gate reports that choice rather than ambient input.
 The layer-2 attention candidate binds the attention owner and MMQ parent
 explicitly, prepares resources before measurement, and records owner provenance.
 The candidate AR runner translates its existing attention `--override` into the
