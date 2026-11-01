@@ -65,7 +65,8 @@ def test_late_clone_inherits_wave_choice(published):
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_campaign_scope_binds_owner_and_restores_preemptors(mode, expected):
     from scripts.qwen4exp_halo_box_campaign_ab import route_scope, Q8_WAVE_ENV
-    owner = SimpleNamespace(q8_wave_scale_prefill=True)
+    prior_policy = linear.Q8DenseWidePolicy(True, frozenset({16, 47}))
+    owner = SimpleNamespace(q8_wave_scale_prefill=True, q8_dense_wide_policy=prior_policy)
     env = {ENV: "stale", "HIPENGINE_QWEN4_EXP_RAW_VARIANT": "rowbatch"}
     before = dict(env)
     with pytest.raises(RuntimeError, match="failed"):
@@ -74,9 +75,18 @@ def test_campaign_scope_binds_owner_and_restores_preemptors(mode, expected):
             assert all(env[k] == v for k, v in Q8_WAVE_ENV.items())
             assert env[ENV] == "stale"
             assert owner.q8_wmma_layer_scope.is_empty
+            assert linear.resolve_q8_dense_wide_policy(owner) == linear.Q8DenseWidePolicy(False, None)
             raise RuntimeError("failed")
+    assert owner.q8_dense_wide_policy is prior_policy
     assert env == before
     assert owner.q8_wave_scale_prefill is True
+
+
+def test_campaign_record_names_explicit_wide_preemptor():
+    from scripts.qwen4exp_halo_box_campaign_ab import q8_wave_control_record
+    record = q8_wave_control_record(SimpleNamespace(q8_wave_scale_prefill=True))
+    assert record['forced_dense_wide_policy'] == {'enabled': False, 'layers': None}
+    assert 'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE' not in record['forced_environment']
 
 
 @pytest.mark.parametrize("arm,expected", [

@@ -49,6 +49,12 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length):
         serving = generator.create_resident_model_runner(capacity=1)
         serving.prepare(max_sequence_length=CONTEXT)
         runner = generator.runner
+        prior_wide = runner.q8_dense_wide_policy
+        from hipengine.runtime.gguf_linear import Q8DenseWidePolicy
+        # An explicit enabled preemptor must be closed by the campaign scope,
+        # even after profile transport no longer reads the process key.
+        runner.q8_dense_wide_policy = Q8DenseWidePolicy(True, frozenset({16, 47}))
+        bound_wide = runner.q8_dense_wide_policy
         bound_env = {name: os.environ.get(name) for name in Q8_WAVE_ENV}
 
         def arm(value):
@@ -58,6 +64,7 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length):
             # this comparison changes only its DPP family decision.
             with route_scope('q8-dpp-reduction',
                              'before' if value == '0' else 'after', runner):
+                assert linear.resolve_q8_dense_wide_policy(runner) == Q8DenseWidePolicy(False, None)
                 if value is None:
                     os.environ.pop(key, None)
                 else:
@@ -65,6 +72,7 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length):
                 output = llm.generate_detailed(
                     [[1] * length], SamplingParams(max_tokens=3, temperature=0,
                                                   ignore_eos=True, speculative_mtp=False))
+            assert runner.q8_dense_wide_policy is bound_wide
             assert {name: os.environ.get(name) for name in Q8_WAVE_ENV} == bound_env
             assert len(output[0].generated_token_ids) == 3
             assert captures and all(np.isfinite(row).all() for row in captures)
@@ -101,6 +109,8 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length):
             for expected, actual in zip(narrow[1], result[1], strict=True):
                 np.testing.assert_array_equal(expected, actual)
     finally:
+        if 'runner' in locals():
+            runner.q8_dense_wide_policy = prior_wide
         llm.close()
     # The profile owns its process pins beyond generator close. This
     # diagnostic restores the post-binding baseline, not the pre-profile state.
