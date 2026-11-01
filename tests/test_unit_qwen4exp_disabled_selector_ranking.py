@@ -221,7 +221,8 @@ def test_main_replays_every_arm_through_its_child_report(module, monkeypatch, tm
     # The owner-transported arm carries its gate as an argument, not an override.
     assert moe["owner_overrides"] == {"production_moe_prefill": "on"}
     assert moe["overrides"] == {}
-    assert set(moe["baseline_route"]) == set(module.ARMS["all_prefill"])
+    assert set(moe["baseline_route"]) == set(module.ARMS["all_prefill"]) - {
+        'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS'}
 
 
 def test_main_refuses_an_unknown_arm(module, tmp_path):
