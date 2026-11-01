@@ -21,6 +21,7 @@ def _target(monkeypatch):
     runner.gr_wave_scale = False
     runner.gr_wide = False
     runner.gr_dpp_reduction = False
+    runner.gr_iu8_policy = None
     runner.max_sequence_length = 8
     runner.prefill_chunk_size = 2
     runner.position = 0

@@ -2914,6 +2914,9 @@ Profiles publish the effective selected-down Boolean on generators and runners,
 including UD recovery/restoration, without writing the direct-call environment
 fallback. Shared-graph candidates name the owner field, and selector reports
 read the effective owner rather than stale process provenance.
+GR IU8 up/down choices have an independent paired owner policy threaded through
+GR reads, layer and head calls, and generator/clone inheritance. Unbound calls
+keep their process fallback pending diagnostic and profile publication migration.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

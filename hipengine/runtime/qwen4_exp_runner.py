@@ -3598,6 +3598,7 @@ def _run_qwen4_exp_gr_norm_down(
     residual_ptr, norm_weight_ptr, down_weight, scratch, *,
     rows, branches, hidden, low_rank, eps, stream, runtime,
     scale_ptr: int = 0,
+    gr_iu8_policy: GRIU8Policy | None = None,
     inject_weight_ptr: int = 0,
     inject_out_ptr: int = 0,
     pending_write: tuple[int, int, int, bool] | None = None,
@@ -3615,7 +3616,7 @@ def _run_qwen4_exp_gr_norm_down(
     width = branches * hidden
     count = rows * width
     iu8_down = (
-        _qwen4_exp_gr_iu8_down_enabled(rows)
+        _qwen4_exp_gr_iu8_down_enabled(rows, gr_iu8_policy)
         and down_weight.spec.quant_key == "gguf_q8_0"
         and width % 32 == 0
     )
@@ -3735,6 +3736,7 @@ def run_qwen4_exp_gr_read(
     gr_wave_scale: bool = False,
     gr_wide: bool = False,
     gr_dpp_reduction: bool = False,
+    gr_iu8_policy: GRIU8Policy | None = None,
 ) -> Qwen4ExpGRReadDeviceResult:
     """Execute strict grouped GR read using model-neutral resident projections.
 
@@ -3833,6 +3835,7 @@ def run_qwen4_exp_gr_read(
                 gr_wave_scale=gr_wave_scale,
                 gr_wide=gr_wide,
                 gr_dpp_reduction=gr_dpp_reduction,
+                gr_iu8_policy=gr_iu8_policy,
                 branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,
                 stream=stream, runtime=active_runtime)
         return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,
@@ -3845,7 +3848,7 @@ def run_qwen4_exp_gr_read(
     scale_only = (
         _qwen4_exp_gr_f16_direct_enabled(rows, low_rank)
         and _qwen4_exp_gr_wide_enabled(rows, low_rank, gr_wide)
-        and not _qwen4_exp_gr_iu8_enabled(rows)
+        and not _qwen4_exp_gr_iu8_enabled(rows, gr_iu8_policy)
         and branches == 4
         and hidden % 32 == 0
         and residual_width % 2048 == 0
@@ -3862,6 +3865,7 @@ def run_qwen4_exp_gr_read(
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         eps=eps, stream=stream, runtime=active_runtime,
         scale_ptr=scales.ptr if scales is not None else 0,
+        gr_iu8_policy=gr_iu8_policy,
         inject_weight_ptr=(
             inject_weight.allocation("raw").tensor.ptr if norm_inject else 0
         ),
@@ -3888,7 +3892,7 @@ def run_qwen4_exp_gr_read(
         and branches == 4
         and is_registered(fused_up_key)
     )
-    gr_iu8 = fused_up and _qwen4_exp_gr_iu8_enabled(rows)
+    gr_iu8 = fused_up and _qwen4_exp_gr_iu8_enabled(rows, gr_iu8_policy)
     gr_wide = fused_up and not gr_iu8 and _qwen4_exp_gr_wide_enabled(
         rows, low_rank, gr_wide)
     if scale_only and not gr_wide:
@@ -5421,7 +5425,7 @@ def _qwen4_exp_gr_k320_full_rows_key(
     return candidate if is_registered(candidate) else key
 
 
-def _qwen4_exp_gr_iu8_down_enabled(rows: int) -> bool:
+def _qwen4_exp_gr_iu8_down_enabled(rows: int, policy: GRIU8Policy | None = None) -> bool:
     """Experimental iu8-WMMA GR down route, disabled by production recovery.
 
     The three-plane fp32 projection failed its standalone depth gate against
@@ -5429,11 +5433,7 @@ def _qwen4_exp_gr_iu8_down_enabled(rows: int) -> bool:
     see docs/REFACTOR.md, "Isolated GR-Down IU8".
     """
 
-    return (
-        os.environ.get("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN", "0")
-        not in {"", "0", "false", "False"}
-        and rows > 256
-    )
+    return rows > 256 and resolve_gr_iu8_policy(policy).down
 
 
 def _qwen4_exp_gr_wide_enabled(
@@ -5705,7 +5705,7 @@ def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
     return rows > 256
 
 
-def _qwen4_exp_gr_iu8_enabled(rows: int) -> bool:
+def _qwen4_exp_gr_iu8_enabled(rows: int, policy: GRIU8Policy | None = None) -> bool:
     """Experimental iu8-WMMA GR up route, disabled by production recovery.
 
     Three-plane fp32 staging preserves the raw Q8_0 weight path but failed the
@@ -5714,11 +5714,7 @@ def _qwen4_exp_gr_iu8_enabled(rows: int) -> bool:
     "Isolated GR-Up IU8".
     """
 
-    return (
-        os.environ.get("HIPENGINE_QWEN4_EXP_GR_IU8", "0")
-        not in {"", "0", "false", "False"}
-        and rows > 256
-    )
+    return rows > 256 and resolve_gr_iu8_policy(policy).up
 
 
 def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
@@ -6172,6 +6168,40 @@ def _gr_owner_targets(owner: Any) -> list[Any]:
     if runner is not None and runner is not owner:
         targets.append(runner)
     return targets
+
+
+@dataclass(frozen=True)
+class GRIU8Policy:
+    up: bool
+    down: bool
+
+
+def resolve_gr_iu8_policy(policy: GRIU8Policy | None) -> GRIU8Policy:
+    """Use explicit owner choices, or preserve the direct-call parser."""
+    if policy is not None:
+        return policy
+    def enabled(key):
+        return os.environ.get(key, '0') not in {'', '0', 'false', 'False'}
+    return GRIU8Policy(enabled('HIPENGINE_QWEN4_EXP_GR_IU8'),
+                       enabled('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'))
+
+
+@contextlib.contextmanager
+def gr_iu8(owner: Any, policy: GRIU8Policy | None):
+    """Bind the GR projection pair on an owner and restore each prior value."""
+    missing = object()
+    targets = _gr_owner_targets(owner)
+    prior = [(target, getattr(target, 'gr_iu8_policy', missing)) for target in targets]
+    try:
+        for target in targets:
+            target.gr_iu8_policy = policy
+        yield resolve_gr_iu8_policy(policy)
+    finally:
+        for target, value in prior:
+            if value is missing:
+                delattr(target, 'gr_iu8_policy')
+            else:
+                target.gr_iu8_policy = value
 
 
 @contextlib.contextmanager
@@ -8378,6 +8408,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
@@ -8489,6 +8520,7 @@ def run_qwen4_exp_dense_qsa_layer(
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
         gr_dpp_reduction=gr_dpp_reduction,
+        gr_iu8_policy=gr_iu8_policy,
     )
     mixer = run_qwen4_exp_dense_qsa_token_mixer(
         attention_read.mixed.ptr,
@@ -8530,6 +8562,7 @@ def run_qwen4_exp_dense_qsa_layer(
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
         gr_dpp_reduction=gr_dpp_reduction,
+        gr_iu8_policy=gr_iu8_policy,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=active_runtime,
         pending_write=pending_write,
@@ -8583,6 +8616,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
@@ -8720,6 +8754,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         weights.attention_gr.up,
         weights.attention_gr.inject,
         scratch.attention_gr,
+        gr_iu8_policy=gr_iu8_policy,
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
         gr_dpp_reduction=gr_dpp_reduction,
@@ -8780,6 +8815,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         weights.ffn_gr.up,
         weights.ffn_gr.inject,
         scratch.ffn_gr,
+        gr_iu8_policy=gr_iu8_policy,
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
         gr_dpp_reduction=gr_dpp_reduction,
@@ -8855,6 +8891,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
@@ -9010,6 +9047,7 @@ def run_qwen4_exp_gdn_layer(
                 weights.attention_gr.up,
                 weights.attention_gr.inject,
                 scratch.attention_gr,
+                gr_iu8_policy=gr_iu8_policy,
                 rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
                 stream=graph_stream, runtime=active_runtime,
                 gr_wave_scale=gr_wave_scale,
@@ -9044,6 +9082,7 @@ def run_qwen4_exp_gdn_layer(
             weights.attention_gr.up,
             weights.attention_gr.inject,
             scratch.attention_gr,
+            gr_iu8_policy=gr_iu8_policy,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             stream=stream, runtime=active_runtime,
             pending_write=pending_write,
@@ -9088,6 +9127,7 @@ def run_qwen4_exp_gdn_layer(
                 weights.ffn_gr.up,
                 weights.ffn_gr.inject,
                 scratch.ffn_gr,
+                gr_iu8_policy=gr_iu8_policy,
                 rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
                 stream=graph_stream, runtime=active_runtime,
                 gr_wave_scale=gr_wave_scale,
@@ -9130,6 +9170,7 @@ def run_qwen4_exp_gdn_layer(
             weights.ffn_gr.up,
             weights.ffn_gr.inject,
             scratch.ffn_gr,
+            gr_iu8_policy=gr_iu8_policy,
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             stream=stream, runtime=active_runtime,
             pending_write=pending_write,
@@ -10210,6 +10251,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     # wave-scale owner only when both are published, and falls back DPP ->
     # wave-scale -> fused exact parent. A diagnostic scope may outrank it.
     gr_dpp_reduction: bool = False
+    # None preserves legacy direct-call inputs until profile publication.
+    gr_iu8_policy: GRIU8Policy | None = None
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder for every plan and ``None`` (the dispatch heuristic) on an
     # unbound runner: M is 64 from 512 rows up and 16 below, N is 16. The pair
@@ -10307,6 +10350,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         router_producer_variant: str | None = None,
         q8_mmq_prefill_enabled: bool | None = None,
         q8_selected_down_enabled: bool | None = None,
+        gr_iu8_policy: GRIU8Policy | None = None,
         q8_mmq_prepack_enabled: bool | None = None,
         q8_mmq_attn_gate_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
@@ -10327,6 +10371,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.router_producer_variant = router_producer_variant
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
         self.q8_selected_down_enabled = q8_selected_down_enabled
+        self.gr_iu8_policy = gr_iu8_policy
         self.q8_mmq_prepack_enabled = q8_mmq_prepack_enabled
         self.q8_mmq_attn_gate_enabled = q8_mmq_attn_gate_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
@@ -10920,6 +10965,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
             gr_dpp_reduction=self.gr_dpp_reduction,
+            gr_iu8_policy=self.gr_iu8_policy,
             rows=len(tokens),
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -11058,6 +11104,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
             gr_dpp_reduction=self.gr_dpp_reduction,
+            gr_iu8_policy=self.gr_iu8_policy,
             rows=count,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -11596,6 +11643,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gr_wave_scale=self.gr_wave_scale,
                     gr_wide=self.gr_wide,
                     gr_dpp_reduction=self.gr_dpp_reduction,
+                    gr_iu8_policy=self.gr_iu8_policy,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
@@ -11646,6 +11694,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_dense_qsa_layer(
                     residual_ptr,
                     binding,
+                    gr_iu8_policy=self.gr_iu8_policy,
                     moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
@@ -11744,6 +11793,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
             gr_dpp_reduction=self.gr_dpp_reduction,
+            gr_iu8_policy=self.gr_iu8_policy,
             rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
             low_rank=cfg.residual_low_rank, runtime=self.runtime,
         )
@@ -11999,6 +12049,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     gr_wave_scale=self.gr_wave_scale,
                     gr_wide=self.gr_wide,
                     gr_dpp_reduction=self.gr_dpp_reduction,
+                    gr_iu8_policy=self.gr_iu8_policy,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=count,
@@ -12056,6 +12107,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 residual_ptr = run_qwen4_exp_qsa_prefill_layer(
                     residual_ptr,
                     binding,
+                    gr_iu8_policy=self.gr_iu8_policy,
                     moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
@@ -12285,6 +12337,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
             gr_dpp_reduction=self.gr_dpp_reduction,
+            gr_iu8_policy=self.gr_iu8_policy,
             rows=1,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,

@@ -19,7 +19,7 @@ def test_scale_only_capability_ignores_retired_control(monkeypatch, stale, case)
         return SimpleNamespace(spec=SimpleNamespace(quant_key=quant))
     scope = {
         "os": os, "rows": 300, "low_rank": 64,
-        "gr_wide": case != "no_wide",
+        "gr_wide": case != "no_wide", "gr_iu8_policy": None,
         "_qwen4_exp_gr_f16_direct_enabled": lambda *args: case != "no_direct",
         "_qwen4_exp_gr_wide_enabled": lambda *args: case != "no_wide",
         "_qwen4_exp_gr_iu8_enabled": lambda *args: case == "iu8",
