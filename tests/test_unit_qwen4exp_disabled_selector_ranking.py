@@ -134,16 +134,20 @@ def test_owner_state_routes_are_not_environment_arms(module):
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_GR_WIDE",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL",
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
     ):
         assert all(key not in overrides for overrides in module.ARMS.values())
     assert module.OWNER_ARMS["moe"] == {"production_moe_prefill": "on"}
     assert module.OWNER_ARMS["q8_mmq"] == {"q8_mmq_prefill": "on"}
     assert module.OWNER_ARMS["gr_wide"] == {"gr_wide": "on"}
-    assert module.OWNER_ARMS["gdn_colwarps"] == {"gdn_colwarps_prefill": "on"}
+    layers = module._L(module.PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS)
+    assert module.OWNER_ARMS["gdn_colwarps"] == {
+        "gdn_colwarps_prefill": "on", "gdn_colwarps_layers": layers}
     assert module.OWNER_ARMS["all_prefill"] == {
         "production_moe_prefill": "on",
         "q8_mmq_prefill": "on",
         "gdn_colwarps_prefill": "on",
+        "gdn_colwarps_layers": layers,
     }
 
 

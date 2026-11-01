@@ -9,7 +9,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'layer2', 'restore'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'layer2', 'restore', 'decode_sync'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,13 +44,18 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
         owner = _unwrap(llm._get_text_generator())
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True,
                                 speculative_mtp=False)
-        for scope in ('999', 'all'):
+        for scope in (('27-47',) if interface == 'decode_sync' else ('999', 'all')):
             # Oppose the explicit owner after binding, when the legacy
             # diagnostic selector would otherwise be consulted.
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS',
                                'all' if scope == '999' else '999')
             repeated = []
-            if interface == 'layer2':
+            if interface == 'decode_sync':
+                from contextlib import ExitStack
+                from scripts.qwen4exp_decode_sync_ab import bind_production_gdn
+                binding = ExitStack()
+                assert bind_production_gdn(binding, owner) == scope
+            elif interface == 'layer2':
                 from contextlib import ExitStack
                 from dataclasses import replace
                 from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, bind_candidate_gdn_layers
@@ -73,7 +78,7 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
                     captures.clear()
                     tiled.clear()
                     result = llm.generate_detailed([[1] * length], params)
-                    assert bool(tiled) is (scope == 'all'), tiled
+                    assert bool(tiled) is (scope != '999'), tiled
                     assert owner.runner.gdn_colwarps_layers == scope
                     assert captures and all(np.isfinite(row).all() for row in captures)
                     repeated.append((tuple(result[0].generated_token_ids),

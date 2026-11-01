@@ -34,20 +34,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def configure_production_routes() -> None:
-    # The columnwarp enablement gate is request-local owner state
-    # (``gdn_colwarps_prefill``), so it is bound on the generator after
-    # construction rather than published here; only the layer allowlist stays a
-    # process key.
+    # Columnwarp enablement and layer scope bind on the measured generator,
+    # not the process, after construction.
     os.environ.update(
         {
             "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27-47",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35-47",
         }
     )
+
+
+def bind_production_gdn(stack: ExitStack, generator: Any) -> str:
+    """Bind this diagnostic's GDN gate and scope, restoring both on unwind."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        gdn_colwarps_layers, gdn_colwarps_prefill, resolve_gdn_colwarps_layers,
+    )
+    stack.enter_context(gdn_colwarps_layers(generator, "27-47"))
+    stack.enter_context(gdn_colwarps_prefill(generator, True))
+    return resolve_gdn_colwarps_layers(generator)
 
 
 def main() -> None:
@@ -58,7 +65,6 @@ def main() -> None:
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
     from hipengine.runtime.qwen4_exp_runner import (
-        gdn_colwarps_prefill,
         production_moe_prefill_enabled,
         q4_dp4a_decode,
         q8_mmq_prefill_enabled,
@@ -80,7 +86,7 @@ def main() -> None:
     q8_mmq_enabled = None
     owner_scope = ExitStack()
     try:
-        owner_scope.enter_context(gdn_colwarps_prefill(generator, True))
+        gdn_layers = bind_production_gdn(owner_scope, generator)
         owner_scope.enter_context(
             production_moe_prefill_enabled(generator, True)
         )
@@ -140,6 +146,7 @@ def main() -> None:
     report = {
         "schema": 1,
         "kind": "qwen4exp_decode_sync_ab",
+        "gdn_colwarps_layers": gdn_layers,
         "production_moe_prefill_enabled": production_moe_enabled,
         "q8_mmq_prefill_enabled": q8_mmq_enabled,
         "steps": args.steps,
