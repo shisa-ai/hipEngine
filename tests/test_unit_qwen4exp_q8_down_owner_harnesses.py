@@ -239,10 +239,11 @@ def test_the_boundary_replay_probe_binds_the_wmma_parent_and_skips_declared_arms
 
 def test_the_wmma_logits_probe_binds_the_owner_for_its_candidate_rows():
     probe = importlib.import_module("scripts.qwen4exp_q8_0_wmma_down_logits_probe")
-    source = inspect.getsource(probe.main)
+    source = inspect.getsource(probe.selected_down_probe_scope)
 
     assert "q8_down_variant(generator, Q8_DOWN_WMMA_VARIANT)" in source
-    assert 'if enabled == "1"' in source
+    assert 'if enabled:' in source
+    assert 'selected_down_probe_scope(generator, enabled == "1")' in inspect.getsource(probe.main)
     assert '"candidate_owner": Q8_DOWN_WMMA_VARIANT' in inspect.getsource(probe)
 
 

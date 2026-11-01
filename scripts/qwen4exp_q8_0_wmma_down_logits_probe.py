@@ -17,7 +17,7 @@ import ctypes
 import json
 import os
 import sys
-from contextlib import nullcontext
+from contextlib import contextmanager, ExitStack
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +41,21 @@ from scripts.qwen4exp_canonical_ar_bench import (
 )
 
 FLAG = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
+
+
+@contextmanager
+def selected_down_probe_scope(generator, enabled: bool):
+    """Bind the gate and candidate leaf, restoring both after each sample."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        Q8_DOWN_WMMA_VARIANT, q8_down_variant, q8_selected_down_enabled,
+        resolve_q8_down_variant, resolve_q8_selected_down,
+    )
+    with ExitStack() as stack:
+        stack.enter_context(q8_selected_down_enabled(generator, enabled))
+        if enabled:
+            stack.enter_context(q8_down_variant(generator, Q8_DOWN_WMMA_VARIANT))
+        yield {'enabled': resolve_q8_selected_down(generator),
+               'variant': resolve_q8_down_variant(generator)}
 
 
 def hip_available() -> bool:
@@ -69,7 +84,7 @@ def main() -> None:
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
 
     from hipengine.runtime.qwen4_exp_runner import (
-        Q8_DOWN_WMMA_VARIANT, q8_down_variant,
+        Q8_DOWN_WMMA_VARIANT,
     )
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
@@ -116,14 +131,7 @@ def main() -> None:
                 ("incumbent_a", "0"), ("incumbent_b", "0"),
                 ("candidate_a", "1"), ("candidate_b", "1"),
             ):
-                os.environ[FLAG] = enabled
-                # The gate alone no longer selects the WMMA parent: the plan
-                # publishes the guarded block-scale leaf, so the candidate rows
-                # bind the leaf this probe measures and the plan's owner comes
-                # back for the incumbent rows.
-                scope = (q8_down_variant(generator, Q8_DOWN_WMMA_VARIANT)
-                         if enabled == "1" else nullcontext())
-                with scope:
+                with selected_down_probe_scope(generator, enabled == "1"):
                     rows[label] = _prefill_logits(
                         generator, case["prompt_token_ids"])
 
@@ -164,7 +172,7 @@ def main() -> None:
             report["cases"].append(entry)
             print(json.dumps(entry), flush=True)
     finally:
-        os.environ[FLAG] = "0"
+        generator.close()
     a.output.write_text(json.dumps(report, indent=1) + "\n")
     print(f"wrote {a.output}")
 

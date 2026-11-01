@@ -2895,6 +2895,8 @@ publishing bound owner choices. Profile-gap translates the selected-down
 `--override` into owner state without process writes and reports the effective
 decision. Candidate AR likewise separates the selected-down key from its
 construction and post-binder environment updates and binds the same owner scope.
+The selected Q8 logits probe scopes its gate and candidate leaf on the measured
+owner, restores both between samples and closes its generator on exit.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
