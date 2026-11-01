@@ -9,7 +9,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'layer2', 'restore'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -50,7 +50,20 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS',
                                'all' if scope == '999' else '999')
             repeated = []
-            if interface == 'profile_gap':
+            if interface == 'layer2':
+                from contextlib import ExitStack
+                from dataclasses import replace
+                from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, bind_candidate_gdn_layers
+                binding = ExitStack()
+                bind_candidate_gdn_layers(binding, owner, replace(
+                    CANDIDATES['gdn_isolated'], gdn_colwarps_layers=scope))
+            elif interface == 'restore':
+                from dataclasses import replace
+                from scripts import qwen4exp_prefill_restore_ab as restore
+                monkeypatch.setitem(restore.CANDIDATES, 'scope_probe', replace(
+                    restore.CANDIDATES['gdn_isolated'], gdn_colwarps_layers=scope))
+                binding = restore.arm_gdn_layers_scope(owner, 'scope_probe')
+            elif interface == 'profile_gap':
                 from scripts.qwen4exp_profile_gap import _gdn_layers_owner_override
                 binding = _gdn_layers_owner_override(owner, scope)
             else:

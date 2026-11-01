@@ -24,7 +24,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import summarize_campaign_ab
 from scripts.qwen4exp_ple_gather_ab import pair_sequence
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, CANDIDATES, gr_wide_arm_scope,
-    gdn_colwarps_prefill_arm_scope,
+    gdn_colwarps_prefill_arm_scope, gdn_layers_arm_scope,
 )
 from scripts.qwen4exp_journey_localize import set_flags
 from hipengine.runtime.qwen4_exp_runner import (
@@ -164,6 +164,9 @@ def main():
             with (
                 q8_scope,
                 gr_wide_arm_scope(runner, arm_gr_wide(mode, published_gr_wide)),
+                gdn_layers_arm_scope(
+                    runner, CANDIDATES['production_conservative'].gdn_colwarps_layers
+                    if mode == 'after' else None),
                 gdn_colwarps_prefill_arm_scope(
                     runner, arm_gdn_colwarps(mode)),
                 qsa_h256_prefill_mode(

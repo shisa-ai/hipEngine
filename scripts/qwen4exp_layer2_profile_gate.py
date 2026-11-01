@@ -243,6 +243,7 @@ class CandidateSpec:
     q4_exact_grouped_all: bool | None = None
     # Layer-only override: preserve the base owner's enablement. None keeps
     # its scope; an empty tuple explicitly means all layers.
+    gdn_colwarps_layers: str | None = None
     q8_dense_wide_layers: tuple[int, ...] | None = None
 
     @property
@@ -266,7 +267,6 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
 
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "0",
-    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
 }
 #: The cleared composition's tile-16 GDN owner is request-local runner state, so
 #: the isolation arms declare it on their own candidate instead of carrying it
@@ -287,9 +287,7 @@ _F16_ROUTE_ARMS = {
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
     },
     "recovery_plus_qsa_wmma": {},
-    "recovery_plus_gdn_tiled_all_layers": {
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _ALL_LAYERS,
-    },
+    "recovery_plus_gdn_tiled_all_layers": {},
 }
 
 
@@ -310,6 +308,8 @@ def _f16_route_isolation_candidates() -> dict[str, CandidateSpec]:
                 "binder" + (", plus " + ", ".join(sorted(extra)) if extra else "")
             ),
             environment={**_F16_ROUTES_OFF, **extra},
+            gdn_colwarps_layers=(_ALL_LAYERS if name == 'recovery_plus_gdn_tiled_all_layers'
+                                 else ','.join(map(str, range(27, 48)))),
             q8_dense_wide_layers=(tuple(range(48)) if name == 'recovery_plus_dense_wide_all_layers'
                                   else tuple(range(13, 48))),
             gdn_tile16_variant=_F16_ROUTES_OFF_TILE16,
@@ -638,11 +638,9 @@ CANDIDATES = {
         routed_f16_enabled=True,
         gr_wide=True,
         q8_dense_wide_layers=tuple(range(48)),
+        gdn_colwarps_layers=_ALL_LAYERS,
         environment={
             "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM": "1",
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(
-                str(layer) for layer in range(48)
-            ),
         },
         router_producer_variant="f32_hidden_f16_wmma_gemm",
         base_profile="production",
@@ -700,8 +698,8 @@ CANDIDATES = {
         name="gdn_isolated",
         classification="diagnostic",
         mechanism="current GDN suffix over strict non-GDN arithmetic",
+        gdn_colwarps_layers=','.join(map(str, range(27, 48))),
         environment={
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
         },
         gdn_colwarps_prefill=True,
@@ -1679,12 +1677,24 @@ def bind_candidate_dense_wide(stack, generator, spec) -> dict[str, Any]:
     return resolve_q8_dense_wide_policy(runner).to_report()
 
 
+def gdn_layers_arm_scope(owner, layers):
+    """Preserve an omitted layer scope; restore explicit diagnostic bindings."""
+    from hipengine.runtime.qwen4_exp_runner import gdn_colwarps_layers
+    return nullcontext() if layers is None else gdn_colwarps_layers(owner, layers)
+
+
+def bind_candidate_gdn_layers(stack, generator, spec) -> str:
+    from hipengine.runtime.qwen4_exp_runner import resolve_gdn_colwarps_layers
+    stack.enter_context(gdn_layers_arm_scope(generator, spec.gdn_colwarps_layers))
+    return resolve_gdn_colwarps_layers(generator)
+
+
 #: Candidate fields that are owner-bound decisions rather than process keys.
 #: ``None`` means "keep what the base profile published", so only a non-None
 #: value is a change an arm makes.
 _OWNER_FIELD_NAMES = (
     "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
-    "qsa_ordered_decode", "q8_dense_wide_layers")
+    "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1766,8 +1776,8 @@ def gdn_colwarps_prefill_arm_scope(owner: Any, enabled: bool | None):
     binder published and the scope leaves that decision in place. ``True``
     opens the tiled branch for the measured window and ``False`` binds the
     serial strict owners; the published gate comes back on unwind, including
-    after an exception. The layer allowlist is a process key, so an arm that
-    changes it still publishes it through its environment.
+    after an exception. The layer scope binds alongside this gate through the
+    candidate's explicit `gdn_colwarps_layers` declaration.
     """
 
     if enabled is None:
@@ -1790,6 +1800,7 @@ def bind_candidate_gdn_colwarps_prefill(
     unwind.
     """
 
+    bind_candidate_gdn_layers(dispatch_stack, candidate_generator, candidate_spec)
     if candidate_spec.gdn_colwarps_prefill is not None:
         dispatch_stack.enter_context(gdn_colwarps_prefill(
             candidate_generator, candidate_spec.gdn_colwarps_prefill))
@@ -1810,6 +1821,7 @@ def bind_candidate_owners(
     unwinds, and the returned values are the ones the measured rows ran under.
     """
 
+    from hipengine.runtime.qwen4_exp_runner import resolve_gdn_colwarps_layers
     runner = getattr(candidate_generator, "runner", candidate_generator)
     if candidate_spec.qsa_ordered_decode is not None:
         dispatch_stack.enter_context(qsa_ordered_decode(
@@ -1828,6 +1840,7 @@ def bind_candidate_owners(
             dispatch_stack, candidate_generator, candidate_spec),
         "gdn_colwarps_prefill": bind_candidate_gdn_colwarps_prefill(
             dispatch_stack, candidate_generator, candidate_spec),
+        "gdn_colwarps_layers": resolve_gdn_colwarps_layers(candidate_generator),
     }
 
 
@@ -1910,6 +1923,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         and candidate_spec.router_producer_variant is None
         and candidate_spec.gr_wide is None
         and candidate_spec.q8_dense_wide_layers is None
+        and candidate_spec.gdn_colwarps_layers is None
     )
 
 
@@ -2128,6 +2142,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # proves which leaf actually ran.
     bind_candidate_gdn_colwarps_prefill(
         dispatch_stack, candidate_generator, candidate_spec)
+    from hipengine.runtime.qwen4_exp_runner import resolve_gdn_colwarps_layers
+    resolved_gdn_layers = resolve_gdn_colwarps_layers(candidate_generator)
     # The tile-16 GDN prefill owner is the plan's decision too: an arm that
     # names a different leaf binds it on this generator and the plan's owner
     # comes back on unwind. Dispatch counting on the candidate key proves which
@@ -2516,6 +2532,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "router_producer_variant": candidate_spec.router_producer_variant,
             "q8_dense_wide_policy": resolved_dense_wide,
+            "gdn_colwarps_layers": resolved_gdn_layers,
+            "gdn_colwarps_layers_override": candidate_spec.gdn_colwarps_layers,
             "q8_dense_wide_layers_override": candidate_spec.q8_dense_wide_layers,
             "gr_wide": resolved_gr_wide,
             "gr_wide_override": candidate_spec.gr_wide,

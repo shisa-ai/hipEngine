@@ -804,7 +804,7 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
     # selectors, so graph identity ignores them and a candidate may bind them.
     assert restore.SHARED_DECODE_SAFE_OWNER_FIELDS == {
         "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
-        "qsa_ordered_decode", "q8_dense_wide_layers"}
+        "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers"}
 
     restore.validate_shared_graphs(
         [{WMMA_GATE: "1"}], [{"q8_down_variant": WMMA}])

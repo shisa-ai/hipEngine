@@ -85,7 +85,7 @@ def main() -> None:
     from scripts.qwen4exp_framework_family_refresh import model_identity
     from scripts.qwen4exp_layer2_profile_gate import (
         CANDIDATES, _make_generator, _strict_trajectory,
-        gdn_colwarps_prefill_arm_scope,
+        gdn_colwarps_prefill_arm_scope, gdn_layers_arm_scope,
     )
     from scripts.qwen4exp_q8_repair_depth_gate import resolve_allocation_profile
     import hipengine.runtime.qwen4_exp_runner as runtime_module
@@ -139,7 +139,7 @@ def main() -> None:
 
         def arm_trajectory(
             environment: dict[str, str], case, *, q8_mmq_owner=None,
-            gdn_colwarps_owner=None,
+            gdn_colwarps_owner=None, gdn_layers_owner=None,
         ):
             """Run one arm, recording per-step routing and logits evidence."""
 
@@ -187,7 +187,7 @@ def main() -> None:
                     if q8_mmq_owner is not None
                     else q8_mmq_prefill_enabled(generator)
                 )
-                with owner_scope, gdn_colwarps_prefill_arm_scope(
+                with owner_scope, gdn_layers_arm_scope(generator, gdn_layers_owner), gdn_colwarps_prefill_arm_scope(
                         generator, gdn_colwarps_owner):
                     if resolve_q8_mmq_prefill(generator):
                         generator.runner.configure_mmq_prefill_resources()
@@ -227,6 +227,7 @@ def main() -> None:
                     dict(spec.environment), case,
                     q8_mmq_owner=spec.q8_mmq_prefill_enabled,
                     gdn_colwarps_owner=arm_gdn_colwarps(spec),
+                    gdn_layers_owner=spec.gdn_colwarps_layers,
                 )
                 strict, strict_gdn_colwarps = strict
                 candidate, candidate_gdn_colwarps = candidate

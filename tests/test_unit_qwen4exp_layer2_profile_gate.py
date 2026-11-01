@@ -127,6 +127,7 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         router_producer_variant=None,
         gr_wide=None,
         q8_dense_wide_layers=None,
+        gdn_colwarps_layers=None,
     )
 
     assert module._candidate_named_profile_intact(spec) is expected
@@ -292,7 +293,7 @@ def test_gdn_isolation_changes_only_gdn_over_strict() -> None:
     assert candidate.classification == "diagnostic"
     assert all(key.startswith("HIPENGINE_QWEN4_EXP_GDN_")
                for key in candidate.environment)
-    assert candidate.environment["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == (
+    assert candidate.gdn_colwarps_layers == (
         ",".join(map(str, range(27, 48)))
     )
     # The wave-norm admission is request-local runner state, so the arm names

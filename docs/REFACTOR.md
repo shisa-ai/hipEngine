@@ -2864,9 +2864,10 @@ observability and strict/ production isolation. Run `tests/test_unit_qwen4_exp_p
 affected runner ownership tests and a real generation request confirming selected routes and
 isolation before closing the migration. The GDN columnwarp layer scope now has
 an explicit `gdn_colwarps_layers` runner field, effective-value getter and
-restoring diagnostic scope. Profile-gap and the disabled-family sweep now bind
-and report this scope explicitly. Its binder and the other diagnostic callers
-still use the environment fallback and must migrate before retiring that control.
+restoring diagnostic scope. Profile-gap, the disabled-family sweep and layer-2
+candidates bind and report this scope explicitly; shared candidate consumers
+and prefill-restore A/B restore it after measurement. Its binder and the other
+diagnostic callers still need migration before retiring that control.
 The focused guard regression is:
 
 ```bash
