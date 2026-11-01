@@ -387,9 +387,21 @@ def _attribution(result: dict, entry: dict, env: dict[str, str]) -> tuple[bool |
         checks.append(verified)
         notes.append(note)
     elif env:
-        verified, note = _env_request_applied(result, env, control=False)
-        checks.append(verified)
-        notes.append(note)
+        gr_axes = {'HIPENGINE_QWEN4_EXP_GR_IU8': 'up',
+                   'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN': 'down'}
+        process_env = {key: value for key, value in env.items() if key not in gr_axes}
+        if process_env:
+            verified, note = _env_request_applied(result, process_env, control=False)
+            checks.append(verified)
+            notes.append(note)
+        policy = result.get('gr_iu8_policy')
+        for key, axis in gr_axes.items():
+            if key in env:
+                expected = env[key] not in {'', '0', 'false', 'False'}
+                selected = policy.get(axis) if isinstance(policy, dict) else None
+                checks.append(None if selected is None else selected is expected)
+                notes.append(f'the GR {axis} owner matches the requested choice' if checks[-1] is True
+                             else f'the child did not confirm the requested GR {axis} choice')
     if "q8_wmma_layers" in owner:
         # An arm can carry both an environment override and an owner scope. Both
         # have to hold: the scope is what decides whether this arm ran WMMA.
@@ -466,6 +478,7 @@ def _summarize(payload: dict, command) -> dict:
         "gdn_colwarps_layers": payload.get('gdn_colwarps_layers'),
         "gdn_colwarps_prefill": payload.get('gdn_colwarps_prefill'),
         "q8_dense_wide_policy": payload.get('q8_dense_wide_policy'),
+        "gr_iu8_policy": payload.get('gr_iu8_policy'),
         "risk_calls": risk.get("calls"),
         "risk_outputs": outputs,
         "risk_risky": risky,
@@ -587,6 +600,7 @@ def main(argv: list[str] | None = None) -> int:
             "env_override_changed_route": result.get(
                 "env_override_changed_route"),
             "owner_scope_bound": owner_bound,
+            "gr_iu8_policy": result.get('gr_iu8_policy'),
             "attribution_verified": verified,
             "attribution_note": note,
             "savings_eligible": savings_eligible,

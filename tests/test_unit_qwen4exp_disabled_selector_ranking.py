@@ -180,8 +180,10 @@ def test_main_replays_every_arm_through_its_child_report(module, monkeypatch, tm
         tok_s = 100.0 if arm == "baseline" else 90.0
         output.write_text(json.dumps({
             "wall_summary": {"tok_s": tok_s, "wall_seconds": 40.96},
-            "route_env": {**bound, **overrides},
-            "bound_route_env": dict(bound),
+            "route_env": {},
+            "gr_iu8_policy": {'up': overrides.get('HIPENGINE_QWEN4_EXP_GR_IU8') == '1',
+                              'down': False},
+            "bound_route_env": {},
             "token_id": 248068,
             "configuration_class": (
                 "diagnostic_post_binder_override" if overrides else "named_profile"
@@ -215,14 +217,16 @@ def test_main_replays_every_arm_through_its_child_report(module, monkeypatch, tm
     assert baseline["ratio_vs_baseline"] == 1.0
     assert gr_iu8["ratio_vs_baseline"] == 0.9
     assert gr_iu8["delta_pct_vs_baseline"] == pytest.approx(-10.0)
-    assert gr_iu8["effective_route"] == {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"}
+    assert gr_iu8["effective_route"] == {}
+    assert gr_iu8['gr_iu8_policy'] == {'up': True, 'down': False}
     assert gr_iu8["effective_route_missing_keys"] == []
     assert gr_iu8["overrides_recorded"] == {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"}
     # The owner-transported arm carries its gate as an argument, not an override.
     assert moe["owner_overrides"] == {"production_moe_prefill": "on"}
     assert moe["overrides"] == {}
     assert set(moe["baseline_route"]) == set(module.ARMS["all_prefill"]) - {
-        'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS'}
+        'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS',
+        'HIPENGINE_QWEN4_EXP_GR_IU8', 'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'}
 
 
 def test_main_refuses_an_unknown_arm(module, tmp_path):

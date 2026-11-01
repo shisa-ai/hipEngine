@@ -2930,6 +2930,8 @@ other choice, report the effective pair and restore owners without teardown writ
 GR wave-scale and DPP comparisons close IU8-up on their measured owners while
 preserving IU8-down; their control records name the owner preemptor. The logits
 probe binds only its requested GR axis and restores it without teardown writes.
+Ranking and family-sweep reports read the child's effective GR pair instead of
+attributing the owner choices from process values.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
