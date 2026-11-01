@@ -2911,19 +2911,6 @@ wrappers, kernel instantiations and caller arms together, preserving the histori
 replacing them, first implement and test the replacement against the existing exact-repair contract;
 the proposed LDS weight-staging design is not proof of an implemented, exact replacement.
 
-### R0434 — Pack8 GEMV width controls and exact-thread ownership
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `pack8_gemv_*`, `pack8_gemv_decode_*`; `HIPENGINE_GGUF_PACK8_GEMV_WIDE`.
-
-Done when: Deferred interface decision: keep the comparison control or migrate
-`scripts/qwen4exp_layer2_profile_gate.py` and `scripts/qwen4exp_de3_route_probe.py` to an explicit
-launch policy before removing its environment reader. Preserve per-launch selection, caller geometry
-precedence, narrow/wide boundaries and default behavior. Validate with
-`tests/test_unit_gguf_pack8_gemv_wide_threads.py`, the migrated gate and public generation
-confirming the selected widths and strict/candidate isolation.
-
 ### R0439 — Architecture chunk fallback ownership
 
 Owner: `hipengine/runtime/prefill.py`.

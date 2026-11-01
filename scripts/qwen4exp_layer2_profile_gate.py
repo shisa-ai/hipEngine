@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, replace
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -828,11 +828,9 @@ CANDIDATES["pack8_gemv_wide_256"] = CandidateSpec(
     environment={"HIPENGINE_GGUF_PACK8_GEMV_WIDE": "1"},
     base_profile="production",
     scenario_id="qwen4exp-ud-q4-k-xl-pack8-gemv-wide-256",
-    # This candidate changes a launch parameter, not a registry key, so there is
-    # no swapped key to count. Engagement is established separately from the
-    # kernel trace (the three narrow shapes move from wg=128 to wg=256 with
-    # identical workgroup counts) and from strict_and_candidate_bytes_equal,
-    # which must be false for this run to mean anything.
+    # This candidate changes a launch parameter, not a registry key. The
+    # teacher scope pins the narrow parent; candidate environment selects wide.
+    # Numerical equality alone is not dispatch-engagement evidence.
     candidate_key=None,
     fallback_key=None,
 )
@@ -1884,7 +1882,31 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
     )
 
 
+@contextmanager
+def pack8_width_teacher_scope(args: argparse.Namespace):
+    """Keep the Pack8 width comparison's teacher on its 128-thread parent."""
+
+    if getattr(args, "candidate", None) != "pack8_gemv_wide_256":
+        yield
+        return
+    key = "HIPENGINE_GGUF_PACK8_GEMV_WIDE"
+    previous = os.environ.get(key)
+    os.environ[key] = "0"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = previous
+
+
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
+    with pack8_width_teacher_scope(args):
+        return _run(args, command=command)
+
+
+def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if not args.model_root.is_dir():
         raise GateError(f"model root does not exist: {args.model_root}")
     source = _git_metadata(ROOT)

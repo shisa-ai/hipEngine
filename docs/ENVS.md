@@ -788,7 +788,7 @@ use.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
-| `HIPENGINE_GGUF_PACK8_GEMV_WIDE` | unset | Wide-thread pack8 GEMV grid for eligible projections. |
+| `HIPENGINE_GGUF_PACK8_GEMV_WIDE` | enabled when unset | Maintained launch-width comparison control. `0` restores 128 threads; enabled selects 256 only for one-row `pack8_gemv_*` projections with at most 640 outputs. Explicit caller threads and the exact-thread owner take precedence; the separate `pack8_gemv_decode_*` family is unchanged. The layer-2 Pack8 gate pins its teacher narrow and candidate wide. Captured graphs keep the width chosen during capture; use separate sessions for comparison arms. |
 | `HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K` | retired | Ignored. The F16 wide route selects the registered 128x128 WGP sibling at rows ≥ 1024, K ≥ 4096 and N ≥ 1024; otherwise it keeps the parent. |
 | `HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS` | retired | Ignored. Dense-wide launches use the WGP-mode build for 257–1024 rows. Explicit build profiles and supplied libraries remain available to diagnostics. |
 | `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` | retired | Ignored. Selected Q4_K T16 gate+up uses the tile8 owner; the 16-column wrapper remains a direct numerical reference. |
