@@ -132,13 +132,13 @@ def test_apply_post_binder_overrides_records_bound_and_effective_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load_script()
-    key = "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"
+    key = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES"
     monkeypatch.delenv(key, raising=False)
 
-    bound, effective = module._apply_post_binder_overrides({key: "1"})
+    bound, effective = module._apply_post_binder_overrides({key: "2"})
 
     assert bound[key] is None
-    assert effective[key] == "1"
+    assert effective[key] == "2"
 
 
 def test_summarize_moe_selection_reports_active_row_distribution() -> None:

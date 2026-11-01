@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'layer2', 'candidate_ar'])
+@pytest.mark.parametrize('interface', ['direct', 'layer2', 'candidate_ar', 'profile_gap'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_attention_gate_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -40,7 +40,12 @@ def test_public_attention_gate_owner(monkeypatch, length, interface):
             for enabled in (False, True):
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE', '0' if enabled else '1')
                 with ExitStack() as stack:
-                    if interface == 'candidate_ar':
+                    if interface == 'profile_gap':
+                        from scripts.qwen4exp_profile_gap import bind_attention_override
+                        record = bind_attention_override(stack, owner, {
+                            'HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE': '1' if enabled else '0'}, None)
+                        assert record['q8_mmq_attn_gate_enabled'] is enabled
+                    elif interface == 'candidate_ar':
                         from scripts.qwen4exp_candidate_ar import attention_override_scope
                         record = stack.enter_context(attention_override_scope(owner, enabled))
                         assert record['q8_mmq_attn_gate_enabled'] is enabled

@@ -526,17 +526,39 @@ def _apply_post_binder_overrides(
 ) -> tuple[dict[str, str | None], dict[str, str | None]]:
     """Apply diagnostic environment overrides after the profile binder.
 
-    Owner-state routes (the Q4 DP4A pair, the production MoE gate, the Q8 MMQ
-    prefill gate and the f16 WMMA layer scope) are not environment keys and are
-    bound separately. This helper only moves the remaining process-owned
-    diagnostic switches.
+    Owner-state routes are bound separately. The attention key keeps its legacy
+    ``--override`` spelling but is transported by ``bind_attention_override``.
+    This helper only moves remaining process-owned diagnostic switches.
     """
 
+    overrides = {key: value for key, value in overrides.items()
+                 if key != "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"}
     effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
     bound = {key: os.environ.get(key) for key in effective_route_keys}
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_attention_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+    parent_override: bool | None,
+) -> dict[str, bool | None]:
+    """Translate the legacy attention override into explicit owner decisions."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_mmq_attn_gate_enabled, q8_mmq_prefill_enabled,
+    )
+    raw = overrides.get('HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE')
+    enabled = None if raw is None else raw not in {'', '0', 'false', 'False'}
+    if enabled is not None:
+        if parent_override is False:
+            raise ValueError('attention override conflicts with --q8-mmq-prefill off')
+        stack.enter_context(q8_mmq_prefill_enabled(owner, True))
+        stack.enter_context(q8_mmq_attn_gate_enabled(owner, enabled))
+    return {
+        'q8_mmq_attn_gate_override': enabled,
+        'q8_mmq_attn_gate_enabled': getattr(owner, 'q8_mmq_attn_gate_enabled', None),
+    }
 
 
 @contextlib.contextmanager
@@ -981,6 +1003,10 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_attention_override(
+            q4_scope, generator, overrides, q8_mmq_override))
+        from hipengine.runtime.qwen4_exp_runner import resolve_q8_mmq_prefill
+        report['q8_mmq_prefill_enabled'] = resolve_q8_mmq_prefill(generator)
         if report["q8_mmq_prefill_enabled"]:
             # Enabling a scoped diagnostic must not allocate secretly: the
             # script names the cold-path resource operation explicitly.

@@ -2877,6 +2877,8 @@ The layer-2 attention candidate binds the attention owner and MMQ parent
 explicitly, prepares resources before measurement, and records owner provenance.
 The candidate AR runner translates its existing attention `--override` into the
 same owner policy and workspace preparation without writing that process key.
+Profile-gap attention overrides also bind owner state, explicitly enable the
+parent before preparation, and reject a conflicting explicit parent-off request.
 The focused guard regression is:
 
 ```bash
