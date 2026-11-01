@@ -618,7 +618,9 @@ def invalidate_build_resolution() -> None:
     build-affecting environment, so an environment change is normally observed
     on the next call. Use this to force a fresh resolution when a build
     environment variable is changed through a path that does not go through
-    ``os.environ``, or to release loaded libraries in a long-lived process.
+    ``os.environ``. This drops cache references only: handles already retained
+    by callers or runners remain usable, and their explicit ``library=``
+    launches do not consult these caches.
     """
 
     _FAST_PATH_CACHE.clear()

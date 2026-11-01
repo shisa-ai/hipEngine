@@ -36,8 +36,17 @@ families such as `evie_ops`, `surya_ops`, `qwen35_linear_attn_conv` and
 `qwen35_linear_attn_gdn` compile to shared objects. `hipengine.core.build` owns
 compilation, target-architecture resolution, build identity and the loaded-library
 cache. Repeated builds with the same identity reuse the cached handle until
-explicit invalidation; invalidation does not replace references already held by
-runners.
+explicit invalidation; invalidation drops cache references but does not replace
+handles already held by runners or callers. Implicit launch wrappers continue
+to resolve against the current build-affecting environment on each call. Raw
+source paths, flags, profile, target architecture and compiler identity select
+distinct cached builds; no single process-wide handle replaces those identities.
+An explicit `library=` override pins that launch to the supplied object and
+bypasses implicit resolution. Changing source bytes at the same path requires
+`invalidate_build_resolution()` or a forced build before implicit reuse. An
+explicit compiler-version call also updates the process default; invalidate
+cached implicit resolutions before relying on that new default. Invalidation
+keeps the compiler-version pin itself.
 
 `EvieRunner` and `SuryaGpuRunner` explicitly hold the library references used by
 their launch wrappers for the runner lifetime. Both accept injected `library`,

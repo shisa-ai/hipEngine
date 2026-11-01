@@ -2947,20 +2947,6 @@ and cache/ stream ownership; run numerical repair parity and public same-profile
 adopted change. Earlier fixed-cost estimates are historical hypotheses, not a fresh promise of
 recoverable wall time. Kernel traces follow the cached- build protocol in `docs/OPTIMIZATION.md`.
 
-### R0446 — Launch-library lifetime and environment observation
-
-Owner: `hipengine/core/build.py`.
-
-Scope: `build_hip`.
-
-Done when: Deferred lifetime decision: pin resolved handles to a runner/execution owner or continue
-observing build-environment changes on implicit launches. Define owner lifetime, invalidation and
-mixed-backend/variant behavior before removing wrapper fallbacks. A single process-wide handle
-cannot stand in for distinct build identities; quant-only maps also cannot identify separate variant
-objects (see R0426). Preserve explicit-handle overrides and direct diagnostic callers. Test warm
-hits, environment changes, explicit invalidation, missing cached artifacts and variant precedence,
-then exercise public generation with the intended handles and teardown.
-
 ### R0459 — Row-split GDN recurrence removal decision
 
 Owner: `hipengine/generation/qwen4_exp_profiles.py`.
