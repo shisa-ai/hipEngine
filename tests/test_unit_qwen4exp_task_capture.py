@@ -140,7 +140,7 @@ def test_task_candidate_keeps_historical_label_and_accepts_gdn():
     assert spec.base_profile == "production"
     label, spec = task_candidate("production_gdn_restore")
     assert label == "production_gdn_restore"
-    assert spec.environment["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    assert spec.gdn_colwarps_prefill is True
 
 
 def test_task_selection_preserves_fixture_order_and_marks_subsets():

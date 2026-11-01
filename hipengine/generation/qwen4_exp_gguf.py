@@ -228,6 +228,10 @@ class Qwen4ExpGGUFTextGenerator:
         # (request-local, not a process switch); an unbound generator carries no
         # scope, so every clone it builds keeps the serial sigmoid owners.
         self.gdn_peer_prefill_layers = None
+        # The GDN columnwarp enablement gate is the plan's decision, published by
+        # the binder; an unbound generator and every clone built before a bind
+        # keep the serial strict owners.
+        self.gdn_colwarps_prefill = False
         # The chain's non-expertgrid fallback rung is published on too, so an
         # unbound generator keeps the out8 owner rather than the output1 base.
         self.q51_out8 = True
@@ -996,6 +1000,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.gdn_register_prefill = getattr(generator, "gdn_register_prefill", False)
     runner.gdn_peer_prefill_layers = getattr(
         generator, "gdn_peer_prefill_layers", None)
+    runner.gdn_colwarps_prefill = bool(
+        getattr(generator, "gdn_colwarps_prefill", False))
     runner.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
     runner.q51_pair_prefill = bool(getattr(generator, "q51_pair_prefill", False))
     runner.q51_fold128_prefill = bool(

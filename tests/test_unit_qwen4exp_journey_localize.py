@@ -48,7 +48,13 @@ def test_localization_disables_only_named_families():
     assert ARMS["decode_strict"] == {}
     assert PREFIX + "Q4_DP4A64" not in {
         key for values in ARMS.values() for key in values}
-    for name in ("gdn_strict", "moe_strict", "dense_q8_gr_strict"):
+    # The columnwarp gate is owner state too, so the serial arm carries no
+    # process key; the arm name is the decision the loop binds, and the peer
+    # owner follows that gate whatever the plan published.
+    assert ARMS["gdn_strict"] == {}
+    assert serial_gdn("gdn_strict", True) is True
+    assert serial_gdn("gdn_strict", False) is True
+    for name in ("moe_strict", "dense_q8_gr_strict"):
         assert ARMS[name]
         assert set(ARMS[name].values()) == {"0"}
         for key in ARMS[name]:
@@ -325,8 +331,7 @@ def test_remaining_family_flags_are_taken_from_strict_binding():
 
 def test_gdn_isolation_keeps_other_families_strict():
     strict = {PREFIX + name: "0" for name in (
-        "GDN_REGISTER_PREFILL", "GDN_COLWARPS_PREFILL",
-        "Q8_0_SELECTED_WMMA_DOWN",
+        "GDN_REGISTER_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     )}
     production = {key: "1" for key in strict}
     production["UNRELATED"] = "ignored"
@@ -335,13 +340,13 @@ def test_gdn_isolation_keeps_other_families_strict():
         assert values[PREFIX + "Q8_0_SELECTED_WMMA_DOWN"] == "0"
         assert values[PREFIX + "GDN_REGISTER_PREFILL"] == "1"
         assert "UNRELATED" not in values
-    assert arms["strict_plus_gdn"][PREFIX + "GDN_COLWARPS_PREFILL"] == "1"
-    assert arms["strict_plus_gdn_serial"][PREFIX + "GDN_COLWARPS_PREFILL"] == "0"
-    # The peer owner's layer scope is request-local runner state, so the serial
-    # arm binds it on the runner instead of carrying a process value; the
-    # columnwarp value is what tells the arm loop to do that.
-    assert serial_gdn(arms["strict_plus_gdn_serial"]) is True
-    assert serial_gdn(arms["strict_plus_gdn"]) is False
+    # The gate and the peer owner's layer scope are request-local runner state,
+    # so the serial arm binds them on the runner instead of carrying a process
+    # value; the arm name is what tells the arm loop to do that.
+    assert PREFIX + "GDN_COLWARPS_PREFILL" not in arms["strict_plus_gdn_serial"]
+    assert serial_gdn("strict_plus_gdn_serial", True) is True
+    assert serial_gdn("strict_plus_gdn", True) is False
+    assert serial_gdn("strict_plus_gdn", False) is True
     # The multi arm's leaf is a declared binding, not a process value: the
     # retired key stays out of the arm and the arm loop binds the owner.
     assert PREFIX + "GDN_TILE16_VARIANT" not in arms["strict_plus_gdn_multi"]
@@ -364,6 +369,8 @@ def _split_runner(monkeypatch, module, seen, published="35-47"):
         return result
 
     runner = SimpleNamespace(
+        # The plan publishes the tiled branch open; the peer scope follows it.
+        gdn_colwarps_prefill=True,
         gdn_peer_prefill_layers=published,
         reset=lambda: None,
         prefill=prefill,
@@ -374,38 +381,31 @@ def _split_runner(monkeypatch, module, seen, published="35-47"):
     return runner
 
 
-def test_split_trajectory_binds_the_peer_owner_off_for_a_strict_prefill_phase(monkeypatch):
-    """A strict prefill phase must not inherit the production peer scope.
+def test_split_trajectory_binds_the_peer_owner_off_for_a_serial_arm(monkeypatch):
+    """A serial arm must not inherit the production peer scope.
 
-    The split arms set the prefill and decode flag sets independently, so the
-    phase-local binding is the only thing that reaches the strict prefill.
+    The arm is the decision now: the gate and the peer scope are request-local
+    runner state, so ``split_trajectory`` derives the phase binding from the arm
+    instead of from the retired process value.
     """
 
     from scripts import qwen4exp_journey_localize as module
 
     seen = []
     runner = _split_runner(monkeypatch, module, seen)
-    module.split_trajectory(
-        runner, [3], [5],
-        {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
-        {PREFIX + "GDN_COLWARPS_PREFILL": "1"},
-    )
-    # Strict prefill runs the serial owners; the production decode phase leaves
-    # the published scope alone, and decode never selects the owner anyway.
+    module.split_trajectory(runner, [3], [5], {}, {}, arm="gdn_strict")
+    # The prefill phase runs the serial owners; decode leaves the published
+    # scope alone, and decode never selects the owner anyway.
     assert seen == [("prefill", None), ("step", "35-47")]
     assert runner.gdn_peer_prefill_layers == "35-47"
 
 
-def test_split_trajectory_keeps_the_published_scope_for_a_production_prefill_phase(monkeypatch):
+def test_split_trajectory_keeps_the_published_scope_for_other_arms(monkeypatch):
     from scripts import qwen4exp_journey_localize as module
 
     seen = []
     runner = _split_runner(monkeypatch, module, seen)
-    module.split_trajectory(
-        runner, [3], [5],
-        {PREFIX + "GDN_COLWARPS_PREFILL": "1"},
-        {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
-    )
+    module.split_trajectory(runner, [3], [5], {}, {}, arm="strict_plus_gdn")
     assert seen == [("prefill", "35-47"), ("step", "35-47")]
     assert runner.gdn_peer_prefill_layers == "35-47"
 
@@ -424,18 +424,26 @@ def test_split_trajectory_restores_the_published_scope_after_a_failed_prefill(mo
     monkeypatch.setattr(module, "set_flags", lambda flags: None)
     with pytest.raises(RuntimeError, match="boom"):
         module.split_trajectory(
-            runner, [3], [5],
-            {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
-            {PREFIX + "GDN_COLWARPS_PREFILL": "1"},
-        )
+            runner, [3], [5], {}, {}, arm="gdn_strict")
     assert runner.gdn_peer_prefill_layers == "35-47"
 
 
-def test_phase_scope_leaves_a_production_phase_unbound():
-    runner = SimpleNamespace(gdn_peer_prefill_layers="35-47")
-    with phase_peer_scope(runner, {PREFIX + "GDN_COLWARPS_PREFILL": "1"}):
+def test_phase_scope_follows_the_arm_decision():
+    runner = SimpleNamespace(
+        gdn_colwarps_prefill=True, gdn_peer_prefill_layers="35-47")
+    with phase_peer_scope(runner, "strict_plus_gdn"):
         assert runner.gdn_peer_prefill_layers == "35-47"
-    with phase_peer_scope(runner, {PREFIX + "GDN_COLWARPS_PREFILL": "0"}):
+    with phase_peer_scope(runner, "gdn_strict"):
+        assert runner.gdn_peer_prefill_layers is None
+    assert runner.gdn_peer_prefill_layers == "35-47"
+
+
+def test_phase_scope_closes_the_peer_when_the_plan_publishes_closed():
+    """An arm that named nothing ran the published gate, so its peer follows."""
+
+    runner = SimpleNamespace(
+        gdn_colwarps_prefill=False, gdn_peer_prefill_layers="35-47")
+    with phase_peer_scope(runner, "bound"):
         assert runner.gdn_peer_prefill_layers is None
     assert runner.gdn_peer_prefill_layers == "35-47"
 

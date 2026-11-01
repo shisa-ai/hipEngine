@@ -167,7 +167,12 @@ def test_restore_arm_scope_restores_after_an_exception():
 def test_restore_inventory_names_the_tile16_field():
     changes = candidate_owner_changes(CANDIDATES["gdn_multi_column"])
     assert changes["gdn_tile16_variant"] == MULTI
-    assert candidate_owner_changes(CANDIDATES["production_conservative"]) == {}
+    # The conservative arm closes the columnwarp gate as owner state now, so the
+    # closed gate is an actual change it inventories.
+    assert candidate_owner_changes(
+        CANDIDATES["production_conservative"]) == {
+        "gdn_colwarps_prefill": False}
+    assert candidate_owner_changes(CANDIDATES["production_baseline"]) == {}
 
 
 # --------------------------------------------------------------------------
@@ -374,14 +379,12 @@ def test_ab_measurement_scope_without_the_library_arm_binds_nothing():
 CONSUMER_CALL_SITES = (
     ("qwen4exp_layer2_profile_gate.py", "run",
      "bind_candidate_gdn_tile16_variant"),
-    ("qwen4exp_active_task_checks.py", "main",
-     "bind_candidate_gdn_tile16_variant"),
-    ("qwen4exp_long_context_gate.py", "run",
-     "bind_candidate_gdn_tile16_variant"),
-    ("qwen4exp_q8_repair_depth_gate.py", "main",
-     "bind_candidate_gdn_tile16_variant"),
-    ("qwen4exp_q8_repair_tasks.py", "main",
-     "bind_candidate_gdn_tile16_variant"),
+    # These four bind every declared owner through one call, so the tile-16
+    # helper is reached through it rather than by name.
+    ("qwen4exp_active_task_checks.py", "main", "bind_candidate_owners"),
+    ("qwen4exp_long_context_gate.py", "run", "bind_candidate_owners"),
+    ("qwen4exp_q8_repair_depth_gate.py", "main", "bind_candidate_owners"),
+    ("qwen4exp_q8_repair_tasks.py", "main", "bind_candidate_owners"),
     ("qwen4exp_prefill_restore_ab.py", "main", "gdn_tile16_variant_arm_scope"),
     ("qwen4exp_journey_localize.py", "main", "gdn_tile16_arm_scope"),
     ("qwen4exp_gdn_multi_engine_ab.py", "main", "gdn_tile16_variant"),

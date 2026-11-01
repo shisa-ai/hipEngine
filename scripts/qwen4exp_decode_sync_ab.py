@@ -34,11 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def configure_production_routes() -> None:
+    # The columnwarp enablement gate is request-local owner state
+    # (``gdn_colwarps_prefill``), so it is bound on the generator after
+    # construction rather than published here; only the layer allowlist stays a
+    # process key.
     os.environ.update(
         {
             "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27-47",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1",
@@ -55,6 +58,7 @@ def main() -> None:
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
     from hipengine.runtime.qwen4_exp_runner import (
+        gdn_colwarps_prefill,
         production_moe_prefill_enabled,
         q4_dp4a_decode,
         q8_mmq_prefill_enabled,
@@ -76,6 +80,7 @@ def main() -> None:
     q8_mmq_enabled = None
     owner_scope = ExitStack()
     try:
+        owner_scope.enter_context(gdn_colwarps_prefill(generator, True))
         owner_scope.enter_context(
             production_moe_prefill_enabled(generator, True)
         )

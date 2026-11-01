@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """Engagement probe: tiled16_multi GDN prefill on the UD-Q4_K_XL lane.
 
-The GD-4 terminal evidence shows the registered tiled16_multi kernel is
-1.39-2.39x faster than the UD lane's production wave_norm route, gated off
-solely by the arithmetic-recovery zero of GDN_COLWARPS_PREFILL. This probe
-verifies through-the-runner engagement on the UD lane: the recovery flag is
-overridden after generator construction and the tile16 owner is bound on that
-generator (it is owner state, not a process key), a counting registry hook on
-the multi variant records its calls, and one prefill per canonical depth
-establishes the window (rows, heads, layers) in which the kernel actually
-dispatches. Diagnostic only: no default changes.
+This probe verifies multi-column recurrence engagement through the UD runner.
+The production profile opens columnwarp admission and selects its own
+recurrence. The probe binds the multi-column leaf on the constructed generator,
+keeps admission open, and counts actual registry launches. One prefill at each
+canonical depth records the rows, heads and layers that dispatch. Both controls
+are owner state and are restored on exit. Diagnostic only: no default changes.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -34,7 +32,9 @@ from hipengine.generation.qwen4_exp_profiles import (
 )
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.kernels.registry import KernelKey, registered_keys, register, resolve
-from hipengine.runtime.qwen4_exp_runner import gdn_tile16_variant
+from hipengine.runtime.qwen4_exp_runner import (
+    gdn_colwarps_prefill, gdn_tile16_variant,
+)
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
 from scripts.qwen4exp_canonical_ar_bench import (
@@ -118,12 +118,14 @@ def main(argv=None) -> int:
         "cases": [],
     }
     try:
-        # Open the recovery gate after construction and bind the tile16 owner on
-        # the generator the probe measures; the published owner comes back when
-        # the scope closes, including after an exception.
-        os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] = "1"
+        # Open the gate and bind the tile16 owner on the generator the probe
+        # measures; both are request-local state, so nothing writes a process
+        # key, and the published values come back when the scope closes,
+        # including after an exception.
         register(key, counting, replace=True)
-        with gdn_tile16_variant(generator, VARIANT):
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(gdn_colwarps_prefill(generator, True))
+            stack.enter_context(gdn_tile16_variant(generator, VARIANT))
             for case in cases:
                 state["multi_calls"] = 0
                 state["shapes"] = []
@@ -135,12 +137,10 @@ def main(argv=None) -> int:
                     "first_shapes": state["shapes"][:4],
                 })
                 print(json.dumps(report["cases"][-1]), flush=True)
-        os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] = "0"
         engaged = any(c["multi_calls"] > 0 for c in report["cases"])
         report["engaged"] = engaged
         report["status"] = "passed" if engaged else "no-engagement"
     finally:
-        os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] = "0"
         register(key, real_multi, replace=True)
         generator.close()
         report["memory_after_close"] = memory_stats()

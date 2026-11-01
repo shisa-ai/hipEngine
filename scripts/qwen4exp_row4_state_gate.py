@@ -33,7 +33,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
     q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
-    router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
+    router_dpp_expected_calls,route_scope,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_FIELD,
     Q51_PAIR_FIELD,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
     q51_pair2_control_record,q51_register_cache_control_record,
@@ -595,20 +595,20 @@ def main():
                 "qwen4exp_sigmoid_wave_norm_narrow_prefill"), (
                 "production must publish the narrow GDN serial owner")
             # The counted serial leaf is the tiled branch's fallback, so the
-            # premise of every serial-arm count is that production binds the
-            # tiled branch open. ``route_scope`` closes it per measured run.
-            assert os.environ.get(GDN_COLWARPS_ENV, "") not in {"", "0"}, (
-                "production must bind the tiled GDN branch before a serial arm")
+            # premise of every serial-arm count is that production publishes
+            # the tiled branch open. ``route_scope`` closes it per measured run.
+            assert generator.runner.gdn_colwarps_prefill is True, (
+                "production must publish the tiled GDN branch before a serial arm")
             report["serial_route_control"] = {
-                "environment": GDN_COLWARPS_ENV,
-                "value": "0",
+                "runner_field": "gdn_colwarps_prefill",
+                "value": False,
                 "arms": "both",
                 "scope": "per measured run; restored on exit",
-                "production_value": os.environ[GDN_COLWARPS_ENV],
+                "production_value": True,
                 "reason": (
-                    "production binds the row-split tiled recurrence on every "
-                    "GDN layer, so the counted serial leaf only launches with "
-                    "the tiled branch closed"),
+                    "production publishes the row-split tiled recurrence on "
+                    "every GDN layer, so the counted serial leaf only launches "
+                    "with the tiled branch closed"),
             }
         if args.route_package == "q51-register-cache":
             # The plan publishes the register-cache fallback on the runner, but

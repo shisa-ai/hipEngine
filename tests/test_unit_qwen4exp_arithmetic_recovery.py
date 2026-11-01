@@ -108,9 +108,10 @@ def test_production_ud_owner_and_quarantined_q4km_binding(monkeypatch):
 
     # The UD profile keeps the colwarps gate open and names the row-split
     # recurrence, the composition's replacement for the multi-column body. The
-    # leaf is owner state, so nothing writes the retired process key.
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    # gate and the leaf are owner state, so nothing writes the retired keys.
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_tile16_variant == "qwen4exp_gdn_rowsplit_prefill"
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT" not in os.environ
     assert resolve_kernel(
         backend="hip_gfx1151", layer="gdn_recurrence_norm_gate",
@@ -130,7 +131,8 @@ def test_production_ud_owner_and_quarantined_q4km_binding(monkeypatch):
     other_owner = SimpleNamespace()
     other.binder(other_owner, other)
     assert other.fell_back_to_strict
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
+    assert other_owner.gdn_colwarps_prefill is False
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL" not in os.environ
     # The quarantine is the closed gate plus an unbound owner, so no tiled leaf
     # can be selected even if a diagnostic names one.
     assert other_owner.gdn_tile16_variant is None

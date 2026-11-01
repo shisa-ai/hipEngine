@@ -2,9 +2,9 @@
 """Same-residency engine A/B for the tiled16_multi GDN prefill route.
 
 One model residency, all 12 canonical cases, production compact-capture path,
-balanced arm order per repetition. The before-arm runs the production
-wave_norm route (recovery-zeroed colwarps gate); the after-arm reopens the
-gate and binds the multi variant as the generator's tile-16 prefill owner, the
+balanced arm order per repetition. The before arm keeps the production
+profile's published gate and recurrence; the after arm opens the gate and
+binds the multi variant as the generator's tile-16 prefill owner, the
 same owner slot the engagement probe validated. Engagement is verified by a
 counting registry hook on the multi variant. This candidate changes arithmetic
 (reassociation at fp32 round-off), so cross-arm digests are not expected to
@@ -14,6 +14,7 @@ this A/B measures the engine-level performance delta.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -35,7 +36,8 @@ from hipengine.generation.qwen4_exp_profiles import (
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.kernels.registry import register, registered_keys, resolve
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_tile16_variant, resolve_gdn_tile16_variant,
+    gdn_colwarps_prefill, gdn_tile16_variant, resolve_gdn_colwarps_prefill,
+    resolve_gdn_tile16_variant,
 )
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
@@ -52,7 +54,16 @@ VARIANT = "qwen4exp_gdn_tiled16_multi_prefill"
 BACKEND = "hip_gfx1151"
 CHUNK_SIZE = 4096
 TRANSITIONS = 128
-COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
+
+
+@contextlib.contextmanager
+def _combined_scope(*scopes):
+    """Enter several diagnostic scopes together, and only when entered."""
+
+    with contextlib.ExitStack() as stack:
+        for scope in scopes:
+            stack.enter_context(scope)
+        yield
 
 
 def _arm_summary(rows):
@@ -117,23 +128,27 @@ def main(argv=None) -> int:
         return real_multi(*call_args, **kwargs)
 
     register(key, counting, replace=True)
-    before_colwarps = os.environ.get(COLWARPS_ENV, "0")
-    # The tile-16 GDN prefill leaf is the owning generator/runner's state now,
-    # so the before arm restores the value the profile published (the UD lane's
-    # row-split recurrence) instead of a captured process value.
+    # The columnwarp gate is the owning generator/runner's state now, so the
+    # before arm restores the value the profile published (the UD lane keeps it
+    # open) instead of a captured process value. The tile-16 GDN prefill leaf is
+    # the same kind of state, so its before value comes back the same way.
+    before_colwarps = resolve_gdn_colwarps_prefill(generator)
     before_tile16 = resolve_gdn_tile16_variant(generator)
 
-    def set_arm(arm: str) -> None:
-        if arm == "after":
-            os.environ[COLWARPS_ENV] = "1"
-        else:
-            os.environ[COLWARPS_ENV] = before_colwarps or "0"
+    def arm_scope(arm: str):
+        """Bind this arm's gate and tile-16 leaf, restoring the published ones.
 
-    def tile16_arm(arm: str):
-        """Bind the tile-16 leaf this arm measures, restoring the published one."""
+        The gate is opened for the measured rows and the multi-column leaf is
+        named only in the after arm; the before arm keeps the profile's own
+        gate value and leaf. Both come back on unwind.
+        """
 
-        return gdn_tile16_variant(
-            generator, VARIANT if arm == "after" else before_tile16)
+        return _combined_scope(
+            gdn_colwarps_prefill(
+                generator, True if arm == "after" else before_colwarps),
+            gdn_tile16_variant(
+                generator, VARIANT if arm == "after" else before_tile16),
+        )
 
     prefill_kwargs, step_kwargs = _capture_kwargs("compact")
     report: dict = {
@@ -162,10 +177,9 @@ def main(argv=None) -> int:
             case_id = str(case["id"])
             case_samples: dict = {"before": [], "after": []}
             for arm in ("after", "before"):
-                set_arm(arm)
                 for _ in range(args.warmups_per_mode):
                     state["calls"] = 0
-                    with tile16_arm(arm):
+                    with arm_scope(arm):
                         _hipengine_case_sample(
                             runner=generator.runner, case=case, repetition=-1,
                             transitions=TRANSITIONS,
@@ -176,9 +190,8 @@ def main(argv=None) -> int:
             for repetition in range(3):
                 order = ("before", "after") if (repetition + case_index) % 2 == 0 else ("after", "before")
                 for arm in order:
-                    set_arm(arm)
                     state["calls"] = 0
-                    with tile16_arm(arm):
+                    with arm_scope(arm):
                         row = _hipengine_case_sample(
                             runner=generator.runner, case=case, repetition=repetition,
                             transitions=TRANSITIONS,
@@ -237,7 +250,6 @@ def main(argv=None) -> int:
         )
         report["status"] = "completed"
     finally:
-        set_arm("before")
         register(key, real_multi, replace=True)
         generator.close()
         report["memory_after_close"] = memory_stats()

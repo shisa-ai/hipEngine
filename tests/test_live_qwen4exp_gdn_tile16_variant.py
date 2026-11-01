@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import ctypes
-from contextlib import nullcontext
+from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
@@ -73,13 +73,11 @@ def test_public_gdn_variant_owner(monkeypatch, profile, length, override, expect
                      if profile == 'production' else None)
         assert generator.gdn_tile16_variant == published
         assert generator.runner.gdn_tile16_variant == published
-        scope = (nullcontext() if override == 'published'
-                 else module.gdn_tile16_variant(generator, override))
-        with scope:
-            # Diagnostic selection does not change the existing capability gate.
-            # Open it explicitly only for these diagnostic override cases.
+        with ExitStack() as scopes:
             if override != 'published':
-                monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL', '1')
+                scopes.enter_context(module.gdn_tile16_variant(generator, override))
+                # Leaf selection and branch admission are independent owners.
+                scopes.enter_context(module.gdn_colwarps_prefill(generator, True))
             outputs = llm.generate_detailed(
                 [[1] * length], SamplingParams(max_tokens=3, temperature=0,
                                               ignore_eos=True, speculative_mtp=False))

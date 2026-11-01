@@ -24,10 +24,11 @@ from scripts.qwen4exp_halo_box_campaign_ab import summarize_campaign_ab
 from scripts.qwen4exp_ple_gather_ab import pair_sequence
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, CANDIDATES, gr_wide_arm_scope,
+    gdn_colwarps_prefill_arm_scope,
 )
 from scripts.qwen4exp_journey_localize import set_flags
 from hipengine.runtime.qwen4_exp_runner import (
-    q8_mmq_prefill_enabled, qsa_h256_prefill_mode,
+    q8_mmq_prefill_enabled, qsa_h256_prefill_mode, resolve_gdn_colwarps_prefill,
 )
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
@@ -44,6 +45,20 @@ def arm_gr_wide(mode, published):
     if mode == "before":
         return bool(published)
     return bool(CANDIDATES["production_conservative"].gr_wide)
+
+
+def arm_gdn_colwarps(mode):
+    """The columnwarp admission gate this mode's former process value implied.
+
+    The conservative package's environment carried
+    ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL=0``, so its ``after`` samples ran
+    the serial strict prefill owners and its ``before`` reference kept whatever
+    the production bind published. ``None`` leaves that publication in place.
+    """
+
+    if mode == "before":
+        return None
+    return CANDIDATES["production_conservative"].gdn_colwarps_prefill
 
 
 def summarize_cost(samples, pairs):
@@ -89,6 +104,8 @@ def main():
         report["arm_gr_wide"] = {
             mode: arm_gr_wide(mode, published_gr_wide)
             for mode in ("before", "after")}
+        report["arm_gdn_colwarps_prefill"] = {
+            mode: arm_gdn_colwarps(mode) for mode in ("before", "after")}
         previous = {key: os.environ.get(key) for key in overrides}
         report["arm_overrides"] = {"before": previous, "after": overrides}
         original_step = runner.step
@@ -125,6 +142,8 @@ def main():
             with (
                 q8_scope,
                 gr_wide_arm_scope(runner, arm_gr_wide(mode, published_gr_wide)),
+                gdn_colwarps_prefill_arm_scope(
+                    runner, arm_gdn_colwarps(mode)),
                 qsa_h256_prefill_mode(
                     runner,
                     CANDIDATES["production_conservative"].qsa_h256_prefill_mode
@@ -133,6 +152,9 @@ def main():
             ):
                 row = _hipengine_case_sample(
                     runner, case=case, repetition=rep, transitions=fixture["decode_transitions"])
+                # Read inside the scope: the gate these samples ran under.
+                row["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
+                    runner)
             logits = np.asarray(last["result"].logits)
             state = _state_summary(runner)
             if not logits.size or not np.isfinite(logits).all() or not state["finite"]:

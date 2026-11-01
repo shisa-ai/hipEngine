@@ -1,0 +1,618 @@
+{
+  "performance_claim": false,
+  "promotion_claim": false,
+  "pairs": [
+    {
+      "mode": "public",
+      "before_source": {
+        "path": "~/hipEngine",
+        "head": "321321f4b2c1e50ee8b8056b7b87959038029cb7",
+        "tracked_clean": false
+      },
+      "after_source": {
+        "path": "~/hipEngine",
+        "head": "2a10fb07335931e23c967a8b73b962b1d7b2225d",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0"
+      },
+      "arrays": 8,
+      "logits_exact": true,
+      "max_abs_logit_delta": 0.0,
+      "all_finite": true,
+      "lifecycle_clean": true,
+      "cases": [
+        {
+          "profile": "strict",
+          "length": 23,
+          "calls": [],
+          "owner_variant": null,
+          "runner_variant": null
+        },
+        {
+          "profile": "strict",
+          "length": 73,
+          "calls": [],
+          "owner_variant": null,
+          "runner_variant": null
+        },
+        {
+          "profile": "strict",
+          "length": 257,
+          "calls": [],
+          "owner_variant": null,
+          "runner_variant": null
+        },
+        {
+          "profile": "strict",
+          "length": 389,
+          "calls": [],
+          "owner_variant": null,
+          "runner_variant": null
+        },
+        {
+          "profile": "production",
+          "length": 23,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_prefill"
+          ],
+          "owner_variant": "qwen4exp_gdn_rowsplit_prefill",
+          "runner_variant": "qwen4exp_gdn_rowsplit_prefill"
+        },
+        {
+          "profile": "production",
+          "length": 73,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_prefill"
+          ],
+          "owner_variant": "qwen4exp_gdn_rowsplit_prefill",
+          "runner_variant": "qwen4exp_gdn_rowsplit_prefill"
+        },
+        {
+          "profile": "production",
+          "length": 257,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_prefill"
+          ],
+          "owner_variant": "qwen4exp_gdn_rowsplit_prefill",
+          "runner_variant": "qwen4exp_gdn_rowsplit_prefill"
+        },
+        {
+          "profile": "production",
+          "length": 389,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_prefill"
+          ],
+          "owner_variant": "qwen4exp_gdn_rowsplit_prefill",
+          "runner_variant": "qwen4exp_gdn_rowsplit_prefill"
+        }
+      ],
+      "source_report_hashes": {
+        "r0039-after.json": "5c3a0d3acabd41e7fe76f5681c6b71dd42a24dd37f3b587debd55f4982417fb5",
+        "r0023-public-after.json": "47dac473e545e707356ad3c37155facf6d6c3acabdb1d3aba7820e2cc6aeeebd"
+      },
+      "logit_archive_hashes": {
+        "r0039-after.npz": "2a708355b34534c094afaadeceb1e6db8ddc33c3eb42539a0d154dba33fa125f",
+        "r0023-public-after.npz": "2a708355b34534c094afaadeceb1e6db8ddc33c3eb42539a0d154dba33fa125f"
+      }
+    },
+    {
+      "mode": "gate_on",
+      "before_source": {
+        "path": "~/hipEngine",
+        "head": "321321f4b2c1e50ee8b8056b7b87959038029cb7",
+        "tracked_clean": false
+      },
+      "after_source": {
+        "path": "~/hipEngine",
+        "head": "2a10fb07335931e23c967a8b73b962b1d7b2225d",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0"
+      },
+      "arrays": 1560,
+      "logits_exact": true,
+      "max_abs_logit_delta": 0.0,
+      "all_finite": true,
+      "lifecycle_clean": true,
+      "cases": [
+        {
+          "profile": "strict",
+          "id": "code-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "eb4fd552dbed1fa4f4923de4956a012e1b4960c9dc7e64db12d6de8c354217e3",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "88061ab2694158adac6235f68a969951dc7190a573ff5355db189f3a33b298f7",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_ja-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "13ddc7fe86167d4936d902a507387a1bb33aaa57580fc00d1caeccec92bdac50",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "mixed_ja_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "5a411e93e8319cb895fead17577b8bd76df7d8489c0e5db8b2ea9af7fd876227",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "code-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "817001d6e3ac208e8f4b03ee39c3337a32fa33f65e641c5808d711ba3e9bfb40",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "3220649c6119a2a69cc2eb31dc6c739ffd93df5c4d0ff862b669aa102c7db3e1",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_ja-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "e639ba2d0c9bf338be1bb128f6e082d92cb7eeb97526054d656b85864577e9cb",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "mixed_ja_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "aae217feb28b327b2f7a841dae763e8ba2caa5acf5d8d49c7b20b9c66469a6da",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "code-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "817001d6e3ac208e8f4b03ee39c3337a32fa33f65e641c5808d711ba3e9bfb40",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_en-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "3220649c6119a2a69cc2eb31dc6c739ffd93df5c4d0ff862b669aa102c7db3e1",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_ja-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "e639ba2d0c9bf338be1bb128f6e082d92cb7eeb97526054d656b85864577e9cb",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "mixed_ja_en-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "aae217feb28b327b2f7a841dae763e8ba2caa5acf5d8d49c7b20b9c66469a6da",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "code-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "98c6e7815d46f9fb44a635d5c0730ec71fa40b4b906c0eae0d9af7b7bfcf964f",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "cc048bdd826eb5363694718d02abb74916cf621fd5eaf65ebad26c2aefd4b22f",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_ja-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "a9d6f427986e72c124a80f9ece1a3c181ed159631c932dcbeaa64c209d44425e",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "mixed_ja_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_multi_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_multi_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "942cb1636043633179b8b4754dee37e0c2c5dd4d31aed9b2f3fa9656434df2c2",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "code-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "56dd5ddfa8ec833ec94daf1858b40cdb8c75b51e69c266c311223e8dc45bc9a1",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "1cdbce1d26b6692139ebb19fc8d78733205bf3f6722e4d57101f29971dbb4044",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_ja-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "3dd967cfd3c1dcf7cef0702bfb888cfa0c552be83e3fec05168410068cb922fa",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "mixed_ja_en-p1024",
+          "variant": "qwen4exp_gdn_tiled16_dpp_prefill",
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_gdn_tiled16_dpp_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "2c80b6c6d9d8724fef1e5f5a66d9170003914f0a42aa23939fd15a256f048b4f",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "code-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16",
+            "qwen4exp_gdn_rowsplit_decode"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "56dd5ddfa8ec833ec94daf1858b40cdb8c75b51e69c266c311223e8dc45bc9a1",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_en-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16",
+            "qwen4exp_gdn_rowsplit_decode"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "1cdbce1d26b6692139ebb19fc8d78733205bf3f6722e4d57101f29971dbb4044",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_ja-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16",
+            "qwen4exp_gdn_rowsplit_decode"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "3dd967cfd3c1dcf7cef0702bfb888cfa0c552be83e3fec05168410068cb922fa",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "mixed_ja_en-p1024",
+          "variant": null,
+          "calls": [
+            "default_tiled16",
+            "qwen4exp_gdn_rowsplit_decode"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "2c80b6c6d9d8724fef1e5f5a66d9170003914f0a42aa23939fd15a256f048b4f",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        }
+      ],
+      "source_report_hashes": {
+        "r0039-depth-after.json": "697fe44df3afb9b1a40441bd0fb441534479554e1759f0ebb120bbf3d5bac846",
+        "r0023-depth-on-after.json": "e399f49ff57cc89066ddd778d280151c83a1eb95667aaaaedd75ded25e5325e8"
+      },
+      "logit_archive_hashes": {
+        "r0039-depth-after.npz": "ecd55e0f65ebd08f5d5fdf516037b24844349a40477f5b1441933dd63a126105",
+        "r0023-depth-on-after.npz": "ecd55e0f65ebd08f5d5fdf516037b24844349a40477f5b1441933dd63a126105"
+      }
+    },
+    {
+      "mode": "gate_off",
+      "before_source": {
+        "path": "~/hipEngine",
+        "head": "2a10fb07335931e23c967a8b73b962b1d7b2225d",
+        "tracked_clean": false
+      },
+      "after_source": {
+        "path": "~/hipEngine",
+        "head": "2a10fb07335931e23c967a8b73b962b1d7b2225d",
+        "tracked_clean": false
+      },
+      "host": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0"
+      },
+      "arrays": 520,
+      "logits_exact": true,
+      "max_abs_logit_delta": 0.0,
+      "all_finite": true,
+      "lifecycle_clean": true,
+      "cases": [
+        {
+          "profile": "strict",
+          "id": "code-p1024",
+          "variant": null,
+          "calls": [],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "c361a271eb39a9df91e9d3851f40c8960da3256ca709aab4ab76e56063c3a8bf",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_en-p1024",
+          "variant": null,
+          "calls": [],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "f86f4bac7694cdbf4e5e620c3d1b8c3cef636cc096892b16961e41d82395686d",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "general_ja-p1024",
+          "variant": null,
+          "calls": [],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "8c95ff29c7971327b4342873044dc1d17b11c5d46a42c56da55a445837c95db6",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "strict",
+          "id": "mixed_ja_en-p1024",
+          "variant": null,
+          "calls": [],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "45094bf8b8ac4d3947b31dce9403116534e678fd5fd25002fcadd8b6f30ac21f",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "code-p1024",
+          "variant": null,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "3d13ed4ffaff4f987a95371e9373aab237de262743e000970d0352b261d55712",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_en-p1024",
+          "variant": null,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "f1bf201e8060dcdd167e958ce2898913f19cba48e6549b52b09e210102a25ad2",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "general_ja-p1024",
+          "variant": null,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "dd6ba0b24594861e44a12693805f00b8efb719826cb820461b2b0d4571fb609a",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        },
+        {
+          "profile": "production",
+          "id": "mixed_ja_en-p1024",
+          "variant": null,
+          "calls": [
+            "qwen4exp_gdn_rowsplit_decode",
+            "qwen4exp_sigmoid_wave_norm_narrow_prefill"
+          ],
+          "repeat_exact": true,
+          "state_exact": true,
+          "state_sha256": "d1fcfaecc2598c8c367b2417d569aedbaa2f9bfd7c487e2582a2477c195043d4",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "state_finite": true
+        }
+      ],
+      "source_report_hashes": {
+        "r0023-depth-off-before.json": "393a8d9f70146dee382ec2c6e5494d066d22437c6e27500a7297de8c1195c857",
+        "r0023-depth-off-after.json": "393a8d9f70146dee382ec2c6e5494d066d22437c6e27500a7297de8c1195c857"
+      },
+      "logit_archive_hashes": {
+        "r0023-depth-off-before.npz": "9c81d6b57a17b60c1522668bcd1d5047660e0edfd8baf94d7d6ce6c93fd5797a",
+        "r0023-depth-off-after.npz": "9c81d6b57a17b60c1522668bcd1d5047660e0edfd8baf94d7d6ce6c93fd5797a"
+      }
+    }
+  ],
+  "scope": "R0023 admission transport preservation, not arithmetic qualification"
+}

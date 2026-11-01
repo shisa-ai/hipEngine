@@ -314,9 +314,9 @@ def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
     candidate = _load_script().CANDIDATES["production_conservative"]
     assert candidate.base_profile == "production"
     assert set(candidate.environment.values()) == {"0"}
-    for suffix in ("Q8_0_SELECTED_WMMA_DOWN",
-                   "QSA_ORDERED_DECODE", "GDN_COLWARPS_PREFILL"):
+    for suffix in ("Q8_0_SELECTED_WMMA_DOWN", "QSA_ORDERED_DECODE"):
         assert candidate.environment["HIPENGINE_QWEN4_EXP_" + suffix] == "0"
+    assert candidate.gdn_colwarps_prefill is False
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in candidate.environment
     assert candidate.q8_mmq_prefill_enabled is False
     assert candidate.q4_dp4a_decode_enabled is False

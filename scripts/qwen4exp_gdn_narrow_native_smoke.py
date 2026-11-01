@@ -72,7 +72,6 @@ def main():
         kv_dtype="BF16", prefill_chunk_size=4096, max_sequence_length=4352, decode_steps=16, cases=[])
     generator = None
     originals = {}
-    colwarps_env = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
     colwarps_previous = None
     colwarps_bound = False
     try:
@@ -82,21 +81,22 @@ def main():
             backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
         assert generator.runner.gdn_prefill_variant == narrow
         report["native_binder_value"] = generator.runner.gdn_prefill_variant
-        # Production binds the row-split tiled recurrence on every GDN layer, so
-        # the serial leaf this smoke counts only launches with the tiled branch
-        # closed. The key is read per dispatch; the profile's own value comes
-        # back in ``finally``.
-        colwarps_previous = os.environ.get(colwarps_env)
-        os.environ[colwarps_env] = "0"
+        # Production publishes the row-split tiled recurrence on every GDN
+        # layer, so the serial leaf this smoke counts only launches with the
+        # tiled branch closed. The gate is request-local runner state; the
+        # profile's own value comes back in ``finally``.
+        colwarps_previous = bool(
+            getattr(generator.runner, "gdn_colwarps_prefill", False))
+        generator.runner.gdn_colwarps_prefill = False
         colwarps_bound = True
         report["serial_route_control"] = {
-            "environment": colwarps_env, "value": "0",
+            "runner_field": "gdn_colwarps_prefill", "value": False,
             "previous": colwarps_previous, "arms": "all",
             "scope": "whole measurement; restored on exit",
             "reason": (
-                "production binds the row-split tiled recurrence on every GDN "
-                "layer, so the counted serial leaf only launches with the "
-                "tiled branch closed"),
+                "production publishes the row-split tiled recurrence on every "
+                "GDN layer, so the counted serial leaf only launches with "
+                "the tiled branch closed"),
         }
         counts = {wide: 0, narrow: 0}
         for variant in (wide, narrow):
@@ -166,10 +166,7 @@ def main():
         for key, fn in originals.items():
             register(key, fn, replace=True)
         if colwarps_bound:
-            if colwarps_previous is None:
-                os.environ.pop(colwarps_env, None)
-            else:
-                os.environ[colwarps_env] = colwarps_previous
+            generator.runner.gdn_colwarps_prefill = colwarps_previous
         if generator is not None:
             generator.close()
         report["memory_after_close"] = memory_stats()

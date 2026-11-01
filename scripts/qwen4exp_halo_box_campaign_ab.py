@@ -699,7 +699,9 @@ def restore_route_configuration(record, *, runner):
 
 #: Route packages whose counted leaf is the serial GDN recurrence.
 GDN_SERIAL_ROUTE_PACKAGES = frozenset({"gdn-narrow", "gdn-wave-norm"})
-GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
+#: The tiled GDN branch is request-local runner state now
+#: (``gdn_colwarps_prefill``); the serial arms bind it on the owning runner and
+#: only the layer allowlist stays a process key.
 #: Owners that preempt the grouped pair2 Q5_1 down chain - and with it the
 #: row-publish selection - on the shipped lane: the routed F16 WMMA down (the
 #: actual production owner), the exact iu8-risk+repair down, grouped MoE
@@ -1643,27 +1645,22 @@ def mmq_token64_control_record(runner=None, *, environment=os.environ):
     }
 
 
-@contextlib.contextmanager
-def gdn_serial_scope(*, environment=os.environ):
+def gdn_serial_scope(runner: Any):
     """Close the tiled GDN branch for the measured window of a serial arm.
 
-    Production binds ``GDN_COLWARPS_PREFILL=1`` with the row-split recurrence on
-    every GDN layer (``GDN_COLWARPS_LAYERS=0..47``), and that owner serves any
-    row count, so the serial wave-norm / narrow leaf these arms count never
-    launches while the tiled branch is open. Both arms close it; the profile's
-    own value comes back on exit. The key is read per dispatch, not cached at
-    construction, so closing it after the generator exists still takes effect.
+    Production publishes ``gdn_colwarps_prefill=True`` with the row-split
+    recurrence on every GDN layer (``GDN_COLWARPS_LAYERS=0..47``), and that
+    owner serves any row count, so the serial wave-norm / narrow leaf these arms
+    count never launches while the tiled branch is open. Both arms close it; the
+    profile's own value comes back on exit. The gate is request-local runner
+    state, so the scope binds it on the owning runner rather than writing a
+    process key, and it is read per dispatch, not cached at construction, so
+    closing it after the generator exists still takes effect.
     """
 
-    previous = environment.get(GDN_COLWARPS_ENV)
-    environment[GDN_COLWARPS_ENV] = "0"
-    try:
-        yield
-    finally:
-        if previous is None:
-            environment.pop(GDN_COLWARPS_ENV, None)
-        else:
-            environment[GDN_COLWARPS_ENV] = previous
+    from hipengine.runtime.qwen4_exp_runner import gdn_colwarps_prefill
+
+    return gdn_colwarps_prefill(runner, False)
 
 
 @contextlib.contextmanager
@@ -1794,7 +1791,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             gdn_register_prefill, gdn_peer_prefill,
         )
         return _combined_scope(
-            gdn_serial_scope(environment=environment),
+            gdn_serial_scope(runner),
             gdn_peer_prefill(runner, False),
             gdn_prefill_variant(runner, None),
             gdn_register_prefill(runner, mode == "after"),
@@ -1947,11 +1944,9 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         else:
             variant = gdn_prefill_variant(
                 runner, GDN_PREFILL_WIDE_VARIANT if mode == "after" else None)
-        # The variant is request-local runner state, but which owner serves the
-        # chunk is the profile's process-wide tiled branch. Close it for both
-        # arms so the counted serial leaf is the one that runs.
-        return _combined_scope(
-            gdn_serial_scope(environment=environment), variant)
+        # The variant and tiled admission are request-local runner state.
+        # Close admission for both arms so the counted serial leaf runs.
+        return _combined_scope(gdn_serial_scope(runner), variant)
     if route_package == "q51-register-cache":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -2923,13 +2918,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "after":{"gdn":"qwen4exp_sigmoid_wave_norm_prefill"}}
     if args.route_package in GDN_SERIAL_ROUTE_PACKAGES:
         artifact["serial_route_control"] = {
-            "environment": GDN_COLWARPS_ENV,
-            "value": "0",
+            "runner_field": "gdn_colwarps_prefill",
+            "value": False,
             "arms": "both",
             "scope": "per measured run; restored on exit",
             "reason": (
-                "production binds the row-split tiled recurrence on every GDN "
-                "layer, so the counted serial leaf only launches with the "
+                "production publishes the row-split tiled recurrence on every "
+                "GDN layer, so the counted serial leaf only launches with the "
                 "tiled branch closed"),
         }
     if args.route_package == "q51-register-cache":

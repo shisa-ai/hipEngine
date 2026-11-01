@@ -381,14 +381,16 @@ def _mixer_launch(
     """Run the real GDN token mixer on fake buffers and record its owner.
 
     Every projection, conv and post-mixer launch is stubbed, so the run reaches
-    exactly one recurrence leaf: the columnwarp parent (gate closed), the serial
-    strict owner (no tiled route), the directly imported tile-16 parent (no
-    owner name) or the registered leaf the owner names. ``resolve`` is stubbed
-    too, so the recorded call is the dispatch's own choice rather than a
-    registry lookup.
+    exactly one recurrence leaf: the columnwarp parent (gate open, tile-16
+    admission pinned off), the serial strict owner (gate closed), the directly
+    imported tile-16 parent (no owner name) or the registered leaf the owner
+    names. The columnwarp gate is the owning runner's decision, so it is passed
+    as the prefill chunk would forward it; the retired process key is never set.
+    ``resolve`` is stubbed too, so the recorded call is the dispatch's own
+    choice rather than a registry lookup.
     """
 
-    monkeypatch.setenv(COLWARPS_ENV, "1" if gate else "0")
+    owner_kwargs = {"gdn_colwarps_prefill": gate, **owner_kwargs}
     if stale is None:
         monkeypatch.delenv(ENV, raising=False)
     else:

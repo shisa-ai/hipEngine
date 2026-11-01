@@ -1,8 +1,7 @@
 import pytest
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
-from scripts.qwen4exp_halo_box_campaign_ab import (
-    GDN_COLWARPS_ENV, _apply_mode, route_scope)
+from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, route_scope
 
 WIDE = "qwen4exp_sigmoid_wave_norm_prefill"
 NARROW = "qwen4exp_sigmoid_wave_norm_narrow_prefill"
@@ -50,20 +49,19 @@ def test_route_scope_binds_the_runner_variant():
 
 @pytest.mark.parametrize("package", ["gdn-wave-norm", "gdn-narrow"])
 @pytest.mark.parametrize("mode", ["before", "after"])
-@pytest.mark.parametrize("previous", [None, "1"])
+@pytest.mark.parametrize("previous", [False, True])
 def test_route_scope_closes_the_tiled_gdn_branch_for_both_arms(
         package, mode, previous):
-    # The counted serial leaf is the tiled branch's fallback: production binds
-    # the row-split recurrence on every GDN layer, so an arm that leaves the
-    # tiled branch open counts zero serial calls and measures that owner.
+    # The counted serial leaf is the tiled branch's fallback: production
+    # publishes the row-split recurrence on every GDN layer, so an arm that
+    # leaves the tiled branch open counts zero serial calls and measures that
+    # owner. The gate is request-local runner state, so the arm binds it on the
+    # owner it measures and restores the published value.
     owner = type("Owner", (), {"gdn_prefill_variant": NARROW})()
-    env = {} if previous is None else {GDN_COLWARPS_ENV: previous}
-    with route_scope(package, mode, owner, environment=env):
-        assert env[GDN_COLWARPS_ENV] == "0"
-    if previous is None:
-        assert GDN_COLWARPS_ENV not in env
-    else:
-        assert env[GDN_COLWARPS_ENV] == previous
+    owner.gdn_colwarps_prefill = previous
+    with route_scope(package, mode, owner):
+        assert owner.gdn_colwarps_prefill is False
+    assert owner.gdn_colwarps_prefill is previous
 
 
 def _arm_variant(package, mode):
@@ -73,11 +71,13 @@ def _arm_variant(package, mode):
 
 
 def test_route_scope_leaves_the_tiled_gdn_branch_alone_for_other_packages():
-    owner = type("Owner", (), {"qsa_prefill_head_mode": "parent"})()
-    env = {GDN_COLWARPS_ENV: "1"}
-    with route_scope("qsa-head-pair", "after", owner, environment=env):
-        assert env[GDN_COLWARPS_ENV] == "1"
-    assert env[GDN_COLWARPS_ENV] == "1"
+    owner = type("Owner", (), {
+        "qsa_prefill_head_mode": "parent",
+        "gdn_colwarps_prefill": True,
+    })()
+    with route_scope("qsa-head-pair", "after", owner):
+        assert owner.gdn_colwarps_prefill is True
+    assert owner.gdn_colwarps_prefill is True
 
 
 @pytest.mark.parametrize("package", ["gdn-wave-norm", "gdn-narrow"])
@@ -87,29 +87,29 @@ def test_building_a_gdn_route_scope_binds_nothing(package, mode):
     # scope that mutates on construction would leave the arm bound before the
     # measured run and never restore it if the caller never entered.
     owner = type("Owner", (), {"gdn_prefill_variant": NARROW})()
-    env = {GDN_COLWARPS_ENV: "1"}
-    scope = route_scope(package, mode, owner, environment=env)
-    assert env == {GDN_COLWARPS_ENV: "1"}
+    owner.gdn_colwarps_prefill = True
+    scope = route_scope(package, mode, owner)
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_prefill_variant == NARROW
     with scope:
-        assert env[GDN_COLWARPS_ENV] == "0"
+        assert owner.gdn_colwarps_prefill is False
         assert owner.gdn_prefill_variant == _arm_variant(package, mode)
-    assert env[GDN_COLWARPS_ENV] == "1"
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_prefill_variant == NARROW
 
 
 def test_nested_gdn_route_scopes_restore_in_order():
     owner = type("Owner", (), {"gdn_prefill_variant": NARROW})()
-    env = {GDN_COLWARPS_ENV: "1"}
-    with route_scope("gdn-narrow", "after", owner, environment=env):
-        assert env[GDN_COLWARPS_ENV] == "0"
-        with route_scope("gdn-wave-norm", "after", owner, environment=env):
-            assert env[GDN_COLWARPS_ENV] == "0"
+    owner.gdn_colwarps_prefill = True
+    with route_scope("gdn-narrow", "after", owner):
+        assert owner.gdn_colwarps_prefill is False
+        with route_scope("gdn-wave-norm", "after", owner):
+            assert owner.gdn_colwarps_prefill is False
             assert owner.gdn_prefill_variant == WIDE
         # The inner scope restores the outer arm, not the profile's value.
-        assert env[GDN_COLWARPS_ENV] == "0"
+        assert owner.gdn_colwarps_prefill is False
         assert owner.gdn_prefill_variant == NARROW
-    assert env[GDN_COLWARPS_ENV] == "1"
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_prefill_variant == NARROW
 
 
@@ -119,14 +119,14 @@ def test_gdn_owner_probe_scope_binds_nothing_until_entered():
     from scripts.qwen4exp_gdn_owner_probe import serial_probe_scope
 
     owner = type("Owner", (), {"gdn_prefill_variant": NARROW})()
-    env = {GDN_COLWARPS_ENV: "1"}
-    scope = serial_probe_scope(owner, narrow_index=False, environment=env)
-    assert env == {GDN_COLWARPS_ENV: "1"}
+    owner.gdn_colwarps_prefill = True
+    scope = serial_probe_scope(owner, narrow_index=False)
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_prefill_variant == NARROW
     with scope:
-        assert env[GDN_COLWARPS_ENV] == "0"
+        assert owner.gdn_colwarps_prefill is False
         assert owner.gdn_prefill_variant is None
-    assert env[GDN_COLWARPS_ENV] == "1"
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_prefill_variant == NARROW
 
 
@@ -135,23 +135,22 @@ def test_gdn_owner_probe_scope_restores_after_a_setup_failure(narrow_index):
     from scripts.qwen4exp_gdn_owner_probe import serial_probe_scope
 
     owner = type("Owner", (), {"gdn_prefill_variant": NARROW})()
-    env = {GDN_COLWARPS_ENV: "1"}
+    owner.gdn_colwarps_prefill = True
     with pytest.raises(RuntimeError, match="setup failed"):
-        with serial_probe_scope(owner, narrow_index=narrow_index,
-                                environment=env):
+        with serial_probe_scope(owner, narrow_index=narrow_index):
             raise RuntimeError("setup failed")
-    assert env[GDN_COLWARPS_ENV] == "1"
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_prefill_variant == NARROW
 
 
 @pytest.mark.parametrize("package", ["gdn-wave-norm", "gdn-narrow"])
 def test_route_scope_restores_the_tiled_gdn_branch_after_an_exception(package):
     owner = type("Owner", (), {"gdn_prefill_variant": NARROW})()
-    env = {GDN_COLWARPS_ENV: "1"}
+    owner.gdn_colwarps_prefill = True
     with pytest.raises(RuntimeError):
-        with route_scope(package, "after", owner, environment=env):
+        with route_scope(package, "after", owner):
             raise RuntimeError("arm failed")
-    assert env[GDN_COLWARPS_ENV] == "1"
+    assert owner.gdn_colwarps_prefill is True
     assert owner.gdn_prefill_variant == NARROW
 
 

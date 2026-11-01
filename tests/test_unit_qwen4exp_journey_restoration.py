@@ -9,7 +9,7 @@ def test_gdn_restoration_is_isolated_and_counted():
     assert candidate.candidate_key[-1] == "qwen4exp_gdn_tiled16_dpp_prefill"
     assert all(key.startswith("HIPENGINE_QWEN4_EXP_GDN_")
                for key in candidate.environment)
-    assert candidate.environment["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    assert candidate.gdn_colwarps_prefill is True
     # The peer owner's layer scope is request-local runner state, so the arm
     # restores it as a binding rather than a process value.
     assert candidate.gdn_peer_prefill == ",".join(map(str, range(35, 48)))

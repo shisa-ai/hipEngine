@@ -48,8 +48,6 @@ def test_layer_gated_selectors_carry_their_layer_companion(module):
     pairs = {
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL":
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL":
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
         "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL":
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
     }
@@ -102,6 +100,8 @@ def test_arms_cover_every_disabled_prefill_selector(module):
             covered.add("Q8_MMQ_PREFILL")
         if "gr_wide" in owner:
             covered.add("GR_WIDE")
+        if "gdn_colwarps_prefill" in owner:
+            covered.add("GDN_COLWARPS_PREFILL")
     assert still_disabled <= covered, sorted(still_disabled - covered)
 
 def test_the_restored_flags_are_not_in_the_disabled_set(module):
@@ -132,14 +132,17 @@ def test_owner_state_routes_are_not_environment_arms(module):
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_GR_WIDE",
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL",
     ):
         assert all(key not in overrides for overrides in module.ARMS.values())
     assert module.OWNER_ARMS["moe"] == {"production_moe_prefill": "on"}
     assert module.OWNER_ARMS["q8_mmq"] == {"q8_mmq_prefill": "on"}
     assert module.OWNER_ARMS["gr_wide"] == {"gr_wide": "on"}
+    assert module.OWNER_ARMS["gdn_colwarps"] == {"gdn_colwarps_prefill": "on"}
     assert module.OWNER_ARMS["all_prefill"] == {
         "production_moe_prefill": "on",
         "q8_mmq_prefill": "on",
+        "gdn_colwarps_prefill": "on",
     }
 
 

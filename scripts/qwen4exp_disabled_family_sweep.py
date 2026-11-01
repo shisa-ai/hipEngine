@@ -178,8 +178,10 @@ FAMILIES: tuple[dict, ...] = (
     {
         "family": "GDN_COLWARPS_PREFILL",
         "env": {
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
+        },
+        "owner": {
+            "gdn_colwarps_prefill": "on",
         },
     },
     {
@@ -237,6 +239,9 @@ def _run(
             command += ["--q8-mmq-prefill", owner["q8_mmq_prefill"]]
         if "q8_wmma_layers" in owner:
             command += ["--q8-wmma-layers", owner["q8_wmma_layers"]]
+        if "gdn_colwarps_prefill" in owner:
+            command += [
+                "--gdn-colwarps-prefill", owner["gdn_colwarps_prefill"]]
     completed = subprocess.run(
         command, cwd=ROOT, capture_output=True, text=True, timeout=3600
     )

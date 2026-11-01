@@ -22,8 +22,7 @@ if str(ROOT) not in sys.path:
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.qwen4exp_layer2_profile_gate import (
-    _make_generator, CANDIDATES, bind_candidate_gdn_tile16_variant,
-    bind_candidate_q8_down_variant, gr_wide_arm_scope,
+    _make_generator, CANDIDATES, bind_candidate_owners, gr_wide_arm_scope,
 )
 from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
@@ -203,19 +202,13 @@ def main():
                 dispatch_stack.enter_context(
                     gr_wide_arm_scope(generator.runner, route))
                 report["arms"][name]["gr_wide"] = route
-                # The grouped Q8_0 down owner is a candidate declaration now,
-                # so the candidate arm binds it and the strict arm keeps the
-                # strict plan's published parent.
+                # The grouped Q8_0 down owner, the tile-16 GDN prefill owner and
+                # the GDN columnwarp gate are candidate declarations, so the
+                # candidate arm binds them and the strict arm keeps the strict
+                # plan's published decisions.
                 if name != "strict":
-                    report["arms"][name]["q8_down_variant"] = (
-                        bind_candidate_q8_down_variant(
-                            dispatch_stack, generator, candidate))
-                    # The tile-16 GDN prefill owner is a candidate declaration
-                    # as well, so the candidate arm binds the leaf it names and
-                    # the base profile's owner comes back on unwind.
-                    report["arms"][name]["gdn_tile16_variant"] = (
-                        bind_candidate_gdn_tile16_variant(
-                            dispatch_stack, generator, candidate))
+                    report["arms"][name].update(bind_candidate_owners(
+                        dispatch_stack, generator, candidate))
                 report["arms"][name]["q8_mmq_prefill_enabled"] = (
                     resolve_q8_mmq_prefill(generator))
                 if report["arms"][name]["q8_mmq_prefill_enabled"]:

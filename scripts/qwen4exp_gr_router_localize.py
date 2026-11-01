@@ -51,6 +51,18 @@ def hip_available() -> bool:
         return False
 
 
+def arm_gdn_colwarps(spec):
+    """The columnwarp admission gate this candidate declares, or ``None``.
+
+    ``CandidateSpec.gdn_colwarps_prefill`` is where a candidate's former
+    ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` value lives now that the
+    dispatch reads owner state. ``None`` means the candidate never named the
+    gate, so the arm keeps the production bind's published decision.
+    """
+
+    return spec.gdn_colwarps_prefill
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -73,6 +85,7 @@ def main() -> None:
     from scripts.qwen4exp_framework_family_refresh import model_identity
     from scripts.qwen4exp_layer2_profile_gate import (
         CANDIDATES, _make_generator, _strict_trajectory,
+        gdn_colwarps_prefill_arm_scope,
     )
     from scripts.qwen4exp_q8_repair_depth_gate import resolve_allocation_profile
     import hipengine.runtime.qwen4_exp_runner as runtime_module
@@ -126,11 +139,13 @@ def main() -> None:
 
         def arm_trajectory(
             environment: dict[str, str], case, *, q8_mmq_owner=None,
+            gdn_colwarps_owner=None,
         ):
             """Run one arm, recording per-step routing and logits evidence."""
 
             from hipengine.runtime.qwen4_exp_runner import (
-                q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
+                q8_mmq_prefill_enabled, resolve_gdn_colwarps_prefill,
+                resolve_q8_mmq_prefill,
             )
 
             previous = {key: os.environ.get(key) for key in environment}
@@ -172,9 +187,13 @@ def main() -> None:
                     if q8_mmq_owner is not None
                     else q8_mmq_prefill_enabled(generator)
                 )
-                with owner_scope:
+                with owner_scope, gdn_colwarps_prefill_arm_scope(
+                        generator, gdn_colwarps_owner):
                     if resolve_q8_mmq_prefill(generator):
                         generator.runner.configure_mmq_prefill_resources()
+                    # Read inside the scope: the gate this arm ran under.
+                    effective_gdn_colwarps = resolve_gdn_colwarps_prefill(
+                        generator)
                     trajectory = _strict_trajectory(
                         generator.runner, case["prompt_token_ids"],
                         args.decode_steps,
@@ -197,7 +216,7 @@ def main() -> None:
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
-            return steps
+            return steps, effective_gdn_colwarps
 
         try:
             for case in cases:
@@ -207,7 +226,10 @@ def main() -> None:
                 candidate = arm_trajectory(
                     dict(spec.environment), case,
                     q8_mmq_owner=spec.q8_mmq_prefill_enabled,
+                    gdn_colwarps_owner=arm_gdn_colwarps(spec),
                 )
+                strict, strict_gdn_colwarps = strict
+                candidate, candidate_gdn_colwarps = candidate
                 if len(strict) != len(candidate):
                     raise ValueError("arm step counts differ")
 
@@ -270,6 +292,11 @@ def main() -> None:
                     "routing_differing_layers_total": int(sum(routing_layers)),
                     "flip_rows": flips,
                     "rows": rows,
+                    "gdn_colwarps_prefill": {
+                        "strict": strict_gdn_colwarps,
+                        "candidate": candidate_gdn_colwarps,
+                        "candidate_override": arm_gdn_colwarps(spec),
+                    },
                 })
                 summary = {
                     key: report["cases"][-1][key]

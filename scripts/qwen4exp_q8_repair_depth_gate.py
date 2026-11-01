@@ -19,7 +19,7 @@ from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profil
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _strict_trajectory, _candidate_trajectory, _state_summary,
     _state_repeat_gate, CANDIDATES, bind_candidate_gr_wide,
-    bind_candidate_gdn_tile16_variant, bind_candidate_q8_down_variant,
+    bind_candidate_owners,
     candidate_dispatch_counter,
 )
 from scripts.qwen4exp_canonical_ar_bench import (
@@ -201,16 +201,12 @@ def main():
             # dispatch counting on the candidate key proves which projection ran.
             report["gr_wide"] = bind_candidate_gr_wide(
                 dispatch_stack, generator, spec)
-            # The grouped Q8_0 down owner is a candidate declaration now, not a
-            # process key; bind it on the runner this arm measures so a
-            # block-scale arm cannot silently run the plan's guarded default.
-            report["q8_down_variant"] = bind_candidate_q8_down_variant(
-                dispatch_stack, generator, spec)
-            # The tile-16 GDN prefill owner is a candidate declaration too, so
-            # bind it on the runner this arm measures and let the base profile's
-            # owner come back on unwind.
-            report["gdn_tile16_variant"] = bind_candidate_gdn_tile16_variant(
-                dispatch_stack, generator, spec)
+            # The grouped Q8_0 down owner, the tile-16 GDN prefill owner and
+            # the GDN columnwarp gate are candidate declarations now, not
+            # process keys; bind them on the runner this arm measures so an
+            # arm cannot silently run the plan's guarded default, and let the
+            # base profile's decisions come back on unwind.
+            report.update(bind_candidate_owners(dispatch_stack, generator, spec))
             if spec.q8_mmq_prefill_enabled is not None:
                 dispatch_stack.enter_context(q8_mmq_prefill_enabled(
                     generator, spec.q8_mmq_prefill_enabled))

@@ -799,16 +799,17 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
 
     assert ENV not in restore.SHARED_DECODE_SAFE_ENV
     assert WMMA_GATE in restore.SHARED_DECODE_SAFE_ENV
-    # The GDN tile-16 prefill owner is the same kind of decision as the Q8_0
-    # down owner: a prefill-or-uncaptured-attention selector, so graph identity
-    # ignores it and a candidate may bind it.
+    # The GDN tile-16 prefill owner and the columnwarp admission gate are the
+    # same kind of decision as the Q8_0 down owner: prefill-or-uncaptured
+    # selectors, so graph identity ignores them and a candidate may bind them.
     assert restore.SHARED_DECODE_SAFE_OWNER_FIELDS == {
-        "q8_down_variant", "gdn_tile16_variant"}
+        "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill"}
 
     restore.validate_shared_graphs(
         [{WMMA_GATE: "1"}], [{"q8_down_variant": WMMA}])
     restore.validate_shared_graphs(
         [], [{"gdn_tile16_variant": "qwen4exp_gdn_tiled16_multi_prefill"}])
+    restore.validate_shared_graphs([], [{"gdn_colwarps_prefill": False}])
     with pytest.raises(ValueError, match="captured decode units"):
         restore.validate_shared_graphs([{"HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1"}])
     with pytest.raises(ValueError, match="captured decode units"):
@@ -826,7 +827,12 @@ def test_the_shared_graph_inventory_lists_only_actual_owner_changes():
     # A candidate that keeps the plan's published owner inventories nothing, so
     # the validator never sees a literal "unchanged" entry.
     assert gate.candidate_owner_changes(
-        gate.CANDIDATES["production_conservative"]
+        gate.CANDIDATES["production_baseline"]
     ) == {}
+    # The conservative arm closes the columnwarp gate, which is a real owner
+    # change and must be inventoried rather than dropped.
+    assert gate.candidate_owner_changes(
+        gate.CANDIDATES["production_conservative"]
+    ) == {"gdn_colwarps_prefill": False}
     # A ``None`` entry is not a change even when it is passed explicitly.
     restore.validate_shared_graphs([], [{"q8_down_variant": None}])

@@ -29,50 +29,45 @@ def pair_order(index):
 
 
 @contextlib.contextmanager
-def serial_probe_scope(runner, *, narrow_index, environment=os.environ):
+def serial_probe_scope(runner, *, narrow_index):
     """Bind the probe's serial arm, and close the profile's tiled GDN branch.
 
     Both are undone on exit, including when setup after this point fails. The
-    serial leaf is the tiled branch's fallback: production binds the row-split
-    recurrence on every GDN layer, so a probe that leaves the branch open
-    intercepts nothing. The key is read per dispatch, so closing it after
-    construction takes effect. Building this scope changes nothing; only
-    entering it does.
+    serial leaf is the tiled branch's fallback: production publishes the
+    row-split recurrence on every GDN layer, so a probe that leaves the branch
+    open intercepts nothing. The gate is request-local runner state and is read
+    per dispatch, so closing it after construction takes effect. Building this
+    scope changes nothing; only entering it does.
     """
 
     from hipengine.runtime.qwen4_exp_runner import (
-        GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT, gdn_prefill_variant,
+        GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT,
+        gdn_colwarps_prefill, gdn_prefill_variant,
     )
 
-    env = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
-    previous = environment.get(env)
-    environment[env] = "0"
-    try:
-        with contextlib.ExitStack() as stack:
-            if narrow_index:
-                stack.enter_context(gdn_prefill_variant(
-                    runner, GDN_PREFILL_WIDE_VARIANT))
-                key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate",
-                                "f32_state", GDN_PREFILL_WIDE_VARIANT)
-                candidate_variant = GDN_PREFILL_NARROW_VARIANT
-            else:
-                stack.enter_context(gdn_prefill_variant(runner, None))
-                key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate",
-                                "f32_state", "qwen4exp_sigmoid_register_prefill")
-                candidate_variant = GDN_PREFILL_WIDE_VARIANT
-            yield key, candidate_variant, {
-                "environment": env, "value": "0", "previous": previous,
-                "arms": "both", "scope": "whole measurement; restored on exit",
-                "reason": (
-                    "production binds the row-split tiled recurrence on every "
-                    "GDN layer, so the counted serial leaf only launches with "
-                    "the tiled branch closed"),
-            }
-    finally:
-        if previous is None:
-            environment.pop(env, None)
+    previous = bool(getattr(runner, "gdn_colwarps_prefill", False))
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(gdn_colwarps_prefill(runner, False))
+        if narrow_index:
+            stack.enter_context(gdn_prefill_variant(
+                runner, GDN_PREFILL_WIDE_VARIANT))
+            key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate",
+                            "f32_state", GDN_PREFILL_WIDE_VARIANT)
+            candidate_variant = GDN_PREFILL_NARROW_VARIANT
         else:
-            environment[env] = previous
+            stack.enter_context(gdn_prefill_variant(runner, None))
+            key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate",
+                            "f32_state", "qwen4exp_sigmoid_register_prefill")
+            candidate_variant = GDN_PREFILL_WIDE_VARIANT
+        yield key, candidate_variant, {
+            "runner_field": "gdn_colwarps_prefill", "value": False,
+            "previous": previous,
+            "arms": "both", "scope": "whole measurement; restored on exit",
+            "reason": (
+                "production publishes the row-split tiled recurrence on every "
+                "GDN layer, so the counted serial leaf only launches with "
+                "the tiled branch closed"),
+        }
 
 
 def main():

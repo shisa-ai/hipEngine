@@ -68,6 +68,9 @@ _L = lambda layers: ",".join(str(layer) for layer in layers)  # noqa: E731
 #   the columnwarp owner still takes the chunk. Reaching the peer owner needs the
 #   columnwarp gate closed and the scope bound together, which no shipped plan
 #   and no candidate in this tree currently does.
+# * ``GDN_COLWARPS_PREFILL`` is request-local owner state now
+#   (``gdn_colwarps_prefill``), so its arm binds the gate through
+#   ``OWNER_ARMS``; only the layer allowlist stays an environment key.
 ARMS: dict[str, dict[str, str]] = {
     "baseline": {},
     "moe": {},
@@ -80,7 +83,6 @@ ARMS: dict[str, dict[str, str]] = {
     "gr_iu8": {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"},
     "gr_iu8_down": {"HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1"},
     "gdn_colwarps": {
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _L(
             PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS
         ),
@@ -101,7 +103,6 @@ ARMS: dict[str, dict[str, str]] = {
         "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": _L(
             PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS
         ),
@@ -118,9 +119,11 @@ OWNER_ARMS: dict[str, dict[str, str]] = {
     "moe": {"production_moe_prefill": "on"},
     "q8_mmq": {"q8_mmq_prefill": "on"},
     "gr_wide": {"gr_wide": "on"},
+    "gdn_colwarps": {"gdn_colwarps_prefill": "on"},
     "all_prefill": {
         "production_moe_prefill": "on",
         "q8_mmq_prefill": "on",
+        "gdn_colwarps_prefill": "on",
     },
 }
 
@@ -173,6 +176,9 @@ def _run_arm(
         command += ["--q8-mmq-prefill", owner["q8_mmq_prefill"]]
     if "gr_wide" in owner:
         command += ["--gr-wide", owner["gr_wide"]]
+    if "gdn_colwarps_prefill" in owner:
+        command += [
+            "--gdn-colwarps-prefill", owner["gdn_colwarps_prefill"]]
 
     started = time.monotonic()
     log = directory / "process.log"
@@ -215,6 +221,7 @@ def _run_arm(
             "production_moe_prefill_enabled": child.get(
                 "production_moe_prefill_enabled"),
             "gr_wide": child.get("gr_wide"),
+            "gdn_colwarps_prefill": child.get("gdn_colwarps_prefill"),
             "effective_route_missing_keys": [
                 key for key in sorted(overrides) if key not in route
             ],

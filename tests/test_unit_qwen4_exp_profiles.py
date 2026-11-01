@@ -541,7 +541,9 @@ def test_historical_q4km_binder_structure_not_qualification(
         int(value)
         for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS"].split(",")
     ) == PRODUCTION_Q4_IU8_PREFILL_LAYERS
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    assert production_generator.gdn_colwarps_prefill is True
+    assert fake_runner.gdn_colwarps_prefill is True
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL" not in os.environ
     assert tuple(
         int(value)
         for value in os.environ[

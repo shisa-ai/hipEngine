@@ -27,8 +27,10 @@ def test_repair_candidate_is_explicit_and_does_not_modify_baseline():
     assert spec.base_profile == "production"
     assert spec.environment == {
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
     }
+    # The columnwarp gate is request-local runner state, so the arm closes it
+    # with a binding instead of the retired process value.
+    assert spec.gdn_colwarps_prefill is False
     # The GDN peer owner is request-local runner state, so the arm closes its
     # layer scope with a binding instead of a process value.
     assert spec.gdn_peer_prefill is False

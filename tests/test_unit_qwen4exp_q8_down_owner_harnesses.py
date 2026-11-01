@@ -45,12 +45,12 @@ GUARDED = runtime.Q8_DOWN_GUARDED_VARIANT
 
 #: Candidate consumers that bind the arm's owner, and the helper each uses.
 OWNER_BINDING_CONSUMERS = {
-    "qwen4exp_active_task_checks.py": "bind_candidate_q8_down_variant",
+    "qwen4exp_active_task_checks.py": "bind_candidate_owners",
     "qwen4exp_layer2_profile_gate.py": "bind_candidate_q8_down_variant",
-    "qwen4exp_long_context_gate.py": "bind_candidate_q8_down_variant",
+    "qwen4exp_long_context_gate.py": "bind_candidate_owners",
     "qwen4exp_prefill_restore_ab.py": "q8_down_variant_arm_scope",
-    "qwen4exp_q8_repair_depth_gate.py": "bind_candidate_q8_down_variant",
-    "qwen4exp_q8_repair_tasks.py": "bind_candidate_q8_down_variant",
+    "qwen4exp_q8_repair_depth_gate.py": "bind_candidate_owners",
+    "qwen4exp_q8_repair_tasks.py": "bind_candidate_owners",
     "qwen4exp_journey_localize.py": "q8_down_arm_scope",
 }
 #: Candidate consumers whose only candidate declares no owner. Every other
@@ -293,10 +293,10 @@ def test_the_owner_free_consumers_run_candidates_that_declare_no_owner():
 
 def test_each_candidate_consumer_uses_the_shared_helper():
     expected = {
-        "qwen4exp_active_task_checks": gate.bind_candidate_q8_down_variant,
-        "qwen4exp_long_context_gate": gate.bind_candidate_q8_down_variant,
-        "qwen4exp_q8_repair_depth_gate": gate.bind_candidate_q8_down_variant,
-        "qwen4exp_q8_repair_tasks": gate.bind_candidate_q8_down_variant,
+        "qwen4exp_active_task_checks": gate.bind_candidate_owners,
+        "qwen4exp_long_context_gate": gate.bind_candidate_owners,
+        "qwen4exp_q8_repair_depth_gate": gate.bind_candidate_owners,
+        "qwen4exp_q8_repair_tasks": gate.bind_candidate_owners,
         "qwen4exp_prefill_restore_ab": gate.q8_down_variant_arm_scope,
     }
     for name, helper in expected.items():

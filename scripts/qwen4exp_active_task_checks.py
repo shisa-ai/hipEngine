@@ -23,8 +23,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.qwen4exp_candidate_dispatch import count_candidate_dispatch, shape_records
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, CANDIDATES,
-    bind_candidate_gdn_tile16_variant, bind_candidate_q8_down_variant,
-    gr_wide_arm_scope,
+    bind_candidate_owners, gr_wide_arm_scope,
 )
 from scripts.qwen4exp_q8_repair_depth_gate import (
     observe_prefill_chunks, resolve_allocation_profile, validate_chunk_allocation,
@@ -183,20 +182,15 @@ def main():
                     arm, bool(getattr(generator.runner, "gr_wide", False)))
                 owner_scope.enter_context(gr_wide_arm_scope(generator.runner, route))
                 packet.setdefault("gr_wide", {})[arm] = route
-                # The grouped Q8_0 down owner is a candidate declaration now,
-                # so the candidate arm binds it and the strict arm keeps the
-                # strict plan's published parent.
+                # The grouped Q8_0 down owner, the tile-16 GDN prefill owner and
+                # the GDN columnwarp gate are candidate declarations now, so the
+                # candidate arm binds them and the strict arm keeps the strict
+                # plan's published decisions. One call, so a declaration cannot
+                # be honored by one arm and skipped by another.
                 if arm != "strict":
-                    packet.setdefault("q8_down_variant", {})[arm] = (
-                        bind_candidate_q8_down_variant(
-                            owner_scope, generator, spec))
-                    # The tile-16 GDN prefill owner is a candidate declaration
-                    # as well, so the candidate arm binds the leaf it names and
-                    # the base profile's owner comes back on unwind. The
-                    # strict arm keeps the strict plan's published parent.
-                    packet.setdefault("gdn_tile16_variant", {})[arm] = (
-                        bind_candidate_gdn_tile16_variant(
-                            owner_scope, generator, spec))
+                    for name, value in bind_candidate_owners(
+                            owner_scope, generator, spec).items():
+                        packet.setdefault(name, {})[arm] = value
                 packet.setdefault("q8_mmq_prefill_enabled", {})[arm] = (
                     resolve_q8_mmq_prefill(generator))
                 if packet["q8_mmq_prefill_enabled"][arm]:

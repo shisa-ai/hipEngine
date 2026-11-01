@@ -144,6 +144,12 @@ PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
 # restoration pass writes back only the flags that remain process keys.
 _Q8_DOWN_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT"
 _Q8_DOWN_WMMA_VARIANT = "selected_grouped_wmma_prefill_bf16_bf16_out"
+# The GDN columnwarp enablement gate is request-local generator/runner state too
+# (``gdn_colwarps_prefill``), so the arithmetic-recovery sweep publishes it
+# instead of writing the retired process key. The layer allowlist stays a
+# process key.
+_GDN_COLWARPS_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
+_GDN_COLWARPS_PREFILL_FLAG = "GDN_COLWARPS_PREFILL"
 _PROCESS_RESTORED_Q8_QSA_FLAGS = {
     flag: value
     for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
@@ -1080,6 +1086,43 @@ def _publish_gdn_tile16_variant(generator: Any, variant: str | None) -> None:
         runner.gdn_tile16_variant = variant
 
 
+def _gdn_colwarps_prefill_enabled(
+    *, production: bool, quant: str | None, recovery_flags: Any,
+) -> bool:
+    """The GDN columnwarp gate this plan publishes.
+
+    Production opens the gate. The arithmetic-recovery pass that closed the
+    retired key ran only on the UD lane, so the recovery tuple can close this
+    branch only there: a production plan for any other quant keeps the branch
+    open even when a recovery entry names the flag. Strict and every plan that
+    falls back to the strict binder close it.
+    """
+
+    if not production:
+        return False
+    if quant == "gguf_ud_q4_k_xl" and _GDN_COLWARPS_PREFILL_FLAG in recovery_flags:
+        return False
+    return True
+
+
+def _publish_gdn_colwarps_prefill(generator: Any, enabled: bool) -> None:
+    """Publish the GDN columnwarp enablement gate as owner state.
+
+    The layer allowlist stays a process key: this decision says whether the
+    tiled branch runs, the list says which layers it serves. The value comes
+    from :func:`_gdn_colwarps_prefill_enabled`, so a recovery entry for this
+    flag closes the UD lane and nothing else, and the sweep cannot rewrite a
+    process key the dispatch no longer reads.
+    """
+
+    _record_owner_transport(
+        _GDN_COLWARPS_PREFILL_ENV, "1" if enabled else "0")
+    generator.gdn_colwarps_prefill = bool(enabled)
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.gdn_colwarps_prefill = bool(enabled)
+
+
 def _publish_q4_dp4a_decode(
     generator: Any,
     enabled: bool,
@@ -1499,15 +1542,11 @@ def _bind(
         # 20261004T000542 (the binder pin) and 20261004T001404 (this promotion).
         "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
         # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
+        # The enablement gate is the owning generator/runner's state now
+        # (``gdn_colwarps_prefill``), published below, so no process key names
+        # it. The layer allowlist stays a process key: the gate decides whether
+        # the tiled branch runs, this list decides which layers it serves.
         # Decode retains its separately tuned rows==1 owner.
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
-        # The tile16 leaf is consulted only inside the colwarps gate above, and
-        # it is the owning generator/runner's state now
-        # (``gdn_tile16_variant``), published below, so no process key names
-        # it. The multi-column owner is the plan's value for every production
-        # quant that keeps the gate open; the UD lane's f16-route composition
-        # row overrides it in the same publication, and the strict binder
-        # publishes None (the directly imported tile-16 parent).
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
             ",".join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
             if production
@@ -1671,6 +1710,7 @@ def _bind(
                 if flag not in {
                     "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                     "Q8_MMQ_PREFILL", "GR_WIDE",
+                    _GDN_COLWARPS_PREFILL_FLAG,
                 }
             }
         )
@@ -1684,6 +1724,21 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    # The GDN columnwarp enablement gate is the plan's decision, published on
+    # the owning generator/runner instead of the retired
+    # ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` key. Production opens it; the
+    # arithmetic-recovery pass that closed the key applies only to the UD lane,
+    # so a recovery entry for this flag closes UD and leaves a production plan
+    # for any other quant open. The layer allowlist stays a process key and is
+    # published by the plan environment above.
+    _publish_gdn_colwarps_prefill(
+        generator,
+        _gdn_colwarps_prefill_enabled(
+            production=production,
+            quant=resolved.manifest.get("quant"),
+            recovery_flags=PRODUCTION_ARITHMETIC_RECOVERY_FLAGS,
+        ),
+    )
     f16_routes = production and resolved.manifest.get("quant") in F16_ROUTE_QUANTS
     # The tile-16 GDN prefill leaf is the plan's own decision, published on the
     # owning generator/runner instead of the retired

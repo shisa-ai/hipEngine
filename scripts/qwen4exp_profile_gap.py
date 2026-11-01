@@ -53,7 +53,6 @@ ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT",
     "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES",
     "HIPENGINE_QWEN4_EXP_PLE_WARM",
-    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL",
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
     "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
@@ -432,6 +431,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the GR-up wide tile is owner state; use "
                 "--gr-wide instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL":
+            raise ValueError(
+                "the GDN columnwarp gate is owner state; use "
+                "--gdn-colwarps-prefill instead of --override"
+            )
         if key in overrides:
             raise ValueError(f"duplicate override for {key}")
         overrides[key] = value
@@ -445,6 +449,7 @@ def _named_profile_intact(
     q8_wmma_override: Q8WMMALayerScope | None = None,
     router_producer_override: str | None = None,
     gr_wide_override: bool | None = None,
+    gdn_colwarps_override: bool | None = None,
 ) -> bool:
     """A named profile is intact only when no post-binder override is active."""
 
@@ -455,6 +460,7 @@ def _named_profile_intact(
         and q8_wmma_override is None
         and router_producer_override is None
         and gr_wide_override is None
+        and gdn_colwarps_override is None
     )
 
 
@@ -465,6 +471,7 @@ def _configuration_class(
     q8_wmma_override: Q8WMMALayerScope | None = None,
     router_producer_override: str | None = None,
     gr_wide_override: bool | None = None,
+    gdn_colwarps_override: bool | None = None,
 ) -> str:
     return (
         "diagnostic_post_binder_override"
@@ -473,6 +480,7 @@ def _configuration_class(
         or q8_wmma_override is not None
         or router_producer_override is not None
         or gr_wide_override is not None
+        or gdn_colwarps_override is not None
         else "named_profile"
     )
 
@@ -631,6 +639,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--gdn-colwarps-prefill",
+        choices=("on", "off"),
+        help=(
+            "Explicit GDN columnwarp enablement gate for this measurement, "
+            "bound on the owning runner after the binder; the plan's published "
+            "gate is restored on exit. The layer allowlist and the tile-16 "
+            "admission decision stay at the dispatch"
+        ),
+    )
+    parser.add_argument(
         "--q8-wmma-layers",
         default=None,
         help=(
@@ -693,6 +711,10 @@ def main() -> None:
     )
     gr_wide_override = (
         None if args.gr_wide is None else args.gr_wide == "on"
+    )
+    gdn_colwarps_override = (
+        None if args.gdn_colwarps_prefill is None
+        else args.gdn_colwarps_prefill == "on"
     )
     q8_wmma_override = None
     if args.q8_wmma_layers is not None:
@@ -812,11 +834,11 @@ def main() -> None:
         "configuration_class": _configuration_class(
             overrides, production_moe_override, q8_mmq_override,
             q8_wmma_override, args.router_producer_variant,
-            gr_wide_override),
+            gr_wide_override, gdn_colwarps_override),
         "named_profile_intact": _named_profile_intact(
             overrides, production_moe_override, q8_mmq_override,
             q8_wmma_override, args.router_producer_variant,
-            gr_wide_override),
+            gr_wide_override, gdn_colwarps_override),
         "overrides": dict(overrides),
         "override_stage": "post_profile_binder_pre_measurement",
         "production_moe_prefill_enabled": None,
@@ -825,6 +847,8 @@ def main() -> None:
         "router_producer_variant": None,
         "gr_wide_override": gr_wide_override,
         "gr_wide": None,
+        "gdn_colwarps_prefill_override": gdn_colwarps_override,
+        "gdn_colwarps_prefill": None,
         "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
@@ -898,6 +922,22 @@ def main() -> None:
 
             q4_scope.enter_context(gr_wide(generator, gr_wide_override))
         report["gr_wide"] = bool(getattr(runner, "gr_wide", False))
+        if gdn_colwarps_override is not None:
+            from hipengine.runtime.qwen4_exp_runner import (
+                gdn_colwarps_prefill, resolve_gdn_colwarps_prefill,
+            )
+
+            q4_scope.enter_context(gdn_colwarps_prefill(
+                generator, gdn_colwarps_override))
+            report["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
+                generator)
+        else:
+            from hipengine.runtime.qwen4_exp_runner import (
+                resolve_gdn_colwarps_prefill,
+            )
+
+            report["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
+                generator)
         if q4_dp4a_override is not None:
             from hipengine.runtime.qwen4_exp_runner import q4_dp4a_decode
 

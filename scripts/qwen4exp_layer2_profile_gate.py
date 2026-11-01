@@ -61,6 +61,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     router_producer_variant,
     q8_down_variant, resolve_q8_down_variant,
     gdn_tile16_variant, resolve_gdn_tile16_variant,
+    gdn_colwarps_prefill, resolve_gdn_colwarps_prefill,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -144,6 +145,14 @@ class CandidateSpec:
     # pre-multi-column route. The columnwarp gate and the admission decision
     # stay at the dispatch, so a bound owner still cannot run outside them.
     gdn_tile16_variant: str | None = None
+    # Explicit GDN columnwarp enablement gate for this arm, same protocol.
+    # ``None`` keeps the base profile's published gate (on for a production
+    # base, off for strict); ``True`` opens the tiled branch for the measured
+    # rows and ``False`` binds the serial strict owners, with the published
+    # value restored after. The layer allowlist and the tile-16 admission
+    # decision stay at the dispatch, so a bound gate still cannot run outside
+    # them.
+    gdn_colwarps_prefill: bool | None = None
     # Explicit GR-up wide tile for this arm, same protocol. ``None`` keeps the
     # base profile's published route (on for the F16 route composition, the
     # fused exact parent on every other plan); ``True`` binds the wide tile for
@@ -360,7 +369,9 @@ CANDIDATES = {
                      if flag not in {
                          "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                          "Q8_MMQ_PREFILL", "GR_WIDE",
+                         "GDN_COLWARPS_PREFILL",
                      }},
+        gdn_colwarps_prefill=False,
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
         candidate_key=None,
@@ -526,9 +537,8 @@ CANDIDATES = {
             "GD-4 drift screens, fp32 round-off class); the production "
             "wave_norm route stays the registered strict fallback"
         ),
-        environment={
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
-        },
+        environment={},
+        gdn_colwarps_prefill=True,
         gdn_tile16_variant="qwen4exp_gdn_tiled16_multi_prefill",
         base_profile="production",
         scenario_id="qwen4exp-gdn-tiled16-multi",
@@ -679,10 +689,10 @@ CANDIDATES = {
         classification="diagnostic",
         mechanism="current GDN suffix over strict non-GDN arithmetic",
         environment={
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(27, 48))),
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
         },
+        gdn_colwarps_prefill=True,
         gdn_tile16_variant="qwen4exp_gdn_tiled16_dpp_prefill",
         base_profile="strict",
         scenario_id="qwen4exp-ud-q4-k-xl-gdn-isolated",
@@ -713,8 +723,8 @@ CANDIDATES = {
         mechanism="incumbent repair candidate: strict Q8 selected-down and GDN prefill",
         environment={
             "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "0",
         },
+        gdn_colwarps_prefill=False,
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-production-fallback-review",
         candidate_key=None,
@@ -1645,7 +1655,8 @@ def bind_candidate_gr_wide(
 #: Candidate fields that are owner-bound decisions rather than process keys.
 #: ``None`` means "keep what the base profile published", so only a non-None
 #: value is a change an arm makes.
-_OWNER_FIELD_NAMES = ("q8_down_variant", "gdn_tile16_variant")
+_OWNER_FIELD_NAMES = (
+    "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1717,6 +1728,67 @@ def bind_candidate_gdn_tile16_variant(
         dispatch_stack.enter_context(gdn_tile16_variant(
             candidate_generator, candidate_spec.gdn_tile16_variant))
     return resolve_gdn_tile16_variant(candidate_generator)
+
+
+def gdn_colwarps_prefill_arm_scope(owner: Any, enabled: bool | None):
+    """Bind an arm's GDN columnwarp enablement gate, or keep the published one.
+
+    ``None`` means the arm never named a gate, so it ran whatever the profile
+    binder published and the scope leaves that decision in place. ``True``
+    opens the tiled branch for the measured window and ``False`` binds the
+    serial strict owners; the published gate comes back on unwind, including
+    after an exception. The layer allowlist is a process key, so an arm that
+    changes it still publishes it through its environment.
+    """
+
+    if enabled is None:
+        return nullcontext()
+    return gdn_colwarps_prefill(owner, enabled)
+
+
+def bind_candidate_gdn_colwarps_prefill(
+    dispatch_stack: ExitStack,
+    candidate_generator: Any,
+    candidate_spec: CandidateSpec,
+) -> bool:
+    """Bind the arm's columnwarp gate and return the decision in force.
+
+    ``CandidateSpec.gdn_colwarps_prefill`` is the shared declaration of a
+    candidate's former ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` value, so
+    every harness that applies a candidate's environment binds the gate here
+    instead of copying a key the dispatch no longer reads. ``None`` leaves the
+    base profile's published gate in place; the plan's choice comes back on
+    unwind.
+    """
+
+    if candidate_spec.gdn_colwarps_prefill is not None:
+        dispatch_stack.enter_context(gdn_colwarps_prefill(
+            candidate_generator, candidate_spec.gdn_colwarps_prefill))
+    return resolve_gdn_colwarps_prefill(candidate_generator)
+
+
+def bind_candidate_owners(
+    dispatch_stack: ExitStack,
+    candidate_generator: Any,
+    candidate_spec: CandidateSpec,
+) -> dict[str, Any]:
+    """Bind every owner decision a candidate declares, and report them.
+
+    Each of these was a process key the candidate's environment carried, and
+    each is request-local owner state now. Binding them through one call is
+    what keeps a harness from honoring one declaration and silently running
+    the plan's default for another. Every binding is restored when the stack
+    unwinds, and the returned values are the ones the measured rows ran under.
+    """
+
+    return {
+        "q8_down_variant": bind_candidate_q8_down_variant(
+            dispatch_stack, candidate_generator, candidate_spec),
+        "gdn_tile16_variant": bind_candidate_gdn_tile16_variant(
+            dispatch_stack, candidate_generator, candidate_spec),
+        "gdn_colwarps_prefill": bind_candidate_gdn_colwarps_prefill(
+            dispatch_stack, candidate_generator, candidate_spec),
+    }
 
 
 def bind_candidate_qsa_head_mode(
@@ -1975,6 +2047,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # comes back on unwind. Dispatch counting on the candidate key proves which
     # leaf actually ran.
     bind_candidate_q8_down_variant(
+        dispatch_stack, candidate_generator, candidate_spec)
+    # The columnwarp enablement gate is the plan's decision too: an arm that
+    # opens or closes it binds the gate on this generator and the plan's
+    # decision comes back on unwind. Dispatch counting on the candidate key
+    # proves which leaf actually ran.
+    bind_candidate_gdn_colwarps_prefill(
         dispatch_stack, candidate_generator, candidate_spec)
     # The tile-16 GDN prefill owner is the plan's decision too: an arm that
     # names a different leaf binds it on this generator and the plan's owner

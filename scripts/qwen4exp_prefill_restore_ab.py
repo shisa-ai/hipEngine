@@ -27,12 +27,14 @@ from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
     candidate_owner_changes,
+    gdn_colwarps_prefill_arm_scope,
     gdn_tile16_variant_arm_scope,
     gr_wide_arm_scope,
     q8_down_variant_arm_scope,
 )
 from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_prefill_head_mode, qsa_h256_prefill_mode,
+    resolve_gdn_colwarps_prefill,
     resolve_gdn_tile16_variant, resolve_q8_down_variant, resolve_q8_mmq_prefill,
 )
 from scripts.qwen4exp_journey_localize import set_flags
@@ -50,12 +52,15 @@ SHARED_DECODE_SAFE_ENV = frozenset(
     )
 )
 # Owner-bound fields that are the same kind of prefill-or-uncaptured-attention
-# decision as the keys above. The grouped Q8_0 expert-down owner and the tile-16
-# GDN prefill owner are request-local runner state now, so a candidate names them
-# here instead of writing the retired ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT`` and
-# ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` keys.
+# decision as the keys above. The grouped Q8_0 expert-down owner, the tile-16
+# GDN prefill owner and the GDN columnwarp admission gate are request-local
+# runner state now, so a candidate names them here instead of writing the
+# retired ``HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT``,
+# ``HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`` and
+# ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` keys. The gate only admits the
+# tiled prefill branch; decode never reads it.
 SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset(
-    {"q8_down_variant", "gdn_tile16_variant"})
+    {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill"})
 SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
@@ -102,6 +107,22 @@ def arm_gr_wide(arm, published):
     if candidate is None or candidate.gr_wide is None:
         return bool(published)
     return bool(candidate.gr_wide)
+
+
+def arm_gdn_colwarps(arm):
+    """The columnwarp admission gate this arm declares, or ``None``.
+
+    ``CandidateSpec.gdn_colwarps_prefill`` is the shared declaration of the
+    candidate's former ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` value. The
+    ``before`` reference and any candidate that never named the key ran whatever
+    the production bind published, so they return ``None`` and the scope leaves
+    that decision in place instead of closing the branch.
+    """
+
+    candidate = CANDIDATES.get(arm)
+    if candidate is None:
+        return None
+    return candidate.gdn_colwarps_prefill
 
 
 def validate_shared_graphs(environments, owner_fields=()):
@@ -349,6 +370,14 @@ def main():
         arm_gr_wide_modes = {
             name: arm_gr_wide(name, published_gr_wide) for name in args.candidate}
         report["arm_gr_wide"] = arm_gr_wide_modes
+        # The columnwarp admission gate is owner state now too, so an arm that
+        # declared the serial branch binds it for its samples and the plan's
+        # published gate comes back for the next arm.
+        arm_gdn_colwarps_gates = {
+            name: arm_gdn_colwarps(name) for name in args.candidate}
+        report["arm_gdn_colwarps_prefill"] = {
+            name: gate for name, gate in arm_gdn_colwarps_gates.items()
+            if gate is not None}
         original_step = runner.step
         last = {}
         names = ("moe_graph_cache", "layer_graph_cache")
@@ -386,6 +415,8 @@ def main():
                     runner, arm_q8_down_variants.get(arm)),
                 gdn_tile16_variant_arm_scope(
                     runner, arm_gdn_tile16_variants.get(arm)),
+                gdn_colwarps_prefill_arm_scope(
+                    runner, arm_gdn_colwarps_gates.get(arm)),
                 qsa_prefill_head_mode(runner, arm_head_modes.get(arm)),
                 qsa_h256_prefill_mode(runner, arm_h256_modes.get(arm)),
                 use_workspace(runner, workspace)
@@ -404,6 +435,9 @@ def main():
                 row["active_chunk_size"] = runner.prefill_chunk_size
                 row["q8_down_variant"] = resolve_q8_down_variant(runner)
                 row["gdn_tile16_variant"] = resolve_gdn_tile16_variant(runner)
+                # Read inside the scope: the gate these samples ran under.
+                row["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
+                    runner)
             logits = np.asarray(last["result"].logits)
             state = _state_summary(runner)
             if not logits.size or not np.isfinite(logits).all() or not state["finite"]:

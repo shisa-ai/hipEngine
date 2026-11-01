@@ -350,6 +350,34 @@ def _qwen4_exp_gdn_peer_layer_allowed(
     )
 
 
+def resolve_gdn_colwarps_prefill(owner: Any) -> bool:
+    """The GDN columnwarp enablement gate the owner publishes.
+
+    ``False`` for an unbound owner, so a direct caller and every plan that
+    falls back to the strict binder run the serial owners. The gate only admits
+    the tiled branch; the layer allowlist and the tile-16 admission decision
+    stay at the dispatch.
+    """
+
+    return bool(getattr(owner, "gdn_colwarps_prefill", False))
+
+
+def qwen4_exp_gdn_colwarps_prefill_selected(
+    *, head_dim: int, published: bool,
+) -> bool:
+    """Does the tiled GDN prefill branch own this chunk?
+
+    Geometry and the published gate only. ``published`` is the owning runner's
+    decision (see :func:`gdn_colwarps_prefill`), so an unbound runner, the
+    strict binder and every plan that falls back to it keep the serial owners.
+    Which layers the branch serves is the separate
+    ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`` allowlist, and the tile-16
+    admission decision still chooses the leaf inside an open gate.
+    """
+
+    return head_dim == 128 and bool(published)
+
+
 @contextlib.contextmanager
 def gdn_register_prefill(runner: Any, enabled: bool):
     """Bind register-state serial prefill on the owning diagnostic runner."""
@@ -4110,6 +4138,53 @@ def gdn_peer_prefill(
         yield prior
     finally:
         runner.gdn_peer_prefill_layers = prior
+
+
+# GDN columnwarp enablement. The production plan publishes the gate on the
+# owning generator and runner; the prefill chunk forwards it to the token mixer,
+# where it decides whether the tiled GDN branch runs at all. The layer allowlist
+# stays a process key: the gate decides whether, the list decides which layers.
+# An unbound runner, the strict binder and every plan that falls back to it keep
+# the serial strict owners.
+_GDN_COLWARPS_UNSET = object()
+
+
+def _gdn_colwarps_prefill_targets(owner: Any) -> list[Any]:
+    targets = [owner]
+    runner = getattr(owner, "runner", None)
+    if runner is not None and runner is not owner:
+        targets.append(runner)
+    return targets
+
+
+@contextlib.contextmanager
+def gdn_colwarps_prefill(
+    owner: Any, enabled: bool | object = _GDN_COLWARPS_UNSET
+):
+    """Bind the GDN columnwarp enablement gate for a diagnostic arm.
+
+    ``False`` closes the gate so the serial strict owners run, ``True`` restores
+    the tiled branch, and leaving ``enabled`` unset keeps whatever the owner
+    carries. The binding is a mutable field, so it stays in force across a
+    prefill that suspends between layer yields, and the prior value is restored
+    on exit, including on an exception. A generator binds its current runner
+    with it; a bare runner is bound alone. The layer allowlist is a separate
+    process key and is untouched.
+    """
+
+    targets = _gdn_colwarps_prefill_targets(owner)
+    prior = [
+        (target, getattr(target, "gdn_colwarps_prefill", False))
+        for target in targets
+    ]
+    if enabled is not _GDN_COLWARPS_UNSET:
+        for target in targets:
+            target.gdn_colwarps_prefill = bool(enabled)
+    try:
+        yield prior[0][1]
+    finally:
+        for target, value in prior:
+            target.gdn_colwarps_prefill = value
 
 
 # GDN conv prefill ownership. Production runs the exact bulk conv owner for
@@ -8525,6 +8600,7 @@ def run_qwen4_exp_gdn_layer(
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
     prefill_variant: str | None = None,
+    gdn_colwarps_prefill: bool = False,
     gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
     gdn_tile16_variant: str | None = None,
@@ -8557,6 +8633,9 @@ def run_qwen4_exp_gdn_layer(
     ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
     :func:`gdn_prefill_variant`): it selects the narrow/wide wave-norm leaf for
     multi-row chunks and leaves the register parent and decode untouched.
+
+    ``gdn_colwarps_prefill`` is the owning runner's columnwarp enablement gate
+    (see :func:`gdn_colwarps_prefill`), forwarded to the token mixer.
 
     ``gdn_tile16_prefill`` is the owning runner's tile-16 prefill decision (see
     :func:`gdn_tile16_prefill`), forwarded to the token mixer.
@@ -8692,6 +8771,7 @@ def run_qwen4_exp_gdn_layer(
         num_k_heads=num_k_heads, num_v_heads=num_v_heads, head_dim=head_dim,
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
         prefill_variant=prefill_variant,
+        gdn_colwarps_prefill=gdn_colwarps_prefill,
         gdn_register_prefill=gdn_register_prefill,
         gdn_tile16_prefill=gdn_tile16_prefill,
         gdn_tile16_variant=gdn_tile16_variant,
@@ -9005,6 +9085,7 @@ def run_qwen4_exp_gdn_token_mixer(
     stream: int = 0,
     runtime: HipRuntime | None = None,
     prefill_variant: str | None = None,
+    gdn_colwarps_prefill: bool = False,
     gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
     gdn_tile16_variant: str | None = None,
@@ -9017,6 +9098,10 @@ def run_qwen4_exp_gdn_token_mixer(
     ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
     :func:`gdn_prefill_variant`); it selects the narrow/wide wave-norm leaf for
     multi-row chunks and leaves the register parent and decode untouched.
+    ``gdn_colwarps_prefill`` is the owning runner's columnwarp enablement gate
+    (see :func:`gdn_colwarps_prefill`): True admits the tiled branch on the
+    binding D128 shape and the separate layer allowlist, and False keeps the
+    serial owners. No process key selects it.
     ``gdn_tile16_prefill`` is the owning runner's tile-16 decision (see
     :func:`gdn_tile16_prefill`): False pins the columnwarp parent inside the
     columnwarp gate for a diagnostic arm.
@@ -9151,11 +9236,8 @@ def run_qwen4_exp_gdn_token_mixer(
             )
         )
         colwarps_prefill = (
-            head_dim == 128
-            and os.environ.get(
-                "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL", "0"
-            )
-            not in {"", "0", "false", "False"}
+            qwen4_exp_gdn_colwarps_prefill_selected(
+                head_dim=head_dim, published=gdn_colwarps_prefill)
             and _qwen4_exp_layer_allowed(
                 weights["attn_qkv"],
                 env_name="HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
@@ -9691,6 +9773,17 @@ class Qwen4ExpGGUFResidentModelRunner:
     # parent) everywhere else. A diagnostic scope may outrank it.
     gdn_prefill_variant: str | None = None
     gdn_register_prefill: bool = False
+    # GDN columnwarp enablement gate, published by the profile binder as a
+    # request-local decision instead of a process-wide switch. ``False`` (an
+    # unbound runner, strict, and every plan that falls back to the strict
+    # binder) keeps the serial strict owners; ``True`` admits the tiled branch
+    # on the binding D128 shape and the separate
+    # ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`` allowlist. The prefill chunk
+    # path is its only reader: decode runs one row and the batch GDN mixer is
+    # decode-only, so neither reads it. A diagnostic scope binds this field on
+    # the one runner it measures; a fresh runner or a serving clone inherits the
+    # published value, never that binding.
+    gdn_colwarps_prefill: bool = False
     # GDN tile-16 prefill owner inside the columnwarp gate, for the binding
     # Hk16/Hv48/D128 envelope. True on every runner the profile constructs, and
     # the prefill chunk path is its only reader: decode runs one row, and the
@@ -11556,6 +11649,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
                     gdn_decode_rowsplit=self.gdn_decode_rowsplit,
+                    gdn_colwarps_prefill=self.gdn_colwarps_prefill,
                     gdn_register_prefill=self.gdn_register_prefill,
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
                     gdn_tile16_variant=self.gdn_tile16_variant,

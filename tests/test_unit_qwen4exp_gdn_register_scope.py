@@ -46,7 +46,8 @@ def test_campaign_scope_isolates_and_restores_serial_owner(mode, enabled):
     from scripts.qwen4exp_halo_box_campaign_ab import route_scope
     owner = SimpleNamespace(gdn_register_prefill=True,
                             gdn_prefill_variant="qwen4exp_sigmoid_wave_norm_prefill",
-                            gdn_peer_prefill_layers="all")
+                            gdn_peer_prefill_layers="all",
+                            gdn_colwarps_prefill=True)
     prior = vars(owner).copy()
     env = {"HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1"}
     with pytest.raises(RuntimeError, match="failed"):
@@ -54,9 +55,11 @@ def test_campaign_scope_isolates_and_restores_serial_owner(mode, enabled):
             assert owner.gdn_register_prefill is enabled
             assert owner.gdn_prefill_variant is None
             assert owner.gdn_peer_prefill_layers is None
-            assert env["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "0"
+            assert owner.gdn_colwarps_prefill is False
             raise RuntimeError("failed")
     assert vars(owner) == prior
+    # The gate is request-local runner state, so the retired process key is
+    # never written by the arm.
     assert env == {"HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1"}
 
 

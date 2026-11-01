@@ -48,12 +48,7 @@ Validate with
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
-Scope: `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`; `PRODUCTION_MOE_PREFILL`; `Q4_IU8_PREFILL`; `HIPENGINE_QWEN4_EXP_Q4_DP4A64`.
-
-**Deferred transport:** publish `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` through resolved runner
-state, with scoped serial diagnostics, before retiring the environment handoff. Preserve
-columnwarp/tiled and strict serial branches; verify profile forwarding and public default/diagnostic
-route engagement.
+Scope: `PRODUCTION_MOE_PREFILL`; `Q4_IU8_PREFILL`; `HIPENGINE_QWEN4_EXP_Q4_DP4A64`.
 
 **Deferred family decisions:** retain recorded repair conditions independently:
 

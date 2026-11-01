@@ -5,7 +5,7 @@ One numerical run per arm: not a promotion, determinism or task certificate.
 """
 
 import argparse
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 import fcntl
 import hashlib
 import json
@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_peer_prefill, gdn_register_prefill, gdn_tile16_variant, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_gdn_tile16_variant, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill
+from hipengine.runtime.qwen4_exp_runner import gdn_colwarps_prefill, gdn_peer_prefill, gdn_register_prefill, gdn_tile16_variant, qsa_h256_prefill_mode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_gdn_colwarps_prefill, resolve_gdn_tile16_variant, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill
 from hipengine.runtime.qwen4_exp_runner import Q8_DOWN_WMMA_VARIANT
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
@@ -29,23 +29,49 @@ from scripts.qwen4exp_layer2_profile_gate import CANDIDATES
 from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
+#: Arms that pin the serial GDN prefill owners: the columnwarp branch closes
+#: and the peer scope binds off for the measured rows.
+SERIAL_GDN_ARMS = frozenset({"gdn_strict", "strict_plus_gdn_serial"})
+
+#: Arms whose former environment inherited a snapshot binding's gate. The
+#: snapshot builders record provenance while they build, so the decision follows
+#: construction rather than an arm-name list: an arm built from the strict
+#: snapshot inherited the strict bind's value, and a GDN-isolation arm that
+#: overlaid the production GDN keys inherited the production one.
+_STRICT_GATE_ARMS: set[str] = set()
+_PRODUCTION_GATE_ARMS: set[str] = set()
+#: Former gate per arm, filled by :func:`migrate_gdn_colwarps_arms` from the
+#: values the two bindings published on their owners.
+_GDN_GATE_ARM_VALUES: dict[str, bool] = {}
+#: "No published value supplied" for :func:`arm_gdn_colwarps_value`.
+_UNNAMED_GATE = object()
+
+
 PREFIX = "HIPENGINE_QWEN4_EXP_"
 Q4_DP4A_ENV_KEYS = frozenset({
     PREFIX + "Q4_DP4A64", PREFIX + "Q4_DP4A64_LAYERS",
 })
 ARMS = {
     "bound": {},
-    "gdn_strict": {PREFIX + "GDN_COLWARPS_PREFILL": "0"},
+    # The columnwarp gate is request-local runner state now
+    # (``gdn_colwarps_prefill``), so this arm carries no process key and the
+    # arm loop binds the gate off on the runner it measures.
+    "gdn_strict": {},
     "moe_strict": {PREFIX + "Q4_IU8_PREFILL": "0"},
     "dense_q8_gr_strict": {PREFIX + key: "0" for key in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN")},
     # Q4 DP4A is owner state now; the arm loop binds it below instead of
     # writing a process key the bound generator no longer reads.
     "decode_strict": {},
 }
+_NUMERIC_STRICT_SOURCES = tuple(name for name in ARMS if name != "bound")
 ARMS["all_numerics_strict"] = {
-    key: value for name, values in ARMS.items() if name != "bound"
-    for key, value in values.items()
+    key: value for name in _NUMERIC_STRICT_SOURCES
+    for key, value in ARMS[name].items()
 }
+# The union includes ``gdn_strict``, whose former key carried the strict bind's
+# gate, so this arm inherited that value.
+if any(name in SERIAL_GDN_ARMS for name in _NUMERIC_STRICT_SOURCES):
+    _STRICT_GATE_ARMS.add("all_numerics_strict")
 ARMS["production_conservative"] = dict(CANDIDATES["production_conservative"].environment)
 for name in ("q8_blockscale", "q8_blockscale_mmq",
              "q8_blockscale_guarded", "q8_blockscale_guarded_mmq"):
@@ -67,6 +93,8 @@ ARMS["q8_selected_down_strict"] = {PREFIX + "Q8_0_SELECTED_WMMA_DOWN": "0"}
 ARMS["base_plus_q8_selected_down_strict"] = {
     **ARMS["all_numerics_strict"], **ARMS["q8_selected_down_strict"],
 }
+if "all_numerics_strict" in _STRICT_GATE_ARMS:
+    _STRICT_GATE_ARMS.add("base_plus_q8_selected_down_strict")
 for name in ("strict_plus_gdn", "strict_plus_gdn_serial",
              "strict_plus_gdn_multi", "strict_prefill_production_decode",
              "production_prefill_strict_decode"):
@@ -316,56 +344,160 @@ def strict_family_overrides(strict_flags):
         "base_plus_q8_gr_flags": ("Q8_", "GR_"),
         "base_plus_gdn_flags": ("GDN_",),
     }
-    return {
+    overrides = {
         name: {
             **ARMS["all_numerics_strict"],
             **{key: value for key, value in strict_flags.items()
                if any(key.startswith(PREFIX + prefix) for prefix in prefixes)},
         } for name, prefixes in families.items()
     }
+    # These arms overlay the strict snapshot on the strict numeric base, so
+    # their former environment carried the strict bind's gate.
+    _STRICT_GATE_ARMS.update(overrides)
+    return overrides
 
 
 def gdn_isolation_overrides(strict_flags, production_flags):
     production_gdn = {key: value for key, value in production_flags.items()
                       if key.startswith(PREFIX + "GDN_")}
     isolated = {**strict_flags, **production_gdn}
-    return {
+    overrides = {
         "strict_plus_gdn": isolated,
         "strict_plus_gdn_serial": {**isolated, **ARMS["gdn_strict"]},
         "strict_plus_gdn_multi": {
             **isolated,
         },
     }
+    # The isolated arms overlaid the production GDN keys, so their former gate
+    # was the production bind's. The serial arm additionally overlaid the
+    # strict serial override, which closes the branch and is bound through
+    # ``SERIAL_GDN_ARMS``.
+    _PRODUCTION_GATE_ARMS.update(
+        ("strict_plus_gdn", "strict_plus_gdn_multi"))
+    return overrides
 
 
-def serial_gdn(env):
-    """Does this arm pin the serial GDN prefill owner?
+def arm_gdn_colwarps_value(arm, published=_UNNAMED_GATE):
+    """The gate this arm runs under, or ``None`` when it never named one.
 
-    The peer owner's layer scope is request-local runner state now, so an arm
-    that closes the columnwarp gate - the parent both owners sit inside - binds
-    it off on the runner it measures instead of writing a process value. Before
-    the migration the same arms zeroed the retired process gate; deriving the
-    decision from the columnwarp value keeps a new strict aggregate covered
-    without a second list to maintain.
+    One precedence order for every caller: a candidate's declaration, then the
+    serial override, then the value the arm's construction inherited. ``None``
+    with no ``published`` means the arm never named or inherited the gate; with
+    ``published`` it means the plan's own value stands. The peer owner resolves
+    through this same function, so the two decisions cannot disagree.
     """
 
-    return env.get(PREFIX + "GDN_COLWARPS_PREFILL") == "0"
+    candidate = CANDIDATES.get(arm)
+    if candidate is not None and candidate.gdn_colwarps_prefill is not None:
+        return bool(candidate.gdn_colwarps_prefill)
+    if arm in SERIAL_GDN_ARMS:
+        return False
+    recorded = _GDN_GATE_ARM_VALUES.get(arm)
+    if recorded is not None:
+        return recorded
+    if published is _UNNAMED_GATE:
+        return None
+    return bool(published)
 
 
-def phase_peer_scope(runner, flags):
+def arm_gdn_colwarps(arm):
+    """The columnwarp gate this arm's former environment carried, or ``None``.
+
+    ``None`` means the arm never named and never inherited the gate: it ran
+    whatever the profile binder published, and the scope leaves that decision in
+    place. An arm built from a candidate honors that candidate's declaration,
+    which is where ``production_conservative``'s former
+    ``..._GDN_COLWARPS_PREFILL=0`` lives now that the key is retired. The serial
+    override closes the branch, and every arm the snapshot builders derived
+    from a binding carries that binding's captured gate.
+    """
+
+    return arm_gdn_colwarps_value(arm)
+
+
+def serial_gdn(arm, published):
+    """Does this arm run the serial GDN prefill owners?
+
+    Before the migration this was the *merged* arm environment's retired gate,
+    so every effective ``0`` - a strict snapshot's inherited value, a
+    candidate's declaration, and a plan that published ``0`` for an arm that
+    named nothing - closed the peer owner as well, not only the two arms that
+    wrote the key. The peer therefore follows the effective arm gate.
+    """
+
+    return not arm_gdn_colwarps_value(arm, published)
+
+
+@contextmanager
+def gdn_colwarps_arm_scope(generator, arm):
+    """Bind this arm's columnwarp gate and yield the value the arm runs under.
+
+    The yielded value is read inside the scope, because that is the value the
+    measured rows run with. Reading it after the unwind reports the plan's
+    restored publication and calls it the arm's decision.
+    """
+
+    enabled = arm_gdn_colwarps(arm)
+    with (nullcontext() if enabled is None
+          else gdn_colwarps_prefill(generator, enabled)):
+        yield resolve_gdn_colwarps_prefill(generator)
+
+
+#: Split arms run one phase on the strict bind and one on the production bind.
+SPLIT_PHASE_ARMS = frozenset({
+    "strict_prefill_production_decode", "production_prefill_strict_decode",
+})
+
+
+def split_phase_is_strict(arm, phase):
+    """Does this split phase run the strict bind?"""
+
+    return (
+        (arm == "strict_prefill_production_decode" and phase == "prefill")
+        or (arm == "production_prefill_strict_decode" and phase == "decode")
+    )
+
+
+def phase_peer_scope(runner, arm):
     """Bind the GDN peer prefill owner for one phase of a split trajectory.
 
     The split arms set the prefill and decode flag sets independently, so the
     peer owner's request-local scope has to follow the phase that is running: a
-    strict phase binds it off, and a production phase leaves the runner's
-    published scope in place. Decode runs one row and the mixer takes its decode
-    branch before the prefill chain, so the owner is unreachable there either
-    way. The prior scope is restored on exit, including on an exception.
+    serial phase binds it off, and every other phase leaves the runner's
+    published scope in place. A split arm's prefill phase is the one that can
+    be strict, so the phase decides rather than the arm name. Outside the split
+    arms the peer follows the effective arm gate - including a strict
+    snapshot's inherited value and a plan that published ``0`` - because the
+    merged arm environment decided it that way before the migration. Decode
+    runs one row and the mixer takes its decode branch before the prefill
+    chain, so the owner is unreachable there either way. The prior scope is
+    restored on exit, including on an exception.
     """
 
-    if not serial_gdn(flags):
+    published = resolve_gdn_colwarps_prefill(runner)
+    if arm in SPLIT_PHASE_ARMS:
+        serial = split_phase_is_strict(arm, "prefill") or not published
+    else:
+        serial = serial_gdn(arm, published)
+    if not serial:
         return nullcontext()
     return gdn_peer_prefill(runner, False)
+
+
+def gdn_colwarps_split_scope(runner, arm, phase):
+    """Bind one split phase's columnwarp gate, as its former flag set did.
+
+    The strict phase closed the retired key and the production phase kept the
+    plan's value, so the gate follows the phase rather than the arm name. A
+    non-split arm keeps the arm-level decision, which the caller binds around
+    the whole arm; binding here would only restate it.
+    """
+
+    if arm not in SPLIT_PHASE_ARMS:
+        return nullcontext()
+    if not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    return gdn_colwarps_prefill(runner, False)
 
 
 def set_flags(flags):
@@ -496,6 +628,9 @@ def snapshot_arms(strict_snapshot, production_snapshot, *, arms=None):
     arms["all_flags_strict"] = dict(strict_snapshot)
     arms["gdn_flags_strict"] = {key: value for key, value in strict_snapshot.items()
                                 if key.startswith(PREFIX + "GDN_")}
+    # Both are the strict snapshot (or its GDN slice), so they carried the
+    # strict bind's gate.
+    _STRICT_GATE_ARMS.update(("all_flags_strict", "gdn_flags_strict"))
     arms.update(strict_family_overrides(strict_snapshot))
     arms.update(gdn_isolation_overrides(strict_snapshot, production_snapshot))
     for family, prefixes in FAMILY_PREFIXES.items():
@@ -503,17 +638,48 @@ def snapshot_arms(strict_snapshot, production_snapshot, *, arms=None):
                 if any(key.startswith(PREFIX + prefix) for prefix in prefixes)]
         arms["strict_plus_" + family] = {
             **strict_snapshot, **{key: production_snapshot.get(key) for key in keys}}
+        # A family that overlaid the GDN keys would have inherited the
+        # production gate; the strict base's value stands for every family that
+        # does not.
+        if any(key.startswith(PREFIX + "GDN_") for key in keys):
+            _PRODUCTION_GATE_ARMS.add("strict_plus_" + family)
+        else:
+            _STRICT_GATE_ARMS.add("strict_plus_" + family)
+        # This arm overlays one family on the Q8-down base and never named the
+        # gate, so it ran whatever the plan published.
         arms["q8down_off_without_" + family] = {
             **arms["q8_selected_down_strict"],
             **{key: strict_snapshot[key] for key in keys}}
     for flag in ("Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
         arm = "strict_plus_" + flag.lower()
         arms[arm] = dict(strict_snapshot)
+        _STRICT_GATE_ARMS.add(arm)
         if flag == "Q8_MMQ_PREFILL":
             _Q8_MMQ_ARM_VALUES[arm] = True
         else:
             arms[arm][PREFIX + flag] = "1"
     return arms
+
+
+def migrate_gdn_colwarps_arms(*, strict_gate, production_gate, arms=None):
+    """Record each constructed arm's former columnwarp gate as an owner value.
+
+    Mirrors the GR-up wide migration. The retired key was a captured process
+    key, so an arm built from the strict snapshot inherited the strict bind's
+    value and a GDN-isolation arm that overlaid the production GDN keys
+    inherited the production one. Both values are read from the owners the
+    bindings published, never from a key the dispatch no longer reads. An arm
+    whose construction neither named nor inherited the gate stays absent, which
+    means it ran the plan's published gate.
+    """
+
+    values = dict(_GDN_GATE_ARM_VALUES)
+    for name in (ARMS if arms is None else arms):
+        if name in _PRODUCTION_GATE_ARMS:
+            values[name] = bool(production_gate)
+        elif name in _STRICT_GATE_ARMS:
+            values[name] = bool(strict_gate)
+    return values
 
 
 def gr_wide_arm_enabled(arm, published):
@@ -680,7 +846,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with phase_peer_scope(runner, prefill_flags), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+    with phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
@@ -692,6 +858,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                             runner, arm, "prefill"), q8_mmq_split_scope(
                             runner, arm, "prefill"), production_moe_split_scope(
                             runner, arm, "prefill"), gr_wide_split_scope(
+                            runner, arm, "prefill"), gdn_colwarps_split_scope(
                             runner, arm, "prefill"):
         runner.reset()
         result = runner.prefill(prompt_ids)
@@ -700,7 +867,9 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     set_flags(decode_flags)
     with q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
-            runner, arm, "decode"), gr_wide_split_scope(runner, arm, "decode"):
+            runner, arm, "decode"), gr_wide_split_scope(
+            runner, arm, "decode"), gdn_colwarps_split_scope(
+            runner, arm, "decode"):
         for token in forced_ids:
             result = runner.step(token)
             logits.append(np.array(result.logits, dtype=np.float32, copy=True))
@@ -731,6 +900,9 @@ def main():
         reset_memory_stats()
         identity = model_identity(args.model_root)
         strict_generator, strict_profile, _ = _make_generator(args, "strict")
+        # The strict bind's published gate is what its former key carried; read
+        # it from the owner, before the generator closes.
+        strict_gate = bool(strict_generator.gdn_colwarps_prefill)
         strict_flags = strict_environment(os.environ)
         # The retired GR-up wide key was a captured ``GR_*`` process key, so the
         # strict snapshot carried the strict bind's route. Reconstruct it from
@@ -780,6 +952,16 @@ def main():
         production_snapshot = gr_wide_snapshot(
             os.environ, published=bool(generator.runner.gr_wide))
         snapshot_arms(strict_snapshot, production_snapshot)
+        # The production bind's published gate is the plan's own decision; an arm
+        # that named nothing ran it, and so did its peer scope.
+        published_gate = bool(generator.gdn_colwarps_prefill)
+        # Move every arm's former columnwarp gate onto the owner decision. The
+        # snapshot builders recorded which binding each arm inherited from, so
+        # a strict-derived arm closes with the strict bind and a GDN-isolation
+        # arm opens with the production one.
+        _GDN_GATE_ARM_VALUES.update(migrate_gdn_colwarps_arms(
+            strict_gate=strict_gate,
+            production_gate=published_gate))
         # Move every arm's former GR-up wide value onto the owner decision and
         # drop the retired key, so no arm writes it as a process value.
         _GR_WIDE_ARM_VALUES.update(migrate_gr_wide_arms(
@@ -833,10 +1015,11 @@ def main():
                         arm, generator.runner.gdn_register_prefill)))
                 arm_scope.enter_context(qsa_h256_prefill_mode(
                     generator.runner, h256_arm_mode(arm)))
-                if serial_gdn({**bound, **ARMS[arm]}):
+                if serial_gdn(arm, published_gate):
                     arm_scope.enter_context(
                         gdn_peer_prefill(generator.runner, False))
-                with arm_scope:
+                with arm_scope, gdn_colwarps_arm_scope(
+                        generator, arm) as effective_gdn_colwarps:
                     for row in prompt_rows:
                         key = row["id"]
                         forced = [r["token_id"] for r in strict[key][:-1]]
@@ -865,17 +1048,30 @@ def main():
                         [descriptor])["summary"]}
                     for i, descriptor in enumerate(descriptors)
                 ]
+                owner_overrides = {
+                    "production_moe_prefill_enabled": (
+                        production_moe_arm_report(generator, arm)),
+                    "q8_mmq_prefill_enabled": q8_mmq_arm_report(
+                        generator, arm),
+                    "q8_down_variant": q8_down_arm_report(generator, arm),
+                    "gdn_tile16_variant": gdn_tile16_arm_report(generator, arm),
+                    # Captured inside the arm scope: the value the measured
+                    # rows ran under, not the publication the unwind put back.
+                    "gdn_colwarps_prefill": effective_gdn_colwarps,
+                    "gr_wide": gr_wide_arm_report(generator, arm),
+                }
+                if arm in SPLIT_PHASE_ARMS:
+                    # A split arm binds the gate per phase, so one value cannot
+                    # describe it; name what each phase ran under.
+                    owner_overrides["gdn_colwarps_prefill_phases"] = {
+                        phase: (
+                            False if split_phase_is_strict(arm, phase)
+                            else effective_gdn_colwarps)
+                        for phase in ("prefill", "decode")
+                    }
                 report["arms"][arm] = {
                     "overrides": ARMS[arm],
-                    "owner_overrides": {
-                        "production_moe_prefill_enabled": (
-                            production_moe_arm_report(generator, arm)),
-                        "q8_mmq_prefill_enabled": q8_mmq_arm_report(
-                            generator, arm),
-                        "q8_down_variant": q8_down_arm_report(generator, arm),
-                        "gdn_tile16_variant": gdn_tile16_arm_report(generator, arm),
-                        "gr_wide": gr_wide_arm_report(generator, arm),
-                    },
+                    "owner_overrides": owner_overrides,
                     "quality": quality,
                 }
                 args.output.write_text(json.dumps(report, indent=2) + "\n")
