@@ -5,7 +5,8 @@ This mirrors ``scripts/qwen4exp_canonical_ar_bench.py``'s ``hipengine`` mode
 but lets the caller force a diagnostic routing override. The attention-gate
 ``--override`` binds generator/runner owner state and prepares the required MMQ
 workspace before sampling; it does not change the process key. Generic WMMA
-``--override`` also binds owner state. Other overrides remain post-binder
+``--override`` also binds owner state. Flash-prefill enable/layer overrides use
+the same paired owner policy as profile-gap. Other overrides remain post-binder
 environment inputs. This runner produces diagnostic samples,
 not production benchmark evidence.
 
@@ -55,6 +56,19 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
     return environment, attention
 
 
+def split_flash_prefill_overrides(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Keep flash requests out of construction and post-binder process writes."""
+    keys = {'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS'}
+    return ({key: value for key, value in values.items() if key not in keys},
+            {key: value for key, value in values.items() if key in keys})
+
+
+def bind_flash_prefill_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Share partial-axis semantics with the profile-gap diagnostic."""
+    from scripts.qwen4exp_profile_gap import bind_flash_prefill_override as bind
+    return bind(stack, owner, overrides)
+
+
 def split_generic_wmma_override(values: dict[str, str]) -> tuple[dict[str, str], bool | None]:
     """Separate generic WMMA using its low-level boolean parser."""
     environment = dict(values)
@@ -102,6 +116,7 @@ def main() -> int:
     try:
         overrides, attention_override = split_owner_overrides(args.override)
         overrides, generic_wmma_override = split_generic_wmma_override(overrides)
+        overrides, flash_overrides = split_flash_prefill_overrides(overrides)
     except ValueError as exc:
         parser.error(str(exc))
     os.environ.update(overrides)
@@ -192,6 +207,8 @@ def main() -> int:
             attention_override_scope(generator, attention_override))
         artifact['owner_overrides'].update(bind_generic_wmma_override(
             owner_stack, generator, generic_wmma_override))
+        artifact['owner_overrides'].update(bind_flash_prefill_override(
+            owner_stack, generator, flash_overrides))
         _write_json(args.output, artifact)
         for warmup in range(args.warmups):
             for case in _measurement_order(cases, warmup):
