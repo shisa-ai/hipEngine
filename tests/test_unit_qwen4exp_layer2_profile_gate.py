@@ -133,6 +133,7 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         q8_dense_wide_layers=None,
         gdn_colwarps_layers=None,
         qsa_flash_prefill_enabled=None,
+        q8_selected_down_enabled=None,
     )
 
     assert module._candidate_named_profile_intact(spec) is expected
@@ -311,9 +312,8 @@ def test_gdn_isolation_changes_only_gdn_over_strict() -> None:
 def test_q8_fallback_preserves_other_production_choices() -> None:
     candidate = _load_script().CANDIDATES["production_q8_fallback"]
     assert candidate.base_profile == "production"
-    assert candidate.environment == {
-        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-    }
+    assert candidate.environment == {}
+    assert candidate.q8_selected_down_enabled is False
     assert candidate.q8_mmq_prefill_enabled is False
 
 
@@ -321,8 +321,7 @@ def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
     candidate = _load_script().CANDIDATES["production_conservative"]
     assert candidate.base_profile == "production"
     assert set(candidate.environment.values()) == {"0"}
-    assert candidate.environment[
-        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "0"
+    assert candidate.q8_selected_down_enabled is False
     assert candidate.gdn_colwarps_prefill is False
     # The ordered sparse-decode prerequisite is owner state now, so the arm
     # declares it instead of zeroing a process key.

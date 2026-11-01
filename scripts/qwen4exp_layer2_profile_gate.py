@@ -124,6 +124,7 @@ class CandidateSpec:
     qsa_wmma_enabled: bool | None = None
     # None preserves the profile; an explicit gate preserves its layer scope.
     qsa_flash_prefill_enabled: bool | None = None
+    q8_selected_down_enabled: bool | None = None
     # None preserves the base profile; parent, wave or page256 binds one arm.
     qsa_h256_prefill_mode: str | None = None
     # Explicit router-logit producer for this arm, same protocol. ``None`` keeps
@@ -363,9 +364,8 @@ CANDIDATES = {
         name="q8_blockscale",
         classification="T1",
         mechanism="raw Q8 codes times original BF16 activations; FP32 block scales after WMMA",
-        environment={
-            "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "1",
-        },
+        environment={},
+        q8_selected_down_enabled=True,
         q8_down_variant="selected_grouped_blockscale_prefill_bf16_bf16_out",
         base_profile="production",
         scenario_id="qwen4exp-q8-blockscale",
@@ -385,7 +385,9 @@ CANDIDATES = {
                          "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                          "Q8_MMQ_PREFILL", "GR_WIDE",
                          "GDN_COLWARPS_PREFILL", "QSA_FLASH_PREFILL",
+                         "Q8_0_SELECTED_WMMA_DOWN",
                      }},
+        q8_selected_down_enabled=False,
         gdn_colwarps_prefill=False,
         qsa_flash_prefill_enabled=False,
         base_profile="production",
@@ -689,9 +691,8 @@ CANDIDATES = {
         name="production_q8_fallback",
         classification="diagnostic",
         mechanism="strict Q8 selected-down and dense Q8 MMQ fallback; other production paths unchanged",
-        environment={
-            "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-        },
+        environment={},
+        q8_selected_down_enabled=False,
         q8_mmq_prefill_enabled=False,
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-q8-fallback",
@@ -733,9 +734,8 @@ CANDIDATES = {
         name="production_q8down_gdn_fallback",
         classification="diagnostic",
         mechanism="incumbent repair candidate: strict Q8 selected-down and GDN prefill",
-        environment={
-            "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-        },
+        environment={},
+        q8_selected_down_enabled=False,
         gdn_colwarps_prefill=False,
         base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-production-fallback-review",
@@ -1710,7 +1710,7 @@ def bind_candidate_gdn_layers(stack, generator, spec) -> str:
 _OWNER_FIELD_NAMES = (
     "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
     "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
-    "qsa_flash_prefill_enabled")
+    "qsa_flash_prefill_enabled", "q8_selected_down_enabled")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1823,6 +1823,25 @@ def bind_candidate_gdn_colwarps_prefill(
     return resolve_gdn_colwarps_prefill(candidate_generator)
 
 
+def bind_candidate_selected_q8_down(stack, owner, spec):
+    """Bind a candidate gate or preserve the base owner's effective choice."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_selected_down_enabled, resolve_q8_selected_down,
+    )
+    if spec.q8_selected_down_enabled is not None:
+        stack.enter_context(q8_selected_down_enabled(owner, spec.q8_selected_down_enabled))
+    return resolve_q8_selected_down(owner)
+
+
+@contextmanager
+def candidate_selected_q8_down_scope(owner, spec):
+    """Restore the measured owner's gate after an explicit candidate arm."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down
+    with ExitStack() as stack:
+        yield (resolve_q8_selected_down(owner) if spec is None else
+               bind_candidate_selected_q8_down(stack, owner, spec))
+
+
 def bind_candidate_flash(stack, owner, spec):
     """Bind an explicit flash gate while preserving the owner's layer scope."""
     from scripts.qwen4exp_profile_gap import bind_flash_prefill_override
@@ -1865,6 +1884,8 @@ def bind_candidate_owners(
         dispatch_stack.enter_context(qsa_ordered_decode_v2(
             runner, candidate_spec.qsa_ordered_decode_v2))
     return {
+        "q8_selected_down_enabled": bind_candidate_selected_q8_down(
+            dispatch_stack, candidate_generator, candidate_spec),
         "qsa_flash_prefill_policy": bind_candidate_flash(
             dispatch_stack, candidate_generator, candidate_spec),
         "q8_dense_wide_policy": bind_candidate_dense_wide(
@@ -1959,6 +1980,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         not candidate_spec.environment
         and candidate_spec.qsa_wmma_enabled is None
         and candidate_spec.qsa_flash_prefill_enabled is None
+        and candidate_spec.q8_selected_down_enabled is None
         and candidate_spec.production_moe_prefill_enabled is None
         and candidate_spec.q8_mmq_prefill_enabled is None
         and candidate_spec.q8_mmq_attn_gate_enabled is None
@@ -2168,6 +2190,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # other route binds it on this runner and the plan's choice comes back on
     # unwind. Dispatch counting on the candidate key proves which projection
     # actually ran.
+    resolved_selected_down = bind_candidate_selected_q8_down(
+        dispatch_stack, candidate_generator, candidate_spec)
     resolved_flash = bind_candidate_flash(
         dispatch_stack, candidate_generator, candidate_spec)
     resolved_dense_wide = bind_candidate_dense_wide(
@@ -2579,6 +2603,7 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "router_producer_variant": candidate_spec.router_producer_variant,
             "q8_dense_wide_policy": resolved_dense_wide,
+            "q8_selected_down_enabled": resolved_selected_down,
             "qsa_flash_prefill_policy": resolved_flash,
             "gdn_colwarps_layers": resolved_gdn_layers,
             "gdn_colwarps_layers_override": candidate_spec.gdn_colwarps_layers,

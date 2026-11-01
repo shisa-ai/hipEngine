@@ -754,7 +754,7 @@ def test_the_profile_gate_binds_the_variant_through_its_spec():
         candidate = CANDIDATES[name]
         assert candidate.q8_down_variant == expected, name
         assert ENV not in candidate.environment, name
-        assert candidate.environment[WMMA_GATE] == "1", name
+        assert candidate.q8_selected_down_enabled is True, name
 
 
 def test_the_profile_gate_binds_the_field_after_the_binder():
@@ -805,7 +805,7 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
     assert restore.SHARED_DECODE_SAFE_OWNER_FIELDS == {
         "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
         "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
-        "qsa_flash_prefill_enabled"}
+        "qsa_flash_prefill_enabled", "q8_selected_down_enabled"}
 
     restore.validate_shared_graphs(
         [{WMMA_GATE: "1"}], [{"q8_down_variant": WMMA}])
@@ -825,7 +825,7 @@ def test_the_shared_graph_inventory_lists_only_actual_owner_changes():
     # A candidate that names an owner inventories that one field.
     assert gate.candidate_owner_changes(
         gate.CANDIDATES["q8_blockscale_guarded"]
-    ) == {"q8_down_variant": GUARDED}
+    ) == {"q8_down_variant": GUARDED, "q8_selected_down_enabled": True}
     # A candidate that keeps the plan's published owner inventories nothing, so
     # the validator never sees a literal "unchanged" entry.
     assert gate.candidate_owner_changes(
@@ -836,6 +836,6 @@ def test_the_shared_graph_inventory_lists_only_actual_owner_changes():
     assert gate.candidate_owner_changes(
         gate.CANDIDATES["production_conservative"]
     ) == {"gdn_colwarps_prefill": False, "qsa_ordered_decode": False,
-          "qsa_flash_prefill_enabled": False}
+          "qsa_flash_prefill_enabled": False, "q8_selected_down_enabled": False}
     # A ``None`` entry is not a change even when it is passed explicitly.
     restore.validate_shared_graphs([], [{"q8_down_variant": None}])

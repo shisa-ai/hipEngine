@@ -25,9 +25,8 @@ def test_parser_accepts_explicit_production_baseline():
 def test_repair_candidate_is_explicit_and_does_not_modify_baseline():
     spec = CANDIDATES["production_q8down_gdn_fallback"]
     assert spec.base_profile == "production"
-    assert spec.environment == {
-        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "0",
-    }
+    assert spec.environment == {}
+    assert spec.q8_selected_down_enabled is False
     # The columnwarp gate is request-local runner state, so the arm closes it
     # with a binding instead of the retired process value.
     assert spec.gdn_colwarps_prefill is False

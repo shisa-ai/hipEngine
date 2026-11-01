@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_selected_q8_down_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,7 +44,12 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', ambient)
             with ExitStack() as scopes:
-                if interface == 'logits_probe':
+                if interface == 'layer2':
+                    from dataclasses import replace
+                    from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, bind_candidate_selected_q8_down
+                    spec = replace(CANDIDATES['production_baseline'], q8_selected_down_enabled=enabled)
+                    assert bind_candidate_selected_q8_down(scopes, owner, spec) is enabled
+                elif interface == 'logits_probe':
                     from scripts.qwen4exp_q8_0_wmma_down_logits_probe import selected_down_probe_scope
                     report = scopes.enter_context(selected_down_probe_scope(owner, enabled))
                     assert report['enabled'] is enabled
