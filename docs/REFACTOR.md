@@ -2917,8 +2917,9 @@ read the effective owner rather than stale process provenance.
 GR IU8 up/down choices have an independent paired owner policy threaded through
 GR reads, layer and head calls, and generator/clone inheritance. Unbound calls
 keep their process fallback pending diagnostic and profile publication migration.
-The profile-gap GR override binds and reports the pair on its measured owner,
-preserving omitted axes and leaving both ambient keys untouched.
+The profile-gap and candidate autoregressive GR overrides bind and report the
+pair on their measured owners, preserving omitted axes and leaving both ambient
+keys untouched. The candidate splits them out before both process-write stages.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

@@ -6,9 +6,9 @@ but lets the caller force a diagnostic routing override. The attention-gate
 ``--override`` binds generator/runner owner state and prepares the required MMQ
 workspace before sampling; it does not change the process key. Generic WMMA
 ``--override`` also binds owner state. Flash-prefill enable/layer overrides use
-the same paired owner policy as profile-gap. Other overrides remain post-binder
-environment inputs. This runner produces diagnostic samples,
-not production benchmark evidence.
+the same paired owner policy as profile-gap, as do the independent GR IU8
+up/down overrides. Other overrides remain post-binder environment inputs.
+This runner produces diagnostic samples, not production benchmark evidence.
 
 Usage:
   python3 scripts/qwen4exp_candidate_ar.py hipengine \
@@ -54,6 +54,19 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
         else:
             environment[key] = value
     return environment, attention
+
+
+def split_gr_iu8_overrides(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Keep both GR owner axes out of construction and post-binder writes."""
+    keys = {'HIPENGINE_QWEN4_EXP_GR_IU8', 'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'}
+    return ({key: value for key, value in values.items() if key not in keys},
+            {key: value for key, value in values.items() if key in keys})
+
+
+def bind_gr_iu8_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Share the profile-gap parser, partial-axis binding and effective report."""
+    from scripts.qwen4exp_profile_gap import bind_gr_iu8_override as bind
+    return bind(stack, owner, overrides)
 
 
 def split_selected_q8_down_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
@@ -129,6 +142,7 @@ def main() -> int:
     try:
         overrides, attention_override = split_owner_overrides(args.override)
         overrides, generic_wmma_override = split_generic_wmma_override(overrides)
+        overrides, gr_iu8_overrides = split_gr_iu8_overrides(overrides)
         overrides, selected_down_overrides = split_selected_q8_down_override(overrides)
         overrides, flash_overrides = split_flash_prefill_overrides(overrides)
     except ValueError as exc:
@@ -221,6 +235,8 @@ def main() -> int:
             attention_override_scope(generator, attention_override))
         artifact['owner_overrides'].update(bind_generic_wmma_override(
             owner_stack, generator, generic_wmma_override))
+        artifact['owner_overrides'].update(bind_gr_iu8_override(
+            owner_stack, generator, gr_iu8_overrides))
         artifact['owner_overrides'].update(bind_selected_q8_down_override(
             owner_stack, generator, selected_down_overrides))
         artifact['owner_overrides'].update(bind_flash_prefill_override(
