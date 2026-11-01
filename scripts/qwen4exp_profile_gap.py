@@ -60,7 +60,6 @@ ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES",
     "HIPENGINE_QWEN4_EXP_PLE_WARM",
     "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
-    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
     "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
     "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
 )
@@ -443,6 +442,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
             raise ValueError(
                 "the GR-up wide tile is owner state; use "
                 "--gr-wide instead of --override"
+            )
+        if key == "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS":
+            raise ValueError(
+                "the retired GDN decode-layer key has no runtime reader; "
+                "decode uses the profile's gdn_decode_rowsplit owner"
             )
         if key == "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS":
             raise ValueError(

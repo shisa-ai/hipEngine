@@ -13,7 +13,7 @@ def test_gdn_restoration_is_isolated_and_counted():
     # The peer owner's layer scope is request-local runner state, so the arm
     # restores it as a binding rather than a process value.
     assert candidate.gdn_peer_prefill == ",".join(map(str, range(35, 48)))
-    assert candidate.environment["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS" not in candidate.environment
     assert candidate.fallback_key[-1] == "qwen4exp_sigmoid_strict_prefill"
 
 

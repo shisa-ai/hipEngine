@@ -699,9 +699,7 @@ CANDIDATES = {
         classification="diagnostic",
         mechanism="current GDN suffix over strict non-GDN arithmetic",
         gdn_colwarps_layers=','.join(map(str, range(27, 48))),
-        environment={
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
-        },
+        environment={},
         gdn_colwarps_prefill=True,
         gdn_tile16_variant="qwen4exp_gdn_tiled16_dpp_prefill",
         base_profile="strict",

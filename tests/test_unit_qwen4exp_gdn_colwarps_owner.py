@@ -293,7 +293,7 @@ def test_the_layer_scope_is_distinct_owner_state(profile, quant, expected):
 
     assert generator.gdn_colwarps_layers == runner.gdn_colwarps_layers == expected
     assert LAYERS_ENV not in os.environ
-    assert os.environ[DECODE_LAYERS_ENV] == ""
+    assert DECODE_LAYERS_ENV not in os.environ
 
 
 def test_the_recovery_sweep_still_owns_no_recorded_recovery_value():

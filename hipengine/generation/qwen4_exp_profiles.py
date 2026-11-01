@@ -1624,7 +1624,6 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
         # Columnwarp prefill enablement and layer scope publish on the owner
         # below. Decode retains its separately tuned rows==1 owner.
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
         # Certified QSA flash prefill suffix.
         "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": (

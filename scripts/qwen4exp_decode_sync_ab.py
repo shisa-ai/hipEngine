@@ -40,7 +40,6 @@ def configure_production_routes() -> None:
         {
             "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "35-47",
         }

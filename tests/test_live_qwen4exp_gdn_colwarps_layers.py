@@ -38,6 +38,8 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
         return launch
 
     monkeypatch.setattr(module, 'resolve', observe)
+    if interface == 'profile_default':
+        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS', '999')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
@@ -45,6 +47,9 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True,
                                 speculative_mtp=False)
         bound_layers = owner.gdn_colwarps_layers
+        if interface == 'profile_default':
+            import os
+            assert os.environ['HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS'] == '999'
         scopes = ((bound_layers,) if interface == 'profile_default' else
                   ('27-47',) if interface == 'decode_sync' else ('999', 'all'))
         for scope in scopes:

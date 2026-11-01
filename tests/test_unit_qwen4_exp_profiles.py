@@ -551,7 +551,7 @@ def test_historical_q4km_binder_structure_not_qualification(
         PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS)
     assert fake_runner.gdn_colwarps_layers == production_generator.gdn_colwarps_layers
     assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL"] == "1"
     assert tuple(
         int(value)
@@ -659,7 +659,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     # and the runner carries no scope.
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "0"
     assert strict_generator.gdn_peer_prefill_layers is None
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS" not in os.environ
     assert strict_generator.q4_dp4a_decode_enabled is False
     assert strict_generator.q4_dp4a_decode_layers == frozenset()
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
