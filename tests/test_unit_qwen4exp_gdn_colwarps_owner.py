@@ -18,10 +18,9 @@ and leaves the launch reading only that field:
   arithmetic-recovery decision, so a recovery entry for this flag would
   publish ``False`` on the lane that pass covered — the production UD plan —
   and leave any other production plan open.
-* The layer allowlist ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`` stays a
-  distinct process key: the owner decides *whether* the branch runs, the layer
-  list decides *which layers* it serves, and the tile-16 admission decision
-  still outranks both inside the branch.
+* The layer scope is separate owner state: enablement decides *whether* the
+  branch runs, the layer list decides *which layers* it serves, and tile-16
+  admission still outranks both inside the branch.
 * The serial strict route, the peer owner and the register parent keep their
   precedence below the gate, and decode never reaches any of it.
 
@@ -287,13 +286,13 @@ def test_binder_publishes_the_plan_gate_and_writes_no_process_key(
     (ExecutionProfile.STRICT, UD, ""),
     (ExecutionProfile.STRICT, Q4KM, ""),
 ])
-def test_the_layer_allowlist_stays_a_distinct_process_key(
-        profile, quant, expected):
-    """The gate moved to owner state; the layer scope did not."""
+def test_the_layer_scope_is_distinct_owner_state(profile, quant, expected):
+    """The independent scope and enablement both publish on the owner."""
 
-    _bind(_resolve(profile, quant=quant))
+    generator, runner = _bind(_resolve(profile, quant=quant))
 
-    assert os.environ[LAYERS_ENV] == expected
+    assert generator.gdn_colwarps_layers == runner.gdn_colwarps_layers == expected
+    assert LAYERS_ENV not in os.environ
     assert os.environ[DECODE_LAYERS_ENV] == ""
 
 

@@ -1170,6 +1170,15 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_gdn_colwarps_layers(generator: Any, layers: str) -> None:
+    """Publish the plan's layer scope without changing a peer's diagnostics."""
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', layers)
+    generator.gdn_colwarps_layers = layers
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.gdn_colwarps_layers = layers
+
+
 def _publish_gdn_colwarps_prefill(generator: Any, enabled: bool) -> None:
     """Publish the GDN columnwarp enablement gate as owner state.
 
@@ -1613,17 +1622,8 @@ def _bind(
         # worklog entries 20261003T225747, 20261003T234213,
         # 20261004T000542 (the binder pin) and 20261004T001404 (this promotion).
         "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
-        # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
-        # The enablement gate is the owning generator/runner's state now
-        # (``gdn_colwarps_prefill``), published below, so no process key names
-        # it. The layer allowlist stays a process key: the gate decides whether
-        # the tiled branch runs, this list decides which layers it serves.
-        # Decode retains its separately tuned rows==1 owner.
-        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
-            ",".join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
-            if production
-            else ""
-        ),
+        # Columnwarp prefill enablement and layer scope publish on the owner
+        # below. Decode retains its separately tuned rows==1 owner.
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": "",
         # Certified QSA flash prefill suffix.
         "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1" if production else "0",
@@ -1800,8 +1800,8 @@ def _bind(
     # ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`` key. Production opens it; the
     # arithmetic-recovery pass that closed the key applies only to the UD lane,
     # so a recovery entry for this flag closes UD and leaves a production plan
-    # for any other quant open. The layer allowlist stays a process key and is
-    # published by the plan environment above.
+    # for any other quant open. Its layer scope publishes on the same owner
+    # below, independently of enablement.
     _publish_gdn_colwarps_prefill(
         generator,
         _gdn_colwarps_prefill_enabled(
@@ -1846,15 +1846,16 @@ def _bind(
     _publish_gr_dpp_reduction(
         generator, _gr_dpp_reduction_selected(resolved.manifest))
     _publish_dense_wide_policy(generator, resolved.manifest)
+    gdn_layers = (','.join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
+                  if production else '')
     if f16_routes:
-        # GDN layer composition remains process-owned.
+        # Consume the selected composition's own layer window.
         gdn = next(row for row in resolved.manifest["selections"]
                    if row["scope"].startswith("prefill_rows_ge2_d128_tiled_gdn_layers"))
         first, last = map(int, gdn["scope"].rsplit("layers", 1)[1].split("_"))
-        _apply_profile_env({
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": ",".join(map(str, range(first, last + 1))),
-        })
+        gdn_layers = ','.join(map(str, range(first, last + 1)))
         gdn_tile16_variant = gdn["selected_variant"]
+    _publish_gdn_colwarps_layers(generator, gdn_layers)
     _publish_gdn_tile16_variant(generator, gdn_tile16_variant)
     # The grouped Q8_0 expert-down owner is the plan's own decision, published
     # on the owning generator/runner instead of the retired

@@ -547,12 +547,10 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.gdn_colwarps_prefill is True
     assert fake_runner.gdn_colwarps_prefill is True
     assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL" not in os.environ
-    assert tuple(
-        int(value)
-        for value in os.environ[
-            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"
-        ].split(",")
-    ) == PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS
+    assert tuple(map(int, production_generator.gdn_colwarps_layers.split(','))) == (
+        PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS)
+    assert fake_runner.gdn_colwarps_layers == production_generator.gdn_colwarps_layers
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL"] == "1"
     assert tuple(
@@ -1561,7 +1559,7 @@ def test_ud_gdn_composition_binding_matches_manifest() -> None:
     modified_owner = SimpleNamespace(runner=None)
     modified.binder(modified_owner, modified)
     assert modified_owner.gdn_tile16_variant == changed["selected_variant"]
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ",".join(map(str, range(7, 32)))
+    assert modified_owner.gdn_colwarps_layers == ",".join(map(str, range(7, 32)))
 
 
 def test_qsa_wmma_binding_follows_manifest_not_environment(monkeypatch):
@@ -1602,7 +1600,7 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     assert owner.runner.gr_wide is True
     assert "HIPENGINE_QWEN4_EXP_GR_WIDE" not in os.environ
     assert owner.q8_dense_wide_policy.layers == frozenset(range(48))
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == all_layers
+    assert owner.gdn_colwarps_layers == owner.runner.gdn_colwarps_layers == all_layers
     # The router producer is request-local owner state, not a process key.
     assert owner.router_producer_variant == "f32_hidden_f16_wmma_gemm"
     assert owner.runner.router_producer_variant == "f32_hidden_f16_wmma_gemm"
@@ -1614,11 +1612,13 @@ def test_production_binder_publishes_the_f16_routes_and_strict_retracts_them() -
     assert other_owner.gr_wide is False
     assert other_owner.runner.gr_wide is False
     assert other.fell_back_to_strict
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ""
+    assert other_owner.gdn_colwarps_layers == other_owner.runner.gdn_colwarps_layers == ""
+    assert owner.gdn_colwarps_layers == all_layers
 
-    production.binder(SimpleNamespace(), production)
-    strict.binder(SimpleNamespace(), strict)
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == ""
+    production.binder(owner, production)
+    strict.binder(owner, strict)
+    assert owner.gdn_colwarps_layers == owner.runner.gdn_colwarps_layers == ""
+    assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS" not in os.environ
 
 
 @pytest.mark.parametrize("quant,requested", [

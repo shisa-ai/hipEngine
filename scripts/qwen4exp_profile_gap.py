@@ -444,6 +444,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the GR-up wide tile is owner state; use "
                 "--gr-wide instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS":
+            raise ValueError(
+                "the GDN columnwarp layer scope is owner state; use "
+                "--gdn-colwarps-layers instead of --override"
+            )
         if key == "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL":
             raise ValueError(
                 "the GDN columnwarp gate is owner state; use "

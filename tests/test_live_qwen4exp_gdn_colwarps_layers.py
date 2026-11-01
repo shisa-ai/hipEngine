@@ -9,7 +9,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'layer2', 'restore', 'decode_sync'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'layer2', 'restore', 'decode_sync', 'profile_default'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,13 +44,28 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
         owner = _unwrap(llm._get_text_generator())
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True,
                                 speculative_mtp=False)
-        for scope in (('27-47',) if interface == 'decode_sync' else ('999', 'all')):
+        bound_layers = owner.gdn_colwarps_layers
+        scopes = ((bound_layers,) if interface == 'profile_default' else
+                  ('27-47',) if interface == 'decode_sync' else ('999', 'all'))
+        for scope in scopes:
             # Oppose the explicit owner after binding, when the legacy
             # diagnostic selector would otherwise be consulted.
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS',
                                'all' if scope == '999' else '999')
             repeated = []
-            if interface == 'decode_sync':
+            if interface == 'profile_default':
+                from contextlib import nullcontext
+                from types import SimpleNamespace
+                from hipengine.execution_profiles import resolve_runtime_profile
+                peer = resolve_runtime_profile(
+                    model='qwen4_exp_gguf', backend='hip_gfx1151',
+                    quant='gguf_ud_q4_k_xl', profile='strict')
+                peer_owner = SimpleNamespace(runner=SimpleNamespace())
+                peer.binder(peer_owner, peer)
+                assert peer_owner.gdn_colwarps_layers == ''
+                assert owner.gdn_colwarps_layers == bound_layers == ','.join(map(str, range(48)))
+                binding = nullcontext()
+            elif interface == 'decode_sync':
                 from contextlib import ExitStack
                 from scripts.qwen4exp_decode_sync_ab import bind_production_gdn
                 binding = ExitStack()
@@ -87,8 +102,8 @@ def test_public_gdn_layer_scope_overrides_ambient_and_restores(monkeypatch, leng
                 assert len(repeated[0][1]) == len(repeated[1][1])
                 for a, b in zip(repeated[0][1], repeated[1][1], strict=True):
                     np.testing.assert_array_equal(a, b)
-            assert owner.gdn_colwarps_layers is None
-            assert owner.runner.gdn_colwarps_layers is None
+            assert owner.gdn_colwarps_layers == bound_layers
+            assert owner.runner.gdn_colwarps_layers == bound_layers
     finally:
         llm.close()
     runtime.device_synchronize()

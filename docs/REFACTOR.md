@@ -2862,12 +2862,11 @@ and update the layer gate to use it rather than environment ordering. Only then 
 map, binder-write tracking, warning/error control and their documentation. Preserve caller-override
 observability and strict/ production isolation. Run `tests/test_unit_qwen4_exp_profiles.py`, the
 affected runner ownership tests and a real generation request confirming selected routes and
-isolation before closing the migration. The GDN columnwarp layer scope now has
-an explicit `gdn_colwarps_layers` runner field, effective-value getter and
-restoring diagnostic scope. Profile-gap, both selector sweeps and layer-2
-candidates bind and report this scope explicitly; shared candidate consumers,
-decode-sync and prefill-restore A/B restore it after measurement. The profile
-binder still needs migration before retiring that control.
+isolation before closing the migration. GDN columnwarp layer scopes publish
+on generator/runner owners, including the manifest-selected F16 window, without
+process writes. Diagnostics bind and report explicit restoring scopes; unbound
+callers retain the ambient diagnostic fallback. Continue with the remaining
+profile-owned environment controls before closing this entry.
 The focused guard regression is:
 
 ```bash
