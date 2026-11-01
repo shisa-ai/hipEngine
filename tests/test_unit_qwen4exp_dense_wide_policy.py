@@ -106,3 +106,19 @@ def test_layer_gate_binds_wide_owner_and_restores(monkeypatch, route_name, candi
     finally:
         gate._restore_env(saved)
     assert owner.q8_dense_wide_policy is prior
+
+
+@pytest.mark.parametrize('candidate', [False, True])
+def test_last_row_probe_preserves_environment_and_restores_on_failure(monkeypatch, candidate):
+    from scripts.qwen4exp_prefill_last_row_probe import route_environment, DENSE_WIDE_ENV
+    monkeypatch.setenv(DENSE_WIDE_ENV, 'ambient')
+    prior = gl.Q8DenseWidePolicy(False, frozenset({7}))
+    owner = SimpleNamespace(q8_dense_wide_policy=prior)
+    with pytest.raises(RuntimeError, match='injected'):
+        with route_environment(candidate=candidate, runner=owner):
+            policy = gl.resolve_q8_dense_wide_policy(owner)
+            assert policy.enabled is candidate
+            assert policy.layers == (frozenset(range(16, 48)) if candidate else None)
+            assert os.environ[DENSE_WIDE_ENV] == 'ambient'
+            raise RuntimeError('injected')
+    assert owner.q8_dense_wide_policy is prior

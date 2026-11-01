@@ -33,7 +33,6 @@ import argparse
 import contextlib
 import json
 import math
-import os
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -76,25 +75,18 @@ class ProbeError(RuntimeError):
 
 @contextlib.contextmanager
 def route_environment(*, candidate: bool, runner: Any):
-    """Bind the gate's ``dense_wide`` selectors and clear the WMMA owner scope."""
+    """Bind the gate's dense-wide policy and clear the WMMA owner scope."""
 
     from hipengine.runtime.gguf_linear import (
+        Q8DenseWidePolicy, q8_dense_wide_policy,
         Q8WMMALayerScope, q8_wmma_layer_scope, resolve_q8_wmma_layers,
     )
 
-    names = (DENSE_WIDE_ENV, DENSE_WIDE_LAYERS_ENV)
-    previous = {name: os.environ.get(name) for name in names}
-    os.environ[DENSE_WIDE_ENV] = "1" if candidate else "0"
-    os.environ[DENSE_WIDE_LAYERS_ENV] = DENSE_WIDE_LAYERS if candidate else ""
-    try:
-        with q8_wmma_layer_scope(runner, Q8WMMALayerScope.empty()):
-            yield resolve_q8_wmma_layers(runner)
-    finally:
-        for name, value in previous.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
+    policy = Q8DenseWidePolicy(
+        candidate, frozenset(range(16, 48)) if candidate else None)
+    with (q8_wmma_layer_scope(runner, Q8WMMALayerScope.empty()),
+          q8_dense_wide_policy(runner, policy)):
+        yield resolve_q8_wmma_layers(runner)
 
 
 def _compare(reference: np.ndarray, other: np.ndarray) -> dict[str, Any]:
@@ -154,6 +146,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args(argv)
 
+    from hipengine.runtime.gguf_linear import resolve_q8_dense_wide_policy
     from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.generation.qwen4_exp_profiles import (
@@ -218,12 +211,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             for arm, candidate in (("cleared", False), ("dense_wide", True)):
                 runs: list[tuple[np.ndarray, np.ndarray, int]] = []
                 with route_environment(candidate=candidate, runner=runner) as scope:
+                    wide_policy = resolve_q8_dense_wide_policy(runner).to_report()
                     _warm(runner, tokens)
                     for _ in range(int(args.repeats)):
                         runs.append(_one_prefill(runner, tokens))
                 captured[arm] = runs
                 record["arms"][arm] = {
                     "wmma_layers": scope.to_report(),
+                    "dense_wide_policy": wide_policy,
                     "step0_token_ids": [run[2] for run in runs],
                     "step0_same_arm_repeats": [
                         _compare(runs[0][0], runs[i][0]) for i in range(1, len(runs))
