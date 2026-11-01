@@ -86,7 +86,6 @@ def main(argv=None) -> int:
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     if args.require_cached_build:
         os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1"
 
     fixture, fixture_sha = load_fixture(args.fixture)
     cases = list(fixture["cases"])
@@ -119,6 +118,9 @@ def main(argv=None) -> int:
     ))
     runner = generator.runner
     runner.gr_wave_scale = True
+    # The K320 screen rides the promoted DPP owner as its parent, so the plan's
+    # GR-up decision is bound on the runner rather than a process key.
+    runner.gr_dpp_reduction = True
 
     candidate_key = KernelKey(BACKEND, LAYER, QUANT, CANDIDATE)
     candidate = resolve(backend=BACKEND, layer=LAYER, quant=QUANT, variant=CANDIDATE)

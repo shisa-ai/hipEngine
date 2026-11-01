@@ -2984,21 +2984,6 @@ Check `scripts/qwen4exp_row4_state_gate.py`, the checked-full-row diagnostics,
 Preserve fallback semantics, run DPP/checked-row parity and cache tests, and confirm public dispatch
 before retiring the selector.
 
-### R0443 — GR DPP comparison ownership
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `gr_wave_scale`; `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION`.
-
-Done when: Deferred interface decision: migrate DPP selection to its explicit profile owner together with
-the halo-box campaign, row4 state gate and K320 diagnostics, or retain the comparison control. R0419
-migrated wave-scale ownership, not DPP; R0013 retired the separate K320 override, not this family
-selector. Do not close those controls independently and accidentally compare a preempting wide or
-IU8 route in both arms. Preserve declared scopes, fallback order, selected variant reporting and
-failure restoration; verify the migrated state/campaign comparisons and public generation with
-actual DPP engagement. Run `tests/test_unit_qwen4exp_gr_dpp_reduction.py`, GR wave-scope and profile
-tests, plus the affected GPU parent-parity/state tests before retiring the reader.
-
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.

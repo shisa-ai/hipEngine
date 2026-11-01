@@ -244,6 +244,10 @@ class Qwen4ExpGGUFTextGenerator:
         self.q4_pair_prefill = False
         self.q8_wave_scale_prefill = False
         self.gr_wave_scale = False
+        # GR-up DPP reduction, published by the profile binder from the plan's
+        # own rows>256 GR row; an unbound generator keeps the wave-scale owner
+        # and its fused exact parent below it.
+        self.gr_dpp_reduction = False
         # The GR-up wide tile is the plan's decision, published by the binder;
         # an unbound generator keeps the fused exact parent.
         self.gr_wide = False
@@ -1042,6 +1046,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q8_wave_scale_prefill = bool(getattr(generator, "q8_wave_scale_prefill", False))
     runner.gr_wave_scale = bool(getattr(generator, "gr_wave_scale", False))
     runner.gr_wide = bool(getattr(generator, "gr_wide", False))
+    runner.gr_dpp_reduction = bool(
+        getattr(generator, "gr_dpp_reduction", False))
     runner.q4_tile_m = getattr(generator, "q4_tile_m", None)
     runner.q4_tile_n = getattr(generator, "q4_tile_n", None)
     runner.q8_wmma_tiles = getattr(generator, "q8_wmma_tiles", None)

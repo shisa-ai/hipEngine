@@ -636,6 +636,7 @@ def _run_layer_ffn(
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
+    gr_dpp_reduction: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -707,6 +708,7 @@ def _run_layer_ffn(
         weights.ffn_gr.inject,
         scratch.ffn_gr,
         gr_wave_scale=gr_wave_scale,
+        gr_dpp_reduction=gr_dpp_reduction,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=runtime,
     )
@@ -1026,6 +1028,13 @@ class Qwen4ExpGGUFBatchRunner:
     # captured segment bakes the router launch in, so it belongs in the key.
     router_producer_variant: str | None = None
     gr_wave_scale: bool = False
+    # GR-up DPP reduction, carried from the owning generator like the rest of
+    # the request-local GR decisions. A batch tops out at
+    # ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, far below the selector's 257-row guard,
+    # so the decision cannot reach a baked launch and is not part of the capture
+    # key; it travels for the same reason ``gr_wave_scale`` does, so an owner
+    # that publishes it hands over a consistent GR choice.
+    gr_dpp_reduction: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder and ``None`` (the dispatch heuristic) on an unbound owner.
     # The MoE runs eager inside the captured segment, so a decode capture

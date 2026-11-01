@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -10,7 +11,7 @@ from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 
 from scripts.qwen4exp_halo_box_campaign_ab import (
-    _apply_mode, build_parser, gr_dpp_expected_calls,
+    _apply_mode, build_parser, gr_dpp_expected_calls, route_scope,
 )
 from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
 
@@ -22,19 +23,23 @@ K320_FULL = "coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact"
 def test_dpp_route_is_opt_in_and_keeps_scope(monkeypatch):
     base = KernelKey("hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
                      "coltile2_branch4_rowbatch4_f32_exact")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0")
     monkeypatch.setattr(runner, "is_registered", lambda key: True)
+    # The DPP sibling is the owning runner's decision, not a process switch:
+    # an unbound caller keeps the published wave-scale owner.
     assert runner._qwen4_exp_gr_wave_scale_key(
         base, rows=512, branches=4, published=True).variant == PARENT
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "1")
-    assert runner._qwen4_exp_gr_wave_scale_key(base, rows=257, branches=4).variant == DPP
-    assert runner._qwen4_exp_gr_wave_scale_key(base, rows=256, branches=4) == base
-    assert runner._qwen4_exp_gr_wave_scale_key(base, rows=512, branches=2) == base
+    assert runner._qwen4_exp_gr_wave_scale_key(
+        base, rows=257, branches=4, dpp=True).variant == DPP
+    assert runner._qwen4_exp_gr_wave_scale_key(
+        base, rows=256, branches=4, dpp=True) == base
+    assert runner._qwen4_exp_gr_wave_scale_key(
+        base, rows=512, branches=2, dpp=True) == base
     monkeypatch.setattr(runner, "is_registered", lambda key: key.variant != DPP)
-    assert runner._qwen4_exp_gr_wave_scale_key(base, rows=512, branches=4).variant == PARENT
+    assert runner._qwen4_exp_gr_wave_scale_key(
+        base, rows=512, branches=4, dpp=True).variant == PARENT
     monkeypatch.setattr(runner, "is_registered", lambda key: False)
-    assert runner._qwen4_exp_gr_wave_scale_key(base, rows=512, branches=4) == base
+    assert runner._qwen4_exp_gr_wave_scale_key(
+        base, rows=512, branches=4, dpp=True) == base
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS", "0")
     monkeypatch.setattr(runner, "is_registered", lambda key: True)
     assert runner._qwen4_exp_gr_k320_full_rows_key(
@@ -76,15 +81,24 @@ def test_k320_route_ignores_retired_environment(monkeypatch):
     ).variant == K320_FULL
 
 
-@pytest.mark.parametrize("mode,value", [("before", "0"), ("after", "1")])
-def test_benchmark_changes_only_dpp_flag(mode, value):
+@pytest.mark.parametrize("mode", ["before", "after"])
+def test_benchmark_binds_the_owner_and_writes_no_flag(mode):
     env = {"HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1", "other": "untouched"}
     _apply_mode(mode, route_package="gr-dpp-reduction", environment=env)
-    assert env == {"HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1", "other": "untouched",
-                   "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION": value}
-    apply_state_gate_mode(None, "gr-dpp-reduction", value,
+    # The arm is request-local runner state, so neither the campaign mode nor
+    # the state gate writes a process key for it.
+    assert env == {"HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1", "other": "untouched"}
+    apply_state_gate_mode(None, "gr-dpp-reduction", "1" if mode == "after" else "0",
                           "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", environment=env)
-    assert env["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == value
+    assert env == {"HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1", "other": "untouched"}
+    owner = SimpleNamespace(gr_wave_scale=True, gr_wide=True, gr_dpp_reduction=False)
+    with route_scope("gr-dpp-reduction", mode, owner, environment=env):
+        assert owner.gr_dpp_reduction is (mode == "after")
+        assert owner.gr_wide is False
+        assert env["HIPENGINE_QWEN4_EXP_GR_IU8"] == "0"
+    assert owner.gr_dpp_reduction is False
+    assert owner.gr_wide is True
+    assert "HIPENGINE_QWEN4_EXP_GR_IU8" not in env
     parsed = build_parser().parse_args([
         "--route-package", "gr-dpp-reduction", "--model-root", "/unused",
         "--output", "/unused.json", "--prefill-chunk-size", "4096",

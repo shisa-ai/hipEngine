@@ -1042,6 +1042,46 @@ def _publish_gr_wide(generator: Any, enabled: bool) -> None:
         runner.gr_wide = bool(enabled)
 
 
+# GR-up DPP reduction is the plan's own decision on the same row that selects
+# the wave-scale owner: the UD production plan names the exact DPP sibling there
+# and every other plan keeps the wave-scale owner. It is published as
+# request-local runner state, so the retired
+# ``HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION`` key is recorded only to report a
+# caller value the owner publication makes inert.
+_GR_DPP_LAYER = "linear+gr_gated_mean"
+_GR_DPP_SCOPE = "qwen4exp_rows_gt256_gr_up"
+_GR_DPP_ENV = "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"
+_GR_DPP_VARIANT = "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"
+
+
+def _gr_dpp_reduction_selected(manifest: Any) -> bool:
+    """Whether the resolved plan selects the exact GR-up DPP reduction.
+
+    The decision is read from the plan's own ``qwen4exp_rows_gt256_gr_up`` row:
+    the UD production plan names the DPP sibling there and every other plan
+    names the wave-scale owner, so the same row that selects the wave-scale
+    route decides whether the DPP sibling preempts it. The dispatch keeps the
+    rows>256/branch==4 guards and the DPP-to-wave-scale-to-parent fallback.
+    """
+
+    return any(
+        row["layer"] == _GR_DPP_LAYER
+        and row["scope"] == _GR_DPP_SCOPE
+        and row["selected_variant"] == _GR_DPP_VARIANT
+        for row in manifest["selections"]
+    )
+
+
+def _publish_gr_dpp_reduction(generator: Any, enabled: bool) -> None:
+    """Publish the GR-up DPP decision as owner state, not a process key."""
+
+    _record_owner_transport(_GR_DPP_ENV, "1" if enabled else "0")
+    generator.gr_dpp_reduction = bool(enabled)
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.gr_dpp_reduction = bool(enabled)
+
+
 def _publish_q8_mmq_prefill(generator: Any, enabled: bool) -> None:
     """Publish the Q8 MMQ prefill workspace gate as owner state."""
 
@@ -1471,15 +1511,12 @@ def _bind(
         # Historical GR-down intent; UD recovery below disables this independent
         # depth-gate failure. Its projection repair condition remains open.
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1" if production else "0",
-        # Exact ordered DPP replacement for the wave-scale GR-up owner. The
-        # registered wave-scale owner remains the strict fallback through the
-        # runtime resolver, while the profile's declared strict fallback is
-        # the unscaled fused parent above.
-        "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION": (
-            "1"
-            if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
-            else "0"
-        ),
+        # Exact ordered DPP replacement for the wave-scale GR-up owner. It is
+        # the owning generator/runner's state now (``gr_dpp_reduction``),
+        # published below from this plan's own ``qwen4exp_rows_gt256_gr_up``
+        # row, so no process key names it. The registered wave-scale owner
+        # remains the strict fallback through the runtime resolver, while the
+        # profile's declared strict fallback is the unscaled fused parent.
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
         # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
         # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
@@ -1796,6 +1833,13 @@ def _bind(
     # process publishes its own route rather than inheriting this one.
     _publish_gr_wide(
         generator, _gr_wide_projection_selected(resolved.manifest))
+    # The GR-up DPP reduction is the same row's decision, published on the
+    # owning runner instead of the retired
+    # ``HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION`` key. Every bind writes it, so a
+    # later bind in the same process publishes its own route rather than
+    # inheriting this one.
+    _publish_gr_dpp_reduction(
+        generator, _gr_dpp_reduction_selected(resolved.manifest))
     if f16_routes:
         # Every key here is written by each bind, so a later bind without the
         # composition in the same process restores its own value.

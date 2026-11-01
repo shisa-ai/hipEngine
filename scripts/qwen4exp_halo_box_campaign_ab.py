@@ -62,12 +62,14 @@ Q8_WAVE_ENV = {
 
 
 GR_WAVE_ENV = {
-    "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION": "0",
     "HIPENGINE_QWEN4_EXP_GR_IU8": "0",
 }
 #: The GR-up wide tile is request-local runner state now, so the wave-scale
 #: package closes it on the runner it measures rather than through a key.
 GR_WIDE_FIELD = "gr_wide"
+#: GR-up DPP reduction is request-local runner state too, so the packages that
+#: must not measure the sibling close it on the runner they measure.
+GR_DPP_FIELD = "gr_dpp_reduction"
 
 
 def gr_wave_control_record(runner):
@@ -76,19 +78,68 @@ def gr_wave_control_record(runner):
         "published_value": runner.gr_wave_scale,
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(GR_WAVE_ENV),
-        "forced_runner_fields": {GR_WIDE_FIELD: False},
+        "forced_runner_fields": {GR_WIDE_FIELD: False, GR_DPP_FIELD: False},
         "counted_variant": "coltile2_branch4_rowbatch4_wave_scale_f32_exact",
     }
 
 
 @contextlib.contextmanager
 def gr_wave_scope(runner, enabled, *, environment=os.environ):
-    """Compare exact GR composites without wide, IU8 or DPP preemption."""
-    from hipengine.runtime.qwen4_exp_runner import gr_wide, gr_wave_scale
+    """Compare exact GR composites with wide, IU8 and DPP closed on the owner."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        gr_dpp_reduction, gr_wide, gr_wave_scale)
     prior = {key: environment.get(key) for key in GR_WAVE_ENV}
     try:
         environment.update(GR_WAVE_ENV)
-        with gr_wide(runner, False), gr_wave_scale(runner, enabled):
+        with (gr_wide(runner, False), gr_dpp_reduction(runner, False),
+              gr_wave_scale(runner, enabled)):
+            yield
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
+
+def gr_dpp_control_record(runner):
+    """The arm's effective controls, so the record names what both arms ran."""
+
+    return {
+        "runner_field": GR_DPP_FIELD, "before": False, "after": True,
+        "published_value": bool(getattr(runner, GR_DPP_FIELD, False)),
+        "scope": "per measured run; restored on exit",
+        "forced_environment": dict(GR_WAVE_ENV),
+        # The sibling only runs inside the fused-up branch, so both arms close
+        # the wide tile and the iu8 projection that would preempt it, and hold
+        # the wave-scale owner on so ``before`` is the parent it replaces.
+        "forced_runner_fields": {GR_WIDE_FIELD: False, "gr_wave_scale": True},
+        "counted_variant": "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact",
+        "counted_variants": [
+            "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact",
+            "coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact",
+        ],
+        "counted_parent_variant": "coltile2_branch4_rowbatch4_wave_scale_f32_exact",
+    }
+
+
+@contextlib.contextmanager
+def gr_dpp_scope(runner, enabled, *, environment=os.environ):
+    """Compare the exact DPP sibling against the wave-scale parent.
+
+    Both arms close the two preemptors of the fused-up branch (the wide tile and
+    the iu8 projection) and hold the wave-scale owner on, so the ``before`` arm
+    measures the exact parent the sibling replaces rather than the fused exact
+    parent below it. Only the owner field differs between the arms.
+    """
+
+    from hipengine.runtime.qwen4_exp_runner import (
+        gr_dpp_reduction, gr_wide, gr_wave_scale)
+    prior = {key: environment.get(key) for key in GR_WAVE_ENV}
+    try:
+        environment.update(GR_WAVE_ENV)
+        with (gr_wide(runner, False), gr_dpp_reduction(runner, enabled),
+              gr_wave_scale(runner, True)):
             yield
     finally:
         for key, value in prior.items():
@@ -633,6 +684,24 @@ def gr_dpp_expected_calls(tokens: int, chunk: int) -> int:
         raise ValueError("positive token and chunk sizes required")
     full, tail = divmod(tokens, chunk)
     return 96 * (full * (chunk > 256) + (tail > 256))
+
+
+def gr_dpp_arm_expectations(
+    enabled: bool, tokens: int, chunk: int,
+) -> tuple[int, int]:
+    """The DPP sibling and wave-scale parent counts one measured arm must see.
+
+    The sibling preempts the wave-scale owner only when the arm enables it, so
+    an enabled arm runs the sibling and no parent, and a control arm runs the
+    parent and no sibling. Both are the same GR-read surface, so one count
+    states the pair: an arm that checked only the sibling could not tell the
+    wave-scale parent from the fused exact parent below it.
+    """
+
+    if not isinstance(enabled, bool):
+        raise ValueError("the arm's GR DPP decision must be a bool")
+    total = gr_dpp_expected_calls(tokens, chunk)
+    return (total, 0) if enabled else (0, total)
 
 
 def router_dpp_expected_calls(tokens: int, chunk: int) -> int:
@@ -1816,6 +1885,13 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError("gr-wave-scale needs the owning runner")
         return gr_wave_scope(runner, mode == "after", environment=environment)
 
+    if route_package == "gr-dpp-reduction":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError("gr-dpp-reduction needs the owning runner")
+        return gr_dpp_scope(runner, mode == "after", environment=environment)
+
     if route_package == "q8-wave-scale":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -2126,8 +2202,7 @@ def _apply_mode(
     if route_package == "gr-dpp-reduction":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        environment["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1" if mode == "after" else "0"
-        return
+        return  # route_scope binds the runner-local owner.
     if route_package == "chunk1024":
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
@@ -2435,6 +2510,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Exact generated trajectories are required by this screening harness. "
             "A mismatch requires full declared production numerical/state gates, not relaxed checks.")
     row4_calls = [0]
+    gr_wave_calls = [0]
+    gr_wave_original = None
+    gr_k320_original = None
     register_mapped_calls = [0]
     mapped_owner_calls = {"bundle": 0, "register": 0}
     original_row4 = None
@@ -2544,9 +2622,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             return original_row4(*call_args, **call_kwargs)
 
         register(row4_key, counted_gr_dpp, replace=True)
+        # The control arm's leaf is the wave-scale parent, so it is counted on
+        # the kernel that actually ran. Counting only the sibling leaves the
+        # control arm's zero expectation satisfied by any route, including the
+        # fused exact parent below the wave-scale owner this package compares
+        # against.
+        gr_wave_key = KernelKey(
+            "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+            "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
+        gr_wave_original = resolve(
+            backend=gr_wave_key.backend, layer=gr_wave_key.layer,
+            quant=gr_wave_key.quant, variant=gr_wave_key.variant)
+
+        def counted_gr_wave(*call_args, **call_kwargs):
+            gr_wave_calls[0] += 1
+            return gr_wave_original(*call_args, **call_kwargs)
+
+        register(gr_wave_key, counted_gr_wave, replace=True)
+        gr_k320_key = KernelKey(
+            row4_key.backend, row4_key.layer, row4_key.quant,
+            "coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact")
+        gr_k320_original = resolve(
+            backend=gr_k320_key.backend, layer=gr_k320_key.layer,
+            quant=gr_k320_key.quant, variant=gr_k320_key.variant)
+
+        def counted_gr_k320(*call_args, **call_kwargs):
+            row4_calls[0] += 1
+            return gr_k320_original(*call_args, **call_kwargs)
+
+        register(gr_k320_key, counted_gr_k320, replace=True)
         artifact["arms"] = {
-            "before": {"gr_up": "coltile2_branch4_rowbatch4_wave_scale_f32_exact"},
-            "after": {"gr_up": row4_key.variant},
+            "before": {"gr_up": gr_wave_key.variant},
+            "after": {"gr_up": [row4_key.variant, gr_k320_key.variant]},
         }
     gr_iu8_module = None
     if args.route_package in {"gr-iu8", "gr-iu8-down"}:
@@ -2812,6 +2919,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
     if args.route_package == "gr-wave-scale":
         artifact["selection_control"] = gr_wave_control_record(generator.runner)
+    if args.route_package == "gr-dpp-reduction":
+        artifact["selection_control"] = gr_dpp_control_record(generator.runner)
     if args.route_package == "q8-wave-scale":
         artifact["selection_control"] = q8_wave_control_record(generator.runner)
     if args.route_package == "q4-pair":
@@ -2976,6 +3085,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             apply_chunk_mode(generator.runner,mode,allocated_chunk_size=args.prefill_chunk_size)
             observed_chunks.clear()
         start_calls = row4_calls[0]
+        start_gr_wave = gr_wave_calls[0]
         start_mapped = register_mapped_calls[0]
         start_owners = dict(mapped_owner_calls)
         start_leaves = dict(pf13_calls)
@@ -3095,11 +3205,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     raise AssertionError(
                         f"ordered v2 decode calls {calls} != {expected}")
             elif args.route_package == "gr-dpp-reduction":
-                expected = (gr_dpp_expected_calls(int(case["prompt_tokens"]),
-                                                 args.prefill_chunk_size)
-                            if mode == "after" else 0)
+                expected, expected_wave = gr_dpp_arm_expectations(
+                    mode == "after", int(case["prompt_tokens"]),
+                    args.prefill_chunk_size)
                 if calls != expected:
                     raise AssertionError(f"GR DPP calls {calls} != {expected}")
+                wave = gr_wave_calls[0] - start_gr_wave
+                if wave != expected_wave:
+                    raise AssertionError(
+                        f"GR wave-scale parent calls {wave} != {expected_wave}")
+                row["wave_parent_calls"] = wave
             elif args.route_package == "gr-iu8-down":
                 prompt_tokens = int(case["prompt_tokens"])
                 full_chunks, tail = divmod(prompt_tokens, args.prefill_chunk_size)
@@ -3254,6 +3369,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = "0"
         elif original_row4 is not None:
             register(row4_key, original_row4, replace=True)
+        if gr_k320_original is not None:
+            register(gr_k320_key, gr_k320_original, replace=True)
+        if gr_wave_original is not None:
+            register(gr_wave_key, gr_wave_original, replace=True)
         if original_register is not None:
             register(register_key, original_register, replace=True)
         if narrow_original is not None:

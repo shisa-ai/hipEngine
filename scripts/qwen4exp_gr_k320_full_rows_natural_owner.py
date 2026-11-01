@@ -89,7 +89,6 @@ def main() -> int:
     check_host()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1"
 
     gate.register_gfx1151_kernels(replace=True)
     gate.register_qwen4_exp_gfx1151_profiles()
@@ -115,6 +114,9 @@ def main() -> int:
         prefill_chunk_size=CHUNK_SIZE,
     ))
     generator.runner.gr_wave_scale = True
+    # The screen's parent is the promoted DPP owner, so the plan's GR-up
+    # decision is bound on the runner rather than a process key.
+    generator.runner.gr_dpp_reduction = True
     runtime = generator.runner.runtime
     key = KernelKey(BACKEND, LAYER, QUANT, PARENT)
     parent = resolve(backend=BACKEND, layer=LAYER, quant=QUANT, variant=PARENT)

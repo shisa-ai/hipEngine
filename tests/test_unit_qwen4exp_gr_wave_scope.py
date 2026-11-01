@@ -19,7 +19,6 @@ DPP = "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact"
 @pytest.mark.parametrize("rows,branches", [(64, 4), (256, 4), (257, 4), (513, 4), (512, 2)])
 def test_selector_uses_published_choice(monkeypatch, published, stale, rows, branches):
     monkeypatch.setenv(ENV, stale)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0")
     monkeypatch.setattr(module, "is_registered", lambda key: True)
     selected = module._qwen4_exp_gr_wave_scale_key(
         BASE, rows=rows, branches=branches, published=published)
@@ -28,11 +27,11 @@ def test_selector_uses_published_choice(monkeypatch, published, stale, rows, bra
 
 @pytest.mark.parametrize("published", [False, True])
 def test_dpp_keeps_wave_fallback_independent_of_wave_publication(monkeypatch, published):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "1")
     for available, expected in [({DPP, WAVE}, DPP), ({WAVE}, WAVE), (set(), BASE.variant)]:
         monkeypatch.setattr(module, "is_registered", lambda key: key.variant in available)
         assert module._qwen4_exp_gr_wave_scale_key(
-            BASE, rows=513, branches=4, published=published).variant == expected
+            BASE, rows=513, branches=4, published=published,
+            dpp=True).variant == expected
 
 
 def test_diagnostic_scope_restores_nested_failure_and_isolates_other_runner():

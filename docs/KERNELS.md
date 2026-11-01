@@ -908,8 +908,9 @@ lane-zero reduction to `permlanex16` plus `row_shl8/4/2/1` data-parallel
 primitive (DPP) operations. The wave-scale fused parent, unscaled fused
 parent and projection/sigmoid/mean primitive chain remain available.
 
-During admission `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION=1` selects the
-sibling only within the existing rows>256/four-branch route. Raw-bit tests
+The resolved profile publishes `gr_dpp_reduction` on its execution owners;
+`gr_dpp_reduction(owner, True)` selects the sibling diagnostically, only
+within the existing rows>256/four-branch route. Raw-bit tests
 cover tails through 4096 rows; real Q8_0 banks at rows512/1024/4096 improve
 1.54-1.57x on physical gfx1151 host
 `55ea6c509d0b49eea8de7094a1023668`. The compiler reduces VGPR72->57 and

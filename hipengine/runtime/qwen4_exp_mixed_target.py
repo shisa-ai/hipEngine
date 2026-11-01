@@ -323,6 +323,7 @@ class Qwen4ExpMixedTargetPass:
                     binding.attention_gr.down, binding.attention_gr.up, binding.attention_gr.inject,
                     scratch.attention_gr, rows=rows, branches=cfg.residual_branch_count,
                     gr_wave_scale=getattr(batch, "gr_wave_scale", False),
+                    gr_dpp_reduction=getattr(batch, "gr_dpp_reduction", False),
                     hidden=cfg.hidden_size, low_rank=cfg.residual_low_rank, runtime=self.runtime,
                 )
                 if kind == 'gdn':
@@ -371,6 +372,7 @@ class Qwen4ExpMixedTargetPass:
                     moe_decode_warp=getattr(batch, "moe_decode_warp", frozenset()),
                     routed_f16_enabled=getattr(batch, "routed_f16_enabled", False),
                     gr_wave_scale=getattr(batch, "gr_wave_scale", False),
+                    gr_dpp_reduction=getattr(batch, "gr_dpp_reduction", False),
                     branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank, ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count, top_k=cfg.expert_used_count, stream=0, runtime=self.runtime,
@@ -415,6 +417,7 @@ class Qwen4ExpMixedTargetPass:
                 batch.resident.weight('root.head_hc_down'), batch.resident.weight('root.head_hc_up'),
                 None, self.head, rows=rows, branches=cfg.residual_branch_count,
                 gr_wave_scale=getattr(batch, "gr_wave_scale", False),
+                gr_dpp_reduction=getattr(batch, "gr_dpp_reduction", False),
                 hidden=cfg.hidden_size, low_rank=cfg.residual_low_rank, runtime=self.runtime,
             )
             launch_gguf_linear(

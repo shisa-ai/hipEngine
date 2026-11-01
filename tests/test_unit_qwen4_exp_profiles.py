@@ -356,7 +356,8 @@ def test_ud_production_binds_the_promoted_gr_dpp_owner(
     )
     assert generator.gr_wave_scale is True
     assert "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "1"
+    assert generator.gr_dpp_reduction is True
+    assert "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION" not in os.environ
 
 
 def test_historical_q4km_binder_structure_not_qualification(
@@ -421,7 +422,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.gr_wave_scale is True
     assert fake_runner.gr_wave_scale is True
     assert "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "0"
+    assert production_generator.gr_dpp_reduction is False
+    assert fake_runner.gr_dpp_reduction is False
+    assert "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
     # The two vector children are request-local runner state: the production
     # binder selects them without writing a process-wide switch.

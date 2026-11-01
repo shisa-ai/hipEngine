@@ -116,8 +116,10 @@ def _install_fake_kernels(monkeypatch, device: _FakeDevice) -> None:
         device.write(residual_ptr, np.tile(values, (1, branches)))
 
     def fake_gr_read(residual_ptr, norm_ptr, down, up, inject, scratch, *,
-                     rows, branches, hidden, low_rank, runtime, gr_wave_scale):
+                     rows, branches, hidden, low_rank, runtime, gr_wave_scale,
+                     gr_dpp_reduction):
         assert isinstance(gr_wave_scale, bool)
+        assert isinstance(gr_dpp_reduction, bool)
         bits = device.read(residual_ptr, np.uint16, (rows, branches * hidden))
         mixed = (bits.astype(np.uint32) << 16).view(np.float32)[:, :hidden]
         device.write(scratch.mixed.ptr, mixed)

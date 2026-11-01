@@ -33,6 +33,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
     q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
+    gr_dpp_arm_expectations,
     router_dpp_expected_calls,route_scope,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_FIELD,
     Q51_PAIR_FIELD,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
@@ -103,6 +104,10 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
     if package == "qsa-ordered-v2":
         # Request-local on the runner; ``route_scope`` binds the leaf and the
         # case keeps the binding open through the decode steps that count it.
+        return
+    if package == "gr-dpp-reduction":
+        # Request-local on the runner; ``route_scope`` closes the wide tile and
+        # the iu8 projection and binds the owner around the measured prefill.
         return
     if package == "chunk1024":
         apply_chunk_mode(runner,"after" if enabled=="1" else "before",
@@ -224,7 +229,7 @@ def main():
     if args.route_package == "router-dpp":
         flag = ""  # route_scope binds the runner-local producer.
     if args.route_package == "gr-dpp-reduction":
-        flag = "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"
+        flag = ""  # route_scope binds the owning runner.
     if args.route_package == "gr-wave-scale":
         flag = ""  # route_scope binds the owning runner.
     if args.route_package == "q8-mmq-prepack":
@@ -364,6 +369,9 @@ def main():
             quant=mapped_register_key.quant,
             variant=mapped_register_key.variant)
     calls = [0]
+    gr_wave_calls = [0]
+    gr_wave_original = None
+    gr_k320_original = None
     mapped_calls=[0]
     mapped_owner_calls = {"bundle": 0, "register": 0}
     mapped_register_key = None
@@ -389,6 +397,35 @@ def main():
         # The arm selects the leaf through the runner's published variant, so
         # engagement is counted on the kernel that actually ran.
         register(gdn_narrow_key, counted_narrow, replace=True)
+    if args.route_package == "gr-dpp-reduction":
+        # The sibling's control is the wave-scale parent, so the control arm
+        # counts the parent it actually ran. Without this the arm's zero DPP
+        # expectation is satisfied by any route, including the fused exact
+        # parent below the wave-scale owner.
+        gr_wave_key = KernelKey(
+            key.backend, key.layer, key.quant,
+            "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
+        gr_wave_original = resolve(
+            backend=gr_wave_key.backend, layer=gr_wave_key.layer,
+            quant=gr_wave_key.quant, variant=gr_wave_key.variant)
+
+        def counted_gr_wave(*a, **kw):
+            gr_wave_calls[0] += 1
+            return gr_wave_original(*a, **kw)
+
+        register(gr_wave_key, counted_gr_wave, replace=True)
+        gr_k320_key = KernelKey(
+            key.backend, key.layer, key.quant,
+            "coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact")
+        gr_k320_original = resolve(
+            backend=gr_k320_key.backend, layer=gr_k320_key.layer,
+            quant=gr_k320_key.quant, variant=gr_k320_key.variant)
+
+        def counted_gr_k320(*a, **kw):
+            calls[0] += 1
+            return gr_k320_original(*a, **kw)
+
+        register(gr_k320_key, counted_gr_k320, replace=True)
     if args.route_package == "dense-wide-padded":
         from scripts.qwen4exp_dense_wide_padded_gate_support import (
             CANDIDATE, call_in_scope, expected_calls as tail_expected_calls,
@@ -555,6 +592,12 @@ def main():
             from scripts.qwen4exp_halo_box_campaign_ab import gr_wave_control_record
             assert generator.runner.gr_wave_scale is True
             report["selection_control"] = gr_wave_control_record(generator.runner)
+        if args.route_package == "gr-dpp-reduction":
+            from scripts.qwen4exp_halo_box_campaign_ab import gr_dpp_control_record
+            # The plan publishes the sibling and ``route_scope`` binds each arm
+            # around it, so the published value is the premise both arms ride.
+            assert generator.runner.gr_dpp_reduction is True
+            report["selection_control"] = gr_dpp_control_record(generator.runner)
         if args.route_package in {"q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
@@ -802,6 +845,7 @@ def main():
                 apply_state_gate_mode(generator.runner,args.route_package,enabled,flag)
                 observed_chunks.clear()
                 start_calls = calls[0]
+                start_gr_wave = gr_wave_calls[0]
                 start_mapped=mapped_calls[0]
                 start_owners = dict(mapped_owner_calls)
                 start_qsa_calls = qsa_calls[0]
@@ -815,6 +859,7 @@ def main():
                         generator.runner) as case_scope:
                     first = generator.runner.prefill(case["prompt_token_ids"])
                     prefill_invoked = calls[0] - start_calls
+                    prefill_wave = gr_wave_calls[0] - start_gr_wave
                     # Every other arm's control only covers its measured
                     # prefill. The ordered-v2 leaf is decode-only, so its
                     # binding stays in force through the steps that count it
@@ -848,6 +893,7 @@ def main():
                                 kv_digest.update(raw)
                         state["full_kv_sha256"] = kv_digest.hexdigest()
                     invoked = calls[0] - start_calls
+                    wave_calls = gr_wave_calls[0] - start_gr_wave
                     case_scope.close()
                 if args.route_package in {"qsa-head-pair","qsa-head-quad"}:
                     assert invoked==prefill_invoked,"head pair ran in decode"
@@ -947,11 +993,20 @@ def main():
                     assert invoked == prefill_invoked, "router DPP ran in decode"
                     expected = expected_router > 0
                 if args.route_package == "gr-dpp-reduction":
-                    expected_calls = (gr_dpp_expected_calls(case["prompt_tokens"],
-                                                          generator.runner.prefill_chunk_size)
-                                      if enabled == "1" else 0)
+                    expected_calls, expected_wave = gr_dpp_arm_expectations(
+                        enabled == "1", case["prompt_tokens"],
+                        generator.runner.prefill_chunk_size)
+                    # A selected case that cannot clear the 257-row guard
+                    # would record 0 == 0 as an engaged arm, so an enabled
+                    # arm with no expected sibling call is refused instead.
+                    require_engaged_expectation(
+                        args.route_package, case, expected_calls,
+                        generator.runner.prefill_chunk_size,
+                        arm_enabled=enabled == "1")
                     assert prefill_invoked == expected_calls, (prefill_invoked, expected_calls)
                     assert invoked == prefill_invoked, "GR DPP ran in decode"
+                    assert prefill_wave == expected_wave, (prefill_wave, expected_wave)
+                    assert wave_calls == prefill_wave, "GR wave-scale parent ran in decode"
                     expected = expected_calls > 0
                 if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
                     expected = expected_calls > 0
@@ -998,6 +1053,7 @@ def main():
                     "candidate_prefill_calls": prefill_invoked,
                     "candidate_decode_calls": invoked - prefill_invoked,
                     "qsa_candidate_calls": invoked_qsa,
+                    "wave_parent_calls": wave_calls,
                     "step_seconds": step_seconds,
                     "full_kv_sha256": state.get("full_kv_sha256"),
                     "prefill_state_sha256": (prefill_state["state_sha256"]
@@ -1042,6 +1098,10 @@ def main():
             }:
                 os.environ[flag] = "1"
             register(key, original, replace=True)
+        if gr_k320_original is not None:
+            register(gr_k320_key, gr_k320_original, replace=True)
+        if gr_wave_original is not None:
+            register(gr_wave_key, gr_wave_original, replace=True)
         if mapped_register_original is not None:
             register(mapped_register_key, mapped_register_original, replace=True)
         if gdn_narrow_original is not None:

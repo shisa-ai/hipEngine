@@ -3668,12 +3668,21 @@ def run_qwen4_exp_gr_read(
     decode_rows: bool = False,
     gr_wave_scale: bool = False,
     gr_wide: bool = False,
+    gr_dpp_reduction: bool = False,
 ) -> Qwen4ExpGRReadDeviceResult:
     """Execute strict grouped GR read using model-neutral resident projections.
 
     ``pending_write`` = ``(source, block, inject_logits, block_bf16)`` is the
     residual write that produces ``residual_ptr``; the read launches it first,
     or inside its norm launch where that is bit-identical.
+
+    ``gr_wave_scale`` and ``gr_dpp_reduction`` are the owning runner's
+    plan-published GR-up decisions (see :func:`gr_wave_scale` and
+    :func:`gr_dpp_reduction`). They select only inside the fused-up branch, at
+    rows>256 and four branches, and only after ``gr_wide`` and the iu8 route
+    have declined: those two preempt the branch, so a published wide or iu8
+    route leaves the DPP and wave-scale owners unselected rather than
+    competing with them. An unbound caller keeps the fused exact parent.
     """
 
     if scratch.closed:
@@ -3757,6 +3766,7 @@ def run_qwen4_exp_gr_read(
                 Qwen4ExpGRScratch(**views, runtime=active_runtime), rows=1,
                 gr_wave_scale=gr_wave_scale,
                 gr_wide=gr_wide,
+                gr_dpp_reduction=gr_dpp_reduction,
                 branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,
                 stream=stream, runtime=active_runtime)
         return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,
@@ -3937,7 +3947,8 @@ def run_qwen4_exp_gr_read(
         )
     elif fused_up:
         fused_up_key = _qwen4_exp_gr_wave_scale_key(
-            fused_up_key, rows=rows, branches=branches, published=gr_wave_scale)
+            fused_up_key, rows=rows, branches=branches,
+            published=gr_wave_scale, dpp=gr_dpp_reduction)
         fused_up_key = _qwen4_exp_gr_k320_full_rows_key(
             fused_up_key, rows=rows, branches=branches, low_rank=low_rank,
             hidden=hidden,
@@ -5266,24 +5277,34 @@ def _qwen4_exp_q8_down_row4_key(
 
 def _qwen4_exp_gr_wave_scale_key(
     key: KernelKey, *, rows: int, branches: int, published: bool = False,
+    dpp: bool = False,
 ) -> KernelKey:
+    """Select the exact GR-up reduction owner for this read.
+
+    ``published`` is the owning runner's plan-published wave-scale decision (see
+    :func:`gr_wave_scale`) and ``dpp`` is its plan-published DPP decision (see
+    :func:`gr_dpp_reduction`). Neither is a process-wide switch, so an unbound
+    caller keeps the fused exact parent. The guards stay dispatch-time: a read
+    at or below 256 rows, or off four branches, selects nothing.
+
+    DPP is an exact replacement for the wave-scale owner, so it preempts a
+    published wave-scale owner. The wave-scale owner stays the first fallback
+    even when only DPP was published, because a missing DPP registration must
+    not silently lose the profile's exact wave-scale route, and the fused exact
+    parent is the last rung. ``gr_wide`` and ``HIPENGINE_QWEN4_EXP_GR_IU8`` are
+    separate decisions that preempt this branch in :func:`run_qwen4_exp_gr_read`;
+    this selector never widens or re-routes them.
+    """
+
     if rows <= 256 or branches != 4:
         return key
-    wave_scale_enabled = published
-    dpp_enabled = os.environ.get(
-        "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION", "0"
-    ) not in {"", "0", "false", "False"}
-    if not wave_scale_enabled and not dpp_enabled:
+    if not published and not dpp:
         return key
-    if dpp_enabled:
-        dpp = KernelKey(key.backend, key.layer, key.quant,
-                        "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
-        if is_registered(dpp):
-            return dpp
-    # DPP is an exact replacement for the wave-scale owner. Keep that owner as
-    # the first fallback even when a recovery profile has closed its legacy
-    # gate; otherwise a missing DPP registration would silently lose the
-    # profile's exact wave-scale fallback.
+    if dpp:
+        candidate = KernelKey(key.backend, key.layer, key.quant,
+                              "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact")
+        if is_registered(candidate):
+            return candidate
     candidate = KernelKey(key.backend, key.layer, key.quant,
                           "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
     return candidate if is_registered(candidate) else key
@@ -6006,7 +6027,7 @@ def gr_wave_scale(runner: Any, enabled: bool):
         runner.gr_wave_scale = prior
 
 
-def _gr_wide_targets(owner: Any) -> list[Any]:
+def _gr_owner_targets(owner: Any) -> list[Any]:
     """The owner object plus the runner it currently holds, if any."""
 
     targets = [owner]
@@ -6038,7 +6059,7 @@ def gr_wide(owner: Any, enabled: bool):
     The rows>256 and low_rank%64==0 guards stay at the dispatch consumer.
     """
 
-    targets = _gr_wide_targets(owner)
+    targets = _gr_owner_targets(owner)
     owner_prior = bool(getattr(owner, "gr_wide", False))
     prior = [(target, bool(getattr(target, "gr_wide", False)))
              for target in targets]
@@ -6050,9 +6071,71 @@ def gr_wide(owner: Any, enabled: bool):
         restored = {id(target) for target in targets}
         for target, previous in prior:
             target.gr_wide = previous
-        for target in _gr_wide_targets(owner):
+        for target in _gr_owner_targets(owner):
             if id(target) not in restored:
                 target.gr_wide = owner_prior
+
+
+# GR-up DPP reduction. The production UD plan publishes the exact DPP sibling
+# for the rows>256/four-branch fused GR-up read; the binder publishes that
+# decision to the owning runner, and the dispatch-time selector keeps the row
+# and branch guards with the wave-scale owner as its first fallback and the
+# fused exact parent below it. It is request-local state, so a diagnostic arm
+# binds it on the owner it measures instead of writing a process-wide switch.
+_GR_DPP_REDUCTION_UNSET = object()
+
+
+@contextlib.contextmanager
+def gr_dpp_reduction(
+    owner: Any, enabled: bool | object = _GR_DPP_REDUCTION_UNSET,
+):
+    """Bind the GR-up DPP decision on one owning runner.
+
+    ``enabled`` is the route to bind for the scope; leaving it unset keeps
+    whatever the plan published. A generator target also binds its current
+    runner, so a harness that holds the generator selects the route its
+    dispatches read. The prior field value of each target is yielded and put
+    back on exit, including on error, so the plan's decision comes back.
+
+    A runner the owner builds or swaps in during the scope inherits the bound
+    route (the binder, the constructor and clone inheritance all copy the
+    generator's field), so the exit also puts that runner back to the owner's
+    prior route. Otherwise an arm's route would outlive the measured window on
+    the owner that serves later rows.
+
+    The runner field is the owner: the profile binder publishes the plan's
+    decision to it, the constructor and clone inheritance copy it, and this
+    scope is how a gate arm names the other route. The rows>256 and branch==4
+    guards and the DPP-to-wave-scale-to-parent fallback stay at the dispatch.
+    """
+
+    targets = _gr_owner_targets(owner)
+    owner_prior = bool(getattr(owner, "gr_dpp_reduction", False))
+    prior = [(target, bool(getattr(target, "gr_dpp_reduction", False)))
+             for target in targets]
+    try:
+        if enabled is not _GR_DPP_REDUCTION_UNSET:
+            for target in targets:
+                target.gr_dpp_reduction = bool(enabled)
+        yield [previous for _, previous in prior]
+    finally:
+        restored = {id(target) for target in targets}
+        for target, previous in prior:
+            target.gr_dpp_reduction = previous
+        for target in _gr_owner_targets(owner):
+            if id(target) not in restored:
+                target.gr_dpp_reduction = owner_prior
+
+
+def resolve_gr_dpp_reduction(owner: Any) -> bool:
+    """The GR-up DPP decision a generator or runner publishes.
+
+    ``False`` for an unbound owner, so a direct caller keeps the wave-scale
+    fallback chain rather than the sibling. The row and branch guards stay at
+    the dispatch.
+    """
+
+    return bool(getattr(owner, "gr_dpp_reduction", False))
 
 
 @contextlib.contextmanager
@@ -8162,6 +8245,7 @@ def run_qwen4_exp_dense_qsa_layer(
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     gr_wide: bool = False,
+    gr_dpp_reduction: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -8266,6 +8350,7 @@ def run_qwen4_exp_dense_qsa_layer(
         stream=stream, runtime=active_runtime,
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
+        gr_dpp_reduction=gr_dpp_reduction,
     )
     mixer = run_qwen4_exp_dense_qsa_token_mixer(
         attention_read.mixed.ptr,
@@ -8306,6 +8391,7 @@ def run_qwen4_exp_dense_qsa_layer(
         scratch.ffn_gr,
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
+        gr_dpp_reduction=gr_dpp_reduction,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
         stream=stream, runtime=active_runtime,
         pending_write=pending_write,
@@ -8362,6 +8448,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     gr_wide: bool = False,
+    gr_dpp_reduction: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -8494,6 +8581,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         scratch.attention_gr,
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
+        gr_dpp_reduction=gr_dpp_reduction,
         rows=rows,
         branches=branches,
         hidden=hidden,
@@ -8552,6 +8640,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         scratch.ffn_gr,
         gr_wave_scale=gr_wave_scale,
         gr_wide=gr_wide,
+        gr_dpp_reduction=gr_dpp_reduction,
         rows=rows,
         branches=branches,
         hidden=hidden,
@@ -8627,6 +8716,7 @@ def run_qwen4_exp_gdn_layer(
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
     gr_wide: bool = False,
+    gr_dpp_reduction: bool = False,
     q4_pair_prefill: bool = False,
     q4_bundle_prefill: bool = False,
     q5k_row4_prefill: bool = False,
@@ -8779,6 +8869,7 @@ def run_qwen4_exp_gdn_layer(
                 stream=graph_stream, runtime=active_runtime,
                 gr_wave_scale=gr_wave_scale,
                 gr_wide=gr_wide,
+                gr_dpp_reduction=gr_dpp_reduction,
             )
 
         layer_graph.run(
@@ -8813,6 +8904,7 @@ def run_qwen4_exp_gdn_layer(
             pending_write=pending_write,
             gr_wave_scale=gr_wave_scale,
             gr_wide=gr_wide,
+            gr_dpp_reduction=gr_dpp_reduction,
         )
     mixer_output = run_qwen4_exp_gdn_token_mixer(
         attention_read.mixed.ptr,
@@ -8854,6 +8946,7 @@ def run_qwen4_exp_gdn_layer(
                 stream=graph_stream, runtime=active_runtime,
                 gr_wave_scale=gr_wave_scale,
                 gr_wide=gr_wide,
+                gr_dpp_reduction=gr_dpp_reduction,
             )
 
         layer_graph.run(
@@ -8896,6 +8989,7 @@ def run_qwen4_exp_gdn_layer(
             pending_write=pending_write,
             gr_wave_scale=gr_wave_scale,
             gr_wide=gr_wide,
+            gr_dpp_reduction=gr_dpp_reduction,
         )
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
@@ -9930,6 +10024,13 @@ class Qwen4ExpGGUFResidentModelRunner:
     # consumer, so a published route never widens below them, and a diagnostic
     # arm binds this field on the runner it measures.
     gr_wide: bool = False
+    # GR-up DPP reduction, published by the profile binder from the plan's own
+    # ``qwen4exp_rows_gt256_gr_up`` row: True on the plan that selects the exact
+    # DPP sibling, False on every plan that keeps the wave-scale owner. The
+    # dispatch-time selector keeps the rows>256/branch==4 guards, preempts the
+    # wave-scale owner only when both are published, and falls back DPP ->
+    # wave-scale -> fused exact parent. A diagnostic scope may outrank it.
+    gr_dpp_reduction: bool = False
     # The compact F16 Q4_K dual gate/up tile pair, published 16/16 by the
     # profile binder for every plan and ``None`` (the dispatch heuristic) on an
     # unbound runner: M is 64 from 512 rows up and 16 below, N is 16. The pair
@@ -10624,6 +10725,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             output.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
+            gr_dpp_reduction=self.gr_dpp_reduction,
             rows=len(tokens),
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -10761,6 +10863,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             output.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
+            gr_dpp_reduction=self.gr_dpp_reduction,
             rows=count,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,
@@ -11298,6 +11401,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     gr_wide=self.gr_wide,
+                    gr_dpp_reduction=self.gr_dpp_reduction,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
@@ -11351,6 +11455,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     gr_wide=self.gr_wide,
+                    gr_dpp_reduction=self.gr_dpp_reduction,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
@@ -11442,6 +11547,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
+            gr_dpp_reduction=self.gr_dpp_reduction,
             rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
             low_rank=cfg.residual_low_rank, runtime=self.runtime,
         )
@@ -11696,6 +11802,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     gr_wide=self.gr_wide,
+                    gr_dpp_reduction=self.gr_dpp_reduction,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     rows=count,
@@ -11755,6 +11862,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     routed_f16_enabled=self.routed_f16_enabled,
                     gr_wave_scale=self.gr_wave_scale,
                     gr_wide=self.gr_wide,
+                    gr_dpp_reduction=self.gr_dpp_reduction,
                     q4_pair_prefill=self.q4_pair_prefill,
                     q4_bundle_prefill=self.q4_bundle_prefill,
                     attention_state=self.attention_states[binding.qsa_state_index],
@@ -11975,6 +12083,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.head_scratch,
             gr_wave_scale=self.gr_wave_scale,
             gr_wide=self.gr_wide,
+            gr_dpp_reduction=self.gr_dpp_reduction,
             rows=1,
             branches=cfg.residual_branch_count,
             hidden=cfg.hidden_size,

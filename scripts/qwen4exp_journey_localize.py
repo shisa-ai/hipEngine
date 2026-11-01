@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import RowDescriptor, compare_profile_logits
-from hipengine.runtime.qwen4_exp_runner import gdn_colwarps_prefill, gdn_peer_prefill, gdn_register_prefill, gdn_tile16_variant, qsa_h256_prefill_mode, qsa_ordered_decode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, resolve_gdn_colwarps_prefill, resolve_gdn_tile16_variant, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill, resolve_qsa_ordered_decode
+from hipengine.runtime.qwen4_exp_runner import gdn_colwarps_prefill, gdn_peer_prefill, gdn_register_prefill, gdn_tile16_variant, qsa_h256_prefill_mode, qsa_ordered_decode, production_moe_prefill_enabled, q8_down_variant, q8_mmq_prefill_enabled, q4_dp4a_decode, q4_pair_prefill, q8_wave_scale_prefill, gr_wave_scale, gr_wide, gr_dpp_reduction, resolve_gdn_colwarps_prefill, resolve_gdn_tile16_variant, resolve_production_moe_prefill, resolve_q8_down_variant, resolve_q8_mmq_prefill, resolve_qsa_ordered_decode
 from hipengine.runtime.qwen4_exp_runner import Q8_DOWN_WMMA_VARIANT
 from scripts.gguf_gdn_semantic_gate import DEFAULT_PROMPTS, _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
@@ -267,13 +267,22 @@ Q4_DP4A_SPLIT_ARMS = frozenset({
 
 
 def strict_environment(environ):
-    """Capture the strict binding's process keys without the retired Q4 pair."""
+    """Capture the strict binding's process keys without the retired keys.
 
+    The Q4 DP4A pair and the Q8 MMQ prefill gate are bound per arm, and the
+    GR-up DPP key is retired: the strict bind publishes that decision on its
+    runner and the arms reconstruct it from ``gr_dpp_snapshot``, so a stale
+    caller value must not ride the snapshot into a phase environment.
+    """
+
+    # ``_GR_DPP_ENV`` is defined with the GR-up migration below; the name is
+    # resolved when this runs, not when the module loads.
     return {
         key: value for key, value in environ.items()
         if (key.startswith(PREFIX) or key == "HIPENGINE_GGUF_WMMA_PREFILL")
         and key not in Q4_DP4A_ENV_KEYS
         and key != _Q8_MMQ_ENV
+        and key != _GR_DPP_ENV
     }
 
 
@@ -615,6 +624,64 @@ def migrate_gr_wide_arms(arms, *, production_value, declared=None):
     return values
 
 
+#: The retired GR-up DPP key. Both bindings wrote it - the strict bind published
+#: the wave-scale parent and the UD production bind the exact DPP sibling - so
+#: the two snapshots this harness builds its arms from carried it too.
+_GR_DPP_ENV = PREFIX + "GR_DPP_REDUCTION"
+
+
+def gr_dpp_snapshot(flags, *, published):
+    """One former environment snapshot, including the retired DPP key.
+
+    ``flags`` is the snapshot the harness captures today and ``published`` is
+    the decision the binding that produced it publishes on its runner, which is
+    exactly what the retired key carried at that point.
+    """
+
+    return {**flags, _GR_DPP_ENV: "1" if published else "0"}
+
+
+def declared_gr_dpp():
+    """Candidate arms whose declaration names an explicit GR-up DPP route.
+
+    A candidate that does not declare the decision ran the plan's published
+    value, so it stays absent rather than defaulting the arm.
+    """
+
+    return {
+        name: bool(getattr(candidate, "gr_dpp_reduction", None))
+        for name, candidate in ((name, CANDIDATES.get(name)) for name in ARMS)
+        if getattr(candidate, "gr_dpp_reduction", None) is not None
+    }
+
+
+#: Former effective GR-up DPP route per arm, recorded from the same dicts that
+#: produced each arm's former environment. Seeded with the candidate
+#: declarations; ``main`` records the arms built from the two bindings' former
+#: snapshots and defaults the rest to the production route.
+_GR_DPP_ARM_VALUES: dict[str, bool] = declared_gr_dpp()
+
+
+def migrate_gr_dpp_arms(arms, *, production_value, declared=None):
+    """Record each arm's former GR-up DPP value, then drop the retired key.
+
+    The retired key was a captured ``GR_*`` process key, so an arm whose former
+    environment named it ran that value, an arm whose candidate declaration
+    names it ran the declaration, and an arm that named it nowhere ran whatever
+    the production bind had published - the arm loop's ``bound`` snapshot,
+    which is ``production_value`` here.
+    """
+
+    declared = declared or {}
+    values = dict(declared)
+    for name, env in arms.items():
+        raw = env.pop(_GR_DPP_ENV, None)
+        if name in values:
+            continue
+        values[name] = bool(production_value) if raw is None else _env_flag(raw)
+    return values
+
+
 def snapshot_arms(strict_snapshot, production_snapshot, *, arms=None):
     """Build the arms whose former environment came from the two snapshots.
 
@@ -693,6 +760,19 @@ def gr_wide_arm_report(generator, arm):
 
     return gr_wide_arm_enabled(
         arm, bool(getattr(generator.runner, "gr_wide", False)))
+
+
+def gr_dpp_arm_enabled(arm, published):
+    """The GR-up DPP route this arm's former process key implied."""
+
+    return _GR_DPP_ARM_VALUES.get(arm, bool(published))
+
+
+def gr_dpp_arm_report(generator, arm):
+    """Name the GR-up DPP route that actually ran for this arm."""
+
+    return gr_dpp_arm_enabled(
+        arm, bool(getattr(generator.runner, "gr_dpp_reduction", False)))
 
 
 # The ordered sparse-decode prerequisite was a captured ``QSA_*`` process key,
@@ -932,6 +1012,20 @@ def gr_wide_split_scope(runner, arm, phase):
     return gr_wide(runner, False)
 
 
+def gr_dpp_split_scope(runner, arm, phase):
+    """Bind one split phase's GR-up DPP route, as its former flag set did.
+
+    The strict phase ran the strict bind's parent and the production phase the
+    production bind's sibling, so the decision follows the phase rather than
+    the arm name. A non-split arm keeps the arm-level decision, which the caller
+    binds around the whole arm; binding here would only restate it.
+    """
+
+    if arm not in SPLIT_PHASE_ARMS or not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    return gr_dpp_reduction(runner, False)
+
+
 def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags,
                      *, arm=None, h256_mode=None, register_prefill=None,
                      pair_prefill=None, wave_prefill=None, gr_wave_prefill=None):
@@ -946,7 +1040,8 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
                     runner, getattr(runner, "q8_wave_scale_prefill", False)
                     if wave_prefill is None else wave_prefill), gr_wave_scale(
                         runner, getattr(runner, "gr_wave_scale", False)
-                        if gr_wave_prefill is None else gr_wave_prefill), q4_dp4a_split_scope(
+                        if gr_wave_prefill is None else gr_wave_prefill), gr_dpp_split_scope(
+                            runner, arm, "prefill"), q4_dp4a_split_scope(
                             runner, arm, "prefill"), q8_mmq_split_scope(
                             runner, arm, "prefill"), production_moe_split_scope(
                             runner, arm, "prefill"), gr_wide_split_scope(
@@ -960,6 +1055,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     set_flags(decode_flags)
     with q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
+            runner, arm, "decode"), gr_dpp_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
             runner, arm, "decode"), gdn_colwarps_split_scope(
             runner, arm, "decode"), qsa_ordered_split_scope(
@@ -1008,7 +1104,9 @@ def main():
         # arms that named it.
         strict_snapshot = qsa_ordered_snapshot(
             gr_wide_snapshot(
-                strict_flags,
+                gr_dpp_snapshot(
+                    strict_flags,
+                    published=bool(strict_generator.runner.gr_dpp_reduction)),
                 published=bool(strict_generator.runner.gr_wide)),
             published=strict_ordered)
         strict = {}
@@ -1052,7 +1150,10 @@ def main():
         generator, production_profile, _ = _make_generator(args, "production")
         production_snapshot = qsa_ordered_snapshot(
             gr_wide_snapshot(
-                os.environ, published=bool(generator.runner.gr_wide)),
+                gr_dpp_snapshot(
+                    os.environ,
+                    published=bool(generator.runner.gr_dpp_reduction)),
+                published=bool(generator.runner.gr_wide)),
             published=resolve_qsa_ordered_decode(generator.runner))
         snapshot_arms(strict_snapshot, production_snapshot)
         # The production bind's published gate is the plan's own decision; an arm
@@ -1070,6 +1171,11 @@ def main():
         _GR_WIDE_ARM_VALUES.update(migrate_gr_wide_arms(
             ARMS, production_value=bool(generator.runner.gr_wide),
             declared=declared_gr_wide()))
+        # Same for the GR-up DPP decision: the snapshots above carried the value
+        # each binding published, so record it per arm and drop the retired key.
+        _GR_DPP_ARM_VALUES.update(migrate_gr_dpp_arms(
+            ARMS, production_value=bool(generator.runner.gr_dpp_reduction),
+            declared=declared_gr_dpp()))
         # Same for the ordered sparse-decode prerequisite: the arms above were
         # built from the two bindings' former snapshots, so each one carries the
         # value its construction implied. Record it, then bind the owner
@@ -1112,6 +1218,9 @@ def main():
                 arm_scope.enter_context(gr_wide(
                     generator.runner, gr_wide_arm_enabled(
                         arm, getattr(generator.runner, "gr_wide", False))))
+                arm_scope.enter_context(gr_dpp_reduction(
+                    generator.runner, gr_dpp_arm_enabled(
+                        arm, generator.runner.gr_dpp_reduction)))
                 arm_scope.enter_context(gr_wave_scale(
                     generator.runner, gr_wave_arm_enabled(
                         arm, generator.runner.gr_wave_scale)))
@@ -1136,6 +1245,9 @@ def main():
                         generator, arm) as effective_gdn_colwarps:
                     effective_qsa_ordered = qsa_ordered_arm_report(
                         generator, arm)
+                    # Captured inside the arm scope: the value the measured rows
+                    # ran under, not the publication the unwind put back.
+                    effective_gr_dpp = gr_dpp_arm_report(generator, arm)
                     for row in prompt_rows:
                         key = row["id"]
                         forced = [r["token_id"] for r in strict[key][:-1]]
@@ -1176,6 +1288,7 @@ def main():
                     "gdn_colwarps_prefill": effective_gdn_colwarps,
                     "qsa_ordered_decode": effective_qsa_ordered,
                     "gr_wide": gr_wide_arm_report(generator, arm),
+                    "gr_dpp_reduction": effective_gr_dpp,
                 }
                 if arm in SPLIT_PHASE_ARMS:
                     # A split arm binds the gate per phase, so one value cannot
@@ -1192,6 +1305,14 @@ def main():
                         phase: (
                             False if split_phase_is_strict(arm, phase)
                             else effective_qsa_ordered)
+                        for phase in ("prefill", "decode")
+                    }
+                    # The DPP sibling only runs in the production phase; the
+                    # strict phase runs the wave-scale parent.
+                    owner_overrides["gr_dpp_reduction_phases"] = {
+                        phase: (
+                            False if split_phase_is_strict(arm, phase)
+                            else effective_gr_dpp)
                         for phase in ("prefill", "decode")
                     }
                 report["arms"][arm] = {

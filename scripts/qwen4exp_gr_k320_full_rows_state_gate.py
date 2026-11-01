@@ -110,7 +110,6 @@ def main() -> int:
 
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] = "1"
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     profile = resolve_runtime_profile(
@@ -135,6 +134,9 @@ def main() -> int:
     ))
     runner = generator.runner
     runner.gr_wave_scale = True
+    # The gate's parent is the promoted DPP owner, so the plan's GR-up decision
+    # is bound on the runner rather than a process key.
+    runner.gr_dpp_reduction = True
     candidate_key = KernelKey(BACKEND, LAYER, QUANT, CANDIDATE)
     candidate = resolve(backend=BACKEND, layer=LAYER, quant=QUANT, variant=CANDIDATE)
     report = {

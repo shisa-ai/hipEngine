@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -120,3 +121,58 @@ def test_summarize_campaign_ab_rejects_incomplete_arm_counts() -> None:
 
     with pytest.raises(ValueError, match="expected 3 samples per mode"):
         module.summarize_campaign_ab(samples, repetitions_per_mode=3)
+
+
+def test_gr_dpp_scope_binds_one_leaf_per_arm_and_restores_every_field() -> None:
+    """``sample()`` enters this scope per arm; only the counted leaf differs.
+
+    Both arms hold the wave-scale parent on and close the two preemptors, so
+    the sibling and the parent counts are the same GR-read surface. The scope
+    must put every field and the pinned key back on exit.
+    """
+
+    module = _load_script()
+    # The plan may publish the parent off; the arm holds it on, so the binding
+    # and its release are both observable.
+    runner = SimpleNamespace(
+        gr_wide=True, gr_wave_scale=False, gr_dpp_reduction=True)
+    environment = {"HIPENGINE_QWEN4_EXP_GR_IU8": "1"}
+    for mode, sibling in (("before", False), ("after", True)):
+        with module.route_scope(
+                "gr-dpp-reduction", mode, runner, environment=environment):
+            assert runner.gr_dpp_reduction is sibling
+            assert runner.gr_wave_scale is True
+            assert runner.gr_wide is False
+            assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "0"
+        assert runner.gr_dpp_reduction is True
+        assert runner.gr_wave_scale is False
+        assert runner.gr_wide is True
+        assert environment["HIPENGINE_QWEN4_EXP_GR_IU8"] == "1"
+
+
+def test_gr_dpp_scope_refuses_an_invalid_arm_or_a_missing_runner() -> None:
+    module = _load_script()
+    with pytest.raises(ValueError, match="invalid campaign A/B mode"):
+        module.route_scope("gr-dpp-reduction", "sideways", SimpleNamespace())
+    with pytest.raises(ValueError, match="needs the owning runner"):
+        module.route_scope("gr-dpp-reduction", "before", None)
+
+
+def test_gr_dpp_control_record_names_the_arm_it_binds() -> None:
+    """The record states the premise both arms ride, not the plan's default."""
+
+    module = _load_script()
+    control = module.gr_dpp_control_record(
+        SimpleNamespace(gr_dpp_reduction=True))
+    assert control["runner_field"] == "gr_dpp_reduction"
+    assert (control["before"], control["after"]) == (False, True)
+    assert control["published_value"] is True
+    assert control["forced_runner_fields"] == {
+        "gr_wide": False, "gr_wave_scale": True}
+    assert control["forced_environment"] == module.GR_WAVE_ENV
+    assert control["counted_variants"] == [
+        "coltile2_branch4_rowbatch4_wave_scale_dpp_f32_exact",
+        "coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32_exact",
+    ]
+    assert control["counted_parent_variant"] == (
+        "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
