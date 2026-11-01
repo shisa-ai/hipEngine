@@ -2887,7 +2887,11 @@ and binds generic WMMA overrides. The campaign Q8 wave comparison closes the
 generic preemptor on its runner. The localizer binds its shared generic-WMMA-off
 baseline on each reference/arm/phase owner without snapshotting the key. Profiles
 publish the same generic-WMMA-off decision on owners without process writes.
-The remaining IU8 and selected-WMMA-down controls still require owner transport.
+The remaining IU8 controls still require owner transport. Selected Q8 down
+enablement now accepts explicit generator/runner state, restoring diagnostic
+scopes and forwarded MoE choices, including capture identity. Its existing
+profile process writes and diagnostic callers still need migration before
+publishing bound owner choices.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

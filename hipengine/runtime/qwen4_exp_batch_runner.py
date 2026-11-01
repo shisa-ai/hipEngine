@@ -138,6 +138,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     qwen4_exp_gr_write_bf16_f32,
     run_qwen4_exp_gr_read,
     run_qwen4_exp_moe,
+    resolve_q8_selected_down,
     stage_qwen4_exp_ple_rows,
 )
 
@@ -440,6 +441,7 @@ def run_qwen4_exp_batch_gdn_layer(
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
     q8_down_variant: str | None = None,
+    q8_selected_down_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row GDN+MoE layer over request-owned state slots.
 
@@ -542,6 +544,7 @@ def run_qwen4_exp_batch_gdn_layer(
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
             q8_down_variant=q8_down_variant,
+            q8_selected_down_enabled=q8_selected_down_enabled,
             routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
         )
@@ -669,6 +672,7 @@ def _run_layer_ffn(
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
     q8_down_variant: str | None = None,
+    q8_selected_down_enabled: bool | None = None,
 ) -> None:
     """GR write after the mixer, FFN GR read, MoE, and the final GR write.
 
@@ -743,6 +747,7 @@ def _run_layer_ffn(
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
         q8_down_variant=q8_down_variant,
+        q8_selected_down_enabled=q8_selected_down_enabled,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -811,6 +816,7 @@ def run_qwen4_exp_batch_qsa_layer(
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
     q8_down_variant: str | None = None,
+    q8_selected_down_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row QSA+MoE layer over request-owned slots.
 
@@ -913,6 +919,7 @@ def run_qwen4_exp_batch_qsa_layer(
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
             q8_down_variant=q8_down_variant,
+            q8_selected_down_enabled=q8_selected_down_enabled,
             routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
         )
@@ -1059,6 +1066,7 @@ class Qwen4ExpGGUFBatchRunner:
     # on every plan that keeps it. ``None`` is the unbound parent. The MoE runs
     # eager inside the captured layer segment, so the name is part of the key.
     q8_down_variant: str | None = None
+    q8_selected_down_enabled: bool | None = None
 
     def __init__(
         self,
@@ -2012,6 +2020,7 @@ class Qwen4ExpGGUFBatchRunner:
             # A named owner, like the router producer: the guarded leaf is a
             # different launch inside the segment, so the key carries the name.
             getattr(self, "q8_down_variant", None),
+            resolve_q8_selected_down(self),
         )
 
     def step(
@@ -2304,6 +2313,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                     q8_down_variant=self.q8_down_variant,
+                    q8_selected_down_enabled=self.q8_selected_down_enabled,
                 ).ptr
             else:
                 qsa_binding = self.qsa_bindings[layer]
@@ -2361,6 +2371,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                     q8_down_variant=self.q8_down_variant,
+                    q8_selected_down_enabled=self.q8_selected_down_enabled,
                 ).ptr
         head_norm_ptr = self.resident.weight(
             "root.head_hc_norm"

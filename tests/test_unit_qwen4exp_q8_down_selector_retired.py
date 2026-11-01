@@ -139,7 +139,7 @@ def test_the_q8_down_chain_keeps_only_the_shipped_owners() -> None:
     tests, _ = _chain_arms(_q8_down_chain())
 
     assert len(tests) == 2, tests
-    assert "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN" in tests[0]
+    assert tests[0] == '_resolve_q8_selected_down(q8_selected_down_enabled)'
     assert "forkb_grouped_down" in tests[1]
     for key in RETIRED_KEYS:
         assert all(key not in test for test in tests)

@@ -4954,6 +4954,37 @@ Q8_DOWN_GUARDED_VARIANT = (
 _Q8_DOWN_VARIANT_UNSET = object()
 
 
+def _resolve_q8_selected_down(enabled: bool | None) -> bool:
+    if enabled is not None:
+        return bool(enabled)
+    return os.environ.get('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', '0') not in {
+        '', '0', 'false', 'False'}
+
+
+def resolve_q8_selected_down(owner: Any) -> bool:
+    """Resolve the owner's selected Q8 down choice or its unbound fallback."""
+    return _resolve_q8_selected_down(getattr(owner, 'q8_selected_down_enabled', None))
+
+
+@contextlib.contextmanager
+def q8_selected_down_enabled(owner: Any, enabled: bool | None):
+    """Bind one owner and its current runner, restoring distinct prior values."""
+    targets = _q8_down_variant_targets(owner)
+    missing = object()
+    prior = [(target, getattr(target, 'q8_selected_down_enabled', missing))
+             for target in targets]
+    try:
+        for target in targets:
+            target.q8_selected_down_enabled = None if enabled is None else bool(enabled)
+        yield resolve_q8_selected_down(owner)
+    finally:
+        for target, value in prior:
+            if value is missing:
+                delattr(target, 'q8_selected_down_enabled')
+            else:
+                target.q8_selected_down_enabled = value
+
+
 def _qwen4_exp_q8_down_variant(variant: str | None) -> str:
     """Resolve the grouped Q8_0 expert-down owner for one dispatch.
 
@@ -6895,6 +6926,7 @@ def run_qwen4_exp_moe(
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
     q8_down_variant: str | None = None,
+    q8_selected_down_enabled: bool | None = None,
     q51_exact_grouped_down: bool = True,
     q51_wmma_down: bool = False,
     q51_out8: bool = True,
@@ -7068,6 +7100,7 @@ def run_qwen4_exp_moe(
                 q8_down_register=q8_down_register,
                 q8_mapped_down=q8_mapped_down,
                 q8_down_variant=q8_down_variant,
+                q8_selected_down_enabled=q8_selected_down_enabled,
             )
 
         graph_cache.run(
@@ -7887,9 +7920,7 @@ def run_qwen4_exp_moe(
             # Production selects the grouped owner after the exact
             # one-process/one-residency canonical gate; strict keeps the
             # per-expert selected gemv.
-            if os.environ.get(
-                "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "0"
-            ) not in {"", "0", "false", "False"}:
+            if _resolve_q8_selected_down(q8_selected_down_enabled):
                 # #19 R9 candidate: the Q5_1-style grouped WMMA down for the
                 # Q8_0 expert-down layers (2, 4, 30, 46, 47). Same f16-WMMA
                 # dequant arithmetic class as the promoted Q5_1 down route
@@ -8410,6 +8441,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
     q8_down_variant: str | None = None,
+    q8_selected_down_enabled: bool | None = None,
 ) -> DeviceBuffer | None:
     """Execute a QSA+MoE layer, or only its independent cache-state writes.
 
@@ -8536,6 +8568,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q8_down_register=q8_down_register,
         q8_mapped_down=q8_mapped_down,
         q8_down_variant=q8_down_variant,
+        q8_selected_down_enabled=q8_selected_down_enabled,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -8613,6 +8646,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
     q8_down_variant: str | None = None,
+    q8_selected_down_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete Qwen4Exp QSA+MoE prompt chunk.
 
@@ -8797,6 +8831,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q8_down_register=q8_down_register,
         q8_mapped_down=q8_mapped_down,
         q8_down_variant=q8_down_variant,
+        q8_selected_down_enabled=q8_selected_down_enabled,
     )
     if not _qwen4_exp_gr_defer_write(
         defer_write, rows, scratch.after_attention.ptr, moe.output.ptr,
@@ -8883,6 +8918,7 @@ def run_qwen4_exp_gdn_layer(
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
     q8_down_variant: str | None = None,
+    q8_selected_down_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer.
 
@@ -9137,6 +9173,7 @@ def run_qwen4_exp_gdn_layer(
         q8_down_register=q8_down_register,
         q8_mapped_down=q8_mapped_down,
         q8_down_variant=q8_down_variant,
+        q8_selected_down_enabled=q8_selected_down_enabled,
     )
     if layer_graph is not None:
         def _segment_epilogue(graph_stream: int) -> None:
@@ -10253,6 +10290,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # guarded block-scale leaf on the production plan, the unguarded WMMA parent
     # on every plan that keeps it. A diagnostic scope may outrank it.
     q8_down_variant: str | None = None
+    q8_selected_down_enabled: bool | None = None
 
     def __init__(
         self,
@@ -10268,6 +10306,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         production_moe_prefill_enabled: bool | None = None,
         router_producer_variant: str | None = None,
         q8_mmq_prefill_enabled: bool | None = None,
+        q8_selected_down_enabled: bool | None = None,
         q8_mmq_prepack_enabled: bool | None = None,
         q8_mmq_attn_gate_enabled: bool | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
@@ -10287,6 +10326,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.production_moe_prefill_enabled = production_moe_prefill_enabled
         self.router_producer_variant = router_producer_variant
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
+        self.q8_selected_down_enabled = q8_selected_down_enabled
         self.q8_mmq_prepack_enabled = q8_mmq_prepack_enabled
         self.q8_mmq_attn_gate_enabled = q8_mmq_attn_gate_enabled
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
@@ -11599,6 +11639,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,
                     q8_down_variant=self.q8_down_variant,
+                    q8_selected_down_enabled=self.q8_selected_down_enabled,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -11664,6 +11705,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,
                     q8_down_variant=self.q8_down_variant,
+                    q8_selected_down_enabled=self.q8_selected_down_enabled,
                 ).ptr
         if capture_target_hidden:
             self.runtime.memcpy(
@@ -12007,6 +12049,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,
                     q8_down_variant=self.q8_down_variant,
+                    q8_selected_down_enabled=self.q8_selected_down_enabled,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -12069,6 +12112,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,
                     q8_down_variant=self.q8_down_variant,
+                    q8_selected_down_enabled=self.q8_selected_down_enabled,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,

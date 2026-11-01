@@ -726,7 +726,7 @@ def test_the_q8_down_chain_keeps_its_arms_and_terminal_strict_fallback():
     tests, terminal = _chain_arms(_q8_down_chain())
 
     assert len(tests) == 2, tests
-    assert WMMA_GATE in tests[0]
+    assert tests[0] == '_resolve_q8_selected_down(q8_selected_down_enabled)'
     assert "forkb_grouped_down" in tests[1]
     assert terminal.orelse, "the Q8_0 down chain has no terminal else"
 

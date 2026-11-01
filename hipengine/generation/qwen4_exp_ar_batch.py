@@ -701,6 +701,7 @@ def make_qwen4_exp_ar_batch_runner(
     # parent on a row whose plan published the guarded leaf. ``None`` is the
     # unbound parent, so the carrier forwards the published value as-is.
     batch.q8_down_variant = getattr(generator, "q8_down_variant", None)
+    batch.q8_selected_down_enabled = getattr(generator, 'q8_selected_down_enabled', None)
     return batch
 
 
