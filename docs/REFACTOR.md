@@ -2899,7 +2899,9 @@ policy, preserving omitted axes and recording actual policy without process
 writes. Decode-sync binds its flash-on suffix policy on the measured owner.
 Layer2's conservative candidate declares its flash gate on the owner, preserving
 its layer scope; the shared candidate path and per-arm diagnostics bind that
-declaration without process writes.
+declaration without process writes. Journey snapshots reconstruct paired flash
+choices from their binding owners, remove the process keys from arm updates,
+and scope strict/production split phases separately.
 The focused guard regression is:
 
 ```bash

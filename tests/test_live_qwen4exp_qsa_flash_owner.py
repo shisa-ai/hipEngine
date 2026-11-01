@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'decode_sync', 'layer2'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'decode_sync', 'layer2', 'journey'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_flash_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -46,7 +46,12 @@ def test_public_flash_owner(monkeypatch, length, interface):
             policy = runtime.QSAFlashPrefillPolicy(enabled, '35-47')
             with ExitStack() as scopes:
                 expected_enabled = enabled
-                if interface == 'layer2':
+                if interface == 'journey':
+                    from scripts import qwen4exp_journey_localize as journey
+                    monkeypatch.setattr(journey, '_FLASH_ARM_VALUES', {'public': policy})
+                    actual = scopes.enter_context(journey.flash_arm_scope(owner, 'public'))
+                    assert actual == policy
+                elif interface == 'layer2':
                     from dataclasses import replace
                     from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, bind_candidate_flash
                     scopes.enter_context(runtime.qsa_flash_prefill(

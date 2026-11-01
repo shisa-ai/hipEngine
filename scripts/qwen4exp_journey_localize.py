@@ -294,6 +294,7 @@ def strict_environment(environ):
         and key not in Q4_DP4A_ENV_KEYS
         and key != _Q8_MMQ_ENV
         and key != _GR_DPP_ENV
+        and key not in _FLASH_KEYS
     }
 
 
@@ -786,6 +787,57 @@ def gr_dpp_arm_report(generator, arm):
         arm, bool(getattr(generator.runner, "gr_dpp_reduction", False)))
 
 
+_FLASH_ENABLE = PREFIX + 'QSA_FLASH_PREFILL'
+_FLASH_LAYERS = PREFIX + 'QSA_FLASH_LAYERS'
+_FLASH_KEYS = (_FLASH_ENABLE, _FLASH_LAYERS)
+_FLASH_ARM_VALUES = {}
+_FLASH_STRICT_POLICY = None
+
+
+def flash_owner_policy(owner):
+    """Read the published pair, with the low-level fallback before publication."""
+    from hipengine.runtime.qwen4_exp_runner import QSAFlashPrefillPolicy
+    return getattr(owner, 'qsa_flash_prefill_policy', None) or QSAFlashPrefillPolicy(
+        _env_flag(os.environ.get(_FLASH_ENABLE, '0')),
+        os.environ.get(_FLASH_LAYERS, 'all'))
+
+
+def flash_snapshot(flags, *, published):
+    """Reconstruct both former snapshot axes from the binding that produced it."""
+    return {**flags, _FLASH_ENABLE: '1' if published.enabled else '0',
+            _FLASH_LAYERS: published.layers}
+
+
+def migrate_flash_arms(arms, *, production_value, declared=None):
+    """Extract paired policies from family overlays without process writes."""
+    from hipengine.runtime.qwen4_exp_runner import QSAFlashPrefillPolicy
+    declared = declared or {}
+    values = {}
+    for name, env in arms.items():
+        raw = env.pop(_FLASH_ENABLE, None)
+        layers = env.pop(_FLASH_LAYERS, production_value.layers)
+        enabled = production_value.enabled if raw is None else _env_flag(raw)
+        values[name] = QSAFlashPrefillPolicy(declared.get(name, enabled), layers)
+    return values
+
+
+@contextmanager
+def flash_arm_scope(owner, arm):
+    """Bind the policy reconstructed for this arm and restore the base pair."""
+    from hipengine.runtime.qwen4_exp_runner import qsa_flash_prefill
+    policy = _FLASH_ARM_VALUES.get(arm, flash_owner_policy(owner))
+    with qsa_flash_prefill(owner, policy):
+        yield policy
+
+
+def flash_split_scope(owner, arm, phase):
+    """The strict phase uses the strict binding's pair; the other keeps its base."""
+    if arm not in SPLIT_PHASE_ARMS or not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    from hipengine.runtime.qwen4_exp_runner import qsa_flash_prefill
+    return qsa_flash_prefill(owner, _FLASH_STRICT_POLICY)
+
+
 # The ordered sparse-decode prerequisite was a captured ``QSA_*`` process key,
 # so each binding's former snapshot carried one value: the strict bind's off,
 # the production bind's on. Reconstruct each snapshot from the binding that
@@ -1043,7 +1095,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+    with flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
@@ -1064,7 +1116,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
+    with flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"), gr_dpp_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
@@ -1109,6 +1161,9 @@ def main():
         # route. Read it from the owner before the generator closes.
         strict_ordered = resolve_qsa_ordered_decode(strict_generator.runner)
         strict_flags = strict_environment(os.environ)
+        global _FLASH_STRICT_POLICY
+        _FLASH_STRICT_POLICY = flash_owner_policy(strict_generator)
+        strict_flags = flash_snapshot(strict_flags, published=_FLASH_STRICT_POLICY)
         # The retired GR-up wide key was a captured ``GR_*`` process key, so the
         # strict snapshot carried the strict bind's route. Reconstruct it from
         # the binding that published it and let ``snapshot_arms`` rebuild the
@@ -1167,7 +1222,16 @@ def main():
                     published=bool(generator.runner.gr_dpp_reduction)),
                 published=bool(generator.runner.gr_wide)),
             published=resolve_qsa_ordered_decode(generator.runner))
+        production_snapshot = flash_snapshot(
+            production_snapshot, published=flash_owner_policy(generator))
         snapshot_arms(strict_snapshot, production_snapshot)
+        _FLASH_ARM_VALUES.update(migrate_flash_arms(
+            ARMS, production_value=flash_owner_policy(generator),
+            declared={name: spec.qsa_flash_prefill_enabled
+                      for name, spec in CANDIDATES.items()
+                      if spec.qsa_flash_prefill_enabled is not None}))
+        strict_flags = {key: value for key, value in strict_flags.items()
+                        if key not in _FLASH_KEYS}
         # The production bind's published gate is the plan's own decision; an arm
         # that named nothing ran it, and so did its peer scope.
         published_gate = bool(generator.gdn_colwarps_prefill)
@@ -1219,8 +1283,7 @@ def main():
                 os.environ.update(ARMS[arm])
                 candidate = []
                 arm_scope = ExitStack()
-                from scripts.qwen4exp_layer2_profile_gate import candidate_flash_scope
-                arm_scope.enter_context(candidate_flash_scope(generator, CANDIDATES.get(arm)))
+                effective_flash = arm_scope.enter_context(flash_arm_scope(generator, arm))
                 arm_scope.enter_context(generic_wmma_baseline_scope(generator))
                 arm_scope.enter_context(production_moe_arm_scope(generator, arm))
                 arm_scope.enter_context(q8_mmq_arm_scope(generator, arm))
@@ -1293,6 +1356,8 @@ def main():
                     for i, descriptor in enumerate(descriptors)
                 ]
                 owner_overrides = {
+                    "qsa_flash_prefill_policy": {
+                        'enabled': effective_flash.enabled, 'layers': effective_flash.layers},
                     "gguf_wmma_prefill_enabled": effective_generic_wmma,
                     "production_moe_prefill_enabled": (
                         production_moe_arm_report(generator, arm)),
@@ -1308,6 +1373,11 @@ def main():
                     "gr_dpp_reduction": effective_gr_dpp,
                 }
                 if arm in SPLIT_PHASE_ARMS:
+                    owner_overrides['qsa_flash_prefill_policy_phases'] = {
+                        phase: {'enabled': policy.enabled, 'layers': policy.layers}
+                        for phase in ('prefill', 'decode')
+                        for policy in [(_FLASH_STRICT_POLICY if split_phase_is_strict(arm, phase)
+                                        else effective_flash)]}
                     # A split arm binds the gate per phase, so one value cannot
                     # describe it; name what each phase ran under.
                     owner_overrides["gdn_colwarps_prefill_phases"] = {
