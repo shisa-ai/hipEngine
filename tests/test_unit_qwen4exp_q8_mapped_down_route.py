@@ -422,10 +422,15 @@ def test_moe_graph_capture_forwards_the_selection(monkeypatch):
 
 
 def test_q8_down_scope_restores_absent_and_present_values():
-    env = {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
-    with q8_down_scope(environment=env, runner=_owner()):
-        assert all(env[key] == "0" for key in Q8_DOWN_PREEMPTING_ENV)
-    assert env == {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
+    key = 'HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN'
+    env = {key: '1'}
+    owner = _owner()
+    assert not hasattr(owner, 'q8_selected_down_enabled')
+    with q8_down_scope(environment=env, runner=owner):
+        assert owner.q8_selected_down_enabled is False
+        assert env == {key: '1'}
+    assert not hasattr(owner, 'q8_selected_down_enabled')
+    assert env == {key: '1'}
 
 
 def test_control_record_separates_the_forced_value_from_the_previous_one():

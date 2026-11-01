@@ -1102,9 +1102,8 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
 #: grouped chain in production) and the Q8_0 WMMA down, which sits in front of
 #: the sorted chain. A down-register arm closes both for both arms; the
 #: profile's own values come back on exit.
-Q8_DOWN_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
-)
+#: No process keys remain for these two preemptors; scopes bind both owners.
+Q8_DOWN_PREEMPTING_ENV = ()
 #: Low-level compatibility key; campaign arms bind the selected-down owner gate.
 Q8_WMMA_DOWN_GATE = "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"
 #: The leaf the ``q8-wmma-down`` arm's counter counts. Which owner the dispatch
@@ -1144,6 +1143,12 @@ Q8_MAPPED_DOWN_PREEMPTING_ENV = Q8_DOWN_PREEMPTING_ENV + (
 )
 
 
+def selected_down_preemptor_record(runner):
+    """Record the owner gate closed by the expert-down diagnostic scopes."""
+    return {"runner_field": "q8_selected_down_enabled", "bound_value": False,
+            "published_value": getattr(runner, "q8_selected_down_enabled", None)}
+
+
 def q8_down_control_record(*, runner=None, environment=os.environ):
     """The recorded control: the value both arms force, and what it replaced.
 
@@ -1154,6 +1159,7 @@ def q8_down_control_record(*, runner=None, environment=os.environ):
     """
 
     return {
+        "selected_down_preemptor": selected_down_preemptor_record(runner),
         "preempting_owners_closed": {
             key: "0" for key in Q8_DOWN_PREEMPTING_ENV
         },
@@ -1179,8 +1185,7 @@ def q8_down_scope(*, environment=os.environ, runner=None):
 
     The register selection only exists inside those chains, so an arm that
     leaves a preemptor open counts zero launches and measures the other owner.
-    Every key is read per dispatch, so closing them after construction takes
-    effect; all prior values (including absent keys) come back on exit. The
+    Both preemptors are scoped owner fields and come back on exit. The
     chains' own gate is request-local runner state, so it is required through
     ``runner``: without it the counted leaf is skipped entirely, and the scope
     fails loudly rather than reporting an engagement it cannot produce.
@@ -1192,18 +1197,9 @@ def q8_down_scope(*, environment=os.environ, runner=None):
             "expert-down chain; without it the counted Q8_0 down leaf cannot "
             "launch")
     from hipengine.runtime.qwen4_exp_runner import routed_f16_enabled as routed_f16
-    previous = {key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV}
-    for key in Q8_DOWN_PREEMPTING_ENV:
-        environment[key] = "0"
-    try:
-        with routed_f16(runner, False):
-            yield previous
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                environment.pop(key, None)
-            else:
-                environment[key] = value
+    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled
+    with routed_f16(runner, False), q8_selected_down_enabled(runner, False):
+        yield {}
 
 
 @contextlib.contextmanager
@@ -1313,6 +1309,7 @@ def q8_mapped_down_control_record(*, runner=None, environment=os.environ):
     """
 
     return {
+        "selected_down_preemptor": selected_down_preemptor_record(runner),
         "preempting_owners_closed": {
             key: "0" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV
         },
@@ -1443,6 +1440,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         q8_down_row4_prefill,
     )
 
+    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled
     previous_env = {key: environment.get(key) for key in PF13_PREEMPTING_ENV}
     previous_fields = {
         field: getattr(runner, field, None)
@@ -1451,6 +1449,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         environment[key] = "0"
     try:
         with contextlib.ExitStack() as scope:
+            scope.enter_context(q8_selected_down_enabled(runner, False))
             for manager in (routed_f16, q51_pair_prefill, q51_fold128_prefill, q51_fold_pair_prefill,
                             q51_register_cache, q51_row_publish,
                             q8_down_row4_prefill, q8_down_bundle_prefill,
@@ -1505,15 +1504,17 @@ def pf13_control_record(runner=None, *, environment=os.environ):
     Every forced value sits beside the value it replaced, so a reader cannot
     mistake the production binding for the arm's own state: the two leaves are
     bound on the runner, the replacement siblings are held off on the runner,
-    and the preempting owners are closed as process keys. The grouped chain's
-    gates are recorded as published because the scope requires them rather than
-    forcing them.
+    and the preempting owners are closed through their respective controls. The
+    selected-down gate is owner-local; remaining process controls are recorded
+    separately. The grouped chain's gates are recorded as published because the
+    scope requires them rather than forcing them.
     """
 
     def _value(field):
         return None if runner is None else getattr(runner, field, None)
 
     return {
+        "selected_down_preemptor": selected_down_preemptor_record(runner),
         "runner_fields": {field: _value(field) for field in PF13_FIELDS},
         "bound": {"before": False, "after": True},
         "scope": "per measured run; restored on exit",
@@ -1572,11 +1573,12 @@ def q8_mapped_down_scope(*, environment=os.environ, runner=None):
             "down arm; without it the current call builds no row4 map and the "
             "mapped owner cannot engage")
     from hipengine.runtime.qwen4_exp_runner import routed_f16_enabled as routed_f16
+    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled
     previous = {key: environment.get(key) for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
     for key in Q8_MAPPED_DOWN_PREEMPTING_ENV:
         environment[key] = "0"
     try:
-        with routed_f16(runner, False):
+        with routed_f16(runner, False), q8_selected_down_enabled(runner, False):
             yield previous
     finally:
         for key, value in previous.items():

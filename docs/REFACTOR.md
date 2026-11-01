@@ -2906,6 +2906,8 @@ per-layer Q8 probe changes the selected-down call argument only for the named
 layer, preserving incoming choices on other layers and leaving the process alone.
 The campaign selected-down arm binds and reports its gate alongside its counted
 leaf on the measured owner; its mode setup does not write that process key.
+Sorted/register, mapped-down and PF-1/PF-3 diagnostic preemptor closures also
+bind selected-down off on their measured owners and record it as a field.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

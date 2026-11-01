@@ -334,10 +334,15 @@ def test_moe_graph_capture_forwards_the_selection(monkeypatch):
 
 
 def test_q8_down_scope_restores_absent_and_present_values():
-    env = {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
-    with q8_down_scope(environment=env, runner=_owner()):
-        assert all(env[key] == "0" for key in Q8_DOWN_PREEMPTING_ENV)
-    assert env == {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
+    key = 'HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN'
+    env = {key: '1'}
+    owner = _owner()
+    assert not hasattr(owner, 'q8_selected_down_enabled')
+    with q8_down_scope(environment=env, runner=owner):
+        assert owner.q8_selected_down_enabled is False
+        assert env == {key: '1'}
+    assert not hasattr(owner, 'q8_selected_down_enabled')
+    assert env == {key: '1'}
 
 
 def test_q8_down_scope_restores_after_an_exception():
@@ -361,9 +366,7 @@ def test_q8_down_control_names_every_preemptor():
     # The routed F16 down is the production owner of the grouped chain and the
     # WMMA down sits in front of the sorted chain; both are forced closed. The
     # chain's own gate is runner state, recorded never forced.
-    assert Q8_DOWN_PREEMPTING_ENV == (
-        "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
-    )
+    assert Q8_DOWN_PREEMPTING_ENV == ()
     # Both ladder rungs and the chain's own gate are request-local runner state,
     # so no process key gates either chain any more.
     assert Q8_DOWN_CHAIN_GATES == ()

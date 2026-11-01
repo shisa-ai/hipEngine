@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey', 'layer_probe', 'campaign'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'logits_probe', 'layer2', 'journey', 'layer_probe', 'campaign', 'sorted_preemptor', 'mapped_preemptor', 'pf13_preemptor'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_selected_q8_down_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,7 +44,21 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', ambient)
             with ExitStack() as scopes:
-                if interface == 'campaign':
+                if interface.endswith('_preemptor'):
+                    from scripts import qwen4exp_halo_box_campaign_ab as campaign
+                    scopes.enter_context(runtime.q8_selected_down_enabled(owner, True))
+                    def bind_preemptor(target):
+                        scopes.enter_context(runtime.q8_selected_down_enabled(target, True))
+                        if not enabled:
+                            if interface == 'sorted_preemptor':
+                                scope = campaign.q8_down_scope(runner=target)
+                            elif interface == 'mapped_preemptor':
+                                scope = campaign.q8_mapped_down_scope(runner=target)
+                            else:
+                                scope = campaign.pf13_scope('before', target)
+                            scopes.enter_context(scope)
+                    bind_preemptor(owner.runner)
+                elif interface == 'campaign':
                     from scripts.qwen4exp_halo_box_campaign_ab import route_scope
                     scopes.enter_context(route_scope(
                         'q8-wmma-down', 'after' if enabled else 'before', owner))
@@ -90,7 +104,9 @@ def test_public_selected_q8_down_owner(monkeypatch, length, interface):
                     # independent grouped fallback at larger prompt shapes.
                     scopes.enter_context(runtime.routed_f16_enabled(runner, False))
                     if runner is not owner.runner:
-                        if interface == 'campaign':
+                        if interface.endswith('_preemptor'):
+                            bind_preemptor(runner)
+                        elif interface == 'campaign':
                             scopes.enter_context(route_scope(
                                 'q8-wmma-down', 'after' if enabled else 'before', runner))
                         elif interface == 'logits_probe':
