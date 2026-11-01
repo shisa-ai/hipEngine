@@ -92,6 +92,7 @@ def test_candidate_owner_provenance_reports_the_bound_decision(
         SimpleNamespace(
             production_moe_prefill_enabled=override,
             q8_mmq_prefill_enabled=None,
+            q8_mmq_attn_gate_enabled=None,
         ),
         resolved,
         False,
@@ -102,6 +103,8 @@ def test_candidate_owner_provenance_reports_the_bound_decision(
         "production_moe_prefill_override": override,
         "q8_mmq_prefill_enabled": False,
         "q8_mmq_prefill_override": None,
+        "q8_mmq_attn_gate_enabled": None,
+        "q8_mmq_attn_gate_override": None,
     }
 
 
@@ -124,6 +127,7 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         qsa_wmma_enabled=qsa_wmma,
         production_moe_prefill_enabled=override,
         q8_mmq_prefill_enabled=None,
+        q8_mmq_attn_gate_enabled=None,
         router_producer_variant=None,
         gr_wide=None,
         q8_dense_wide_layers=None,
@@ -357,7 +361,9 @@ def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["q8_mmq_attn_gate"]
 
-    assert candidate.environment == {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"}
+    assert candidate.environment == {}
+    assert candidate.q8_mmq_attn_gate_enabled is True
+    assert candidate.q8_mmq_prefill_enabled is True
     assert candidate.classification == "T2"
     assert candidate.base_profile == "production"
     assert candidate.candidate_key[-1] == (

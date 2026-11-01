@@ -2872,7 +2872,9 @@ on generator/runner owners without process writes; its diagnostic scopes preserv
 explicit raw/prepacked control and shared resource ownership. Continue with the
 remaining profile-owned environment controls before closing this entry. MMQ
 attention-gate policy now accepts an explicit generator/runner owner choice;
-its diagnostic writers and profile publication still require migration.
+its remaining diagnostic writers and profile publication still require migration.
+The layer-2 attention candidate binds the attention owner and MMQ parent
+explicitly, prepares resources before measurement, and records owner provenance.
 The focused guard regression is:
 
 ```bash

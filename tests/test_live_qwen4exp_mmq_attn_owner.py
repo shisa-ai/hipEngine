@@ -1,4 +1,5 @@
 """Public MMQ attention-gate selection overrides opposite ambient input."""
+from contextlib import ExitStack
 import os
 import numpy as np
 import pytest
@@ -10,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'layer2'])
 @pytest.mark.parametrize('length', [73, 273, 517])
-def test_public_attention_gate_owner(monkeypatch, length):
+def test_public_attention_gate_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.runtime import gguf_linear as linear
@@ -37,7 +39,17 @@ def test_public_attention_gate_owner(monkeypatch, length):
             owner.runner.configure_mmq_prefill_resources()
             for enabled in (False, True):
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE', '0' if enabled else '1')
-                with runtime.q8_mmq_attn_gate_enabled(owner, enabled):
+                with ExitStack() as stack:
+                    if interface == 'layer2':
+                        from dataclasses import replace
+                        from scripts.qwen4exp_layer2_profile_gate import (
+                            CANDIDATES, bind_candidate_q8_mmq_attn_gate,
+                        )
+                        spec = replace(CANDIDATES['q8_mmq_attn_gate'],
+                                       q8_mmq_attn_gate_enabled=enabled)
+                        assert bind_candidate_q8_mmq_attn_gate(stack, owner, spec) is enabled
+                    else:
+                        stack.enter_context(runtime.q8_mmq_attn_gate_enabled(owner, enabled))
                     repeats = []
                     for _ in range(2):
                         launches.clear()
