@@ -2862,7 +2862,11 @@ and update the layer gate to use it rather than environment ordering. Only then 
 map, binder-write tracking, warning/error control and their documentation. Preserve caller-override
 observability and strict/ production isolation. Run `tests/test_unit_qwen4_exp_profiles.py`, the
 affected runner ownership tests and a real generation request confirming selected routes and
-isolation before closing the migration. The focused guard regression is:
+isolation before closing the migration. The GDN columnwarp layer scope now has
+an explicit `gdn_colwarps_layers` runner field, effective-value getter and
+restoring diagnostic scope. Its binder and existing diagnostic callers still use
+the environment fallback and must migrate together before retiring that control.
+The focused guard regression is:
 
 ```bash
 uv run pytest tests/test_unit_qwen4_exp_profiles.py -k 'pre_binder or previous_bind'

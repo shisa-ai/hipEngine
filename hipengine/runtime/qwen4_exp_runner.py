@@ -351,6 +351,40 @@ def _qwen4_exp_gdn_peer_layer_allowed(
     )
 
 
+def resolve_gdn_colwarps_layers(owner: Any) -> str:
+    """Resolve an owner's scope, retaining process diagnostics when unbound."""
+    published = getattr(owner, 'gdn_colwarps_layers', None)
+    return (os.environ.get('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', 'all')
+            if published is None else str(published))
+
+
+def qwen4_exp_gdn_colwarps_layer_allowed(
+    weight: GGUFDeviceWeight, *, published: str | None,
+) -> bool:
+    scope = (os.environ.get('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', 'all')
+             if published is None else published)
+    return _qwen4_exp_layer_scope_contains(weight.spec.slot_path, scope)
+
+
+@contextlib.contextmanager
+def gdn_colwarps_layers(owner: Any, layers: str | None):
+    """Bind a diagnostic layer scope on a generator and its current runner."""
+    missing = object()
+    targets = _gdn_colwarps_prefill_targets(owner)
+    prior = [(target, getattr(target, 'gdn_colwarps_layers', missing))
+             for target in targets]
+    try:
+        for target in targets:
+            target.gdn_colwarps_layers = layers
+        yield resolve_gdn_colwarps_layers(owner)
+    finally:
+        for target, previous in reversed(prior):
+            if previous is missing:
+                delattr(target, 'gdn_colwarps_layers')
+            else:
+                target.gdn_colwarps_layers = previous
+
+
 def resolve_gdn_colwarps_prefill(owner: Any) -> bool:
     """The GDN columnwarp enablement gate the owner publishes.
 
@@ -8728,6 +8762,7 @@ def run_qwen4_exp_gdn_layer(
     defer_write: list | None = None,
     prefill_variant: str | None = None,
     gdn_colwarps_prefill: bool = False,
+    gdn_colwarps_layers: str | None = None,
     gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
     gdn_tile16_variant: str | None = None,
@@ -8901,6 +8936,7 @@ def run_qwen4_exp_gdn_layer(
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
         prefill_variant=prefill_variant,
         gdn_colwarps_prefill=gdn_colwarps_prefill,
+        gdn_colwarps_layers=gdn_colwarps_layers,
         gdn_register_prefill=gdn_register_prefill,
         gdn_tile16_prefill=gdn_tile16_prefill,
         gdn_tile16_variant=gdn_tile16_variant,
@@ -9217,6 +9253,7 @@ def run_qwen4_exp_gdn_token_mixer(
     runtime: HipRuntime | None = None,
     prefill_variant: str | None = None,
     gdn_colwarps_prefill: bool = False,
+    gdn_colwarps_layers: str | None = None,
     gdn_register_prefill: bool = False,
     gdn_tile16_prefill: bool = True,
     gdn_tile16_variant: str | None = None,
@@ -9369,11 +9406,8 @@ def run_qwen4_exp_gdn_token_mixer(
         colwarps_prefill = (
             qwen4_exp_gdn_colwarps_prefill_selected(
                 head_dim=head_dim, published=gdn_colwarps_prefill)
-            and _qwen4_exp_layer_allowed(
-                weights["attn_qkv"],
-                env_name="HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
-                default="all",
-            )
+            and qwen4_exp_gdn_colwarps_layer_allowed(
+                weights['attn_qkv'], published=gdn_colwarps_layers)
         )
         if colwarps_prefill:
             tile16_variant = _qwen4_exp_gdn_tile16_variant(gdn_tile16_variant)
@@ -9924,6 +9958,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     # the one runner it measures; a fresh runner or a serving clone inherits the
     # published value, never that binding.
     gdn_colwarps_prefill: bool = False
+    # None preserves the unbound diagnostic environment until profile publication.
+    gdn_colwarps_layers: str | None = None
     # GDN tile-16 prefill owner inside the columnwarp gate, for the binding
     # Hk16/Hv48/D128 envelope. True on every runner the profile constructs, and
     # the prefill chunk path is its only reader: decode runs one row, and the
@@ -11806,6 +11842,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     prefill_variant=self.gdn_prefill_variant,
                     gdn_decode_rowsplit=self.gdn_decode_rowsplit,
                     gdn_colwarps_prefill=self.gdn_colwarps_prefill,
+                    gdn_colwarps_layers=self.gdn_colwarps_layers,
                     gdn_register_prefill=self.gdn_register_prefill,
                     gdn_tile16_prefill=self.gdn_tile16_prefill,
                     gdn_tile16_variant=self.gdn_tile16_variant,

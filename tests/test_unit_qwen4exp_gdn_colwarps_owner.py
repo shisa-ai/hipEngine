@@ -759,4 +759,6 @@ def test_the_launch_site_reads_the_owner_and_keeps_the_layer_scope():
     assert ENV not in mixer
     assert "qwen4_exp_gdn_colwarps_prefill_selected(" in mixer
     assert "qwen4_exp_gdn_prefill_columnwarps_f32" in mixer
-    assert LAYERS_ENV in mixer
+    assert LAYERS_ENV not in mixer
+    assert 'qwen4_exp_gdn_colwarps_layer_allowed(' in mixer
+    assert 'published=gdn_colwarps_layers' in mixer
