@@ -2891,7 +2891,9 @@ The remaining IU8 controls still require owner transport. Selected Q8 down
 enablement now accepts explicit generator/runner state, restoring diagnostic
 scopes and forwarded MoE choices, including capture identity. Its existing
 profile process writes and diagnostic callers still need migration before
-publishing bound owner choices.
+publishing bound owner choices. Profile-gap translates the selected-down
+`--override` into owner state without process writes and reports the effective
+decision.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

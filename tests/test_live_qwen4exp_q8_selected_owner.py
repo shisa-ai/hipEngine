@@ -11,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
 @pytest.mark.parametrize('length', [17, 73, 273])
-def test_public_selected_q8_down_owner(monkeypatch, length):
+def test_public_selected_q8_down_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.core.hip import get_hip_runtime
@@ -43,7 +44,14 @@ def test_public_selected_q8_down_owner(monkeypatch, length):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', ambient)
             with ExitStack() as scopes:
-                scopes.enter_context(runtime.q8_selected_down_enabled(owner, enabled))
+                if interface == 'profile_gap':
+                    from scripts.qwen4exp_profile_gap import bind_selected_q8_down_override
+                    report = bind_selected_q8_down_override(scopes, owner, {
+                        'HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN': '1' if enabled else '0'})
+                    assert report == {'q8_selected_down_override': enabled,
+                                      'q8_selected_down_enabled': enabled}
+                else:
+                    scopes.enter_context(runtime.q8_selected_down_enabled(owner, enabled))
                 for runner in runners:
                     # The production routed-F16 composite preempts this
                     # independent grouped fallback at larger prompt shapes.

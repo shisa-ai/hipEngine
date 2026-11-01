@@ -533,12 +533,28 @@ def _apply_post_binder_overrides(
                  if key not in {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
                                 "HIPENGINE_GGUF_WMMA_PREFILL",
                                 "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
-                                "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS"}}
+                                "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
+                                "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"}}
     effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
     bound = {key: os.environ.get(key) for key in effective_route_keys}
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_selected_q8_down_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, bool | None]:
+    """Bind legacy selected-down syntax without rewriting process inputs."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_selected_down_enabled, resolve_q8_selected_down,
+    )
+    raw = overrides.get('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN')
+    enabled = None if raw is None else raw not in {'', '0', 'false', 'False'}
+    if enabled is not None:
+        stack.enter_context(q8_selected_down_enabled(owner, enabled))
+    return {'q8_selected_down_override': enabled,
+            'q8_selected_down_enabled': resolve_q8_selected_down(owner)}
 
 
 def bind_flash_prefill_override(
@@ -1041,6 +1057,7 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_selected_q8_down_override(q4_scope, generator, overrides))
         report.update(bind_flash_prefill_override(q4_scope, generator, overrides))
         report.update(bind_generic_wmma_override(q4_scope, generator, overrides))
         report.update(bind_attention_override(
