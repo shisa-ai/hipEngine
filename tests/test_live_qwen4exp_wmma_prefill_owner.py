@@ -1,4 +1,5 @@
 """Public generic WMMA owner selection with opposite ambient input."""
+from contextlib import ExitStack
 import os
 import numpy as np
 import pytest
@@ -10,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
 @pytest.mark.parametrize('length', [17, 73, 273])
-def test_public_generic_wmma_owner(monkeypatch, length):
+def test_public_generic_wmma_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.runtime import gguf_linear as linear
@@ -44,9 +46,16 @@ def test_public_generic_wmma_owner(monkeypatch, length):
             # Isolate generic WMMA from the production wide route, which replaces
             # its supported raw Q8 leaves above 256 rows.
             with (
-                runtime.gguf_wmma_prefill(owner, enabled),
+                ExitStack() as stack,
                 linear.q8_dense_wide_policy(owner, linear.Q8DenseWidePolicy(False, None)),
             ):
+                if interface == 'profile_gap':
+                    from scripts.qwen4exp_profile_gap import bind_generic_wmma_override
+                    report = bind_generic_wmma_override(stack, owner, {
+                        'HIPENGINE_GGUF_WMMA_PREFILL': '1' if enabled else '0'})
+                    assert report['gguf_wmma_prefill_enabled'] is enabled
+                else:
+                    stack.enter_context(runtime.gguf_wmma_prefill(owner, enabled))
                 repeats = []
                 for _ in range(2):
                     selections.clear()

@@ -526,18 +526,34 @@ def _apply_post_binder_overrides(
 ) -> tuple[dict[str, str | None], dict[str, str | None]]:
     """Apply diagnostic environment overrides after the profile binder.
 
-    Owner-state routes are bound separately. The attention key keeps its legacy
-    ``--override`` spelling but is transported by ``bind_attention_override``.
+    Owner-state routes are bound separately. Attention and generic WMMA keys
+    keep their legacy ``--override`` spelling but use explicit owner binders.
     This helper only moves remaining process-owned diagnostic switches.
     """
 
     overrides = {key: value for key, value in overrides.items()
-                 if key != "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"}
+                 if key not in {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
+                                "HIPENGINE_GGUF_WMMA_PREFILL"}}
     effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
     bound = {key: os.environ.get(key) for key in effective_route_keys}
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_generic_wmma_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, bool | None]:
+    """Bind legacy generic WMMA syntax with its original boolean parser."""
+    from hipengine.runtime.qwen4_exp_runner import gguf_wmma_prefill
+    raw = overrides.get('HIPENGINE_GGUF_WMMA_PREFILL')
+    enabled = None if raw is None else raw.strip().lower() in {'1', 'true', 'yes', 'on'}
+    if enabled is not None:
+        stack.enter_context(gguf_wmma_prefill(owner, enabled))
+    return {
+        'gguf_wmma_prefill_override': enabled,
+        'gguf_wmma_prefill_enabled': getattr(owner, 'gguf_wmma_prefill_enabled', None),
+    }
 
 
 def bind_attention_override(
@@ -1003,6 +1019,7 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_generic_wmma_override(q4_scope, generator, overrides))
         report.update(bind_attention_override(
             q4_scope, generator, overrides, q8_mmq_override))
         from hipengine.runtime.qwen4_exp_runner import resolve_q8_mmq_prefill
