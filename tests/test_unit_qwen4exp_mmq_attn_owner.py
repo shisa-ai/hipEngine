@@ -13,11 +13,11 @@ def policy():
                              risk_threshold=0.0, max_out_features=12288)
 
 
-@pytest.mark.parametrize('raw,expected', [('1', True), ('true', True), ('False', False), ('0', False), ('', False)])
-def test_owner_precedence_and_unbound_legacy_parser(monkeypatch, raw, expected):
+@pytest.mark.parametrize('raw', ['1', 'true', 'False', '0', ''])
+def test_owner_precedence_and_unbound_ignores_ambient(monkeypatch, raw):
     monkeypatch.setenv(ENV, raw)
     base = policy()
-    assert runtime._qwen4_exp_q8_mmq_policy(base)(73, 2560, 6144) is expected
+    assert runtime._qwen4_exp_q8_mmq_policy(base)(73, 2560, 6144) is False
     for enabled in (False, True):
         chosen = runtime._qwen4_exp_q8_mmq_policy(base, attn_gate_enabled=enabled)
         assert chosen(73, 2560, 6144) is enabled

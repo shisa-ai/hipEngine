@@ -5797,19 +5797,14 @@ def q8_mmq_attn_gate_enabled(owner: Any, enabled: bool | None):
 
 
 def _qwen4_exp_q8_mmq_policy(policy, *, attn_gate_enabled: bool | None = None):
-    """Add the P3 attention-gate shape only for an explicit candidate run.
+    """Apply the explicit attention-gate choice and independent plane input.
 
-    Also applies the #28 R12 plane-count candidate env per prefill (the
-    base policy resolves once at construction; the session re-applies
-    route candidates per chunk so an A/B can switch arms in residency).
+    Unbound calls keep the base attention scope. The plane-count diagnostic
+    still applies per prefill so a resident comparison can switch its arm.
     """
 
     if policy is None:
         return None
-    if attn_gate_enabled is None:
-        attn_gate_enabled = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "0"
-        ) not in {"", "0", "false", "False"}
     if attn_gate_enabled:
         minimums = dict(policy.min_rows)
         minimums[(2560, 6144)] = 64

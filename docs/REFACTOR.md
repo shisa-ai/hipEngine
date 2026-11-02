@@ -3597,7 +3597,9 @@ The profile-binding migration and the enumerated direct/unbound route
 fallback removals are complete, including paired GR IU8 and QSA flash policies.
 Keep explicit owner diagnostic scopes and their requested/effective reports.
 Inventory the remaining runtime environment reads separately: distinguish
-unmigrated owner settings from initialization inputs and diagnostics. Q4 DP4A
+unmigrated owner settings from initialization inputs and diagnostics. The MMQ
+attention-gate fallback is removed after its direct diagnostic callers migrated;
+the independent Q8 MMQ plane-count input remains. Q4 DP4A
 also uses explicit owner state only; R0023 still owns its independent numerical
 repair. Remove a fallback only after every in-tree direct consumer
 supplies its explicit owner choice and targeted public route/repeat/teardown

@@ -23,7 +23,8 @@ def test_qwen4_exp_q8_mmq_attn_gate_scope_is_explicit_opt_in(
     assert base(508, 2560, 6144) is False
 
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "1")
-    candidate = _qwen4_exp_q8_mmq_policy(base)
+    assert _qwen4_exp_q8_mmq_policy(base) is base
+    candidate = _qwen4_exp_q8_mmq_policy(base, attn_gate_enabled=True)
 
     assert candidate is not base
     assert candidate(508, 2560, 6144) is True
