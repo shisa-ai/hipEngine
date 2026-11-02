@@ -35,7 +35,7 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # carries republishes the wide tile, so no process key is written.
     expected = dict(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
     owner_flags = {"PRODUCTION_MOE_PREFILL", "Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL",
-                   "Q8_0_SELECTED_WMMA_DOWN"}
+                   "Q8_0_SELECTED_WMMA_DOWN", "GR_IU8", "GR_IU8_DOWN"}
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
         if flag in {"Q4_DP4A64", "GR_WIDE"} or flag in owner_flags:
             continue
@@ -47,6 +47,9 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     assert generator.q8_mmq_prefill_enabled is False
     assert generator.qsa_flash_prefill_policy.enabled is False
     assert generator.q8_selected_down_enabled is True
+    assert generator.gr_iu8_policy == qwen4_exp_runner.GRIU8Policy(False, False)
+    assert 'HIPENGINE_QWEN4_EXP_GR_IU8' not in os.environ
+    assert 'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN' not in os.environ
     assert "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_Q4_DP4A64" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL" not in os.environ

@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey', 'campaign', 'state', 'probe', 'wave_preemptor', 'dpp_preemptor'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'layer2', 'journey', 'campaign', 'state', 'probe', 'profile', 'wave_preemptor', 'dpp_preemptor'])
 @pytest.mark.parametrize('length', [17, 255, 256, 257, 389])
 def test_public_gr_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -28,6 +28,8 @@ def test_public_gr_iu8_owner(monkeypatch, length, interface):
         calls.append((args[3], args[4], args[5]))
         return original(*args, **kwargs)
     monkeypatch.setattr(runtime, 'gguf_q8_0_iu8_wmma_prefill_f32_f32', launch)
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8', '1')
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', '1')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
@@ -39,13 +41,20 @@ def test_public_gr_iu8_owner(monkeypatch, length, interface):
             runners.append(owner.runner)
         prior = [(r, r.gr_iu8_policy) for r in runners]
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
-        for up, down in [(False, False), (True, False), (False, True)]:
+        assert owner.gr_iu8_policy == runtime.GRIU8Policy(False, False)
+        assert all(r.gr_iu8_policy == owner.gr_iu8_policy for r in runners)
+        assert all(os.environ[key] == '1' for key in (
+            'HIPENGINE_QWEN4_EXP_GR_IU8', 'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'))
+        choices = [(False, False)] if interface == 'profile' else [(False, False), (True, False), (False, True)]
+        for up, down in choices:
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8', '0' if up else '1')
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', '0' if down else '1')
             policy = runtime.GRIU8Policy(up, down)
             with ExitStack() as scopes:
                 def bind(target):
-                    if interface == 'probe':
+                    if interface == 'profile':
+                        assert target.gr_iu8_policy == policy
+                    elif interface == 'probe':
                         from scripts.qwen4exp_gr_iu8_logits_probe import _route_scope
                         scopes.enter_context(runtime.gr_iu8(target, runtime.GRIU8Policy(False, False)))
                         scopes.enter_context(_route_scope(target, 'down' if down else 'up', up or down))
@@ -105,7 +114,7 @@ def test_public_gr_iu8_owner(monkeypatch, length, interface):
                     np.testing.assert_array_equal(a, b)
             for runner, value in prior:
                 assert runner.gr_iu8_policy is value
-        assert owner.gr_iu8_policy is None
+        assert owner.gr_iu8_policy == runtime.GRIU8Policy(False, False)
     finally:
         llm.close()
     hip.device_synchronize()

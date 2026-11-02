@@ -808,7 +808,8 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
     assert restore.SHARED_DECODE_SAFE_OWNER_FIELDS == {
         "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
         "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
-        "qsa_flash_prefill_enabled", "q8_selected_down_enabled"}
+        "qsa_flash_prefill_enabled", "q8_selected_down_enabled",
+        "gr_iu8_up", "gr_iu8_down"}
 
     restore.validate_shared_graphs(
         [], [{"q8_down_variant": WMMA, "q8_selected_down_enabled": True}])

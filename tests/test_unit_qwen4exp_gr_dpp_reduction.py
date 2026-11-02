@@ -95,7 +95,8 @@ def test_benchmark_binds_the_owner_and_writes_no_flag(mode):
     with route_scope("gr-dpp-reduction", mode, owner, environment=env):
         assert owner.gr_dpp_reduction is (mode == "after")
         assert owner.gr_wide is False
-        assert env["HIPENGINE_QWEN4_EXP_GR_IU8"] == "0"
+        assert owner.gr_iu8_policy.up is False
+        assert "HIPENGINE_QWEN4_EXP_GR_IU8" not in env
     assert owner.gr_dpp_reduction is False
     assert owner.gr_wide is True
     assert "HIPENGINE_QWEN4_EXP_GR_IU8" not in env

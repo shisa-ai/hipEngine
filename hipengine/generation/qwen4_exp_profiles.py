@@ -1197,6 +1197,21 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_gr_iu8(generator: Any, *, production: bool, quant: str | None) -> None:
+    """Publish each projection's existing UD recovery decision on its owner."""
+    from hipengine.runtime.qwen4_exp_runner import GRIU8Policy
+    def enabled(flag):
+        return production and not (
+            quant == 'gguf_ud_q4_k_xl' and flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
+    policy = GRIU8Policy(enabled('GR_IU8'), enabled('GR_IU8_DOWN'))
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_GR_IU8', '1' if policy.up else '0')
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', '1' if policy.down else '0')
+    generator.gr_iu8_policy = policy
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.gr_iu8_policy = policy
+
+
 def _publish_selected_q8_down(generator: Any, *, production: bool, quant: str | None) -> None:
     """Publish the gate after the UD recovery and restoration decisions."""
     enabled = production
@@ -1592,13 +1607,6 @@ def _bind(
         # 12-case same-residency A/B +4.3% prefill geo-mean with every case
         # winning and identical output digests); production-only binding.
         "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT": "1" if production else "0",
-        # Historical GR-up intent; UD recovery below disables this route after
-        # its standalone depth-gate failure. The exact fused parent stays the
-        # fallback pending correction; see docs/REFACTOR.md.
-        "HIPENGINE_QWEN4_EXP_GR_IU8": "1" if production else "0",
-        # Historical GR-down intent; UD recovery below disables this independent
-        # depth-gate failure. Its projection repair condition remains open.
-        "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1" if production else "0",
         # Exact ordered DPP replacement for the wave-scale GR-up owner. It is
         # the owning generator/runner's state now (``gr_dpp_reduction``),
         # published below from this plan's own ``qwen4exp_rows_gt256_gr_up``
@@ -1833,7 +1841,7 @@ def _bind(
                     "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
                     "Q8_MMQ_PREFILL", "GR_WIDE",
                     _GDN_COLWARPS_PREFILL_FLAG, "QSA_FLASH_PREFILL",
-                    "Q8_0_SELECTED_WMMA_DOWN",
+                    "Q8_0_SELECTED_WMMA_DOWN", "GR_IU8", "GR_IU8_DOWN",
                 }
             }
         )
@@ -1847,6 +1855,7 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    _publish_gr_iu8(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_selected_q8_down(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_flash_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
     # The GDN columnwarp enablement gate is the plan's decision, published on

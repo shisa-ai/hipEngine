@@ -32,8 +32,9 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     assert generator.q8_mmq_prefill_enabled is False
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
     assert generator.qsa_flash_prefill_policy.enabled is False
+    assert generator.gr_iu8_policy.up is generator.gr_iu8_policy.down is False
     for flag in ("GR_IU8", "GR_IU8_DOWN"):
-        assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "0"
+        assert "HIPENGINE_QWEN4_EXP_" + flag not in os.environ
     assert generator.q4_dp4a_decode_enabled is False
     assert generator.q4_dp4a_decode_layers == frozenset(
         (0, 2, 5, 6, 8, 9, 10, 11) + tuple(range(13, 48)))
