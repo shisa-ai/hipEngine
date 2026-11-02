@@ -11,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
 @pytest.mark.parametrize('length', [1, 17, 73])
-def test_public_plain_q4_prefill_owner(monkeypatch, length):
+def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.core.hip import get_hip_runtime
@@ -44,7 +45,13 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, enabled))
+                    if interface == 'profile_gap':
+                        from scripts.qwen4exp_profile_gap import bind_q4_iu8_prefill_override
+                        report = bind_q4_iu8_prefill_override(scopes, target, {
+                            'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL': '1' if enabled else '0'})
+                        assert report['q4_iu8_prefill_enabled'] is enabled
+                    else:
+                        scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, enabled))
                 for runner in runners:
                     scopes.enter_context(runtime.routed_f16_enabled(runner, False))
                     scopes.enter_context(runtime.q4_exact_grouped_gate(runner, False))

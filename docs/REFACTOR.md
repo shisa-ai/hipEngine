@@ -2963,7 +2963,9 @@ plain-prefill input. Profiles publish exact-Q4 enablement on generators and
 current runners, preserving the process input and the same production/strict
 choice. Plain-Q4 IU8 prefill enablement also has an owner resolver and restoring
 scope, forwarded through resident, batch and mixed-target paths and included in
-capture identity; its profile and diagnostic writers still need migration. Q4
+capture identity. Profile-gap binds plain-prefill overrides on that owner and
+reports the requested and effective values without process writes; the profile
+and remaining diagnostic writers still need migration. Q4
 layer/risk controls still need owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
