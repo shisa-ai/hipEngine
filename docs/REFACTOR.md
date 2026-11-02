@@ -2952,8 +2952,11 @@ resident, batch and mixed-target execution, inherited by new runners and include
 in capture identity. Profile-gap binds its exact-Q4 override on the measured
 owner, reports the effective choice and preserves the process input. Candidate
 AR separates the exact-Q4 key before both process-write stages and binds that
-same restoring owner choice. Other profile and diagnostic process writers, plus
-the Q4 prefill/layer/risk controls, still need migration.
+same restoring owner choice. Campaign and state-gate exact-Q4 arms bind the
+measured owner and report its effective choice without process writes. The
+state gate checks the production prerequisite through that owner. Other profile
+and diagnostic process writers, plus the Q4 prefill/layer/risk controls, still
+need migration.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

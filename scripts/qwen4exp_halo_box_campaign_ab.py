@@ -1784,6 +1784,14 @@ def gr_iu8_control_record(package, runner):
             'scope': 'per measured run; restored on exit'}
 
 
+def q4_iu8_control_record(runner):
+    """Record the owner choice replaced by each exact-Q4 arm."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_q4_iu8_exact
+    return {'runner_field': 'q4_iu8_exact_enabled', 'before': False, 'after': True,
+            'published_value': resolve_q4_iu8_exact(runner),
+            'scope': 'per measured run; restored on exit'}
+
+
 def q51_iu8_control_record(runner):
     """Record the owner choice replaced by each exact-Q5_1 arm."""
     from hipengine.runtime.qwen4_exp_runner import resolve_q51_iu8_exact
@@ -1813,6 +1821,14 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT,
         gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
     )
+
+    if route_package == 'q4-iu8-exact':
+        if mode not in {'before', 'after'}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError('q4-iu8-exact needs the owning runner')
+        from hipengine.runtime.qwen4_exp_runner import q4_iu8_exact_enabled
+        return q4_iu8_exact_enabled(runner, mode == 'after')
 
     if route_package == 'q51-iu8-exact':
         if mode not in {'before', 'after'}:
@@ -2300,7 +2316,7 @@ def _apply_mode(
         if route_package == "q4-pair":
             return  # route_scope binds the owning runner.
         if route_package == "q4-iu8-exact":
-            flag = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
+            return  # route_scope binds the owning runner.
         if route_package == "q51-iu8-exact":
             return  # route_scope binds the owning runner.
         if route_package == "q5k-iu8-exact":
@@ -3135,6 +3151,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.route_package, generator.runner)
     if args.route_package in {'gr-iu8', 'gr-iu8-down'}:
         artifact['selection_control'] = gr_iu8_control_record(args.route_package, generator.runner)
+    if args.route_package == 'q4-iu8-exact':
+        artifact['selection_control'] = q4_iu8_control_record(generator.runner)
     if args.route_package == 'q51-iu8-exact':
         artifact['selection_control'] = q51_iu8_control_record(generator.runner)
     if args.route_package == "q8-wmma-down":
@@ -3166,6 +3184,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
                 policy = resolve_gr_iu8_policy(generator.runner.gr_iu8_policy)
                 row['gr_iu8_policy'] = {'up': policy.up, 'down': policy.down}
+            if args.route_package == 'q4-iu8-exact':
+                from hipengine.runtime.qwen4_exp_runner import resolve_q4_iu8_exact
+                row['q4_iu8_exact_enabled'] = resolve_q4_iu8_exact(generator.runner)
             if args.route_package == 'q51-iu8-exact':
                 from hipengine.runtime.qwen4_exp_runner import resolve_q51_iu8_exact
                 row['q51_iu8_exact_enabled'] = resolve_q51_iu8_exact(generator.runner)
