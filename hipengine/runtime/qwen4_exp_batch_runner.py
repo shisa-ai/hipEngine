@@ -141,6 +141,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     resolve_q8_selected_down,
     resolve_q51_iu8_exact,
     resolve_q4_iu8_prefill,
+    resolve_q4_iu8_layers,
     resolve_q4_iu8_exact,
     stage_qwen4_exp_ple_rows,
 )
@@ -446,6 +447,7 @@ def run_qwen4_exp_batch_gdn_layer(
     q8_down_variant: str | None = None,
     q8_selected_down_enabled: bool | None = None,
     q4_iu8_prefill_enabled: bool | None = None,
+    q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
@@ -551,6 +553,7 @@ def run_qwen4_exp_batch_gdn_layer(
             q8_down_bundle_prefill=q8_down_bundle_prefill,
             q8_down_variant=q8_down_variant,
             q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
+            q4_iu8_layers=q4_iu8_layers,
             q4_iu8_exact_enabled=q4_iu8_exact_enabled,
             q51_iu8_exact_enabled=q51_iu8_exact_enabled,
             q8_selected_down_enabled=q8_selected_down_enabled,
@@ -683,6 +686,7 @@ def _run_layer_ffn(
     q8_down_variant: str | None = None,
     q8_selected_down_enabled: bool | None = None,
     q4_iu8_prefill_enabled: bool | None = None,
+    q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> None:
@@ -761,6 +765,7 @@ def _run_layer_ffn(
         q8_down_variant=q8_down_variant,
         q8_selected_down_enabled=q8_selected_down_enabled,
         q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
+        q4_iu8_layers=q4_iu8_layers,
         q4_iu8_exact_enabled=q4_iu8_exact_enabled,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
     )
@@ -833,6 +838,7 @@ def run_qwen4_exp_batch_qsa_layer(
     q8_down_variant: str | None = None,
     q8_selected_down_enabled: bool | None = None,
     q4_iu8_prefill_enabled: bool | None = None,
+    q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
@@ -938,6 +944,7 @@ def run_qwen4_exp_batch_qsa_layer(
             q8_down_bundle_prefill=q8_down_bundle_prefill,
             q8_down_variant=q8_down_variant,
             q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
+            q4_iu8_layers=q4_iu8_layers,
             q4_iu8_exact_enabled=q4_iu8_exact_enabled,
             q51_iu8_exact_enabled=q51_iu8_exact_enabled,
             q8_selected_down_enabled=q8_selected_down_enabled,
@@ -1089,6 +1096,7 @@ class Qwen4ExpGGUFBatchRunner:
     q8_down_variant: str | None = None
     q8_selected_down_enabled: bool | None = None
     q4_iu8_prefill_enabled: bool | None = None
+    q4_iu8_layers: str | None = None
     q4_iu8_exact_enabled: bool | None = None
     q51_iu8_exact_enabled: bool | None = None
 
@@ -2046,6 +2054,7 @@ class Qwen4ExpGGUFBatchRunner:
             getattr(self, "q8_down_variant", None),
             resolve_q8_selected_down(self),
             resolve_q4_iu8_prefill(self),
+            resolve_q4_iu8_layers(self),
             resolve_q4_iu8_exact(self),
             resolve_q51_iu8_exact(self),
         )
@@ -2342,6 +2351,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q8_down_variant=self.q8_down_variant,
                     q8_selected_down_enabled=self.q8_selected_down_enabled,
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
+                    q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr
@@ -2403,6 +2413,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q8_down_variant=self.q8_down_variant,
                     q8_selected_down_enabled=self.q8_selected_down_enabled,
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
+                    q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr

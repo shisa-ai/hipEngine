@@ -302,14 +302,40 @@ def _qwen4_exp_layer_allowed(
     )
 
 
-def _qwen4_exp_q4_iu8_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
-    """iu8-WMMA selected-dual prefill layer set (dp4a class, screened suffix)."""
-
-    return _qwen4_exp_layer_allowed(
-        weights["expert_gate"],
-        env_name="HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
-        default="35-47",
+def _qwen4_exp_q4_iu8_layer_allowed(
+    weights: Mapping[str, GGUFDeviceWeight], layers: str | None = None,
+) -> bool:
+    """Use the owner's plain-Q4 scope, or the unbound environment fallback."""
+    return _qwen4_exp_layer_scope_contains(
+        weights['expert_gate'].spec.slot_path,
+        os.environ.get('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '35-47')
+        if layers is None else layers,
     )
+
+
+def resolve_q4_iu8_layers(owner: Any) -> str:
+    """Resolve a plain-Q4 layer scope without treating an empty scope as absent."""
+    layers = getattr(owner, 'q4_iu8_layers', None)
+    return (os.environ.get('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '35-47')
+            if layers is None else layers)
+
+
+@contextlib.contextmanager
+def q4_iu8_layers(owner: Any, layers: str | None):
+    """Bind a plain-Q4 scope, restoring missing and distinct owner values."""
+    missing = object()
+    prior = [(target, getattr(target, 'q4_iu8_layers', missing))
+             for target in _q8_down_variant_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.q4_iu8_layers = layers
+        yield resolve_q4_iu8_layers(owner)
+    finally:
+        for target, value in prior:
+            if value is missing:
+                delattr(target, 'q4_iu8_layers')
+            else:
+                target.q4_iu8_layers = value
 
 
 #: The certified global layer scope of the GDN peer prefill owner. The
@@ -7040,6 +7066,7 @@ def run_qwen4_exp_moe(
     q8_down_variant: str | None = None,
     q8_selected_down_enabled: bool | None = None,
     q4_iu8_prefill_enabled: bool | None = None,
+    q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
     q51_exact_grouped_down: bool = True,
@@ -7217,6 +7244,7 @@ def run_qwen4_exp_moe(
                 q8_down_variant=q8_down_variant,
                 q8_selected_down_enabled=q8_selected_down_enabled,
                 q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
+                q4_iu8_layers=q4_iu8_layers,
                 q4_iu8_exact_enabled=q4_iu8_exact_enabled,
                 q51_iu8_exact_enabled=q51_iu8_exact_enabled,
             )
@@ -7673,7 +7701,7 @@ def run_qwen4_exp_moe(
                 and rows >= 2
                 and hidden % 256 == 0
                 and ffn % 128 == 0
-                and _qwen4_exp_q4_iu8_layer_allowed(weights)
+                and _qwen4_exp_q4_iu8_layer_allowed(weights, q4_iu8_layers)
             )
             if q4_iu8:
                 gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out(
@@ -8561,6 +8589,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q8_down_variant: str | None = None,
     q8_selected_down_enabled: bool | None = None,
     q4_iu8_prefill_enabled: bool | None = None,
+    q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer | None:
@@ -8693,6 +8722,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q8_down_variant=q8_down_variant,
         q8_selected_down_enabled=q8_selected_down_enabled,
         q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
+        q4_iu8_layers=q4_iu8_layers,
         q4_iu8_exact_enabled=q4_iu8_exact_enabled,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
     )
@@ -8775,6 +8805,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q8_down_variant: str | None = None,
     q8_selected_down_enabled: bool | None = None,
     q4_iu8_prefill_enabled: bool | None = None,
+    q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
@@ -8965,6 +8996,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q8_down_variant=q8_down_variant,
         q8_selected_down_enabled=q8_selected_down_enabled,
         q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
+        q4_iu8_layers=q4_iu8_layers,
         q4_iu8_exact_enabled=q4_iu8_exact_enabled,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
     )
@@ -9056,6 +9088,7 @@ def run_qwen4_exp_gdn_layer(
     q8_down_variant: str | None = None,
     q8_selected_down_enabled: bool | None = None,
     q4_iu8_prefill_enabled: bool | None = None,
+    q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
@@ -9318,6 +9351,7 @@ def run_qwen4_exp_gdn_layer(
         q8_down_variant=q8_down_variant,
         q8_selected_down_enabled=q8_selected_down_enabled,
         q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
+        q4_iu8_layers=q4_iu8_layers,
         q4_iu8_exact_enabled=q4_iu8_exact_enabled,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
     )
@@ -10440,6 +10474,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q8_down_variant: str | None = None
     q8_selected_down_enabled: bool | None = None
     q4_iu8_prefill_enabled: bool | None = None
+    q4_iu8_layers: str | None = None
     q4_iu8_exact_enabled: bool | None = None
     q51_iu8_exact_enabled: bool | None = None
 
@@ -10459,6 +10494,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q8_mmq_prefill_enabled: bool | None = None,
         q8_selected_down_enabled: bool | None = None,
         q4_iu8_prefill_enabled: bool | None = None,
+        q4_iu8_layers: str | None = None,
         q4_iu8_exact_enabled: bool | None = None,
         q51_iu8_exact_enabled: bool | None = None,
         gr_iu8_policy: GRIU8Policy | None = None,
@@ -10483,6 +10519,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.q8_mmq_prefill_enabled = q8_mmq_prefill_enabled
         self.q8_selected_down_enabled = q8_selected_down_enabled
         self.q4_iu8_prefill_enabled = q4_iu8_prefill_enabled
+        self.q4_iu8_layers = q4_iu8_layers
         self.q4_iu8_exact_enabled = q4_iu8_exact_enabled
         self.q51_iu8_exact_enabled = q51_iu8_exact_enabled
         self.gr_iu8_policy = gr_iu8_policy
@@ -11803,6 +11840,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_variant=self.q8_down_variant,
                     q8_selected_down_enabled=self.q8_selected_down_enabled,
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
+                    q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr
@@ -11873,6 +11911,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_variant=self.q8_down_variant,
                     q8_selected_down_enabled=self.q8_selected_down_enabled,
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
+                    q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr
@@ -12222,6 +12261,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_variant=self.q8_down_variant,
                     q8_selected_down_enabled=self.q8_selected_down_enabled,
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
+                    q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr
@@ -12289,6 +12329,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q8_down_variant=self.q8_down_variant,
                     q8_selected_down_enabled=self.q8_selected_down_enabled,
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
+                    q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     ffn=cfg.expert_feed_forward_length,
