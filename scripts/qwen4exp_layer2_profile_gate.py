@@ -127,6 +127,7 @@ class CandidateSpec:
     q8_selected_down_enabled: bool | None = None
     q4_iu8_prefill_enabled: bool | None = None
     q4_iu8_layers: str | None = None
+    q4_iu8_planes: int | None = None
     q4_iu8_risk_mult: float | None = None
     gr_iu8_up: bool | None = None
     gr_iu8_down: bool | None = None
@@ -1712,7 +1713,7 @@ _OWNER_FIELD_NAMES = (
     "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
     "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
     "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down",
-    "q4_iu8_prefill_enabled", "q4_iu8_layers", "q4_iu8_risk_mult")
+    "q4_iu8_prefill_enabled", "q4_iu8_layers", "q4_iu8_planes", "q4_iu8_risk_mult")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1890,8 +1891,11 @@ def bind_candidate_q4_prefill(
     """Bind an explicit plain-Q4 prefill choice; omission preserves the profile."""
     from hipengine.runtime.qwen4_exp_runner import (
         q4_iu8_prefill_enabled, resolve_q4_iu8_prefill, q4_iu8_layers,
-        q4_iu8_risk_mult,
+        q4_iu8_planes, q4_iu8_risk_mult,
     )
+    if candidate_spec.q4_iu8_planes is not None:
+        dispatch_stack.enter_context(q4_iu8_planes(
+            candidate_generator, candidate_spec.q4_iu8_planes))
     if candidate_spec.q4_iu8_risk_mult is not None:
         dispatch_stack.enter_context(q4_iu8_risk_mult(
             candidate_generator, candidate_spec.q4_iu8_risk_mult))
@@ -1929,7 +1933,7 @@ def bind_candidate_owners(
 
     from hipengine.runtime.qwen4_exp_runner import (
         resolve_gdn_colwarps_layers, resolve_q4_iu8_layers,
-        resolve_q4_iu8_risk_mult,
+        resolve_q4_iu8_planes, resolve_q4_iu8_risk_mult,
     )
     runner = getattr(candidate_generator, "runner", candidate_generator)
     if candidate_spec.qsa_ordered_decode is not None:
@@ -1942,6 +1946,7 @@ def bind_candidate_owners(
         "q4_iu8_prefill_enabled": bind_candidate_q4_prefill(
             dispatch_stack, candidate_generator, candidate_spec),
         "q4_iu8_layers": resolve_q4_iu8_layers(candidate_generator),
+        "q4_iu8_planes": resolve_q4_iu8_planes(candidate_generator),
         "q4_iu8_risk_mult": resolve_q4_iu8_risk_mult(candidate_generator),
         "gr_iu8_policy": bind_candidate_gr_iu8(
             dispatch_stack, candidate_generator, candidate_spec),
@@ -2043,6 +2048,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         and candidate_spec.qsa_flash_prefill_enabled is None
         and candidate_spec.q4_iu8_prefill_enabled is None
         and candidate_spec.q4_iu8_layers is None
+        and candidate_spec.q4_iu8_planes is None
         and candidate_spec.q4_iu8_risk_mult is None
         and candidate_spec.q8_selected_down_enabled is None
         and candidate_spec.gr_iu8_up is None
@@ -2261,8 +2267,9 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     resolved_q4_prefill = bind_candidate_q4_prefill(
         dispatch_stack, candidate_generator, candidate_spec)
     from hipengine.runtime.qwen4_exp_runner import (
-        resolve_q4_iu8_layers, resolve_q4_iu8_risk_mult,
+        resolve_q4_iu8_layers, resolve_q4_iu8_planes, resolve_q4_iu8_risk_mult,
     )
+    resolved_q4_planes = resolve_q4_iu8_planes(candidate_generator)
     resolved_q4_layers = resolve_q4_iu8_layers(candidate_generator)
     resolved_q4_risk_mult = resolve_q4_iu8_risk_mult(candidate_generator)
     resolved_selected_down = bind_candidate_selected_q8_down(
@@ -2683,6 +2690,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "q4_iu8_prefill_override": candidate_spec.q4_iu8_prefill_enabled,
             "q4_iu8_layers": resolved_q4_layers,
             "q4_iu8_layers_override": candidate_spec.q4_iu8_layers,
+            "q4_iu8_planes": resolved_q4_planes,
+            "q4_iu8_planes_override": candidate_spec.q4_iu8_planes,
             "q4_iu8_risk_mult": resolved_q4_risk_mult,
             "q4_iu8_risk_mult_override": candidate_spec.q4_iu8_risk_mult,
             "q8_selected_down_enabled": resolved_selected_down,
