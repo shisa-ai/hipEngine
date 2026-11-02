@@ -42,10 +42,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 )
 
 # route -> (env name(s), disabled value)
-ROUTES = {
-    "q4_iu8": (("HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
-                "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"), "0"),
-}
+ROUTES = {}
 
 # route -> runner-scoped H256 prefill head grouping. These are request-local
 # state on the runner, so the ablation binds the mode instead of an env key.
@@ -131,6 +128,11 @@ Q4_OUT4_PREEMPTING_ENV = (
 # route -> (runner field bindings, process keys, disabled value) for a leaf whose
 # field is request-local but whose selection also depends on decisions above it.
 RUNNER_ROUTE_OFF_WITH_ENV = {
+    "q4_iu8": (
+        (("q4_iu8_exact_enabled", False),),
+        ("HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",),
+        "0",
+    ),
     "q51_out8": (
         (("q51_out8", False),)
         + tuple((field, False) for field in OUT8_SIBLING_FIELDS)

@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_q4_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -67,11 +67,12 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                     else:
                         scopes.enter_context(runtime.q4_iu8_exact_enabled(target, enabled))
                 for runner in runners:
-                    if interface == 'out4':
+                    if interface in {'out4', 'ablation'}:
                         # The CLI module sets build defaults at import time.
                         with patch.dict(os.environ):
                             from scripts.qwen4exp_r2e_route_ablation import RUNNER_ROUTE_OFF_WITH_ENV
-                        bindings, envs, off = RUNNER_ROUTE_OFF_WITH_ENV['q4_out4']
+                        route = 'q4_out4' if interface == 'out4' else 'q4_iu8'
+                        bindings, envs, off = RUNNER_ROUTE_OFF_WITH_ENV[route]
                         env_scope = scopes.enter_context(monkeypatch.context())
                         for key_name in envs:
                             env_scope.setenv(key_name, off)
@@ -89,7 +90,7 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                     calls.clear()
                     start = len(captures)
                     outputs.append(llm.generate([list(range(100, 100 + length))], params))
-                    assert bool(calls) is (enabled and length >= 2 and interface not in {'pair2', 'out4'})
+                    assert bool(calls) is (enabled and length >= 2 and interface not in {'pair2', 'out4', 'ablation'})
                     logits.append([x.copy() for x in captures[start:]])
                 assert outputs[0] == outputs[1]
                 assert logits[0] and len(logits[0]) == len(logits[1])
