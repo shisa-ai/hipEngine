@@ -1095,6 +1095,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q8_selected_down_enabled = getattr(generator, 'q8_selected_down_enabled', None)
     runner.q4_iu8_prefill_enabled = getattr(generator, 'q4_iu8_prefill_enabled', None)
     runner.q4_iu8_layers = getattr(generator, 'q4_iu8_layers', None)
+    runner.q4_iu8_planes = getattr(generator, 'q4_iu8_planes', None)
     runner.q4_iu8_risk_mult = getattr(generator, 'q4_iu8_risk_mult', None)
     runner.q4_iu8_exact_enabled = getattr(generator, 'q4_iu8_exact_enabled', None)
     runner.q51_iu8_exact_enabled = getattr(generator, 'q51_iu8_exact_enabled', None)
