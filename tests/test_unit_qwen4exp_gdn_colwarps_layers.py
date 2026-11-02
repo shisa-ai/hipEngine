@@ -10,12 +10,14 @@ from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
 ENV = 'HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS'
 
 
-def test_unbound_scope_preserves_legacy_diagnostics(monkeypatch):
-    monkeypatch.setenv(ENV, '0,7-9')
-    assert runtime.resolve_gdn_colwarps_layers(SimpleNamespace()) == '0,7-9'
+@pytest.mark.parametrize('ambient', ['0,7-9', 'all', '', '999'])
+def test_unbound_scope_ignores_ambient(monkeypatch, ambient):
+    monkeypatch.setenv(ENV, ambient)
+    for owner in (SimpleNamespace(), SimpleNamespace(gdn_colwarps_layers=None)):
+        assert runtime.resolve_gdn_colwarps_layers(owner) == 'all'
+    weight = SimpleNamespace(spec=SimpleNamespace(slot_path='layers.13.attn_qkv'))
+    assert runtime.qwen4_exp_gdn_colwarps_layer_allowed(weight, published=None)
     owner = SimpleNamespace(gdn_colwarps_layers='13-47')
-    assert runtime.resolve_gdn_colwarps_layers(owner) == '13-47'
-    monkeypatch.setenv(ENV, 'all')
     assert runtime.resolve_gdn_colwarps_layers(owner) == '13-47'
 
 

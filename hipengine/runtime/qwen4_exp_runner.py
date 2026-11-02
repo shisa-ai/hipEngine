@@ -428,17 +428,15 @@ def _qwen4_exp_gdn_peer_layer_allowed(
 
 
 def resolve_gdn_colwarps_layers(owner: Any) -> str:
-    """Resolve an owner's scope, retaining process diagnostics when unbound."""
+    """Resolve an owner's explicit scope, with all layers allowed when unbound."""
     published = getattr(owner, 'gdn_colwarps_layers', None)
-    return (os.environ.get('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', 'all')
-            if published is None else str(published))
+    return 'all' if published is None else str(published)
 
 
 def qwen4_exp_gdn_colwarps_layer_allowed(
     weight: GGUFDeviceWeight, *, published: str | None,
 ) -> bool:
-    scope = (os.environ.get('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', 'all')
-             if published is None else published)
+    scope = 'all' if published is None else published
     return _qwen4_exp_layer_scope_contains(weight.spec.slot_path, scope)
 
 
@@ -482,7 +480,7 @@ def qwen4_exp_gdn_colwarps_prefill_selected(
     decision (see :func:`gdn_colwarps_prefill`), so an unbound runner, the
     strict binder and every plan that falls back to it keep the serial owners.
     Which layers the branch serves is the separate
-    ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`` allowlist, and the tile-16
+    owning runner's layer scope, and the tile-16
     admission decision still chooses the leaf inside an open gate.
     """
 
@@ -10345,7 +10343,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # unbound runner, strict, and every plan that falls back to the strict
     # binder) keeps the serial strict owners; ``True`` admits the tiled branch
     # on the binding D128 shape and the separate
-    # ``HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS`` allowlist. The prefill chunk
+    # owning runner's GDN columnwarp layer scope. The prefill chunk
     # path is its only reader: decode runs one row and the batch GDN mixer is
     # decode-only, so neither reads it. A diagnostic scope binds this field on
     # the one runner it measures; a fresh runner or a serving clone inherits the

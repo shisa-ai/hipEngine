@@ -585,9 +585,11 @@ def test_a_non_d128_chunk_stays_serial_with_the_gate_open(monkeypatch):
 
 def test_the_layer_allowlist_still_selects_inside_the_gate(monkeypatch):
     inside = _mixer_launch(
-        monkeypatch, owner_kwargs={}, published=True, layers="27-47")
+        monkeypatch, owner_kwargs={'gdn_colwarps_layers': '27-47'},
+        published=True, layers="999")
     outside = _mixer_launch(
-        monkeypatch, owner_kwargs={}, published=True, layers="27-34")
+        monkeypatch, owner_kwargs={'gdn_colwarps_layers': '27-34'},
+        published=True, layers="all")
 
     assert inside["calls"] == ["parent"]
     assert outside["calls"] == ["serial"]
@@ -597,7 +599,8 @@ def test_an_empty_layer_scope_still_means_every_layer(monkeypatch):
     """The shared parser's empty-means-all reading is unchanged."""
 
     record = _mixer_launch(
-        monkeypatch, owner_kwargs={}, published=True, layers="")
+        monkeypatch, owner_kwargs={'gdn_colwarps_layers': ''},
+        published=True, layers="999")
 
     assert record["calls"] == ["parent"]
 
