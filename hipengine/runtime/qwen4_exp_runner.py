@@ -6471,16 +6471,13 @@ class RawPrefillPolicy:
 
 
 def resolve_raw_prefill_policy(owner: Any) -> RawPrefillPolicy:
-    """Prefer owner state while legacy diagnostic callers migrate."""
+    """Return the owner's raw geometry or the unchanged unbound default."""
     policy = getattr(owner, 'raw_prefill_policy', None)
     if policy is not None:
         if not isinstance(policy, RawPrefillPolicy):
             raise TypeError('raw_prefill_policy must be a RawPrefillPolicy or None')
         return policy
-    raw = os.environ.get('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', '32')
-    rowbatch = (0 if raw in {'', '0', 'false', 'False'} else
-                32 if raw in {'1', 'true', 'True'} else int(raw))
-    return RawPrefillPolicy(rowbatch, os.environ.get('HIPENGINE_QWEN4_EXP_RAW_VARIANT', 'coltile8'))
+    return RawPrefillPolicy()
 
 
 @contextlib.contextmanager

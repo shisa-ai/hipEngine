@@ -11,7 +11,8 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign',
+                                       'profile_strict', 'profile_production'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_raw_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -31,11 +32,16 @@ def test_public_raw_prefill_owner(monkeypatch, length, interface):
                              kwargs['variant']))
         return original(**kwargs)
     monkeypatch.setattr(linear, '_record_gguf_linear_dispatch', observe)
-    llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', 'invalid')
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_VARIANT', 'invalid')
+    profile = 'strict' if interface == 'profile_strict' else 'production'
+    llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile=profile,
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
         owner = _unwrap(llm._get_text_generator())
-        assert owner.raw_prefill_policy is owner.runner.raw_prefill_policy is None
+        prior = owner.raw_prefill_policy
+        assert prior == runtime.RawPrefillPolicy()
+        assert owner.runner.raw_prefill_policy is prior
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         with ExitStack() as stack:
             stack.enter_context(linear.q8_dense_wide_policy(owner, linear.Q8DenseWidePolicy(False, None)))
@@ -46,7 +52,9 @@ def test_public_raw_prefill_owner(monkeypatch, length, interface):
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', 'invalid')
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_VARIANT', 'invalid')
                 with ExitStack() as policy_stack:
-                    if interface == 'campaign':
+                    if interface in {'profile_strict', 'profile_production'}:
+                        effective = runtime.RawPrefillPolicy()
+                    elif interface == 'campaign':
                         from scripts.qwen4exp_halo_box_campaign_ab import q8_wave_scope
                         policy_stack.enter_context(q8_wave_scope(owner, policy.variant == 'coltile8'))
                         effective = runtime.RawPrefillPolicy()
@@ -78,7 +86,7 @@ def test_public_raw_prefill_owner(monkeypatch, length, interface):
                     assert repeats[0][0] == repeats[1][0]
                     for a, b in zip(repeats[0][1], repeats[1][1], strict=True):
                         np.testing.assert_array_equal(a, b)
-                assert owner.raw_prefill_policy is owner.runner.raw_prefill_policy is None
+                assert owner.raw_prefill_policy is owner.runner.raw_prefill_policy is prior
     finally:
         llm.close()
     hip.device_synchronize()

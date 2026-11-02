@@ -18,8 +18,8 @@ ENV = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
 def test_chunk_scope_uses_runner_choice_and_restores(monkeypatch, published, stale, raw_variant):
     seen = []
     monkeypatch.setenv(ENV, stale)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_RAW_VARIANT", raw_variant)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_RAW_ROWBATCH", "32")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_RAW_VARIANT", "invalid")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_RAW_ROWBATCH", "invalid")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", "")
     monkeypatch.setattr(module, "_qwen4_exp_q8_tile_scope", lambda owner: nullcontext())
 
@@ -28,6 +28,7 @@ def test_chunk_scope_uses_runner_choice_and_restores(monkeypatch, published, sta
         raise RuntimeError("observed chunk")
 
     owner = SimpleNamespace(
+        raw_prefill_policy=module.RawPrefillPolicy(32, raw_variant),
         q8_wave_scale_prefill=published, max_sequence_length=4096,
         prefill_chunk_size=1024, position=0, reset=lambda: None,
         _prefill_chunk=chunk, _q8_mmq_prefill_context=nullcontext,

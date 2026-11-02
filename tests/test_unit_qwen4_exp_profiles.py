@@ -1108,6 +1108,26 @@ def test_qsa_prefill_head_mode_follows_the_binder_scope(profile, quant, expected
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
 
 
+@pytest.mark.parametrize('profile', [ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION,
+                                     ExecutionProfile.BATCH_INVARIANT])
+def test_raw_prefill_profile_policy_ignores_ambient_and_reaches_late_runner(monkeypatch, profile):
+    from hipengine.runtime.qwen4_exp_runner import RawPrefillPolicy
+    from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', 'invalid')
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_VARIANT', 'invalid')
+    resolved = _resolve(profile, quant='gguf_ud_q4_k_xl')
+    generator = SimpleNamespace(runner=SimpleNamespace())
+    resolved.binder(generator, resolved)
+    assert generator.raw_prefill_policy == RawPrefillPolicy(32, 'coltile8')
+    assert generator.runner.raw_prefill_policy is generator.raw_prefill_policy
+    late = _inherit_lane_decisions(generator, SimpleNamespace())
+    assert late.raw_prefill_policy is generator.raw_prefill_policy
+    assert os.environ['HIPENGINE_QWEN4_EXP_RAW_ROWBATCH'] == 'invalid'
+    assert os.environ['HIPENGINE_QWEN4_EXP_RAW_VARIANT'] == 'invalid'
+
+
 def test_non_ud_production_bind_keeps_the_original_publication():
     """The retired switch published quad for every production bind.
 

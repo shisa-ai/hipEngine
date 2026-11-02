@@ -126,6 +126,12 @@ def test_campaign_forces_owner_policy_without_touching_raw_keys():
 
 
 
+def test_unbound_raw_policy_ignores_retired_process_inputs(monkeypatch):
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', 'invalid')
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_VARIANT', 'invalid')
+    assert runtime.resolve_raw_prefill_policy(SimpleNamespace()) == runtime.RawPrefillPolicy()
+
+
 @pytest.mark.parametrize('rowbatch,variant', [(1, 'coltile8'), (True, 'coltile8'), (32, 'bad')])
 def test_invalid_policy_rejected(rowbatch, variant):
     with pytest.raises(ValueError):
