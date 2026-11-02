@@ -88,7 +88,9 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
                             assert bind_candidate_q4_prefill(scopes, target, spec) is enabled
                     elif interface == 'decode_sync':
                         from scripts.qwen4exp_decode_sync_ab import bind_production_q4_prefill
+                        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '999')
                         assert bind_production_q4_prefill(scopes, target) is True
+                        assert target.q4_iu8_layers == '35-47'
                     elif interface == 'ablation':
                         # Preserve process build defaults set by the CLI import.
                         with patch.dict(os.environ):

@@ -37,14 +37,7 @@ def test_ranking_transports_layer_scope_and_reads_child_report(monkeypatch, tmp_
 
 def test_decode_sync_binds_and_restores_its_scope_without_process_write(monkeypatch):
     monkeypatch.setenv(ENV, '999')
-    # configure_production_routes still owns unrelated diagnostic keys; restore
-    # those too so this CPU test does not contaminate later tests.
     import os
-    for key in ('Q4_IU8_PREFILL', 'Q4_IU8_LAYERS', 'GDN_COLWARPS_DECODE_LAYERS',
-                'QSA_FLASH_PREFILL', 'QSA_FLASH_LAYERS'):
-        full = 'HIPENGINE_QWEN4_EXP_' + key
-        monkeypatch.setenv(full, os.environ.get(full, ''))
-    sync.configure_production_routes()
     assert os.environ[ENV] == '999'
     owner = SimpleNamespace(gdn_colwarps_layers='13-47', gdn_colwarps_prefill=False,
                             runner=SimpleNamespace(gdn_colwarps_layers='13-47',

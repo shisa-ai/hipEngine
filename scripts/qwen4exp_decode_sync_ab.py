@@ -12,7 +12,6 @@ import argparse
 import hashlib
 from contextlib import ExitStack
 import json
-import os
 import statistics
 import time
 from pathlib import Path
@@ -33,21 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def configure_production_routes() -> None:
-    # Columnwarp enablement and layer scope bind on the measured generator,
-    # not the process, after construction.
-    os.environ.update(
-        {
-            "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
-        }
-    )
-
-
 def bind_production_q4_prefill(stack: ExitStack, generator: Any) -> bool:
-    """Bind plain Q4 prefill on this diagnostic's owner and restore it after."""
+    """Bind plain Q4 prefill and its suffix, restoring both after measurement."""
     from hipengine.runtime.qwen4_exp_runner import (
-        q4_iu8_prefill_enabled, resolve_q4_iu8_prefill,
+        q4_iu8_prefill_enabled, resolve_q4_iu8_prefill, q4_iu8_layers,
     )
+    stack.enter_context(q4_iu8_layers(generator, '35-47'))
     stack.enter_context(q4_iu8_prefill_enabled(generator, True))
     return resolve_q4_iu8_prefill(generator)
 
@@ -72,7 +62,6 @@ def bind_production_gdn(stack: ExitStack, generator: Any) -> str:
 
 def main() -> None:
     args = build_parser().parse_args()
-    configure_production_routes()
 
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
@@ -83,6 +72,7 @@ def main() -> None:
         q8_mmq_prefill_enabled,
         resolve_production_moe_prefill,
         resolve_q8_mmq_prefill,
+        resolve_q4_iu8_layers,
     )
 
     index = load_gguf_index(discover_gguf_files(args.model_root)[0])
@@ -100,6 +90,7 @@ def main() -> None:
     owner_scope = ExitStack()
     try:
         q4_prefill_enabled = bind_production_q4_prefill(owner_scope, generator)
+        q4_layers = resolve_q4_iu8_layers(generator)
         gdn_layers = bind_production_gdn(owner_scope, generator)
         flash_policy = bind_production_flash(owner_scope, generator)
         owner_scope.enter_context(
@@ -162,6 +153,7 @@ def main() -> None:
         "schema": 1,
         "kind": "qwen4exp_decode_sync_ab",
         "q4_iu8_prefill_enabled": q4_prefill_enabled,
+        "q4_iu8_layers": q4_layers,
         "gdn_colwarps_layers": gdn_layers,
         "qsa_flash_prefill_policy": flash_policy,
         "production_moe_prefill_enabled": production_moe_enabled,
