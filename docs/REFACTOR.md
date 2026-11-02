@@ -2995,8 +2995,10 @@ no candidate declaration writes the layer selector. Profiles publish the same
 production suffix and strict empty scope on generator and runner owners without
 writing `HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS`. Q4 risk multipliers can bind on
 runtime owners through resident, batch and mixed carriers, serving inheritance
-and captured-segment identity. Diagnostic writers and profile publication still
-need migration; plane selection also needs owner transport.
+and captured-segment identity. Profile-gap and candidate AR bind requested
+multipliers on owners and report their effective value without process writes.
+Candidate declarations, report consumers and profile publication still need
+migration; plane selection also needs owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
