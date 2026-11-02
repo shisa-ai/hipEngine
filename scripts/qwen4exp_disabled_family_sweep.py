@@ -74,9 +74,8 @@ ROOT = Path(__file__).resolve().parents[1]
 #: The same-code control's arm name.
 CONTROL_FAMILY = "NOOP_OVERRIDE_CONTROL"
 
-#: A process-owned route key the profile binder always writes and
-#: ``qwen4exp_profile_gap.py`` reports, so the fallback's ``route_env`` carries
-#: the exact value an inert override can repeat.
+#: Legacy override spelling; current children bind this choice on the owner.
+#: Archived reports without owner records retain their process-route interpretation.
 CONTROL_KEY = "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"
 
 #: Clearing the wide owner makes a WMMA scope arm run WMMA. The companion
@@ -125,8 +124,8 @@ FAMILIES: tuple[dict, ...] = (
         # turned the "control" into an arm that disables the live default route.
         # The 2026-10-31 owner migration also removed the
         # configure_mmq_prefill_resources() re-run this arm used to price. Its
-        # environment is resolved from the fallback's own route env below, and
-        # the row records whether the override stayed inert.
+        # override is resolved from the fallback's effective owner below (or its
+        # route environment for archived reports), and the row records neutrality.
         "family": CONTROL_FAMILY,
         "env": {},
     },
@@ -262,16 +261,17 @@ def _run(
 
 
 def _control_override(fallback: dict) -> dict[str, str] | None:
-    """An override that repeats the value the named profile binder wrote.
+    """Repeat the fallback's effective owner choice, or its archived process value.
 
-    ``None`` means there is no inert value to send - the fallback failed, or the
-    binder wrote nothing for ``CONTROL_KEY``. Sending a value anyway is the
-    defect this replaces: an override that differs from the binder's is a route
-    change, and this arm is subtracted from every family's saving.
+    A current report with a missing owner choice cannot supply an inert value.
+    Reports predating owner transport keep their original route interpretation.
     """
 
     if not fallback.get("ok"):
         return None
+    if 'q4_iu8_prefill_enabled' in fallback:
+        selected = fallback['q4_iu8_prefill_enabled']
+        return {CONTROL_KEY: '1' if selected else '0'} if isinstance(selected, bool) else None
     route = fallback.get("route_env")
     if not isinstance(route, dict):
         return None
@@ -326,7 +326,7 @@ def _env_override_changed_route(payload: dict) -> bool | None:
 def _env_request_applied(
     result: dict, env: dict[str, str], *, control: bool,
 ) -> tuple[bool | None, str]:
-    """Whether every requested pair is in the child's effective route env.
+    """Confirm requested process pairs and the transported Q4 owner choice.
 
     ``None`` when the child reported no bound/effective pair, which is also the
     shape of a payload written before those fields existed: an unverifiable arm
@@ -338,6 +338,16 @@ def _env_request_applied(
 
     bound = result.get("bound_route_env")
     effective = result.get("route_env")
+    owner_check = None
+    if CONTROL_KEY in env and 'q4_iu8_prefill_enabled' in result:
+        selected = result['q4_iu8_prefill_enabled']
+        if not isinstance(selected, bool):
+            return None, 'the child did not report the Q4 prefill owner choice'
+        expected = env[CONTROL_KEY] not in {'', '0', 'false', 'False'}
+        if selected is not expected:
+            return False, 'the Q4 prefill owner differs from the requested choice'
+        owner_check = True
+        env = {key: value for key, value in env.items() if key != CONTROL_KEY}
     if not isinstance(bound, dict) or not isinstance(effective, dict):
         return None, "the child did not report the bound route environment"
     for key, value in env.items():
@@ -360,7 +370,9 @@ def _env_request_applied(
         if moved:
             return False, f"the control's override moved {', '.join(moved)}"
         return True, "the control's override repeated every bound value"
-    if not any(bound.get(key) != effective.get(key) for key in env):
+    if owner_check and not env:
+        return True, 'the Q4 prefill owner matches the requested choice'
+    if not owner_check and not any(bound.get(key) != effective.get(key) for key in env):
         return (
             False,
             "no requested key moved from its bound value, so the arm changed "
@@ -478,6 +490,8 @@ def _summarize(payload: dict, command) -> dict:
         "gdn_colwarps_layers": payload.get('gdn_colwarps_layers'),
         "gdn_colwarps_prefill": payload.get('gdn_colwarps_prefill'),
         "q8_dense_wide_policy": payload.get('q8_dense_wide_policy'),
+        **({'q4_iu8_prefill_enabled': payload['q4_iu8_prefill_enabled']}
+           if 'q4_iu8_prefill_enabled' in payload else {}),
         "gr_iu8_policy": payload.get('gr_iu8_policy'),
         "risk_calls": risk.get("calls"),
         "risk_outputs": outputs,
@@ -600,6 +614,8 @@ def main(argv: list[str] | None = None) -> int:
             "env_override_changed_route": result.get(
                 "env_override_changed_route"),
             "owner_scope_bound": owner_bound,
+            **({'q4_iu8_prefill_enabled': result['q4_iu8_prefill_enabled']}
+               if 'q4_iu8_prefill_enabled' in result else {}),
             "gr_iu8_policy": result.get('gr_iu8_policy'),
             "attribution_verified": verified,
             "attribution_note": note,

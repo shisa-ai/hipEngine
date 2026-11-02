@@ -2967,8 +2967,10 @@ capture identity. Profile-gap binds plain-prefill overrides on that owner and
 reports the requested and effective values without process writes. The decode-sync
 diagnostic also binds plain-prefill enablement on its measured owner and reports
 it. Selector-ranking reports both Q4 owner choices from the child, excluding
-those keys from process-route maps and flagging missing owner records. The
-profile and remaining diagnostic writers still need migration. Q4
+those keys from process-route maps and flagging missing owner records. Family-sweep
+attribution and inert controls use the effective plain-prefill owner record when
+present, preserving archived process-only reports. The profile and remaining
+diagnostic writers still need migration. Q4
 layer/risk controls still need owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
