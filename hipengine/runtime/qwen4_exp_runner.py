@@ -6583,6 +6583,38 @@ def q4_iu8_exact_enabled(owner: Any, enabled: bool | None):
                 target.q4_iu8_exact_enabled = value
 
 
+def _qwen4_exp_q5k_iu8_exact_enabled(enabled: bool | None = None) -> bool:
+    """Resolve the exact Q5_K route, preserving the direct-call fallback."""
+    if enabled is not None:
+        return bool(enabled)
+    return os.environ.get(
+        'HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', '0'
+    ) not in {'', '0', 'false', 'False'}
+
+
+def resolve_q5k_iu8_exact(owner: Any) -> bool:
+    """Return the exact Q5_K choice for a generator or runner."""
+    return _qwen4_exp_q5k_iu8_exact_enabled(getattr(owner, 'q5k_iu8_exact_enabled', None))
+
+
+@contextlib.contextmanager
+def q5k_iu8_exact_enabled(owner: Any, enabled: bool | None):
+    """Bind the owner and its current runner, restoring distinct prior values."""
+    missing = object()
+    prior = [(target, getattr(target, 'q5k_iu8_exact_enabled', missing))
+             for target in _q8_down_variant_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.q5k_iu8_exact_enabled = None if enabled is None else bool(enabled)
+        yield resolve_q5k_iu8_exact(owner)
+    finally:
+        for target, value in prior:
+            if value is missing:
+                delattr(target, 'q5k_iu8_exact_enabled')
+            else:
+                target.q5k_iu8_exact_enabled = value
+
+
 def _qwen4_exp_q51_iu8_exact_enabled(enabled: bool | None = None) -> bool:
     """Resolve the exact Q5_1 route, preserving the direct-call fallback."""
 
@@ -7122,6 +7154,7 @@ def run_qwen4_exp_moe(
     q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q5k_iu8_exact_enabled: bool | None = None,
     q4_iu8_planes: int | None = None,
     q4_iu8_risk_mult: float | None = None,
     q51_exact_grouped_down: bool = True,
@@ -7304,6 +7337,7 @@ def run_qwen4_exp_moe(
                 q4_iu8_risk_mult=q4_iu8_risk_mult,
                 q4_iu8_exact_enabled=q4_iu8_exact_enabled,
                 q51_iu8_exact_enabled=q51_iu8_exact_enabled,
+                q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
             )
 
         graph_cache.run(
@@ -7423,8 +7457,7 @@ def run_qwen4_exp_moe(
     # #15 Q5_K bundle KL-shaving variant: default-off exact iu8-risk+repair
     # selected Q5_K gate/up route (the layer-2 Q5_K layer).
     q5_k_iu8_exact = (
-        os.environ.get("HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT", "0")
-        not in {"", "0", "false", "False"}
+        _qwen4_exp_q5k_iu8_exact_enabled(q5k_iu8_exact_enabled)
         and rows >= 2
         and hidden % 256 == 0
         and ffn % 128 == 0
@@ -8651,6 +8684,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q4_iu8_planes: int | None = None,
     q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q5k_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer | None:
     """Execute a QSA+MoE layer, or only its independent cache-state writes.
 
@@ -8786,6 +8820,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
+        q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -8871,6 +8906,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q4_iu8_planes: int | None = None,
     q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q5k_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete Qwen4Exp QSA+MoE prompt chunk.
 
@@ -9064,6 +9100,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
+        q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
     )
     if not _qwen4_exp_gr_defer_write(
         defer_write, rows, scratch.after_attention.ptr, moe.output.ptr,
@@ -9158,6 +9195,7 @@ def run_qwen4_exp_gdn_layer(
     q4_iu8_planes: int | None = None,
     q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q5k_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer.
 
@@ -9423,6 +9461,7 @@ def run_qwen4_exp_gdn_layer(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
+        q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
     )
     if layer_graph is not None:
         def _segment_epilogue(graph_stream: int) -> None:
@@ -10548,6 +10587,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q4_iu8_risk_mult: float | None = None
     q4_iu8_exact_enabled: bool | None = None
     q51_iu8_exact_enabled: bool | None = None
+    q5k_iu8_exact_enabled: bool | None = None
 
     def __init__(
         self,
@@ -10570,6 +10610,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q4_iu8_risk_mult: float | None = None,
         q4_iu8_exact_enabled: bool | None = None,
         q51_iu8_exact_enabled: bool | None = None,
+        q5k_iu8_exact_enabled: bool | None = None,
         gr_iu8_policy: GRIU8Policy | None = None,
         q8_mmq_prepack_enabled: bool | None = None,
         q8_mmq_attn_gate_enabled: bool | None = None,
@@ -10597,6 +10638,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.q4_iu8_risk_mult = q4_iu8_risk_mult
         self.q4_iu8_exact_enabled = q4_iu8_exact_enabled
         self.q51_iu8_exact_enabled = q51_iu8_exact_enabled
+        self.q5k_iu8_exact_enabled = q5k_iu8_exact_enabled
         self.gr_iu8_policy = gr_iu8_policy
         self.q8_mmq_prepack_enabled = q8_mmq_prepack_enabled
         self.q8_mmq_attn_gate_enabled = q8_mmq_attn_gate_enabled
@@ -11920,6 +11962,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
+                    q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -11993,6 +12036,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
+                    q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
                 ).ptr
         if capture_target_hidden:
             self.runtime.memcpy(
@@ -12345,6 +12389,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
+                    q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -12415,6 +12460,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
+                    q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,

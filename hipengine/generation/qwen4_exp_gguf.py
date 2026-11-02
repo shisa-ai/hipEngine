@@ -279,6 +279,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.q4_iu8_layers = None
         self.q4_iu8_exact_enabled = None
         self.q51_iu8_exact_enabled = None
+        self.q5k_iu8_exact_enabled = None
         self._lock = threading.RLock()
         self._closed = False
         if tokenizer is None:
@@ -431,6 +432,7 @@ class Qwen4ExpGGUFTextGenerator:
             q4_iu8_layers=self.q4_iu8_layers,
             q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
             q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
+            q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
             gr_iu8_policy=self.gr_iu8_policy,
             q8_mmq_prepack_enabled=self.q8_mmq_prepack_enabled,
             q8_mmq_attn_gate_enabled=self.q8_mmq_attn_gate_enabled,
@@ -1099,6 +1101,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q4_iu8_risk_mult = getattr(generator, 'q4_iu8_risk_mult', None)
     runner.q4_iu8_exact_enabled = getattr(generator, 'q4_iu8_exact_enabled', None)
     runner.q51_iu8_exact_enabled = getattr(generator, 'q51_iu8_exact_enabled', None)
+    runner.q5k_iu8_exact_enabled = getattr(generator, 'q5k_iu8_exact_enabled', None)
     return runner
 
 

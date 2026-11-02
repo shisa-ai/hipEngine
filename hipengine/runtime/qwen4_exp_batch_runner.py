@@ -140,6 +140,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     run_qwen4_exp_moe,
     resolve_q8_selected_down,
     resolve_q51_iu8_exact,
+    resolve_q5k_iu8_exact,
     resolve_q4_iu8_prefill,
     resolve_q4_iu8_layers,
     resolve_q4_iu8_planes,
@@ -454,6 +455,7 @@ def run_qwen4_exp_batch_gdn_layer(
     q4_iu8_planes: int | None = None,
     q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q5k_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row GDN+MoE layer over request-owned state slots.
 
@@ -562,6 +564,7 @@ def run_qwen4_exp_batch_gdn_layer(
             q4_iu8_planes=q4_iu8_planes,
             q4_iu8_risk_mult=q4_iu8_risk_mult,
             q51_iu8_exact_enabled=q51_iu8_exact_enabled,
+            q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
             q8_selected_down_enabled=q8_selected_down_enabled,
             routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
@@ -697,6 +700,7 @@ def _run_layer_ffn(
     q4_iu8_planes: int | None = None,
     q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q5k_iu8_exact_enabled: bool | None = None,
 ) -> None:
     """GR write after the mixer, FFN GR read, MoE, and the final GR write.
 
@@ -778,6 +782,7 @@ def _run_layer_ffn(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
+        q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -853,6 +858,7 @@ def run_qwen4_exp_batch_qsa_layer(
     q4_iu8_planes: int | None = None,
     q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q5k_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row QSA+MoE layer over request-owned slots.
 
@@ -961,6 +967,7 @@ def run_qwen4_exp_batch_qsa_layer(
             q4_iu8_planes=q4_iu8_planes,
             q4_iu8_risk_mult=q4_iu8_risk_mult,
             q51_iu8_exact_enabled=q51_iu8_exact_enabled,
+            q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
             q8_selected_down_enabled=q8_selected_down_enabled,
             routed_f16_enabled=routed_f16_enabled,
             q4_bundle_prefill=q4_bundle_prefill,
@@ -1115,6 +1122,7 @@ class Qwen4ExpGGUFBatchRunner:
     q4_iu8_risk_mult: float | None = None
     q4_iu8_exact_enabled: bool | None = None
     q51_iu8_exact_enabled: bool | None = None
+    q5k_iu8_exact_enabled: bool | None = None
 
     def __init__(
         self,
@@ -2075,6 +2083,7 @@ class Qwen4ExpGGUFBatchRunner:
             resolve_q4_iu8_risk_mult(self),
             resolve_q4_iu8_exact(self),
             resolve_q51_iu8_exact(self),
+            resolve_q5k_iu8_exact(self),
         )
 
     def step(
@@ -2374,6 +2383,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
+                    q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
                 ).ptr
             else:
                 qsa_binding = self.qsa_bindings[layer]
@@ -2438,6 +2448,7 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
+                    q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
                 ).ptr
         head_norm_ptr = self.resident.weight(
             "root.head_hc_norm"

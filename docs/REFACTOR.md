@@ -3022,7 +3022,13 @@ diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
 `HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS`, including UD arithmetic recovery's
 flash-off decision. The unbound low-level environment fallback remains a
-comparison interface.
+comparison interface. Exact Q5_K IU8 selection now accepts optional owner
+state through resident, batch and mixed-target execution, with restoring scopes,
+serving inheritance and captured-segment identity. Profiles and diagnostic
+callers still use process transport; migrate those consumers before publishing
+bound profile choices. Remove the `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`
+process fallback after profiles and diagnostic consumers bind owner state and
+the public owner-selection regression passes without process transport.
 Profile-gap and candidate AR generic flash overrides bind the same paired owner
 policy, preserving omitted axes and recording actual policy without process
 writes. Decode-sync binds its flash-on suffix policy on the measured owner.
