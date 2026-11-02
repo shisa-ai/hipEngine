@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'vector_prerequisite', 'prepack_campaign', 'prepack_state_gate', 'profile_default'])
+@pytest.mark.parametrize('interface', ['direct', 'prefill_gate', 'vector_prerequisite', 'prepack_campaign', 'prepack_state_gate', 'profile_default'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -54,7 +54,10 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in ((True,) if interface == 'profile_default' else (False, True)):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK', '0' if enabled else '1')
-            if interface == 'profile_default':
+            if interface == 'prefill_gate':
+                monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL', '0' if enabled else '1')
+                scope = runtime.q8_mmq_prepack_enabled(owner, True)
+            elif interface == 'profile_default':
                 scope = nullcontext()
             elif interface == 'vector_prerequisite':
                 from scripts.qwen4exp_halo_box_campaign_ab import mmq_vector_prerequisite
@@ -68,7 +71,8 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
                 scope = arm_control('q8-mmq-prepack', '1' if enabled else '0', owner.runner)
             else:
                 scope = runtime.q8_mmq_prepack_enabled(owner, enabled)
-            with runtime.q8_mmq_prefill_enabled(owner, True), scope:
+            with runtime.q8_mmq_prefill_enabled(
+                    owner, enabled if interface == 'prefill_gate' else True), scope:
                 owner.runner.configure_mmq_prefill_resources()
                 sidecars = owner.runner._q8_mmq_weight_sidecars
                 assert sidecars is not None
@@ -77,9 +81,15 @@ def test_public_mmq_prepack_owner_ignores_ambient_and_restores(monkeypatch, leng
                     captures.clear()
                     leaves.clear()
                     output = llm.generate_detailed([[1] * length], params)
-                    assert leaves, 'no actual MMQ launch observed'
-                    assert any('prepacked' in name for name in leaves) is enabled, set(leaves)
-                    assert owner.runner.q8_mmq_prepack_enabled is enabled
+                    if interface == 'prefill_gate':
+                        assert bool(leaves) is enabled, set(leaves)
+                        assert owner.q8_mmq_prefill_enabled is owner.runner.q8_mmq_prefill_enabled is enabled
+                        assert os.environ['HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL'] == ('0' if enabled else '1')
+                        assert owner.runner.q8_mmq_prepack_enabled is True
+                    else:
+                        assert leaves, 'no actual MMQ launch observed'
+                        assert any('prepacked' in name for name in leaves) is enabled, set(leaves)
+                        assert owner.runner.q8_mmq_prepack_enabled is enabled
                     assert os.environ['HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK'] == ('0' if enabled else '1')
                     assert owner.runner._q8_mmq_weight_sidecars is sidecars
                     assert captures and all(np.isfinite(row).all() for row in captures)

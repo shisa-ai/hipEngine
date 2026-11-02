@@ -5989,25 +5989,13 @@ def production_moe_prefill_enabled(
             target.production_moe_prefill_enabled = previous
 
 
-_Q8_MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
-_Q8_MMQ_PREFILL_FALSE = frozenset({"", "0", "false", "False"})
 _Q8_MMQ_PREFILL_UNSET = object()
 
 
-def _parse_q8_mmq_prefill_enabled(value: str) -> bool:
-    """Preserve the historical raw false set, including its case handling."""
-
-    return value not in _Q8_MMQ_PREFILL_FALSE
-
-
 def _resolve_q8_mmq_prefill_enabled(enabled: bool | None) -> bool:
-    """Resolve a bound owner decision, or the direct/unbound ambient fallback."""
+    """Use the explicit owner choice; an unbound caller does not prepare MMQ."""
 
-    if enabled is not None:
-        return bool(enabled)
-    return _parse_q8_mmq_prefill_enabled(
-        os.environ.get(_Q8_MMQ_PREFILL_ENV, "0")
-    )
+    return bool(enabled)
 
 
 def resolve_q8_mmq_prepack(owner: Any) -> bool:
@@ -6065,7 +6053,7 @@ def q8_mmq_prefill_enabled(
     """Override the Q8 MMQ prefill decision on one owner.
 
     A generator target also binds its current runner. Omitted preserves the
-    current owner value, ``None`` restores the direct/unbound fallback, and a
+    current owner value, ``None`` selects the unbound strict parent, and a
     bool binds that decision. The previous state is restored on exit, including
     after an exception. No allocation or resource work happens here: call
     ``configure_mmq_prefill_resources()`` explicitly to prepare a newly enabled
@@ -6095,8 +6083,8 @@ def _qwen4_exp_production_moe_prefill_enabled(
 ) -> bool:
     """Resolve at the historical guarded consumer point.
 
-    The row guard comes first, so an inactive width never reads the owner or
-    ambient fallback. The slot-path and backend-capability guards follow, in
+    The row guard comes first, so an inactive width never reads the owner
+    decision. The slot-path and backend-capability guards follow, in
     the same order as before. A bound false decision returns before either.
     """
 
@@ -10916,8 +10904,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._q8_mmq_weight_sidecars = owner
 
     def _configure_q8_mmq_prefill_resources(self) -> None:
-        # Reuse the owned resources before consulting any owner or ambient
-        # decision: a later diagnostic that turns the lane off must not drop a
+        # Reuse the owned resources before consulting the owner decision:
+        # a later diagnostic that turns the lane off must not drop a
         # workspace the runner already owns.
         if self._q8_mmq_buffers:
             return

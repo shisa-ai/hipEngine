@@ -3590,8 +3590,7 @@ while the MMQ owner is absent.
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
 Scope: direct/unbound Qwen4Exp route fallbacks, including
-`HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`, `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`
-and `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
+`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` and `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
 
 The profile-binding migration is complete. Finish the separate direct/unbound
 caller inventory before removing compatibility fallbacks. Include the GR IU8
@@ -3602,12 +3601,6 @@ consumer supplies its explicit owner choice and targeted public route/repeat/
 teardown checks pass; absence of profile writes alone is not that inventory.
 For Q5_K run `tests/test_unit_qwen4exp_q5k_iu8_owner.py` and
 `tests/test_live_qwen4exp_q5k_iu8_owner.py` after migrating any remaining callers.
-
-Remove the direct/unbound `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` fallback only after its
-remaining direct callers bind `q8_mmq_prefill_enabled` explicitly. Preserve the named workspace
-preparation operation and the enabled-without-workspace error. Audit consumers with
-`rg -n 'Q8_MMQ_PREFILL|q8_mmq_prefill_enabled' hipengine scripts tests`, then run
-`tests/test_unit_qwen4exp_q8_mmq_owner_transport.py` before removing the parser.
 
 Remove the direct/unbound `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` parser only after
 remaining callers bind `Q8WMMALayerScope` explicitly. Audit readers with

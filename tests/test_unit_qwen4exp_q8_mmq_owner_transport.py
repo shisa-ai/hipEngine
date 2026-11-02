@@ -38,7 +38,6 @@ from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.runtime import qwen4_exp_runner as runtime
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpGGUFResidentModelRunner,
-    _parse_q8_mmq_prefill_enabled,
     _resolve_q8_mmq_prefill_enabled,
     q8_mmq_prefill_enabled,
     resolve_q8_mmq_prefill,
@@ -146,19 +145,19 @@ def _patch_allocation(monkeypatch, *, fail_at: int | None = None, error=None):
     return allocated, freed
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("", False), ("0", False), ("false", False), ("False", False),
-    ("1", True), ("true", True), ("FALSE", True), (" 0 ", True),
-    ("off", True),
-])
-def test_raw_boolean_parser_preserves_the_historical_false_set(raw, expected):
-    assert _parse_q8_mmq_prefill_enabled(raw) is expected
+@pytest.mark.parametrize("raw", ["", "0", "false", "False", "1", "true", "FALSE", " 0 ", "off"])
+def test_unbound_owner_ignores_retired_input(monkeypatch, raw):
+    monkeypatch.setenv(ENV, raw)
+    assert resolve_q8_mmq_prefill(SimpleNamespace()) is False
+    assert _resolve_q8_mmq_prefill_enabled(None) is False
 
 
 def test_owner_wins_over_ambient_and_override_wins_over_owner(monkeypatch):
     monkeypatch.setenv(ENV, "1")
     assert resolve_q8_mmq_prefill(
-        SimpleNamespace(q8_mmq_prefill_enabled=None)) is True
+        SimpleNamespace(q8_mmq_prefill_enabled=None)) is False
+    assert resolve_q8_mmq_prefill(
+        SimpleNamespace(q8_mmq_prefill_enabled=True)) is True
     assert resolve_q8_mmq_prefill(
         SimpleNamespace(q8_mmq_prefill_enabled=False)) is False
 
@@ -307,15 +306,16 @@ def test_bound_false_does_not_read_ambient_or_allocate(monkeypatch):
     assert owner._q8_mmq_buffers == ()
 
 
-def test_unbound_true_ambient_allocates_and_records_ownership(monkeypatch):
+def test_unbound_ambient_cannot_allocate_resources(monkeypatch):
     allocated, _freed = _patch_allocation(monkeypatch)
     owner = _owner()
     monkeypatch.setenv(ENV, "1")
     owner._configure_q8_mmq_prefill_resources()
-    assert owner._q8_mmq_buffers == tuple(allocated)
-    assert owner._buffers == allocated
-    assert owner._q8_mmq_library == "library"
-    assert owner._q8_mmq_policy is not None
+    assert allocated == []
+    assert owner._q8_mmq_buffers == ()
+    assert owner._buffers == []
+    assert owner._q8_mmq_library is None
+    assert owner._q8_mmq_policy is None
 
 
 def test_bound_true_allocates_without_ambient(monkeypatch):
