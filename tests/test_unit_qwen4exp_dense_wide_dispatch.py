@@ -18,6 +18,8 @@ from hipengine.runtime.gguf_linear import (
     _q8_dense_wide_dispatch,
 )
 
+from tests.qwen4exp_wide_policy_fixture import wide_policy
+
 BACKEND = "hip_gfx1151"
 CANDIDATE = KernelKey(BACKEND, "linear", "gguf_q8_0", "dense_wide256_f32_f32_out")
 # layers.8.attn_qkv on Qwen3.8-Flash-Next UD-Q4_K_XL: the shape the candidate's
@@ -43,8 +45,8 @@ def _registered_candidate():
         "coltile8_rowbatch4_wave_scale_f32_f32_out",
     ],
 )
-def test_selects_the_wide_kernel_from_every_exact_f32_parent(variant, monkeypatch):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+def test_selects_the_wide_kernel_from_every_exact_f32_parent(variant, wide_policy):
+    wide_policy(enabled=True)
 
     actual = _q8_dense_wide_dispatch(
         _parent(variant), rows=1024, in_features=PACKET_K, out_features=PACKET_N
@@ -66,10 +68,10 @@ def test_declines_when_the_route_is_not_enabled():
 
 
 @pytest.mark.parametrize("rows", [1, 4, 64, 255, 256])
-def test_declines_at_and_below_the_sub_256_row_path(rows, monkeypatch):
+def test_declines_at_and_below_the_sub_256_row_path(rows, wide_policy):
     """The kernel stages 256 rows per block; smaller shapes stay exact."""
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True)
     parent = _parent()
 
     assert (
@@ -82,11 +84,11 @@ def test_declines_at_and_below_the_sub_256_row_path(rows, monkeypatch):
 
 @pytest.mark.parametrize("in_features", [2528, 2560 - 32, 96 + 1, 0, -64])
 def test_declines_when_k_is_not_a_positive_multiple_of_the_k_tile(
-    in_features, monkeypatch
+    in_features, wide_policy
 ):
     """``_launch`` raises on in_features % 64; the selector must not reach it."""
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True)
     parent = _parent()
 
     assert (
@@ -97,8 +99,8 @@ def test_declines_when_k_is_not_a_positive_multiple_of_the_k_tile(
     )
 
 
-def test_declines_for_a_non_q8_0_quant(monkeypatch):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+def test_declines_for_a_non_q8_0_quant(wide_policy):
+    wide_policy(enabled=True)
     parent = GGUFLinearDispatch(
         KernelKey(BACKEND, "linear", "gguf_q4_k", "coltile8_rowbatch4_f32_f32_out"),
         "raw",
@@ -112,8 +114,8 @@ def test_declines_for_a_non_q8_0_quant(monkeypatch):
     )
 
 
-def test_declines_for_a_non_raw_abi(monkeypatch):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+def test_declines_for_a_non_raw_abi(wide_policy):
+    wide_policy(enabled=True)
     parent = GGUFLinearDispatch(
         KernelKey(BACKEND, "linear", "gguf_q8_0", "coltile8_rowbatch4_f32_f32_out"),
         "t16",
@@ -127,10 +129,10 @@ def test_declines_for_a_non_raw_abi(monkeypatch):
     )
 
 
-def test_declines_when_the_candidate_is_not_registered(monkeypatch):
+def test_declines_when_the_candidate_is_not_registered(monkeypatch, wide_policy):
     """Fail closed to the registered exact parent rather than to a missing key."""
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True)
     monkeypatch.setattr(
         "hipengine.runtime.gguf_linear.is_registered", lambda key: False
     )
@@ -199,7 +201,7 @@ def _wmma_claimed_parent(rows: int = 512, in_features: int = PACKET_K):
     return claimed
 
 
-def test_claims_the_weight_the_wmma_rewrite_already_claimed(monkeypatch):
+def test_claims_the_weight_the_wmma_rewrite_already_claimed(wide_policy):
     """The WMMA rewrite runs first and changes the ABI out from under this route.
 
     ``HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`` was bound to layers 16-47 for this
@@ -212,11 +214,7 @@ def test_claims_the_weight_the_wmma_rewrite_already_claimed(monkeypatch):
     of that was consulted.
     """
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv(
-        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS",
-        ",".join(str(n) for n in range(16, 48)),
-    )
+    wide_policy(enabled=True, layers=frozenset(range(16, 48)))
 
     actual = _q8_dense_wide_dispatch(
         _wmma_claimed_parent(),
@@ -229,10 +227,10 @@ def test_claims_the_weight_the_wmma_rewrite_already_claimed(monkeypatch):
     assert actual == GGUFLinearDispatch(CANDIDATE, "raw")
 
 
-def test_an_unclaimable_parent_is_named_rather_than_ignored(monkeypatch):
+def test_an_unclaimable_parent_is_named_rather_than_ignored(wide_policy):
     """The silent decline is what hid this route; the diagnostic must name it."""
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True)
     parent = GGUFLinearDispatch(
         KernelKey(
             BACKEND,
@@ -256,11 +254,10 @@ def test_an_unclaimable_parent_is_named_rather_than_ignored(monkeypatch):
         )
 
 
-def test_a_wmma_claim_does_not_widen_the_layer_scope(monkeypatch):
+def test_a_wmma_claim_does_not_widen_the_layer_scope(wide_policy):
     """Accepting the rewritten parent must not hand the route an unscoped window."""
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", "16,17,18")
+    wide_policy(enabled=True, layers=frozenset({16, 17, 18}))
     parent = _wmma_claimed_parent()
 
     for layer in (0, 8, 15, 47):
@@ -324,11 +321,10 @@ def _weight(slot_path: str):
     )
 
 
-def test_unscoped_route_covers_every_layer(monkeypatch):
+def test_unscoped_route_covers_every_layer(wide_policy):
     """No scope means all 48 layers, which is the scope the f16 sibling fails."""
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", raising=False)
+    wide_policy(enabled=True, layers=None)
 
     for layer in (0, 15, 16, 47):
         actual = _q8_dense_wide_dispatch(
@@ -341,18 +337,14 @@ def test_unscoped_route_covers_every_layer(monkeypatch):
         assert actual == GGUFLinearDispatch(CANDIDATE, "raw"), layer
 
 
-def test_layer_scope_narrows_the_route_to_the_certified_window(monkeypatch):
+def test_layer_scope_narrows_the_route_to_the_certified_window(wide_policy):
     """A gate must be able to ask for 16-47 rather than 0-47.
 
     The sibling f16 route fails the calibrated envelope at 0-47 and passes at
     16-47, so a route with no scope can only express the failing configuration.
     """
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv(
-        "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS",
-        ",".join(str(n) for n in range(16, 48)),
-    )
+    wide_policy(enabled=True, layers=frozenset(range(16, 48)))
 
     inside = _q8_dense_wide_dispatch(
         _parent(), rows=1024, in_features=PACKET_K, out_features=PACKET_N,
@@ -374,15 +366,14 @@ def test_layer_scope_narrows_the_route_to_the_certified_window(monkeypatch):
 @pytest.mark.parametrize(
     "slot_path", ["token_embd", "output", "output_hc_down", "not.a.layer"]
 )
-def test_a_scoped_route_declines_a_weight_it_cannot_place(slot_path, monkeypatch):
+def test_a_scoped_route_declines_a_weight_it_cannot_place(slot_path, wide_policy):
     """Fail closed: a weight with no layer index is outside any layer scope.
 
     token_embd and output are Q8_0 in this model but sit outside the blocks, so
     a scoped route must not silently claim them.
     """
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", "16,17,18")
+    wide_policy(enabled=True, layers=frozenset({16, 17, 18}))
     parent = _parent()
 
     assert (
@@ -393,14 +384,14 @@ def test_a_scoped_route_declines_a_weight_it_cannot_place(slot_path, monkeypatch
         == parent
     )
     # Unscoped, the same weight is claimed: the decline is the scope, not the path.
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS")
+    wide_policy(layers=None)
     assert _q8_dense_wide_dispatch(
         parent, rows=1024, in_features=PACKET_K, out_features=PACKET_N,
         weight=_weight(slot_path),
     ) == GGUFLinearDispatch(CANDIDATE, "raw")
 
 
-def test_records_engagement_in_both_arms(monkeypatch):
+def test_records_engagement_in_both_arms(wide_policy):
     """The route must be visible to the gate's engagement summary either way.
 
     ``--route dense_wide`` reported ``candidate_route_engaged: False`` whether or
@@ -419,7 +410,7 @@ def test_records_engagement_in_both_arms(monkeypatch):
     parent = _parent()
 
     # Declined: selector off. The teacher arm of a dense_wide gate is this arm.
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", raising=False)
+    wide_policy(enabled=False)
     off: list[dict] = []
     with wmma_prefill_dispatch_recorder(off):
         _q8_dense_wide_dispatch(
@@ -431,7 +422,7 @@ def test_records_engagement_in_both_arms(monkeypatch):
     assert off[0]["rows"] == 1024
 
     # Claimed: the candidate arm.
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True)
     on: list[dict] = []
     with wmma_prefill_dispatch_recorder(on):
         claimed = _q8_dense_wide_dispatch(
@@ -443,7 +434,7 @@ def test_records_engagement_in_both_arms(monkeypatch):
     assert on[0]["detail"] == "dense_wide256_f32_f32_out"
 
 
-def test_records_the_reason_it_declined(monkeypatch):
+def test_records_the_reason_it_declined(wide_policy):
     """A decline must name itself, so a zero rate is diagnosable."""
 
     from hipengine.runtime.gguf_linear import (
@@ -451,7 +442,7 @@ def test_records_the_reason_it_declined(monkeypatch):
         _q8_dense_wide_dispatch,
     )
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True)
 
     rec: list[dict] = []
     with wmma_prefill_dispatch_recorder(rec):

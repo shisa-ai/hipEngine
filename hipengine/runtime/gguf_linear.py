@@ -3996,7 +3996,7 @@ _Q8_DENSE_WIDE_POLICY_MISSING = object()
 
 
 def resolve_q8_dense_wide_policy(owner: Any) -> Q8DenseWidePolicy:
-    """Resolve explicit owner state, otherwise the direct diagnostic inputs."""
+    """Resolve owner/session state; unbound calls keep the exact parent."""
     policy = getattr(owner, 'q8_dense_wide_policy', None)
     if policy is not None:
         if not isinstance(policy, Q8DenseWidePolicy):
@@ -4005,10 +4005,7 @@ def resolve_q8_dense_wide_policy(owner: Any) -> Q8DenseWidePolicy:
     bound = _q8_dense_wide_policy_bound.get()
     if bound is not None:
         return bound
-    return Q8DenseWidePolicy(
-        os.environ.get(_Q8_DENSE_WIDE_ENV, '0') not in {'', '0', 'false', 'False'},
-        _parse_layer_scope(os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, '')),
-    )
+    return Q8DenseWidePolicy(False, None)
 
 
 @contextlib.contextmanager
@@ -4046,19 +4043,9 @@ def q8_dense_wide_policy(owner: Any, policy: Q8DenseWidePolicy | None):
 
 
 def _q8_dense_wide_layers() -> frozenset[int] | None:
-    """Parse the layer scope for the wide route, or ``None`` for every layer.
-
-    The sibling f16 route fails the calibrated envelope at 0-47 and passes at
-    16-47, so a boolean with no scope can only express the configuration that
-    is already known to fail. An empty or unset value means every layer, which
-    is the shape a gate must be able to narrow. Production does not run that
-    shape: the certified plan for ``gguf_ud_q4_k_xl`` binds 16-47 explicitly.
-    """
-
+    """Return the session's explicit layer scope, or all layers when unbound."""
     bound = _q8_dense_wide_policy_bound.get()
-    if bound is not None:
-        return bound.layers
-    return _parse_layer_scope(os.environ.get(_Q8_DENSE_WIDE_LAYERS_ENV, ""))
+    return None if bound is None else bound.layers
 
 
 def _weight_layer_index(weight: object | None) -> int | None:
@@ -4090,22 +4077,9 @@ def _q8_dense_wide_short_rows_enabled() -> bool:
 
 
 def _q8_dense_wide_enabled() -> bool:
-    """Whether this process bound the route on, by env or by lane plan.
-
-    Off unless something binds it: the profile plan for the certified lane, or
-    an explicit opt-in. See :func:`_q8_dense_wide_dispatch` for why the unbound
-    default is the exact chain.
-    """
-
+    """Return session enablement; unbound calls keep the exact parent."""
     bound = _q8_dense_wide_policy_bound.get()
-    if bound is not None:
-        return bound.enabled
-    return os.environ.get(_Q8_DENSE_WIDE_ENV, "0") not in {
-        "",
-        "0",
-        "false",
-        "False",
-    }
+    return False if bound is None else bound.enabled
 
 
 def _q8_dense_wide_claims_parent(dispatch: GGUFLinearDispatch) -> bool:
@@ -4145,41 +4119,13 @@ def _q8_dense_wide_dispatch(
     out_features: int,
     weight: object | None = None,
 ) -> GGUFLinearDispatch:
-    """Wide-row route for Q8_0 F32/F32 prefill linears.
+    """Select wide-row Q8_0 F32/F32 prefill from explicit session policy.
 
-    The kernel covers 128 output columns by 256 rows per block with both
-    operands staged in LDS, so each weight byte is read once per 256 rows
-    instead of once per 4-32. On the 2026-09-16 replay packet it runs 6.74x the
-    production dispatch and 7.65x strict.
-
-    Its f16 operands change prefill arithmetic (2.08e-4 relative against the
-    exact reference, against 1.5e-7 for the coltile family), so the route is
-    gated by lane and layer window rather than by shape alone. The certified
-    production plan for ``gguf_ud_q4_k_xl`` on ``hip_gfx1151`` binds
-    ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE=1`` at layers 16-47, which is the
-    shipped default for that lane: 12 cases, 1548 rows, mean KL 3.80e-4, top-1
-    0.99354, and strict/candidate logits digests byte-identical to the f16
-    WMMA gate it replaced (2026-09-17).
-
-    The selector itself stays default-off, so a process that binds nothing runs
-    the exact chain. That direction is deliberate. Certification is per lane and
-    per layer window, and this selector cannot see the lane: every pack's Q8_0
-    dense tensors share the quant key ``gguf_q8_0``. A selector-level default-on
-    would claim, among others, the Qwen3.6-35B-A3B pack's 25 in-window layers of
-    ``attn_qkv``/``attn_gate``/``ffn_*_shexp`` prefill, which no envelope covers.
-    Extending the default to a lane is a decision for that lane's plan, recorded
-    in ``docs/REFACTOR.md``.
-
-    The exact coltile parents remain the registered strict fallback, the owner
-    of every layer below 16, and the sole sub-256-row owner (decode included).
-
-    ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS`` narrows the route to a layer
-    scope. Without it the route covers every layer, which is the 0-47 scope the
-    sibling f16 route already fails, so a gate has to be able to narrow it.
-
-    The layer scope is the authority on where this route runs. Where it runs it
-    also takes precedence over the f16 WMMA prefill family, which is the family
-    it replaces at this tile. See :func:`_q8_dense_wide_claims_parent`.
+    Profiles and restoring diagnostic scopes own enablement and layer scope.
+    Unbound calls keep the exact parent. With short rows off, rows<=256 keep
+    their parent; the independent short-row selector can admit rows>=9.
+    Eligible scoped weights must have a known layer index in the scope. The
+    wide route takes precedence over the F16 WMMA family it replaces.
     """
 
     if not _q8_dense_wide_enabled():
@@ -4220,7 +4166,7 @@ def _q8_dense_wide_dispatch(
         # parent. Name it. Returning the parent quietly is how this kernel sat
         # unreachable while a measurement was attributed to it.
         warnings.warn(
-            f"{_Q8_DENSE_WIDE_ENV} is enabled and this shape is eligible, but "
+            "q8_dense_wide_policy is enabled and this shape is eligible, but "
             f"{dispatch.key.variant!r} ({dispatch.abi}) is not a family this "
             "route may replace; the route did not run for this weight.",
             RuntimeWarning,
@@ -4258,7 +4204,7 @@ def _q8_dense_wide_dispatch(
         # quietly is how this kernel sat unreachable while a measurement was
         # attributed to it.
         warnings.warn(
-            f"{_Q8_DENSE_WIDE_ENV} is enabled and the shape is eligible, but "
+            "q8_dense_wide_policy is enabled and the shape is eligible, but "
             f"{key.variant} is not registered for {key.backend}; falling back "
             "to the exact parent. The route did not run.",
             RuntimeWarning,

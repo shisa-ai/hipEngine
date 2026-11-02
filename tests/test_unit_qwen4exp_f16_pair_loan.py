@@ -10,6 +10,7 @@ from hipengine.kernels.hip_gfx1100.linear.f16_mirror import (
 )
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import gguf_linear as linear
+from tests.qwen4exp_wide_policy_fixture import wide_policy
 
 RT = object()
 X, HALF, OA, OB, WA, WB = (i << 32 for i in range(1, 7))
@@ -268,11 +269,10 @@ def test_failed_consumer_launch_never_commits_or_restores_pair(fake_pair, monkey
         assert len(p.casts) == 2
 
 
-def test_native_dispatch_probe_and_backend_policy_admit_only_measured_pairs(monkeypatch):
+def test_native_dispatch_probe_and_backend_policy_admit_only_measured_pairs(monkeypatch, wide_policy):
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     register_gfx1151_kernels(replace=True)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13, 48))))
+    wide_policy(enabled=True, layers=frozenset(range(13, 48)))
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS", raising=False)
     a, b = weight("attn_qkv", WA, NA), weight("attn_gate", WB, NB)
     with linear.wide_f16_pair_session(True), linear.raw_k_prefill_variant_session("coltile8"), linear.wide_f16_activation_session(
@@ -285,7 +285,7 @@ def test_native_dispatch_probe_and_backend_policy_admit_only_measured_pairs(monk
         with linear.wide_f16_activation_pair(a, b, X, OA, OB, rows=1024,
                 in_features=K, out_features_a=NA, out_features_b=NB, runtime=RT) as loan:
             assert loan is None
-        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
+        wide_policy(enabled=False)
         with linear.wide_f16_activation_pair(a, b, X, OA, OB, rows=ROWS,
                 in_features=K, out_features_a=NA, out_features_b=NB, runtime=RT) as loan:
             assert loan is None

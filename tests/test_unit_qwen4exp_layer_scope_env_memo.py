@@ -37,7 +37,6 @@ def test_layer_scope_memo_is_shared_across_resolvers() -> None:
     from hipengine.runtime import gguf_linear
 
     names = (
-        (gguf_linear._Q8_DENSE_WIDE_LAYERS_ENV, gguf_linear._q8_dense_wide_layers),
         (gguf_linear._Q8_STAGED_F32_LAYERS_ENV, gguf_linear._q8_staged_f32_layers),
     )
     saved = {name: os.environ.get(name) for name, _ in names}
@@ -59,17 +58,17 @@ def test_layer_scope_memo_observes_an_environment_change() -> None:
 
     from hipengine.runtime import gguf_linear
 
-    name = gguf_linear._Q8_DENSE_WIDE_LAYERS_ENV
+    name = gguf_linear._Q8_STAGED_F32_LAYERS_ENV
     saved = os.environ.get(name)
     try:
         os.environ[name] = "16,17"
-        assert gguf_linear._q8_dense_wide_layers() == frozenset({16, 17})
+        assert gguf_linear._q8_staged_f32_layers() == frozenset({16, 17})
         os.environ[name] = "18,19"
-        assert gguf_linear._q8_dense_wide_layers() == frozenset({18, 19})
+        assert gguf_linear._q8_staged_f32_layers() == frozenset({18, 19})
         os.environ.pop(name, None)
-        assert gguf_linear._q8_dense_wide_layers() is None
+        assert gguf_linear._q8_staged_f32_layers() is None
         os.environ[name] = "20"
-        assert gguf_linear._q8_dense_wide_layers() == frozenset({20})
+        assert gguf_linear._q8_staged_f32_layers() == frozenset({20})
     finally:
         if saved is None:
             os.environ.pop(name, None)
@@ -82,11 +81,11 @@ def test_layer_scope_memo_parses_once_per_distinct_value(monkeypatch: pytest.Mon
 
     from hipengine.runtime import gguf_linear
 
-    name = gguf_linear._Q8_DENSE_WIDE_LAYERS_ENV
+    name = gguf_linear._Q8_STAGED_F32_LAYERS_ENV
     monkeypatch.setenv(name, "31337,31338,31339")
     cache = gguf_linear._LAYER_SCOPE_PARSE_CACHE
     before = len(cache)
-    results = [gguf_linear._q8_dense_wide_layers() for _ in range(50)]
+    results = [gguf_linear._q8_staged_f32_layers() for _ in range(50)]
     assert all(result == frozenset({31337, 31338, 31339}) for result in results)
     assert len(cache) == before + 1, "50 calls with one value must add one cache entry"
     assert all(result is results[0] for result in results), "the memo must return one object"
@@ -94,11 +93,11 @@ def test_layer_scope_memo_parses_once_per_distinct_value(monkeypatch: pytest.Mon
     # The memo is keyed on the raw string, so a new value is a miss - and the
     # *caller* is what reads the environment, so no cache reset is needed.
     monkeypatch.setenv(name, "31340")
-    assert gguf_linear._q8_dense_wide_layers() == frozenset({31340})
+    assert gguf_linear._q8_staged_f32_layers() == frozenset({31340})
     assert len(cache) == before + 2
     # Returning to the first value is a hit again, not a new entry.
     monkeypatch.setenv(name, "31337,31338,31339")
-    assert gguf_linear._q8_dense_wide_layers() is results[0]
+    assert gguf_linear._q8_staged_f32_layers() is results[0]
     assert len(cache) == before + 2
 
 

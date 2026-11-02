@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import free, memory_stats
+from tests.qwen4exp_wide_policy_fixture import wide_policy
 from tests.test_gpu_qwen4_exp_gr_hip import _upload, _download, _alloc
 
 try:
@@ -23,7 +24,7 @@ pytestmark = pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime unavailab
     (4096, ("shared_gate", "shared_up"), (640, 640), True),
 ])
 def test_native_pair_nondefault_stream_exact_and_bounded(monkeypatch, rows, roles, ns,
-                                                          pair_admitted):
+                                                          pair_admitted, wide_policy):
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as wide
@@ -32,8 +33,7 @@ def test_native_pair_nondefault_stream_exact_and_bounded(monkeypatch, rows, role
 
     runtime = get_hip_runtime()
     register_gfx1151_kernels(replace=True)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13, 48))))
+    wide_policy(enabled=True, layers=frozenset(range(13, 48)))
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS", raising=False)
     k = 2560
     rng = np.random.default_rng(3307)

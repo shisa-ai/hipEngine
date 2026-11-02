@@ -31,6 +31,7 @@ from hipengine.runtime.gguf_linear import (
 # Retired override name. The profile and session own the decision now; these
 # tests assert the old variable cannot move it in either direction.
 RETIRED_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
+from tests.qwen4exp_wide_policy_fixture import wide_policy
 
 BACKEND = "hip_gfx1151"
 QUANT = "gguf_q8_0"
@@ -341,7 +342,7 @@ def test_variant_scoped_library_is_used_for_both_calls(monkeypatch):
     assert sibling_kwargs["library"] is wide_library
 
 
-def test_route_variant_has_a_registered_f16_sibling(monkeypatch):
+def test_route_variant_has_a_registered_f16_sibling(monkeypatch, wide_policy):
     """Coverage guard: the variant the route selects must be hoistable.
 
     The route rewrites an eligible parent to one fixed variant. If that variant
@@ -362,8 +363,7 @@ def test_route_variant_has_a_registered_f16_sibling(monkeypatch):
     from hipengine.runtime import gguf_linear
     from hipengine.runtime.gguf_linear import GGUFLinearDispatch, _q8_dense_wide_dispatch
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", raising=False)
+    wide_policy(enabled=True, layers=None)
     register_gguf_q8_0_dense_wide_kernels()
 
     def _registered_on_the_kernel_backend(key):

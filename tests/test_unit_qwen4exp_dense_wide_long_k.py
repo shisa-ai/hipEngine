@@ -3,6 +3,8 @@ import pytest
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import gguf_linear as linear
 
+from tests.qwen4exp_wide_policy_fixture import wide_policy
+
 PARENT = "dense_wide256_f16in_f32_f32_out"
 LONG_K = "dense_wide128x128_wgp_f16in_f32_f32_out"
 
@@ -90,12 +92,11 @@ def test_short_chunk_build_selection_ignores_retired_override(monkeypatch, value
         (256, "dense_wide256_f32_f32_out"),
     ],
 )
-def test_qwen4exp_short_rows_admit_wide_route_only_in_profile(monkeypatch, rows, expected):
+def test_qwen4exp_short_rows_admit_wide_route_only_in_profile(monkeypatch, rows, expected, wide_policy):
     from hipengine.runtime.gguf_linear import GGUFLinearDispatch
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True, layers=None)
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS", "1")
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", raising=False)
     monkeypatch.setattr(linear, "is_registered", lambda key: True)
     dispatch = GGUFLinearDispatch(_key("prefill_f32_f32_out"), "raw")
     selected = linear._q8_dense_wide_dispatch(
@@ -104,10 +105,10 @@ def test_qwen4exp_short_rows_admit_wide_route_only_in_profile(monkeypatch, rows,
     assert selected.key.variant == expected
 
 
-def test_qwen4exp_short_rows_stay_exact_without_profile_selector(monkeypatch):
+def test_qwen4exp_short_rows_stay_exact_without_profile_selector(monkeypatch, wide_policy):
     from hipengine.runtime.gguf_linear import GGUFLinearDispatch
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+    wide_policy(enabled=True)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS", raising=False)
     monkeypatch.setattr(linear, "is_registered", lambda key: True)
     dispatch = GGUFLinearDispatch(_key("prefill_f32_f32_out"), "raw")

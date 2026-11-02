@@ -1,4 +1,4 @@
-"""Wide prefill ownership is explicit while unbound diagnostics keep env fallback."""
+"""Wide prefill ownership is explicit; retired ambient inputs are ignored."""
 import os
 from types import SimpleNamespace
 
@@ -12,14 +12,14 @@ def test_bound_policy_ignores_ambient_and_restores_after_failure(monkeypatch):
     monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS', '1,3')
     owner = SimpleNamespace(q8_dense_wide_policy=gl.Q8DenseWidePolicy(False, frozenset({7})))
     assert gl.resolve_q8_dense_wide_policy(owner).enabled is False
-    assert gl._q8_dense_wide_enabled() is True
+    assert gl._q8_dense_wide_enabled() is False
     with pytest.raises(RuntimeError):
         with gl.q8_dense_wide_policy_session(gl.resolve_q8_dense_wide_policy(owner)):
             assert gl._q8_dense_wide_enabled() is False
             assert gl._q8_dense_wide_layers() == frozenset({7})
             raise RuntimeError('injected')
-    assert gl._q8_dense_wide_enabled() is True
-    assert gl._q8_dense_wide_layers() == frozenset({1, 3})
+    assert gl._q8_dense_wide_enabled() is False
+    assert gl._q8_dense_wide_layers() is None
 
 
 def test_diagnostic_scope_restores_generator_and_runner(monkeypatch):
@@ -37,12 +37,13 @@ def test_diagnostic_scope_restores_generator_and_runner(monkeypatch):
     assert runner.q8_dense_wide_policy.enabled is False
 
 
-def test_unbound_layers_empty_means_all_and_zero_is_a_real_layer(monkeypatch):
+@pytest.mark.parametrize('layers', ['', '0', 'broken'])
+def test_unbound_ignores_retired_enable_and_layer_inputs(monkeypatch, layers):
     monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE', '1')
-    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS', '')
-    assert gl.resolve_q8_dense_wide_policy(SimpleNamespace()).layers is None
-    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS', '0')
-    assert gl.resolve_q8_dense_wide_policy(SimpleNamespace()).layers == frozenset({0})
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS', layers)
+    assert gl.resolve_q8_dense_wide_policy(SimpleNamespace()) == gl.Q8DenseWidePolicy(False, None)
+    assert gl._q8_dense_wide_layers() is None
+    assert gl._q8_dense_wide_enabled() is False
 
 
 @pytest.mark.parametrize('layer,selected', [(0, True), (7, False), (16, True)])

@@ -12,11 +12,12 @@ from hipengine.runtime.gguf_linear import (
 from scripts.qwen4exp_allocation_census import simulated_runner
 from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace
 from tests.test_unit_qwen4exp_scratch_plan import config
+from tests.qwen4exp_wide_policy_fixture import wide_policy
 
 
 @pytest.fixture
-def enabled(monkeypatch):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
+def enabled(wide_policy):
+    return wide_policy(enabled=True)
 
 
 @pytest.mark.parametrize("chunk", [257, 1024, 2048, 4096])
@@ -45,8 +46,8 @@ def test_owner_is_bounded_reused_and_freed(enabled, chunk):
                 pass
 
 
-def test_disabled_context_does_not_allocate_and_shadows_outer(enabled, monkeypatch):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
+def test_disabled_context_does_not_allocate_and_shadows_outer(enabled, wide_policy):
+    wide_policy(enabled=False)
     with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
         before = dict(runtime.live)
         with wide_f16_activation_session(workspace_ptr=123, workspace_nbytes=456):
@@ -120,8 +121,8 @@ def test_constructing_the_context_binds_nothing_until_it_is_entered(enabled):
         assert not wide_f16_pair_enabled()
 
 
-def test_disabled_context_binds_nothing_until_it_is_entered(enabled, monkeypatch):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
+def test_disabled_context_binds_nothing_until_it_is_entered(enabled, wide_policy):
+    wide_policy(enabled=False)
     with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
         before = dict(runtime.live)
         with wide_f16_activation_session(
@@ -152,9 +153,9 @@ def test_an_exception_in_the_body_unwinds_workspace_and_pair(enabled):
 
 
 def test_disabled_context_binds_parent_even_when_the_runner_bound_the_loan(
-    enabled, monkeypatch,
+    enabled, wide_policy,
 ):
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
+    wide_policy(enabled=False)
     with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
         runner.dense_f16_pair_enabled = True
         with runner._wide_f16_activation_context():

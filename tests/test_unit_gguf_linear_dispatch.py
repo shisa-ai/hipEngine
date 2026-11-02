@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.qwen4exp_wide_policy_fixture import wide_policy
+
 from types import SimpleNamespace
 
 import os
@@ -8015,7 +8017,7 @@ def test_qwen4exp_mmq_prefill_session_swaps_f32_f32_prefill(monkeypatch) -> None
             register(k, fn, replace=True)
 
 
-def test_launch_gguf_linear_swaps_the_wide_route_to_its_f16_sibling() -> None:
+def test_launch_gguf_linear_swaps_the_wide_route_to_its_f16_sibling(wide_policy) -> None:
     """The swap has to happen at the call site, not only in its helper.
 
     ``_launch_dense_wide_f16_staged`` was correct and unit-tested while the
@@ -8068,11 +8070,8 @@ def test_launch_gguf_linear_swaps_the_wide_route_to_its_f16_sibling() -> None:
     dw_module.f32_to_f16 = _cast
     rows, in_features, out_features = 512, 2560, 10240
     required = rows * in_features * 2
-    # The wide route is a post-binder selector: it is inert unless the env names
-    # it, which is also why this test drives the real dispatch chain rather than
-    # calling the helper directly.
-    os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] = "1"
-    os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", None)
+    # Bind the route explicitly before driving its real dispatch chain.
+    wide_policy(enabled=True, layers=None)
     try:
         # No workspace: the shipped f32-input owner runs, as it did before.
         launch_gguf_linear(
@@ -8130,7 +8129,6 @@ def test_launch_gguf_linear_swaps_the_wide_route_to_its_f16_sibling() -> None:
         assert len(conversions) == 1
     finally:
         monkeypatch.undo()
-        os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", None)
         dw_module.f32_to_f16 = original_dw_cast
         register(f32in_key, original_f32in, replace=True)
         register(f16in_key, original_f16in, replace=True)

@@ -3607,9 +3607,10 @@ policy resolution and per-prefill application. Profiles publish the unchanged
 three-plane F32 choice; campaign, standalone logits-probe and generic
 AR/profile-gap arms bind and report explicit owner planes without process writes.
 `q8_mmq_f32_planes` transport includes late-runner inheritance. Dense-wide
-still has runtime fallbacks; candidate AR now splits its paired enable/layer
-overrides into restoring owner state using the profile-gap scope. Finish the
-remaining direct-consumer inventory before retiring those reads. Q4 DP4A
+also uses explicit owner/session policy only: its enable/layer ambient fallbacks
+are removed after candidate AR and the dedicated diagnostics migrated. Unbound
+calls keep the exact parent; the independent short-row selector is unchanged.
+Q4 DP4A
 also uses explicit owner state only; R0023 still owns its independent numerical
 repair. Remove a fallback only after every in-tree direct consumer
 supplies its explicit owner choice and targeted public route/repeat/teardown

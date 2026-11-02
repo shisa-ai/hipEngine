@@ -9,6 +9,7 @@ import pytest
 
 from hipengine.core.memory import free, malloc, memory_stats
 from hipengine.loading.materialize import float_array_to_bf16_bits
+from tests.qwen4exp_wide_policy_fixture import wide_policy
 from tests.test_gpu_qwen4_exp_gr_hip import _upload, _download, _alloc
 
 try:
@@ -19,7 +20,7 @@ except OSError:
 pytestmark = pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime unavailable")
 
 
-def test_native_direct_norm_consumer_nondefault_stream(monkeypatch):
+def test_native_direct_norm_consumer_nondefault_stream(monkeypatch, wide_policy):
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_dense_wide as wide
@@ -29,8 +30,7 @@ def test_native_direct_norm_consumer_nondefault_stream(monkeypatch):
 
     runtime = get_hip_runtime()
     register_gfx1151_kernels(replace=True)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str,range(13,48))))
+    wide_policy(enabled=True, layers=frozenset(range(13, 48)))
     rows, branches, hidden, n = 4096, 4, 2560, 320
     k = branches * hidden
     rng = np.random.default_rng(3007)

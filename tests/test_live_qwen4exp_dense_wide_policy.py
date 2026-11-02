@@ -56,6 +56,8 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
                                 speculative_mtp=False)
         bound_policy = generator.q8_dense_wide_policy
         for enabled in (False, True):
+            monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE', '0' if enabled else '1')
+            monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS', 'broken')
             policy = gl.Q8DenseWidePolicy(enabled, frozenset(range(16, 48)))
             if interface == 'candidate_ar':
                 from contextlib import ExitStack
