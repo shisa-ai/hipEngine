@@ -847,7 +847,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS` | unbound fallback only | Named profiles publish `q4_iu8_layers` on generator and runner without changing this input: production layers 35–47, strict empty (every layer, with plain prefill disabled). Bound diagnostics use `q4_iu8_layers(owner, layers)`; empty and `all` select every layer. |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT` | production profile | Exact iu8-risk Q4 gate/up route (the layer-2 Q4 route). |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES` | `3` | Plane count for the iu8-risk Q4 gate/up variant: `3` (default) or `2` (the p2 variant). |
-| `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` | `4.0` | Risk multiplier margin for the iu8 risk+repair Q4 route; the default keeps a >=4x margin at the measured 1.50-1.82x operation-complete speedup. |
+| `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` | unbound `4.0`; profiles `1.0` | Direct/unbound caller fallback only. Both profile binders publish `q4_iu8_risk_mult=1.0` on generator/runner owners without changing this process input. Diagnostics use `q4_iu8_risk_mult(owner, value)` and restore it after the scope. |
 | `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` / `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS` | retired | No longer read. Superseded Q4_K ds4-MMQ selection and workspace plumbing are removed; registered kernels remain available for explicit diagnostics. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` / `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS` | retired | No longer read. Superseded Q5_1 ds4-MMQ selection and workspace plumbing are removed; active Q8 MMQ and strict fallback paths are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` | retired | No longer read. Q5_1 selected GEMV uses the logical256 t64 owner; the wave64 variant remains registered for direct diagnostics. |

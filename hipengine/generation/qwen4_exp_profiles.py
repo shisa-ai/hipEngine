@@ -1197,6 +1197,15 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_q4_risk_mult(generator: Any) -> None:
+    """Publish the existing 1.0 multiplier for both profile binders."""
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT', '1.0')
+    generator.q4_iu8_risk_mult = 1.0
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.q4_iu8_risk_mult = 1.0
+
+
 def _publish_q4_layers(generator: Any, *, production: bool) -> None:
     """Publish the existing plain-Q4 suffix without changing ambient input."""
     layers = ','.join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS)) if production else ''
@@ -1713,7 +1722,7 @@ def _bind(
         # and benchmarks/results/2026-10-04-qwen4exp-risk-mult-override-ab/;
         # worklog entries 20261003T225747, 20261003T234213,
         # 20261004T000542 (the binder pin) and 20261004T001404 (this promotion).
-        "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0",
+        # The 1.0 multiplier publishes on generator/runner owners below.
         # Columnwarp prefill enablement and layer scope publish on the owner
         # below. Decode retains its separately tuned rows==1 owner.
         # Flash prefill's effective pair publishes on owners after UD recovery.
@@ -1881,6 +1890,7 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    _publish_q4_risk_mult(generator)
     _publish_q4_layers(generator, production=production)
     _publish_q4_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_q4_iu8(generator, production)

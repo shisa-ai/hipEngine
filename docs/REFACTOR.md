@@ -3004,8 +3004,10 @@ process-only interpretation. Journey snapshots reconstruct multipliers through
 family overlays, bind arm and strict split-phase values on owners and report
 each phase. Prefill-restore, conservative-cost and long-context reports carry
 the effective value. The multiplier candidate declares 1.0 on its owner,
-without a process override. Profile publication still needs migration; plane
-selection also needs owner transport.
+without a process override. Both profile binders publish the same existing
+1.0 multiplier on generator/runner owners without changing ambient input;
+unbound callers keep their environment/default fallback. Plane selection still
+needs owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
