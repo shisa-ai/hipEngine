@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign_pair', 'campaign_pf13', 'ablation_q4', 'ablation_q51'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign_pair', 'campaign_pf13', 'ablation_q4', 'ablation_q51', 'profile'])
 @pytest.mark.parametrize('length', [17, 73, 273])
 def test_public_expert_grid_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -24,6 +24,8 @@ def test_public_expert_grid_owner(monkeypatch, length, interface):
     before = memory_stats()
     captures, calls, originals = [], [], []
     _install_logit_capture(monkeypatch, captures)
+    if interface == 'profile':
+        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', 'invalid')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     variants = [
@@ -39,6 +41,9 @@ def test_public_expert_grid_owner(monkeypatch, length, interface):
     ]
     try:
         owner = _unwrap(llm._get_text_generator())
+        prior_policy = owner.expert_grid_policy
+        assert prior_policy == runtime.ExpertGridPolicy(True, True)
+        assert owner.runner.expert_grid_policy is prior_policy
         for quant, variant in variants:
             key = KernelKey('hip_gfx1151', 'moe_linear', quant, variant)
             fn = resolve(backend=key.backend, layer=key.layer, quant=quant, variant=variant)
@@ -57,11 +62,13 @@ def test_public_expert_grid_owner(monkeypatch, length, interface):
             stack.enter_context(runtime.q4_bundle_prefill(owner.runner, False))
             stack.enter_context(runtime.q51_pair_prefill(owner.runner, False))
             stack.enter_context(runtime.q51_down_m1(owner.runner, False))
-            for enabled in (False, True):
+            for enabled in ((True,) if interface == 'profile' else (False, True)):
                 ambient = '0' if enabled else '64'
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', ambient)
                 with ExitStack() as policy_stack:
-                    if interface == 'direct':
+                    if interface == 'profile':
+                        assert owner.runner.expert_grid_policy is prior_policy
+                    elif interface == 'direct':
                         policy_stack.enter_context(runtime.expert_grid_policy(
                             owner, runtime.ExpertGridPolicy(enabled, enabled)))
                     elif interface == 'campaign_pair':
@@ -115,7 +122,7 @@ def test_public_expert_grid_owner(monkeypatch, length, interface):
                     assert repeats[0][0] == repeats[1][0]
                     for a, b in zip(repeats[0][1], repeats[1][1], strict=True):
                         np.testing.assert_array_equal(a, b)
-                assert owner.expert_grid_policy is owner.runner.expert_grid_policy is None
+                assert owner.expert_grid_policy is owner.runner.expert_grid_policy is prior_policy
     finally:
         for key, fn in originals:
             register(key, fn, replace=True)

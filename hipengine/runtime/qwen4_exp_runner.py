@@ -5246,13 +5246,12 @@ class ExpertGridPolicy:
 
 
 def resolve_expert_grid_policy(policy: ExpertGridPolicy | None) -> ExpertGridPolicy:
-    """Prefer typed execution state while legacy diagnostic callers migrate."""
+    """Return typed execution state or the unchanged both-family default."""
     if policy is not None:
         if not isinstance(policy, ExpertGridPolicy):
             raise TypeError('expert_grid_policy must be an ExpertGridPolicy or None')
         return policy
-    raw = os.environ.get('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', '64')
-    return ExpertGridPolicy(raw in {'64', 'q4'}, raw in {'64', 'q5'})
+    return ExpertGridPolicy()
 
 
 @contextlib.contextmanager
@@ -5293,7 +5292,7 @@ def _qwen4_exp_q51_down_key(
     """The exact grouped Q5_1 down owner, before its own resolve.
 
     This is the ladder the chain's guards select, in dispatch order: the exact
-    expert-grid family (``EXACT_EXPERT_GRID``), the out8 fallback rung
+    expert-grid family (``expert_grid_policy``), the out8 fallback rung
     (``q51_out8``, see :func:`q51_out8`), the output1 base, then the pair2
     preemptor, then the fold128/folded-pair/register-cache/row-publish siblings.
     The caller owns everything above it - ``production_grouped_moe``, the routed
@@ -6459,7 +6458,7 @@ def _qwen4_exp_q4_gate_up_key(
     """The exact grouped Q4_K gate/up owner, before its own launch.
 
     This is the ladder the chain's guards select, in dispatch order: the exact
-    expert-grid family (``EXACT_EXPERT_GRID``), the out4 fallback rung
+    expert-grid family (``expert_grid_policy``), the out4 fallback rung
     (``q4_out4``, see :func:`q4_out4`), the strict rowbatch8 base, then the pair2
     and bundle preemptors inside the expert-grid family. The caller owns
     everything above it - the routed-F16 owner, ``production_grouped_moe``, the

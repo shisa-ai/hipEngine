@@ -3689,8 +3689,9 @@ Q5_1 family, and both report owner policy rather than process input.
 Candidate-AR/profile-gap overrides bind and report the policy without
 process writes, preserving legacy family syntax. Q4 out4 and Q5_1 out8
 route-ablation closures bind and report typed family policy with no process
-writes. Profiles have not published that axis yet; the runtime fallback still
-serves unbound callers. Audit each geometry's
+writes. All profiles publish both families on generator/current and late
+runner owners, preserving the old `64` default; unbound calls use the same
+constant policy. The expert-grid environment fallback is removed. Audit each geometry's
 actual registry and dispatch consumers before removing wrappers; the old phrase
 “losing geometry ladder” is not evidence that every non-default rung is dead.
 Keep registered scalar raw-Q8 and direct selected strict primitives.

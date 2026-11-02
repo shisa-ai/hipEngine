@@ -67,7 +67,7 @@ def test_pair_precedes_bundle_only_with_expert_grid(monkeypatch):
         **args, q4_pair_prefill=False).variant
     assert "pair2" in runner._qwen4_exp_q4_gate_up_key(
         **args, q4_pair_prefill=True).variant
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "0")
+    args['expert_grid_policy'] = runner.ExpertGridPolicy(False, False)
     key = runner._qwen4_exp_q4_gate_up_key(**args, q4_pair_prefill=True)
     assert "pair2" not in key.variant and "bundle" not in key.variant
 

@@ -20,11 +20,31 @@ def test_explicit_family_overrides_ambient(monkeypatch, q4, q5):
     assert ('expertgrid64' in five.variant) is q5
 
 
-@pytest.mark.parametrize('raw,q4,q5', [('64', True, True), ('q4', True, False),
-                                     ('q5', False, True), ('0', False, False)])
-def test_unbound_legacy_family_still_runs(monkeypatch, raw, q4, q5):
+@pytest.mark.parametrize('raw', ['64', 'q4', 'q5', '0', 'invalid'])
+def test_unbound_default_ignores_retired_family_input(monkeypatch, raw):
     monkeypatch.setenv('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', raw)
-    assert runtime.resolve_expert_grid_policy(None) == runtime.ExpertGridPolicy(q4, q5)
+    assert runtime.resolve_expert_grid_policy(None) == runtime.ExpertGridPolicy(True, True)
+    assert 'EXACT_EXPERT_GRID' not in inspect.getsource(runtime.resolve_expert_grid_policy)
+
+
+@pytest.mark.parametrize('profile', ['strict', 'production', 'batch_invariant'])
+def test_profiles_publish_both_families_without_process_writes(monkeypatch, profile):
+    import os
+    from hipengine.execution_profiles import resolve_runtime_profile
+    from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', 'invalid')
+    owner = SimpleNamespace(runner=SimpleNamespace())
+    before = dict(os.environ)
+    resolved = resolve_runtime_profile(model='qwen4_exp_gguf', backend='hip_gfx1151',
+        quant='gguf_ud_q4_k_xl', profile=profile)
+    resolved.construct_generator(lambda: owner)
+    assert owner.expert_grid_policy == runtime.ExpertGridPolicy(True, True)
+    assert owner.runner.expert_grid_policy is owner.expert_grid_policy
+    assert _inherit_lane_decisions(owner, SimpleNamespace()).expert_grid_policy is owner.expert_grid_policy
+    assert dict(os.environ) == before
 
 
 def test_scope_restores_missing_and_distinct_values_and_late_clone():

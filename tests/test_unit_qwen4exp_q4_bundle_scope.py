@@ -71,7 +71,7 @@ def test_bundle_key_preserves_pair_precedence_and_grid_guard(monkeypatch):
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL", "1")
     assert "pair2" in runner._qwen4_exp_q4_gate_up_key(
         **kwargs, q4_bundle_prefill=True, q4_pair_prefill=True).variant
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "0")
+    kwargs['expert_grid_policy'] = runner.ExpertGridPolicy(False, False)
     assert "bundle" not in runner._qwen4_exp_q4_gate_up_key(
         **kwargs, q4_bundle_prefill=True).variant
 
