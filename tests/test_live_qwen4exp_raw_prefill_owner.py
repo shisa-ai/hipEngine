@@ -11,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign'])
 @pytest.mark.parametrize('length', [17, 73, 273])
-def test_public_raw_prefill_owner(monkeypatch, length):
+def test_public_raw_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.runtime import gguf_linear as linear
@@ -44,16 +45,31 @@ def test_public_raw_prefill_owner(monkeypatch, length):
             for policy in (runtime.RawPrefillPolicy(8, 'rowbatch'), runtime.RawPrefillPolicy(32, 'coltile8')):
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', 'invalid')
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_RAW_VARIANT', 'invalid')
-                with runtime.raw_prefill_policy(owner, policy):
+                with ExitStack() as policy_stack:
+                    if interface == 'campaign':
+                        from scripts.qwen4exp_halo_box_campaign_ab import q8_wave_scope
+                        policy_stack.enter_context(q8_wave_scope(owner, policy.variant == 'coltile8'))
+                        effective = runtime.RawPrefillPolicy()
+                    elif interface in {'profile_gap', 'candidate_ar'}:
+                        import importlib
+                        script = importlib.import_module('scripts.qwen4exp_' + interface)
+                        report = script.bind_raw_prefill_override(policy_stack, owner, {
+                            'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': str(policy.rowbatch),
+                            'HIPENGINE_QWEN4_EXP_RAW_VARIANT': policy.variant})
+                        assert report['raw_prefill_policy'] == policy.to_report()
+                        effective = policy
+                    else:
+                        policy_stack.enter_context(runtime.raw_prefill_policy(owner, policy))
+                        effective = policy
                     repeats = []
                     for _ in range(2):
                         launches.clear()
                         captures.clear()
                         output = llm.generate_detailed([[1] * length], params)
-                        selected = ('coltile8_wave_scale' if policy.variant == 'coltile8'
-                                    and owner.runner.q8_wave_scale_prefill else policy.variant)
-                        assert launches and all(row[:2] == (policy.rowbatch, selected) for row in launches)
-                        assert any(('rowbatch8' in row[2] if policy.variant == 'rowbatch'
+                        selected = ('coltile8_wave_scale' if effective.variant == 'coltile8'
+                                    and owner.runner.q8_wave_scale_prefill else effective.variant)
+                        assert launches and all(row[:2] == (effective.rowbatch, selected) for row in launches)
+                        assert any(('rowbatch8' in row[2] if effective.variant == 'rowbatch'
                                     else 'coltile8' in row[2]) for row in launches), set(launches)
                         assert os.environ['HIPENGINE_QWEN4_EXP_RAW_ROWBATCH'] == 'invalid'
                         assert os.environ['HIPENGINE_QWEN4_EXP_RAW_VARIANT'] == 'invalid'

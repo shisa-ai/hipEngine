@@ -26,6 +26,106 @@ def test_explicit_policy_overrides_ambient_and_drives_chunk(monkeypatch, rowbatc
     assert seen == [(rowbatch, variant)]
 
 
+@pytest.mark.parametrize('interface', ['profile_gap', 'candidate_ar'])
+@pytest.mark.parametrize('overrides,expected', [
+    ({'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': '1'}, (32, 'coltile16')),
+    ({'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': 'false'}, (0, 'coltile16')),
+    ({'HIPENGINE_QWEN4_EXP_RAW_VARIANT': 'coltile8'}, (8, 'coltile8')),
+    ({'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': '16',
+      'HIPENGINE_QWEN4_EXP_RAW_VARIANT': 'rowbatch'}, (16, 'rowbatch')),
+])
+def test_override_binds_only_requested_axes_restores_and_does_not_write_process(
+    monkeypatch, interface, overrides, expected,
+):
+    from contextlib import ExitStack
+    import importlib
+    import os
+    script = importlib.import_module('scripts.qwen4exp_' + interface)
+    policy = runtime.RawPrefillPolicy(8, 'coltile16')
+    owner = SimpleNamespace(raw_prefill_policy=policy, runner=SimpleNamespace(raw_prefill_policy=policy))
+    for key in ('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', 'HIPENGINE_QWEN4_EXP_RAW_VARIANT'):
+        monkeypatch.setenv(key, 'invalid')
+    before = dict(os.environ)
+    with pytest.raises(RuntimeError, match='injected'):
+        with ExitStack() as stack:
+            report = script.bind_raw_prefill_override(stack, owner, overrides)
+            selected = runtime.resolve_raw_prefill_policy(owner)
+            assert (selected.rowbatch, selected.variant) == expected
+            assert owner.runner.raw_prefill_policy is selected
+            assert report['raw_prefill_policy'] == selected.to_report()
+            assert _inherit_lane_decisions(owner, SimpleNamespace()).raw_prefill_policy is selected
+            assert dict(os.environ) == before
+            raise RuntimeError('injected')
+    assert owner.raw_prefill_policy is owner.runner.raw_prefill_policy is policy
+
+
+@pytest.mark.parametrize('interface', ['profile_gap', 'candidate_ar'])
+def test_override_transport_removes_process_keys(monkeypatch, interface):
+    import importlib
+    import os
+    script = importlib.import_module('scripts.qwen4exp_' + interface)
+    overrides = {'HIPENGINE_QWEN4_EXP_RAW_VARIANT': 'coltile8',
+                 'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': '8', 'HIPENGINE_HIP_ARCH': 'same'}
+    for key in overrides:
+        monkeypatch.setenv(key, 'prior')
+    if interface == 'candidate_ar':
+        environment, selected = script.split_raw_prefill_overrides(overrides)
+        assert selected == {key: value for key, value in overrides.items() if key != 'HIPENGINE_HIP_ARCH'}
+        assert environment == {'HIPENGINE_HIP_ARCH': 'same'}
+    else:
+        script._apply_post_binder_overrides(overrides)
+        assert os.environ['HIPENGINE_HIP_ARCH'] == 'same'
+    assert os.environ['HIPENGINE_QWEN4_EXP_RAW_VARIANT'] == 'prior'
+    assert os.environ['HIPENGINE_QWEN4_EXP_RAW_ROWBATCH'] == 'prior'
+
+
+@pytest.mark.parametrize('overrides', [
+    {'HIPENGINE_QWEN4_EXP_RAW_VARIANT': 'bad'},
+    {'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': '3'},
+    {'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': 'invalid'},
+])
+def test_invalid_override_does_not_mutate_owner(overrides):
+    from contextlib import ExitStack
+    from scripts.qwen4exp_profile_gap import bind_raw_prefill_override
+    owner = SimpleNamespace(raw_prefill_policy=runtime.RawPrefillPolicy())
+    prior = owner.raw_prefill_policy
+    with ExitStack() as stack, pytest.raises(ValueError):
+        bind_raw_prefill_override(stack, owner, overrides)
+    assert owner.raw_prefill_policy is prior
+
+
+def test_override_main_wiring_precedes_process_writes():
+    import inspect
+    from scripts import qwen4exp_candidate_ar as ar, qwen4exp_profile_gap as gap
+    source = inspect.getsource(ar.main)
+    assert source.index('split_raw_prefill_overrides(overrides)') < source.index('os.environ.update(overrides)')
+    assert "artifact['owner_overrides'].update(bind_raw_prefill_override(" in source
+    assert 'report.update(bind_raw_prefill_override(' in inspect.getsource(gap.main)
+
+
+def test_campaign_forces_owner_policy_without_touching_raw_keys():
+    from scripts.qwen4exp_halo_box_campaign_ab import q8_wave_scope, q8_wave_control_record
+    owner = SimpleNamespace(q8_wave_scale_prefill=False,
+                            raw_prefill_policy=runtime.RawPrefillPolicy(0, 'rowbatch'))
+    prior = owner.raw_prefill_policy
+    env = {'HIPENGINE_QWEN4_EXP_RAW_VARIANT': 'invalid',
+           'HIPENGINE_QWEN4_EXP_RAW_ROWBATCH': 'invalid'}
+    before = dict(env)
+    with pytest.raises(RuntimeError, match='injected'):
+        with q8_wave_scope(owner, True, environment=env):
+            assert owner.raw_prefill_policy == runtime.RawPrefillPolicy(32, 'coltile8')
+            record = q8_wave_control_record(owner)
+            assert record['forced_raw_prefill_policy'] == owner.raw_prefill_policy.to_report()
+            assert 'HIPENGINE_QWEN4_EXP_RAW_VARIANT' not in record['forced_environment']
+            assert env['HIPENGINE_QWEN4_EXP_RAW_VARIANT'] == 'invalid'
+            assert env['HIPENGINE_QWEN4_EXP_RAW_ROWBATCH'] == 'invalid'
+            raise RuntimeError('injected')
+    assert env == before
+    assert owner.raw_prefill_policy is prior
+    assert owner.q8_wave_scale_prefill is False
+
+
+
 @pytest.mark.parametrize('rowbatch,variant', [(1, 'coltile8'), (True, 'coltile8'), (32, 'bad')])
 def test_invalid_policy_rejected(rowbatch, variant):
     with pytest.raises(ValueError):

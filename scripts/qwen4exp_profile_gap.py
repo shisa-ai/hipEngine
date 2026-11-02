@@ -12,7 +12,9 @@ override is ``--q4-dp4a-decode``/``--q4-dp4a-layers`` rather than an env key.
 The f16 WMMA layer scope is owner state too; use ``--q8-wmma-layers``.
 Dense-wide diagnostics use ``--q8-dense-wide`` and ``--q8-dense-wide-layers``;
 omitted axes preserve the bound policy. Legacy dense-wide process overrides are
-rejected because a bound owner would ignore them.
+rejected because a bound owner would ignore them. Raw-prefill row slab and
+geometry keep their legacy override spelling but bind and report a paired owner
+policy without changing either process key.
 """
 from __future__ import annotations
 
@@ -530,7 +532,9 @@ def _apply_post_binder_overrides(
     """
 
     overrides = {key: value for key, value in overrides.items()
-                 if key not in {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
+                 if key not in {"HIPENGINE_QWEN4_EXP_RAW_ROWBATCH",
+                                "HIPENGINE_QWEN4_EXP_RAW_VARIANT",
+                                "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
                                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES",
                                 "HIPENGINE_GGUF_WMMA_PREFILL",
                                 "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
@@ -550,6 +554,28 @@ def _apply_post_binder_overrides(
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_raw_prefill_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, Any]:
+    """Bind requested raw-prefill axes without process writes."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        RawPrefillPolicy, raw_prefill_policy, resolve_raw_prefill_policy,
+    )
+    row_key, variant_key = ('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH',
+                            'HIPENGINE_QWEN4_EXP_RAW_VARIANT')
+    requested = {key: overrides[key] for key in (row_key, variant_key) if key in overrides}
+    if requested:
+        prior = getattr(owner, 'raw_prefill_policy', None) or RawPrefillPolicy()
+        raw = overrides.get(row_key)
+        rowbatch = (prior.rowbatch if raw is None else
+                    0 if raw in {'', '0', 'false', 'False'} else
+                    32 if raw in {'1', 'true', 'True'} else int(raw))
+        policy = RawPrefillPolicy(rowbatch, overrides.get(variant_key, prior.variant))
+        stack.enter_context(raw_prefill_policy(owner, policy))
+    return {'raw_prefill_override': requested,
+            'raw_prefill_policy': resolve_raw_prefill_policy(owner).to_report()}
 
 
 def bind_mmq_planes_override(
@@ -1200,6 +1226,7 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_raw_prefill_override(q4_scope, generator, overrides))
         report.update(bind_mmq_planes_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_prefill_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_planes_override(q4_scope, generator, overrides))

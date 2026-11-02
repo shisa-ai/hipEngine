@@ -3678,9 +3678,12 @@ Scope: `coltile8_wave_scale`; `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH`,
 **Owner migration in progress:** `RawPrefillPolicy` now carries row slab and
 geometry through generator/runner construction and late-runner inheritance;
 `raw_prefill_policy(owner, policy)` restores explicit diagnostic choices. Legacy
-raw-prefill environment inputs remain for callers awaiting migration; the expert-grid
-setting remains separate. Remove environment reads only after migrating callers and
-diagnostic overrides. Audit each geometry's actual registry and dispatch consumers before removing
+raw-prefill environment inputs remain for unbound callers while profiles
+migrate. Campaign wave-scale comparisons and candidate-AR/profile-gap raw
+row-slab/geometry overrides now bind and report owner policy without process
+writes; omitted axes preserve the owner or its defaults. The expert-grid setting
+remains separate. Remove environment reads after profile publication and a final
+caller inventory. Audit each geometry's actual registry and dispatch consumers before removing
 wrappers; the old phrase “losing geometry ladder” is not evidence that every non-default rung is
 dead. Keep registered scalar raw-Q8 and direct selected strict primitives.
 
