@@ -173,7 +173,7 @@ def test_the_selector_reads_the_field_and_no_process_key() -> None:
     source = inspect.getsource(runner_module._qwen4_exp_q4_gate_up_key)
     assert RETIRED_ENV not in source
     assert "elif q4_out4:" in source
-    assert source.index(EXPERT_GRID_ENV) < source.index("elif q4_out4:")
+    assert source.index('resolve_expert_grid_policy(expert_grid_policy).q4') < source.index("elif q4_out4:")
 
 
 def _variant_constants(source: str, name: str) -> list[str]:
@@ -192,7 +192,7 @@ def test_the_ladder_around_the_rung_is_unchanged() -> None:
     source = inspect.getsource(runner_module._qwen4_exp_q4_gate_up_key)
 
     # The expert-grid family and the two preemptors inside it survive.
-    assert EXPERT_GRID_ENV in source
+    assert 'resolve_expert_grid_policy(expert_grid_policy).q4' in source
     for rung in ("qwen4_exp_q4_pair_prefill_selected",
                  "qwen4_exp_q4_bundle_prefill_selected"):
         assert rung in source, rung
@@ -219,9 +219,9 @@ def test_the_chain_switches_still_sit_above_the_selector() -> None:
 
 
 def test_the_q5_1_ladder_still_reads_its_own_expert_grid_rung() -> None:
-    """``EXACT_EXPERT_GRID`` is shared; this unit moves only the Q4 read."""
+    """Both families resolve explicit owner policy before legacy inputs."""
 
-    assert EXPERT_GRID_ENV in inspect.getsource(
+    assert 'resolve_expert_grid_policy(expert_grid_policy).q5' in inspect.getsource(
         runner_module._qwen4_exp_q51_down_key)
     assert runner_module._qwen4_exp_q51_iu8_exact_enabled(True) is True
     assert runner_module._qwen4_exp_q51_iu8_exact_enabled(None) is False
@@ -365,12 +365,14 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q5k_row4_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, False, True, True, True, True,
+        runner_module.resolve_expert_grid_policy(None), False, False,
         False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
 
     owner.q4_out4 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, False, True, True, True, False, False, False,
+        False, False, False, False, True, False, False, True, True, True, False,
+        runner_module.resolve_expert_grid_policy(None), False, False,
         False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
 
 

@@ -369,6 +369,7 @@ class Qwen4ExpMixedTargetPass:
                     mixed = run.output
                 _run_layer_ffn(
                     residual.ptr, mixed.ptr, binding, scratch, rows=rows,
+                    expert_grid_policy=getattr(batch, 'expert_grid_policy', None),
                     moe_decode_warp=getattr(batch, "moe_decode_warp", frozenset()),
                     routed_f16_enabled=getattr(batch, "routed_f16_enabled", False),
                     gr_wave_scale=getattr(batch, "gr_wave_scale", False),

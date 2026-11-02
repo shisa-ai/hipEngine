@@ -86,7 +86,7 @@ def test_the_m1_variant_is_selected_by_the_runner_decision() -> None:
     ) in normalized
     # The exact expert-grid gate still decides whether that family is selected
     # at all.
-    assert 'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID' in source
+    assert 'resolve_expert_grid_policy(expert_grid_policy).q5' in source
     # The dispatch resolves the selector's own answer rather than keeping a
     # second copy of the ladder.
     assert "_qwen4_exp_q51_down_key(" in inspect.getsource(

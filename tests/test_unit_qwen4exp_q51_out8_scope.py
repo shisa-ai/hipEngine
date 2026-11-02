@@ -171,7 +171,7 @@ def test_the_selector_reads_the_field_and_no_process_key() -> None:
     # The rung still reads the parameter and still sits below the expert-grid
     # family and above the pair2 preemptor.
     assert "elif q51_out8:" in source
-    assert source.index(EXPERT_GRID_ENV) < source.index("elif q51_out8:")
+    assert source.index('resolve_expert_grid_policy(expert_grid_policy).q5') < source.index("elif q51_out8:")
     assert source.index("elif q51_out8:") < source.index(
         "qwen4_exp_q51_pair_prefill_selected(")
 
@@ -202,7 +202,7 @@ def test_the_ladder_around_the_rung_is_unchanged() -> None:
     }
     assert GRID64_VARIANT in literals
     assert M1_VARIANT in literals
-    assert EXPERT_GRID_ENV in source
+    assert 'resolve_expert_grid_policy(expert_grid_policy).q5' in source
     # The pair2 preemptor and every fold sibling survive.
     for rung in ("qwen4_exp_q51_pair_prefill_selected", "q51_fold128_prefill",
                  "q51_fold_pair_prefill", "q51_register_cache",
@@ -233,9 +233,9 @@ def test_the_q4_side_and_its_out4_switch_are_out_of_scope() -> None:
     dispatch = inspect.getsource(runner_module.run_qwen4_exp_moe)
     selector = inspect.getsource(runner_module._qwen4_exp_q51_down_key)
     q4_selector = inspect.getsource(runner_module._qwen4_exp_q4_gate_up_key)
-    assert dispatch.count(EXPERT_GRID_ENV) == 0   # both ladders read it locally
-    assert selector.count(EXPERT_GRID_ENV) == 1   # the Q5_1 down rung
-    assert q4_selector.count(EXPERT_GRID_ENV) == 1  # the Q4 gate/up rung
+    assert dispatch.count(EXPERT_GRID_ENV) == 0
+    assert 'resolve_expert_grid_policy(expert_grid_policy).q5' in selector
+    assert 'resolve_expert_grid_policy(expert_grid_policy).q4' in q4_selector
     # The Q4 rung's own switch is the owning runner's field now, not a process
     # key: no module reads the retired name.
     assert Q4_OUT4_ENV not in dispatch
@@ -344,12 +344,14 @@ def test_the_batch_capture_key_carries_the_field() -> None:
         q5k_row4_prefill=False,
     )
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, False, True, True, True, True, False, False,
+        False, False, False, False, True, False, False, True, True, True, True,
+        runner_module.resolve_expert_grid_policy(None), False, False,
         False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
 
     owner.q51_out8 = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
-        False, False, False, False, True, False, False, False, True, True, True, False, False,
+        False, False, False, False, True, False, False, False, True, True, True,
+        runner_module.resolve_expert_grid_policy(None), False, False,
         False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
 
 

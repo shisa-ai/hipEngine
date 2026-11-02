@@ -123,6 +123,7 @@ from hipengine.runtime.qwen4_exp_batch_state import (
     Qwen4ExpBatchStepMetadata,
 )
 from hipengine.runtime.qwen4_exp_runner import (
+    ExpertGridPolicy, resolve_expert_grid_policy,
     _qwen4_exp_q8_tile_scope,
     _resolve_production_moe_prefill_enabled,
     _resolve_q4_dp4a_decode,
@@ -406,6 +407,7 @@ def run_qwen4_exp_batch_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
@@ -532,6 +534,7 @@ def run_qwen4_exp_batch_gdn_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            expert_grid_policy=expert_grid_policy,
             moe_decode_warp=moe_decode_warp,
             q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
@@ -657,6 +660,7 @@ def _run_layer_ffn(
     weights: object,
     scratch: object,
     *,
+    expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     gr_wave_scale: bool = False,
@@ -747,6 +751,7 @@ def _run_layer_ffn(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        expert_grid_policy=expert_grid_policy,
         moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
@@ -801,6 +806,7 @@ def run_qwen4_exp_batch_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
@@ -935,6 +941,7 @@ def run_qwen4_exp_batch_qsa_layer(
             mixer_output.ptr,
             weights,
             scratch,
+            expert_grid_policy=expert_grid_policy,
             moe_decode_warp=moe_decode_warp,
             q4_pair_prefill=q4_pair_prefill,
             q51_pair_prefill=q51_pair_prefill,
@@ -1066,6 +1073,7 @@ class Qwen4ExpGGUFBatchRunner:
     # profile binder: the captured MoE segment bakes its gate/up launch in, so
     # this belongs in the capture key like the Q5_1 rungs above.
     q4_out4: bool = True
+    expert_grid_policy: ExpertGridPolicy | None = None
     q4_bundle_prefill: bool = False
     q4_pair_prefill: bool = False
     # The Q4 DP4A decode pair is the owning runner's decision. ``None``
@@ -2060,6 +2068,7 @@ class Qwen4ExpGGUFBatchRunner:
             bool(self.q4_exact_grouped_gate),
             bool(self.q4_exact_grouped_all),
             bool(self.q4_out4),
+            resolve_expert_grid_policy(getattr(self, 'expert_grid_policy', None)),
             bool(getattr(self, "q4_bundle_prefill", False)),
             bool(getattr(self, "q4_pair_prefill", False)),
             bool(self.forkb_grouped_down),
@@ -2329,6 +2338,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_gdn_layer(
                     residual_ptr,
                     gdn_binding,
+                    expert_grid_policy=self.expert_grid_policy,
                     moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     q4_pair_prefill=self.q4_pair_prefill,
@@ -2388,6 +2398,7 @@ class Qwen4ExpGGUFBatchRunner:
                 residual_ptr = run_qwen4_exp_batch_qsa_layer(
                     residual_ptr,
                     qsa_binding,
+                    expert_grid_policy=self.expert_grid_policy,
                     moe_decode_warp=self.moe_decode_warp,
                     routed_f16_enabled=self.routed_f16_enabled,
                     q4_pair_prefill=self.q4_pair_prefill,

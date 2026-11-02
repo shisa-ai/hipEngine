@@ -224,6 +224,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.qsa_flash_prefill_policy = None
         self.q8_dense_wide_policy = None
         self.raw_prefill_policy = None
+        self.expert_grid_policy = None
         # QSA ordered sparse decode is request-local too; the binder
         # republishes it with the rest. The ordered-v2 leaf rides it and is
         # published independently.
@@ -444,6 +445,7 @@ class Qwen4ExpGGUFTextGenerator:
             qsa_flash_prefill_policy=self.qsa_flash_prefill_policy,
             q8_dense_wide_policy=self.q8_dense_wide_policy,
             raw_prefill_policy=self.raw_prefill_policy,
+            expert_grid_policy=self.expert_grid_policy,
         )
 
     server_plain_ar_max_active_requests = QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
@@ -1079,6 +1081,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q8_wmma_layer_scope = getattr(
         generator, "q8_wmma_layer_scope", None)
     runner.raw_prefill_policy = getattr(generator, 'raw_prefill_policy', None)
+    runner.expert_grid_policy = getattr(generator, 'expert_grid_policy', None)
     runner.q8_dense_wide_policy = getattr(
         generator, "q8_dense_wide_policy", None)
     runner.q4_bundle_prefill = bool(getattr(generator, "q4_bundle_prefill", False))

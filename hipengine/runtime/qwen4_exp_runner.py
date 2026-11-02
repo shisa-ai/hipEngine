@@ -5231,6 +5231,50 @@ def _qwen4_exp_q51_row_publish_key(
     return candidate if is_registered(candidate) else key
 
 
+@dataclass(frozen=True)
+class ExpertGridPolicy:
+    """Independent Q4 gate/up and Q5_1 down expert-grid family choices."""
+    q4: bool = True
+    q5: bool = True
+
+    def __post_init__(self):
+        if type(self.q4) is not bool or type(self.q5) is not bool:
+            raise ValueError('expert-grid family choices must be booleans')
+
+    def to_report(self):
+        return {'q4': self.q4, 'q5': self.q5}
+
+
+def resolve_expert_grid_policy(policy: ExpertGridPolicy | None) -> ExpertGridPolicy:
+    """Prefer typed execution state while legacy diagnostic callers migrate."""
+    if policy is not None:
+        if not isinstance(policy, ExpertGridPolicy):
+            raise TypeError('expert_grid_policy must be an ExpertGridPolicy or None')
+        return policy
+    raw = os.environ.get('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', '64')
+    return ExpertGridPolicy(raw in {'64', 'q4'}, raw in {'64', 'q5'})
+
+
+@contextlib.contextmanager
+def expert_grid_policy(owner: Any, policy: ExpertGridPolicy | None):
+    """Bind generator/current runner family choices and restore on exit."""
+    if policy is not None and not isinstance(policy, ExpertGridPolicy):
+        raise TypeError('expert_grid_policy must be an ExpertGridPolicy or None')
+    missing = object()
+    prior = [(target, getattr(target, 'expert_grid_policy', missing))
+             for target in _q8_mmq_prefill_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.expert_grid_policy = policy
+        yield
+    finally:
+        for target, previous in prior:
+            if previous is missing:
+                delattr(target, 'expert_grid_policy')
+            else:
+                target.expert_grid_policy = previous
+
+
 def _qwen4_exp_q51_down_key(
     *,
     backend: str,
@@ -5244,6 +5288,7 @@ def _qwen4_exp_q51_down_key(
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    expert_grid_policy: ExpertGridPolicy | None = None,
 ) -> KernelKey:
     """The exact grouped Q5_1 down owner, before its own resolve.
 
@@ -5262,9 +5307,7 @@ def _qwen4_exp_q51_down_key(
     preemptor keeps the parent - but they are read here rather than assumed.
     """
 
-    if os.environ.get(
-        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
-    ) in {"64", "q5"}:
+    if resolve_expert_grid_policy(expert_grid_policy).q5:
         variant = (
             "selected_grouped_prefill_compact_rowbatch8_out8_"
             "expertgrid64_m1_bf16_bf16_out"
@@ -6411,6 +6454,7 @@ def _qwen4_exp_q4_gate_up_key(
     q4_out4: bool = True,
     q4_bundle_prefill: bool = False,
     q4_pair_prefill: bool = False,
+    expert_grid_policy: ExpertGridPolicy | None = None,
 ) -> KernelKey:
     """The exact grouped Q4_K gate/up owner, before its own launch.
 
@@ -6432,9 +6476,7 @@ def _qwen4_exp_q4_gate_up_key(
     wrapper registered on one of these keys sees the launch the dispatch makes.
     """
 
-    expert_grid64 = os.environ.get(
-        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
-    ) in {"64", "q4"}
+    expert_grid64 = resolve_expert_grid_policy(expert_grid_policy).q4
     if expert_grid64:
         variant = "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
     elif q4_out4:
@@ -7105,6 +7147,7 @@ def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
     *,
+    expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
     q4_pair_prefill: bool = False,
@@ -7280,6 +7323,7 @@ def run_qwen4_exp_moe(
             run_qwen4_exp_moe(
                 mixed_ptr,
                 weights,
+                expert_grid_policy=expert_grid_policy,
                 moe_decode_warp=moe_decode_warp,
                 routed_f16_enabled=routed_f16_enabled,
                 q4_pair_prefill=q4_pair_prefill,
@@ -7712,6 +7756,7 @@ def run_qwen4_exp_moe(
                 )
             else:
                 grouped_q4_key = _qwen4_exp_q4_gate_up_key(
+                    expert_grid_policy=expert_grid_policy,
                     backend=backend,
                     quant=weights["expert_gate"].spec.quant_key,
                     rows=rows, in_features=hidden,
@@ -8066,6 +8111,7 @@ def run_qwen4_exp_moe(
                     )
                 else:
                     grouped_q5_key = _qwen4_exp_q51_down_key(
+                        expert_grid_policy=expert_grid_policy,
                         backend=backend,
                         quant=weights["expert_down"].spec.quant_key,
                         rows=rows, in_features=ffn,
@@ -8600,6 +8646,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    expert_grid_policy: ExpertGridPolicy | None = None,
     gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
@@ -8768,6 +8815,7 @@ def run_qwen4_exp_dense_qsa_layer(
     )
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
+        expert_grid_policy=expert_grid_policy,
         moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
@@ -8822,6 +8870,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    expert_grid_policy: ExpertGridPolicy | None = None,
     gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
@@ -9043,6 +9092,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     moe = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        expert_grid_policy=expert_grid_policy,
         moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
@@ -9111,6 +9161,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    expert_grid_policy: ExpertGridPolicy | None = None,
     gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
@@ -9408,6 +9459,7 @@ def run_qwen4_exp_gdn_layer(
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
+        expert_grid_policy=expert_grid_policy,
         moe_decode_warp=moe_decode_warp,
         routed_f16_enabled=routed_f16_enabled,
         q4_pair_prefill=q4_pair_prefill,
@@ -10345,6 +10397,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # None preserves unbound environment diagnostics until the binder migrates.
     q8_dense_wide_policy: Q8DenseWidePolicy | None = None
     raw_prefill_policy: RawPrefillPolicy | None = None
+    expert_grid_policy: ExpertGridPolicy | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -10609,6 +10662,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None,
         q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
         raw_prefill_policy: RawPrefillPolicy | None = None,
+        expert_grid_policy: ExpertGridPolicy | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
@@ -10639,6 +10693,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.qsa_flash_prefill_policy = qsa_flash_prefill_policy
         self.q8_dense_wide_policy = q8_dense_wide_policy
         self.raw_prefill_policy = raw_prefill_policy
+        self.expert_grid_policy = expert_grid_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
                 "Qwen4Exp runner max_sequence_length must be in "
@@ -11911,6 +11966,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank,
                     num_k_heads=cfg.gdn_group_count,
+                    expert_grid_policy=self.expert_grid_policy,
                     num_v_heads=cfg.gdn_time_step_rank,
                     head_dim=cfg.gdn_state_size,
                     conv_kernel=cfg.gdn_conv_kernel,
@@ -11979,6 +12035,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank,
                     query_heads=cfg.attention_head_count,
+                    expert_grid_policy=self.expert_grid_policy,
                     kv_heads=cfg.attention_kv_head_count,
                     head_dim=cfg.attention_key_length,
                     rotary_dim=cfg.rope_dimension_count,
@@ -12333,6 +12390,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank,
                     num_k_heads=cfg.gdn_group_count,
+                    expert_grid_policy=self.expert_grid_policy,
                     num_v_heads=cfg.gdn_time_step_rank,
                     head_dim=cfg.gdn_state_size,
                     conv_kernel=cfg.gdn_conv_kernel,
@@ -12408,6 +12466,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank,
                     query_heads=cfg.attention_head_count,
+                    expert_grid_policy=self.expert_grid_policy,
                     kv_heads=cfg.attention_kv_head_count,
                     head_dim=cfg.attention_key_length,
                     rotary_dim=cfg.rope_dimension_count,

@@ -672,6 +672,7 @@ def make_qwen4_exp_ar_batch_runner(
     batch.q4_exact_grouped_all = bool(
         getattr(generator, "q4_exact_grouped_all", True))
     batch.q4_out4 = bool(getattr(generator, "q4_out4", True))
+    batch.expert_grid_policy = getattr(generator, 'expert_grid_policy', None)
     # The Q4 DP4A decode pair is request-local too. ``None`` on both fields is
     # the direct/unbound fallback; a bound pair travels as-is so a batch c1
     # segment never reads the ambient process keys the generator has replaced.

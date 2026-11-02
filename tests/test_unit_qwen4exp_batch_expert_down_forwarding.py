@@ -29,6 +29,7 @@ from hipengine.generation.qwen4_exp_ar_batch import QWEN4_EXP_MAX_BATCH_ROWS
 from hipengine.runtime import qwen4_exp_batch_runner as runner_module
 from hipengine.runtime.qwen4_exp_batch_runner import Qwen4ExpGGUFBatchRunner
 from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down, resolve_q51_iu8_exact, resolve_q4_iu8_exact, resolve_q4_iu8_prefill, resolve_q4_iu8_layers, resolve_q4_iu8_planes, resolve_q4_iu8_risk_mult, resolve_q5k_iu8_exact
+from hipengine.runtime.qwen4_exp_runner import ExpertGridPolicy, resolve_expert_grid_policy
 from tests.test_unit_qwen4exp_batch_runner import _fake_runner, _install_step_fakes
 
 #: The exact grouped Q5_1 down chain's own gate. It precedes the rungs whose
@@ -82,6 +83,11 @@ UNBOUND_DEFAULTS = {
         Q4_OUT4_FIELD)
     for field in POLICY_FIELDS
 }
+
+
+def _capture_decisions(values):
+    """Insert typed family policy between out4 and bundle decisions."""
+    return tuple(values[:11]) + (resolve_expert_grid_policy(None),) + tuple(values[11:])
 
 
 def _recording_layers(monkeypatch, *, publish: bool) -> list[tuple]:
@@ -163,8 +169,8 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
         # ``(layer, rows)`` plus the twelve decisions in publication order,
         # then the compact F16 Q4_K gate/up tile pair the segment bakes in.
         assert key[1] == width
-        assert key[2:2 + len(POLICY_FIELDS)] == policy
-        assert key[2 + len(POLICY_FIELDS):] == (
+        assert key[2:3 + len(POLICY_FIELDS)] == _capture_decisions(policy)
+        assert key[3 + len(POLICY_FIELDS):] == (
             (frozenset(), getattr(runner, "router_producer_variant", None),
              getattr(runner, "q8_down_variant", None),
              resolve_q8_selected_down(runner), resolve_q4_iu8_prefill(runner),
@@ -217,8 +223,8 @@ def test_a_flipped_rung_changes_the_capture_key(monkeypatch, field):
     assert flipped, "the second step dispatched no layer"
     for before, after in zip(baseline, flipped):
         assert before != after, field
-        assert after[2:2 + len(POLICY_FIELDS)] == tuple(
-            False if name == field else True for name in POLICY_FIELDS)
+        assert after[2:3 + len(POLICY_FIELDS)] == _capture_decisions(tuple(
+            False if name == field else True for name in POLICY_FIELDS))
 
 
 def test_an_unbound_runner_forwards_every_parent():
@@ -227,8 +233,8 @@ def test_an_unbound_runner_forwards_every_parent():
     # on, so an unbound owner keeps the production chain rather than closing it
     # or dropping to the output1 base.
     runner = object.__new__(Qwen4ExpGGUFBatchRunner)
-    assert runner._expert_down_policy() == tuple(
-        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS) + (frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
+    assert runner._expert_down_policy() == _capture_decisions(tuple(
+        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS)) + (frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
     assert runner._expert_down_policy()[POLICY_FIELDS.index(CHAIN_GATE_FIELD)]
 
 
@@ -248,12 +254,13 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q8_down_bundle_prefill = ""
     runner.q5k_row4_prefill = False
     assert runner._expert_down_policy() == (
-        True, False, True, False, False, True, False, True, True, False, False, False, False,
+        True, False, True, False, False, True, False, True, True, False, False,
+        resolve_expert_grid_policy(None), False, False,
         False, True, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
-    assert runner._expert_down_policy() == tuple(
-        bool(getattr(runner, field)) for field in POLICY_FIELDS) + (
+    assert runner._expert_down_policy() == _capture_decisions(tuple(
+        bool(getattr(runner, field)) for field in POLICY_FIELDS)) + (
             frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
 
 
