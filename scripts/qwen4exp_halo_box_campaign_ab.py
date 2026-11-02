@@ -1752,6 +1752,13 @@ def _combined_scope(*scopes):
         yield
 
 
+def mmq_planes_control_record(runner=None):
+    """Describe the explicit F32-only plane arm."""
+    return {'runner_field': 'q8_mmq_f32_planes', 'before': 3, 'after': 2,
+            'effective_f32_planes': getattr(runner, 'q8_mmq_f32_planes', None),
+            'scope': 'per measured run; restored on exit'}
+
+
 def mmq_prepack_control_record(runner=None):
     """Describe the prepack arm and its shared MMQ workspace prerequisite."""
     return {
@@ -1856,6 +1863,14 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         policy = (GRIU8Policy(mode == 'after', prior.down) if route_package == 'gr-iu8'
                   else GRIU8Policy(prior.up, mode == 'after'))
         return gr_iu8(runner, policy)
+
+    if route_package == 'q8-mmq-planes2':
+        if mode not in {'before', 'after'}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError('q8-mmq-planes2 needs the owning runner')
+        from hipengine.runtime.qwen4_exp_runner import q8_mmq_f32_planes
+        return q8_mmq_f32_planes(runner, 2 if mode == 'after' else 3)
 
     if route_package == "q8-mmq-prepack":
         if mode not in {"before", "after"}:
@@ -2295,9 +2310,7 @@ def _apply_mode(
     if route_package == "q8-mmq-planes2":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        environment["HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES"] = (
-            "2" if mode == "after" else "3")
-        return
+        return  # route_scope binds the explicit F32 plane choice.
     if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -3188,6 +3201,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         start_owners = dict(mapped_owner_calls)
         start_leaves = dict(pf13_calls)
         with route_scope(args.route_package, mode, generator.runner):
+            if args.route_package == 'q8-mmq-planes2':
+                artifact['selection_control'] = mmq_planes_control_record(generator.runner)
             row = _hipengine_case_sample(
                 generator.runner, case=case, repetition=repetition, transitions=transitions)
             if args.route_package in {'gr-iu8', 'gr-iu8-down'}:

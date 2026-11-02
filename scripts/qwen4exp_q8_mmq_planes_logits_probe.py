@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """#28 R12 d4x2 MMQ-plane candidate logits envelope probe.
 
-The Q8 MMQ plane policy (HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES) resolves once
-at generator construction, so arms cannot switch in-process. This probe
-runs each arm in a SUBPROCESS (fixed env per process) and aggregates:
+The probe runs each arm in a subprocess with explicit owner plane control
+and aggregates:
 
 - arm ``incumbent``: planes=3 (retained d4x3), two in-process repeats,
   repeat A supplies the shared teacher chain;
@@ -38,9 +37,16 @@ from scripts.qwen4exp_canonical_ar_bench import (
     DEFAULT_FIXTURE, load_fixture, _git_metadata, _host_metadata,
 )
 
-PLANES_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES"
 MODEL_ROOT = Path(
     "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL")
+
+
+def plane_arm_scope(generator, arm):
+    """Bind one diagnostic arm without changing ambient plane input."""
+    from hipengine.runtime.qwen4_exp_runner import q8_mmq_f32_planes
+    if arm not in {'incumbent', 'candidate'}:
+        raise ValueError(f"invalid plane arm {arm!r}")
+    return q8_mmq_f32_planes(generator, 3 if arm == 'incumbent' else 2)
 
 
 def _forced_logits(generator, token_ids, steps, forced=None):
@@ -60,12 +66,11 @@ def _forced_logits(generator, token_ids, steps, forced=None):
 
 
 def run_arm(args) -> None:
-    """One subprocess: fixed planes env, two repeats per case, save npz."""
+    """One subprocess: explicit owner planes, two repeats per case, save npz."""
 
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     planes = "3" if args.arm == "incumbent" else "2"
-    os.environ[PLANES_ENV] = planes
 
     from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
@@ -98,6 +103,26 @@ def run_arm(args) -> None:
     teacher = None
     if args.teacher is not None:
         teacher = np.load(args.teacher)
+    try:
+        with plane_arm_scope(generator, args.arm):
+            payload = collect_cases(generator, args, fixture, teacher)
+    finally:
+        generator.close()
+    np.savez_compressed(args.arm_output,
+                         **{f"{cid}__{field}": entry[field]
+                            for cid, entry in payload.items() for field in
+                            ("chain", "logits_a", "logits_b")})
+    args.arm_output.with_suffix(".json").write_text(json.dumps({
+        "arm": args.arm, "planes": planes, "cases": sorted(payload),
+        "fixture_sha256": digest, "decode_steps": args.decode_steps,
+        "selection_control": {"runner_field": "q8_mmq_f32_planes",
+                              "effective_f32_planes": int(planes)},
+        "source": _git_metadata(ROOT),
+    }, indent=1))
+
+
+def collect_cases(generator, args, fixture, teacher):
+    """Collect repeats under the caller's explicit plane scope."""
     payload = {}
     for case in fixture["cases"]:
         if args.case_id and case["id"] not in args.case_id:
@@ -124,15 +149,7 @@ def run_arm(args) -> None:
         }
         print(json.dumps({"arm": args.arm, "id": case["id"],
                           "deterministic": deterministic}), flush=True)
-    np.savez_compressed(args.arm_output,
-                         **{f"{cid}__{field}": entry[field]
-                            for cid, entry in payload.items() for field in
-                            ("chain", "logits_a", "logits_b")})
-    args.arm_output.with_suffix(".json").write_text(json.dumps({
-        "arm": args.arm, "planes": planes, "cases": sorted(payload),
-        "fixture_sha256": digest, "decode_steps": args.decode_steps,
-        "source": _git_metadata(ROOT),
-    }, indent=1))
+    return payload
 
 
 def orchestrate(args) -> None:
@@ -173,7 +190,7 @@ def orchestrate(args) -> None:
         "kind": "qwen4exp_q8_mmq_planes_logits_probe",
         "source": _git_metadata(ROOT), "host": _host_metadata(),
         "command": sys.argv,
-        "route": "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES 2 (d4x2) vs 3 (d4x3)",
+        "route": "q8_mmq_f32_planes: 2 (d4x2) vs 3 (d4x3)",
         "comparison": "production incumbent (d4x3)",
         "decode_steps": args.decode_steps,
         "fixture_sha256": inc_meta.get("fixture_sha256"),

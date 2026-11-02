@@ -10,8 +10,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'campaign', 'probe'])
 @pytest.mark.parametrize('length', [73, 273, 517])
-def test_public_mmq_planes_owner(monkeypatch, length):
+def test_public_mmq_planes_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.runtime import gguf_linear as linear
@@ -51,7 +52,15 @@ def test_public_mmq_planes_owner(monkeypatch, length):
             owner.runner.configure_mmq_prefill_resources()
             for planes in (2, 3):
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES', str(5 - planes))
-                with runtime.q8_mmq_f32_planes(owner, planes):
+                if interface == 'campaign':
+                    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+                    scope = route_scope('q8-mmq-planes2', 'after' if planes == 2 else 'before', owner)
+                elif interface == 'probe':
+                    from scripts.qwen4exp_q8_mmq_planes_logits_probe import plane_arm_scope
+                    scope = plane_arm_scope(owner, 'candidate' if planes == 2 else 'incumbent')
+                else:
+                    scope = runtime.q8_mmq_f32_planes(owner, planes)
+                with scope:
                     repeats = []
                     for _ in range(2):
                         policies.clear()
