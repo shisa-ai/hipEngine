@@ -3591,12 +3591,15 @@ Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
 Scope: direct/unbound Qwen4Exp route fallbacks.
 
-The profile-binding migration is complete. Finish the separate direct/unbound
-caller inventory before removing compatibility fallbacks. The paired QSA flash
-policy remains. Keep explicit owner diagnostic scopes and their
-requested/effective reports. Remove a fallback only after every in-tree direct
-consumer supplies its explicit owner choice and targeted public route/repeat/
-teardown checks pass; absence of profile writes alone is not that inventory.
+The profile-binding migration and the enumerated direct/unbound route
+fallback removals are complete, including paired GR IU8 and QSA flash policies.
+Keep explicit owner diagnostic scopes and their requested/effective reports.
+Inventory the remaining runtime environment reads separately: distinguish
+unmigrated owner settings from initialization inputs and diagnostics. The Q4
+DP4A direct-call parser remains under R0023; its numerical repair is separate
+from transport. Remove a fallback only after every in-tree direct consumer
+supplies its explicit owner choice and targeted public route/repeat/teardown
+checks pass; absence of profile writes alone is not that inventory.
 
 ```bash
 python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json

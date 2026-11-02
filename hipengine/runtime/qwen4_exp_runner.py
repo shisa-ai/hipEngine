@@ -3079,15 +3079,11 @@ def qsa_flash_prefill_selected(
     weight: GGUFDeviceWeight, policy: QSAFlashPrefillPolicy | None, *,
     dense_rows: int = 1, head_dim: int = 256, kv_heads: int = 2,
 ) -> bool:
-    """Keep geometry guards and the unbound legacy environment parser."""
+    """Apply explicit owner policy after geometry guards; unbound calls stay off."""
     if dense_rows <= 0 or head_dim != 256 or kv_heads * head_dim != 512:
         return False
-    if policy is None:
-        enabled = os.environ.get("HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL", "0") not in {"", "0", "false", "False"}
-        layers = os.environ.get("HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS", "all")
-    else:
-        enabled, layers = policy.enabled, policy.layers
-    return enabled and _qwen4_exp_layer_scope_contains(weight.spec.slot_path, layers)
+    return policy is not None and policy.enabled and _qwen4_exp_layer_scope_contains(
+        weight.spec.slot_path, policy.layers)
 
 
 def run_qwen4_exp_qsa_prefill_token_mixer(

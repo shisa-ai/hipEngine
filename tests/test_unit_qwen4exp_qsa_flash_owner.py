@@ -36,10 +36,10 @@ def test_flash_scope_restores_absence_runner_and_clone(monkeypatch):
     assert owner.runner.qsa_flash_prefill_policy is None
 
 
-def test_unbound_flash_policy_uses_legacy_parser(monkeypatch):
+@pytest.mark.parametrize('enabled', ['0', 'false', 'yes'])
+@pytest.mark.parametrize('layers', ['all', '2,35-47', ''])
+def test_unbound_flash_policy_ignores_ambient_pair(monkeypatch, enabled, layers):
     weight = SimpleNamespace(spec=SimpleNamespace(slot_path='layers.35.attn_q'))
-    monkeypatch.setenv(ENV, 'false')
+    monkeypatch.setenv(ENV, enabled)
+    monkeypatch.setenv(LAYERS, layers)
     assert not runtime.qsa_flash_prefill_selected(weight, None)
-    monkeypatch.setenv(ENV, 'yes')
-    monkeypatch.setenv(LAYERS, '2,35-47')
-    assert runtime.qsa_flash_prefill_selected(weight, None)
