@@ -3592,8 +3592,8 @@ Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 Scope: direct/unbound Qwen4Exp route fallbacks.
 
 The profile-binding migration is complete. Finish the separate direct/unbound
-caller inventory before removing compatibility fallbacks. Include the GR IU8
-pair and paired QSA flash policy. Keep explicit owner diagnostic scopes and their
+caller inventory before removing compatibility fallbacks. The paired QSA flash
+policy remains. Keep explicit owner diagnostic scopes and their
 requested/effective reports. Remove a fallback only after every in-tree direct
 consumer supplies its explicit owner choice and targeted public route/repeat/
 teardown checks pass; absence of profile writes alone is not that inventory.

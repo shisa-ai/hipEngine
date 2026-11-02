@@ -6226,13 +6226,8 @@ class GRIU8Policy:
 
 
 def resolve_gr_iu8_policy(policy: GRIU8Policy | None) -> GRIU8Policy:
-    """Use explicit owner choices, or preserve the direct-call parser."""
-    if policy is not None:
-        return policy
-    def enabled(key):
-        return os.environ.get(key, '0') not in {'', '0', 'false', 'False'}
-    return GRIU8Policy(enabled('HIPENGINE_QWEN4_EXP_GR_IU8'),
-                       enabled('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'))
+    """Use explicit owner choices; unbound calls keep both parent projections."""
+    return GRIU8Policy(False, False) if policy is None else policy
 
 
 @contextlib.contextmanager

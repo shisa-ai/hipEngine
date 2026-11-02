@@ -30,10 +30,10 @@ def test_gap_gr_policy_preserves_omitted_axes(monkeypatch, overrides, expected):
     assert owner.gr_iu8_policy is owner.runner.gr_iu8_policy is prior
 
 
-def test_gap_unbound_no_override_does_not_freeze_process_fallback(monkeypatch):
+def test_gap_unbound_no_override_keeps_parent_without_binding(monkeypatch):
     monkeypatch.setenv(UP, '1')
     monkeypatch.setenv(DOWN, '0')
     owner = SimpleNamespace(gr_iu8_policy=None)
     with ExitStack() as stack:
-        assert gap.bind_gr_iu8_override(stack, owner, {})['gr_iu8_policy'] == {'up': True, 'down': False}
+        assert gap.bind_gr_iu8_override(stack, owner, {})['gr_iu8_policy'] == {'up': False, 'down': False}
         assert owner.gr_iu8_policy is None

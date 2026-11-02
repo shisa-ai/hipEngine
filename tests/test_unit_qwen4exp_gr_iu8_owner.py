@@ -30,12 +30,14 @@ def test_gr_iu8_scope_restores_distinct_values_and_absence():
     assert runner.gr_iu8_policy is prior
 
 
-def test_gr_iu8_unbound_legacy_parser(monkeypatch):
-    for raw, expected in [('0', False), ('false', False), ('yes', True)]:
-        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8', raw)
-        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', raw)
-        assert runtime._qwen4_exp_gr_iu8_enabled(389) is expected
-        assert runtime._qwen4_exp_gr_iu8_down_enabled(389) is expected
+@pytest.mark.parametrize('up', ['0', 'false', 'yes'])
+@pytest.mark.parametrize('down', ['0', 'false', 'yes'])
+def test_gr_iu8_unbound_ignores_ambient_pair(monkeypatch, up, down):
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8', up)
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', down)
+    assert runtime.resolve_gr_iu8_policy(None) == runtime.GRIU8Policy(False, False)
+    assert runtime._qwen4_exp_gr_iu8_enabled(389) is False
+    assert runtime._qwen4_exp_gr_iu8_down_enabled(389) is False
 
 
 def test_gr_iu8_constructor_accepts_policy_before_allocation():
