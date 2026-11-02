@@ -112,7 +112,7 @@ OUT8_SIBLING_FIELDS = (
 #:     production plan publishes it on;
 #:   * runner-local ``production_moe_prefill_enabled`` closes the chain gate
 #:     from rows>=16;
-#:   * ``HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT`` is the chain's own iu8-risk+repair
+#:   * ``runner.q4_iu8_exact_enabled`` is the chain's own iu8-risk+repair
 #:     owner above the ladder, published on by the production plan;
 #:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
 #:     with the expertgrid64 family (default ``64``);
@@ -125,7 +125,6 @@ OUT8_SIBLING_FIELDS = (
 #: the rest are the preemptors the arm must close to exercise it. The arm reports
 #: every binding it made rather than implying a single-route delta.
 Q4_OUT4_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
 )
 
@@ -141,7 +140,8 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
     ),
     "q4_out4": ((("q4_out4", False), ("q4_bundle_prefill", False),
                  ("q4_pair_prefill", False), ("routed_f16_enabled", False),
-                 ("production_moe_prefill_enabled", False)),
+                 ("production_moe_prefill_enabled", False),
+                 ("q4_iu8_exact_enabled", False)),
                 Q4_OUT4_PREEMPTING_ENV, "0"),
 }
 

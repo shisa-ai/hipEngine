@@ -581,8 +581,8 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     bindings, envs, off = module.RUNNER_ROUTE_OFF_WITH_ENV["q4_out4"]
     assert dict(bindings)[FIELD] is False
     assert off == "0"
-    assert set(envs) == {
-        IU8_EXACT_ENV, EXPERT_GRID_ENV}
+    assert set(envs) == {EXPERT_GRID_ENV}
+    assert dict(bindings)['q4_iu8_exact_enabled'] is False
     assert dict(bindings)["production_moe_prefill_enabled"] is False
     assert dict(bindings)["routed_f16_enabled"] is False
     assert dict(bindings)["q4_pair_prefill"] is False

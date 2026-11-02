@@ -2956,8 +2956,10 @@ same restoring owner choice. Campaign and state-gate exact-Q4 arms bind the
 measured owner and report its effective choice without process writes. The
 state gate checks the production prerequisite through that owner. The Q4 pair2
 comparison closes exact-IU8 preemption on the measured owner and records that
-choice, preserving the process input. Other profile and diagnostic process
-writers, plus the Q4 prefill/layer/risk controls, still need migration.
+choice, preserving the process input. The out4 ablation also closes exact-IU8
+through its declared runner bindings rather than its environment pins. Other
+profile and diagnostic process writers, plus the Q4 prefill/layer/risk controls,
+still need migration.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
