@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers', 'layers_gap'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -48,12 +48,18 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface == 'layers':
+                    if interface in {'layers', 'layers_gap'}:
                         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS',
                                            '999' if enabled else 'all')
                         scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, True))
-                        assert scopes.enter_context(runtime.q4_iu8_layers(
-                            target, 'all' if enabled else '999')) == ('all' if enabled else '999')
+                        layers = 'all' if enabled else '999'
+                        if interface == 'layers_gap':
+                            from scripts.qwen4exp_profile_gap import bind_q4_iu8_layers_override
+                            report = bind_q4_iu8_layers_override(scopes, target, {
+                                'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS': layers})
+                            assert report['q4_iu8_layers'] == layers
+                        else:
+                            assert scopes.enter_context(runtime.q4_iu8_layers(target, layers)) == layers
                     elif interface == 'profile':
                         from hipengine.generation.qwen4_exp_profiles import _publish_q4_prefill
                         scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, enabled))

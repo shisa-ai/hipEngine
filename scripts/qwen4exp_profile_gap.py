@@ -537,6 +537,7 @@ def _apply_post_binder_overrides(
                                 "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
                                 "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
+                                "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
                                 "HIPENGINE_QWEN4_EXP_GR_IU8",
                                 "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"}}
@@ -560,6 +561,20 @@ def bind_gr_iu8_override(
         policy = GRIU8Policy(enabled(up_key, policy.up), enabled(down_key, policy.down))
         stack.enter_context(gr_iu8(owner, policy))
     return {'gr_iu8_policy': {'up': policy.up, 'down': policy.down}}
+
+
+def bind_q4_iu8_layers_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, str | None]:
+    """Bind the requested layer scope and report its effective owner value."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q4_iu8_layers, resolve_q4_iu8_layers,
+    )
+    layers = overrides.get('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS')
+    if layers is not None:
+        stack.enter_context(q4_iu8_layers(owner, layers))
+    return {'q4_iu8_layers_override': layers,
+            'q4_iu8_layers': resolve_q4_iu8_layers(owner)}
 
 
 def bind_q4_iu8_prefill_override(
@@ -1123,6 +1138,7 @@ def main() -> None:
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
         report.update(bind_q4_iu8_prefill_override(q4_scope, generator, overrides))
+        report.update(bind_q4_iu8_layers_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_override(q4_scope, generator, overrides))
         report.update(bind_q51_iu8_override(q4_scope, generator, overrides))
         report.update(bind_gr_iu8_override(q4_scope, generator, overrides))

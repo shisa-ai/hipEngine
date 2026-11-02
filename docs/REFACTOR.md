@@ -2981,8 +2981,10 @@ prefill-only field. Profiles publish the same effective plain-prefill choice on
 the generator and runner without process writes, including UD recovery and
 strict fallback; direct unbound calls keep their environment fallback. Plain-Q4
 layer scope now has runtime owner transport through single/batch/mixed MoE calls,
-serving inheritance and captured-segment identity; diagnostic writers and profile
-publication still need migration. Q4 risk controls still need owner transport.
+serving inheritance and captured-segment identity. Profile-gap overrides bind
+that scope and report requested/effective values without process writes; other
+diagnostic writers and profile publication still need migration. Q4 risk controls
+still need owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
