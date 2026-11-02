@@ -2949,8 +2949,10 @@ writes; new runners inherit it. The state gate reads that owner premise. Other
 diagnostic callers still need migration; unbound callers retain their environment
 fallback. Exact Q4 IU8 enablement also accepts a restoring owner choice across
 resident, batch and mixed-target execution, inherited by new runners and included
-in capture identity. Its profile and diagnostic process writers, plus the Q4
-prefill/layer/risk controls, still need migration.
+in capture identity. Profile-gap binds its exact-Q4 override on the measured
+owner, reports the effective choice and preserves the process input. Other
+profile and diagnostic process writers, plus the Q4 prefill/layer/risk controls,
+still need migration.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
