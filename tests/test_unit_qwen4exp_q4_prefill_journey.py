@@ -58,6 +58,7 @@ def test_split_trajectory_measures_phase_choice_and_restores_on_failure(monkeypa
     import numpy as np
     from contextlib import nullcontext
     monkeypatch.setattr(journey, '_Q4_PREFILL_STRICT_VALUE', False)
+    monkeypatch.setattr(journey, '_Q4_LAYERS_STRICT_VALUE', '999')
     monkeypatch.setattr(journey, 'clear_arm_graphs', lambda runner: None)
     monkeypatch.setattr(journey, 'set_flags', lambda flags: None)
     for name in ('gr_iu8_split_scope', 'selected_down_split_scope', 'flash_split_scope',
@@ -68,21 +69,22 @@ def test_split_trajectory_measures_phase_choice_and_restores_on_failure(monkeypa
                  'gdn_colwarps_split_scope', 'qsa_ordered_split_scope'):
         monkeypatch.setattr(journey, name, lambda *a, **k: nullcontext())
     observed = []
-    owner = SimpleNamespace(q4_iu8_prefill_enabled=True, reset=lambda: None)
+    owner = SimpleNamespace(q4_iu8_prefill_enabled=True, q4_iu8_layers='all', reset=lambda: None)
     def prefill(ids):
-        observed.append(owner.q4_iu8_prefill_enabled)
+        observed.append((owner.q4_iu8_prefill_enabled, owner.q4_iu8_layers))
         return SimpleNamespace(logits=np.zeros(2))
     def step(token):
-        observed.append(owner.q4_iu8_prefill_enabled)
+        observed.append((owner.q4_iu8_prefill_enabled, owner.q4_iu8_layers))
         raise RuntimeError('step failed')
     owner.prefill, owner.step = prefill, step
-    for arm, expected in [('strict_prefill_production_decode', [False, True]),
-                          ('production_prefill_strict_decode', [True, False])]:
+    for arm, expected in [('strict_prefill_production_decode', [(False, '999'), (True, 'all')]),
+                          ('production_prefill_strict_decode', [(True, 'all'), (False, '999')])]:
         observed.clear()
         with pytest.raises(RuntimeError, match='step failed'):
             journey.split_trajectory(owner, [1], [2], {}, {}, arm=arm)
         assert observed == expected
         assert owner.q4_iu8_prefill_enabled is True
+        assert owner.q4_iu8_layers == 'all'
 
 
 def test_journey_q4_wiring_and_phase_reports():

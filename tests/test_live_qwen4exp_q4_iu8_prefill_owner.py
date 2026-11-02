@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers', 'layers_gap', 'layers_candidate'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers', 'layers_gap', 'layers_candidate', 'layers_journey'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -48,12 +48,19 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface in {'layers', 'layers_gap', 'layers_candidate'}:
+                    if interface in {'layers', 'layers_gap', 'layers_candidate', 'layers_journey'}:
                         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS',
                                            '999' if enabled else 'all')
                         scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, True))
                         layers = 'all' if enabled else '999'
-                        if interface == 'layers_candidate':
+                        if interface == 'layers_journey':
+                            from scripts import qwen4exp_journey_localize as journey
+                            flags = journey.q4_layers_snapshot({}, published=layers)
+                            choices = journey.migrate_q4_layers_arms(
+                                {'public': flags}, production_value='ambient')
+                            monkeypatch.setattr(journey, '_Q4_LAYERS_ARM_VALUES', choices)
+                            assert scopes.enter_context(journey.q4_layers_arm_scope(target, 'public')) == layers
+                        elif interface == 'layers_candidate':
                             from dataclasses import replace
                             from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, candidate_q4_prefill_scope
                             spec = replace(CANDIDATES['production_baseline'], q4_iu8_layers=layers)

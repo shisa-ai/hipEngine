@@ -838,6 +838,43 @@ def gr_iu8_split_scope(owner, arm, phase):
     return gr_iu8(owner, _GR_IU8_STRICT_POLICY)
 
 
+_Q4_LAYERS_ENV = PREFIX + 'Q4_IU8_LAYERS'
+_Q4_LAYERS_ARM_VALUES = {}
+_Q4_LAYERS_STRICT_VALUE = 'all'
+
+
+def q4_layers_snapshot(flags, *, published):
+    """Carry the owner's layer scope through snapshot family overlays."""
+    return {**flags, _Q4_LAYERS_ENV: published}
+
+
+def migrate_q4_layers_arms(arms, *, production_value, declared=None):
+    """Extract scopes after overlays, preserving explicit empty values."""
+    declared = declared or {}
+    values = {}
+    for name, env in arms.items():
+        layers = env.pop(_Q4_LAYERS_ENV, production_value)
+        values[name] = declared.get(name, layers)
+    return values
+
+
+@contextmanager
+def q4_layers_arm_scope(owner, arm):
+    """Bind the reconstructed layer scope and restore each affected owner."""
+    from hipengine.runtime.qwen4_exp_runner import q4_iu8_layers, resolve_q4_iu8_layers
+    layers = _Q4_LAYERS_ARM_VALUES.get(arm, resolve_q4_iu8_layers(owner))
+    with q4_iu8_layers(owner, layers):
+        yield layers
+
+
+def q4_layers_split_scope(owner, arm, phase):
+    """Replace the scope only during the split arm's strict phase."""
+    if arm not in SPLIT_PHASE_ARMS or not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    from hipengine.runtime.qwen4_exp_runner import q4_iu8_layers
+    return q4_iu8_layers(owner, _Q4_LAYERS_STRICT_VALUE)
+
+
 _Q4_PREFILL_ENV = PREFIX + 'Q4_IU8_PREFILL'
 _Q4_PREFILL_ARM_VALUES = {}
 _Q4_PREFILL_STRICT_VALUE = False
@@ -1226,7 +1263,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with q4_prefill_split_scope(runner, arm, 'prefill'), gr_iu8_split_scope(runner, arm, 'prefill'), selected_down_split_scope(runner, arm, 'prefill'), flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+    with q4_layers_split_scope(runner, arm, 'prefill'), q4_prefill_split_scope(runner, arm, 'prefill'), gr_iu8_split_scope(runner, arm, 'prefill'), selected_down_split_scope(runner, arm, 'prefill'), flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
@@ -1247,7 +1284,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with q4_prefill_split_scope(runner, arm, 'decode'), gr_iu8_split_scope(runner, arm, 'decode'), selected_down_split_scope(runner, arm, 'decode'), flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
+    with q4_layers_split_scope(runner, arm, 'decode'), q4_prefill_split_scope(runner, arm, 'decode'), gr_iu8_split_scope(runner, arm, 'decode'), selected_down_split_scope(runner, arm, 'decode'), flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"), gr_dpp_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
@@ -1293,8 +1330,10 @@ def main():
         strict_ordered = resolve_qsa_ordered_decode(strict_generator.runner)
         strict_flags = strict_environment(os.environ)
         global _FLASH_STRICT_POLICY, _SELECTED_DOWN_STRICT_VALUE, _GR_IU8_STRICT_POLICY
-        global _Q4_PREFILL_STRICT_VALUE
-        from hipengine.runtime.qwen4_exp_runner import resolve_q4_iu8_prefill
+        global _Q4_PREFILL_STRICT_VALUE, _Q4_LAYERS_STRICT_VALUE
+        from hipengine.runtime.qwen4_exp_runner import resolve_q4_iu8_prefill, resolve_q4_iu8_layers
+        _Q4_LAYERS_STRICT_VALUE = resolve_q4_iu8_layers(strict_generator)
+        strict_flags = q4_layers_snapshot(strict_flags, published=_Q4_LAYERS_STRICT_VALUE)
         _Q4_PREFILL_STRICT_VALUE = resolve_q4_iu8_prefill(strict_generator)
         strict_flags = q4_prefill_snapshot(strict_flags, published=_Q4_PREFILL_STRICT_VALUE)
         _GR_IU8_STRICT_POLICY = gr_iu8_owner_policy(strict_generator)
@@ -1370,7 +1409,14 @@ def main():
             production_snapshot, published=gr_iu8_owner_policy(generator))
         production_snapshot = q4_prefill_snapshot(
             production_snapshot, published=resolve_q4_iu8_prefill(generator))
+        production_snapshot = q4_layers_snapshot(
+            production_snapshot, published=resolve_q4_iu8_layers(generator))
         snapshot_arms(strict_snapshot, production_snapshot)
+        _Q4_LAYERS_ARM_VALUES.update(migrate_q4_layers_arms(
+            ARMS, production_value=resolve_q4_iu8_layers(generator),
+            declared={name: spec.q4_iu8_layers
+                      for name, spec in CANDIDATES.items()
+                      if spec.q4_iu8_layers is not None}))
         _Q4_PREFILL_ARM_VALUES.update(migrate_q4_prefill_arms(
             ARMS, production_value=resolve_q4_iu8_prefill(generator),
             declared={name: spec.q4_iu8_prefill_enabled
@@ -1392,7 +1438,8 @@ def main():
                       if spec.qsa_flash_prefill_enabled is not None}))
         strict_flags = {key: value for key, value in strict_flags.items()
                         if key not in _FLASH_KEYS and key != _SELECTED_DOWN_ENV
-                        and key not in _GR_IU8_KEYS and key != _Q4_PREFILL_ENV}
+                        and key not in _GR_IU8_KEYS and key != _Q4_PREFILL_ENV
+                        and key != _Q4_LAYERS_ENV}
         # The production bind's published gate is the plan's own decision; an arm
         # that named nothing ran it, and so did its peer scope.
         published_gate = bool(generator.gdn_colwarps_prefill)
@@ -1444,6 +1491,7 @@ def main():
                 os.environ.update(ARMS[arm])
                 candidate = []
                 arm_scope = ExitStack()
+                effective_q4_layers = arm_scope.enter_context(q4_layers_arm_scope(generator, arm))
                 effective_q4_prefill = arm_scope.enter_context(q4_prefill_arm_scope(generator, arm))
                 effective_gr_iu8 = arm_scope.enter_context(gr_iu8_arm_scope(generator, arm))
                 effective_selected_down = arm_scope.enter_context(selected_down_arm_scope(generator, arm))
@@ -1520,6 +1568,7 @@ def main():
                     for i, descriptor in enumerate(descriptors)
                 ]
                 owner_overrides = {
+                    "q4_iu8_layers": effective_q4_layers,
                     "q4_iu8_prefill_enabled": effective_q4_prefill,
                     "gr_iu8_policy": {'up': effective_gr_iu8.up, 'down': effective_gr_iu8.down},
                     "q8_selected_down_enabled": effective_selected_down,
@@ -1540,6 +1589,10 @@ def main():
                     "gr_dpp_reduction": effective_gr_dpp,
                 }
                 if arm in SPLIT_PHASE_ARMS:
+                    owner_overrides['q4_iu8_layers_phases'] = {
+                        phase: (_Q4_LAYERS_STRICT_VALUE if split_phase_is_strict(arm, phase)
+                                else effective_q4_layers)
+                        for phase in ('prefill', 'decode')}
                     owner_overrides['q4_iu8_prefill_enabled_phases'] = {
                         phase: (_Q4_PREFILL_STRICT_VALUE if split_phase_is_strict(arm, phase)
                                 else effective_q4_prefill)
