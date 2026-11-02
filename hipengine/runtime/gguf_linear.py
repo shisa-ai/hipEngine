@@ -4460,7 +4460,7 @@ def _q8_wmma_layers_bound_scope() -> Q8WMMALayerScope:
     bound = _q8_wmma_layer_scope_bound.get()
     if bound is not None:
         return bound
-    return Q8WMMALayerScope.parse(os.environ.get(_Q8_WMMA_LAYERS_ENV, ""))
+    return Q8WMMALayerScope.empty()
 
 
 def _q8_wmma_layers_scope() -> frozenset[int] | None:
@@ -4481,9 +4481,8 @@ def _q8_wmma_layers_scope() -> frozenset[int] | None:
 def resolve_q8_wmma_layers(owner: Any) -> Q8WMMALayerScope:
     """Return the scope a generator or runner would use.
 
-    A bound owner is authoritative and never rereads the ambient layer key.
-    ``None`` is the direct/unbound state, where the historical key remains the
-    fallback.
+    A bound owner is authoritative. ``None`` uses the current explicit session
+    scope, or the empty all-layer scope when no session is active.
     """
 
     bound = getattr(owner, "q8_wmma_layer_scope", None)
@@ -4510,8 +4509,8 @@ def q8_wmma_layer_scope(
 ):
     """Override the WMMA layer scope on one owner and its current runner.
 
-    Omitted preserves the current owner value, ``None`` restores the
-    direct/unbound fallback, and a :class:`Q8WMMALayerScope` binds that logical
+    Omitted preserves the current owner value, ``None`` uses the explicit
+    session or unbound all-layer scope, and a :class:`Q8WMMALayerScope` binds that logical
     scope. The previous state is restored on exit, including after an
     exception. This changes no process key and allocates nothing.
     """

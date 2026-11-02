@@ -75,7 +75,7 @@ def test_scope_parse_distinguishes_empty_layer0_and_an_override() -> None:
 def test_bound_owner_precedes_ambient_key_and_never_rereads_it(monkeypatch) -> None:
     monkeypatch.setenv(ENV, "32")
     owner = SimpleNamespace(q8_wmma_layer_scope=None)
-    assert resolve_q8_wmma_layers(owner).layers == frozenset({32})
+    assert resolve_q8_wmma_layers(owner).is_empty
 
     with q8_wmma_layer_scope(owner, Q8WMMALayerScope.parse("0")):
         assert resolve_q8_wmma_layers(owner).layers == frozenset({0})
@@ -128,7 +128,7 @@ def test_session_scope_is_authoritative_over_the_ambient_key(monkeypatch) -> Non
         with q8_wmma_layer_scope_session(Q8WMMALayerScope.empty()):
             assert gl._q8_wmma_layers_scope() is None
         assert gl._q8_wmma_layers_scope() == frozenset({0})
-    assert gl._q8_wmma_layers_scope() == frozenset({33})
+    assert gl._q8_wmma_layers_scope() is None
 
 
 def test_weight_filter_and_dispatch_key_use_the_same_scope(monkeypatch) -> None:

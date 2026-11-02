@@ -11,8 +11,6 @@ The corrected diagnosis is recorded in
 ``benchmarks/results/2026-09-29-q8-staged-f32-dense-prefill-layers-gate/WMMA-ROUTE-FALSE-PASS.md``.
 """
 
-import os
-
 import pytest
 
 
@@ -41,47 +39,24 @@ def _weight_module():
 
 
 def test_wmma_scope_empty_means_every_layer_not_off():
-    """Empty means "no filter", matching what the engine does.
-
-    This is deliberately the **opposite** of ``_q8_staged_f32_layers``, where
-    empty means off. The runner reads this variable as
-    ``wmma_prefill_session(True if q8_wmma_layers else None)`` - an empty scope
-    removes the layer filter rather than disabling the route, and enablement is
-    governed separately by ``_WMMA_PREFILL_ENV``. If this helper disagreed with
-    the runner, the cache key would distinguish two configurations the engine
-    treats as identical and the fix would be worse than the bug.
-    """
-
+    """Empty removes the filter; explicit sessions preserve layer selection."""
     from hipengine.runtime import gguf_linear
 
-    env = gguf_linear._Q8_WMMA_LAYERS_ENV
-    saved = os.environ.get(env)
-    try:
-        os.environ.pop(env, None)
+    with gguf_linear.q8_wmma_layer_scope_session(gguf_linear.Q8WMMALayerScope.empty()):
         assert gguf_linear._q8_wmma_layers_scope() is None
-        os.environ[env] = ""
-        assert gguf_linear._q8_wmma_layers_scope() is None
-        os.environ[env] = "16,17,18"
+    with gguf_linear.q8_wmma_layer_scope_session(gguf_linear.Q8WMMALayerScope.parse("16,17,18")):
         assert gguf_linear._q8_wmma_layers_scope() == frozenset({16, 17, 18})
-    finally:
-        os.environ.pop(env, None)
-        if saved is not None:
-            os.environ[env] = saved
 
 
 def test_wmma_scope_participates_in_the_dispatch_memoization_key():
-    """The regression that made a promoted route unverifiable at HEAD.
+    """Record the key from the real launch rather than relying on cache misses.
 
-    Records the key the real ``launch_gguf_linear`` uses rather than observing
-    cache misses: the registry ``generation()`` is the first key element and the
-    lazy kernel registration inside the call bumps it, so every call misses for
-    an unrelated reason and a miss-based test passes with the term removed.
+    Lazy registration also changes registry generation, so cache misses alone
+    cannot prove that a layer scope participates in the key.
     """
 
     gguf_linear, _Weight = _weight_module()
 
-    env = gguf_linear._Q8_WMMA_LAYERS_ENV
-    saved = os.environ.get(env)
     recorded: list[tuple] = []
 
     class _Recording(dict):
@@ -91,11 +66,12 @@ def test_wmma_scope_participates_in_the_dispatch_memoization_key():
 
     def _key_for(scope: str) -> tuple:
         recorded.clear()
-        os.environ[env] = scope
         try:
-            gguf_linear.launch_gguf_linear(
-                _Weight(), 0, 0, 1024, 2560, 10240, libraries={}
-            )
+            with gguf_linear.q8_wmma_layer_scope_session(
+                    gguf_linear.Q8WMMALayerScope.parse(scope)):
+                gguf_linear.launch_gguf_linear(
+                    _Weight(), 0, 0, 1024, 2560, 10240, libraries={}
+                )
         except Exception:
             # The launch cannot succeed on synthetic pointers. The memoization
             # key is computed before any of that, which is the part under test.
@@ -122,6 +98,3 @@ def test_wmma_scope_participates_in_the_dispatch_memoization_key():
         )
     finally:
         gguf_linear._DISPATCH_RESOLVE_CACHE = original
-        os.environ.pop(env, None)
-        if saved is not None:
-            os.environ[env] = saved

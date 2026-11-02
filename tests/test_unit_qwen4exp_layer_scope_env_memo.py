@@ -32,13 +32,12 @@ def test_parse_layer_scope_matches_the_uncached_parse() -> None:
 
 
 def test_layer_scope_memo_is_shared_across_resolvers() -> None:
-    """All three scopes use one parse, so one value must not leak into another."""
+    """The remaining ambient scopes share parsing without cross-key leakage."""
 
     from hipengine.runtime import gguf_linear
 
     names = (
         (gguf_linear._Q8_DENSE_WIDE_LAYERS_ENV, gguf_linear._q8_dense_wide_layers),
-        (gguf_linear._Q8_WMMA_LAYERS_ENV, gguf_linear._q8_wmma_layers_scope),
         (gguf_linear._Q8_STAGED_F32_LAYERS_ENV, gguf_linear._q8_staged_f32_layers),
     )
     saved = {name: os.environ.get(name) for name, _ in names}

@@ -3590,7 +3590,7 @@ while the MMQ owner is absent.
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
 Scope: direct/unbound Qwen4Exp route fallbacks, including
-`HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` and `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
+`HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
 
 The profile-binding migration is complete. Finish the separate direct/unbound
 caller inventory before removing compatibility fallbacks. Include the GR IU8
@@ -3601,14 +3601,6 @@ consumer supplies its explicit owner choice and targeted public route/repeat/
 teardown checks pass; absence of profile writes alone is not that inventory.
 For Q5_K run `tests/test_unit_qwen4exp_q5k_iu8_owner.py` and
 `tests/test_live_qwen4exp_q5k_iu8_owner.py` after migrating any remaining callers.
-
-Remove the direct/unbound `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` parser only after
-remaining callers bind `Q8WMMALayerScope` explicitly. Audit readers with
-`rg -n 'Q8_WMMA_LAYERS|q8_wmma_layer_scope' hipengine scripts tests`, then run
-`tests/test_unit_qwen4exp_q8_wmma_layer_owner_transport.py`,
-`tests/test_unit_qwen4exp_wmma_context_isolation.py` and
-`tests/test_unit_qwen4exp_wmma_route_cache_key.py`. Preserve empty-scope versus
-layer-zero semantics, generic WMMA enablement and context-local restoration.
 
 ```bash
 python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json

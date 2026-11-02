@@ -10325,8 +10325,8 @@ class Qwen4ExpGGUFResidentModelRunner:
     q8_mmq_prepack_enabled: bool | None = None
     q8_mmq_attn_gate_enabled: bool | None = None
     # The f16 WMMA dense-Q8 layer scope is the owning runner's decision. An
-    # empty Q8WMMALayerScope means every layer; ``None`` is the unbound/direct
-    # state, where the historical process key remains the fallback.
+    # empty Q8WMMALayerScope means every layer; ``None`` uses the explicit
+    # session scope, or the same all-layer scope without a session.
     q8_wmma_layer_scope: Q8WMMALayerScope | None = None
     gguf_wmma_prefill_enabled: bool | None = None
     qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None
