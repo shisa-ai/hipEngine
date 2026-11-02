@@ -38,10 +38,18 @@ def configure_production_routes() -> None:
     # not the process, after construction.
     os.environ.update(
         {
-            "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47",
         }
     )
+
+
+def bind_production_q4_prefill(stack: ExitStack, generator: Any) -> bool:
+    """Bind plain Q4 prefill on this diagnostic's owner and restore it after."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q4_iu8_prefill_enabled, resolve_q4_iu8_prefill,
+    )
+    stack.enter_context(q4_iu8_prefill_enabled(generator, True))
+    return resolve_q4_iu8_prefill(generator)
 
 
 def bind_production_flash(stack: ExitStack, generator: Any) -> dict[str, Any]:
@@ -91,6 +99,7 @@ def main() -> None:
     q8_mmq_enabled = None
     owner_scope = ExitStack()
     try:
+        q4_prefill_enabled = bind_production_q4_prefill(owner_scope, generator)
         gdn_layers = bind_production_gdn(owner_scope, generator)
         flash_policy = bind_production_flash(owner_scope, generator)
         owner_scope.enter_context(
@@ -152,6 +161,7 @@ def main() -> None:
     report = {
         "schema": 1,
         "kind": "qwen4exp_decode_sync_ab",
+        "q4_iu8_prefill_enabled": q4_prefill_enabled,
         "gdn_colwarps_layers": gdn_layers,
         "qsa_flash_prefill_policy": flash_policy,
         "production_moe_prefill_enabled": production_moe_enabled,
