@@ -547,10 +547,10 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.q4_iu8_prefill_enabled is True
     assert fake_runner.q4_iu8_prefill_enabled is True
     assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL' not in os.environ
-    assert tuple(
-        int(value)
-        for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS"].split(",")
-    ) == PRODUCTION_Q4_IU8_PREFILL_LAYERS
+    assert tuple(map(int, production_generator.q4_iu8_layers.split(','))) == (
+        PRODUCTION_Q4_IU8_PREFILL_LAYERS)
+    assert fake_runner.q4_iu8_layers == production_generator.q4_iu8_layers
+    assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS' not in os.environ
     assert production_generator.gdn_colwarps_prefill is True
     assert fake_runner.gdn_colwarps_prefill is True
     assert "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL" not in os.environ

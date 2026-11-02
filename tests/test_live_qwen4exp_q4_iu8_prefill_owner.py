@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers', 'layers_gap', 'layers_candidate', 'layers_journey', 'layers_declared'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers', 'layers_gap', 'layers_candidate', 'layers_journey', 'layers_declared', 'layers_profile'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -29,6 +29,8 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
         calls.append(True)
         return original(*args, **kwargs)
     monkeypatch.setattr(runtime, 'gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out', counted)
+    if interface == 'layers_profile':
+        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '999')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
@@ -39,6 +41,12 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
         if all(owner.runner is not r for r in runners):
             runners.append(owner.runner)
         prior = [(r, r.q4_iu8_prefill_enabled) for r in runners]
+        prior_layers = [(r, r.q4_iu8_layers) for r in runners]
+        if interface == 'layers_profile':
+            from hipengine.generation.qwen4_exp_profiles import PRODUCTION_Q4_IU8_PREFILL_LAYERS
+            suffix = ','.join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS))
+            assert all(value == suffix for _, value in prior_layers)
+            assert os.environ['HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS'] == '999'
         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', 'all')
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
@@ -48,7 +56,14 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface in {'layers', 'layers_gap', 'layers_candidate', 'layers_journey', 'layers_declared'}:
+                    if interface == 'layers_profile':
+                        from hipengine.generation.qwen4_exp_profiles import _publish_q4_layers
+                        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '999')
+                        scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, True))
+                        scopes.enter_context(runtime.q4_iu8_layers(target, '999'))
+                        _publish_q4_layers(target, production=enabled)
+                        assert target.q4_iu8_layers == (suffix if enabled else '')
+                    elif interface in {'layers', 'layers_gap', 'layers_candidate', 'layers_journey', 'layers_declared'}:
                         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS',
                                            '999' if enabled else 'all')
                         scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, True))
@@ -136,7 +151,7 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
                     start = len(captures)
                     outputs.append(llm.generate([list(range(100, 100 + length))], params))
                     assert bool(calls) is (length >= 2 and interface != 'ablation'
-                                           and (enabled or interface == 'decode_sync'))
+                                           and (enabled or interface in {'decode_sync', 'layers_profile'}))
                     logits.append([x.copy() for x in captures[start:]])
                 assert outputs[0] == outputs[1]
                 assert logits[0] and len(logits[0]) == len(logits[1])
@@ -146,6 +161,8 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
                 assert os.environ['HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL'] == ambient
             for runner, value in prior:
                 assert runner.q4_iu8_prefill_enabled is value
+            for runner, value in prior_layers:
+                assert runner.q4_iu8_layers == value
     finally:
         llm.close()
     hip.device_synchronize()

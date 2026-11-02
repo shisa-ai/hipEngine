@@ -1197,6 +1197,16 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_q4_layers(generator: Any, *, production: bool) -> None:
+    """Publish the existing plain-Q4 suffix without changing ambient input."""
+    layers = ','.join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS)) if production else ''
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', layers)
+    generator.q4_iu8_layers = layers
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.q4_iu8_layers = layers
+
+
 def _publish_q4_prefill(generator: Any, *, production: bool, quant: str | None) -> None:
     """Publish the plain-Q4 prefill choice after the existing UD recovery."""
     enabled = production and not (
@@ -1651,12 +1661,7 @@ def _bind(
         # above. No process key names it, so a direct/unbound caller keeps its
         # ambient fallback and a bound owner never reads it.
         # Dense-wide variant and scope are published on the owner below.
-        # Plain iu8-WMMA enablement is published on the owner below.
-        "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
-            ",".join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS))
-            if production
-            else ""
-        ),
+        # Plain iu8-WMMA enablement and layer scope are published on owners below.
         # `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is bound to the gated
         # alternative, 1.0.
         #
@@ -1876,6 +1881,7 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    _publish_q4_layers(generator, production=production)
     _publish_q4_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_q4_iu8(generator, production)
     _publish_q51_iu8(generator, production)
