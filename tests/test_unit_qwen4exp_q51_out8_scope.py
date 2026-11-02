@@ -219,8 +219,9 @@ def test_the_exact_iu8_chain_still_sits_above_the_selector() -> None:
 
     source = inspect.getsource(runner_module.run_qwen4_exp_moe)
     assert "q51_iu8_exact" in source
-    assert IU8_EXACT_ENV in inspect.getsource(
-        runner_module._qwen4_exp_q51_iu8_exact_enabled)
+    assert 'q51_iu8_exact_enabled' in source
+    assert runner_module._qwen4_exp_q51_iu8_exact_enabled(True) is True
+    assert runner_module._qwen4_exp_q51_iu8_exact_enabled(False) is False
     # The selector is reached only in the chain's ``else`` arm.
     assert source.index("elif exact_grouped_down:") < source.index(
         "_qwen4_exp_q51_down_key(")

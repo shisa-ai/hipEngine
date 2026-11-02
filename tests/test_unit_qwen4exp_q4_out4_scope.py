@@ -222,8 +222,8 @@ def test_the_q5_1_ladder_still_reads_its_own_expert_grid_rung() -> None:
 
     assert EXPERT_GRID_ENV in inspect.getsource(
         runner_module._qwen4_exp_q51_down_key)
-    assert "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT" in inspect.getsource(
-        runner_module._qwen4_exp_q51_iu8_exact_enabled)
+    assert runner_module._qwen4_exp_q51_iu8_exact_enabled(True) is True
+    assert runner_module._qwen4_exp_q51_iu8_exact_enabled(None) is False
 
 
 def test_every_arm_resolves_through_the_registry() -> None:
