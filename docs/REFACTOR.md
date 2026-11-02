@@ -3602,11 +3602,11 @@ Inventory the remaining runtime environment reads separately: distinguish
 unmigrated owner settings from initialization inputs and diagnostics. The MMQ
 attention-gate and prepack fallbacks are removed after their direct diagnostic
 callers migrated; explicit prepack rollback and resource preparation remain.
-The independent Q8 MMQ plane-count fallback remains pending profile publication
-and final removal. Campaign, standalone logits-probe and generic AR/profile-gap
-arms bind and report explicit owner planes without process writes;
-`q8_mmq_f32_planes` transport takes
-precedence, including late-runner inheritance. Q4 DP4A
+The independent Q8 MMQ plane-count fallback is removed from both registered
+policy resolution and per-prefill application. Profiles publish the unchanged
+three-plane F32 choice; campaign, standalone logits-probe and generic
+AR/profile-gap arms bind and report explicit owner planes without process writes.
+`q8_mmq_f32_planes` transport includes late-runner inheritance. Q4 DP4A
 also uses explicit owner state only; R0023 still owns its independent numerical
 repair. Remove a fallback only after every in-tree direct consumer
 supplies its explicit owner choice and targeted public route/repeat/teardown

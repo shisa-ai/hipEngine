@@ -1097,6 +1097,15 @@ def _publish_q8_mmq_attn_gate(generator: Any) -> None:
         runner.q8_mmq_attn_gate_enabled = False
 
 
+def _publish_q8_mmq_f32_planes(generator: Any) -> None:
+    """Publish the unchanged three-plane profile choice without process writes."""
+    _record_owner_transport(generator, "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", "3")
+    generator.q8_mmq_f32_planes = 3
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.q8_mmq_f32_planes = 3
+
+
 def _publish_q8_mmq_prepack(generator: Any, enabled: bool) -> None:
     """Publish weight-prepack ownership without changing ambient input."""
     _record_owner_transport(generator, "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "1" if enabled else "0")
@@ -1376,6 +1385,7 @@ def _bind(
     _publish_q8_mmq_prefill(generator, production)
     _publish_q8_mmq_prepack(generator, production)
     _publish_q8_mmq_attn_gate(generator)
+    _publish_q8_mmq_f32_planes(generator)
     _publish_gguf_wmma_prefill(generator)
     from hipengine.runtime.gguf_linear import Q8WMMALayerScope
 

@@ -41,15 +41,22 @@ def test_public_mmq_planes_owner(monkeypatch, length, interface):
         return result
 
     monkeypatch.setattr(runtime, '_qwen4_exp_q8_mmq_policy', observe)
-    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES', '3')
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES', '2')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     try:
         owner = _unwrap(llm._get_text_generator())
-        assert owner.q8_mmq_f32_planes is owner.runner.q8_mmq_f32_planes is None
+        assert owner.q8_mmq_f32_planes == owner.runner.q8_mmq_f32_planes == 3
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         with runtime.q8_mmq_prefill_enabled(owner, True), runtime.q8_mmq_prepack_enabled(owner, False):
             owner.runner.configure_mmq_prefill_resources()
+            policies.clear()
+            launches.clear()
+            captures.clear()
+            llm.generate_detailed([[1] * length], params)
+            assert policies and all(pair == (3, 3) for pair in policies)
+            assert launches and set(launches) == {3}
+            assert os.environ['HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES'] == '2'
             for planes in (2, 3):
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES', str(5 - planes))
                 if interface == 'campaign':
@@ -83,7 +90,7 @@ def test_public_mmq_planes_owner(monkeypatch, length, interface):
                     assert repeats[0][0] == repeats[1][0]
                     for left, right in zip(repeats[0][1], repeats[1][1], strict=True):
                         np.testing.assert_array_equal(left, right)
-                assert owner.q8_mmq_f32_planes is owner.runner.q8_mmq_f32_planes is None
+                assert owner.q8_mmq_f32_planes == owner.runner.q8_mmq_f32_planes == 3
     finally:
         llm.close()
     hip.device_synchronize()

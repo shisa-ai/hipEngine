@@ -5820,11 +5820,7 @@ def q8_mmq_f32_planes(owner: Any, planes: int | None):
 def _qwen4_exp_q8_mmq_policy(
     policy, *, attn_gate_enabled: bool | None = None, f32_planes: int | None = None,
 ):
-    """Apply the explicit attention-gate choice and independent plane input.
-
-    Unbound calls keep the base attention scope. The plane-count diagnostic
-    still applies per prefill so a resident comparison can switch its arm.
-    """
+    """Apply explicit attention and F32-plane choices; unbound calls keep base."""
 
     if policy is None:
         return None
@@ -5832,9 +5828,6 @@ def _qwen4_exp_q8_mmq_policy(
         minimums = dict(policy.min_rows)
         minimums[(2560, 6144)] = 64
         policy = replace(policy, min_rows=minimums)
-    if f32_planes is None:
-        planes_env = os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", "")
-        f32_planes = int(planes_env) if planes_env in {"2", "3"} else None
     if f32_planes is not None:
         if type(f32_planes) is not int or f32_planes not in (2, 3):
             raise ValueError("q8_mmq_f32_planes must be 2 or 3")

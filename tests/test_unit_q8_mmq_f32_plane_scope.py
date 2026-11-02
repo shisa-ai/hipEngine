@@ -36,16 +36,17 @@ def test_f32_plane_field_leaves_bf16_chain_on_three_planes(f32_planes, variant):
     assert replace(policy, f32_planes=3).f32_planes == 3
 
 
-@pytest.mark.parametrize("plane", ["2", "3"])
-def test_legacy_environment_sets_only_the_named_f32_field(monkeypatch, plane):
+@pytest.mark.parametrize("plane", ["2", "3", "invalid"])
+def test_retired_environment_is_ignored_and_explicit_f32_field_wins(monkeypatch, plane):
     from hipengine.runtime.qwen4_exp_runner import _qwen4_exp_q8_mmq_policy
 
     policy = Q8MMQPrefillPolicy({(2816, 4096): 64}, 4096, 0.0, 4096)
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", plane)
     monkeypatch.setattr(linear, "register_gguf_q8_0_mmq_prefill_kernels", lambda: None)
     monkeypatch.setattr(linear, "resolve", lambda **_kwargs: policy)
-    assert linear.resolve_q8_mmq_prefill_policy("test").f32_planes == int(plane)
-    assert _qwen4_exp_q8_mmq_policy(policy).f32_planes == int(plane)
+    assert linear.resolve_q8_mmq_prefill_policy("test") is policy
+    assert _qwen4_exp_q8_mmq_policy(policy) is policy
+    assert _qwen4_exp_q8_mmq_policy(policy, f32_planes=2).f32_planes == 2
     assert policy.f32_planes == 3
 
 

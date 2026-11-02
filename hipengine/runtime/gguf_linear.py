@@ -2428,11 +2428,10 @@ def resolve_q8_mmq_prefill_policy(
     *,
     backend: str = "hip_gfx1100",
 ) -> Q8MMQPrefillPolicy | None:
-    """Resolve the optional raw-Q8 MMQ policy on the model quant axis.
+    """Resolve the registered raw-Q8 policy; owner sessions select F32 planes.
 
-    #28 R12 candidate gate: HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES=2 selects the
-    two-plane F32-output d4x2 MMQ chain. BF16-output MMQ stays on its guarded
-    three-plane chain; the default F32-output chain also uses three planes.
+    BF16-output MMQ keeps its guarded three-plane chain. The registered F32
+    parent uses three planes; explicit session policy can select two.
     """
 
     register_gguf_q8_0_mmq_prefill_kernels()
@@ -2443,12 +2442,6 @@ def resolve_q8_mmq_prefill_policy(
         variant="raw_q8_mmq128",
         missing="none",
     )
-    planes_env = os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", "")
-    if policy is not None and planes_env in {"2", "3"}:
-        planes = int(planes_env)
-        if planes != policy.f32_planes:
-            from dataclasses import replace
-            policy = replace(policy, f32_planes=planes)
     return policy
 
 
