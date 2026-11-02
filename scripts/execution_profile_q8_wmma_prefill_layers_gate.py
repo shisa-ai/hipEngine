@@ -657,8 +657,6 @@ class Route:
         values.pop(WMMA_LAYERS_ENV, None)
         values.pop(DENSE_WIDE_ENV, None)
         values.pop(DENSE_WIDE_LAYERS_ENV, None)
-        if STAGED_F32_LAYERS_ENV in values:
-            values["HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"] = "0"
         return values
 
     def wmma_scope_for(
@@ -855,21 +853,16 @@ def _apply_route_env(
     values.pop(DENSE_WIDE_LAYERS_ENV, None)
     os.environ.update(values)
     staged = STAGED_F32_LAYERS_ENV in values
-    dpp_key = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
-    prior_dpp = os.environ.get(dpp_key)
-    try:
-        with contextlib.ExitStack() as scope_stack:
-            if staged:
-                # Both arms need the exact parent: the rowtile/DPP rewrites
-                # otherwise preempt the staged selector before it can run.
-                os.environ[dpp_key] = "0"
-                scope_stack.enter_context(q4k_rowtile_session(False))
-            scope_stack.enter_context(q8_wmma_layer_scope(generator, scope))
-            scope_stack.enter_context(q8_dense_wide_policy(generator, wide))
-            yield resolve_q8_wmma_layers(generator)
-    finally:
+    with contextlib.ExitStack() as scope_stack:
         if staged:
-            _restore_env({dpp_key: prior_dpp})
+            from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
+            # Both arms need the exact parent; these rewrites otherwise
+            # preempt the staged selector before it can run.
+            scope_stack.enter_context(q8_dpp_reduction_enabled(generator, False))
+            scope_stack.enter_context(q4k_rowtile_session(False))
+        scope_stack.enter_context(q8_wmma_layer_scope(generator, scope))
+        scope_stack.enter_context(q8_dense_wide_policy(generator, wide))
+        yield resolve_q8_wmma_layers(generator)
 
 
 def _restore_env(bound: Mapping[str, str | None]) -> None:
@@ -1120,6 +1113,9 @@ def _run_gate(
             "candidate_chain": route.candidate_chain,
             "warmup_request_after_selector_flip": True,
             "selector_restored_after_capture": True,
+            "dpp_owner_disabled_in_both_arms": (
+                STAGED_F32_LAYERS_ENV in route.candidate_env
+            ),
             "rowtile_disabled_in_both_arms": (
                 STAGED_F32_LAYERS_ENV in route.candidate_env
             ),

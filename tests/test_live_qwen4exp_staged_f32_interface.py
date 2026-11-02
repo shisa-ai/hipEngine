@@ -162,6 +162,8 @@ class _Harness:
         records: list = []
         prior_env = {key: os.environ.get(key) for key in self.route.env_keys}
         prior_dpp = os.environ.get(DPP_ENV)
+        prior_dpp_generator = self.module.resolve_q8_dpp_reduction(self.generator)
+        prior_dpp_runner = self.module.resolve_q8_dpp_reduction(self.runner)
         try:
             with (
                 self.module.q8_mmq_prefill_enabled(self.generator, False),
@@ -178,7 +180,9 @@ class _Harness:
                     self.generator).is_empty
                 assert self.linear.resolve_q8_wmma_layers(self.runner).is_empty
                 assert self.linear.resolve_q8_dense_wide_policy(self.generator).enabled is False
-                assert os.environ[DPP_ENV] == '0'
+                assert os.environ.get(DPP_ENV) == prior_dpp
+                assert self.module.resolve_q8_dpp_reduction(self.generator) is False
+                assert self.module.resolve_q8_dpp_reduction(self.runner) is False
                 assert self.linear._resolve_use_q4k_rowtile(None) is False
                 assert self.module.resolve_q8_mmq_prefill(self.runner) is False
                 with self.linear.wmma_prefill_dispatch_recorder(records):
@@ -199,6 +203,8 @@ class _Harness:
         # The diagnostic stand-downs are request-scoped, not process state.
         assert {key: os.environ.get(key) for key in self.route.env_keys} == prior_env
         assert os.environ.get(DPP_ENV) == prior_dpp
+        assert self.module.resolve_q8_dpp_reduction(self.generator) is prior_dpp_generator
+        assert self.module.resolve_q8_dpp_reduction(self.runner) is prior_dpp_runner
         assert os.environ.get(self.gate.WMMA_LAYERS_ENV) == self.prior_wmma_env
         assert _scope_of(self.generator) is self.prior_generator_scope
         assert _scope_of(self.runner) is self.prior_runner_scope
@@ -314,6 +320,7 @@ def test_public_staged_scope_engages_named_layer_and_restores(
         KernelKey('hip_gfx1151', 'linear', 'gguf_q8_0', variant)
     )
     monkeypatch.setenv(linear._Q8_STAGED_F32_LAYERS_ENV, '')
+    monkeypatch.setenv(DPP_ENV, '1')
 
     runtime = get_hip_runtime()
     runtime.device_synchronize()

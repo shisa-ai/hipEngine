@@ -36,6 +36,7 @@ def test_staged_gate_exposes_exact_parent(monkeypatch, route_name, rows, candida
     try:
         with (
             gate._apply_route_env(route, candidate=candidate, layers='0', generator=owner),
+            linear.q8_dpp_reduction_session(owner.q8_dpp_reduction_enabled),
             linear.raw_k_prefill_rowbatch_session(32),
             linear.raw_k_prefill_variant_session('coltile8_wave_scale'),
         ):
@@ -51,8 +52,11 @@ def test_staged_gate_exposes_exact_parent(monkeypatch, route_name, rows, candida
                 assert variants[0] in linear._Q8_DENSE_WIDE_EXACT_PARENTS | {
                     'coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out',
                 }
-            assert route.process_env_for(candidate=candidate, layers='0')[
-                'HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION'] == '0'
+            assert 'HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION' not in route.process_env_for(
+                candidate=candidate, layers='0')
+            assert owner.q8_dpp_reduction_enabled is False
+            assert owner.runner.q8_dpp_reduction_enabled is False
+            assert os.environ.get('HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION') == prior_dpp
         assert linear._resolve_use_q4k_rowtile(None) is prior_rowtile
         assert os.environ.get('HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION') == prior_dpp
     finally:
@@ -75,11 +79,15 @@ def test_staged_preemptors_restore_on_capture_failure(monkeypatch, prior):
     try:
         with pytest.raises(RuntimeError, match='capture failed'):
             with gate._apply_route_env(route, candidate=True, layers='0', generator=owner):
-                assert os.environ[key] == '0'
+                assert os.environ.get(key) == prior
+                assert owner.q8_dpp_reduction_enabled is False
+                assert owner.runner.q8_dpp_reduction_enabled is False
                 assert linear._resolve_use_q4k_rowtile(None) is False
                 raise RuntimeError('capture failed')
         assert os.environ.get(key) == prior
         assert linear._resolve_use_q4k_rowtile(None) is before
+        assert not hasattr(owner, 'q8_dpp_reduction_enabled')
+        assert not hasattr(owner.runner, 'q8_dpp_reduction_enabled')
         assert not hasattr(owner, 'q8_wmma_layer_scope')
         assert not hasattr(owner.runner, 'q8_wmma_layer_scope')
     finally:
