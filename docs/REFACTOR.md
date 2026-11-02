@@ -2985,9 +2985,10 @@ serving inheritance and captured-segment identity. Profile-gap overrides bind
 that scope and report requested/effective values without process writes;
 decode-sync binds and reports its suffix on the measured owner too. Selector
 ranking and family sweeps attribute scopes through child owner reports, not
-ambient process values. Other diagnostic writers and profile publication still
-need migration. Q4 risk controls
-still need owner transport.
+ambient process values. Candidate specifications can bind and report an explicit
+layer scope through their restoring prefill binder; existing declarations and
+other diagnostic writers still need migration before profile publication. Q4
+risk controls still need owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

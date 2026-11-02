@@ -134,6 +134,7 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         gdn_colwarps_layers=None,
         qsa_flash_prefill_enabled=None,
         q4_iu8_prefill_enabled=None,
+        q4_iu8_layers=None,
         q8_selected_down_enabled=None,
         gr_iu8_up=None,
         gr_iu8_down=None,
