@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -53,13 +53,16 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
                             {'public': flags}, production_value=not enabled)
                         monkeypatch.setattr(journey, '_Q4_PREFILL_ARM_VALUES', choices)
                         assert scopes.enter_context(journey.q4_prefill_arm_scope(target, 'public')) is enabled
-                    elif interface in {'candidate', 'candidate_scope'}:
+                    elif interface in {'candidate', 'candidate_scope', 'declared'}:
                         from dataclasses import replace
                         from scripts.qwen4exp_layer2_profile_gate import (
                             CANDIDATES, bind_candidate_q4_prefill, candidate_q4_prefill_scope,
                         )
-                        spec = replace(CANDIDATES['production_baseline'],
-                                       q4_iu8_prefill_enabled=enabled)
+                        spec = (CANDIDATES['production_moe_restore' if enabled
+                                           else 'production_conservative']
+                                if interface == 'declared' else
+                                replace(CANDIDATES['production_baseline'],
+                                        q4_iu8_prefill_enabled=enabled))
                         if interface == 'candidate_scope':
                             assert scopes.enter_context(candidate_q4_prefill_scope(target, spec)) is enabled
                         else:

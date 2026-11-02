@@ -323,7 +323,8 @@ def test_q8_fallback_preserves_other_production_choices() -> None:
 def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
     candidate = _load_script().CANDIDATES["production_conservative"]
     assert candidate.base_profile == "production"
-    assert set(candidate.environment.values()) == {"0"}
+    assert candidate.environment == {}
+    assert candidate.q4_iu8_prefill_enabled is False
     assert candidate.q8_selected_down_enabled is False
     assert candidate.gdn_colwarps_prefill is False
     # The ordered sparse-decode prerequisite is owner state now, so the arm

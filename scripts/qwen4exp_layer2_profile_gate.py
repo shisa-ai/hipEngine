@@ -385,11 +385,12 @@ CANDIDATES = {
         environment={"HIPENGINE_QWEN4_EXP_" + flag: "0"
                      for flag in CONSERVATIVE_ARITHMETIC_FLAGS
                      if flag not in {
-                         "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
+                         "Q4_DP4A64", "Q4_IU8_PREFILL", "PRODUCTION_MOE_PREFILL",
                          "Q8_MMQ_PREFILL", "GR_WIDE",
                          "GDN_COLWARPS_PREFILL", "QSA_FLASH_PREFILL",
                          "Q8_0_SELECTED_WMMA_DOWN", "GR_IU8", "GR_IU8_DOWN",
                      }},
+        q4_iu8_prefill_enabled=False,
         q8_selected_down_enabled=False,
         gdn_colwarps_prefill=False,
         gr_iu8_up=False,
@@ -467,9 +468,9 @@ CANDIDATES = {
             "bit-parity repair removed; Q5_1 down unchanged at production"
         ),
         environment={
-            "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "all",
         },
+        q4_iu8_prefill_enabled=True,
         # The chain gate is runner state now, so the arm closes it through the
         # spec's field instead of a process key.
         q4_exact_grouped_gate=False,
@@ -1031,9 +1032,8 @@ CANDIDATES["production_moe_restore"] = CandidateSpec(
         "exact repair this route omits: that family is 5.44% of the prefill "
         "window."
     ),
-    environment={
-        "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
-    },
+    environment={},
+    q4_iu8_prefill_enabled=True,
     production_moe_prefill_enabled=True,
     base_profile="production",
     scenario_id="qwen4exp-ud-q4-k-xl-moe-wmma-restore",

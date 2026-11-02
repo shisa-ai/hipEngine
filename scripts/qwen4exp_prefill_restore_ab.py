@@ -61,7 +61,8 @@ SHARED_DECODE_SAFE_ENV = frozenset()
 SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset(
     {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
      "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
-     "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down"})
+     "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down",
+     "q4_iu8_prefill_enabled"})
 SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
