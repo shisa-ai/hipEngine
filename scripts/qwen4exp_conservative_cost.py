@@ -30,7 +30,7 @@ from scripts.qwen4exp_layer2_profile_gate import (
 from scripts.qwen4exp_journey_localize import set_flags
 from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_h256_prefill_mode, qsa_ordered_decode,
-    resolve_gdn_colwarps_prefill, resolve_qsa_ordered_decode,
+    resolve_gdn_colwarps_prefill, resolve_qsa_ordered_decode, resolve_q4_iu8_layers,
 )
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
@@ -192,6 +192,7 @@ def main():
                 row["gdn_colwarps_prefill"] = resolve_gdn_colwarps_prefill(
                     runner)
                 row['q4_iu8_prefill_enabled'] = q4_prefill
+                row['q4_iu8_layers'] = resolve_q4_iu8_layers(runner)
                 row['gr_iu8_policy'] = gr_policy
                 row['q8_selected_down_enabled'] = selected_down
                 row['qsa_flash_prefill_policy'] = flash_policy

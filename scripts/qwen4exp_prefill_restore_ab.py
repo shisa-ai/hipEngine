@@ -38,6 +38,7 @@ from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_ordered_decode, qsa_prefill_head_mode,
     qsa_h256_prefill_mode,
     resolve_gdn_colwarps_prefill, resolve_gdn_colwarps_layers, resolve_qsa_ordered_decode,
+    resolve_q4_iu8_layers,
     resolve_gdn_tile16_variant, resolve_q8_down_variant, resolve_q8_mmq_prefill,
 )
 from scripts.qwen4exp_journey_localize import set_flags
@@ -62,7 +63,7 @@ SHARED_DECODE_SAFE_OWNER_FIELDS = frozenset(
     {"q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
      "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
      "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down",
-     "q4_iu8_prefill_enabled"})
+     "q4_iu8_prefill_enabled", "q4_iu8_layers"})
 SHARED_DECODE_SAFE_FLAGS = SHARED_DECODE_SAFE_ENV
 
 # Chunk size the compared arms are timed at. The runner's base owner keeps the
@@ -484,6 +485,7 @@ def main():
                 row['gdn_colwarps_layers'] = resolve_gdn_colwarps_layers(runner)
                 row["q8_dense_wide_policy"] = resolve_q8_dense_wide_policy(runner).to_report()
                 row['q4_iu8_prefill_enabled'] = q4_prefill
+                row['q4_iu8_layers'] = resolve_q4_iu8_layers(runner)
                 row['gr_iu8_policy'] = gr_policy
                 row["q8_selected_down_enabled"] = selected_down
                 row["q8_down_variant"] = resolve_q8_down_variant(runner)

@@ -13,21 +13,26 @@ from scripts import qwen4exp_long_context_gate as long_context
 KEY = 'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL'
 
 
+@pytest.mark.parametrize('layers', [None, '', 'all', '999'])
 @pytest.mark.parametrize('enabled', [None, False, True])
-def test_candidate_scope_restores_and_inventories_owner(monkeypatch, enabled):
+def test_candidate_scope_restores_and_inventories_owner(monkeypatch, enabled, layers):
     monkeypatch.setenv(KEY, '0')
-    spec = replace(gate.CANDIDATES['production_baseline'], q4_iu8_prefill_enabled=enabled)
-    owner = SimpleNamespace(q4_iu8_prefill_enabled=True,
-                            runner=SimpleNamespace(q4_iu8_prefill_enabled=None))
+    spec = replace(gate.CANDIDATES['production_baseline'], q4_iu8_prefill_enabled=enabled,
+                   q4_iu8_layers=layers)
+    owner = SimpleNamespace(q4_iu8_prefill_enabled=True, q4_iu8_layers='owner',
+                            runner=SimpleNamespace(q4_iu8_prefill_enabled=None, q4_iu8_layers='runner'))
     with pytest.raises(RuntimeError, match='restore'):
         with gate.candidate_q4_prefill_scope(owner, spec) as selected:
             assert selected is (True if enabled is None else enabled)
             assert owner.q4_iu8_prefill_enabled is selected
             assert owner.runner.q4_iu8_prefill_enabled is enabled
+            assert owner.q4_iu8_layers == ('owner' if layers is None else layers)
+            assert owner.runner.q4_iu8_layers == ('runner' if layers is None else layers)
             assert os.environ[KEY] == '0'
             raise RuntimeError('restore')
     assert owner.q4_iu8_prefill_enabled is True
     assert owner.runner.q4_iu8_prefill_enabled is None
+    assert owner.q4_iu8_layers == 'owner' and owner.runner.q4_iu8_layers == 'runner'
     assert gate.candidate_owner_changes(spec).get('q4_iu8_prefill_enabled') is enabled
     with gate.candidate_q4_prefill_scope(owner, None) as selected:
         assert selected is True
@@ -39,8 +44,15 @@ def test_sample_consumers_bind_and_report_choice_inside_scope(module):
     source = inspect.getsource(module.main)
     assert 'candidate_q4_prefill_scope(' in source
     assert "row['q4_iu8_prefill_enabled'] = q4_prefill" in source
+    assert "row['q4_iu8_layers'] = resolve_q4_iu8_layers(runner)" in source
 
 
 def test_long_context_reports_effective_shared_owner():
     source = inspect.getsource(long_context.run)
     assert '"q4_iu8_prefill_enabled": candidate_owners["q4_iu8_prefill_enabled"]' in source
+    assert '"q4_iu8_layers": candidate_owners["q4_iu8_layers"]' in source
+    assert '"q4_iu8_layers_override": spec.q4_iu8_layers' in source
+
+
+def test_shared_decode_allows_prefill_only_layer_scope():
+    assert 'q4_iu8_layers' in restore.SHARED_DECODE_SAFE_OWNER_FIELDS
