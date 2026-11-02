@@ -125,6 +125,7 @@ class CandidateSpec:
     # None preserves the profile; an explicit gate preserves its layer scope.
     qsa_flash_prefill_enabled: bool | None = None
     q8_selected_down_enabled: bool | None = None
+    q4_iu8_prefill_enabled: bool | None = None
     gr_iu8_up: bool | None = None
     gr_iu8_down: bool | None = None
     # None preserves the base profile; parent, wave or page256 binds one arm.
@@ -1880,6 +1881,19 @@ def candidate_flash_scope(owner, spec):
             yield bind_candidate_flash(stack, owner, spec)
 
 
+def bind_candidate_q4_prefill(
+    dispatch_stack: ExitStack, candidate_generator: Any, candidate_spec: CandidateSpec,
+) -> bool:
+    """Bind an explicit plain-Q4 prefill choice; omission preserves the profile."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q4_iu8_prefill_enabled, resolve_q4_iu8_prefill,
+    )
+    if candidate_spec.q4_iu8_prefill_enabled is not None:
+        dispatch_stack.enter_context(q4_iu8_prefill_enabled(
+            candidate_generator, candidate_spec.q4_iu8_prefill_enabled))
+    return resolve_q4_iu8_prefill(candidate_generator)
+
+
 def bind_candidate_owners(
     dispatch_stack: ExitStack,
     candidate_generator: Any,
@@ -1903,6 +1917,8 @@ def bind_candidate_owners(
         dispatch_stack.enter_context(qsa_ordered_decode_v2(
             runner, candidate_spec.qsa_ordered_decode_v2))
     return {
+        "q4_iu8_prefill_enabled": bind_candidate_q4_prefill(
+            dispatch_stack, candidate_generator, candidate_spec),
         "gr_iu8_policy": bind_candidate_gr_iu8(
             dispatch_stack, candidate_generator, candidate_spec),
         "q8_selected_down_enabled": bind_candidate_selected_q8_down(
@@ -2001,6 +2017,7 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         not candidate_spec.environment
         and candidate_spec.qsa_wmma_enabled is None
         and candidate_spec.qsa_flash_prefill_enabled is None
+        and candidate_spec.q4_iu8_prefill_enabled is None
         and candidate_spec.q8_selected_down_enabled is None
         and candidate_spec.gr_iu8_up is None
         and candidate_spec.gr_iu8_down is None
@@ -2214,6 +2231,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # unwind. Dispatch counting on the candidate key proves which projection
     # actually ran.
     resolved_gr_iu8 = bind_candidate_gr_iu8(
+        dispatch_stack, candidate_generator, candidate_spec)
+    resolved_q4_prefill = bind_candidate_q4_prefill(
         dispatch_stack, candidate_generator, candidate_spec)
     resolved_selected_down = bind_candidate_selected_q8_down(
         dispatch_stack, candidate_generator, candidate_spec)
@@ -2629,6 +2648,8 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "router_producer_variant": candidate_spec.router_producer_variant,
             "q8_dense_wide_policy": resolved_dense_wide,
             "gr_iu8_policy": resolved_gr_iu8,
+            "q4_iu8_prefill_enabled": resolved_q4_prefill,
+            "q4_iu8_prefill_override": candidate_spec.q4_iu8_prefill_enabled,
             "q8_selected_down_enabled": resolved_selected_down,
             "qsa_flash_prefill_policy": resolved_flash,
             "gdn_colwarps_layers": resolved_gdn_layers,
