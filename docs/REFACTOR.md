@@ -2935,6 +2935,10 @@ attributing the owner choices from process values. Profiles publish the existing
 independent GR recovery decisions as `gr_iu8_policy`, without process writes;
 direct/unbound callers retain the environment fallback. The selected-Q8 state
 gate asserts and reports its owner gate, not a retired process-key premise.
+Exact Q5_1 IU8 enablement accepts an explicit restoring generator/runner choice
+through resident, batch and mixed-target calls, with capture identity tracking
+the effective choice. Its profile publication and diagnostic process writers
+still need migration; unbound callers retain their environment fallback.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
