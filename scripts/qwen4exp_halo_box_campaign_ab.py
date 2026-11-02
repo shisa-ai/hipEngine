@@ -1125,9 +1125,7 @@ Q8_MAPPED_DOWN_MAP_GATE = Q5K_ROW4_FIELD
 #: the token-major Q5_K map producer from running, so the mapped arm closes it
 #: in both arms too. The register/bundle arms must not: there the grouped chain
 #: is the one they count.
-Q8_MAPPED_DOWN_PREEMPTING_ENV = Q8_DOWN_PREEMPTING_ENV + (
-    "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT",
-)
+Q8_MAPPED_DOWN_PREEMPTING_ENV = Q8_DOWN_PREEMPTING_ENV
 
 
 def selected_down_preemptor_record(runner):
@@ -1295,6 +1293,7 @@ def q8_mapped_down_control_record(*, runner=None, environment=os.environ):
     recorded as published; the map gate is recorded, never forced.
     """
 
+    from hipengine.runtime.qwen4_exp_runner import resolve_q5k_iu8_exact
     return {
         "selected_down_preemptor": selected_down_preemptor_record(runner),
         "preempting_owners_closed": {
@@ -1306,6 +1305,8 @@ def q8_mapped_down_control_record(*, runner=None, environment=os.environ):
         "preempting_fields": {
             "routed_f16_enabled": {"bound_value": False,
                 "published_value": getattr(runner, "routed_f16_enabled", None)},
+            "q5k_iu8_exact_enabled": {"bound_value": False,
+                "published_value": resolve_q5k_iu8_exact(runner)},
         },
         "chain_gate": {
             "runner_field": Q8_DOWN_FORKB_FIELD,
@@ -1561,19 +1562,10 @@ def q8_mapped_down_scope(*, environment=os.environ, runner=None):
             "down arm; without it the current call builds no row4 map and the "
             "mapped owner cannot engage")
     from hipengine.runtime.qwen4_exp_runner import routed_f16_enabled as routed_f16
-    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled
-    previous = {key: environment.get(key) for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
-    for key in Q8_MAPPED_DOWN_PREEMPTING_ENV:
-        environment[key] = "0"
-    try:
-        with routed_f16(runner, False), q8_selected_down_enabled(runner, False):
-            yield previous
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                environment.pop(key, None)
-            else:
-                environment[key] = value
+    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled, q5k_iu8_exact_enabled
+    with (routed_f16(runner, False), q8_selected_down_enabled(runner, False),
+          q5k_iu8_exact_enabled(runner, False)):
+        yield {}
 
 
 @contextlib.contextmanager

@@ -233,16 +233,26 @@ def test_route_scope_fails_loudly_without_the_row4_map_gate(gate):
     assert all(env[key] == "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV)
 
 
-def test_mapped_scope_closes_the_grouped_iu8_preemptor():
-    # The grouped Q5_K IU8 gate/up owner sets ``grouped_prefill`` and keeps the
-    # token-major Q5_K map producer from running, so the mapped arm closes it.
-    assert "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT" in Q8_MAPPED_DOWN_PREEMPTING_ENV
-    env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
-    env.update({key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV})
-    with q8_mapped_down_scope(environment=env, runner=_owner()):
-        assert env["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "0"
-        assert all(env[key] == "0" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV)
-    assert env["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "1"
+def test_mapped_scope_closes_the_grouped_iu8_preemptor(monkeypatch):
+    # The grouped Q5_K owner preempts the map producer, so close its field,
+    # not the process fallback, and restore distinct or missing prior state.
+    key = "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"
+    monkeypatch.setenv(key, "ambient")
+    assert key not in Q8_MAPPED_DOWN_PREEMPTING_ENV
+    env = {key: "unchanged"}
+    for fields in ({}, {"q5k_iu8_exact_enabled": None},
+                   {"q5k_iu8_exact_enabled": True}, {"q5k_iu8_exact_enabled": False}):
+        owner = _owner(**fields)
+        with pytest.raises(RuntimeError, match="restore"):
+            with q8_mapped_down_scope(environment=env, runner=owner):
+                assert owner.q5k_iu8_exact_enabled is False
+                assert runner.resolve_q5k_iu8_exact(owner) is False
+                assert env == {key: "unchanged"}
+                raise RuntimeError("restore")
+        assert getattr(owner, 'q5k_iu8_exact_enabled', 'missing') == fields.get(
+            'q5k_iu8_exact_enabled', 'missing')
+        assert hasattr(owner, 'q5k_iu8_exact_enabled') is ('q5k_iu8_exact_enabled' in fields)
+    assert __import__('os').environ[key] == "ambient"
 
 
 def test_register_scope_leaves_the_grouped_iu8_gate_alone():
@@ -449,7 +459,10 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
 def test_mapped_control_record_separates_prior_and_effective():
     env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
     env.update({key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV})
-    record = q8_mapped_down_control_record(runner=_owner(), environment=env)
+    record = q8_mapped_down_control_record(
+        runner=_owner(q5k_iu8_exact_enabled=True), environment=env)
+    assert record['preempting_fields']['q5k_iu8_exact_enabled'] == {
+        'bound_value': False, 'published_value': True}
     assert record["preempting_owners_closed"] == {
         key: "0" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
     assert record["preempting_owners_previous"] == {

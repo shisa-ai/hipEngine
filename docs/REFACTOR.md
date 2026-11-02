@@ -3028,8 +3028,10 @@ serving inheritance and captured-segment identity. Profile-gap and candidate AR
 bind explicit Q5_K overrides on owners and report requested/effective values
 without process writes. Campaign and row4 state-gate arms also bind and report
 Q5_K choices through restoring owner scopes, including production-premise and
-mapped-down prerequisite reads. Profiles and other diagnostic callers still use
-process transport; migrate those consumers before publishing bound profile choices.
+mapped-down prerequisite reads. The mapped-down scope closes the Q5_K preemptor
+through owner state and reports its effective prior choice without process
+writes. Profiles still use process transport; publish bound profile choices
+after checking remaining consumers.
 Remove the `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`
 process fallback after profiles and diagnostic consumers bind owner state and
 the public owner-selection regression passes without process transport.
