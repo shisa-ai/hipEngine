@@ -47,9 +47,7 @@ PF13_FIELDS = (FORKB_FIELD, Q5_M1_FIELD)
 Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_FIELD = "qsa_h256_prefill_mode"
 Q4_BUNDLE_FIELD = "q4_bundle_prefill"
-Q4_PAIR_ENV = {
-    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID": "64",
-}
+Q4_PAIR_ENV = {}
 
 
 Q8_WAVE_ENV = {
@@ -183,11 +181,13 @@ def q8_wave_scope(runner, enabled, *, environment=os.environ):
 
 
 def q4_pair_control_record(runner):
+    from hipengine.runtime.qwen4_exp_runner import ExpertGridPolicy
     return {
         "runner_field": "q4_pair_prefill", "before": False, "after": True,
         "published_value": runner.q4_pair_prefill,
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(Q4_PAIR_ENV),
+        "forced_expert_grid_policy": ExpertGridPolicy(True, True).to_report(),
         "forced_runner_fields": {
             "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
             "q4_bundle_prefill": True, "routed_f16_enabled": False,
@@ -201,21 +201,17 @@ def q4_pair_control_record(runner):
 def q4_pair_scope(runner, enabled, *, environment=os.environ):
     """Compare bundle and pair2 inside the same exact grouped chain."""
     from hipengine.runtime.qwen4_exp_runner import (
+        ExpertGridPolicy, expert_grid_policy,
         production_moe_prefill_enabled,
         q4_pair_prefill, q4_bundle_prefill, q4_exact_grouped_gate,
         q4_exact_grouped_all, q4_iu8_exact_enabled, routed_f16_enabled as routed_f16,
     )
-    prior = {key: environment.get(key) for key in Q4_PAIR_ENV}
-    try:
-        environment.update(Q4_PAIR_ENV)
-        with q4_iu8_exact_enabled(runner, False), production_moe_prefill_enabled(runner, False), routed_f16(runner, False), q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
-            yield
-    finally:
-        for key, value in prior.items():
-            if value is None:
-                environment.pop(key, None)
-            else:
-                environment[key] = value
+    with (expert_grid_policy(runner, ExpertGridPolicy(True, True)),
+          q4_iu8_exact_enabled(runner, False), production_moe_prefill_enabled(runner, False),
+          routed_f16(runner, False), q4_exact_grouped_gate(runner, True),
+          q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True),
+          q4_pair_prefill(runner, enabled)):
+        yield
 
 Q51_PAIR_FIELD = "q51_pair_prefill"
 MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
@@ -1369,10 +1365,8 @@ PF13_SIBLING_FIELDS = (
 #: where that chain is off.
 PF13_GATE_FIELD = Q51_PAIR2_GATE_FIELD
 PF13_GATE_FIELDS = (PF13_GATE_FIELD, "q4_exact_grouped_gate")
-#: The exact expert-grid family the M1 leaf belongs to. Its parent rung is what
-#: the ``before`` arm measures, so any other family would compare two unrelated
-#: owners and select no M1 leaf at all.
-PF13_EXPERT_GRID_ENV = "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID"
+#: The exact expert-grid family is resolved from the measured runner. Its
+#: Q5_1 parent rung is required by the M1 leaf in both arms.
 
 
 @contextlib.contextmanager
@@ -1408,11 +1402,14 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
             raise ValueError(
                 f"runner.{field} must be on for the grouped expert-down "
                 "chains; without it the counted leaves cannot be reached")
-    if environment.get(PF13_EXPERT_GRID_ENV, "64") not in {"64", "q5"}:
+    from hipengine.runtime.qwen4_exp_runner import (
+        expert_grid_policy, resolve_expert_grid_policy,
+    )
+    grid_policy = resolve_expert_grid_policy(getattr(runner, 'expert_grid_policy', None))
+    if not grid_policy.q5:
         raise ValueError(
-            f"{PF13_EXPERT_GRID_ENV} must select the exact expert-grid family "
-            "(64 or q5); otherwise the M1 leaf is never selected and the "
-            "before arm measures a different parent")
+            "runner.expert_grid_policy.q5 must be on; otherwise the M1 leaf "
+            "is never selected and the before arm measures a different parent")
     from hipengine.runtime.qwen4_exp_runner import (
         forkb_grouped_down,
         production_moe_prefill_enabled,
@@ -1438,6 +1435,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         environment[key] = "0"
     try:
         with contextlib.ExitStack() as scope:
+            scope.enter_context(expert_grid_policy(runner, grid_policy))
             scope.enter_context(q8_selected_down_enabled(runner, False))
             scope.enter_context(q51_iu8_exact_enabled(runner, False))
             for manager in (routed_f16, q51_pair_prefill, q51_fold128_prefill, q51_fold_pair_prefill,
@@ -1500,6 +1498,9 @@ def pf13_control_record(runner=None, *, environment=os.environ):
     scope requires them rather than forcing them.
     """
 
+    from hipengine.runtime.qwen4_exp_runner import resolve_expert_grid_policy
+    published_grid = None if runner is None else getattr(runner, 'expert_grid_policy', None)
+
     def _value(field):
         return None if runner is None else getattr(runner, field, None)
 
@@ -1529,8 +1530,8 @@ def pf13_control_record(runner=None, *, environment=os.environ):
                 field: _value(field) for field in PF13_GATE_FIELDS},
         },
         "expert_grid": {
-            "published": environment.get(PF13_EXPERT_GRID_ENV),
-            "effective": environment.get(PF13_EXPERT_GRID_ENV) or "64",
+            "published": None if published_grid is None else published_grid.to_report(),
+            "effective": resolve_expert_grid_policy(published_grid).to_report(),
         },
         "counted_leaves": {
             name: {"layer": layer, "quant": quant, "variant": variant}

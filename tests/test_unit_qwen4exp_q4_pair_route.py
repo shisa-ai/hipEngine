@@ -29,7 +29,8 @@ def test_q4_pair_ab_scopes_its_owner_and_restores_prerequisites(mode):
     owner = SimpleNamespace(
         q4_pair_prefill=True, q4_bundle_prefill=False,
         routed_f16_enabled=True, production_moe_prefill_enabled=True,
-        q4_exact_grouped_gate=False, q4_exact_grouped_all=False)
+        q4_exact_grouped_gate=False, q4_exact_grouped_all=False,
+        expert_grid_policy=runner.ExpertGridPolicy(False, True))
     prior_owner = vars(owner).copy()
     _apply_mode(mode, environment=environment, route_package="q4-pair")
     assert environment == prior_env
@@ -41,7 +42,8 @@ def test_q4_pair_ab_scopes_its_owner_and_restores_prerequisites(mode):
             assert owner.q4_bundle_prefill is True
             assert owner.q4_exact_grouped_gate is True
             assert owner.q4_exact_grouped_all is True
-            assert environment == prior_env | Q4_PAIR_ENV
+            assert environment == prior_env
+            assert owner.expert_grid_policy == runner.ExpertGridPolicy(True, True)
             raise RuntimeError("failure")
     assert environment == prior_env
     assert vars(owner) == prior_owner

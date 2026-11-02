@@ -280,16 +280,32 @@ def test_the_pf13_arm_refuses_a_closed_grouped_gate() -> None:
 
 
 def test_the_pf13_arm_refuses_a_foreign_expert_grid_family() -> None:
-    from scripts.qwen4exp_halo_box_campaign_ab import (
-        PF13_EXPERT_GRID_ENV, route_scope)
+    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+    from hipengine.runtime.qwen4_exp_runner import ExpertGridPolicy
 
     environment = _published_environment()
-    environment[PF13_EXPERT_GRID_ENV] = "32"
+    environment['HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID'] = '64'
     runner = _published_runner()
-    with pytest.raises(ValueError, match=PF13_EXPERT_GRID_ENV):
+    runner.expert_grid_policy = ExpertGridPolicy(True, False)
+    with pytest.raises(ValueError, match='expert_grid_policy.q5'):
         with route_scope("pf13", "after", runner, environment=environment):
             pass
     assert runner.q51_down_m1 is True
+
+
+def test_pf13_uses_owner_policy_despite_opposing_process_input(monkeypatch):
+    from hipengine.runtime.qwen4_exp_runner import ExpertGridPolicy
+    from scripts.qwen4exp_halo_box_campaign_ab import pf13_scope, pf13_control_record
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', '0')
+    owner = _published_runner()
+    owner.expert_grid_policy = ExpertGridPolicy(False, True)
+    environment = {'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID': 'q4'}
+    with pf13_scope('after', owner, environment=environment):
+        assert owner.q51_down_m1
+        assert pf13_control_record(owner, environment=environment)['expert_grid'] == {
+            'published': {'q4': False, 'q5': True},
+            'effective': {'q4': False, 'q5': True}}
+    assert environment == {'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID': 'q4'}
 
 
 def test_the_pf13_arm_refuses_to_measure_without_its_runner() -> None:
@@ -328,7 +344,7 @@ def test_the_pf13_control_records_every_forced_value_and_its_prior() -> None:
     assert control["gates"] == {
         "runner_fields": {field: True for field in PF13_GATE_FIELDS},
     }
-    assert control["expert_grid"] == {"published": None, "effective": "64"}
+    assert control["expert_grid"] == {"published": None, "effective": {'q4': True, 'q5': True}}
     assert control["counted_leaves"] == {
         name: {"layer": layer, "quant": quant, "variant": variant}
         for name, (layer, quant, variant) in PF13_LEAF_KEYS.items()
@@ -593,7 +609,7 @@ def test_main_counts_both_leaves_and_records_the_isolation(
             "q4_exact_grouped_gate": True,
         },
     }
-    assert control["expert_grid"] == {"published": None, "effective": "64"}
+    assert control["expert_grid"] == {"published": None, "effective": {'q4': True, 'q5': True}}
     # The artifact states the two owners each arm measures.
     assert artifact["arms"]["after"] == {
         "q5_1_down": "selected_grouped_prefill_compact_rowbatch8_out8_"
