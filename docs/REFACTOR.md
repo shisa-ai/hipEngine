@@ -2974,7 +2974,9 @@ optional plain-prefill owner field, restoring shared/primary gate bindings and
 requested/effective reporting. Conservative-cost and prefill-restoration bind the
 same choice on their measured owners; long-context reports the shared binding.
 The shared-graph inventory includes explicit plain-prefill owner changes. Journey
-transport and declarations still need migration before profile publication. Q4
+reconstructs each choice through binding snapshots and family overlays, binds it
+on the measured owner, and reports split-phase choices. Candidate declarations
+still need migration before profile publication. Q4
 layer/risk controls still need owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
