@@ -3000,9 +3000,11 @@ multipliers on owners and report their effective value without process writes.
 Candidate metadata and shared arm scopes can transport and report optional
 multipliers without process writes. Selector-ranking and family-sweep reports
 read effective child multipliers, preserving unknown current records and legacy
-process-only interpretation. Candidate declarations, other report consumers and
-profile publication still need migration; plane selection also needs owner
-transport.
+process-only interpretation. Journey snapshots reconstruct multipliers through
+family overlays, bind arm and strict split-phase values on owners and report
+each phase. Prefill-restore, conservative-cost and long-context reports carry
+the effective value. Candidate declarations and profile publication still need
+migration; plane selection also needs owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

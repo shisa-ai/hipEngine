@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation', 'profile', 'risk', 'risk_gap', 'risk_ar', 'risk_candidate'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation', 'profile', 'risk', 'risk_gap', 'risk_ar', 'risk_candidate', 'risk_journey'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_q4_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -51,10 +51,15 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface in {'risk', 'risk_gap', 'risk_ar', 'risk_candidate'}:
+                    if interface in {'risk', 'risk_gap', 'risk_ar', 'risk_candidate', 'risk_journey'}:
                         multiplier = 1.0 if enabled else 4.0
                         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT', '8')
-                        if interface == 'risk_candidate':
+                        if interface == 'risk_journey':
+                            from scripts import qwen4exp_journey_localize as journey
+                            monkeypatch.setattr(journey, '_Q4_RISK_ARM_VALUES', {'test': multiplier})
+                            selected = scopes.enter_context(journey.q4_risk_arm_scope(target, 'test'))
+                            assert selected == multiplier
+                        elif interface == 'risk_candidate':
                             from dataclasses import replace
                             from scripts.qwen4exp_layer2_profile_gate import (
                                 CANDIDATES, bind_candidate_q4_prefill,
@@ -119,8 +124,8 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                     calls.clear()
                     start = len(captures)
                     outputs.append(llm.generate([list(range(100, 100 + length))], params))
-                    assert bool(calls) is ((enabled or interface in {'risk', 'risk_gap', 'risk_ar', 'risk_candidate'}) and length >= 2 and interface not in {'pair2', 'out4', 'ablation'})
-                    if interface in {'risk', 'risk_gap', 'risk_ar', 'risk_candidate'}:
+                    assert bool(calls) is ((enabled or interface in {'risk', 'risk_gap', 'risk_ar', 'risk_candidate', 'risk_journey'}) and length >= 2 and interface not in {'pair2', 'out4', 'ablation'})
+                    if interface in {'risk', 'risk_gap', 'risk_ar', 'risk_candidate', 'risk_journey'}:
                         assert all(value == multiplier for value in calls)
                         assert os.environ['HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT'] == '8'
                     logits.append([x.copy() for x in captures[start:]])

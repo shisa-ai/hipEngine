@@ -721,6 +721,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                       "q4_iu8_prefill_override": spec.q4_iu8_prefill_enabled,
                       "q4_iu8_layers": candidate_owners["q4_iu8_layers"],
                       "q4_iu8_layers_override": spec.q4_iu8_layers,
+                      "q4_iu8_risk_mult": candidate_owners["q4_iu8_risk_mult"],
+                      "q4_iu8_risk_mult_override": spec.q4_iu8_risk_mult,
                       "gr_wide": candidate_gr_wide,
                       "gr_wide_override": spec.gr_wide,
                       "q8_down_variant": candidate_q8_down_variant,
