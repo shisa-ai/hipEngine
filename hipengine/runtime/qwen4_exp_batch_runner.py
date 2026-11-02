@@ -1068,10 +1068,10 @@ class Qwen4ExpGGUFBatchRunner:
     q4_out4: bool = True
     q4_bundle_prefill: bool = False
     q4_pair_prefill: bool = False
-    # The Q4 DP4A decode pair is the owning runner's decision. ``None`` on both
-    # fields keeps the direct/unbound process-key fallback; a bound pair is
-    # copied from the generator at batch construction and never reads ambient
-    # state. The pair is part of the captured-segment identity for c1 rows.
+    # The Q4 DP4A decode pair is the owning runner's decision. ``None``
+    # enablement keeps it off. Construction copies the generator's pair;
+    # neither bound nor unbound calls read ambient state. The pair is part
+    # of the captured-segment identity for c1 rows.
     q4_dp4a_decode_enabled: bool | None = None
     q4_dp4a_decode_layers: frozenset[int] | None = None
     # The production grouped-MoE prefill gate is the owning runner's decision.
@@ -1986,10 +1986,8 @@ class Qwen4ExpGGUFBatchRunner:
         """The Q4 DP4A decode decision a captured c1 segment depends on.
 
         DP4A only selects at ``rows == 1``. At wider rows the decision is inert,
-        so the key carries a stable sentinel and the batch path does not read
-        the ambient pair for a prefill-width segment. A bound pair is resolved
-        without touching the environment; an unbound pair keeps the historical
-        direct fallback, but only for a c1 segment that can select it.
+        so the key carries a stable sentinel. Bound and unbound pairs resolve
+        without touching the environment; absent enablement keeps DP4A off.
         """
 
         if int(rows) != 1:

@@ -3,8 +3,8 @@
 The c1 runner already resolves the pair from its own fields. A batch owner is a
 second owner over the same resident weights, so it must receive the same pair
 when it is built, forward it to both layer owners, and include it in the
-captured-segment identity. A bound pair must never read the ambient process
-keys; an unbound owner keeps the historical direct fallback for a c1 row only.
+captured-segment identity. Neither bound nor unbound pairs read the ambient
+process keys; an unbound owner keeps DP4A off.
 
 These are CPU contract tests over recording fakes. No GPU and no kernels.
 """
@@ -141,14 +141,11 @@ def test_a_bound_c1_segment_never_reads_the_ambient_pair(
     assert _owner(enabled=enabled, layers=layers)._q4_dp4a_policy(1) == expected
 
 
-@pytest.mark.parametrize("value,expected", [
-    ("1", True), ("0", False), ("false", False), ("FALSE", True), ("", False),
-])
-def test_an_unbound_c1_segment_keeps_the_historical_env_parser(
-        monkeypatch, value, expected):
+@pytest.mark.parametrize('value', ['1', '0', 'false', 'FALSE', ''])
+def test_an_unbound_c1_segment_ignores_the_ambient_pair(monkeypatch, value):
     monkeypatch.setenv(Q4_ENV, value)
     monkeypatch.setenv(Q4_LAYERS_ENV, "0,2")
-    assert _owner()._q4_dp4a_policy(1) == (expected, (0, 2))
+    assert _owner()._q4_dp4a_policy(1) == (False, ())
 
 
 def test_a_wide_segment_does_not_resolve_the_ambient_pair(monkeypatch):
@@ -216,7 +213,7 @@ def test_a_layer_scope_flip_changes_the_capture_identity(monkeypatch):
     assert first != second
 
 
-def test_an_unbound_c1_batch_key_follows_the_ambient_pair(monkeypatch):
+def test_an_unbound_c1_batch_key_ignores_the_ambient_pair(monkeypatch):
     seen = _recording_layers(monkeypatch)
     runner = _fake_runner(slots=1)
     monkeypatch.setenv(Q4_ENV, "0")
@@ -230,7 +227,7 @@ def test_an_unbound_c1_batch_key_follows_the_ambient_pair(monkeypatch):
     on = [key for _name, _width, _enabled, _layers, key in seen]
 
     assert off and on
-    assert off != on
+    assert off == on
 
 
 def test_the_mixed_target_pass_forwards_the_pair_from_the_batch():

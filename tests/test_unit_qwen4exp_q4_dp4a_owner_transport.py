@@ -1,4 +1,4 @@
-"""The Q4 DP4A decode pair is owner state, with env only as a direct fallback."""
+"""The Q4 DP4A decode pair is explicit owner state."""
 
 from __future__ import annotations
 
@@ -155,7 +155,7 @@ def test_runner_and_generator_expose_the_owner_inputs():
 def test_owner_wins_over_ambient_and_explicit_override_wins_over_owner(monkeypatch):
     monkeypatch.setenv(ENV_ENABLED, "1")
     monkeypatch.setenv(ENV_LAYERS, "1,3")
-    assert _resolve_q4_dp4a_decode(None, None) == (True, frozenset({1, 3}))
+    assert _resolve_q4_dp4a_decode(None, None) == (False, frozenset())
     assert _resolve_q4_dp4a_decode(False, frozenset({2})) == (False, frozenset({2}))
     assert _resolve_q4_dp4a_decode(True, None) == (True, frozenset())
 
@@ -200,35 +200,24 @@ def test_operation_override_restores_after_failure_and_updates_generator_runner(
         ("0,2,5,6,8,9,10,11,13", frozenset({0, 2, 5, 6, 8, 9, 10, 11, 13})),
     ],
 )
-def test_layer_parser_preserves_existing_semantics(monkeypatch, raw, expected):
-    monkeypatch.setenv(ENV_ENABLED, "1")
-    monkeypatch.setenv(ENV_LAYERS, raw)
-    assert _resolve_q4_dp4a_decode(None, None)[1] == expected
+def test_layer_parser_preserves_explicit_semantics(raw, expected):
+    assert runtime._parse_q4_dp4a_decode_layers(raw) == expected
 
 
-@pytest.mark.parametrize(
-    "raw, expected",
-    [
-        ("", False),
-        ("0", False),
-        ("false", False),
-        ("False", False),
-        ("1", True),
-        ("true", True),
-        ("FALSE", True),
-    ],
-)
-def test_boolean_parser_preserves_existing_semantics(monkeypatch, raw, expected):
+@pytest.mark.parametrize('raw', ['', '0', 'false', 'False', '1', 'true', 'FALSE'])
+def test_unbound_pair_ignores_ambient_boolean(monkeypatch, raw):
     monkeypatch.setenv(ENV_ENABLED, raw)
-    monkeypatch.setenv(ENV_LAYERS, "")
-    assert _resolve_q4_dp4a_decode(None, None)[0] is expected
+    monkeypatch.setenv(ENV_LAYERS, "0,2")
+    assert _resolve_q4_dp4a_decode(None, None) == (False, frozenset())
 
 
-def test_invalid_layer_token_still_raises(monkeypatch):
+def test_invalid_explicit_layer_token_still_raises(monkeypatch):
     monkeypatch.setenv(ENV_ENABLED, "1")
     monkeypatch.setenv(ENV_LAYERS, "0,nope")
+    assert _resolve_q4_dp4a_decode(None, None) == (False, frozenset())
     with pytest.raises(ValueError):
-        _resolve_q4_dp4a_decode(None, None)
+        with q4_dp4a_decode(SimpleNamespace(), True, "0,nope"):
+            pass
 
 
 def test_graph_key_is_canonical_and_independent_of_ambient(monkeypatch):
@@ -242,8 +231,8 @@ def test_graph_key_is_canonical_and_independent_of_ambient(monkeypatch):
         "gdn", 7, _resolve_q4_dp4a_decode(None, None))
     assert owner_key == ("gdn", 7, True, (1, 2))
     assert peer_key == ("gdn", 7, False, ())
-    assert ambient_key == ("gdn", 7, False, (9,))
-    assert owner_key != peer_key != ambient_key
+    assert ambient_key == ("gdn", 7, False, ())
+    assert owner_key != peer_key == ambient_key
 
 
 def test_leaf_key_is_the_dp4a_owner_and_fallback_is_registration_guarded():

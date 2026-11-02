@@ -5586,9 +5586,6 @@ def _qwen4_exp_moe_decode_warp_key(
     return key if is_registered(key) else parent
 
 
-_Q4_DP4A_DECODE_ENV = "HIPENGINE_QWEN4_EXP_Q4_DP4A64"
-_Q4_DP4A_DECODE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"
-_Q4_DP4A_DECODE_FALSE = frozenset({"", "0", "false", "False"})
 _Q4_DP4A_DECODE_VARIANT = (
     "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out"
 )
@@ -5610,25 +5607,12 @@ def _resolve_q4_dp4a_decode(
     enabled: bool | None,
     layers: frozenset[int] | None,
 ) -> tuple[bool, frozenset[int]]:
-    """Resolve the explicit owner pair, or the direct/unbound env fallback.
+    """Resolve explicit owner choices; unbound calls keep DP4A off.
 
-    ``enabled is None`` is the only unbound state. A bound ``False`` never
-    reads the process keys, and a bound ``True`` with no layer list means the
-    historical empty scope: every layer, not no layers.
+    An absent layer list keeps the historical empty scope: every layer,
+    not no layers. Enablement remains independent from that scope.
     """
-
-    if enabled is None:
-        enabled = (
-            os.environ.get(_Q4_DP4A_DECODE_ENV, "")
-            not in _Q4_DP4A_DECODE_FALSE
-        )
-        if layers is None:
-            layers = _parse_q4_dp4a_decode_layers(
-                os.environ.get(_Q4_DP4A_DECODE_LAYERS_ENV, "")
-            )
-    elif layers is None:
-        layers = frozenset()
-    return bool(enabled), frozenset(layers)
+    return bool(enabled), frozenset() if layers is None else frozenset(layers)
 
 
 def q4_dp4a_decode_graph_key(
@@ -7199,9 +7183,9 @@ def run_qwen4_exp_moe(
     grouped Q4_K chain and the iu8 owner.
 
     ``q4_dp4a_decode_enabled`` / ``q4_dp4a_decode_layers`` are the owning
-    runner's resolved Q4 DP4A decode pair. ``None`` on both keeps the
-    direct/unbound process-key fallback; a bound pair never reads those keys,
-    and an empty layer set means every layer.
+    runner's resolved Q4 DP4A decode pair. ``None`` enablement keeps DP4A
+    off; neither bound nor unbound calls read process keys. An empty layer
+    set means every layer.
 
     ``q51_wmma_down`` is the owning runner's plan-published admission of the F16
     WMMA compact grouped Q5_1 down owner (see :func:`q51_wmma_down`). It only

@@ -57,7 +57,9 @@ Scope: `PRODUCTION_MOE_PREFILL`; `Q4_IU8_PREFILL`; `HIPENGINE_QWEN4_EXP_Q4_DP4A6
 - `GR_IU8` and `GR_IU8_DOWN`: R0026/R0027 own their independent correction gates.
 - `Q8_MMQ_PREFILL`: localize the operand role responsible for canonical-depth failure.
 - `runner.gdn_peer_prefill_layers`: require a complete-owner mechanism, not noise-level timing.
-- `Q4_DP4A64`: pass both decode gates from the late-layer production-prefill entry; until then the direct/unbound process fallback remains, and it is removed once every caller binds `q4_dp4a_decode_enabled` on its owner.
+- `Q4_DP4A64`: pass both decode gates from the late-layer production-prefill
+  entry before restoring the arithmetic default. All callers carry explicit
+  `q4_dp4a_decode_enabled`/`q4_dp4a_decode_layers`; the process fallback is removed.
 - `QSA_FLASH_PREFILL`: choose a concrete repair or retirement disposition for
   the failed recovery composition.
 
@@ -3595,9 +3597,9 @@ The profile-binding migration and the enumerated direct/unbound route
 fallback removals are complete, including paired GR IU8 and QSA flash policies.
 Keep explicit owner diagnostic scopes and their requested/effective reports.
 Inventory the remaining runtime environment reads separately: distinguish
-unmigrated owner settings from initialization inputs and diagnostics. The Q4
-DP4A direct-call parser remains under R0023; its numerical repair is separate
-from transport. Remove a fallback only after every in-tree direct consumer
+unmigrated owner settings from initialization inputs and diagnostics. Q4 DP4A
+also uses explicit owner state only; R0023 still owns its independent numerical
+repair. Remove a fallback only after every in-tree direct consumer
 supplies its explicit owner choice and targeted public route/repeat/teardown
 checks pass; absence of profile writes alone is not that inventory.
 
