@@ -10,7 +10,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'campaign', 'probe'])
+@pytest.mark.parametrize('interface', ['direct', 'campaign', 'probe', 'ar', 'gap'])
 @pytest.mark.parametrize('length', [73, 273, 517])
 def test_public_mmq_planes_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -58,6 +58,14 @@ def test_public_mmq_planes_owner(monkeypatch, length, interface):
                 elif interface == 'probe':
                     from scripts.qwen4exp_q8_mmq_planes_logits_probe import plane_arm_scope
                     scope = plane_arm_scope(owner, 'candidate' if planes == 2 else 'incumbent')
+                elif interface in {'ar', 'gap'}:
+                    from contextlib import ExitStack
+                    from scripts import qwen4exp_candidate_ar, qwen4exp_profile_gap
+                    module = qwen4exp_candidate_ar if interface == 'ar' else qwen4exp_profile_gap
+                    scope = ExitStack()
+                    report = module.bind_mmq_planes_override(
+                        scope, owner, {'HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES': str(planes)})
+                    assert report['q8_mmq_f32_planes'] == planes
                 else:
                     scope = runtime.q8_mmq_f32_planes(owner, planes)
                 with scope:

@@ -7,7 +7,8 @@ but lets the caller force a diagnostic routing override. The attention-gate
 workspace before sampling; it does not change the process key. Generic WMMA
 ``--override`` also binds owner state. Flash-prefill enable/layer overrides use
 the same paired owner policy as profile-gap, as do the independent GR IU8
-up/down overrides. Other overrides remain post-binder environment inputs.
+up/down overrides. F32 MMQ plane overrides also bind and report owner state.
+Other overrides remain post-binder environment inputs.
 This runner produces diagnostic samples, not production benchmark evidence.
 
 Usage:
@@ -54,6 +55,19 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
         else:
             environment[key] = value
     return environment, attention
+
+
+def split_mmq_planes_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Separate F32 plane selection from both process-write stages."""
+    key = 'HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES'
+    return ({name: value for name, value in values.items() if name != key},
+            {name: value for name, value in values.items() if name == key})
+
+
+def bind_mmq_planes_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Share the profile-gap parser and restoring owner binding."""
+    from scripts.qwen4exp_profile_gap import bind_mmq_planes_override as bind
+    return bind(stack, owner, overrides)
 
 
 def split_q4_iu8_planes_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
@@ -206,6 +220,7 @@ def main() -> int:
 
     try:
         overrides, attention_override = split_owner_overrides(args.override)
+        overrides, mmq_planes_overrides = split_mmq_planes_override(overrides)
         overrides, generic_wmma_override = split_generic_wmma_override(overrides)
         overrides, q4_iu8_overrides = split_q4_iu8_override(overrides)
         overrides, q4_iu8_planes_overrides = split_q4_iu8_planes_override(overrides)
@@ -303,6 +318,8 @@ def main() -> int:
     try:
         artifact['owner_overrides'] = owner_stack.enter_context(
             attention_override_scope(generator, attention_override))
+        artifact['owner_overrides'].update(bind_mmq_planes_override(
+            owner_stack, generator, mmq_planes_overrides))
         artifact['owner_overrides'].update(bind_generic_wmma_override(
             owner_stack, generator, generic_wmma_override))
         artifact['owner_overrides'].update(bind_q4_iu8_planes_override(

@@ -531,6 +531,7 @@ def _apply_post_binder_overrides(
 
     overrides = {key: value for key, value in overrides.items()
                  if key not in {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
+                                "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES",
                                 "HIPENGINE_GGUF_WMMA_PREFILL",
                                 "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
                                 "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
@@ -549,6 +550,20 @@ def _apply_post_binder_overrides(
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_mmq_planes_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, str | int | None]:
+    """Bind explicit F32 plane syntax without changing the process input."""
+    from hipengine.runtime.qwen4_exp_runner import q8_mmq_f32_planes
+    raw = overrides.get('HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES')
+    if raw is not None:
+        if raw not in {'2', '3'}:
+            raise ValueError('q8_mmq_f32_planes must be 2 or 3')
+        stack.enter_context(q8_mmq_f32_planes(owner, int(raw)))
+    return {'q8_mmq_f32_planes_override': raw,
+            'q8_mmq_f32_planes': getattr(owner, 'q8_mmq_f32_planes', None)}
 
 
 def bind_gr_iu8_override(
@@ -1185,6 +1200,7 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_mmq_planes_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_prefill_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_planes_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_risk_override(q4_scope, generator, overrides))
