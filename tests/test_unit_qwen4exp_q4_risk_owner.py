@@ -1,4 +1,4 @@
-"""Q4 risk multipliers follow owners while unbound callers keep parsing."""
+"""Q4 risk multipliers follow explicit owners, without ambient input."""
 import inspect
 import os
 from types import SimpleNamespace
@@ -16,15 +16,21 @@ def test_owner_multiplier_beats_ambient(monkeypatch, value):
     monkeypatch.setenv(ENV, '8')
     assert runtime._qwen4_exp_q4_iu8_risk_multiplier(value) == value
     assert runtime.resolve_q4_iu8_risk_mult(SimpleNamespace(q4_iu8_risk_mult=value)) == value
-    assert runtime._qwen4_exp_q4_iu8_risk_multiplier() == 8.0
+    assert runtime._qwen4_exp_q4_iu8_risk_multiplier() == 4.0
 
 
 @pytest.mark.parametrize('raw', ['0', '-1', 'nan', 'bad'])
-def test_invalid_unbound_multiplier_still_fails(monkeypatch, raw):
+def test_invalid_ambient_multiplier_is_ignored(monkeypatch, raw):
     monkeypatch.setenv(ENV, raw)
-    with pytest.raises(ValueError, match='must be a positive float'):
-        runtime._qwen4_exp_q4_iu8_risk_multiplier()
+    assert runtime._qwen4_exp_q4_iu8_risk_multiplier() == 4.0
+    assert runtime.resolve_q4_iu8_risk_mult(SimpleNamespace()) == 4.0
     assert runtime._qwen4_exp_q4_iu8_risk_multiplier(1.0) == 1.0
+
+
+@pytest.mark.parametrize('raw', ['0', '-1', 'nan', 'bad'])
+def test_invalid_explicit_multiplier_still_fails(raw):
+    with pytest.raises(ValueError, match='must be a positive float'):
+        runtime._qwen4_exp_q4_iu8_risk_multiplier(raw)
 
 
 def test_multiplier_scope_restores_missing_distinct_and_nested_state(monkeypatch):
@@ -56,9 +62,9 @@ def test_multiplier_carriers_and_inheritance():
 
 def test_multiplier_capture_identity(monkeypatch):
     owner = _fake_runner(slots=1)
-    owner.q4_iu8_risk_mult = 1.0
-    before = owner._expert_down_policy()
     owner.q4_iu8_risk_mult = 4.0
+    before = owner._expert_down_policy()
+    owner.q4_iu8_risk_mult = 1.0
     assert owner._expert_down_policy() != before
     owner.q4_iu8_risk_mult = None
     monkeypatch.setenv(ENV, '1')

@@ -341,7 +341,7 @@ def q4_iu8_planes(owner: Any, planes: int | None):
 
 
 def resolve_q4_iu8_risk_mult(owner: Any) -> float:
-    """Resolve an owner multiplier, falling back only before publication."""
+    """Resolve an owner multiplier, defaulting unbound calls to 4.0."""
     return _qwen4_exp_q4_iu8_risk_multiplier(getattr(owner, 'q4_iu8_risk_mult', None))
 
 
@@ -6861,8 +6861,7 @@ def _qwen4_exp_q4_iu8_risk_multiplier(multiplier: float | None = None) -> float:
     1.50-1.82x operation-complete speedup.
     """
 
-    raw = (os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT", "4.0")
-           if multiplier is None else multiplier)
+    raw = 4.0 if multiplier is None else multiplier
     try:
         value = float(raw)
     except ValueError:
