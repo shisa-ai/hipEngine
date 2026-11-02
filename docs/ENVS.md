@@ -779,7 +779,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Layer-scoped staged-F32 Q8_0 comparison interface; empty/unset is off, `0` selects layer zero. Replaces exact F32 parents only; disable rowtile for rows 2–8 and Q8 DPP reduction above that band to expose those parents. WMMA/dense-wide routes must also be cleared in the comparison scope. |
 | `HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET` | `0` | `1` runs explicit MTP verification and AR peers in one shared batch target pass. Off by default because it measures slower than separate execution (`docs/REFACTOR.md`). |
 | `HIPENGINE_QWEN4_EXP_RISK_DIAGNOSTICS` | unset | Records iu8 risk/repair counts; synchronizes the stream, diagnostics only. |
-| `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` | unset | Policy for a caller-set route variable that conflicts with the profile binder. |
+| `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` | retired | Ignored; regression tests verify it cannot reject a binding. Use `profile_ignored_overrides(owner)` to inspect ignored ambient values on that owner. |
 | `HIPENGINE_QWEN4_EXP_GR_STAGED` | retired | No longer read. Regression tests ensure the rejected GR staged-F32 selector cannot be restored; the separate dense staged route remains registered. |
 | `HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE` | retired | No longer read; tests assert that setting it does not disable the backend registration cache. |
 | `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` | retired | No longer read. Regression tests ensure it cannot restore the rejected generic dense Q8 IU8 WMMA route; the independent GR kernel remains registered. |
@@ -796,6 +796,14 @@ use.
 | `HIPENGINE_NO_MCUMODE_FAMILIES` | unset | Comma-separated kernel families built without CU mode; part of the build cache key. |
 
 ### Qwen4Exp decode and state
+
+Profile bindings leave the process environment unchanged. Inspect
+`hipengine.generation.qwen4_exp_profiles.profile_ignored_overrides(owner)` for
+ambient values ignored by that owner's binding, as `(ambient_value, bound_value)`
+pairs. The report is a detached snapshot; rebinding one owner does not change
+another owner's report. Use the documented owner scopes for diagnostic overrides.
+`selected_prefill_routes(owner)` reports effective WMMA-layer and dense-wide
+choices, including any active diagnostic scope.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |

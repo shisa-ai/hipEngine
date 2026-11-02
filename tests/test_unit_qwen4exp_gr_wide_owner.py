@@ -178,14 +178,13 @@ def test_a_later_bind_restores_its_own_decision():
 
 
 def test_binder_records_a_discarded_prebinder_value(monkeypatch):
-    from hipengine.generation.qwen4_exp_profiles import last_prebinder_conflicts
+    from hipengine.generation.qwen4_exp_profiles import profile_ignored_overrides
 
     resolved = _resolve(ExecutionProfile.STRICT)
     monkeypatch.setenv(ENV, "1")
     owner = SimpleNamespace(runner=SimpleNamespace())
-    with pytest.warns(RuntimeWarning, match=ENV):
-        resolved.binder(owner, resolved)
-    assert last_prebinder_conflicts()[ENV] == ("1", "0")
+    resolved.binder(owner, resolved)
+    assert profile_ignored_overrides(owner)[ENV] == ("1", "0")
     assert owner.gr_wide is False
 
 

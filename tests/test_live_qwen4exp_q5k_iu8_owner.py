@@ -26,6 +26,8 @@ def test_public_q5k_iu8_owner(monkeypatch, length, interface):
     _install_logit_capture(monkeypatch, captures)
     key = KernelKey('hip_gfx1151', 'moe_linear', 'gguf_q5_k',
                     'selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out')
+    if interface == 'profile':
+        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', '0')
     llm = LLM(str(MODEL), backend='hip_gfx1151', execution_profile='production',
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
@@ -42,6 +44,11 @@ def test_public_q5k_iu8_owner(monkeypatch, length, interface):
             runners.append(owner.runner)
         assert owner.q5k_iu8_exact_enabled is True
         assert all(r.q5k_iu8_exact_enabled is True for r in runners)
+        if interface == 'profile':
+            from hipengine.generation.qwen4_exp_profiles import profile_ignored_overrides
+            report = profile_ignored_overrides(owner)
+            assert report['HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT'] == ('0', '1')
+            assert all(profile_ignored_overrides(r) == report for r in runners)
         prior = [(r, r.q5k_iu8_exact_enabled) for r in runners]
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
@@ -99,6 +106,9 @@ def test_public_q5k_iu8_owner(monkeypatch, length, interface):
                 assert os.environ['HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT'] == ambient
             for runner, value in prior:
                 assert runner.q5k_iu8_exact_enabled is value
+            if interface == 'profile':
+                assert profile_ignored_overrides(owner) == report
+                assert all(profile_ignored_overrides(r) == report for r in runners)
     finally:
         register(key, original, replace=True)
         llm.close()

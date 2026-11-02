@@ -1005,6 +1005,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     request.
     """
 
+    runner._profile_ignored_overrides = dict(
+        getattr(generator, '_profile_ignored_overrides', {}))
     runner.dense_f16_gemm_variants = getattr(generator, "dense_f16_gemm_variants", ())
     runner.dense_wide_tail_variant = getattr(generator, "dense_wide_tail_variant", None)
     runner.dense_f16_pair_enabled = bool(

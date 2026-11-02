@@ -594,7 +594,7 @@ def test_the_arithmetic_recovery_table_cannot_rewrite_it(
 def test_the_binder_records_a_discarded_prebinder_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from hipengine.generation.qwen4_exp_profiles import last_prebinder_conflicts
+    from hipengine.generation.qwen4_exp_profiles import profile_ignored_overrides
 
     monkeypatch.setattr(os, "environ", os.environ.copy())
     register_gfx1151_kernels(replace=True)
@@ -604,9 +604,8 @@ def test_the_binder_records_a_discarded_prebinder_value(
         profile=ExecutionProfile.STRICT)
     monkeypatch.setenv(RETIRED_ENV, "1")
     owner = SimpleNamespace(runner=SimpleNamespace())
-    with pytest.warns(RuntimeWarning, match=RETIRED_ENV):
-        resolved.binder(owner, resolved)
-    assert last_prebinder_conflicts()[RETIRED_ENV] == ("1", "0")
+    resolved.binder(owner, resolved)
+    assert profile_ignored_overrides(owner)[RETIRED_ENV] == ("1", "0")
     assert getattr(owner, FIELD) is False
 
 

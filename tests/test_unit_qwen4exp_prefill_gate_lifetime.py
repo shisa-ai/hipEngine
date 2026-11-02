@@ -29,9 +29,9 @@ def test_gate_closes_constructed_owner_and_restores_route(monkeypatch, tmp_path,
     monkeypatch.setattr(gate, 'resolve_runtime_profile', lambda **kw: profile)
     monkeypatch.setattr(backend, 'register_gfx1151_kernels', lambda **kw: None)
     monkeypatch.setattr(profiles, 'register_qwen4_exp_gfx1151_profiles', lambda: None)
-    # Another bind's legacy diagnostics must not reject an explicit owner arm.
-    monkeypatch.setattr(profiles, 'last_prebinder_conflicts',
-                        lambda: {'unrelated-owner': ('0', '1')})
+    # Owner diagnostics are independent of this explicit gate arm.
+    monkeypatch.setattr(profiles, 'profile_ignored_overrides',
+                        lambda owner: {'unrelated-owner': ('0', '1')})
     monkeypatch.setattr(gguf, 'discover_gguf_files', lambda path: [path / 'fake.gguf'])
     monkeypatch.setattr(gguf, 'load_gguf_index', lambda path: SimpleNamespace(architecture='fake'))
     monkeypatch.setattr(models, 'resolve_model', lambda architecture: object())

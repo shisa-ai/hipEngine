@@ -68,7 +68,7 @@ from hipengine.generation import qwen4_exp_profiles as profile_module
 from hipengine.generation.qwen4_exp_profiles import (
     QWEN4_EXP_BACKEND,
     QWEN4_EXP_MODEL,
-    last_prebinder_conflicts,
+    profile_ignored_overrides,
     register_qwen4_exp_gfx1151_profiles,
 )
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
@@ -91,13 +91,9 @@ Q4KM = "gguf_q4_k_m"
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
-    profile_module._owner_binder_discarded.clear()
-    profile_module._last_prebinder_conflicts.clear()
     monkeypatch.delenv(ENV, raising=False)
     monkeypatch.delenv(COLWARPS_ENV, raising=False)
     yield
-    profile_module._owner_binder_discarded.clear()
-    profile_module._last_prebinder_conflicts.clear()
     clear_runtime_profile_registry_for_tests()
 
 
@@ -328,21 +324,21 @@ def test_two_owners_keep_independent_values_in_both_bind_orders():
     assert second.gdn_tile16_variant == MULTI
 
 
-def test_a_caller_set_selector_is_reported_once_and_stays_inert(monkeypatch):
+def test_a_caller_set_selector_is_reported_on_each_owner_and_stays_inert(monkeypatch):
     monkeypatch.setenv(ENV, DPP)
 
-    with pytest.warns(RuntimeWarning, match=ENV):
-        generator, runner = _bind(_resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
+    generator, runner = _bind(_resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
 
     assert os.environ[ENV] == DPP
     assert generator.gdn_tile16_variant == MULTI
     assert runner.gdn_tile16_variant == MULTI
-    assert last_prebinder_conflicts()[ENV] == (DPP, MULTI)
+    assert profile_ignored_overrides(generator)[ENV] == (DPP, MULTI)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        _bind(_resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
+        peer, _ = _bind(_resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
     assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert profile_ignored_overrides(peer) == profile_ignored_overrides(generator)
 
 
 def test_a_matching_ambient_value_is_not_a_conflict(monkeypatch):
@@ -350,10 +346,10 @@ def test_a_matching_ambient_value_is_not_a_conflict(monkeypatch):
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        _bind(_resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
+        owner, _ = _bind(_resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
 
     assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
-    assert last_prebinder_conflicts() == {}
+    assert ENV not in profile_ignored_overrides(owner)
 
 
 # --------------------------------------------------------------------------

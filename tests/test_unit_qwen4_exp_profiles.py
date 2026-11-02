@@ -12,7 +12,6 @@ from hipengine.execution_profiles import (
     resolve_runtime_profile,
 )
 from hipengine.generation.qwen4_exp_profiles import (
-    PREBINDER_CONFLICT_ENV,
     PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS,
     PRODUCTION_QSA_FLASH_PREFILL_LAYERS,
     PRODUCTION_GDN_PEER_PREFILL_LAYERS,
@@ -24,7 +23,7 @@ from hipengine.generation.qwen4_exp_profiles import (
     QWEN4_EXP_BACKEND,
     QWEN4_EXP_MODEL,
     QWEN4_EXP_QUANTS,
-    last_prebinder_conflicts,
+    profile_ignored_overrides,
     qwen4_exp_gfx1151_profiles_registered,
     register_qwen4_exp_gfx1151_profiles,
 )
@@ -122,7 +121,7 @@ def test_manifest_identity_stays_on_each_generator(order, ambient, monkeypatch):
             generator = resolved.construct_generator(SimpleNamespace)
         owners.append((generator, resolved))
         assert os.environ.get(name) == ambient
-        assert name not in last_prebinder_conflicts()
+        assert name not in profile_ignored_overrides(generator)
         for owner, expected in reversed(owners):
             assert owner.execution_profile_manifest_sha256 == expected.manifest_sha256
             assert owner.execution_profile_manifest == expected.manifest
@@ -139,10 +138,10 @@ def test_removed_dense_split_env_has_no_profile_or_manifest_binding(profile, mon
     monkeypatch.setenv(name, "0,1,2")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        resolved.construct_generator(lambda: SimpleNamespace())
+        generator = resolved.construct_generator(lambda: SimpleNamespace())
     assert not any("DENSE_SPLIT_LAYERS" in str(w.message) for w in caught)
     assert os.environ[name] == "0,1,2"  # inert legacy value; no runtime reader
-    assert name not in last_prebinder_conflicts()
+    assert name not in profile_ignored_overrides(generator)
     assert _resolve(profile, quant="gguf_ud_q4_k_xl").manifest_sha256 == original_manifest
 
 
@@ -860,12 +859,7 @@ def test_qwen4_exp_profiles_cover_both_registered_quant_names() -> None:
 def test_binder_reports_a_pre_binder_value_it_discards(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A route variable set before construction is inert, so say so loudly.
-
-    The binder owns every variable it writes. Setting one before the generator
-    exists means the intended route never runs and the experiment reports a
-    clean null that looks like a real negative result.
-    """
+    """Ignored ambient route values remain observable on their bound owner."""
 
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
@@ -874,31 +868,30 @@ def test_binder_reports_a_pre_binder_value_it_discards(
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", "32,33,34")
 
     generator = SimpleNamespace(runner=None)
-    with pytest.warns(RuntimeWarning, match="HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"):
-        production.binder(generator, production)
+    production.binder(generator, production)
 
     # The ambient value is not a process-owned binding any more, so the binder
     # leaves it untouched and publishes the empty scope as owner state.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == "32,33,34"
     assert generator.q8_wmma_layer_scope.to_env() == ""
-    assert last_prebinder_conflicts()["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == (
+    assert profile_ignored_overrides(generator)["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == (
         "32,33,34",
         "",
     )
 
 
-def test_binder_can_be_made_to_raise_on_a_discarded_pre_binder_value(
+def test_binder_ignores_retired_error_control_and_reports_on_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     production = _resolve(ExecutionProfile.PRODUCTION)
-    assert production.binder is not None
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", "0-47")
-    monkeypatch.setenv(PREBINDER_CONFLICT_ENV, "error")
-
-    with pytest.raises(RuntimeError, match="inert"):
-        production.binder(SimpleNamespace(runner=None), production)
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT", "error")
+    owner = SimpleNamespace(runner=None)
+    production.binder(owner, production)
+    assert profile_ignored_overrides(owner)["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == (
+        "0-47", "")
 
 
 def test_binder_does_not_report_its_own_previous_bind_as_a_conflict(
@@ -915,8 +908,9 @@ def test_binder_does_not_report_its_own_previous_bind_as_a_conflict(
     strict.binder(SimpleNamespace(runner=None), strict)
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
-        production.binder(SimpleNamespace(runner=None), production)
-    assert last_prebinder_conflicts() == {}
+        owner = SimpleNamespace(runner=None)
+        production.binder(owner, production)
+    assert profile_ignored_overrides(owner) == {}
 
 
 def test_production_binds_the_certified_q8_dense_wide_prefill_scope() -> None:

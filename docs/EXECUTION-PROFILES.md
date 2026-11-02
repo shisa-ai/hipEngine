@@ -770,12 +770,15 @@ artifact path. The historical failed composition remains registered only for
 diagnosis, not admitted for serving. This is fallback to an existing oracle,
 not numerical qualification of a repaired composition.
 
-The Qwen4Exp binder owns the F16-composition selectors in
-`_F16_ROUTE_SELECTORS`, including their disabled values for strict and fallback
-bindings. Conflicting values set before binding are replaced and reported through
-`HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` (`warn` by default, `error` to reject).
-Experimental harnesses must apply overrides after binding and record the modified
-candidate separately; the original manifest does not certify those overrides.
+The Qwen4Exp binder publishes route selectors on its generator and runners,
+including disabled values for strict and fallback bindings, without changing
+process variables. `profile_ignored_overrides(owner)` snapshots ignored ambient
+values as `(ambient_value, bound_value)` pairs for that owner's final binding.
+Reports do not share process-global history, and late runners inherit a detached
+copy. `selected_prefill_routes(owner)` reports effective WMMA-layer and dense-wide
+choices. Experimental harnesses use explicit restoring owner scopes and record
+the modified candidate separately; the original manifest does not certify those
+overrides.
 
 The recognized UD layout selects the same manifest as explicit
 `quant="gguf_ud_q4_k_xl"`. A live C1 BF16/8192-context check on zbook/gfx1151

@@ -232,9 +232,10 @@ def test_two_owners_keep_independent_decisions_in_both_bind_orders():
 
 def test_binder_no_longer_writes_the_key(monkeypatch):
     monkeypatch.setenv(ENV, "0")
-    with pytest.warns(RuntimeWarning, match=ENV):
-        generator, runner = _bind(
-            _resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
+    generator, runner = _bind(
+        _resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
+    from hipengine.generation.qwen4_exp_profiles import profile_ignored_overrides
+    assert profile_ignored_overrides(generator)[ENV] == ("0", "1")
     assert os.environ[ENV] == "0"
     assert generator.q8_mmq_prefill_enabled is True
     assert runner.q8_mmq_prefill_enabled is True

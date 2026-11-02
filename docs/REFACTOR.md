@@ -2846,217 +2846,6 @@ transient terms together if changing their values, following the capacity protoc
 `benchmarks/HARNESSES.md`. Do not delete the generator cache without assigning its selection, DMS
 and retry responsibilities to another owner.
 
-### R0425 — Qwen4Exp pre-binder conflict guard
-
-Owner: `hipengine/generation/qwen4_exp_profiles.py`.
-
-Scope: `hipengine/generation/qwen4_exp_profiles.py`;
-`HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT`; `last_prebinder_conflicts()`,
-`scripts/execution_profile_q8_wmma_prefill_layers_gate.py`.
-
-Done when: Deferred dependency: finish the explicit owner-field migration described in the 2026-08-29
-Qwen4Exp late-layer production prefill entry. Do not replace it with implicit per-method profile
-context or a transaction framework. **Clearing action:** migrate the remaining binder writes and
-their dispatch, resource and diagnostic readers together, provide an explicit selected-route getter,
-and update the layer gate to use it rather than environment ordering. Only then remove the conflict
-map, binder-write tracking, warning/error control and their documentation. Preserve caller-override
-observability and strict/ production isolation. Run `tests/test_unit_qwen4_exp_profiles.py`, the
-affected runner ownership tests and a real generation request confirming selected routes and
-isolation before closing the migration. GDN columnwarp layer scopes publish
-on generator/runner owners, including the manifest-selected F16 window, without
-process writes. Diagnostics bind and report explicit restoring scopes; unbound
-callers retain the ambient diagnostic fallback. The unused GDN decode-layer
-key is no longer written or advertised by profiles and diagnostics; decode uses
-its existing `gdn_decode_rowsplit` owner. MMQ weight prepacking is also published
-on generator/runner owners without process writes; its diagnostic scopes preserve
-explicit raw/prepacked control and shared resource ownership. Continue with the
-remaining profile-owned environment controls before closing this entry. MMQ
-attention-gate policy now accepts an explicit generator/runner owner choice.
-Profiles publish their existing false choice on each owner without process
-writes, and the plane gate reports that choice rather than ambient input.
-The layer-2 attention candidate binds the attention owner and MMQ parent
-explicitly, prepares resources before measurement, and records owner provenance.
-The candidate AR runner translates its existing attention `--override` into the
-same owner policy and workspace preparation without writing that process key.
-Profile-gap attention overrides also bind owner state, explicitly enable the
-parent before preparation, and reject a conflicting explicit parent-off request.
-Generic GGUF WMMA prefill enablement also accepts optional generator/runner state
-and a restoring scope. Profile-gap translates its generic WMMA `--override`
-into that owner state without process writes. Candidate AR likewise separates
-and binds generic WMMA overrides. The campaign Q8 wave comparison closes the
-generic preemptor on its runner. The localizer binds its shared generic-WMMA-off
-baseline on each reference/arm/phase owner without snapshotting the key. Profiles
-publish the same generic-WMMA-off decision on owners without process writes.
-The remaining IU8 controls still require owner transport. Selected Q8 down
-enablement now accepts explicit generator/runner state, restoring diagnostic
-scopes and forwarded MoE choices, including capture identity. Its existing
-profile process writes and diagnostic callers still need migration before
-publishing bound owner choices. Profile-gap translates the selected-down
-`--override` into owner state without process writes and reports the effective
-decision. Candidate AR likewise separates the selected-down key from its
-construction and post-binder environment updates and binds the same owner scope.
-The selected Q8 logits probe scopes its gate and candidate leaf on the measured
-owner, restores both between samples and closes its generator on exit.
-Layer2 candidates declare selected-down enablement on their owner fields; the
-shared binder, prefill restore comparison and conservative-cost comparison bind
-and report that decision without process writes. Journey localization reconstructs
-selected-down snapshots from the binding owners, extracts each arm's effective
-gate, and scopes the strict and production split phases independently. The
-per-layer Q8 probe changes the selected-down call argument only for the named
-layer, preserving incoming choices on other layers and leaving the process alone.
-The campaign selected-down arm binds and reports its gate alongside its counted
-leaf on the measured owner; its mode setup does not write that process key.
-Sorted/register, mapped-down and PF-1/PF-3 diagnostic preemptor closures also
-bind selected-down off on their measured owners and record it as a field. The
-row4 state gate also scopes its Q5_K isolation pin on the owner and checks the
-production prerequisite through the effective owner rather than the environment.
-Profiles publish the effective selected-down Boolean on generators and runners,
-including UD recovery/restoration, without writing the direct-call environment
-fallback. Shared-graph candidates name the owner field, and selector reports
-read the effective owner rather than stale process provenance.
-GR IU8 up/down choices have an independent paired owner policy threaded through
-GR reads, layer and head calls, and generator/clone inheritance. Unbound calls
-keep their process fallback pending diagnostic and profile publication migration.
-The profile-gap and candidate autoregressive GR overrides bind and report the
-pair on their measured owners, preserving omitted axes and leaving both ambient
-keys untouched. The candidate splits them out before both process-write stages.
-Layer-two candidates declare independent optional GR-up/down axes and bind the
-effective pair in their owner helper and measured runner. Shared-graph inventory,
-prefill-restore, conservative-cost and GR router localization use those choices.
-Journey arms reconstruct the pair from each binding's snapshot and family
-overlays, then bind and report owner choices for both full and split trajectories.
-Campaign and state gates bind only the requested GR projection axis, preserve the
-other choice, report the effective pair and restore owners without teardown writes.
-GR wave-scale and DPP comparisons close IU8-up on their measured owners while
-preserving IU8-down; their control records name the owner preemptor. The logits
-probe binds only its requested GR axis and restores it without teardown writes.
-Ranking and family-sweep reports read the child's effective GR pair instead of
-attributing the owner choices from process values. Profiles publish the existing
-independent GR recovery decisions as `gr_iu8_policy`, without process writes;
-direct/unbound callers retain the environment fallback. The selected-Q8 state
-gate asserts and reports its owner gate, not a retired process-key premise.
-Exact Q5_1 IU8 enablement accepts an explicit restoring generator/runner choice
-through resident, batch and mixed-target calls, with capture identity tracking
-the effective choice. Profile-gap binds and reports its legacy exact-Q5_1
-`--override` on the measured owner without process writes. Candidate AR also
-separates that key before both process-write stages and binds the same restoring
-owner choice. Campaign and state-gate exact-Q5_1 arms bind the measured owner
-and report the effective choice without process writes. Pair2 and PF13 scopes
-close exact-Q5_1 preemption on the measured owner, preserving the process input
-and restoring the prior owner choice. Profiles publish exact-Q5_1 enablement on
-the generator and current runner (production on, strict off) without process
-writes; new runners inherit it. The state gate reads that owner premise. Other
-diagnostic callers still need migration; unbound callers retain their environment
-fallback. Exact Q4 IU8 enablement also accepts a restoring owner choice across
-resident, batch and mixed-target execution, inherited by new runners and included
-in capture identity. Profile-gap binds its exact-Q4 override on the measured
-owner, reports the effective choice and preserves the process input. Candidate
-AR separates the exact-Q4 key before both process-write stages and binds that
-same restoring owner choice. Campaign and state-gate exact-Q4 arms bind the
-measured owner and report its effective choice without process writes. The
-state gate checks the production prerequisite through that owner. The Q4 pair2
-comparison closes exact-IU8 preemption on the measured owner and records that
-choice, preserving the process input. The out4 ablation also closes exact-IU8
-through its declared runner bindings rather than its environment pins. The
-combined Q4 ablation binds both exact and plain-prefill owners without changing
-either process input. Profiles publish exact-Q4 enablement on generators and
-current runners, preserving the process input and the same production/strict
-choice. Plain-Q4 IU8 prefill enablement also has an owner resolver and restoring
-scope, forwarded through resident, batch and mixed-target paths and included in
-capture identity. Profile-gap binds plain-prefill overrides on that owner and
-reports the requested and effective values without process writes. The decode-sync
-diagnostic also binds plain-prefill enablement on its measured owner and reports
-it. Selector-ranking reports both Q4 owner choices from the child, excluding
-those keys from process-route maps and flagging missing owner records. Family-sweep
-attribution and inert controls use the effective plain-prefill owner record when
-present, preserving archived process-only reports. The candidate interface has an
-optional plain-prefill owner field, restoring shared/primary gate bindings and
-requested/effective reporting. Conservative-cost and prefill-restoration bind the
-same choice on their measured owners; long-context reports the shared binding.
-The shared-graph inventory includes explicit plain-prefill owner changes. Journey
-reconstructs each choice through binding snapshots and family overlays, binds it
-on the measured owner, and reports split-phase choices. Candidate declarations
-use plain-prefill owner fields, and shared-decode comparisons admit that
-prefill-only field. Profiles publish the same effective plain-prefill choice on
-the generator and runner without process writes, including UD recovery and
-strict fallback; direct unbound calls keep their environment fallback. Plain-Q4
-layer scope now has runtime owner transport through single/batch/mixed MoE calls,
-serving inheritance and captured-segment identity. Profile-gap overrides bind
-that scope and report requested/effective values without process writes;
-decode-sync binds and reports its suffix on the measured owner too. Selector
-ranking and family sweeps attribute scopes through child owner reports, not
-ambient process values. Candidate specifications can bind and report an explicit
-layer scope through their restoring prefill binder; cost/restore/long-context
-consumers report its effective value and shared-decode comparisons admit the
-prefill-only field. Journey snapshots and family overlays transport layer scopes
-through arm owners, including strict split phases and per-phase reports.
-The repair-free gate/up candidate declares its every-layer scope on its owner;
-no candidate declaration writes the layer selector. Profiles publish the same
-production suffix and strict empty scope on generator and runner owners without
-writing `HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS`. Q4 risk multipliers can bind on
-runtime owners through resident, batch and mixed carriers, serving inheritance
-and captured-segment identity. Profile-gap and candidate AR bind requested
-multipliers on owners and report their effective value without process writes.
-Candidate metadata and shared arm scopes can transport and report optional
-multipliers without process writes. Selector-ranking and family-sweep reports
-read effective child multipliers, preserving unknown current records and legacy
-process-only interpretation. Journey snapshots reconstruct multipliers through
-family overlays, bind arm and strict split-phase values on owners and report
-each phase. Prefill-restore, conservative-cost and long-context reports carry
-the effective value. The multiplier candidate declares 1.0 on its owner,
-without a process override. Both profile binders publish the same existing
-1.0 multiplier on generator/runner owners without changing ambient input;
-unbound callers keep their environment/default fallback. Plane selection now
-has optional runtime owner transport, restoring scopes and graph identity.
-Profile-gap and candidate-AR plane overrides bind owners and report effective
-values without process writes. Candidate metadata and shared Q4 arm scopes
-can bind and report optional plane counts without process writes. Ranking and
-family-sweep attribution read effective child planes, preserving missing current
-values as unknown and legacy process-only interpretation. Journey snapshots,
-arm and split-phase scopes and comparison reports now carry plane values.
-Both profile binders capture the existing process-selected plane count on
-owners; missing or malformed input still selects three planes and `2` selects
-two. Later process changes do not alter an already-bound owner.
-QSA flash prefill uses paired enable/layer owner policies across profiles and
-diagnostic callers. Profiles publish the same effective pair without process
-writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
-`HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS`, including UD arithmetic recovery's
-flash-off decision. The unbound low-level environment fallback remains a
-comparison interface. Exact Q5_K IU8 selection now accepts optional owner
-state through resident, batch and mixed-target execution, with restoring scopes,
-serving inheritance and captured-segment identity. Profile-gap and candidate AR
-bind explicit Q5_K overrides on owners and report requested/effective values
-without process writes. Campaign and row4 state-gate arms also bind and report
-Q5_K choices through restoring owner scopes, including production-premise and
-mapped-down prerequisite reads. The mapped-down scope closes the Q5_K preemptor
-through owner state and reports its effective prior choice without process
-writes. Profiles publish the same production-on/strict-off Q5_K choice on
-generator/runner owners without process writes. Later process changes do not
-alter a bound owner; unbound calls retain the low-level compatibility fallback.
-Remove the `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`
-process fallback after profiles and diagnostic consumers bind owner state and
-the public owner-selection regression passes without process transport.
-The Q8 layer gate snapshots effective WMMA-layer and dense-wide selections with
-`selected_prefill_routes(owner)`, not the last bind's global conflict map. It
-preserves bound-selection reports, explicit arm scopes and dispatch engagement
-checks; legacy conflict warning/error machinery still needs owner-local
-observability before retirement. The profile environment writer, write-history
-map and empty recovery/restoration loops are removed; all current profile/quant
-bindings are tested against process writes and deletions.
-Profile-gap and candidate AR generic flash overrides bind the same paired owner
-policy, preserving omitted axes and recording actual policy without process
-writes. Decode-sync binds its flash-on suffix policy on the measured owner.
-Layer2's conservative candidate declares its flash gate on the owner, preserving
-its layer scope; the shared candidate path and per-arm diagnostics bind that
-declaration without process writes. Journey snapshots reconstruct paired flash
-choices from their binding owners, remove the process keys from arm updates,
-and scope strict/production split phases separately.
-The focused guard regression is:
-
-```bash
-uv run pytest tests/test_unit_qwen4_exp_profiles.py -k 'pre_binder or previous_bind'
-```
-
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
@@ -3800,7 +3589,19 @@ while the MMQ owner is absent.
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
-Scope: `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`; `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`; `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL`.
+Scope: direct/unbound Qwen4Exp route fallbacks, including
+`HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`, `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`,
+`HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
+
+The profile-binding migration is complete. Finish the separate direct/unbound
+caller inventory before removing compatibility fallbacks. Include the GR IU8
+pair, selected-Q8 gate, exact Q4/Q5_1/Q5_K and plain-Q4 gate/layers/risk/planes,
+and paired QSA flash policy. Keep explicit owner diagnostic scopes and their
+requested/effective reports. Remove a fallback only after every in-tree direct
+consumer supplies its explicit owner choice and targeted public route/repeat/
+teardown checks pass; absence of profile writes alone is not that inventory.
+For Q5_K run `tests/test_unit_qwen4exp_q5k_iu8_owner.py` and
+`tests/test_live_qwen4exp_q5k_iu8_owner.py` after migrating any remaining callers.
 
 **Remaining direct-call migration:** replace the direct/unbound
 `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` fallback after every in-tree caller reaches the

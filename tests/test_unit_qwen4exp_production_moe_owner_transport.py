@@ -53,12 +53,8 @@ Q4KM = "gguf_q4_k_m"
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
-    profile_module._owner_binder_discarded.clear()
-    profile_module._last_prebinder_conflicts.clear()
     monkeypatch.delenv(ENV, raising=False)
     yield
-    profile_module._owner_binder_discarded.clear()
-    profile_module._last_prebinder_conflicts.clear()
     clear_runtime_profile_registry_for_tests()
 
 
@@ -189,13 +185,13 @@ def test_two_owners_keep_independent_decisions_in_both_bind_orders():
 def test_binder_no_longer_writes_the_key_and_reports_the_discarded_value(
         monkeypatch):
     monkeypatch.setenv(ENV, "0")
-    with pytest.warns(RuntimeWarning, match=ENV):
-        generator, runner = _bind(
-            _resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
+    generator, runner = _bind(
+        _resolve(ExecutionProfile.PRODUCTION, quant=Q4KM))
+    assert profile_module.profile_ignored_overrides(generator)[ENV] == ("0", "1")
     assert os.environ[ENV] == "0"
     assert generator.production_moe_prefill_enabled is True
     assert runner.production_moe_prefill_enabled is True
-    # A later bind of the same owner does not re-report the untouched value.
+    # A peer bind keeps its own report without suppressing this owner's report.
     import warnings
 
     with warnings.catch_warnings(record=True) as caught:

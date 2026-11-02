@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import warnings
 from dataclasses import replace
 from typing import Any
 
@@ -24,12 +23,6 @@ QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 Q8_MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
 Q8_WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
-PREBINDER_CONFLICT_ENV = "HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT"
-_last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
-# Owner-state transport has no environment write to overwrite a caller value.
-# Keep the discarded value so the warning is reported once per bind sequence,
-# not on every later bind that sees the same untouched ambient string.
-_owner_binder_discarded: dict[str, str] = {}
 
 
 # Quants whose production plan runs the F16-operand route composition: F16
@@ -922,17 +915,14 @@ def selected_prefill_routes(owner: Any) -> dict[str, Any]:
     }
 
 
-def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
-    """Return env keys whose caller-set value the last bind discarded.
+def profile_ignored_overrides(owner: Any) -> dict[str, tuple[str, str]]:
+    """Snapshot ambient values ignored by this owner's profile binding.
 
-    Maps the variable to ``(value_before_bind, value_written_by_bind)``.  The
-    binder owns every variable it writes, so a value set before generator
-    construction is silently discarded: the caller's route never runs and the
-    run reports a clean null.  Gates that flip a profile-owned variable must set
-    it *after* the binder, and this getter is how they assert they did.
+    Each entry maps a variable to ``(ambient_value, bound_value)``. Matching or
+    absent ambient values are omitted. A rebind replaces only that owner's
+    report; diagnostic owner scopes do not change this binding-time snapshot.
     """
-
-    return dict(_last_prebinder_conflicts)
+    return dict(getattr(owner, '_profile_ignored_overrides', {}))
 
 
 def _f16_route_selections(
@@ -977,16 +967,18 @@ def _f16_route_selections(
                             *_dense_f16_gemm_selections(production=True))
 
 
-def _record_owner_transport(env: str, value: str) -> None:
-    """Record a caller value an owner publication makes inert."""
-
+def _record_owner_transport(generator: Any, env: str, value: str) -> None:
+    """Record an ignored ambient value against the final owner selection."""
+    report = profile_ignored_overrides(generator)
     previous = os.environ.get(env)
     if previous is not None and previous != value:
-        if _owner_binder_discarded.get(env) != previous:
-            _last_prebinder_conflicts[env] = (previous, value)
-            _owner_binder_discarded[env] = previous
+        report[env] = (previous, value)
     else:
-        _owner_binder_discarded.pop(env, None)
+        report.pop(env, None)
+    generator._profile_ignored_overrides = report
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner._profile_ignored_overrides = dict(report)
 
 
 def _publish_dense_wide_policy(generator: Any, manifest: Any) -> None:
@@ -1001,8 +993,8 @@ def _publish_dense_wide_policy(generator: Any, manifest: Any) -> None:
                 enabled, layers = True, frozenset(range(first, last + 1))
             break
     policy = Q8DenseWidePolicy(enabled, layers)
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE', '1' if enabled else '0')
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS',
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE', '1' if enabled else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS',
                             ','.join(map(str, sorted(layers))) if layers else '')
     generator.q8_dense_wide_policy = policy
     runner = getattr(generator, 'runner', None)
@@ -1014,7 +1006,7 @@ def _publish_production_moe_prefill(generator: Any, enabled: bool) -> None:
     """Publish the grouped-MoE prefill gate as owner state, not a process key."""
 
     _record_owner_transport(
-        PRODUCTION_MOE_PREFILL_ENV, "1" if enabled else "0")
+        generator, PRODUCTION_MOE_PREFILL_ENV, "1" if enabled else "0")
     generator.production_moe_prefill_enabled = bool(enabled)
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1040,7 +1032,7 @@ def _gr_wide_projection_selected(manifest: Any) -> bool:
 def _publish_gr_wide(generator: Any, enabled: bool) -> None:
     """Publish the GR-up wide tile as owner state, not a process key."""
 
-    _record_owner_transport(_GR_WIDE_ENV, "1" if enabled else "0")
+    _record_owner_transport(generator, _GR_WIDE_ENV, "1" if enabled else "0")
     generator.gr_wide = bool(enabled)
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1080,7 +1072,7 @@ def _gr_dpp_reduction_selected(manifest: Any) -> bool:
 def _publish_gr_dpp_reduction(generator: Any, enabled: bool) -> None:
     """Publish the GR-up DPP decision as owner state, not a process key."""
 
-    _record_owner_transport(_GR_DPP_ENV, "1" if enabled else "0")
+    _record_owner_transport(generator, _GR_DPP_ENV, "1" if enabled else "0")
     generator.gr_dpp_reduction = bool(enabled)
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1089,7 +1081,7 @@ def _publish_gr_dpp_reduction(generator: Any, enabled: bool) -> None:
 
 def _publish_gguf_wmma_prefill(generator: Any) -> None:
     """Bind the existing generic WMMA-off choice without process mutation."""
-    _record_owner_transport("HIPENGINE_GGUF_WMMA_PREFILL", "0")
+    _record_owner_transport(generator, "HIPENGINE_GGUF_WMMA_PREFILL", "0")
     generator.gguf_wmma_prefill_enabled = False
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1098,7 +1090,7 @@ def _publish_gguf_wmma_prefill(generator: Any) -> None:
 
 def _publish_q8_mmq_attn_gate(generator: Any) -> None:
     """Bind the existing profile-off attention choice without process mutation."""
-    _record_owner_transport("HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "0")
+    _record_owner_transport(generator, "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "0")
     generator.q8_mmq_attn_gate_enabled = False
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1107,7 +1099,7 @@ def _publish_q8_mmq_attn_gate(generator: Any) -> None:
 
 def _publish_q8_mmq_prepack(generator: Any, enabled: bool) -> None:
     """Publish weight-prepack ownership without changing ambient input."""
-    _record_owner_transport("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "1" if enabled else "0")
+    _record_owner_transport(generator, "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "1" if enabled else "0")
     generator.q8_mmq_prepack_enabled = bool(enabled)
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1118,7 +1110,7 @@ def _publish_q8_mmq_prefill(generator: Any, enabled: bool) -> None:
     """Publish the Q8 MMQ prefill workspace gate as owner state."""
 
     _record_owner_transport(
-        Q8_MMQ_PREFILL_ENV, "1" if enabled else "0")
+        generator, Q8_MMQ_PREFILL_ENV, "1" if enabled else "0")
     generator.q8_mmq_prefill_enabled = bool(enabled)
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1128,7 +1120,7 @@ def _publish_q8_mmq_prefill(generator: Any, enabled: bool) -> None:
 def _publish_q8_wmma_layer_scope(generator: Any, scope: Any) -> None:
     """Publish the f16 WMMA layer scope as owner state, not a process key."""
 
-    _record_owner_transport(Q8_WMMA_LAYERS_ENV, scope.to_env())
+    _record_owner_transport(generator, Q8_WMMA_LAYERS_ENV, scope.to_env())
     generator.q8_wmma_layer_scope = scope
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1138,7 +1130,7 @@ def _publish_q8_wmma_layer_scope(generator: Any, scope: Any) -> None:
 def _publish_q8_down_variant(generator: Any, variant: str) -> None:
     """Publish the grouped Q8_0 expert-down owner as owner state."""
 
-    _record_owner_transport(_Q8_DOWN_VARIANT_ENV, variant)
+    _record_owner_transport(generator, _Q8_DOWN_VARIANT_ENV, variant)
     generator.q8_down_variant = variant
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1155,7 +1147,7 @@ def _publish_gdn_tile16_variant(generator: Any, variant: str | None) -> None:
     """
 
     _record_owner_transport(
-        _GDN_TILE16_VARIANT_ENV, "" if variant is None else variant)
+        generator, _GDN_TILE16_VARIANT_ENV, "" if variant is None else variant)
     generator.gdn_tile16_variant = variant
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1193,7 +1185,7 @@ def _publish_q4_planes(generator: Any) -> None:
 
 def _publish_q4_risk_mult(generator: Any) -> None:
     """Publish the existing 1.0 multiplier for both profile binders."""
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT', '1.0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT', '1.0')
     generator.q4_iu8_risk_mult = 1.0
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1203,7 +1195,7 @@ def _publish_q4_risk_mult(generator: Any) -> None:
 def _publish_q4_layers(generator: Any, *, production: bool) -> None:
     """Publish the existing plain-Q4 suffix without changing ambient input."""
     layers = ','.join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS)) if production else ''
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', layers)
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', layers)
     generator.q4_iu8_layers = layers
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1214,7 +1206,7 @@ def _publish_q4_prefill(generator: Any, *, production: bool, quant: str | None) 
     """Publish the plain-Q4 prefill choice after the existing UD recovery."""
     enabled = production and not (
         quant == 'gguf_ud_q4_k_xl' and 'Q4_IU8_PREFILL' in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', '1' if enabled else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', '1' if enabled else '0')
     generator.q4_iu8_prefill_enabled = enabled
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1223,7 +1215,7 @@ def _publish_q4_prefill(generator: Any, *, production: bool, quant: str | None) 
 
 def _publish_q4_iu8(generator: Any, enabled: bool) -> None:
     """Publish the existing exact-Q4 profile choice without process writes."""
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', '1' if enabled else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', '1' if enabled else '0')
     generator.q4_iu8_exact_enabled = enabled
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1232,7 +1224,7 @@ def _publish_q4_iu8(generator: Any, enabled: bool) -> None:
 
 def _publish_q51_iu8(generator: Any, enabled: bool) -> None:
     """Publish the existing exact-Q5_1 profile choice without process writes."""
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT', '1' if enabled else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT', '1' if enabled else '0')
     generator.q51_iu8_exact_enabled = enabled
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1241,7 +1233,7 @@ def _publish_q51_iu8(generator: Any, enabled: bool) -> None:
 
 def _publish_q5k_iu8(generator: Any, enabled: bool) -> None:
     """Publish the existing exact-Q5_K profile choice without process writes."""
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', '1' if enabled else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', '1' if enabled else '0')
     generator.q5k_iu8_exact_enabled = enabled
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1255,8 +1247,8 @@ def _publish_gr_iu8(generator: Any, *, production: bool, quant: str | None) -> N
         return production and not (
             quant == 'gguf_ud_q4_k_xl' and flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
     policy = GRIU8Policy(enabled('GR_IU8'), enabled('GR_IU8_DOWN'))
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_GR_IU8', '1' if policy.up else '0')
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', '1' if policy.down else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_GR_IU8', '1' if policy.up else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN', '1' if policy.down else '0')
     generator.gr_iu8_policy = policy
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1272,7 +1264,7 @@ def _publish_selected_q8_down(generator: Any, *, production: bool, quant: str | 
             enabled = False
         if flag in PRODUCTION_Q8_QSA_RESTORED_FLAGS:
             enabled = PRODUCTION_Q8_QSA_RESTORED_FLAGS[flag] not in {'', '0', 'false', 'False'}
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', '1' if enabled else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', '1' if enabled else '0')
     generator.q8_selected_down_enabled = enabled
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1286,8 +1278,8 @@ def _publish_flash_prefill(generator: Any, *, production: bool, quant: str | Non
         quant == 'gguf_ud_q4_k_xl' and 'QSA_FLASH_PREFILL' in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
     layers = ','.join(map(str, PRODUCTION_QSA_FLASH_PREFILL_LAYERS)) if production else ''
     policy = QSAFlashPrefillPolicy(enabled, layers)
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', '1' if enabled else '0')
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS', layers)
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', '1' if enabled else '0')
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS', layers)
     generator.qsa_flash_prefill_policy = policy
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1296,7 +1288,7 @@ def _publish_flash_prefill(generator: Any, *, production: bool, quant: str | Non
 
 def _publish_gdn_colwarps_layers(generator: Any, layers: str) -> None:
     """Publish the plan's layer scope without changing a peer's diagnostics."""
-    _record_owner_transport('HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', layers)
+    _record_owner_transport(generator, 'HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS', layers)
     generator.gdn_colwarps_layers = layers
     runner = getattr(generator, 'runner', None)
     if runner is not None:
@@ -1314,7 +1306,7 @@ def _publish_gdn_colwarps_prefill(generator: Any, enabled: bool) -> None:
     """
 
     _record_owner_transport(
-        _GDN_COLWARPS_PREFILL_ENV, "1" if enabled else "0")
+        generator, _GDN_COLWARPS_PREFILL_ENV, "1" if enabled else "0")
     generator.gdn_colwarps_prefill = bool(enabled)
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1332,7 +1324,7 @@ def _publish_qsa_ordered_decode(generator: Any, enabled: bool) -> None:
     """
 
     _record_owner_transport(
-        _QSA_ORDERED_DECODE_ENV, "1" if enabled else "0")
+        generator, _QSA_ORDERED_DECODE_ENV, "1" if enabled else "0")
     generator.qsa_ordered_decode = bool(enabled)
     runner = getattr(generator, "runner", None)
     if runner is not None:
@@ -1353,35 +1345,15 @@ def _publish_q4_dp4a_decode(
         runner.q4_dp4a_decode_enabled, runner.q4_dp4a_decode_layers = pair
 
 
-def _report_prebinder_conflicts() -> None:
-    """Warn, or raise, when a bind discarded a caller-set route variable."""
-
-    if not _last_prebinder_conflicts:
-        return
-    detail = ", ".join(
-        f"{key}={before!r} -> {after!r}"
-        for key, (before, after) in sorted(_last_prebinder_conflicts.items())
-    )
-    message = (
-        "Qwen4Exp profile bind discarded pre-binder values for "
-        f"{len(_last_prebinder_conflicts)} profile-owned variable(s): {detail}. "
-        "The binder owns these, so a value set before generator construction "
-        "is inert and the intended route did not run. Use the documented "
-        "owner-bound diagnostic API for retired environment controls; apply "
-        "remaining environment overrides after the binder."
-    )
-    if os.environ.get(PREBINDER_CONFLICT_ENV, "warn").strip().lower() == "error":
-        raise RuntimeError(message)
-    warnings.warn(message, RuntimeWarning, stacklevel=3)
-
-
 def _bind(
     generator: Any,
     resolved: ResolvedRuntimeProfile,
     *,
     production: bool,
 ) -> None:
-    _last_prebinder_conflicts.clear()
+    generator._profile_ignored_overrides = {}
+    if getattr(generator, 'runner', None) is not None:
+        generator.runner._profile_ignored_overrides = {}
     # The prefill chunk is not a profile decision: the generator's constructor
     # sizes the PLE staging ring, the residency plan and the resident session
     # from one value (the explicit argument, or the capacity guard's admitted
@@ -1672,7 +1644,7 @@ def _bind(
         for row in resolved.manifest["selections"]
     )
     generator.gdn_prefill_variant = gdn_prefill_variant
-    _record_owner_transport(_ROUTER_VARIANT_ENV, router_producer_variant)
+    _record_owner_transport(generator, _ROUTER_VARIANT_ENV, router_producer_variant)
     generator.router_producer_variant = router_producer_variant
     generator.gdn_register_prefill = production
     generator.gdn_peer_prefill_layers = gdn_peer_prefill_layers
@@ -1861,7 +1833,6 @@ def _bind(
         if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
         else _Q8_DOWN_WMMA_VARIANT,
     )
-    _report_prebinder_conflicts()
     if production:
         configure = getattr(
             getattr(generator, "runner", None),

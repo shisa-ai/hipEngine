@@ -28,7 +28,7 @@ import pytest
 from hipengine.generation.qwen4_exp_ar_batch import QWEN4_EXP_MAX_BATCH_ROWS
 from hipengine.runtime import qwen4_exp_batch_runner as runner_module
 from hipengine.runtime.qwen4_exp_batch_runner import Qwen4ExpGGUFBatchRunner
-from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down, resolve_q51_iu8_exact, resolve_q4_iu8_exact, resolve_q4_iu8_prefill, resolve_q4_iu8_layers
+from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down, resolve_q51_iu8_exact, resolve_q4_iu8_exact, resolve_q4_iu8_prefill, resolve_q4_iu8_layers, resolve_q4_iu8_planes, resolve_q4_iu8_risk_mult, resolve_q5k_iu8_exact
 from tests.test_unit_qwen4exp_batch_runner import _fake_runner, _install_step_fakes
 
 #: The exact grouped Q5_1 down chain's own gate. It precedes the rungs whose
@@ -169,7 +169,9 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
              getattr(runner, "q8_down_variant", None),
              resolve_q8_selected_down(runner), resolve_q4_iu8_prefill(runner),
              resolve_q4_iu8_layers(runner),
-             resolve_q4_iu8_exact(runner), resolve_q51_iu8_exact(runner))
+             resolve_q4_iu8_planes(runner), resolve_q4_iu8_risk_mult(runner),
+             resolve_q4_iu8_exact(runner), resolve_q51_iu8_exact(runner),
+             resolve_q5k_iu8_exact(runner))
             + runner._q4_tile_policy() + runner._q8_tile_policy()
             + (runner._q4_dp4a_policy(width),)
             + (runner._production_moe_policy(width),))
@@ -226,7 +228,7 @@ def test_an_unbound_runner_forwards_every_parent():
     # or dropping to the output1 base.
     runner = object.__new__(Qwen4ExpGGUFBatchRunner)
     assert runner._expert_down_policy() == tuple(
-        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS) + (frozenset(), None, None, False, False, '35-47', False, False)
+        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS) + (frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
     assert runner._expert_down_policy()[POLICY_FIELDS.index(CHAIN_GATE_FIELD)]
 
 
@@ -247,12 +249,12 @@ def test_the_policy_tuple_is_boolean_normalized():
     runner.q5k_row4_prefill = False
     assert runner._expert_down_policy() == (
         True, False, True, False, False, True, False, True, True, False, False, False, False,
-        False, True, False, False, frozenset(), None, None, False, False, '35-47', False, False)
+        False, True, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
     assert runner._expert_down_policy() == tuple(
         bool(getattr(runner, field)) for field in POLICY_FIELDS) + (
-            frozenset(), None, None, False, False, '35-47', False, False)
+            frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
 
 
 # --- target/draft sharing: one publication, every owner reads it -------------

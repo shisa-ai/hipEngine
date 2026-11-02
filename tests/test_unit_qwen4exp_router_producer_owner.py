@@ -161,17 +161,15 @@ def test_binder_publishes_owner_state_instead_of_the_process_key(monkeypatch) ->
 def test_binder_reports_a_discarded_pre_bind_value(monkeypatch) -> None:
     profiles.register_qwen4_exp_gfx1151_profiles()
     monkeypatch.setenv(ENV, TILE4)
-    profiles._last_prebinder_conflicts.clear()
     production = resolve_runtime_profile(
         model=profiles.QWEN4_EXP_MODEL, backend=profiles.QWEN4_EXP_BACKEND,
         quant="gguf_ud_q4_k_xl", profile=ExecutionProfile.PRODUCTION,
     )
-    with pytest.warns(RuntimeWarning, match="owner-bound diagnostic API") as notices:
-        production.binder(SimpleNamespace(runner=SimpleNamespace()), production)
-    assert "Set them after" not in str(notices[0].message)
+    owner = SimpleNamespace(runner=SimpleNamespace())
+    production.binder(owner, production)
     # A process value the owner publication makes inert is still reported, so a
     # caller cannot believe its route ran.
-    assert profiles.last_prebinder_conflicts()[ENV] == (TILE4, F16_GEMM)
+    assert profiles.profile_ignored_overrides(owner)[ENV] == (TILE4, F16_GEMM)
     # The binder no longer writes the key, so the caller's inert value stays
     # where it was rather than being replaced by a value it never published.
     assert os.environ[ENV] == TILE4
@@ -230,6 +228,7 @@ def test_layer2_arms_declare_the_producer_on_the_candidate() -> None:
             environment={}, qsa_wmma_enabled=None,
             qsa_flash_prefill_enabled=None,
             q4_iu8_prefill_enabled=None,
+            q4_iu8_layers=None, q4_iu8_planes=None, q4_iu8_risk_mult=None,
             q8_selected_down_enabled=None,
             gr_iu8_up=None, gr_iu8_down=None,
             production_moe_prefill_enabled=None,
