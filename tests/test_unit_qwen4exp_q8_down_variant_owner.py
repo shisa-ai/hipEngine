@@ -366,7 +366,6 @@ def _fake_moe_dispatch(
     """
 
     register_gfx1151_kernels(replace=True)
-    monkeypatch.setenv(WMMA_GATE, "1")
     for name in (
         "qwen35_moe_group_count",
         "qwen35_moe_group_prefix",
@@ -428,6 +427,7 @@ def _fake_moe_dispatch(
             ffn=ffn, experts=experts, top_k=top_k, stream=0,
             production_moe_prefill_enabled=False,
             routed_f16_enabled=False,
+            q8_selected_down_enabled=True,
             q8_down_variant=bound_variant,
         )
 

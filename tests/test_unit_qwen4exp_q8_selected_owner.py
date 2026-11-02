@@ -10,11 +10,11 @@ ENV = 'HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN'
 
 
 @pytest.mark.parametrize('ambient', ['', '0', 'false', 'False', '1', 'FALSE'])
-def test_selected_down_resolves_owner_or_legacy_input(monkeypatch, ambient):
+def test_selected_down_resolves_explicit_owner_not_ambient(monkeypatch, ambient):
     monkeypatch.setenv(ENV, ambient)
     for value in (None, False, True):
         owner = SimpleNamespace(q8_selected_down_enabled=value)
-        expected = ambient not in {'', '0', 'false', 'False'} if value is None else value
+        expected = bool(value)
         assert runtime.resolve_q8_selected_down(owner) is expected
 
 
@@ -73,5 +73,5 @@ def test_selected_down_capture_key_tracks_effective_decision(monkeypatch):
     runner.q8_selected_down_enabled = True
     assert runner._expert_down_policy() != first
     runner.q8_selected_down_enabled = None
-    monkeypatch.setenv(ENV, '0')
+    monkeypatch.setenv(ENV, '1')
     assert runner._expert_down_policy() == first

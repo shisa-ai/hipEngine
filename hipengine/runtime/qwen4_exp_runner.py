@@ -5037,14 +5037,12 @@ _Q8_DOWN_VARIANT_UNSET = object()
 
 
 def _resolve_q8_selected_down(enabled: bool | None) -> bool:
-    if enabled is not None:
-        return bool(enabled)
-    return os.environ.get('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', '0') not in {
-        '', '0', 'false', 'False'}
+    """Resolve the explicit selected-down choice; unbound calls keep the parent."""
+    return bool(enabled)
 
 
 def resolve_q8_selected_down(owner: Any) -> bool:
-    """Resolve the owner's selected Q8 down choice or its unbound fallback."""
+    """Resolve the owner's selected Q8 down choice, without process input."""
     return _resolve_q8_selected_down(getattr(owner, 'q8_selected_down_enabled', None))
 
 
