@@ -275,6 +275,7 @@ class Qwen4ExpGGUFTextGenerator:
         # by the binder; an unbound generator keeps the unguarded WMMA parent.
         self.q8_down_variant = None
         self.q8_selected_down_enabled = None
+        self.q4_iu8_prefill_enabled = None
         self.q4_iu8_exact_enabled = None
         self.q51_iu8_exact_enabled = None
         self._lock = threading.RLock()
@@ -425,6 +426,7 @@ class Qwen4ExpGGUFTextGenerator:
             production_moe_prefill_enabled=self.production_moe_prefill_enabled,
             q8_mmq_prefill_enabled=self.q8_mmq_prefill_enabled,
             q8_selected_down_enabled=self.q8_selected_down_enabled,
+            q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
             q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
             q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
             gr_iu8_policy=self.gr_iu8_policy,
@@ -1089,6 +1091,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.q8_mapped_down = bool(getattr(generator, "q8_mapped_down", False))
     runner.q8_down_variant = getattr(generator, "q8_down_variant", None)
     runner.q8_selected_down_enabled = getattr(generator, 'q8_selected_down_enabled', None)
+    runner.q4_iu8_prefill_enabled = getattr(generator, 'q4_iu8_prefill_enabled', None)
     runner.q4_iu8_exact_enabled = getattr(generator, 'q4_iu8_exact_enabled', None)
     runner.q51_iu8_exact_enabled = getattr(generator, 'q51_iu8_exact_enabled', None)
     return runner
