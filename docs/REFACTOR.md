@@ -2998,8 +2998,10 @@ runtime owners through resident, batch and mixed carriers, serving inheritance
 and captured-segment identity. Profile-gap and candidate AR bind requested
 multipliers on owners and report their effective value without process writes.
 Candidate metadata and shared arm scopes can transport and report optional
-multipliers without process writes. Candidate declarations, report consumers
-and profile publication still need migration; plane selection also needs owner
+multipliers without process writes. Selector-ranking and family-sweep reports
+read effective child multipliers, preserving unknown current records and legacy
+process-only interpretation. Candidate declarations, other report consumers and
+profile publication still need migration; plane selection also needs owner
 transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process

@@ -48,6 +48,7 @@ def test_main_reports_current_owner_control_and_family(monkeypatch, tmp_path):
             'wall_summary': {'median': 1.0}, 'wall_seconds': [1.0],
             'route_env': routes, 'bound_route_env': routes,
             FIELD: env.get(KEY, '1') == '1',
+            'q4_iu8_risk_mult': 1.0,
             'q4_iu8_layers': env.get('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '35-47'),
         }))
         return SimpleNamespace(returncode=0, stderr='')
@@ -61,6 +62,7 @@ def test_main_reports_current_owner_control_and_family(monkeypatch, tmp_path):
     assert len(report['families']) == 2
     for row in report['families']:
         assert row[FIELD] is True
+        assert row['q4_iu8_risk_mult'] == 1.0
         assert row['q4_iu8_layers'] is not None
         assert row['attribution_verified'] is True
         assert row['env'][KEY] == '1'

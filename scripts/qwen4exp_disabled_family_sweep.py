@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import subprocess
 import sys
@@ -374,6 +375,16 @@ def _env_request_applied(
             return False, 'the Q4 layer owner differs from the requested scope'
         owner_check = True
         env = {key: value for key, value in env.items() if key != layer_key}
+    risk_key = 'HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT'
+    if risk_key in env and ('q4_iu8_risk_mult' in result or 'q4_iu8_prefill_enabled' in result):
+        selected_risk = result.get('q4_iu8_risk_mult')
+        if (type(selected_risk) not in (int, float)
+                or not math.isfinite(selected_risk) or selected_risk <= 0):
+            return None, 'the child did not report the Q4 risk multiplier owner value'
+        if selected_risk != float(env[risk_key]):
+            return False, 'the Q4 risk multiplier owner differs from the requested value'
+        owner_check = True
+        env = {key: value for key, value in env.items() if key != risk_key}
     if not isinstance(bound, dict) or not isinstance(effective, dict):
         return None, "the child did not report the bound route environment"
     for key, value in env.items():
@@ -520,6 +531,8 @@ def _summarize(payload: dict, command) -> dict:
            if 'q4_iu8_prefill_enabled' in payload else {}),
         **({'q4_iu8_layers': payload['q4_iu8_layers']}
            if 'q4_iu8_layers' in payload else {}),
+        **({'q4_iu8_risk_mult': payload['q4_iu8_risk_mult']}
+           if 'q4_iu8_risk_mult' in payload else {}),
         "gr_iu8_policy": payload.get('gr_iu8_policy'),
         "risk_calls": risk.get("calls"),
         "risk_outputs": outputs,
@@ -646,6 +659,8 @@ def main(argv: list[str] | None = None) -> int:
                if 'q4_iu8_prefill_enabled' in result else {}),
             **({'q4_iu8_layers': result['q4_iu8_layers']}
                if 'q4_iu8_layers' in result else {}),
+            **({'q4_iu8_risk_mult': result['q4_iu8_risk_mult']}
+               if 'q4_iu8_risk_mult' in result else {}),
             "gr_iu8_policy": result.get('gr_iu8_policy'),
             "attribution_verified": verified,
             "attribution_note": note,
