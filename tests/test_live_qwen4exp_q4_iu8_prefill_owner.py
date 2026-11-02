@@ -1,5 +1,6 @@
 """Public plain-Q4 prefill owner selection, repeatability and teardown."""
 from contextlib import ExitStack
+from unittest.mock import patch
 import os
 import numpy as np
 import pytest
@@ -11,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -45,7 +46,15 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface == 'profile_gap':
+                    if interface == 'ablation':
+                        # Preserve process build defaults set by the CLI import.
+                        with patch.dict(os.environ):
+                            from scripts.qwen4exp_r2e_route_ablation import RUNNER_ROUTE_OFF_WITH_ENV
+                        bindings, envs, off = RUNNER_ROUTE_OFF_WITH_ENV['q4_iu8']
+                        assert envs == ()
+                        for field, value in bindings:
+                            scopes.enter_context(getattr(runtime, field)(target, value))
+                    elif interface == 'profile_gap':
                         from scripts.qwen4exp_profile_gap import bind_q4_iu8_prefill_override
                         report = bind_q4_iu8_prefill_override(scopes, target, {
                             'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL': '1' if enabled else '0'})
@@ -61,7 +70,7 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
                     calls.clear()
                     start = len(captures)
                     outputs.append(llm.generate([list(range(100, 100 + length))], params))
-                    assert bool(calls) is (enabled and length >= 2)
+                    assert bool(calls) is (enabled and length >= 2 and interface != 'ablation')
                     logits.append([x.copy() for x in captures[start:]])
                 assert outputs[0] == outputs[1]
                 assert logits[0] and len(logits[0]) == len(logits[1])

@@ -129,8 +129,8 @@ Q4_OUT4_PREEMPTING_ENV = (
 # field is request-local but whose selection also depends on decisions above it.
 RUNNER_ROUTE_OFF_WITH_ENV = {
     "q4_iu8": (
-        (("q4_iu8_exact_enabled", False),),
-        ("HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",),
+        (("q4_iu8_exact_enabled", False), ("q4_iu8_prefill_enabled", False)),
+        (),
         "0",
     ),
     "q51_out8": (

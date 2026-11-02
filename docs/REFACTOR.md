@@ -2958,8 +2958,8 @@ state gate checks the production prerequisite through that owner. The Q4 pair2
 comparison closes exact-IU8 preemption on the measured owner and records that
 choice, preserving the process input. The out4 ablation also closes exact-IU8
 through its declared runner bindings rather than its environment pins. The
-combined Q4 ablation binds that same owner while keeping its separate
-plain-prefill input. Profiles publish exact-Q4 enablement on generators and
+combined Q4 ablation binds both exact and plain-prefill owners without changing
+either process input. Profiles publish exact-Q4 enablement on generators and
 current runners, preserving the process input and the same production/strict
 choice. Plain-Q4 IU8 prefill enablement also has an owner resolver and restoring
 scope, forwarded through resident, batch and mixed-target paths and included in
