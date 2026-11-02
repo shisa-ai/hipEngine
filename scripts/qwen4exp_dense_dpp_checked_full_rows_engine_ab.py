@@ -11,6 +11,7 @@ trajectory checks, candidate engagement counts, and teardown accounting.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import statistics
@@ -185,6 +186,11 @@ def summarize(samples: Sequence[Mapping[str, Any]], cases: Sequence[Mapping[str,
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    with contextlib.ExitStack() as lifetime:
+        return _main(argv, lifetime)
+
+
+def _main(argv: Sequence[str] | None, lifetime: contextlib.ExitStack) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
@@ -201,7 +207,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     if args.require_cached_build:
         os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"] = "1"
 
     fixture, fixture_sha = load_fixture(args.fixture)
     cases = list(fixture["cases"])
@@ -232,6 +237,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_sequence_length=max_sequence_length,
         prefill_chunk_size=CHUNK_SIZE,
     ))
+
+    from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
+    lifetime.enter_context(q8_dpp_reduction_enabled(generator, True))
 
     # The diagnostic hook is installed before generator construction so every
     # request path resolves through the same registry entry.  The profile's
@@ -268,6 +276,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "manifest_sha256": profile.manifest_sha256,
         "strict_manifest_sha256": profile.strict_manifest_sha256,
         "parent_variant": PARENT,
+        "selection_control": {"runner_field": "q8_dpp_reduction_enabled",
+                              "value": True, "scope": "diagnostic lifetime"},
         "candidate_variant": CANDIDATE,
         "backend": BACKEND,
         "quant": QUANT,

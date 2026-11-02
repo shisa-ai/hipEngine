@@ -3697,8 +3697,10 @@ prefill session; selector and cache identity consume the same effective value.
 The DPP campaign, state-gate and layer-2 checked comparison now bind and report
 owner choices without process writes. Staged-F32 layer-gate arms also close
 DPP on generator/current and late-runner owners, not through process input.
-The DPP environment fallback remains until checked full-row scripts and
-generic diagnostic callers migrate; profiles do not publish this axis yet.
+The three checked full-row diagnostic scripts bind and report DPP owner state
+for their diagnostic lifetime, including setup-error restoration. The DPP
+environment fallback remains until generic diagnostic callers migrate;
+profiles do not publish this axis yet.
 Audit each geometry's
 actual registry and dispatch consumers before removing wrappers; the old phrase
 “losing geometry ladder” is not evidence that every non-default rung is dead.

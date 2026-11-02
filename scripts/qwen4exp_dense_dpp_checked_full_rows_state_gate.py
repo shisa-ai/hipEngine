@@ -11,6 +11,7 @@ requires zero allocations after close.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -103,6 +104,11 @@ def capture(runner, decode_steps: int, full_kv: bool) -> dict:
 
 
 def main() -> int:
+    with contextlib.ExitStack() as lifetime:
+        return _main(lifetime)
+
+
+def _main(lifetime: contextlib.ExitStack) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
@@ -116,7 +122,6 @@ def main() -> int:
 
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"] = "1"
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     profile = __import__("hipengine.execution_profiles", fromlist=["resolve_runtime_profile"]).resolve_runtime_profile(
@@ -139,6 +144,8 @@ def main() -> int:
         max_sequence_length=4352,
         prefill_chunk_size=CHUNK_SIZE,
     ))
+    from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
+    lifetime.enter_context(q8_dpp_reduction_enabled(generator, True))
     runner = generator.runner
     key = KernelKey(BACKEND, "linear", QUANT, PARENT)
     parent = resolve(backend=BACKEND, layer="linear", quant=QUANT, variant=PARENT)
@@ -157,6 +164,8 @@ def main() -> int:
         "manifest_sha256": profile.manifest_sha256,
         "strict_manifest_sha256": profile.strict_manifest_sha256,
         "parent_variant": PARENT,
+        "selection_control": {"runner_field": "q8_dpp_reduction_enabled",
+                              "value": True, "scope": "diagnostic lifetime"},
         "candidate_variant": CANDIDATE,
         "scope": {
             "backend": BACKEND,

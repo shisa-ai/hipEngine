@@ -11,6 +11,7 @@ qualification screen, not a runtime selector or model-rate claim.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -71,6 +72,11 @@ def sha256_output(ptr: int, rows: int, out_features: int, runtime) -> tuple[str,
 
 
 def main() -> int:
+    with contextlib.ExitStack() as lifetime:
+        return _main(lifetime)
+
+
+def _main(lifetime: contextlib.ExitStack) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
@@ -85,7 +91,6 @@ def main() -> int:
     check_host()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ["HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"] = "1"
 
     gate.register_gfx1151_kernels(replace=True)
     gate.register_qwen4_exp_gfx1151_profiles()
@@ -110,6 +115,8 @@ def main() -> int:
         max_sequence_length=4352,
         prefill_chunk_size=CHUNK_SIZE,
     ))
+    from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
+    lifetime.enter_context(q8_dpp_reduction_enabled(generator, True))
     runtime = generator.runner.runtime
     key = KernelKey(BACKEND, "linear", QUANT, PARENT)
     parent = resolve(backend=BACKEND, layer="linear", quant=QUANT, variant=PARENT)
@@ -128,6 +135,8 @@ def main() -> int:
         "manifest_sha256": profile.manifest_sha256,
         "manifest_scope": "production profile with diagnostic registry hook; no default change",
         "parent_variant": PARENT,
+        "selection_control": {"runner_field": "q8_dpp_reduction_enabled",
+                              "value": True, "scope": "diagnostic lifetime"},
         "candidate_variant": CANDIDATE,
         "backend": BACKEND,
         "quant": QUANT,
