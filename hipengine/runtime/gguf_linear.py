@@ -4280,7 +4280,7 @@ def _raw_k_coltile_pipelined_dispatch(
     if dispatch.abi != "raw" or dispatch.key.variant != "coltile8_rowbatch4_wave_scale_f32_f32_out":
         return dispatch
     preferred: list[str] = []
-    if os.environ.get(_Q8_DPP_REDUCTION_ENV, "1") != "0":
+    if _q8_dpp_reduction_raw() != "0":
         # The DPP family flag governs both DPP leaves: the checked full-rows
         # sibling is a narrowing of the plain DPP leaf, not a separate family.
         if q8_0_coltile_dpp_checked_full_rows_qualified(rows, in_features, out_features):
@@ -4302,14 +4302,32 @@ _Q8_STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
 _Q8_DPP_REDUCTION_ENV = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
 
 
-def _q8_dpp_reduction_raw() -> str:
-    """The raw DPP-reduction flag. In the launch cache key, so it must be exact.
+_q8_dpp_reduction_execution: ContextVar[bool | None] = ContextVar(
+    'gguf_q8_dpp_reduction_execution', default=None)
 
-    Called once per dense launch (545 times in one `code-p4096` decode step), so
-    it goes through the shared raw-string memo rather than re-reading and
-    re-normalizing on every call.
+
+@contextlib.contextmanager
+def q8_dpp_reduction_session(enabled: bool | None):
+    """Bind one execution's DPP family without changing process input."""
+    if enabled is not None and type(enabled) is not bool:
+        raise TypeError('q8_dpp_reduction_enabled must be a boolean or None')
+    token = _q8_dpp_reduction_execution.set(enabled)
+    try:
+        yield
+    finally:
+        _q8_dpp_reduction_execution.reset(token)
+
+
+def _q8_dpp_reduction_raw() -> str:
+    """The effective DPP comparison input shared by selector and cache identity.
+
+    Explicit execution sessions use canonical strings; unbound diagnostics keep
+    the legacy raw-string input and its shared memoization.
     """
 
+    enabled = _q8_dpp_reduction_execution.get()
+    if enabled is not None:
+        return '1' if enabled else '0'
     return _raw_env_value(_Q8_DPP_REDUCTION_ENV, "1")
 
 

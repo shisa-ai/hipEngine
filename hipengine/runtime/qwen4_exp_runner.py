@@ -185,6 +185,7 @@ from hipengine.runtime.gguf_linear import (
     Q8DenseWidePolicy,
     resolve_q8_dense_wide_policy,
     q8_dense_wide_policy_session,
+    q8_dpp_reduction_session,
     q8_wmma_layer_scope_session,
     resolve_q8_wmma_layers,
     wmma_prefill_weight_filter_session,
@@ -6383,6 +6384,34 @@ def resolve_gr_dpp_reduction(owner: Any) -> bool:
     return bool(getattr(owner, "gr_dpp_reduction", False))
 
 
+def resolve_q8_dpp_reduction(owner: Any) -> bool | None:
+    """Return an explicit owner choice; None preserves unbound diagnostics."""
+    value = getattr(owner, 'q8_dpp_reduction_enabled', None)
+    if value is not None and type(value) is not bool:
+        raise TypeError('q8_dpp_reduction_enabled must be a boolean or None')
+    return value
+
+
+@contextlib.contextmanager
+def q8_dpp_reduction_enabled(owner: Any, enabled: bool | None):
+    """Bind generator/current runner DPP selection and restore missing state."""
+    if enabled is not None and type(enabled) is not bool:
+        raise TypeError('q8_dpp_reduction_enabled must be a boolean or None')
+    missing = object()
+    prior = [(target, getattr(target, 'q8_dpp_reduction_enabled', missing))
+             for target in _q8_mmq_prefill_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.q8_dpp_reduction_enabled = enabled
+        yield
+    finally:
+        for target, previous in prior:
+            if previous is missing:
+                delattr(target, 'q8_dpp_reduction_enabled')
+            else:
+                target.q8_dpp_reduction_enabled = previous
+
+
 @contextlib.contextmanager
 def q8_wave_scale_prefill(runner: Any, enabled: bool):
     """Select the raw Q8 prefill geometry on the diagnostic runner."""
@@ -10396,6 +10425,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     # None preserves unbound environment diagnostics until the binder migrates.
     q8_dense_wide_policy: Q8DenseWidePolicy | None = None
     raw_prefill_policy: RawPrefillPolicy | None = None
+    q8_dpp_reduction_enabled: bool | None = None
     expert_grid_policy: ExpertGridPolicy | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
@@ -10661,6 +10691,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None,
         q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
         raw_prefill_policy: RawPrefillPolicy | None = None,
+        q8_dpp_reduction_enabled: bool | None = None,
         expert_grid_policy: ExpertGridPolicy | None = None,
     ) -> None:
         self.resident = resident
@@ -10692,6 +10723,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.qsa_flash_prefill_policy = qsa_flash_prefill_policy
         self.q8_dense_wide_policy = q8_dense_wide_policy
         self.raw_prefill_policy = raw_prefill_policy
+        self.q8_dpp_reduction_enabled = q8_dpp_reduction_enabled
         self.expert_grid_policy = expert_grid_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
@@ -12625,6 +12657,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 raw_k_prefill_variant_session(selected_raw_variant),
                 _q8_wmma_scope_sessions(q8_wmma_scope, self),
                 q8_dense_wide_policy_session(resolve_q8_dense_wide_policy(self)),
+                q8_dpp_reduction_session(resolve_q8_dpp_reduction(self)),
                 self._q8_mmq_prefill_context(),
                 self._wide_f16_activation_context(),
                 _qwen4_exp_q8_tile_scope(self),

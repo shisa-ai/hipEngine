@@ -1,12 +1,15 @@
 """The DPP comparison control is a live raw-string dispatch memo dimension."""
+from contextlib import nullcontext
 from types import SimpleNamespace
+import pytest
 
 from hipengine.runtime import gguf_linear as linear
 from hipengine.kernels import registry
 from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
 
 
-def test_dpp_comparison_partitions_and_reuses_dispatch_cache(monkeypatch):
+@pytest.mark.parametrize('owner_bound', [False, True])
+def test_dpp_comparison_partitions_and_reuses_dispatch_cache(monkeypatch, owner_bound):
     prefix = 'coltile8_rowbatch4_wave_scale_pipelined'
     parent = prefix + '_f32_f32_out'
     dpp = prefix + '_dpp_f32_f32_out'
@@ -40,11 +43,14 @@ def test_dpp_comparison_partitions_and_reuses_dispatch_cache(monkeypatch):
                 monkeypatch.delenv(linear._Q8_DPP_REDUCTION_ENV, raising=False)
             else:
                 monkeypatch.setenv(linear._Q8_DPP_REDUCTION_ENV, raw)
-            linear.launch_gguf_linear(
-                weight, 1, 2, 73, 2560, 10240,
-                activation_dtype='f32', output_dtype='f32',
-                backend='hip_gfx1151', use_wmma_prefill=False,
-                use_gemv_decode=False, runtime=object())
+            with (linear.q8_dpp_reduction_session(raw != '0') if owner_bound else nullcontext()):
+                if owner_bound:
+                    monkeypatch.setenv(linear._Q8_DPP_REDUCTION_ENV, '0' if raw != '0' else '1')
+                linear.launch_gguf_linear(
+                    weight, 1, 2, 73, 2560, 10240,
+                    activation_dtype='f32', output_dtype='f32',
+                    backend='hip_gfx1151', use_wmma_prefill=False,
+                    use_gemv_decode=False, runtime=object())
         assert launched == [parent, dpp, dpp, parent, dpp]
         assert resolutions == ['0', '1'], 'cached arms must not rerun selection'
     finally:

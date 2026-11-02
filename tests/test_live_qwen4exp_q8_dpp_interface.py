@@ -19,8 +19,9 @@ DPP = PREFIX + '_dpp_f32_f32_out'
 CHECKED = PREFIX + '_dpp_checked_full_rows_f32_f32_out'
 
 
+@pytest.mark.parametrize('interface', ['legacy', 'owner'])
 @pytest.mark.parametrize('length', [73, 512, 513])
-def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length):
+def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import memory_stats
@@ -62,16 +63,24 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length):
             captures.clear()
             # Use the maintained campaign scope to expose the pipelined parent;
             # this comparison changes only its DPP family decision.
+            from contextlib import nullcontext
+            from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
             with route_scope('q8-dpp-reduction',
                              'before' if value == '0' else 'after', runner):
                 assert linear.resolve_q8_dense_wide_policy(runner) == Q8DenseWidePolicy(False, None)
-                if value is None:
-                    os.environ.pop(key, None)
+                if interface == 'owner':
+                    os.environ[key] = '1' if value == '0' else '0'
+                    choice = q8_dpp_reduction_enabled(runner, value != '0')
                 else:
-                    os.environ[key] = value
-                output = llm.generate_detailed(
-                    [[1] * length], SamplingParams(max_tokens=3, temperature=0,
-                                                  ignore_eos=True, speculative_mtp=False))
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+                    choice = nullcontext()
+                with choice:
+                    output = llm.generate_detailed(
+                        [[1] * length], SamplingParams(max_tokens=3, temperature=0,
+                                                      ignore_eos=True, speculative_mtp=False))
             assert runner.q8_dense_wide_policy is bound_wide
             assert {name: os.environ.get(name) for name in Q8_WAVE_ENV} == bound_env
             assert len(output[0].generated_token_ids) == 3
