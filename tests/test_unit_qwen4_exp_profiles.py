@@ -694,7 +694,8 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
         # scope, not the owner that runs: the routed F16 WMMA down owns it, the
         # exact iu8 down sits behind it, and the pair2 chain's own gate is on.
         # A diagnostic arm closes the first two for the counted leaf to launch.
-        assert os.environ["HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"] == "1"
+        assert generator.q51_iu8_exact_enabled is True
+        assert "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT" not in os.environ
         # The pair2 chain's own gate is runner state now, published by every
         # plan; no process key carries it.
         assert generator.q51_exact_grouped_down is True

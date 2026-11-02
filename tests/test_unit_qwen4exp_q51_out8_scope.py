@@ -522,6 +522,7 @@ def _published(monkeypatch):
     resolved.binder(generator, resolved)
     yield {**{name: os.environ.get(name) for name in COMPETITOR_ENV},
            "routed_f16_enabled": generator.routed_f16_enabled,
+           "q51_iu8_exact_enabled": generator.q51_iu8_exact_enabled,
            "q51_pair_prefill": generator.q51_pair_prefill,
            "production_moe_prefill_enabled": (
                generator.production_moe_prefill_enabled)}
@@ -590,7 +591,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
     with _published(monkeypatch) as published:
         assert published[ROUTED_F16_ENV] is None
         assert published["routed_f16_enabled"] is True
-        assert published[IU8_EXACT_ENV] == "1"
+        assert published[IU8_EXACT_ENV] is None
+        assert published['q51_iu8_exact_enabled'] is True
         assert published[PAIR_ENV] is None
         assert published["q51_pair_prefill"] is True
         # The F16 WMMA down owner below the chain is runner state now, so the
@@ -604,7 +606,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         # The real predicates, in dispatch order. Routed F16 takes the whole
         # down leg, and the iu8 chain sits above the ladder inside the chain.
         assert published["routed_f16_enabled"] is True
-        assert runner_module._qwen4_exp_q51_iu8_exact_enabled() is True
+        assert runner_module.resolve_q51_iu8_exact(SimpleNamespace(
+            q51_iu8_exact_enabled=published['q51_iu8_exact_enabled'])) is True
         # With those two out of the way the pair2 parent still replaces the rung
         # on a production chunk, so the rung decides nothing either way.
         assert runner_module.qwen4_exp_q51_pair_prefill_selected(

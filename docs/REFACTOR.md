@@ -2943,9 +2943,11 @@ separates that key before both process-write stages and binds the same restoring
 owner choice. Campaign and state-gate exact-Q5_1 arms bind the measured owner
 and report the effective choice without process writes. Pair2 and PF13 scopes
 close exact-Q5_1 preemption on the measured owner, preserving the process input
-and restoring the prior owner choice. Profile publication and the other
-diagnostic process writers still need migration; unbound callers retain their
-environment fallback.
+and restoring the prior owner choice. Profiles publish exact-Q5_1 enablement on
+the generator and current runner (production on, strict off) without process
+writes; new runners inherit it. The state gate reads that owner premise. Other
+diagnostic callers still need migration; unbound callers retain their environment
+fallback.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

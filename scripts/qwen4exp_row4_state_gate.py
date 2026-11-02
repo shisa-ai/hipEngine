@@ -35,7 +35,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
     gr_dpp_arm_expectations,
     router_dpp_expected_calls,route_scope,
-    Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_FIELD,
+    Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_FIELD,
     Q51_PAIR_FIELD,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
     q51_pair2_control_record,q51_register_cache_control_record,
     q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
@@ -702,8 +702,9 @@ def main():
             # separates the forced value from what it replaced.
             assert generator.runner.q51_row_publish is True, (
                 "production must publish the row-publish selection")
-            assert os.environ.get(Q51_IU8_EXACT_ENV, "") not in {"", "0"}, (
-                "production must bind the preempting exact Q5_1 down")
+            from hipengine.runtime.qwen4_exp_runner import resolve_q51_iu8_exact
+            assert resolve_q51_iu8_exact(generator.runner), (
+                "production must publish the preempting exact Q5_1 down")
             assert generator.runner.routed_f16_enabled is True, (
                 "production must bind the preempting routed F16 down")
             assert getattr(generator.runner, Q51_PAIR2_GATE_FIELD, False), (
