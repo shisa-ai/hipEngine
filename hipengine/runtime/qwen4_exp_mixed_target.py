@@ -411,6 +411,7 @@ class Qwen4ExpMixedTargetPass:
                         batch, "q8_down_bundle_prefill", False),
                     q8_down_variant=getattr(batch, "q8_down_variant", None),
                     q8_selected_down_enabled=getattr(batch, 'q8_selected_down_enabled', None),
+                    q4_iu8_exact_enabled=getattr(batch, 'q4_iu8_exact_enabled', None),
                     q51_iu8_exact_enabled=getattr(batch, 'q51_iu8_exact_enabled', None),
                 )
                 residual = scratch.output

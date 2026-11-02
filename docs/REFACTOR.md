@@ -2947,7 +2947,10 @@ and restoring the prior owner choice. Profiles publish exact-Q5_1 enablement on
 the generator and current runner (production on, strict off) without process
 writes; new runners inherit it. The state gate reads that owner premise. Other
 diagnostic callers still need migration; unbound callers retain their environment
-fallback.
+fallback. Exact Q4 IU8 enablement also accepts a restoring owner choice across
+resident, batch and mixed-target execution, inherited by new runners and included
+in capture identity. Its profile and diagnostic process writers, plus the Q4
+prefill/layer/risk controls, still need migration.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
