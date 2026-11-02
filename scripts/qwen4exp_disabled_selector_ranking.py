@@ -208,7 +208,9 @@ def _run_arm(
     gr_keys = {'HIPENGINE_QWEN4_EXP_GR_IU8': 'up',
                'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN': 'down'}
     gr_policy = child.get('gr_iu8_policy')
-    owner_keys = flash_keys | {selected_key} | set(gr_keys)
+    q4_keys = {'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL': 'q4_iu8_prefill_enabled',
+               'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT': 'q4_iu8_exact_enabled'}
+    owner_keys = flash_keys | {selected_key} | set(gr_keys) | set(q4_keys)
     row.update(
         {
             "status": "measured",
@@ -233,12 +235,14 @@ def _run_arm(
             "qsa_flash_prefill_policy": flash_policy,
             "q8_selected_down_enabled": selected_down,
             "gr_iu8_policy": gr_policy,
+            **{field: child.get(field) for field in q4_keys.values()},
             "effective_route_missing_keys": [
                 key for key in sorted(overrides)
                 if ((key in flash_keys and flash_policy is None)
                     or (key == selected_key and selected_down is None)
                     or (key in gr_keys and (not isinstance(gr_policy, dict)
                                             or gr_policy.get(gr_keys[key]) is None))
+                    or (key in q4_keys and child.get(q4_keys[key]) is None)
                     or (key not in owner_keys and key not in route))
             ],
             "baseline_route": {

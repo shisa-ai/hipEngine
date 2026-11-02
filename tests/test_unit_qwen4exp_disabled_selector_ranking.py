@@ -226,6 +226,7 @@ def test_main_replays_every_arm_through_its_child_report(module, monkeypatch, tm
     assert moe["overrides"] == {}
     assert set(moe["baseline_route"]) == set(module.ARMS["all_prefill"]) - {
         'HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL', 'HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS',
+        'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', 'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL',
         'HIPENGINE_QWEN4_EXP_GR_IU8', 'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'}
 
 
