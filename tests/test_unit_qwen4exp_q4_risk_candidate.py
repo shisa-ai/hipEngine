@@ -34,6 +34,23 @@ def test_candidate_multiplier_binding_and_restore(monkeypatch, value):
     assert owner.q4_iu8_risk_mult == 2.0
 
 
+def test_multiplier_declaration_is_owner_bound_and_reaches_journey(monkeypatch):
+    from scripts import qwen4exp_journey_localize as journey
+    spec = gate.CANDIDATES['q4_iu8_risk_mult_1']
+    assert spec.q4_iu8_risk_mult == 1.0
+    assert KEY not in spec.environment
+    assert gate.candidate_owner_changes(spec)['q4_iu8_risk_mult'] == 1.0
+    assert all(KEY not in row.environment for row in gate.CANDIDATES.values())
+    monkeypatch.setenv(KEY, '8')
+    owner = SimpleNamespace(q4_iu8_risk_mult=4.0)
+    with gate.candidate_q4_prefill_scope(owner, spec):
+        assert owner.q4_iu8_risk_mult == 1.0
+    assert owner.q4_iu8_risk_mult == 4.0 and os.environ[KEY] == '8'
+    arms = {spec.name: dict(spec.environment)}
+    assert journey.migrate_q4_risk_arms(arms, production_value=4.0,
+        declared={spec.name: spec.q4_iu8_risk_mult}) == {spec.name: 1.0}
+
+
 def test_candidate_paths_report_requested_and_effective_multiplier():
     common = inspect.getsource(gate.bind_candidate_owners)
     primary = inspect.getsource(gate._run)

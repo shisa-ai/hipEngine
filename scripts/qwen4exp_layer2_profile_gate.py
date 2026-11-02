@@ -441,7 +441,8 @@ CANDIDATES = {
             "sparse exact repair serves 0.209% of rows instead of 0.712%, "
             "with the gate/up owner and the down leg unchanged"
         ),
-        environment={"HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT": "1.0"},
+        environment={},
+        q4_iu8_risk_mult=1.0,
         base_profile="production",
         scenario_id="qwen4exp-q4-iu8-risk-mult-1",
         candidate_key=None,

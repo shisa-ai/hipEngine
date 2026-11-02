@@ -15,7 +15,7 @@ def test_layer2_flash_bind_restore(monkeypatch, enabled):
     prior = QSAFlashPrefillPolicy(True, '35-47')
     owner = SimpleNamespace(qsa_flash_prefill_policy=prior,
                             runner=SimpleNamespace(qsa_flash_prefill_policy=prior))
-    spec = replace(gate.CANDIDATES['q4_iu8_risk_mult_1'], environment={},
+    spec = replace(gate.CANDIDATES['production_baseline'],
                    qsa_flash_prefill_enabled=enabled)
     assert gate._candidate_named_profile_intact(spec) is (enabled is None)
     with pytest.raises(RuntimeError, match='restore'):
