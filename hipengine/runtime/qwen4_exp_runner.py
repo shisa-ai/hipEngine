@@ -6560,12 +6560,8 @@ def q4_iu8_exact_enabled(owner: Any, enabled: bool | None):
 
 
 def _qwen4_exp_q5k_iu8_exact_enabled(enabled: bool | None = None) -> bool:
-    """Resolve the exact Q5_K route, preserving the direct-call fallback."""
-    if enabled is not None:
-        return bool(enabled)
-    return os.environ.get(
-        'HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', '0'
-    ) not in {'', '0', 'false', 'False'}
+    """Resolve the explicit Q5_K choice; an unbound call keeps the parent."""
+    return bool(enabled)
 
 
 def resolve_q5k_iu8_exact(owner: Any) -> bool:

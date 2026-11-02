@@ -3589,18 +3589,15 @@ while the MMQ owner is absent.
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
-Scope: direct/unbound Qwen4Exp route fallbacks, including
-`HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`.
+Scope: direct/unbound Qwen4Exp route fallbacks.
 
 The profile-binding migration is complete. Finish the separate direct/unbound
 caller inventory before removing compatibility fallbacks. Include the GR IU8
-pair, selected-Q8 gate, exact Q4/Q5_1/Q5_K and plain-Q4 gate/layers/risk/planes,
+pair, selected-Q8 gate, exact Q4/Q5_1 and plain-Q4 gate/layers/risk/planes,
 and paired QSA flash policy. Keep explicit owner diagnostic scopes and their
 requested/effective reports. Remove a fallback only after every in-tree direct
 consumer supplies its explicit owner choice and targeted public route/repeat/
 teardown checks pass; absence of profile writes alone is not that inventory.
-For Q5_K run `tests/test_unit_qwen4exp_q5k_iu8_owner.py` and
-`tests/test_live_qwen4exp_q5k_iu8_owner.py` after migrating any remaining callers.
 
 ```bash
 python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json
