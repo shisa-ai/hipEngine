@@ -10,8 +10,12 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'layer_gate', 'dense_ab', 'last_row_probe', 'profile_gap', 'layer2', 'restore_ab'])
-def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interface):
+@pytest.mark.parametrize('interface,length', [
+    *((interface, 273) for interface in ('direct', 'layer_gate', 'dense_ab',
+       'last_row_probe', 'profile_gap', 'layer2', 'restore_ab')),
+    *(('candidate_ar', length) for length in (73, 273, 517)),
+])
+def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interface, length):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import gguf_linear as gl
     from hipengine.runtime import qwen4_exp_runner as runner_module
@@ -23,7 +27,16 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
     before = memory_stats()
     captures = []
     _install_logit_capture(monkeypatch, captures)
-    policies = []
+    policies, route_choices = [], []
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS', '0')
+    real_route = gl._record_route_engagement
+
+    def record_route(selector, **kwargs):
+        if selector == 'dense_wide':
+            route_choices.append(kwargs)
+        return real_route(selector, **kwargs)
+
+    monkeypatch.setattr(gl, '_record_route_engagement', record_route)
     real = gl._record_gguf_linear_dispatch
 
     def dispatch(**kwargs):
@@ -44,7 +57,15 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
         bound_policy = generator.q8_dense_wide_policy
         for enabled in (False, True):
             policy = gl.Q8DenseWidePolicy(enabled, frozenset(range(16, 48)))
-            if interface == 'direct':
+            if interface == 'candidate_ar':
+                from contextlib import ExitStack
+                from scripts.qwen4exp_candidate_ar import bind_dense_wide_override
+                control = ExitStack()
+                report = bind_dense_wide_override(control, generator, {
+                    'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE': '1' if enabled else '0',
+                    'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS': ','.join(map(str, range(16, 48)))})
+                assert report['q8_dense_wide_policy'] == policy.to_report()
+            elif interface == 'direct':
                 control = gl.q8_dense_wide_policy(generator, policy)
             elif interface == 'layer_gate':
                 from scripts import execution_profile_q8_wmma_prefill_layers_gate as gate
@@ -97,12 +118,18 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
                 results = []
                 for _ in range(2):
                     policies.clear()
+                    route_choices.clear()
                     captures.clear()
-                    output = llm.generate_detailed([[1] * 273], params)
+                    output = llm.generate_detailed([[1] * length], params)
                     assert policies
                     assert all(item[:2] == (enabled, policy.layers) for item in policies), set(policies)
                     wide = [item for item in policies if 'dense_wide' in item[2]]
-                    assert bool(wide) is enabled, set(policies)
+                    assert bool(wide) is (enabled and length > 256), set(policies)
+                    if enabled and length <= 256:
+                        prefill_choices = [row for row in route_choices if row['rows'] == length]
+                        assert prefill_choices
+                        assert all(not row['engaged'] and row['reason'] == 'ineligible shape'
+                                   for row in prefill_choices), prefill_choices
                     assert captures and all(np.isfinite(row).all() for row in captures)
                     results.append((tuple(output[0].generated_token_ids),
                                     [row.copy() for row in captures]))

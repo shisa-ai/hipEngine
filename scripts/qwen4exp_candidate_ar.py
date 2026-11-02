@@ -7,7 +7,8 @@ but lets the caller force a diagnostic routing override. The attention-gate
 workspace before sampling; it does not change the process key. Generic WMMA
 ``--override`` also binds owner state. Flash-prefill enable/layer overrides use
 the same paired owner policy as profile-gap, as do the independent GR IU8
-up/down overrides. F32 MMQ plane overrides also bind and report owner state.
+up/down overrides. F32 MMQ plane and dense-wide enable/layer overrides also bind
+and report owner state.
 Other overrides remain post-binder environment inputs.
 This runner produces diagnostic samples, not production benchmark evidence.
 
@@ -55,6 +56,27 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
         else:
             environment[key] = value
     return environment, attention
+
+
+def split_dense_wide_overrides(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Keep both dense-wide axes out of both process-write stages."""
+    keys = {'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE',
+            'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS'}
+    return ({key: value for key, value in values.items() if key not in keys},
+            {key: value for key, value in values.items() if key in keys})
+
+
+def bind_dense_wide_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Bind specified axes with the profile-gap scope and report owner state."""
+    from scripts.qwen4exp_profile_gap import _wide_owner_override
+    from hipengine.runtime.gguf_linear import resolve_q8_dense_wide_policy
+    if overrides:
+        raw = overrides.get('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE')
+        stack.enter_context(_wide_owner_override(
+            owner, None if raw is None else raw not in {'', '0', 'false', 'False'},
+            overrides.get('HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS')))
+    return {'q8_dense_wide_override': dict(overrides),
+            'q8_dense_wide_policy': resolve_q8_dense_wide_policy(owner).to_report()}
 
 
 def split_mmq_planes_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
@@ -220,6 +242,7 @@ def main() -> int:
 
     try:
         overrides, attention_override = split_owner_overrides(args.override)
+        overrides, dense_wide_overrides = split_dense_wide_overrides(overrides)
         overrides, mmq_planes_overrides = split_mmq_planes_override(overrides)
         overrides, generic_wmma_override = split_generic_wmma_override(overrides)
         overrides, q4_iu8_overrides = split_q4_iu8_override(overrides)
@@ -318,6 +341,8 @@ def main() -> int:
     try:
         artifact['owner_overrides'] = owner_stack.enter_context(
             attention_override_scope(generator, attention_override))
+        artifact['owner_overrides'].update(bind_dense_wide_override(
+            owner_stack, generator, dense_wide_overrides))
         artifact['owner_overrides'].update(bind_mmq_planes_override(
             owner_stack, generator, mmq_planes_overrides))
         artifact['owner_overrides'].update(bind_generic_wmma_override(
