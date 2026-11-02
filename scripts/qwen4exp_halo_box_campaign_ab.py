@@ -48,7 +48,6 @@ Q5K_ROW4_FIELD = "q5k_row4_prefill"
 QSA_H256_FIELD = "qsa_h256_prefill_mode"
 Q4_BUNDLE_FIELD = "q4_bundle_prefill"
 Q4_PAIR_ENV = {
-    "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "0",
     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID": "64",
 }
 
@@ -192,6 +191,7 @@ def q4_pair_control_record(runner):
             "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
             "q4_bundle_prefill": True, "routed_f16_enabled": False,
             "production_moe_prefill_enabled": False,
+            "q4_iu8_exact_enabled": False,
         },
     }
 
@@ -202,12 +202,12 @@ def q4_pair_scope(runner, enabled, *, environment=os.environ):
     from hipengine.runtime.qwen4_exp_runner import (
         production_moe_prefill_enabled,
         q4_pair_prefill, q4_bundle_prefill, q4_exact_grouped_gate,
-        q4_exact_grouped_all, routed_f16_enabled as routed_f16,
+        q4_exact_grouped_all, q4_iu8_exact_enabled, routed_f16_enabled as routed_f16,
     )
     prior = {key: environment.get(key) for key in Q4_PAIR_ENV}
     try:
         environment.update(Q4_PAIR_ENV)
-        with production_moe_prefill_enabled(runner, False), routed_f16(runner, False), q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
+        with q4_iu8_exact_enabled(runner, False), production_moe_prefill_enabled(runner, False), routed_f16(runner, False), q4_exact_grouped_gate(runner, True), q4_exact_grouped_all(runner, True), q4_bundle_prefill(runner, True), q4_pair_prefill(runner, enabled):
             yield
     finally:
         for key, value in prior.items():
