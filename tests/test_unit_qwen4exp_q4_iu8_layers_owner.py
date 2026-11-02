@@ -1,4 +1,4 @@
-"""Plain-Q4 layer scope follows the owner and preserves unbound parsing."""
+"""Plain-Q4 layer scope follows the owner without ambient input."""
 import inspect
 import os
 from types import SimpleNamespace
@@ -20,7 +20,16 @@ def test_layer_owner_beats_ambient(monkeypatch, scope, selected):
     monkeypatch.setenv(ENV, 'all' if not selected else '0')
     assert runtime._qwen4_exp_q4_iu8_layer_allowed(weights(36), scope) is selected
     assert runtime.resolve_q4_iu8_layers(SimpleNamespace(q4_iu8_layers=scope)) == scope
-    assert runtime._qwen4_exp_q4_iu8_layer_allowed(weights(36)) is (not selected)
+    assert runtime._qwen4_exp_q4_iu8_layer_allowed(weights(36)) is True
+
+
+@pytest.mark.parametrize('ambient', ['', 'all', '0', '2,17-19', '35-47'])
+@pytest.mark.parametrize('layer', [2, 35, 36, 47, 48])
+def test_unbound_layer_scope_keeps_default(monkeypatch, ambient, layer):
+    monkeypatch.setenv(ENV, ambient)
+    assert runtime.resolve_q4_iu8_layers(SimpleNamespace()) == '35-47'
+    assert runtime.resolve_q4_iu8_layers(SimpleNamespace(q4_iu8_layers=None)) == '35-47'
+    assert runtime._qwen4_exp_q4_iu8_layer_allowed(weights(layer)) is (35 <= layer <= 47)
 
 
 def test_layer_scope_restores_missing_distinct_and_nested_state(monkeypatch):
@@ -52,7 +61,7 @@ def test_scope_carriers_and_inheritance():
 
 def test_layer_scope_capture_identity(monkeypatch):
     owner = _fake_runner(slots=1)
-    owner.q4_iu8_layers = 'all'
+    owner.q4_iu8_layers = '35-47'
     before = owner._expert_down_policy()
     owner.q4_iu8_layers = '2'
     assert owner._expert_down_policy() != before

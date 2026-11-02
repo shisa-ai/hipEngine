@@ -305,11 +305,10 @@ def _qwen4_exp_layer_allowed(
 def _qwen4_exp_q4_iu8_layer_allowed(
     weights: Mapping[str, GGUFDeviceWeight], layers: str | None = None,
 ) -> bool:
-    """Use the owner's plain-Q4 scope, or the unbound environment fallback."""
+    """Use the explicit plain-Q4 scope, with the original unbound default."""
     return _qwen4_exp_layer_scope_contains(
         weights['expert_gate'].spec.slot_path,
-        os.environ.get('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '35-47')
-        if layers is None else layers,
+        '35-47' if layers is None else layers,
     )
 
 
@@ -368,8 +367,7 @@ def q4_iu8_risk_mult(owner: Any, multiplier: float | None):
 def resolve_q4_iu8_layers(owner: Any) -> str:
     """Resolve a plain-Q4 layer scope without treating an empty scope as absent."""
     layers = getattr(owner, 'q4_iu8_layers', None)
-    return (os.environ.get('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '35-47')
-            if layers is None else layers)
+    return '35-47' if layers is None else layers
 
 
 @contextlib.contextmanager
