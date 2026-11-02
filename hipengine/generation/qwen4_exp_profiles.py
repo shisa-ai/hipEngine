@@ -26,10 +26,6 @@ Q8_MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
 Q8_WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 PREBINDER_CONFLICT_ENV = "HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT"
 _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
-# Values this module has written, so a later bind can tell its own previous
-# write apart from a value the caller set. Strict-then-production binding in one
-# process is normal and is not a conflict.
-_binder_written: dict[str, str] = {}
 # Owner-state transport has no environment write to overwrite a caller value.
 # Keep the discarded value so the warning is reported once per bind sequence,
 # not on every later bind that sees the same untouched ambient string.
@@ -138,15 +134,12 @@ PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
     "Q8_0_SELECTED_WMMA_DOWN": "1",
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
 }
-# The grouped Q8_0 expert-down owner is request-local generator/runner state
-# published from the plan's own selection (``q8_down_variant``), so the
-# restoration pass writes back only the flags that remain process keys.
+# Restoration decisions publish directly on generator/runner owners.
 _Q8_DOWN_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT"
 _Q8_DOWN_WMMA_VARIANT = "selected_grouped_wmma_prefill_bf16_bf16_out"
 # The GDN columnwarp enablement gate is request-local generator/runner state too
 # (``gdn_colwarps_prefill``), so the arithmetic-recovery sweep publishes it
-# instead of writing the retired process key. The layer allowlist stays a
-# process key.
+# instead of writing the retired process key. Its layer scope is owner state too.
 _GDN_COLWARPS_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
 _GDN_COLWARPS_PREFILL_FLAG = "GDN_COLWARPS_PREFILL"
 # The ordered sparse-decode prerequisite is owner state too
@@ -154,11 +147,6 @@ _GDN_COLWARPS_PREFILL_FLAG = "GDN_COLWARPS_PREFILL"
 # that keeps the non-ordered sparse owner publishes False. The retired process
 # key is named here only so a caller-set value is recorded as discarded.
 _QSA_ORDERED_DECODE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
-_PROCESS_RESTORED_Q8_QSA_FLAGS = {
-    flag: value
-    for flag, value in PRODUCTION_Q8_QSA_RESTORED_FLAGS.items()
-    if flag not in {"Q8_DOWN_VARIANT", "Q8_0_SELECTED_WMMA_DOWN"}
-}
 _Q8_QSA_RESTORATION_EVIDENCE = (
     "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json"
 )
@@ -989,21 +977,6 @@ def _f16_route_selections(
                             *_dense_f16_gemm_selections(production=True))
 
 
-def _apply_profile_env(values: dict[str, str]) -> None:
-    """Write binder-owned env values, recording any caller value it discards."""
-
-    for key, value in values.items():
-        previous = os.environ.get(key)
-        if (
-            previous is not None
-            and previous != value
-            and _binder_written.get(key, object()) != previous
-        ):
-            _last_prebinder_conflicts[key] = (previous, value)
-        os.environ[key] = value
-        _binder_written[key] = value
-
-
 def _record_owner_transport(env: str, value: str) -> None:
     """Record a caller value an owner publication makes inert."""
 
@@ -1448,7 +1421,6 @@ def _bind(
     # constant; the ds4-MMQ envs stay off so they cannot preempt it, and the
     # exact-grouped guards (`not production_grouped_moe`) keep layers 0-26 on
     # their separately manifested exact grouped owners.
-    profile_env: dict[str, str] = {}
     # DP-2 loans one F16 staging plane to two immediate consumers of the wide
     # route. It selects no variant, so the manifest needs no new row: the wide
     # route and its F16-input sibling are already dispatch-time owners of the
@@ -1661,99 +1633,7 @@ def _bind(
         if production and resolved.manifest.get("quant") != "gguf_ud_q4_k_xl"
         else None
     )
-    for key, value in {
-        # Generic WMMA enablement is published on generator/runner owners above.
-        # PF-3 Q5_1 M1 and PF-1 grouped Q8_0 down are T0 exact production
-        # owners after the one-process/one-residency canonical gate, and their
-        # selections are request-local runner state now (``q51_down_m1`` /
-        # ``forkb_grouped_down`` above), so no process key names them. Strict
-        # keeps the preceding owners as registered fallbacks.
-        # Selected Q8 down enablement and its grouped variant publish on owners.
-        # The grouped Q8_0 expert-down owner was this pair's other half; it is
-        # the owning generator/runner's state now (``q8_down_variant``),
-        # published below, so no process key names it.
-        # Exact Q5_K IU8 enablement is published on generator/runner owners below.
-        # Exact ordered DPP replacement for the wave-scale GR-up owner. It is
-        # the owning generator/runner's state now (``gr_dpp_reduction``),
-        # published below from this plan's own ``qwen4exp_rows_gt256_gr_up``
-        # row, so no process key names it. The registered wave-scale owner
-        # remains the strict fallback through the runtime resolver, while the
-        # profile's declared strict fallback is the unscaled fused parent.
-        # Weight prepacking is published on generator/runner owners above.
-        # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
-        # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
-        # profile binds them and no runner reads them.
-        #
-        # The GDN peer prefill owner's gate and layer scope were the pair
-        # HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}. Both are the owning
-        # runner's state now (``gdn_peer_prefill_layers``), published below, so
-        # no process key names them and the arithmetic-recovery sweep cannot
-        # rewrite them.
-        #
-        # The Q4 DP4A decode pair is the owning generator/runner's state now
-        # (``q4_dp4a_decode_enabled`` / ``q4_dp4a_decode_layers``), published
-        # above. No process key names it, so a direct/unbound caller keeps its
-        # ambient fallback and a bound owner never reads it.
-        # Dense-wide variant and scope are published on the owner below.
-        # Plain iu8-WMMA enablement and layer scope are published on owners below.
-        # `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` is bound to the gated
-        # alternative, 1.0.
-        #
-        # Tightening the Kahan risk bound to 1.0 - the top of the range the
-        # multiplier's own screening calls safe ("between 0.5 and 1 (below it,
-        # BF16 flips escape the repair)") - cuts the repaired share of rows
-        # **0.7119% -> 0.2092%** (3.40x fewer, over 1504 calls and 9.86e9
-        # outputs, with zero over-capacity calls) and passes the production
-        # numerical gate with 3.3-6.4x aggregate margin: mean KL 3.039e-4
-        # against 1e-3, p99 4.271e-3 against 2e-2, max 7.771e-3 against 5e-2,
-        # top-1 0.99556, `scope_failures: null`, determinism and isolation clean,
-        # including a 274x improvement on the `prefill_last` scope that rejected
-        # the repair-free sibling.
-        #
-        # This binding previously sat at 4.0, on the recorded grounds that "the
-        # wall benefit does not survive the canonical protocol" and that "the
-        # repair kernel launches over `risk_capacity` regardless of
-        # `risk_count`, so the real lever is the pass's launch geometry, not its
-        # threshold".  BOTH GROUNDS ARE REFUTED by measurement.
-        #
-        # The binder writes this key unconditionally, so the canonical harness -
-        # which reads this profile - could never move it: every canonical reading
-        # of "flat" compared 4.0 against 4.0.  Applied through the post-binder
-        # override, the queue moves 3.403x (70,167,220 -> 20,621,412 slots) and
-        # the repair kernel's own traced time falls 4808.346 -> 3386.063 ms, a
-        # 1318.0 ms window reduction on `code-p4096` (64981.3 -> 63663.3 ms of
-        # kernel time), i.e. 2.03%.  The kernel does not launch over
-        # `risk_capacity`: it launches 1024 blocks with a grid-stride loop bounded
-        # by `min(risk_count, max_risks)`.
-        #
-        # There is a real fixed component - fitting time = F + k*queue over the
-        # two arms gives F = 2794.1 ms and k = 2.871e-5 ms/slot, so 58.1% of the
-        # repair at 4.0 is independent of the queue.  That is a genuine
-        # launch-geometry question worth attacking on its own, but it does not
-        # make the threshold free of value: the proportional part is what the
-        # 1.0 binding collects, and it is collected now.
-        #
-        # Task gate: `requires_review` with 15/18 strict-exact and three
-        # divergences, all cosmetic - an extra `Deque,` in an import list and two
-        # reworded clauses that are semantically equivalent.  The candidate is
-        # repeat-deterministic with no repeat mismatches.  Per AGENTS.md,
-        # cross-width generated-ID equality is diagnostic rather than binding;
-        # the numerical envelope above is the binding gate and it passes.
-        #
-        # Rollback: set this to "4.0".  The strict fallback is registered and
-        # unchanged.
-        #
-        # Evidence: benchmarks/results/2026-10-04-qwen4exp-q4-iu8-risk-mult-1/
-        # and benchmarks/results/2026-10-04-qwen4exp-risk-mult-override-ab/;
-        # worklog entries 20261003T225747, 20261003T234213,
-        # 20261004T000542 (the binder pin) and 20261004T001404 (this promotion).
-        # The 1.0 multiplier publishes on generator/runner owners below.
-        # Columnwarp prefill enablement and layer scope publish on the owner
-        # below. Decode retains its separately tuned rows==1 owner.
-        # Flash prefill's effective pair publishes on owners after UD recovery.
-    }.items():
-        profile_env[key] = value
-    _apply_profile_env(profile_env)
+    # Profile choices publish directly on generator/runner owners.
     # Publish on the generator as the durable carrier and on the runner it has
     # already built. A generator that builds its runner later still receives the
     # decision, and any c1 runner it clones inherits it; an unbound one keeps the
@@ -1893,28 +1773,10 @@ def _bind(
         runner.q8_down_register = q8_down_register
         runner.q8_mapped_down = q8_mapped_down
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
-        _apply_profile_env(
-            {
-                "HIPENGINE_QWEN4_EXP_" + flag: "0"
-                for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
-                if flag not in {
-                    "Q4_DP4A64", "Q4_IU8_PREFILL", "PRODUCTION_MOE_PREFILL",
-                    "Q8_MMQ_PREFILL", "GR_WIDE",
-                    _GDN_COLWARPS_PREFILL_FLAG, "QSA_FLASH_PREFILL",
-                    "Q8_0_SELECTED_WMMA_DOWN", "GR_IU8", "GR_IU8_DOWN",
-                }
-            }
-        )
         _publish_q4_dp4a_decode(
             generator, False, q4_dp4a_decode_layers)
         _publish_production_moe_prefill(generator, False)
         _publish_q8_mmq_prefill(generator, False)
-        _apply_profile_env(
-            {
-                "HIPENGINE_QWEN4_EXP_" + flag: value
-                for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
-            }
-        )
     _publish_q4_planes(generator)
     _publish_q4_risk_mult(generator)
     _publish_q4_layers(generator, production=production)

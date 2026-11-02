@@ -2850,7 +2850,7 @@ and retry responsibilities to another owner.
 
 Owner: `hipengine/generation/qwen4_exp_profiles.py`.
 
-Scope: `hipengine/generation/qwen4_exp_profiles.py`, `_apply_profile_env`,;
+Scope: `hipengine/generation/qwen4_exp_profiles.py`;
 `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT`; `last_prebinder_conflicts()`,
 `scripts/execution_profile_q8_wmma_prefill_layers_gate.py`.
 
@@ -3040,7 +3040,9 @@ The Q8 layer gate snapshots effective WMMA-layer and dense-wide selections with
 `selected_prefill_routes(owner)`, not the last bind's global conflict map. It
 preserves bound-selection reports, explicit arm scopes and dispatch engagement
 checks; legacy conflict warning/error machinery still needs owner-local
-observability before retirement.
+observability before retirement. The profile environment writer, write-history
+map and empty recovery/restoration loops are removed; all current profile/quant
+bindings are tested against process writes and deletions.
 Profile-gap and candidate AR generic flash overrides bind the same paired owner
 policy, preserving omitted axes and recording actual policy without process
 writes. Decode-sync binds its flash-on suffix policy on the measured owner.

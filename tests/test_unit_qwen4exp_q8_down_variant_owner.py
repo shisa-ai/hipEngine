@@ -147,9 +147,7 @@ def test_the_restored_table_keeps_the_declaration_without_the_env_write():
     assert PRODUCTION_Q8_QSA_RESTORED_FLAGS["Q8_DOWN_VARIANT"] == GUARDED
     assert profile_module._Q8_DOWN_WMMA_VARIANT == WMMA
     assert profile_module._Q8_DOWN_VARIANT_ENV == ENV
-    assert "Q8_DOWN_VARIANT" not in profile_module._PROCESS_RESTORED_Q8_QSA_FLAGS
-    assert set(profile_module._PROCESS_RESTORED_Q8_QSA_FLAGS) == (
-        set(PRODUCTION_Q8_QSA_RESTORED_FLAGS) - {"Q8_DOWN_VARIANT", "Q8_0_SELECTED_WMMA_DOWN"})
+    assert not hasattr(profile_module, '_PROCESS_RESTORED_Q8_QSA_FLAGS')
 
 
 def test_the_two_modules_name_the_same_leaves():
@@ -809,7 +807,8 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
         "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
         "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
         "qsa_flash_prefill_enabled", "q8_selected_down_enabled",
-        "gr_iu8_up", "gr_iu8_down", "q4_iu8_prefill_enabled"}
+        "gr_iu8_up", "gr_iu8_down", "q4_iu8_prefill_enabled",
+        "q4_iu8_layers", "q4_iu8_planes", "q4_iu8_risk_mult"}
 
     restore.validate_shared_graphs(
         [], [{"q8_down_variant": WMMA, "q8_selected_down_enabled": True}])
