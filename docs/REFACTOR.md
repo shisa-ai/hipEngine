@@ -3014,7 +3014,9 @@ can bind and report optional plane counts without process writes. Ranking and
 family-sweep attribution read effective child planes, preserving missing current
 values as unknown and legacy process-only interpretation. Journey snapshots,
 arm and split-phase scopes and comparison reports now carry plane values.
-Profile publication still needs migration.
+Both profile binders capture the existing process-selected plane count on
+owners; missing or malformed input still selects three planes and `2` selects
+two. Later process changes do not alter an already-bound owner.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

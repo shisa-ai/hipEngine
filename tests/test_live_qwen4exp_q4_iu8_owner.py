@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation', 'profile', 'risk', 'risk_gap', 'risk_ar', 'risk_candidate', 'risk_journey', 'risk_declared', 'risk_profile', 'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation', 'profile', 'risk', 'risk_gap', 'risk_ar', 'risk_candidate', 'risk_journey', 'risk_declared', 'risk_profile', 'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey', 'planes_profile'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_q4_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -40,7 +40,7 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                        'selected_dual_wmma_iu8_risk_p2_prefill_bf16_bf16_out')
     p2_original = None
     plane_calls = []
-    if interface in {'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey'}:
+    if interface in {'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey', 'planes_profile'}:
         p2_original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=p2_key.variant)
         def counted_p2(*args, **kwargs):
             plane_calls.append(2)
@@ -72,11 +72,18 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface in {'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey'}:
+                    if interface in {'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey', 'planes_profile'}:
                         selected_planes = 2 if enabled else 3
                         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES', '3' if enabled else '2')
                         if interface == 'planes':
                             assert scopes.enter_context(runtime.q4_iu8_planes(target, selected_planes)) == selected_planes
+                        elif interface == 'planes_profile':
+                            from hipengine.generation.qwen4_exp_profiles import _publish_q4_planes
+                            scopes.enter_context(runtime.q4_iu8_planes(target, None))
+                            monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES', str(selected_planes))
+                            _publish_q4_planes(target)
+                            monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES', '3' if enabled else '2')
+                            assert target.q4_iu8_planes == selected_planes
                         elif interface == 'planes_journey':
                             from scripts import qwen4exp_journey_localize as journey
                             monkeypatch.setattr(journey, '_Q4_PLANES_ARM_VALUES', {'test': selected_planes})
@@ -176,7 +183,7 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                     plane_calls.clear()
                     start = len(captures)
                     outputs.append(llm.generate([list(range(100, 100 + length))], params))
-                    if interface in {'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey'}:
+                    if interface in {'planes', 'planes_gap', 'planes_ar', 'planes_candidate', 'planes_journey', 'planes_profile'}:
                         assert bool(plane_calls) is (length >= 2)
                         assert all(value == selected_planes for value in plane_calls)
                         assert os.environ['HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES'] == ('3' if enabled else '2')

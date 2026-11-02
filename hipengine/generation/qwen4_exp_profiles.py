@@ -1197,6 +1197,16 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_q4_planes(generator: Any) -> None:
+    """Capture the existing process-selected plane count for this binding."""
+    from hipengine.runtime.qwen4_exp_runner import _qwen4_exp_q4_iu8_planes
+    planes = _qwen4_exp_q4_iu8_planes()
+    generator.q4_iu8_planes = planes
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.q4_iu8_planes = planes
+
+
 def _publish_q4_risk_mult(generator: Any) -> None:
     """Publish the existing 1.0 multiplier for both profile binders."""
     _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT', '1.0')
@@ -1890,6 +1900,7 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    _publish_q4_planes(generator)
     _publish_q4_risk_mult(generator)
     _publish_q4_layers(generator, production=production)
     _publish_q4_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
