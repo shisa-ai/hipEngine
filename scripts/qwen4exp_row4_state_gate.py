@@ -160,10 +160,7 @@ def main():
         p.error("--include-heldouts is scoped to gdn-narrow/dense-wide-padded")
     if not 1 <= args.decode_steps <= 128:
         p.error("--decode-steps must be in 1..128")
-    # Other packages restore their binder-published default. The DPP key is
-    # caller-owned: capture its value or absence before setup and arm writes.
-    restored_flag = (os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION")
-                     if args.route_package == "q8-dpp-reduction" else "1")
+    restored_flag = "1"
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_q8_1_selected_prefill import (
@@ -228,7 +225,7 @@ def main():
     if args.route_package == "q8-wave-scale":
         flag = ""  # route_scope binds the owning runner.
     if args.route_package == "q8-dpp-reduction":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
+        flag = ""  # route_scope binds the owning runner's DPP choice.
     if args.route_package == "router-dpp":
         flag = ""  # route_scope binds the runner-local producer.
     if args.route_package == "gr-dpp-reduction":
@@ -835,10 +832,8 @@ def main():
                 "published_value": generator.runner.q8_mapped_down,
             }
         if args.route_package == "q8-dpp-reduction":
-            # Arms override the caller's value themselves. Detect a profile
-            # binder taking ownership before restoring the captured value.
-            assert os.environ.get(flag) == restored_flag, (
-                "the DPP key must still hold the caller's value before the arms bind it")
+            from scripts.qwen4exp_halo_box_campaign_ab import q8_dpp_control_record
+            report['selection_control'] = q8_dpp_control_record(generator.runner)
         if args.route_package in {"q4-bundle", "prefill-bundle"}:
             assert generator.runner.q4_bundle_prefill is True
             report["selection_control"] = {

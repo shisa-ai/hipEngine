@@ -351,9 +351,7 @@ CANDIDATES = {
             "checked-int32/full-four-row sibling of the production dense Q8 DPP "
             "owner; same ordered FMA/DPP arithmetic with complete-range admission"
         ),
-        environment={
-            "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "1",
-        },
+        environment={},
         base_profile="production",
         scenario_id="qwen4exp-dense-q8-checked-full-rows",
         candidate_key=(

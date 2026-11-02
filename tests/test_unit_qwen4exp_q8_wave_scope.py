@@ -77,7 +77,8 @@ def test_campaign_scope_binds_owner_and_restores_preemptors(mode, expected):
             assert owner.q8_wave_scale_prefill is expected
             assert owner.gguf_wmma_prefill_enabled is False
             assert env['HIPENGINE_GGUF_WMMA_PREFILL'] == '1'
-            assert all(env[k] == v for k, v in Q8_WAVE_ENV.items())
+            assert owner.q8_dpp_reduction_enabled is False
+            assert env == before
             assert env[ENV] == "stale"
             assert owner.q8_wmma_layer_scope.is_empty
             assert linear.resolve_q8_dense_wide_policy(owner) == linear.Q8DenseWidePolicy(False, None)
@@ -94,6 +95,8 @@ def test_campaign_record_names_explicit_wide_preemptor():
     assert record['forced_dense_wide_policy'] == {'enabled': False, 'layers': None}
     assert 'HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE' not in record['forced_environment']
     assert 'HIPENGINE_GGUF_WMMA_PREFILL' not in record['forced_environment']
+    assert record['forced_runner_fields']['q8_dpp_reduction_enabled'] is False
+    assert 'HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION' not in record['forced_environment']
     assert record['forced_runner_fields']['gguf_wmma_prefill_enabled'] is False
 
 

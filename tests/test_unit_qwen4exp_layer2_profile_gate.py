@@ -411,9 +411,7 @@ def test_checked_dense_q8_candidate_pins_checked_owner_and_parent_fallback() -> 
 
     assert candidate.classification == "T0"
     assert candidate.base_profile == "production"
-    assert candidate.environment == {
-        "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "1",
-    }
+    assert candidate.environment == {}
     assert candidate.candidate_key == (
         "hip_gfx1151",
         "linear",

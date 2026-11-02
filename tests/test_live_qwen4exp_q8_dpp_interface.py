@@ -19,7 +19,7 @@ DPP = PREFIX + '_dpp_f32_f32_out'
 CHECKED = PREFIX + '_dpp_checked_full_rows_f32_f32_out'
 
 
-@pytest.mark.parametrize('interface', ['legacy', 'owner'])
+@pytest.mark.parametrize('interface', ['campaign', 'owner'])
 @pytest.mark.parametrize('length', [73, 512, 513])
 def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -29,6 +29,7 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length, i
     from scripts.qwen4exp_halo_box_campaign_ab import route_scope, Q8_WAVE_ENV
 
     key = linear._Q8_DPP_REDUCTION_ENV
+    before_dpp = os.environ.get(key)
     before_env = {name: os.environ.get(name) for name in Q8_WAVE_ENV}
     runtime = get_hip_runtime()
     runtime.device_synchronize()
@@ -65,18 +66,14 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length, i
             # this comparison changes only its DPP family decision.
             from contextlib import nullcontext
             from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
+            # Both interfaces must ignore opposing ambient input.
+            os.environ[key] = '1' if value == '0' else '0'
             with route_scope('q8-dpp-reduction',
-                             'before' if value == '0' else 'after', runner):
+                             ('after' if value == '0' else 'before') if interface == 'owner'
+                             else ('before' if value == '0' else 'after'), runner):
                 assert linear.resolve_q8_dense_wide_policy(runner) == Q8DenseWidePolicy(False, None)
-                if interface == 'owner':
-                    os.environ[key] = '1' if value == '0' else '0'
-                    choice = q8_dpp_reduction_enabled(runner, value != '0')
-                else:
-                    if value is None:
-                        os.environ.pop(key, None)
-                    else:
-                        os.environ[key] = value
-                    choice = nullcontext()
+                choice = (q8_dpp_reduction_enabled(runner, value != '0')
+                          if interface == 'owner' else nullcontext())
                 with choice:
                     output = llm.generate_detailed(
                         [[1] * length], SamplingParams(max_tokens=3, temperature=0,
@@ -121,10 +118,14 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length, i
         if 'runner' in locals():
             runner.q8_dense_wide_policy = prior_wide
         llm.close()
+        if before_dpp is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = before_dpp
     # The profile owns its process pins beyond generator close. This
     # diagnostic restores the post-binding baseline, not the pre-profile state.
     assert {name: os.environ.get(name) for name in Q8_WAVE_ENV} == bound_env
-    assert os.environ.get(key) == before_env[key]
+    assert os.environ.get(key) == before_dpp
     runtime.device_synchronize()
     after = memory_stats()
     for name in ('current_allocated_bytes', 'active_allocations'):

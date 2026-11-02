@@ -50,9 +50,7 @@ Q4_BUNDLE_FIELD = "q4_bundle_prefill"
 Q4_PAIR_ENV = {}
 
 
-Q8_WAVE_ENV = {
-    "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION": "0",
-}
+Q8_WAVE_ENV = {}
 
 
 GR_WAVE_ENV = {}
@@ -146,12 +144,27 @@ def q8_wave_control_record(runner):
         "scope": "per measured run; restored on exit",
         "forced_environment": dict(Q8_WAVE_ENV),
         "forced_runner_fields": {"q8_mmq_prefill_enabled": False,
+                                 "q8_dpp_reduction_enabled": False,
                                  "gguf_wmma_prefill_enabled": False},
         "forced_raw_prefill_policy": RawPrefillPolicy().to_report(),
         "forced_wmma_layers": Q8WMMALayerScope.empty().to_report(),
         "forced_dense_wide_policy": Q8DenseWidePolicy(False, None).to_report(),
         "counted_variant": "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out",
     }
+
+
+def q8_dpp_control_record(runner):
+    from hipengine.runtime.qwen4_exp_runner import resolve_q8_dpp_reduction
+    record = q8_wave_control_record(runner)
+    record.update(runner_field='q8_dpp_reduction_enabled',
+                  published_value=resolve_q8_dpp_reduction(runner),
+                  counted_variant='coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out',
+                  counted_variants=[
+                      'coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out',
+                      'coltile8_rowbatch4_wave_scale_pipelined_dpp_checked_full_rows_f32_f32_out'])
+    record['forced_runner_fields'].pop('q8_dpp_reduction_enabled')
+    record['forced_runner_fields']['q8_wave_scale_prefill'] = True
+    return record
 
 
 @contextlib.contextmanager
@@ -163,21 +176,14 @@ def q8_wave_scope(runner, enabled, *, environment=os.environ):
     )
     from hipengine.runtime.qwen4_exp_runner import (
         gguf_wmma_prefill, q8_mmq_prefill_enabled, q8_wave_scale_prefill,
-        RawPrefillPolicy, raw_prefill_policy,
+        RawPrefillPolicy, raw_prefill_policy, q8_dpp_reduction_enabled,
     )
-    prior = {key: environment.get(key) for key in Q8_WAVE_ENV}
-    try:
-        environment.update(Q8_WAVE_ENV)
-        with raw_prefill_policy(runner, RawPrefillPolicy()), gguf_wmma_prefill(runner, False), q8_mmq_prefill_enabled(runner, False), q8_wmma_layer_scope(
-            runner, Q8WMMALayerScope.empty()
-        ), q8_dense_wide_policy(runner, Q8DenseWidePolicy(False, None)), q8_wave_scale_prefill(runner, enabled):
-            yield
-    finally:
-        for key, value in prior.items():
-            if value is None:
-                environment.pop(key, None)
-            else:
-                environment[key] = value
+    with (raw_prefill_policy(runner, RawPrefillPolicy()),
+          gguf_wmma_prefill(runner, False), q8_mmq_prefill_enabled(runner, False),
+          q8_wmma_layer_scope(runner, Q8WMMALayerScope.empty()),
+          q8_dense_wide_policy(runner, Q8DenseWidePolicy(False, None)),
+          q8_dpp_reduction_enabled(runner, False), q8_wave_scale_prefill(runner, enabled)):
+        yield
 
 
 def q4_pair_control_record(runner):
@@ -1986,12 +1992,12 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         if runner is None:
             raise ValueError("q8-dpp-reduction needs the owning runner")
-        # Both arms expose the same wave-scale chain. The family key is bound
-        # after its scope's stand-down, then restored before that scope exits.
+        from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
+        # Both arms expose the same wave-scale chain. Only the owner's DPP
+        # choice differs, including its complete-row checked sibling.
         return _combined_scope(
             q8_wave_scope(runner, True, environment=environment),
-            _pinned_env(environment, "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION",
-                        "1" if mode == "after" else "0"),
+            q8_dpp_reduction_enabled(runner, mode == 'after'),
         )
 
     if route_package == "q8-wave-scale":
@@ -3019,6 +3025,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         artifact["selection_control"] = gr_wave_control_record(generator.runner)
     if args.route_package == "gr-dpp-reduction":
         artifact["selection_control"] = gr_dpp_control_record(generator.runner)
+    if args.route_package == "q8-dpp-reduction":
+        artifact["selection_control"] = q8_dpp_control_record(generator.runner)
     if args.route_package == "q8-wave-scale":
         artifact["selection_control"] = q8_wave_control_record(generator.runner)
     if args.route_package == "q4-pair":

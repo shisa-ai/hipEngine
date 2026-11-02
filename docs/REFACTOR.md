@@ -3694,8 +3694,10 @@ runner owners, preserving the old `64` default; unbound calls use the same
 constant policy. The expert-grid environment fallback is removed. Q8 DPP
 reduction now has an explicit `q8_dpp_reduction_enabled` owner choice and
 prefill session; selector and cache identity consume the same effective value.
-The DPP environment fallback remains until campaign/state/layer-gate and
-generic diagnostic callers migrate; profiles do not publish this axis yet.
+The DPP campaign, state-gate and layer-2 checked comparison now bind and report
+owner choices without process writes. The DPP environment fallback remains
+until staged/layer-gate and generic diagnostic callers migrate; profiles do
+not publish this axis yet.
 Audit each geometry's
 actual registry and dispatch consumers before removing wrappers; the old phrase
 “losing geometry ladder” is not evidence that every non-default rung is dead.
