@@ -3477,9 +3477,11 @@ Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
 Scope: `weight_pack/gguf_q8_0/mmq_kmajor76`.
 
-**Deferred rollback decision:** retain `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK` until the enabled
+**Deferred rollback decision:** retain the explicit `q8_mmq_prepack_enabled` owner scope until the enabled
 prepacked route passes assessment after an owner refresh and release window, then remove redundant
-experiment selection. Preserve the strict raw-Q8 route and raw weights needed by decode and risk
+experiment selection. The ambient `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK` fallback is removed;
+production still publishes true, strict false, and diagnostics bind the owner directly.
+Preserve the strict raw-Q8 route and raw weights needed by decode and risk
 repair. Removing the rollback setting is distinct from changing the prefill MMQ arithmetic profile;
 do not infer either from the other. R0128 owns composed optional-resource admission, including the
 full additional sidecar allocation.
@@ -3598,8 +3600,9 @@ fallback removals are complete, including paired GR IU8 and QSA flash policies.
 Keep explicit owner diagnostic scopes and their requested/effective reports.
 Inventory the remaining runtime environment reads separately: distinguish
 unmigrated owner settings from initialization inputs and diagnostics. The MMQ
-attention-gate fallback is removed after its direct diagnostic callers migrated;
-the independent Q8 MMQ plane-count input remains. Q4 DP4A
+attention-gate and prepack fallbacks are removed after their direct diagnostic
+callers migrated; explicit prepack rollback and resource preparation remain.
+The independent Q8 MMQ plane-count input remains. Q4 DP4A
 also uses explicit owner state only; R0023 still owns its independent numerical
 repair. Remove a fallback only after every in-tree direct consumer
 supplies its explicit owner choice and targeted public route/repeat/teardown

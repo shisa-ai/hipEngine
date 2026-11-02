@@ -92,6 +92,9 @@ def test_runner_admission_scope_and_reuse(monkeypatch):
     assert not prepared
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK","1")
     Qwen4ExpGGUFResidentModelRunner._configure_q8_mmq_weight_sidecars(runner)
+    assert not prepared
+    runner.q8_mmq_prepack_enabled = True
+    Qwen4ExpGGUFResidentModelRunner._configure_q8_mmq_weight_sidecars(runner)
     Qwen4ExpGGUFResidentModelRunner._configure_q8_mmq_weight_sidecars(runner)
     assert len(prepared) == 2
 

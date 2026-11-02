@@ -5967,10 +5967,8 @@ def _resolve_q8_mmq_prefill_enabled(enabled: bool | None) -> bool:
 
 
 def resolve_q8_mmq_prepack(owner: Any) -> bool:
-    """Resolve the owner's prepack choice or the exact unbound ``1`` input."""
-    enabled = getattr(owner, 'q8_mmq_prepack_enabled', None)
-    return (os.environ.get('HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK', '0') == '1'
-            if enabled is None else bool(enabled))
+    """Resolve explicit prepack ownership; unbound calls keep raw weights."""
+    return bool(getattr(owner, 'q8_mmq_prepack_enabled', None))
 
 
 @contextlib.contextmanager

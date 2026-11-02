@@ -7,10 +7,10 @@ from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
 ENV = 'HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK'
 
 
-@pytest.mark.parametrize('raw,expected', [('1', True), ('0', False), ('true', False), ('', False)])
-def test_unbound_parser_and_explicit_precedence(monkeypatch, raw, expected):
+@pytest.mark.parametrize('raw', ['1', '0', 'true', ''])
+def test_unbound_ignores_ambient_and_explicit_precedence(monkeypatch, raw):
     monkeypatch.setenv(ENV, raw)
-    assert runtime.resolve_q8_mmq_prepack(SimpleNamespace()) is expected
+    assert runtime.resolve_q8_mmq_prepack(SimpleNamespace()) is False
     assert runtime.resolve_q8_mmq_prepack(SimpleNamespace(q8_mmq_prepack_enabled=True)) is True
     assert runtime.resolve_q8_mmq_prepack(SimpleNamespace(q8_mmq_prepack_enabled=False)) is False
 
