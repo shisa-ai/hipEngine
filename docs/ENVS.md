@@ -819,8 +819,8 @@ choices, including any active diagnostic scope.
 | `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` | `64` | Expert-grid mode for the exact grouped routes: `64` (admitted), plus `q4`/`q5` spellings at their call sites. |
 | `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` | retired | No longer read. Exact bulk convolution remains the prefill default; `gdn_exact_bulk_conv(runner, False)` selects the serial diagnostic fallback on the measured runner. |
 | `HIPENGINE_QWEN4_EXP_LAYER_GRAPHS` | unset | Override for per-layer graph capture admission (backend capability gates the default). |
-| `HIPENGINE_QWEN4_EXP_RAW_VARIANT` | `coltile8` | Raw-Q rowbatch prefill variant selector. |
-| `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` | `32` | Row-batch size for raw Q4 prompt-prefill row owners; `0`/`false` disables, `1` selects 32. |
+| `HIPENGINE_QWEN4_EXP_RAW_VARIANT` | `coltile8` | Raw-prefill geometry fallback while diagnostic callers migrate. Explicit `RawPrefillPolicy` on a generator/runner takes precedence; `raw_prefill_policy(owner, policy)` binds and restores both geometry and row slab, including late-runner inheritance. |
+| `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` | `32` | Raw-prefill row-slab fallback for unbound owners: `0`/`false` disables reuse and `1` selects 32. Explicit `RawPrefillPolicy.rowbatch` selects 0/4/8/16/32 without process writes. |
 | `HIPENGINE_QWEN4_EXP_QSA_WAVE32` | retired | No longer read. H128 sparse decode and prefill fallback selection is runner-owned; `qsa_wave32(runner, False)` selects the wave64 diagnostic parent without changing H256 routes. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` | retired | No longer read. The profile publishes `qsa_ordered_decode` on its generator and scalar target/draft runners: production on, strict off. `qsa_ordered_decode(runner, False)` selects the non-ordered sparse diagnostic parent. H256 admission, the independent ordered-v2 leaf and batch rows-attention selection are unchanged. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` | retired | No longer read. The owning target/draft runner carries ordered-v2 selection; the v1 prerequisite, geometry/count guards and separate fused diagnostic remain. |

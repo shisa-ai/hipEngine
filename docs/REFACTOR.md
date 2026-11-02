@@ -3675,8 +3675,11 @@ Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 Scope: `coltile8_wave_scale`; `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH`,
 `HIPENGINE_QWEN4_EXP_RAW_VARIANT`; `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`.
 
-**Deferred ownership/retirement decision:** resolve these settings into explicit owner state or
-retain a scoped diagnostic comparison. Remove environment reads only after migrating callers and
+**Owner migration in progress:** `RawPrefillPolicy` now carries row slab and
+geometry through generator/runner construction and late-runner inheritance;
+`raw_prefill_policy(owner, policy)` restores explicit diagnostic choices. Legacy
+raw-prefill environment inputs remain for callers awaiting migration; the expert-grid
+setting remains separate. Remove environment reads only after migrating callers and
 diagnostic overrides. Audit each geometry's actual registry and dispatch consumers before removing
 wrappers; the old phrase “losing geometry ladder” is not evidence that every non-default rung is
 dead. Keep registered scalar raw-Q8 and direct selected strict primitives.

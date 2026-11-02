@@ -6453,6 +6453,56 @@ def _qwen4_exp_q4_gate_up_key(
     return KernelKey(backend, "moe_linear", quant, variant)
 
 
+@dataclass(frozen=True)
+class RawPrefillPolicy:
+    """One owner's raw-prefill row reuse and registered geometry choice."""
+    rowbatch: int = 32
+    variant: str = 'coltile8'
+
+    def __post_init__(self):
+        from hipengine.runtime.gguf_linear import _RAW_K_PREFILL_ROWBATCHES, _RAW_K_PREFILL_VARIANTS
+        if type(self.rowbatch) is not int or self.rowbatch not in _RAW_K_PREFILL_ROWBATCHES:
+            raise ValueError('raw prefill rowbatch must be 0, 4, 8, 16, or 32')
+        if self.variant not in _RAW_K_PREFILL_VARIANTS:
+            raise ValueError('raw prefill variant must name a supported geometry')
+
+    def to_report(self):
+        return {'rowbatch': self.rowbatch, 'variant': self.variant}
+
+
+def resolve_raw_prefill_policy(owner: Any) -> RawPrefillPolicy:
+    """Prefer owner state while legacy diagnostic callers migrate."""
+    policy = getattr(owner, 'raw_prefill_policy', None)
+    if policy is not None:
+        if not isinstance(policy, RawPrefillPolicy):
+            raise TypeError('raw_prefill_policy must be a RawPrefillPolicy or None')
+        return policy
+    raw = os.environ.get('HIPENGINE_QWEN4_EXP_RAW_ROWBATCH', '32')
+    rowbatch = (0 if raw in {'', '0', 'false', 'False'} else
+                32 if raw in {'1', 'true', 'True'} else int(raw))
+    return RawPrefillPolicy(rowbatch, os.environ.get('HIPENGINE_QWEN4_EXP_RAW_VARIANT', 'coltile8'))
+
+
+@contextlib.contextmanager
+def raw_prefill_policy(owner: Any, policy: RawPrefillPolicy | None):
+    """Bind generator/current runner and restore distinct or absent values."""
+    if policy is not None and not isinstance(policy, RawPrefillPolicy):
+        raise TypeError('raw_prefill_policy must be a RawPrefillPolicy or None')
+    missing = object()
+    prior = [(target, getattr(target, 'raw_prefill_policy', missing))
+             for target in _q8_mmq_prefill_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.raw_prefill_policy = policy
+        yield
+    finally:
+        for target, previous in prior:
+            if previous is missing:
+                delattr(target, 'raw_prefill_policy')
+            else:
+                target.raw_prefill_policy = previous
+
+
 def _qwen4_exp_q5_k_iu8_risk_multiplier() -> float:
     """Kahan-bound multiplier for the exact Q5_K iu8 risk criterion.
 
@@ -10297,6 +10347,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None
     # None preserves unbound environment diagnostics until the binder migrates.
     q8_dense_wide_policy: Q8DenseWidePolicy | None = None
+    raw_prefill_policy: RawPrefillPolicy | None = None
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -10560,6 +10611,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         gguf_wmma_prefill_enabled: bool | None = None,
         qsa_flash_prefill_policy: QSAFlashPrefillPolicy | None = None,
         q8_dense_wide_policy: Q8DenseWidePolicy | None = None,
+        raw_prefill_policy: RawPrefillPolicy | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
@@ -10589,6 +10641,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.gguf_wmma_prefill_enabled = gguf_wmma_prefill_enabled
         self.qsa_flash_prefill_policy = qsa_flash_prefill_policy
         self.q8_dense_wide_policy = q8_dense_wide_policy
+        self.raw_prefill_policy = raw_prefill_policy
         if not 0 < int(max_sequence_length) <= self.config.context_length:
             raise ValueError(
                 "Qwen4Exp runner max_sequence_length must be in "
@@ -12504,16 +12557,9 @@ class Qwen4ExpGGUFResidentModelRunner:
                 raise ValueError(
                     "Qwen4Exp prompt MRoPE positions must have shape [3, tokens]"
                 )
-        raw_rowbatch = os.environ.get("HIPENGINE_QWEN4_EXP_RAW_ROWBATCH", "32")
-        if raw_rowbatch in {"", "0", "false", "False"}:
-            selected_raw_rowbatch = 0
-        elif raw_rowbatch in {"1", "true", "True"}:
-            selected_raw_rowbatch = 32
-        else:
-            selected_raw_rowbatch = int(raw_rowbatch)
-        selected_raw_variant = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_RAW_VARIANT", "coltile8"
-        )
+        raw_policy = resolve_raw_prefill_policy(self)
+        selected_raw_rowbatch = raw_policy.rowbatch
+        selected_raw_variant = raw_policy.variant
         if selected_raw_variant == "coltile8" and self.q8_wave_scale_prefill:
             selected_raw_variant = "coltile8_wave_scale"
         q8_wmma_scope = resolve_q8_wmma_layers(self)
