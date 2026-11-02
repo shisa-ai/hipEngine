@@ -923,6 +923,17 @@ def _production_selections(
     return tuple(result) + (_dense_wide_tail_selection(production=True),)
 
 
+def selected_prefill_routes(owner: Any) -> dict[str, Any]:
+    """Snapshot the effective owner choices used by the Q8 prefill layer gate."""
+    from hipengine.runtime.gguf_linear import (
+        resolve_q8_dense_wide_policy, resolve_q8_wmma_layers,
+    )
+    return {
+        'q8_wmma_layers': resolve_q8_wmma_layers(owner).to_report(),
+        'q8_dense_wide_policy': resolve_q8_dense_wide_policy(owner).to_report(),
+    }
+
+
 def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
     """Return env keys whose caller-set value the last bind discarded.
 

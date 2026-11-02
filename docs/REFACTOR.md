@@ -3036,6 +3036,11 @@ alter a bound owner; unbound calls retain the low-level compatibility fallback.
 Remove the `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`
 process fallback after profiles and diagnostic consumers bind owner state and
 the public owner-selection regression passes without process transport.
+The Q8 layer gate snapshots effective WMMA-layer and dense-wide selections with
+`selected_prefill_routes(owner)`, not the last bind's global conflict map. It
+preserves bound-selection reports, explicit arm scopes and dispatch engagement
+checks; legacy conflict warning/error machinery still needs owner-local
+observability before retirement.
 Profile-gap and candidate AR generic flash overrides bind the same paired owner
 policy, preserving omitted axes and recording actual policy without process
 writes. Decode-sync binds its flash-on suffix policy on the measured owner.

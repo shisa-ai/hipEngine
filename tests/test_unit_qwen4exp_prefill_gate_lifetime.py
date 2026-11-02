@@ -7,7 +7,7 @@ from scripts import execution_profile_q8_wmma_prefill_layers_gate as gate
 
 
 @pytest.mark.parametrize('failure', [
-    'runner', 'conflicts', 'warm', 'teacher', 'candidate', 'quality', 'provenance',
+    'runner', 'warm', 'teacher', 'candidate', 'quality', 'provenance',
     'verdict', 'success',
 ])
 def test_gate_closes_constructed_owner_and_restores_route(monkeypatch, tmp_path, failure):
@@ -29,8 +29,9 @@ def test_gate_closes_constructed_owner_and_restores_route(monkeypatch, tmp_path,
     monkeypatch.setattr(gate, 'resolve_runtime_profile', lambda **kw: profile)
     monkeypatch.setattr(backend, 'register_gfx1151_kernels', lambda **kw: None)
     monkeypatch.setattr(profiles, 'register_qwen4_exp_gfx1151_profiles', lambda: None)
+    # Another bind's legacy diagnostics must not reject an explicit owner arm.
     monkeypatch.setattr(profiles, 'last_prebinder_conflicts',
-                        lambda: {'sentinel': 'conflict'} if failure == 'conflicts' else {})
+                        lambda: {'unrelated-owner': ('0', '1')})
     monkeypatch.setattr(gguf, 'discover_gguf_files', lambda path: [path / 'fake.gguf'])
     monkeypatch.setattr(gguf, 'load_gguf_index', lambda path: SimpleNamespace(architecture='fake'))
     monkeypatch.setattr(models, 'resolve_model', lambda architecture: object())
@@ -74,7 +75,7 @@ def test_gate_closes_constructed_owner_and_restores_route(monkeypatch, tmp_path,
         assert result['route']['selector_restored_after_capture'] is True
         assert result['route']['rowtile_disabled_in_both_arms'] is True
     else:
-        expected = gate.CalibrationError if failure in {'runner', 'conflicts'} else Injected
+        expected = gate.CalibrationError if failure == 'runner' else Injected
         with pytest.raises(expected):
             gate.run_gate(args)
     assert closes == ['closed'], 'constructed model owner leaked on gate failure'

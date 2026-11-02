@@ -897,7 +897,7 @@ def _run_gate(
         QWEN4_EXP_BACKEND,
         QWEN4_EXP_MODEL,
         QWEN4_EXP_QUANTS,
-        last_prebinder_conflicts,
+        selected_prefill_routes,
         register_qwen4_exp_gfx1151_profiles,
     )
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
@@ -963,16 +963,9 @@ def _run_gate(
     if runner is None:
         raise CalibrationError("runner is not resident")
     bound_route_env = {key: os.environ.get(key) for key in route.env_keys}
-    bound_wmma_layers = resolve_q8_wmma_layers(generator)
-    bound_dense_wide = resolve_q8_dense_wide_policy(generator).to_report()
-    # A caller-set value the binder discarded means the intended route never
-    # ran and the gate would report a clean null. Fail rather than measure it.
-    discarded = last_prebinder_conflicts()
-    if discarded:
-        raise CalibrationError(
-            "the profile binder discarded pre-binder route values, so the "
-            f"measured route is not the requested one: {sorted(discarded)}"
-        )
+    bound_owner_routes = selected_prefill_routes(generator)
+    bound_wmma_layers = bound_owner_routes['q8_wmma_layers']
+    bound_dense_wide = bound_owner_routes['q8_dense_wide_policy']
 
     captures: list[PromptCalibrationCapture] = []
     prompt_manifest: list[dict[str, Any]] = []
@@ -1118,7 +1111,8 @@ def _run_gate(
                 candidate=False, layers="").to_report(),
             "candidate_wmma_layers": route.wmma_scope_for(
                 candidate=True, layers=candidate_layers).to_report(),
-            "bound_wmma_layers": bound_wmma_layers.to_report(),
+            'bound_owner_routes': bound_owner_routes,
+            "bound_wmma_layers": bound_wmma_layers,
             "measured_wmma_layers": measured_wmma_layers,
             "bound_dense_wide_policy": bound_dense_wide,
             "measured_dense_wide_policy": measured_dense_wide,

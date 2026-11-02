@@ -88,6 +88,10 @@ def test_public_explicit_wide_policy_restores_after_requests(monkeypatch, interf
                   runner_module.q8_mmq_prefill_enabled(generator, False),
                   gl.q4k_rowtile_session(False)):
                 policy = gl.resolve_q8_dense_wide_policy(generator.runner)
+                from hipengine.generation.qwen4_exp_profiles import selected_prefill_routes
+                selected = selected_prefill_routes(generator)
+                assert selected['q8_dense_wide_policy'] == policy.to_report()
+                assert selected['q8_wmma_layers'] == gl.resolve_q8_wmma_layers(generator).to_report()
                 from scripts.qwen4exp_dp8_staged_scope_prefill_ab import bound_owner_record
                 assert bound_owner_record(generator)['bound_dense_wide_policy'] == policy.to_report()
                 results = []
