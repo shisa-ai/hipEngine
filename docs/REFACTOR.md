@@ -3593,7 +3593,7 @@ Scope: direct/unbound Qwen4Exp route fallbacks.
 
 The profile-binding migration is complete. Finish the separate direct/unbound
 caller inventory before removing compatibility fallbacks. Include the GR IU8
-pair, selected-Q8 gate, exact Q4 and plain-Q4 gate/layers/risk/planes,
+pair, selected-Q8 gate, plain-Q4 gate/layers/risk/planes,
 and paired QSA flash policy. Keep explicit owner diagnostic scopes and their
 requested/effective reports. Remove a fallback only after every in-tree direct
 consumer supplies its explicit owner choice and targeted public route/repeat/

@@ -211,8 +211,9 @@ def test_the_chain_switches_still_sit_above_the_selector() -> None:
     assert "q4_exact_grouped_all=q4_exact_grouped_all" in dispatch
     assert GATE_ENV not in dispatch
     assert GATE_ALL_ENV not in dispatch
-    assert IU8_EXACT_ENV in inspect.getsource(
-        runner_module._qwen4_exp_q4_iu8_exact_enabled)
+    assert 'q4_iu8_exact_enabled' in dispatch
+    assert runner_module._qwen4_exp_q4_iu8_exact_enabled(True) is True
+    assert runner_module._qwen4_exp_q4_iu8_exact_enabled(None) is False
     assert dispatch.index("elif exact_grouped_q4_gate:") < dispatch.index(
         "_qwen4_exp_q4_gate_up_key(")
 

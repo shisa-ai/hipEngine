@@ -14,7 +14,7 @@ def test_q4_exact_owner_beats_ambient(monkeypatch, ambient):
     monkeypatch.setenv(ENV, ambient)
     for value in (None, False, True):
         owner = SimpleNamespace(q4_iu8_exact_enabled=value)
-        expected = ambient not in {'', '0', 'false', 'False'} if value is None else value
+        expected = bool(value)
         assert runtime.resolve_q4_iu8_exact(owner) is expected
         assert runtime._qwen4_exp_q4_iu8_exact_enabled(value) is expected
 
@@ -58,5 +58,5 @@ def test_q4_exact_capture_identity(monkeypatch):
     runner.q4_iu8_exact_enabled = True
     assert runner._expert_down_policy() != first
     runner.q4_iu8_exact_enabled = None
-    monkeypatch.setenv(ENV, '0')
+    monkeypatch.setenv(ENV, '1')
     assert runner._expert_down_policy() == first

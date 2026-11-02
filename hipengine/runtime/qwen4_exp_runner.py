@@ -6527,13 +6527,8 @@ def q4_iu8_prefill_enabled(owner: Any, enabled: bool | None):
 
 
 def _qwen4_exp_q4_iu8_exact_enabled(enabled: bool | None = None) -> bool:
-    """Resolve exact Q4 gate/up selection, preserving the direct-call fallback."""
-
-    if enabled is not None:
-        return bool(enabled)
-    return os.environ.get(
-        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT", "0"
-    ) not in {"", "0", "false", "False"}
+    """Resolve the explicit Q4 choice; an unbound call keeps the parent."""
+    return bool(enabled)
 
 
 def resolve_q4_iu8_exact(owner: Any) -> bool:
