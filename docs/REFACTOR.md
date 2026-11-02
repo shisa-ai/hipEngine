@@ -2993,7 +2993,10 @@ through arm owners, including strict split phases and per-phase reports.
 The repair-free gate/up candidate declares its every-layer scope on its owner;
 no candidate declaration writes the layer selector. Profiles publish the same
 production suffix and strict empty scope on generator and runner owners without
-writing `HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS`. Q4 risk controls still need owner transport.
+writing `HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS`. Q4 risk multipliers can bind on
+runtime owners through resident, batch and mixed carriers, serving inheritance
+and captured-segment identity. Diagnostic writers and profile publication still
+need migration; plane selection also needs owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

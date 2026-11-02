@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation', 'profile'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation', 'profile', 'risk'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_q4_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -31,7 +31,7 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
               max_sequence_length=CONTEXT, max_active_requests=1, prefix_cache='off')
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
     def counted(*args, **kwargs):
-        calls.append(True)
+        calls.append(float(args[10]))
         return original(*args, **kwargs)
     register(key, counted, replace=True)
     try:
@@ -42,6 +42,7 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
         if all(owner.runner is not r for r in runners):
             runners.append(owner.runner)
         prior = [(r, r.q4_iu8_exact_enabled) for r in runners]
+        prior_risk = [(r, r.q4_iu8_risk_mult) for r in runners]
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
             if interface == 'profile':
@@ -50,7 +51,12 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface in {'profile_gap', 'ar'}:
+                    if interface == 'risk':
+                        multiplier = 1.0 if enabled else 4.0
+                        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT', '8')
+                        scopes.enter_context(runtime.q4_iu8_risk_mult(target, multiplier))
+                        scopes.enter_context(runtime.q4_iu8_exact_enabled(target, True))
+                    elif interface in {'profile_gap', 'ar'}:
                         if interface == 'ar':
                             from scripts.qwen4exp_candidate_ar import bind_q4_iu8_override
                         else:
@@ -96,7 +102,10 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                     calls.clear()
                     start = len(captures)
                     outputs.append(llm.generate([list(range(100, 100 + length))], params))
-                    assert bool(calls) is (enabled and length >= 2 and interface not in {'pair2', 'out4', 'ablation'})
+                    assert bool(calls) is ((enabled or interface == 'risk') and length >= 2 and interface not in {'pair2', 'out4', 'ablation'})
+                    if interface == 'risk':
+                        assert all(value == multiplier for value in calls)
+                        assert os.environ['HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT'] == '8'
                     logits.append([x.copy() for x in captures[start:]])
                 assert outputs[0] == outputs[1]
                 assert logits[0] and len(logits[0]) == len(logits[1])
@@ -106,6 +115,8 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                 assert os.environ['HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT'] == ambient
             for runner, value in prior:
                 assert runner.q4_iu8_exact_enabled is value
+            for runner, value in prior_risk:
+                assert runner.q4_iu8_risk_mult == value
     finally:
         register(key, original, replace=True)
         llm.close()

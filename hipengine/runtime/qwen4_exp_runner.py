@@ -313,6 +313,29 @@ def _qwen4_exp_q4_iu8_layer_allowed(
     )
 
 
+def resolve_q4_iu8_risk_mult(owner: Any) -> float:
+    """Resolve an owner multiplier, falling back only before publication."""
+    return _qwen4_exp_q4_iu8_risk_multiplier(getattr(owner, 'q4_iu8_risk_mult', None))
+
+
+@contextlib.contextmanager
+def q4_iu8_risk_mult(owner: Any, multiplier: float | None):
+    """Bind a Q4 risk multiplier and restore distinct or missing owner state."""
+    missing = object()
+    prior = [(target, getattr(target, 'q4_iu8_risk_mult', missing))
+             for target in _q8_down_variant_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.q4_iu8_risk_mult = multiplier
+        yield resolve_q4_iu8_risk_mult(owner)
+    finally:
+        for target, value in prior:
+            if value is missing:
+                delattr(target, 'q4_iu8_risk_mult')
+            else:
+                target.q4_iu8_risk_mult = value
+
+
 def resolve_q4_iu8_layers(owner: Any) -> str:
     """Resolve a plain-Q4 layer scope without treating an empty scope as absent."""
     layers = getattr(owner, 'q4_iu8_layers', None)
@@ -6815,7 +6838,7 @@ def _qwen4_exp_q51_iu8_risk_multiplier() -> float:
     return value
 
 
-def _qwen4_exp_q4_iu8_risk_multiplier() -> float:
+def _qwen4_exp_q4_iu8_risk_multiplier(multiplier: float | None = None) -> float:
     """Kahan-bound multiplier for the exact iu8 risk criterion.
 
     Screened floor on actual weights is between 0.5 and 1 (below it, BF16
@@ -6823,7 +6846,8 @@ def _qwen4_exp_q4_iu8_risk_multiplier() -> float:
     1.50-1.82x operation-complete speedup.
     """
 
-    raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT", "4.0")
+    raw = (os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT", "4.0")
+           if multiplier is None else multiplier)
     try:
         value = float(raw)
     except ValueError:
@@ -7069,6 +7093,7 @@ def run_qwen4_exp_moe(
     q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
     q51_iu8_exact_enabled: bool | None = None,
+    q4_iu8_risk_mult: float | None = None,
     q51_exact_grouped_down: bool = True,
     q51_wmma_down: bool = False,
     q51_out8: bool = True,
@@ -7245,6 +7270,7 @@ def run_qwen4_exp_moe(
                 q8_selected_down_enabled=q8_selected_down_enabled,
                 q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
                 q4_iu8_layers=q4_iu8_layers,
+                q4_iu8_risk_mult=q4_iu8_risk_mult,
                 q4_iu8_exact_enabled=q4_iu8_exact_enabled,
                 q51_iu8_exact_enabled=q51_iu8_exact_enabled,
             )
@@ -7585,7 +7611,7 @@ def run_qwen4_exp_moe(
                     risk_count.ptr,
                     risk_indices.ptr,
                     risk_capacity,
-                    _qwen4_exp_q4_iu8_risk_multiplier(),
+                    _qwen4_exp_q4_iu8_risk_multiplier(q4_iu8_risk_mult),
                     compact,
                     hidden,
                     ffn,
@@ -8591,6 +8617,7 @@ def run_qwen4_exp_dense_qsa_layer(
     q4_iu8_prefill_enabled: bool | None = None,
     q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
+    q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer | None:
     """Execute a QSA+MoE layer, or only its independent cache-state writes.
@@ -8724,6 +8751,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
         q4_iu8_layers=q4_iu8_layers,
         q4_iu8_exact_enabled=q4_iu8_exact_enabled,
+        q4_iu8_risk_mult=q4_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
     )
     qwen4_exp_gr_write_bf16_bf16(
@@ -8807,6 +8835,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     q4_iu8_prefill_enabled: bool | None = None,
     q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
+    q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete Qwen4Exp QSA+MoE prompt chunk.
@@ -8998,6 +9027,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
         q4_iu8_layers=q4_iu8_layers,
         q4_iu8_exact_enabled=q4_iu8_exact_enabled,
+        q4_iu8_risk_mult=q4_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
     )
     if not _qwen4_exp_gr_defer_write(
@@ -9090,6 +9120,7 @@ def run_qwen4_exp_gdn_layer(
     q4_iu8_prefill_enabled: bool | None = None,
     q4_iu8_layers: str | None = None,
     q4_iu8_exact_enabled: bool | None = None,
+    q4_iu8_risk_mult: float | None = None,
     q51_iu8_exact_enabled: bool | None = None,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer.
@@ -9353,6 +9384,7 @@ def run_qwen4_exp_gdn_layer(
         q4_iu8_prefill_enabled=q4_iu8_prefill_enabled,
         q4_iu8_layers=q4_iu8_layers,
         q4_iu8_exact_enabled=q4_iu8_exact_enabled,
+        q4_iu8_risk_mult=q4_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
     )
     if layer_graph is not None:
@@ -10475,6 +10507,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q8_selected_down_enabled: bool | None = None
     q4_iu8_prefill_enabled: bool | None = None
     q4_iu8_layers: str | None = None
+    q4_iu8_risk_mult: float | None = None
     q4_iu8_exact_enabled: bool | None = None
     q51_iu8_exact_enabled: bool | None = None
 
@@ -10495,6 +10528,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         q8_selected_down_enabled: bool | None = None,
         q4_iu8_prefill_enabled: bool | None = None,
         q4_iu8_layers: str | None = None,
+        q4_iu8_risk_mult: float | None = None,
         q4_iu8_exact_enabled: bool | None = None,
         q51_iu8_exact_enabled: bool | None = None,
         gr_iu8_policy: GRIU8Policy | None = None,
@@ -10520,6 +10554,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.q8_selected_down_enabled = q8_selected_down_enabled
         self.q4_iu8_prefill_enabled = q4_iu8_prefill_enabled
         self.q4_iu8_layers = q4_iu8_layers
+        self.q4_iu8_risk_mult = q4_iu8_risk_mult
         self.q4_iu8_exact_enabled = q4_iu8_exact_enabled
         self.q51_iu8_exact_enabled = q51_iu8_exact_enabled
         self.gr_iu8_policy = gr_iu8_policy
@@ -11842,6 +11877,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
                     q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
+                    q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr
             else:
@@ -11913,6 +11949,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
                     q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
+                    q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr
         if capture_target_hidden:
@@ -12263,6 +12300,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
                     q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
+                    q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                 ).ptr
             else:
@@ -12331,6 +12369,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_prefill_enabled=self.q4_iu8_prefill_enabled,
                     q4_iu8_layers=self.q4_iu8_layers,
                     q4_iu8_exact_enabled=self.q4_iu8_exact_enabled,
+                    q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
