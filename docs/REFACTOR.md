@@ -3030,8 +3030,9 @@ without process writes. Campaign and row4 state-gate arms also bind and report
 Q5_K choices through restoring owner scopes, including production-premise and
 mapped-down prerequisite reads. The mapped-down scope closes the Q5_K preemptor
 through owner state and reports its effective prior choice without process
-writes. Profiles still use process transport; publish bound profile choices
-after checking remaining consumers.
+writes. Profiles publish the same production-on/strict-off Q5_K choice on
+generator/runner owners without process writes. Later process changes do not
+alter a bound owner; unbound calls retain the low-level compatibility fallback.
 Remove the `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`
 process fallback after profiles and diagnostic consumers bind owner state and
 the public owner-selection regression passes without process transport.

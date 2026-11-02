@@ -1255,6 +1255,15 @@ def _publish_q51_iu8(generator: Any, enabled: bool) -> None:
         runner.q51_iu8_exact_enabled = enabled
 
 
+def _publish_q5k_iu8(generator: Any, enabled: bool) -> None:
+    """Publish the existing exact-Q5_K profile choice without process writes."""
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', '1' if enabled else '0')
+    generator.q5k_iu8_exact_enabled = enabled
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.q5k_iu8_exact_enabled = enabled
+
+
 def _publish_gr_iu8(generator: Any, *, production: bool, quant: str | None) -> None:
     """Publish each projection's existing UD recovery decision on its owner."""
     from hipengine.runtime.qwen4_exp_runner import GRIU8Policy
@@ -1652,12 +1661,7 @@ def _bind(
         # The grouped Q8_0 expert-down owner was this pair's other half; it is
         # the owning generator/runner's state now (``q8_down_variant``),
         # published below, so no process key names it.
-        # Exact iu8-risk+repair Q5_K gate/up (layer 2, the sole Q5_K MoE
-        # layer): bit-identical to the strict row4 parent (kernel screen
-        # 5.67x/6.00x/6.68x at rows 512/1024/4096, repair share 5.4%; full
-        # 12-case same-residency A/B +4.3% prefill geo-mean with every case
-        # winning and identical output digests); production-only binding.
-        "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT": "1" if production else "0",
+        # Exact Q5_K IU8 enablement is published on generator/runner owners below.
         # Exact ordered DPP replacement for the wave-scale GR-up owner. It is
         # the owning generator/runner's state now (``gr_dpp_reduction``),
         # published below from this plan's own ``qwen4exp_rows_gt256_gr_up``
@@ -1906,6 +1910,7 @@ def _bind(
     _publish_q4_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_q4_iu8(generator, production)
     _publish_q51_iu8(generator, production)
+    _publish_q5k_iu8(generator, production)
     _publish_gr_iu8(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_selected_q8_down(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_flash_prefill(generator, production=production, quant=resolved.manifest.get('quant'))

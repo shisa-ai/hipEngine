@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize('length', [1, 17, 73])
-@pytest.mark.parametrize('interface', ['owner', 'gap', 'ar', 'campaign', 'state', 'mapped_preemptor'])
+@pytest.mark.parametrize('interface', ['owner', 'gap', 'ar', 'campaign', 'state', 'mapped_preemptor', 'profile'])
 def test_public_q5k_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
@@ -40,6 +40,8 @@ def test_public_q5k_iu8_owner(monkeypatch, length, interface):
         runners = list(serving._all_runners)
         if all(owner.runner is not r for r in runners):
             runners.append(owner.runner)
+        assert owner.q5k_iu8_exact_enabled is True
+        assert all(r.q5k_iu8_exact_enabled is True for r in runners)
         prior = [(r, r.q5k_iu8_exact_enabled) for r in runners]
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
@@ -47,7 +49,10 @@ def test_public_q5k_iu8_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', ambient)
             with ExitStack() as scopes:
                 for target in [owner, *runners]:
-                    if interface == 'owner':
+                    if interface == 'profile':
+                        if not enabled:
+                            scopes.enter_context(runtime.q5k_iu8_exact_enabled(target, False))
+                    elif interface == 'owner':
                         scopes.enter_context(runtime.q5k_iu8_exact_enabled(target, enabled))
                     elif interface == 'mapped_preemptor':
                         scopes.enter_context(runtime.q5k_iu8_exact_enabled(target, True))
