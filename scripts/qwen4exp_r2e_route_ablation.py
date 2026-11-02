@@ -1,9 +1,8 @@
 """R2e route-drift ablation: leave-one-route-out vs the frozen strict teacher.
 
 Replicates the control comparison (production incumbent, R11 flags off,
-teacher-forced chains) with ONE promoted prefill route disabled via its
-launch-time env override (applied post-construction, after the profile
-binder has set the production matrix). Output is directly comparable to
+teacher-forced chains) with one promoted prefill route disabled on its measured runner after the
+profile binder has published the production matrix. Output is comparable to
 the recorded control's incumbent_envelope_vs_strict.
 """
 import argparse
@@ -78,8 +77,8 @@ RUNNER_ROUTE_OFF = {
 #:   * runner-local ``q51_pair_prefill`` makes the pair2 parent exist at
 #:     rows>=64, and the production plan publishes it on - so pair2 is not off by
 #:     default and would replace the rung on this harness's 1024-row chunks;
-#:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
-#:     with the expertgrid64 family (default ``64``).
+#:   * ``runner.expert_grid_policy`` replaces the non-expertgrid rung
+#:     with the expertgrid64 family when its Q5_1 axis is enabled.
 #:
 #: The process keys are the campaign's own ``Q51_PAIR2_PREEMPTING_ENV`` set, reused
 #: rather than restated. The four fold siblings are held off too: their guards
@@ -89,10 +88,7 @@ RUNNER_ROUTE_OFF = {
 #: This is not a leave-one-route-out arm: the ablated decision is ``q51_out8`` and
 #: the rest are the preemptors the arm must close to exercise it. The arm reports
 #: every binding it made rather than implying a single-route delta.
-OUT8_PREEMPTING_ENV = tuple(dict.fromkeys(
-    Q51_PAIR2_PREEMPTING_ENV
-    + ("HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",)
-))
+OUT8_PREEMPTING_ENV = Q51_PAIR2_PREEMPTING_ENV
 OUT8_SIBLING_FIELDS = (
     Q51_PAIR_FIELD,
     Q51_FOLD128_FIELD,
@@ -111,8 +107,8 @@ OUT8_SIBLING_FIELDS = (
 #:     from rows>=16;
 #:   * ``runner.q4_iu8_exact_enabled`` is the chain's own iu8-risk+repair
 #:     owner above the ladder, published on by the production plan;
-#:   * ``HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`` replaces the non-expertgrid rung
-#:     with the expertgrid64 family (default ``64``);
+#:   * ``runner.expert_grid_policy`` replaces the non-expertgrid rung
+#:     with the expertgrid64 family when its Q4 axis is enabled;
 #:   * Runner-local ``q4_pair_prefill`` and ``q4_bundle_prefill`` are the pair2/bundle preemptors
 #:     inside that family, published on by the production plan. Their guards
 #:     require the expert-grid family, so they are inert once it is closed, but
@@ -121,9 +117,7 @@ OUT8_SIBLING_FIELDS = (
 #: This is not a leave-one-route-out arm: the ablated decision is ``q4_out4`` and
 #: the rest are the preemptors the arm must close to exercise it. The arm reports
 #: every binding it made rather than implying a single-route delta.
-Q4_OUT4_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
-)
+Q4_OUT4_PREEMPTING_ENV = ()
 
 # route -> (runner field bindings, process keys, disabled value) for a leaf whose
 # field is request-local but whose selection also depends on decisions above it.
@@ -134,13 +128,16 @@ RUNNER_ROUTE_OFF_WITH_ENV = {
         "0",
     ),
     "q51_out8": (
-        (("q51_out8", False),)
+        (("q51_out8", False),
+         ('expert_grid_policy', runner_module.ExpertGridPolicy(False, False)))
         + tuple((field, False) for field in OUT8_SIBLING_FIELDS)
         + tuple((field, False) for field in Q51_PAIR2_PREEMPTING_FIELDS),
         OUT8_PREEMPTING_ENV,
         "0",
     ),
-    "q4_out4": ((("q4_out4", False), ("q4_bundle_prefill", False),
+    "q4_out4": ((("q4_out4", False),
+                 ('expert_grid_policy', runner_module.ExpertGridPolicy(False, False)),
+                 ("q4_bundle_prefill", False),
                  ("q4_pair_prefill", False), ("routed_f16_enabled", False),
                  ("production_moe_prefill_enabled", False),
                  ("q4_iu8_exact_enabled", False)),
@@ -207,6 +204,16 @@ def restore_scalar_launches(original, *, module=runner_module):
     module.resolve = original
 
 
+def bind_expert_grid_ablation(stack, owner, route):
+    """Bind the route's grid preemptor and return its serializable policy."""
+    bindings = RUNNER_ROUTE_OFF_WITH_ENV.get(route, ((), (), '0'))[0]
+    policy = dict(bindings).get('expert_grid_policy')
+    if policy is None:
+        return None
+    stack.enter_context(runner_module.expert_grid_policy(owner, policy))
+    return policy.to_report()
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--route", required=True,
@@ -258,6 +265,8 @@ def main() -> None:
     elif runner_off_with_env is not None:
         selection = contextlib.ExitStack()
         for field, value in runner_off_with_env[0]:
+            if field == 'expert_grid_policy':
+                continue  # Typed policy is bound and reported on the stack below.
             selection.enter_context(
                 getattr(runner_module, field)(generator.runner, value))
             bound_fields[field] = value
@@ -278,6 +287,7 @@ def main() -> None:
 
     with contextlib.ExitStack() as stack:
         stack.enter_context(scope)
+        grid_report = bind_expert_grid_ablation(stack, generator.runner, a.route)
         head_configuration = head_route_configuration(a.route, runner=generator.runner)
         stack.callback(restore_route_configuration, head_configuration, runner=generator.runner)
         stack.callback(
@@ -319,6 +329,9 @@ def main() -> None:
             # a lost gate would make the arm count a launch it did not select.
             assert getattr(generator.runner, field) is value, (
                 f"required runner field changed: {field}")
+        if grid_report is not None:
+            assert generator.runner.expert_grid_policy.to_report() == grid_report, (
+                'configuration lost: expert_grid_policy')
         if runner_mode is not None:
             # Configuration: the arm's own decision stayed bound.
             assert generator.runner.qsa_prefill_head_mode == runner_mode, (
@@ -333,6 +346,7 @@ def main() -> None:
         report = {
             "schema": 1, "kind": "r2e_route_drift_ablation",
             "route": a.route, "ablated_envs": list(envs),
+            'ablated_expert_grid_policy': grid_report,
             "ablated_runner_fields": bound_fields,
             "required_runner_fields": required_fields,
             "env_values_at_end": engagement_asserts,

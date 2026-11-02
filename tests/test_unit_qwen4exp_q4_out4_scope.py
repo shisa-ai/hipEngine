@@ -584,7 +584,8 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     bindings, envs, off = module.RUNNER_ROUTE_OFF_WITH_ENV["q4_out4"]
     assert dict(bindings)[FIELD] is False
     assert off == "0"
-    assert set(envs) == {EXPERT_GRID_ENV}
+    assert envs == ()
+    assert dict(bindings)['expert_grid_policy'] == runner_module.ExpertGridPolicy(False, False)
     assert dict(bindings)['q4_iu8_exact_enabled'] is False
     assert dict(bindings)["production_moe_prefill_enabled"] is False
     assert dict(bindings)["routed_f16_enabled"] is False
@@ -646,18 +647,22 @@ def test_the_route_closure_makes_the_strict_base_the_owner(
                 stack.enter_context(
                     getattr(runner_module, field)(runner, value))
             for rows in (32, 1024):
-                assert _gate_up_key(rows=rows, q4_out4=False).variant == (
+                assert _gate_up_key(rows=rows, q4_out4=False,
+                                    expert_grid_policy=runner.expert_grid_policy).variant == (
                     BASE_VARIANT), rows
-                assert _gate_up_key(rows=rows, q4_out4=True).variant == (
+                assert _gate_up_key(rows=rows, q4_out4=True,
+                                    expert_grid_policy=runner.expert_grid_policy).variant == (
                     OUT4_VARIANT), rows
             # The pair2/bundle preemptors are gated on the expert-grid family, so
             # publishing them cannot replace this rung's owner while the family
             # is closed.
             monkeypatch.setenv(PAIR_ENV, "1")
             monkeypatch.setenv(BUNDLE_ENV, "1")
-            assert _gate_up_key(q4_out4=False, q4_pair_prefill=True,
+            assert _gate_up_key(expert_grid_policy=runner.expert_grid_policy,
+                                q4_out4=False, q4_pair_prefill=True,
                                 q4_bundle_prefill=True).variant == BASE_VARIANT
-            assert _gate_up_key(q4_out4=True, q4_pair_prefill=True,
+            assert _gate_up_key(expert_grid_policy=runner.expert_grid_policy,
+                                q4_out4=True, q4_pair_prefill=True,
                                 q4_bundle_prefill=True).variant == OUT4_VARIANT
             # The gates the arm records are still published on the runner.
             assert generator.runner.q4_exact_grouped_gate is True
@@ -693,7 +698,8 @@ def test_the_route_closure_launches_only_the_owner_it_names(
                     continue
                 stack.enter_context(
                     getattr(runner_module, field)(runner, value))
-            _launch(_gate_up_key(q4_out4=getattr(runner, FIELD, True)))
+            _launch(_gate_up_key(q4_out4=getattr(runner, FIELD, True),
+                                 expert_grid_policy=runner.expert_grid_policy))
         assert counts == {
             GRID64_VARIANT: 0, OUT4_VARIANT: 1, BASE_VARIANT: 0,
             PAIR2_VARIANT: 1, BUNDLE_VARIANT: 0}
@@ -703,7 +709,8 @@ def test_the_route_closure_launches_only_the_owner_it_names(
             for field, value in bindings:
                 stack.enter_context(
                     getattr(runner_module, field)(runner, value))
-            _launch(_gate_up_key(q4_out4=getattr(runner, FIELD, True)))
+            _launch(_gate_up_key(q4_out4=getattr(runner, FIELD, True),
+                                 expert_grid_policy=runner.expert_grid_policy))
         assert counts == {
             GRID64_VARIANT: 0, OUT4_VARIANT: 1, BASE_VARIANT: 1,
             PAIR2_VARIANT: 1, BUNDLE_VARIANT: 0}

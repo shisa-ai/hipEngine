@@ -3683,13 +3683,14 @@ raw-prefill environment key is read. The restoring `raw_prefill_policy` scope
 and campaign, candidate-AR/profile-gap binders preserve all geometry comparisons,
 including partial overrides, without process writes. Expert-grid transport now
 has an explicit `ExpertGridPolicy(q4, q5)` and restoring owner scope, carried
-through scalar/batch helpers and batch graph identity. The legacy expert-grid
-fallback remains until route-ablation callers migrate. Campaign Q4 pair arms
+through scalar/batch helpers and batch graph identity. Campaign Q4 pair arms
 bind the family on the measured runner; PF13 requires and freezes its effective
 Q5_1 family, and both report owner policy rather than process input.
 Candidate-AR/profile-gap overrides bind and report the policy without
-process writes, preserving legacy family syntax. Profiles have not published
-that axis yet. Audit each geometry's
+process writes, preserving legacy family syntax. Q4 out4 and Q5_1 out8
+route-ablation closures bind and report typed family policy with no process
+writes. Profiles have not published that axis yet; the runtime fallback still
+serves unbound callers. Audit each geometry's
 actual registry and dispatch consumers before removing wrappers; the old phrase
 “losing geometry ladder” is not evidence that every non-default rung is dead.
 Keep registered scalar raw-Q8 and direct selected strict primitives.

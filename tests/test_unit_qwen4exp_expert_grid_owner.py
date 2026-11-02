@@ -140,6 +140,33 @@ def test_omitted_override_keeps_owner_and_reports_it(interface):
         assert report == {'expert_grid_override': None, 'expert_grid_policy': policy.to_report()}
 
 
+@pytest.mark.parametrize('route', ['q4_out4', 'q51_out8'])
+def test_ablation_binds_grid_and_reports_without_process_writes(monkeypatch, route):
+    from scripts import qwen4exp_r2e_route_ablation as script
+    key = 'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID'
+    monkeypatch.setenv(key, '64')
+    policy = runtime.ExpertGridPolicy(True, False)
+    owner = SimpleNamespace(expert_grid_policy=policy)
+    with pytest.raises(RuntimeError, match='restore'):
+        with ExitStack() as stack:
+            report = script.bind_expert_grid_ablation(stack, owner, route)
+            assert owner.expert_grid_policy == runtime.ExpertGridPolicy(False, False)
+            assert report == {'q4': False, 'q5': False}
+            assert __import__('os').environ[key] == '64'
+            raise RuntimeError('restore')
+    assert owner.expert_grid_policy is policy
+    assert 'bind_expert_grid_ablation(' in inspect.getsource(script.main)
+    assert "'ablated_expert_grid_policy':" in inspect.getsource(script.main)
+
+
+def test_ablation_omits_grid_for_unrelated_routes():
+    from scripts import qwen4exp_r2e_route_ablation as script
+    owner = SimpleNamespace()
+    with ExitStack() as stack:
+        assert script.bind_expert_grid_ablation(stack, owner, 'strict_baseline') is None
+        assert not hasattr(owner, 'expert_grid_policy')
+
+
 def test_constructor_carries_policy(monkeypatch):
     from hipengine.generation import qwen4_exp_gguf as generation
     calls = []

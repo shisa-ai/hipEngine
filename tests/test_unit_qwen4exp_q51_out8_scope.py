@@ -569,14 +569,14 @@ def test_the_route_closes_every_owner_the_dispatch_checks_first() -> None:
     assert off == "0"
     # The five owners the campaign already closes for the pair2 parent, plus the
     # pair2 selection itself and the expert-grid family.
-    assert set(envs) == set(campaign.Q51_PAIR2_PREEMPTING_ENV) | {
-        EXPERT_GRID_ENV}
+    assert set(envs) == set(campaign.Q51_PAIR2_PREEMPTING_ENV)
+    assert dict(bindings)['expert_grid_policy'] == runner_module.ExpertGridPolicy(False, False)
     assert dict(bindings)["q51_pair_prefill"] is False
     assert envs == module.OUT8_PREEMPTING_ENV
     # The fold siblings are held off too, even though their guards require the
     # pair2 parent variant.
     assert set(FOLD_FIELDS) <= {field for field, _value in bindings}
-    assert all(value is False for _field, value in bindings)
+    assert all(value is False for field, value in bindings if field != 'expert_grid_policy')
     # The chain's own gate is recorded and required, never bound: the output1
     # base is also the owner below a closed chain.
     assert GATE_FIELD not in dict(bindings)
@@ -635,17 +635,21 @@ def test_the_route_closure_makes_the_output1_base_the_owner(
                     getattr(runner_module, field)(runner, value))
             # The rung itself, on the production chunk width and on a small one.
             for rows in (32, 1024):
-                assert _down_key(rows=rows, q51_out8=False).variant == (
+                assert _down_key(rows=rows, q51_out8=False,
+                                 expert_grid_policy=runner.expert_grid_policy).variant == (
                     OUT1_VARIANT), rows
-                assert _down_key(rows=rows, q51_out8=True).variant == (
+                assert _down_key(rows=rows, q51_out8=True,
+                                 expert_grid_policy=runner.expert_grid_policy).variant == (
                     OUT8_VARIANT), rows
             # The fold siblings are variant-gated on the pair2 parent, so a plan
             # that publishes them cannot replace this rung's owner - which is
             # why the route's own bindings are defensive rather than load
             # bearing.
-            assert _down_key(q51_out8=False, **{f: True for f in FOLD_FIELDS}
+            assert _down_key(expert_grid_policy=runner.expert_grid_policy,
+                             q51_out8=False, **{f: True for f in FOLD_FIELDS}
                              ).variant == OUT1_VARIANT
-            assert _down_key(q51_out8=True, **{f: True for f in FOLD_FIELDS}
+            assert _down_key(expert_grid_policy=runner.expert_grid_policy,
+                             q51_out8=True, **{f: True for f in FOLD_FIELDS}
                              ).variant == OUT8_VARIANT
             # And the chain gate the arm records is still published.
             assert getattr(runner, GATE_FIELD) is True
@@ -680,7 +684,8 @@ def test_the_route_closure_launches_only_the_owner_it_names(
                 stack.enter_context(
                     getattr(runner_module, field)(runner, value))
             # The field the runner carries, as the dispatch reads it.
-            _launch(_down_key(q51_out8=getattr(runner, FIELD, True)))
+            _launch(_down_key(q51_out8=getattr(runner, FIELD, True),
+                              expert_grid_policy=runner.expert_grid_policy))
         assert counts == {
             OUT8_VARIANT: 1, OUT1_VARIANT: 0, PAIR2_VARIANT: 1,
             GRID64_VARIANT: 0, M1_VARIANT: 0}
@@ -690,7 +695,8 @@ def test_the_route_closure_launches_only_the_owner_it_names(
             for field, value in bindings:
                 stack.enter_context(
                     getattr(runner_module, field)(runner, value))
-            _launch(_down_key(q51_out8=getattr(runner, FIELD, True)))
+            _launch(_down_key(q51_out8=getattr(runner, FIELD, True),
+                              expert_grid_policy=runner.expert_grid_policy))
         assert counts == {
             OUT8_VARIANT: 1, OUT1_VARIANT: 1, PAIR2_VARIANT: 1,
             GRID64_VARIANT: 0, M1_VARIANT: 0}
