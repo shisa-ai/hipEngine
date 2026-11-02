@@ -536,6 +536,7 @@ def _apply_post_binder_overrides(
                                 "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
                                 "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
                                 "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
+                                "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES",
@@ -652,6 +653,21 @@ def bind_q51_iu8_override(
         stack.enter_context(q51_iu8_exact_enabled(owner, enabled))
     return {'q51_iu8_exact_override': enabled,
             'q51_iu8_exact_enabled': resolve_q51_iu8_exact(owner)}
+
+
+def bind_q5k_iu8_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, bool | None]:
+    """Bind exact Q5_K diagnostic syntax without rewriting process inputs."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q5k_iu8_exact_enabled, resolve_q5k_iu8_exact,
+    )
+    raw = overrides.get('HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT')
+    enabled = None if raw is None else raw not in {'', '0', 'false', 'False'}
+    if enabled is not None:
+        stack.enter_context(q5k_iu8_exact_enabled(owner, enabled))
+    return {'q5k_iu8_exact_override': enabled,
+            'q5k_iu8_exact_enabled': resolve_q5k_iu8_exact(owner)}
 
 
 def bind_selected_q8_down_override(
@@ -1175,6 +1191,7 @@ def main() -> None:
         report.update(bind_q4_iu8_layers_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_override(q4_scope, generator, overrides))
         report.update(bind_q51_iu8_override(q4_scope, generator, overrides))
+        report.update(bind_q5k_iu8_override(q4_scope, generator, overrides))
         report.update(bind_gr_iu8_override(q4_scope, generator, overrides))
         report.update(bind_selected_q8_down_override(q4_scope, generator, overrides))
         report.update(bind_flash_prefill_override(q4_scope, generator, overrides))

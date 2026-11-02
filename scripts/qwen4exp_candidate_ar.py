@@ -108,6 +108,19 @@ def bind_q51_iu8_override(stack: ExitStack, owner, overrides: dict[str, str]):
     return bind(stack, owner, overrides)
 
 
+def split_q5k_iu8_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Separate the exact Q5_K owner input from both process-write stages."""
+    key = 'HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT'
+    return ({name: value for name, value in values.items() if name != key},
+            {name: value for name, value in values.items() if name == key})
+
+
+def bind_q5k_iu8_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Share the profile-gap parser and restoring owner binding."""
+    from scripts.qwen4exp_profile_gap import bind_q5k_iu8_override as bind
+    return bind(stack, owner, overrides)
+
+
 def split_gr_iu8_overrides(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
     """Keep both GR owner axes out of construction and post-binder writes."""
     keys = {'HIPENGINE_QWEN4_EXP_GR_IU8', 'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN'}
@@ -198,6 +211,7 @@ def main() -> int:
         overrides, q4_iu8_planes_overrides = split_q4_iu8_planes_override(overrides)
         overrides, q4_iu8_risk_overrides = split_q4_iu8_risk_override(overrides)
         overrides, q51_iu8_overrides = split_q51_iu8_override(overrides)
+        overrides, q5k_iu8_overrides = split_q5k_iu8_override(overrides)
         overrides, gr_iu8_overrides = split_gr_iu8_overrides(overrides)
         overrides, selected_down_overrides = split_selected_q8_down_override(overrides)
         overrides, flash_overrides = split_flash_prefill_overrides(overrides)
@@ -299,6 +313,8 @@ def main() -> int:
             owner_stack, generator, q4_iu8_overrides))
         artifact['owner_overrides'].update(bind_q51_iu8_override(
             owner_stack, generator, q51_iu8_overrides))
+        artifact['owner_overrides'].update(bind_q5k_iu8_override(
+            owner_stack, generator, q5k_iu8_overrides))
         artifact['owner_overrides'].update(bind_gr_iu8_override(
             owner_stack, generator, gr_iu8_overrides))
         artifact['owner_overrides'].update(bind_selected_q8_down_override(

@@ -12,7 +12,8 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize('length', [1, 17, 73])
-def test_public_q5k_iu8_owner(monkeypatch, length):
+@pytest.mark.parametrize('interface', ['owner', 'gap', 'ar'])
+def test_public_q5k_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.kernels.registry import KernelKey, register, resolve
@@ -45,9 +46,18 @@ def test_public_q5k_iu8_owner(monkeypatch, length):
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT', ambient)
             with ExitStack() as scopes:
-                scopes.enter_context(runtime.q5k_iu8_exact_enabled(owner, enabled))
+                for target in [owner, *runners]:
+                    if interface == 'owner':
+                        scopes.enter_context(runtime.q5k_iu8_exact_enabled(target, enabled))
+                    else:
+                        if interface == 'ar':
+                            from scripts.qwen4exp_candidate_ar import bind_q5k_iu8_override
+                        else:
+                            from scripts.qwen4exp_profile_gap import bind_q5k_iu8_override
+                        report = bind_q5k_iu8_override(scopes, target, {
+                            'HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT': '1' if enabled else '0'})
+                        assert report['q5k_iu8_exact_enabled'] is enabled
                 for runner in runners:
-                    scopes.enter_context(runtime.q5k_iu8_exact_enabled(runner, enabled))
                     # The routed-F16 composite precedes this independent grouped
                     # fallback; isolate the route under test on each runner.
                     scopes.enter_context(runtime.routed_f16_enabled(runner, False))
