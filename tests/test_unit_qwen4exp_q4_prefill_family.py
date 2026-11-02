@@ -28,6 +28,7 @@ def test_control_detects_wrong_owner_with_unchanged_process_inputs():
 
 
 def test_summary_preserves_owner_record_and_distinguishes_legacy():
+    assert sweep._summarize({FIELD: False, 'q4_iu8_layers': ''}, [])['q4_iu8_layers'] == ''
     assert sweep._summarize({FIELD: False}, [])[FIELD] is False
     assert FIELD not in sweep._summarize({}, [])
 
@@ -47,6 +48,7 @@ def test_main_reports_current_owner_control_and_family(monkeypatch, tmp_path):
             'wall_summary': {'median': 1.0}, 'wall_seconds': [1.0],
             'route_env': routes, 'bound_route_env': routes,
             FIELD: env.get(KEY, '1') == '1',
+            'q4_iu8_layers': env.get('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', '35-47'),
         }))
         return SimpleNamespace(returncode=0, stderr='')
     monkeypatch.setattr(sweep.subprocess, 'run', run)
@@ -59,5 +61,23 @@ def test_main_reports_current_owner_control_and_family(monkeypatch, tmp_path):
     assert len(report['families']) == 2
     for row in report['families']:
         assert row[FIELD] is True
+        assert row['q4_iu8_layers'] is not None
         assert row['attribution_verified'] is True
         assert row['env'][KEY] == '1'
+
+
+@pytest.mark.parametrize('scope,requested,expected', [('', 'all', True), ('all', '', True),
+    ('35-47', ','.join(map(str, range(35, 48))), True), ('999', 'all', False), (None, 'all', None)])
+def test_layer_attribution_uses_owner_not_environment(scope, requested, expected):
+    key = 'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS'
+    result = {FIELD: True, 'q4_iu8_layers': scope,
+              'bound_route_env': {key: '999'}, 'route_env': {key: '999'}}
+    assert sweep._attribution(result, {'family': 'Q4_IU8_PREFILL'},
+                              {KEY: '1', key: requested})[0] is expected
+
+
+def test_missing_layer_record_does_not_claim_current_owner_binding():
+    key = 'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS'
+    result = {FIELD: True, 'bound_route_env': {key: '999'}, 'route_env': {key: 'all'}}
+    assert sweep._attribution(result, {'family': 'Q4_IU8_PREFILL'},
+                              {KEY: '1', key: 'all'})[0] is None

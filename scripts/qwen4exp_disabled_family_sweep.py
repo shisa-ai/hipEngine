@@ -323,6 +323,23 @@ def _env_override_changed_route(payload: dict) -> bool | None:
     )
 
 
+def _q4_layer_set(scope: str) -> frozenset[int] | None:
+    """Normalize the runtime's empty/all, comma and inclusive-range syntax."""
+    if scope in {'', 'all'}:
+        return None
+    layers = set()
+    for token in scope.split(','):
+        token = token.strip()
+        if not token:
+            continue
+        if '-' in token:
+            low, high = token.split('-', 1)
+            layers.update(range(int(low), int(high) + 1))
+        else:
+            layers.add(int(token))
+    return frozenset(layers)
+
+
 def _env_request_applied(
     result: dict, env: dict[str, str], *, control: bool,
 ) -> tuple[bool | None, str]:
@@ -348,6 +365,15 @@ def _env_request_applied(
             return False, 'the Q4 prefill owner differs from the requested choice'
         owner_check = True
         env = {key: value for key, value in env.items() if key != CONTROL_KEY}
+    layer_key = 'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS'
+    if layer_key in env and ('q4_iu8_layers' in result or 'q4_iu8_prefill_enabled' in result):
+        selected_layers = result.get('q4_iu8_layers')
+        if not isinstance(selected_layers, str):
+            return None, 'the child did not report the Q4 layer owner scope'
+        if _q4_layer_set(selected_layers) != _q4_layer_set(env[layer_key]):
+            return False, 'the Q4 layer owner differs from the requested scope'
+        owner_check = True
+        env = {key: value for key, value in env.items() if key != layer_key}
     if not isinstance(bound, dict) or not isinstance(effective, dict):
         return None, "the child did not report the bound route environment"
     for key, value in env.items():
@@ -492,6 +518,8 @@ def _summarize(payload: dict, command) -> dict:
         "q8_dense_wide_policy": payload.get('q8_dense_wide_policy'),
         **({'q4_iu8_prefill_enabled': payload['q4_iu8_prefill_enabled']}
            if 'q4_iu8_prefill_enabled' in payload else {}),
+        **({'q4_iu8_layers': payload['q4_iu8_layers']}
+           if 'q4_iu8_layers' in payload else {}),
         "gr_iu8_policy": payload.get('gr_iu8_policy'),
         "risk_calls": risk.get("calls"),
         "risk_outputs": outputs,
@@ -616,6 +644,8 @@ def main(argv: list[str] | None = None) -> int:
             "owner_scope_bound": owner_bound,
             **({'q4_iu8_prefill_enabled': result['q4_iu8_prefill_enabled']}
                if 'q4_iu8_prefill_enabled' in result else {}),
+            **({'q4_iu8_layers': result['q4_iu8_layers']}
+               if 'q4_iu8_layers' in result else {}),
             "gr_iu8_policy": result.get('gr_iu8_policy'),
             "attribution_verified": verified,
             "attribution_note": note,

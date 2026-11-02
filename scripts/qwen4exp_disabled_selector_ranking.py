@@ -209,6 +209,7 @@ def _run_arm(
                'HIPENGINE_QWEN4_EXP_GR_IU8_DOWN': 'down'}
     gr_policy = child.get('gr_iu8_policy')
     q4_keys = {'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL': 'q4_iu8_prefill_enabled',
+               'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS': 'q4_iu8_layers',
                'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT': 'q4_iu8_exact_enabled'}
     owner_keys = flash_keys | {selected_key} | set(gr_keys) | set(q4_keys)
     row.update(
