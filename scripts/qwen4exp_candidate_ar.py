@@ -60,6 +60,19 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
     return environment, attention
 
 
+def split_dpp_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Separate DPP family selection from both process-write stages."""
+    key = 'HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION'
+    return ({name: value for name, value in values.items() if name != key},
+            {name: value for name, value in values.items() if name == key})
+
+
+def bind_dpp_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Share the profile-gap parser and restoring owner binding."""
+    from scripts.qwen4exp_profile_gap import bind_dpp_override as bind
+    return bind(stack, owner, overrides)
+
+
 def split_expert_grid_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
     """Separate expert-grid family choice from both process-write stages."""
     key = 'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID'
@@ -270,6 +283,7 @@ def main() -> int:
 
     try:
         overrides, attention_override = split_owner_overrides(args.override)
+        overrides, dpp_overrides = split_dpp_override(overrides)
         overrides, expert_grid_overrides = split_expert_grid_override(overrides)
         overrides, raw_prefill_overrides = split_raw_prefill_overrides(overrides)
         overrides, dense_wide_overrides = split_dense_wide_overrides(overrides)
@@ -371,6 +385,8 @@ def main() -> int:
     try:
         artifact['owner_overrides'] = owner_stack.enter_context(
             attention_override_scope(generator, attention_override))
+        artifact['owner_overrides'].update(bind_dpp_override(
+            owner_stack, generator, dpp_overrides))
         artifact['owner_overrides'].update(bind_expert_grid_override(
             owner_stack, generator, expert_grid_overrides))
         artifact['owner_overrides'].update(bind_raw_prefill_override(

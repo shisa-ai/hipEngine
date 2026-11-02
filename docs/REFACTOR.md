@@ -3698,9 +3698,10 @@ The DPP campaign, state-gate and layer-2 checked comparison now bind and report
 owner choices without process writes. Staged-F32 layer-gate arms also close
 DPP on generator/current and late-runner owners, not through process input.
 The three checked full-row diagnostic scripts bind and report DPP owner state
-for their diagnostic lifetime, including setup-error restoration. The DPP
-environment fallback remains until generic diagnostic callers migrate;
-profiles do not publish this axis yet.
+for their diagnostic lifetime, including setup-error restoration. Generic AR
+and profile-gap overrides also bind and report owner state without process
+writes, preserving the legacy rule that only exactly `0` disables DPP.
+The runtime environment fallback remains until profiles publish this axis.
 Audit each geometry's
 actual registry and dispatch consumers before removing wrappers; the old phrase
 “losing geometry ladder” is not evidence that every non-default rung is dead.

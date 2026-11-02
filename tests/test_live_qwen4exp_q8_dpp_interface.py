@@ -19,7 +19,7 @@ DPP = PREFIX + '_dpp_f32_f32_out'
 CHECKED = PREFIX + '_dpp_checked_full_rows_f32_f32_out'
 
 
-@pytest.mark.parametrize('interface', ['campaign', 'owner'])
+@pytest.mark.parametrize('interface', ['campaign', 'owner', 'profile_gap', 'candidate_ar'])
 @pytest.mark.parametrize('length', [73, 512, 513])
 def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -64,20 +64,28 @@ def test_public_dpp_family_route_cache_parity_and_cleanup(monkeypatch, length, i
             captures.clear()
             # Use the maintained campaign scope to expose the pipelined parent;
             # this comparison changes only its DPP family decision.
-            from contextlib import nullcontext
+            from contextlib import ExitStack, nullcontext
             from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
             # Both interfaces must ignore opposing ambient input.
             os.environ[key] = '1' if value == '0' else '0'
             with route_scope('q8-dpp-reduction',
-                             ('after' if value == '0' else 'before') if interface == 'owner'
+                             ('after' if value == '0' else 'before') if interface != 'campaign'
                              else ('before' if value == '0' else 'after'), runner):
                 assert linear.resolve_q8_dense_wide_policy(runner) == Q8DenseWidePolicy(False, None)
-                choice = (q8_dpp_reduction_enabled(runner, value != '0')
-                          if interface == 'owner' else nullcontext())
-                with choice:
-                    output = llm.generate_detailed(
-                        [[1] * length], SamplingParams(max_tokens=3, temperature=0,
-                                                      ignore_eos=True, speculative_mtp=False))
+                with ExitStack() as diagnostic_scope:
+                    if interface in {'profile_gap', 'candidate_ar'}:
+                        import importlib
+                        script = importlib.import_module('scripts.qwen4exp_' + interface)
+                        raw = '0' if value == '0' else '1'
+                        report = script.bind_dpp_override(diagnostic_scope, generator, {key: raw})
+                        assert report['q8_dpp_reduction_enabled'] is (value != '0')
+                        assert os.environ[key] == ('1' if value == '0' else '0')
+                    choice = (q8_dpp_reduction_enabled(runner, value != '0')
+                              if interface == 'owner' else nullcontext())
+                    with choice:
+                        output = llm.generate_detailed(
+                            [[1] * length], SamplingParams(max_tokens=3, temperature=0,
+                                                          ignore_eos=True, speculative_mtp=False))
             assert runner.q8_dense_wide_policy is bound_wide
             assert {name: os.environ.get(name) for name in Q8_WAVE_ENV} == bound_env
             assert len(output[0].generated_token_ids) == 3

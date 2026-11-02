@@ -533,7 +533,8 @@ def _apply_post_binder_overrides(
     """
 
     overrides = {key: value for key, value in overrides.items()
-                 if key not in {"HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
+                 if key not in {"HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION",
+                                "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
                                 "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH",
                                 "HIPENGINE_QWEN4_EXP_RAW_VARIANT",
                                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
@@ -556,6 +557,20 @@ def _apply_post_binder_overrides(
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_dpp_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, Any]:
+    """Bind legacy DPP syntax to restoring owner state without process writes."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        q8_dpp_reduction_enabled, resolve_q8_dpp_reduction,
+    )
+    raw = overrides.get('HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION')
+    if raw is not None:
+        stack.enter_context(q8_dpp_reduction_enabled(owner, raw != '0'))
+    return {'q8_dpp_reduction_override': raw,
+            'q8_dpp_reduction_enabled': resolve_q8_dpp_reduction(owner)}
 
 
 def bind_expert_grid_override(
@@ -1244,6 +1259,7 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_dpp_override(q4_scope, generator, overrides))
         report.update(bind_expert_grid_override(q4_scope, generator, overrides))
         report.update(bind_raw_prefill_override(q4_scope, generator, overrides))
         report.update(bind_mmq_planes_override(q4_scope, generator, overrides))
