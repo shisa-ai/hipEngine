@@ -32,7 +32,7 @@ from hipengine.kernels.registry import (
 from scripts import qwen4exp_row4_state_gate as gate
 
 PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4",
-            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "gr-dpp-reduction", "q8-wmma-down")
+            "q4-iu8-exact", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "gr-dpp-reduction", "q8-wmma-down")
 
 #: The GR-up leaves the DPP package counts: the promoted DPP sibling, the K320
 #: specialization the selector binds for complete 512-row chunks, and the
@@ -45,6 +45,9 @@ GR_WAVE_VARIANT = "coltile2_branch4_rowbatch4_wave_scale_f32_exact"
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    'q4-iu8-exact': KernelKey(
+        'hip_gfx1151', 'moe_linear', 'gguf_q4_k',
+        'selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out'),
     "q8-wmma-down": KernelKey(
         "hip_gfx1151", "linear", "gguf_q8_0",
         "selected_grouped_wmma_prefill_bf16_bf16_out"),
@@ -109,14 +112,6 @@ def _resolved(key: KernelKey):
                    variant=key.variant)
 
 
-#: The leaf keys and binder keys of the packages that still own a process key.
-PROCESS_KEYED = {
-    "q4-iu8-exact": (
-        KernelKey("hip_gfx1151", "moe_linear", "gguf_q4_k",
-                  "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out"),
-        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"),
-}
-
 #: The process keys ``main()`` itself sets before any measurement.
 MAIN_OWNED_KEYS = {
     "HIPENGINE_COMPILER_VERSION_FILE",
@@ -128,6 +123,7 @@ def _runner(**overrides):
     """A runner carrying the values the production binder publishes."""
 
     published = {
+        'q4_iu8_exact_enabled': True,
         "prefill_chunk_size": 1024,
         "q8_selected_down_enabled": True,
         "q8_down_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
@@ -177,8 +173,6 @@ def stubs(registry):
     # control arm counts.
     register(GR_DPP_PARENT_KEY, lambda *a, **kw: None, replace=True)
     register(GR_K320_KEY, lambda *a, **kw: None, replace=True)
-    for key, _env in PROCESS_KEYED.values():
-        register(key, lambda *a, **kw: None, replace=True)
     return registry
 
 
@@ -305,6 +299,7 @@ def test_main_records_the_runner_owned_premise(
         assert control["forced_runner_fields"] == {
             "q4_exact_grouped_gate": True, "q4_exact_grouped_all": True,
             "q4_bundle_prefill": True, "routed_f16_enabled": False,
+            'q4_iu8_exact_enabled': False,
             "production_moe_prefill_enabled": False,
         }
     elif package == "q8-wave-scale":
@@ -344,6 +339,9 @@ def test_main_records_the_runner_owned_premise(
     elif package == "q8-down-bundle":
         assert control["runner_field"] == gate.Q8_DOWN_BUNDLE_FIELD
         assert control["rung"]["prerequisite"] == gate.Q8_DOWN_ROW4_FIELD
+    elif package == 'q4-iu8-exact':
+        assert control['runner_field'] == 'q4_iu8_exact_enabled'
+        assert control['published_value'] is True
     elif package == "q51-fold128":
         assert control["runner_field"] == gate.Q51_FOLD128_FIELD
         assert control["rung"]["held_off"] == gate.Q51_FOLD_PAIR_FIELD
@@ -404,14 +402,12 @@ def test_main_refuses_an_unpublished_q8_chain_gate(
     assert "" not in os.environ
 
 
-@pytest.mark.parametrize("package", sorted(PROCESS_KEYED))
-def test_a_process_keyed_package_still_asserts_its_key(
-        stubs, premise_env, monkeypatch, tmp_path, package):
-    # The generic premise is intact for the packages that still own a key; the
-    # empty-name guard cannot make it pass vacuously.
-    monkeypatch.setenv(PROCESS_KEYED[package][1], "0")
-    with pytest.raises(AssertionError, match="retained route without an override"):
-        _run_main(monkeypatch, tmp_path, package, _runner())
+def test_exact_q4_premise_reads_owner_not_process(
+        stubs, premise_env, monkeypatch, tmp_path):
+    monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', '1')
+    with pytest.raises(AssertionError, match='production must select exact Q4'):
+        _run_main(monkeypatch, tmp_path, 'q4-iu8-exact',
+                  _runner(q4_iu8_exact_enabled=False))
 
 
 # --- the measured loop: both counted leaves, and the refusal below the guard --

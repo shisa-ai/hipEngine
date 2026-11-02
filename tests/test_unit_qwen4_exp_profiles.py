@@ -524,7 +524,9 @@ def test_historical_q4km_binder_structure_not_qualification(
         "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out")
     assert selected[("moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up")]["strict_fallback_variant"] == (
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out")
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"] == "1"
+    assert production_generator.q4_iu8_exact_enabled is True
+    assert fake_runner.q4_iu8_exact_enabled is True
+    assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT' not in os.environ
     assert selected[("qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16")]["selected_variant"] == (
         "strict_h256_head_quad_rows_spans")
     row4 = _selection_map(production)[("linear", "ungrouped_prefill_rows_ge64_q5k_gate_up")]

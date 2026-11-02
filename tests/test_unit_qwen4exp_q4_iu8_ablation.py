@@ -3,7 +3,9 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 import os
 import pytest
-from scripts import qwen4exp_r2e_route_ablation as ablation
+from unittest.mock import patch
+with patch.dict(os.environ):
+    from scripts import qwen4exp_r2e_route_ablation as ablation
 from hipengine.runtime import qwen4_exp_runner as runtime
 
 ENV = 'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT'

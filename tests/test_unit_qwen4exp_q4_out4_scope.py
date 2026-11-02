@@ -604,7 +604,8 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
     with _published(monkeypatch) as (published, generator):
         assert published[ROUTED_F16_ENV] is None
         assert generator.runner.routed_f16_enabled is True
-        assert published[IU8_EXACT_ENV] == "1"
+        assert published[IU8_EXACT_ENV] is None
+        assert generator.runner.q4_iu8_exact_enabled is True
         assert published[PAIR_ENV] is None
         assert generator.runner.q4_pair_prefill is True
         assert published[BUNDLE_ENV] is None
@@ -620,7 +621,7 @@ def test_the_production_publication_keeps_the_rung_from_deciding(
         # The real predicates, in dispatch order: the routed-F16 owner takes the
         # gate/up leg, and the iu8 chain sits above the ladder.
         assert generator.runner.routed_f16_enabled is True
-        assert runner_module._qwen4_exp_q4_iu8_exact_enabled() is True
+        assert runner_module.resolve_q4_iu8_exact(generator.runner) is True
         # Even with those out of the way the expert-grid family replaces the
         # rung at its default mode, and the published pair2 preemptor inside it
         # takes the launch - so neither of this rung's owners can run.

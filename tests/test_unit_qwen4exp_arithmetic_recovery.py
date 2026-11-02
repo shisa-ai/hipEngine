@@ -72,7 +72,8 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     assert "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL" not in os.environ
     assert generator.q51_iu8_exact_enabled is True
     assert "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT" not in os.environ
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"] == "1"
+    assert generator.q4_iu8_exact_enabled is True
+    assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT' not in os.environ
     # The PF-1 fork-b leaf is request-local runner state too, so the recovery
     # pass publishes it on the runner and writes no process key.
     assert generator.forkb_grouped_down is True

@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ar', 'campaign', 'state', 'pair2', 'out4', 'ablation', 'profile'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_q4_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -44,6 +44,8 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
         prior = [(r, r.q4_iu8_exact_enabled) for r in runners]
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
+            if interface == 'profile':
+                assert all(r.q4_iu8_exact_enabled is True for r in runners)
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', ambient)
             with ExitStack() as scopes:
@@ -56,6 +58,10 @@ def test_public_q4_iu8_owner(monkeypatch, length, interface):
                         report = bind_q4_iu8_override(scopes, target, {
                             'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT': '1' if enabled else '0'})
                         assert report['q4_iu8_exact_enabled'] is enabled
+                    elif interface == 'profile':
+                        from hipengine.generation.qwen4_exp_profiles import _publish_q4_iu8
+                        scopes.enter_context(runtime.q4_iu8_exact_enabled(target, enabled))
+                        _publish_q4_iu8(target, enabled)
                     elif interface in {'campaign', 'state'}:
                         if interface == 'campaign':
                             from scripts.qwen4exp_halo_box_campaign_ab import route_scope
