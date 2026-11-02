@@ -31,7 +31,7 @@ from scripts.qwen4exp_journey_localize import set_flags
 from hipengine.runtime.qwen4_exp_runner import (
     q8_mmq_prefill_enabled, qsa_h256_prefill_mode, qsa_ordered_decode,
     resolve_gdn_colwarps_prefill, resolve_qsa_ordered_decode, resolve_q4_iu8_layers,
-    resolve_q4_iu8_risk_mult,
+    resolve_q4_iu8_planes, resolve_q4_iu8_risk_mult,
 )
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 
@@ -194,6 +194,7 @@ def main():
                     runner)
                 row['q4_iu8_prefill_enabled'] = q4_prefill
                 row['q4_iu8_layers'] = resolve_q4_iu8_layers(runner)
+                row['q4_iu8_planes'] = resolve_q4_iu8_planes(runner)
                 row['q4_iu8_risk_mult'] = resolve_q4_iu8_risk_mult(runner)
                 row['gr_iu8_policy'] = gr_policy
                 row['q8_selected_down_enabled'] = selected_down

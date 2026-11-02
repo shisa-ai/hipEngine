@@ -838,6 +838,44 @@ def gr_iu8_split_scope(owner, arm, phase):
     return gr_iu8(owner, _GR_IU8_STRICT_POLICY)
 
 
+_Q4_PLANES_ENV = PREFIX + 'Q4_IU8_PLANES'
+_Q4_PLANES_ARM_VALUES = {}
+_Q4_PLANES_STRICT_VALUE = 3
+
+
+def q4_planes_snapshot(flags, *, published):
+    """Carry the owner's plane count through snapshot family overlays."""
+    return {**flags, _Q4_PLANES_ENV: str(published)}
+
+
+def migrate_q4_planes_arms(arms, *, production_value, declared=None):
+    """Extract plane choices after snapshot overlays."""
+    from hipengine.runtime.qwen4_exp_runner import _qwen4_exp_q4_iu8_planes
+    declared = declared or {}
+    values = {}
+    for name, env in arms.items():
+        value = env.pop(_Q4_PLANES_ENV, production_value)
+        values[name] = _qwen4_exp_q4_iu8_planes(declared.get(name, value))
+    return values
+
+
+@contextmanager
+def q4_planes_arm_scope(owner, arm):
+    """Bind the reconstructed plane choice and restore each affected owner."""
+    from hipengine.runtime.qwen4_exp_runner import q4_iu8_planes, resolve_q4_iu8_planes
+    value = _Q4_PLANES_ARM_VALUES.get(arm, resolve_q4_iu8_planes(owner))
+    with q4_iu8_planes(owner, value):
+        yield value
+
+
+def q4_planes_split_scope(owner, arm, phase):
+    """Replace the plane choice only during a split arm's strict phase."""
+    if arm not in SPLIT_PHASE_ARMS or not split_phase_is_strict(arm, phase):
+        return nullcontext()
+    from hipengine.runtime.qwen4_exp_runner import q4_iu8_planes
+    return q4_iu8_planes(owner, _Q4_PLANES_STRICT_VALUE)
+
+
 _Q4_RISK_ENV = PREFIX + 'Q4_IU8_RISK_MULT'
 _Q4_RISK_ARM_VALUES = {}
 _Q4_RISK_STRICT_VALUE = 4.0
@@ -1301,7 +1339,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     # Reconstruct the complete prefix in one runner; snapshots omit KV data.
     clear_arm_graphs(runner)
     set_flags(prefill_flags)
-    with q4_risk_split_scope(runner, arm, 'prefill'), q4_layers_split_scope(runner, arm, 'prefill'), q4_prefill_split_scope(runner, arm, 'prefill'), gr_iu8_split_scope(runner, arm, 'prefill'), selected_down_split_scope(runner, arm, 'prefill'), flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
+    with q4_planes_split_scope(runner, arm, 'prefill'), q4_risk_split_scope(runner, arm, 'prefill'), q4_layers_split_scope(runner, arm, 'prefill'), q4_prefill_split_scope(runner, arm, 'prefill'), gr_iu8_split_scope(runner, arm, 'prefill'), selected_down_split_scope(runner, arm, 'prefill'), flash_split_scope(runner, arm, 'prefill'), generic_wmma_baseline_scope(runner), phase_peer_scope(runner, arm), qsa_h256_prefill_mode(runner, h256_mode), gdn_register_prefill(
             runner, getattr(runner, "gdn_register_prefill", False)
             if register_prefill is None else register_prefill), q4_pair_prefill(
                 runner, getattr(runner, "q4_pair_prefill", False)
@@ -1322,7 +1360,7 @@ def split_trajectory(runner, prompt_ids, forced_ids, prefill_flags, decode_flags
     logits = [np.array(result.logits, dtype=np.float32, copy=True)]
     clear_arm_graphs(runner)
     set_flags(decode_flags)
-    with q4_risk_split_scope(runner, arm, 'decode'), q4_layers_split_scope(runner, arm, 'decode'), q4_prefill_split_scope(runner, arm, 'decode'), gr_iu8_split_scope(runner, arm, 'decode'), selected_down_split_scope(runner, arm, 'decode'), flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
+    with q4_planes_split_scope(runner, arm, 'decode'), q4_risk_split_scope(runner, arm, 'decode'), q4_layers_split_scope(runner, arm, 'decode'), q4_prefill_split_scope(runner, arm, 'decode'), gr_iu8_split_scope(runner, arm, 'decode'), selected_down_split_scope(runner, arm, 'decode'), flash_split_scope(runner, arm, 'decode'), generic_wmma_baseline_scope(runner), q4_dp4a_split_scope(runner, arm, "decode"), q8_mmq_split_scope(
             runner, arm, "decode"), production_moe_split_scope(
             runner, arm, "decode"), gr_dpp_split_scope(
             runner, arm, "decode"), gr_wide_split_scope(
@@ -1368,10 +1406,14 @@ def main():
         strict_ordered = resolve_qsa_ordered_decode(strict_generator.runner)
         strict_flags = strict_environment(os.environ)
         global _FLASH_STRICT_POLICY, _SELECTED_DOWN_STRICT_VALUE, _GR_IU8_STRICT_POLICY
+        global _Q4_PLANES_STRICT_VALUE
         global _Q4_PREFILL_STRICT_VALUE, _Q4_LAYERS_STRICT_VALUE, _Q4_RISK_STRICT_VALUE
         from hipengine.runtime.qwen4_exp_runner import (
             resolve_q4_iu8_prefill, resolve_q4_iu8_layers, resolve_q4_iu8_risk_mult,
+            resolve_q4_iu8_planes,
         )
+        _Q4_PLANES_STRICT_VALUE = resolve_q4_iu8_planes(strict_generator)
+        strict_flags = q4_planes_snapshot(strict_flags, published=_Q4_PLANES_STRICT_VALUE)
         _Q4_RISK_STRICT_VALUE = resolve_q4_iu8_risk_mult(strict_generator)
         strict_flags = q4_risk_snapshot(strict_flags, published=_Q4_RISK_STRICT_VALUE)
         _Q4_LAYERS_STRICT_VALUE = resolve_q4_iu8_layers(strict_generator)
@@ -1455,7 +1497,14 @@ def main():
             production_snapshot, published=resolve_q4_iu8_layers(generator))
         production_snapshot = q4_risk_snapshot(
             production_snapshot, published=resolve_q4_iu8_risk_mult(generator))
+        production_snapshot = q4_planes_snapshot(
+            production_snapshot, published=resolve_q4_iu8_planes(generator))
         snapshot_arms(strict_snapshot, production_snapshot)
+        _Q4_PLANES_ARM_VALUES.update(migrate_q4_planes_arms(
+            ARMS, production_value=resolve_q4_iu8_planes(generator),
+            declared={name: spec.q4_iu8_planes
+                      for name, spec in CANDIDATES.items()
+                      if spec.q4_iu8_planes is not None}))
         _Q4_RISK_ARM_VALUES.update(migrate_q4_risk_arms(
             ARMS, production_value=resolve_q4_iu8_risk_mult(generator),
             declared={name: spec.q4_iu8_risk_mult
@@ -1488,7 +1537,8 @@ def main():
         strict_flags = {key: value for key, value in strict_flags.items()
                         if key not in _FLASH_KEYS and key != _SELECTED_DOWN_ENV
                         and key not in _GR_IU8_KEYS and key != _Q4_PREFILL_ENV
-                        and key != _Q4_LAYERS_ENV and key != _Q4_RISK_ENV}
+                        and key != _Q4_LAYERS_ENV and key != _Q4_RISK_ENV
+                        and key != _Q4_PLANES_ENV}
         # The production bind's published gate is the plan's own decision; an arm
         # that named nothing ran it, and so did its peer scope.
         published_gate = bool(generator.gdn_colwarps_prefill)
@@ -1540,6 +1590,7 @@ def main():
                 os.environ.update(ARMS[arm])
                 candidate = []
                 arm_scope = ExitStack()
+                effective_q4_planes = arm_scope.enter_context(q4_planes_arm_scope(generator, arm))
                 effective_q4_risk = arm_scope.enter_context(q4_risk_arm_scope(generator, arm))
                 effective_q4_layers = arm_scope.enter_context(q4_layers_arm_scope(generator, arm))
                 effective_q4_prefill = arm_scope.enter_context(q4_prefill_arm_scope(generator, arm))
@@ -1618,6 +1669,7 @@ def main():
                     for i, descriptor in enumerate(descriptors)
                 ]
                 owner_overrides = {
+                    "q4_iu8_planes": effective_q4_planes,
                     "q4_iu8_risk_mult": effective_q4_risk,
                     "q4_iu8_layers": effective_q4_layers,
                     "q4_iu8_prefill_enabled": effective_q4_prefill,
@@ -1640,6 +1692,10 @@ def main():
                     "gr_dpp_reduction": effective_gr_dpp,
                 }
                 if arm in SPLIT_PHASE_ARMS:
+                    owner_overrides['q4_iu8_planes_phases'] = {
+                        phase: (_Q4_PLANES_STRICT_VALUE if split_phase_is_strict(arm, phase)
+                                else effective_q4_planes)
+                        for phase in ('prefill', 'decode')}
                     owner_overrides['q4_iu8_risk_mult_phases'] = {
                         phase: (_Q4_RISK_STRICT_VALUE if split_phase_is_strict(arm, phase)
                                 else effective_q4_risk)
