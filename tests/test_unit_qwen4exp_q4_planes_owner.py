@@ -1,4 +1,4 @@
-"""Q4 risk plane selection follows owners and preserves unbound parsing."""
+"""Q4 risk plane selection follows explicit owners, not ambient input."""
 import inspect
 import os
 from types import SimpleNamespace
@@ -11,10 +11,11 @@ from tests.test_unit_qwen4exp_batch_runner import _fake_runner
 ENV = 'HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES'
 
 
-@pytest.mark.parametrize('ambient,expected', [('2', 2), ('3', 3), ('bad', 3), ('', 3)])
-def test_plane_selection_preserves_unbound_fallback(monkeypatch, ambient, expected):
+@pytest.mark.parametrize('ambient', ['2', '3', 'bad', ''])
+def test_plane_selection_ignores_unbound_ambient(monkeypatch, ambient):
     monkeypatch.setenv(ENV, ambient)
-    assert runtime.resolve_q4_iu8_planes(SimpleNamespace()) == expected
+    assert runtime.resolve_q4_iu8_planes(SimpleNamespace()) == 3
+    assert runtime.resolve_q4_iu8_planes(SimpleNamespace(q4_iu8_planes=None)) == 3
     for value in (2, 3):
         assert runtime.resolve_q4_iu8_planes(SimpleNamespace(q4_iu8_planes=value)) == value
 
@@ -48,9 +49,9 @@ def test_plane_carriers_and_inheritance():
 
 def test_plane_capture_identity(monkeypatch):
     owner = _fake_runner(slots=1)
-    owner.q4_iu8_planes = 2
-    before = owner._expert_down_policy()
     owner.q4_iu8_planes = 3
+    before = owner._expert_down_policy()
+    owner.q4_iu8_planes = 2
     assert owner._expert_down_policy() != before
     owner.q4_iu8_planes = None
     monkeypatch.setenv(ENV, '2')

@@ -1176,7 +1176,8 @@ def _gdn_colwarps_prefill_enabled(
 def _publish_q4_planes(generator: Any) -> None:
     """Capture the existing process-selected plane count for this binding."""
     from hipengine.runtime.qwen4_exp_runner import _qwen4_exp_q4_iu8_planes
-    planes = _qwen4_exp_q4_iu8_planes()
+    planes = _qwen4_exp_q4_iu8_planes(
+        os.environ.get('HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES', '3'))
     generator.q4_iu8_planes = planes
     runner = getattr(generator, 'runner', None)
     if runner is not None:

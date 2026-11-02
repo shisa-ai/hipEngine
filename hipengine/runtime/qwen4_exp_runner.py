@@ -313,13 +313,12 @@ def _qwen4_exp_q4_iu8_layer_allowed(
 
 
 def _qwen4_exp_q4_iu8_planes(planes: int | None = None) -> int:
-    """Keep the existing two-plane selector and three-plane fallback."""
-    raw = os.environ.get('HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES', '3') if planes is None else planes
-    return 2 if str(raw) == '2' else 3
+    """Keep the explicit two-plane selector and unbound three-plane default."""
+    return 2 if str(planes) == '2' else 3
 
 
 def resolve_q4_iu8_planes(owner: Any) -> int:
-    """Resolve the owner plane count, or the unbound process input."""
+    """Resolve the explicit owner plane count, defaulting to three planes."""
     return _qwen4_exp_q4_iu8_planes(getattr(owner, 'q4_iu8_planes', None))
 
 
