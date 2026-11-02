@@ -538,6 +538,7 @@ def _apply_post_binder_overrides(
                                 "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
+                                "HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT",
                                 "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
                                 "HIPENGINE_QWEN4_EXP_GR_IU8",
@@ -562,6 +563,20 @@ def bind_gr_iu8_override(
         policy = GRIU8Policy(enabled(up_key, policy.up), enabled(down_key, policy.down))
         stack.enter_context(gr_iu8(owner, policy))
     return {'gr_iu8_policy': {'up': policy.up, 'down': policy.down}}
+
+
+def bind_q4_iu8_planes_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, str | int | None]:
+    """Bind diagnostic plane syntax and report its effective owner value."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        _qwen4_exp_q4_iu8_planes, q4_iu8_planes, resolve_q4_iu8_planes,
+    )
+    raw = overrides.get('HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES')
+    if raw is not None:
+        stack.enter_context(q4_iu8_planes(owner, _qwen4_exp_q4_iu8_planes(raw)))
+    return {'q4_iu8_planes_override': raw,
+            'q4_iu8_planes': resolve_q4_iu8_planes(owner)}
 
 
 def bind_q4_iu8_risk_override(
@@ -1155,6 +1170,7 @@ def main() -> None:
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
         report.update(bind_q4_iu8_prefill_override(q4_scope, generator, overrides))
+        report.update(bind_q4_iu8_planes_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_risk_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_layers_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_override(q4_scope, generator, overrides))

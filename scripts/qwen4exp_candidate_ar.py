@@ -56,6 +56,19 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
     return environment, attention
 
 
+def split_q4_iu8_planes_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Separate plane selection from both process-write stages."""
+    key = 'HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES'
+    return ({name: value for name, value in values.items() if name != key},
+            {name: value for name, value in values.items() if name == key})
+
+
+def bind_q4_iu8_planes_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Share the plane parser and restoring owner binding."""
+    from scripts.qwen4exp_profile_gap import bind_q4_iu8_planes_override as bind
+    return bind(stack, owner, overrides)
+
+
 def split_q4_iu8_risk_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
     """Separate the Q4 multiplier from both process-write stages."""
     key = 'HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT'
@@ -182,6 +195,7 @@ def main() -> int:
         overrides, attention_override = split_owner_overrides(args.override)
         overrides, generic_wmma_override = split_generic_wmma_override(overrides)
         overrides, q4_iu8_overrides = split_q4_iu8_override(overrides)
+        overrides, q4_iu8_planes_overrides = split_q4_iu8_planes_override(overrides)
         overrides, q4_iu8_risk_overrides = split_q4_iu8_risk_override(overrides)
         overrides, q51_iu8_overrides = split_q51_iu8_override(overrides)
         overrides, gr_iu8_overrides = split_gr_iu8_overrides(overrides)
@@ -277,6 +291,8 @@ def main() -> int:
             attention_override_scope(generator, attention_override))
         artifact['owner_overrides'].update(bind_generic_wmma_override(
             owner_stack, generator, generic_wmma_override))
+        artifact['owner_overrides'].update(bind_q4_iu8_planes_override(
+            owner_stack, generator, q4_iu8_planes_overrides))
         artifact['owner_overrides'].update(bind_q4_iu8_risk_override(
             owner_stack, generator, q4_iu8_risk_overrides))
         artifact['owner_overrides'].update(bind_q4_iu8_override(

@@ -3007,8 +3007,10 @@ the effective value. The multiplier candidate declares 1.0 on its owner,
 without a process override. Both profile binders publish the same existing
 1.0 multiplier on generator/runner owners without changing ambient input;
 unbound callers keep their environment/default fallback. Plane selection now
-has optional runtime owner transport, restoring scopes and graph identity;
-diagnostic consumers and profile publication still need migration.
+has optional runtime owner transport, restoring scopes and graph identity.
+Profile-gap and candidate-AR plane overrides bind owners and report effective
+values without process writes. Candidate consumers and profile publication
+still need migration.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
