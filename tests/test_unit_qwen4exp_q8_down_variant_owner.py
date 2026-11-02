@@ -809,7 +809,7 @@ def test_the_shared_graph_allowlist_names_the_owner_field():
         "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
         "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
         "qsa_flash_prefill_enabled", "q8_selected_down_enabled",
-        "gr_iu8_up", "gr_iu8_down"}
+        "gr_iu8_up", "gr_iu8_down", "q4_iu8_prefill_enabled"}
 
     restore.validate_shared_graphs(
         [], [{"q8_down_variant": WMMA, "q8_selected_down_enabled": True}])
@@ -843,6 +843,7 @@ def test_the_shared_graph_inventory_lists_only_actual_owner_changes():
         gate.CANDIDATES["production_conservative"]
     ) == {"gdn_colwarps_prefill": False, "qsa_ordered_decode": False,
           "qsa_flash_prefill_enabled": False, "q8_selected_down_enabled": False,
-          "gr_iu8_up": False, "gr_iu8_down": False}
+          "gr_iu8_up": False, "gr_iu8_down": False,
+          "q4_iu8_prefill_enabled": False}
     # A ``None`` entry is not a change even when it is passed explicitly.
     restore.validate_shared_graphs([], [{"q8_down_variant": None}])

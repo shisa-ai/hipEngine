@@ -34,7 +34,7 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # exact parent and the F16 route composition this quant's production plan
     # carries republishes the wide tile, so no process key is written.
     expected = dict(PRODUCTION_Q8_QSA_RESTORED_FLAGS)
-    owner_flags = {"PRODUCTION_MOE_PREFILL", "Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL",
+    owner_flags = {"PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL",
                    "Q8_0_SELECTED_WMMA_DOWN", "GR_IU8", "GR_IU8_DOWN"}
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
         if flag in {"Q4_DP4A64", "GR_WIDE"} or flag in owner_flags:
@@ -72,6 +72,8 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     assert "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL" not in os.environ
     assert generator.q51_iu8_exact_enabled is True
     assert "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT" not in os.environ
+    assert generator.q4_iu8_prefill_enabled is False
+    assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL' not in os.environ
     assert generator.q4_iu8_exact_enabled is True
     assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT' not in os.environ
     # The PF-1 fork-b leaf is request-local runner state too, so the recovery

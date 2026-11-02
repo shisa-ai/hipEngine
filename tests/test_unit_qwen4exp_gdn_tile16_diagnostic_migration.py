@@ -173,7 +173,8 @@ def test_restore_inventory_names_the_tile16_field():
         CANDIDATES["production_conservative"]) == {
         "gdn_colwarps_prefill": False, "qsa_ordered_decode": False,
         "qsa_flash_prefill_enabled": False, "q8_selected_down_enabled": False,
-        "gr_iu8_up": False, "gr_iu8_down": False}
+        "gr_iu8_up": False, "gr_iu8_down": False,
+        "q4_iu8_prefill_enabled": False}
     assert candidate_owner_changes(CANDIDATES["production_baseline"]) == {}
 
 

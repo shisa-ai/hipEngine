@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -42,11 +42,18 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS', 'all')
         params = SamplingParams(max_tokens=2, temperature=0, ignore_eos=True, speculative_mtp=False)
         for enabled in (False, True):
+            if interface == 'profile':
+                assert all(r.q4_iu8_prefill_enabled is False for r in runners)
             ambient = '0' if enabled else '1'
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface == 'journey':
+                    if interface == 'profile':
+                        from hipengine.generation.qwen4_exp_profiles import _publish_q4_prefill
+                        scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, enabled))
+                        _publish_q4_prefill(target, production=enabled, quant='gguf_q4_k_m')
+                        assert target.q4_iu8_prefill_enabled is enabled
+                    elif interface == 'journey':
                         from scripts import qwen4exp_journey_localize as journey
                         flags = journey.q4_prefill_snapshot({}, published=enabled)
                         choices = journey.migrate_q4_prefill_arms(

@@ -843,7 +843,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` | retired; ignored | The profile publishes `q4_pair_prefill` on its runner: production on, strict off. `q4_pair_prefill(runner, False)` preserves the diagnostic fallback comparison; row, input-width and registry guards are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` | retired; ignored | The profile publishes `q4_bundle_prefill` on its runner: production on, strict off. `q4_bundle_prefill(runner, False)` preserves the diagnostic parent comparison; expert-grid, pair2-precedence and registry guards are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q4_OUT4` | retired | No longer read. The owning runner selects the out4 fallback below the exact expertgrid family; `q4_out4(runner, False)` retains the base comparison without changing higher-priority owners. |
-| `HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL` | production profile | Integer-uint8 risk+repair selected Q4 gate/up prefill (rows>=2, hidden%256==0, ffn%128==0). |
+| `HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL` | unbound fallback only | Named profiles publish `q4_iu8_prefill_enabled` on the generator and runner without changing this input: strict off, production on except the UD arithmetic-recovery lane. Bound diagnostics use `q4_iu8_prefill_enabled(owner, enabled)` for the plain IU8-WMMA gate/up path; the low-level fallback reads this key only when no owner choice was supplied. |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS` | production layer list | Comma-separated layer list admitting the Q4 iu8 prefill route. |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT` | production profile | Exact iu8-risk Q4 gate/up route (the layer-2 Q4 route). |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES` | `3` | Plane count for the iu8-risk Q4 gate/up variant: `3` (default) or `2` (the p2 variant). |

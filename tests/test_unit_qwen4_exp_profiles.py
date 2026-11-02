@@ -544,7 +544,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert production_generator.q4_tile_n == 16
     assert fake_runner.q4_tile_m == 16
     assert fake_runner.q4_tile_n == 16
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"] == "1"
+    assert production_generator.q4_iu8_prefill_enabled is True
+    assert fake_runner.q4_iu8_prefill_enabled is True
+    assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL' not in os.environ
     assert tuple(
         int(value)
         for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS"].split(",")

@@ -1197,6 +1197,17 @@ def _gdn_colwarps_prefill_enabled(
     return True
 
 
+def _publish_q4_prefill(generator: Any, *, production: bool, quant: str | None) -> None:
+    """Publish the plain-Q4 prefill choice after the existing UD recovery."""
+    enabled = production and not (
+        quant == 'gguf_ud_q4_k_xl' and 'Q4_IU8_PREFILL' in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS)
+    _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', '1' if enabled else '0')
+    generator.q4_iu8_prefill_enabled = enabled
+    runner = getattr(generator, 'runner', None)
+    if runner is not None:
+        runner.q4_iu8_prefill_enabled = enabled
+
+
 def _publish_q4_iu8(generator: Any, enabled: bool) -> None:
     """Publish the existing exact-Q4 profile choice without process writes."""
     _record_owner_transport('HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT', '1' if enabled else '0')
@@ -1640,8 +1651,7 @@ def _bind(
         # above. No process key names it, so a direct/unbound caller keeps its
         # ambient fallback and a bound owner never reads it.
         # Dense-wide variant and scope are published on the owner below.
-        # Certified iu8-WMMA gate/up suffix within the WMMA-MoE27 route.
-        "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1" if production else "0",
+        # Plain iu8-WMMA enablement is published on the owner below.
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
             ",".join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS))
             if production
@@ -1849,7 +1859,7 @@ def _bind(
                 "HIPENGINE_QWEN4_EXP_" + flag: "0"
                 for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
                 if flag not in {
-                    "Q4_DP4A64", "PRODUCTION_MOE_PREFILL",
+                    "Q4_DP4A64", "Q4_IU8_PREFILL", "PRODUCTION_MOE_PREFILL",
                     "Q8_MMQ_PREFILL", "GR_WIDE",
                     _GDN_COLWARPS_PREFILL_FLAG, "QSA_FLASH_PREFILL",
                     "Q8_0_SELECTED_WMMA_DOWN", "GR_IU8", "GR_IU8_DOWN",
@@ -1866,6 +1876,7 @@ def _bind(
                 for flag, value in _PROCESS_RESTORED_Q8_QSA_FLAGS.items()
             }
         )
+    _publish_q4_prefill(generator, production=production, quant=resolved.manifest.get('quant'))
     _publish_q4_iu8(generator, production)
     _publish_q51_iu8(generator, production)
     _publish_gr_iu8(generator, production=production, quant=resolved.manifest.get('quant'))
