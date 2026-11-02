@@ -2990,8 +2990,9 @@ layer scope through their restoring prefill binder; cost/restore/long-context
 consumers report its effective value and shared-decode comparisons admit the
 prefill-only field. Journey snapshots and family overlays transport layer scopes
 through arm owners, including strict split phases and per-phase reports.
-Existing candidate declarations still need migration before profile publication.
-Q4 risk controls still need owner transport.
+The repair-free gate/up candidate declares its every-layer scope on its owner;
+no candidate declaration writes the layer selector. Profile publication still
+needs migration. Q4 risk controls still need owner transport.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or

@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers', 'layers_gap', 'layers_candidate', 'layers_journey'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'ablation', 'decode_sync', 'candidate', 'candidate_scope', 'journey', 'declared', 'profile', 'layers', 'layers_gap', 'layers_candidate', 'layers_journey', 'layers_declared'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -48,12 +48,19 @@ def test_public_plain_q4_prefill_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', ambient)
             with ExitStack() as scopes:
                 for target in (owner, *runners):
-                    if interface in {'layers', 'layers_gap', 'layers_candidate', 'layers_journey'}:
+                    if interface in {'layers', 'layers_gap', 'layers_candidate', 'layers_journey', 'layers_declared'}:
                         monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS',
                                            '999' if enabled else 'all')
                         scopes.enter_context(runtime.q4_iu8_prefill_enabled(target, True))
                         layers = 'all' if enabled else '999'
-                        if interface == 'layers_journey':
+                        if interface == 'layers_declared':
+                            from scripts.qwen4exp_layer2_profile_gate import CANDIDATES, candidate_q4_prefill_scope
+                            scopes.enter_context(runtime.q4_iu8_layers(target, '999'))
+                            if enabled:
+                                scopes.enter_context(candidate_q4_prefill_scope(
+                                    target, CANDIDATES['repair_free_gate_up']))
+                            assert target.q4_iu8_layers == layers
+                        elif interface == 'layers_journey':
                             from scripts import qwen4exp_journey_localize as journey
                             flags = journey.q4_layers_snapshot({}, published=layers)
                             choices = journey.migrate_q4_layers_arms(

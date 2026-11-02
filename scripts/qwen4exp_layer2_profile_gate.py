@@ -468,9 +468,8 @@ CANDIDATES = {
             "plain iu8-WMMA grouped gate/up on every layer with the "
             "bit-parity repair removed; Q5_1 down unchanged at production"
         ),
-        environment={
-            "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "all",
-        },
+        environment={},
+        q4_iu8_layers="all",
         q4_iu8_prefill_enabled=True,
         # The chain gate is runner state now, so the arm closes it through the
         # spec's field instead of a process key.

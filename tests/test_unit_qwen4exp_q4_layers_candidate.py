@@ -29,6 +29,24 @@ def test_candidate_layer_binding_and_restore(monkeypatch, layers):
     assert ('q4_iu8_layers' in changes) is (layers is not None)
 
 
+def test_declared_scope_binds_and_restores_without_process_write(monkeypatch):
+    spec = gate.CANDIDATES['repair_free_gate_up']
+    assert spec.q4_iu8_layers == 'all'
+    assert KEY not in spec.environment
+    assert gate.candidate_owner_changes(spec)['q4_iu8_layers'] == 'all'
+    monkeypatch.setenv(KEY, '999')
+    owner = SimpleNamespace(q4_iu8_layers='35-47',
+                            runner=SimpleNamespace(q4_iu8_layers=None))
+    with gate.candidate_q4_prefill_scope(owner, spec):
+        assert owner.q4_iu8_layers == owner.runner.q4_iu8_layers == 'all'
+    assert owner.q4_iu8_layers == '35-47' and owner.runner.q4_iu8_layers is None
+    assert os.environ[KEY] == '999'
+
+
+def test_no_candidate_declares_layer_scope_in_process_environment():
+    assert all(KEY not in spec.environment for spec in gate.CANDIDATES.values())
+
+
 def test_candidate_paths_report_effective_layers_and_requested_scope():
     common = inspect.getsource(gate.bind_candidate_owners)
     primary = inspect.getsource(gate._run)

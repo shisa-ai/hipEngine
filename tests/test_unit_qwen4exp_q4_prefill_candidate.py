@@ -43,7 +43,8 @@ def test_declared_candidates_bind_prefill_without_process_write(monkeypatch, nam
     assert owner.q4_iu8_prefill_enabled is (not enabled)
     assert os.environ[KEY] == ('0' if enabled else '1')
     if name == 'repair_free_gate_up':
-        assert spec.environment['HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS'] == 'all'
+        assert spec.q4_iu8_layers == 'all'
+        assert 'HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS' not in spec.environment
 
 
 def test_no_candidate_declares_plain_prefill_in_process_environment():
