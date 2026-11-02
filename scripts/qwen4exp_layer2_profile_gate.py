@@ -1709,7 +1709,8 @@ def bind_candidate_gdn_layers(stack, generator, spec) -> str:
 _OWNER_FIELD_NAMES = (
     "q8_down_variant", "gdn_tile16_variant", "gdn_colwarps_prefill",
     "qsa_ordered_decode", "q8_dense_wide_layers", "gdn_colwarps_layers",
-    "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down")
+    "qsa_flash_prefill_enabled", "q8_selected_down_enabled", "gr_iu8_up", "gr_iu8_down",
+    "q4_iu8_prefill_enabled")
 
 
 def candidate_owner_changes(candidate_spec: CandidateSpec) -> dict[str, object]:
@@ -1892,6 +1893,15 @@ def bind_candidate_q4_prefill(
         dispatch_stack.enter_context(q4_iu8_prefill_enabled(
             candidate_generator, candidate_spec.q4_iu8_prefill_enabled))
     return resolve_q4_iu8_prefill(candidate_generator)
+
+
+@contextmanager
+def candidate_q4_prefill_scope(owner, spec):
+    """Bind a candidate's plain-Q4 choice and restore the measured owner."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_q4_iu8_prefill
+    with ExitStack() as stack:
+        yield (resolve_q4_iu8_prefill(owner) if spec is None
+               else bind_candidate_q4_prefill(stack, owner, spec))
 
 
 def bind_candidate_owners(

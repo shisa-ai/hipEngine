@@ -717,6 +717,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                       "arm_kind": candidate_arm_kind(spec),
                       "batch_width": batch_width,
                       "base_profile": spec.base_profile,
+                      "q4_iu8_prefill_enabled": candidate_owners["q4_iu8_prefill_enabled"],
+                      "q4_iu8_prefill_override": spec.q4_iu8_prefill_enabled,
                       "gr_wide": candidate_gr_wide,
                       "gr_wide_override": spec.gr_wide,
                       "q8_down_variant": candidate_q8_down_variant,
