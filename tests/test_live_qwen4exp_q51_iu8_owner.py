@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_q51_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -47,8 +47,11 @@ def test_public_q51_iu8_owner(monkeypatch, length, interface):
             monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT', ambient)
             with ExitStack() as scopes:
                 def bind(target):
-                    if interface == 'profile_gap':
-                        from scripts.qwen4exp_profile_gap import bind_q51_iu8_override
+                    if interface in {'profile_gap', 'candidate_ar'}:
+                        if interface == 'candidate_ar':
+                            from scripts.qwen4exp_candidate_ar import bind_q51_iu8_override
+                        else:
+                            from scripts.qwen4exp_profile_gap import bind_q51_iu8_override
                         report = bind_q51_iu8_override(scopes, target, {
                             'HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT': '1' if enabled else '0'})
                         assert report['q51_iu8_exact_enabled'] is enabled

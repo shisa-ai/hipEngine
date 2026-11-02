@@ -2938,9 +2938,10 @@ gate asserts and reports its owner gate, not a retired process-key premise.
 Exact Q5_1 IU8 enablement accepts an explicit restoring generator/runner choice
 through resident, batch and mixed-target calls, with capture identity tracking
 the effective choice. Profile-gap binds and reports its legacy exact-Q5_1
-`--override` on the measured owner without process writes. Profile publication
-and the other diagnostic process writers still need migration; unbound callers
-retain their environment fallback.
+`--override` on the measured owner without process writes. Candidate AR also
+separates that key before both process-write stages and binds the same restoring
+owner choice. Profile publication and the other diagnostic process writers still
+need migration; unbound callers retain their environment fallback.
 QSA flash prefill uses paired enable/layer owner policies across profiles and
 diagnostic callers. Profiles publish the same effective pair without process
 writes of `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` or
