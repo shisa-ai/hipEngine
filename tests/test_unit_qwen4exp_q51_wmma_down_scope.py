@@ -403,7 +403,8 @@ def test_the_campaign_closes_the_owner_on_the_runner() -> None:
     campaign = _load_campaign()
     assert RETIRED_ENV not in campaign.Q51_PAIR2_PREEMPTING_ENV
     assert campaign.Q51_PAIR2_PREEMPTING_FIELDS == (
-        FIELD, "routed_f16_enabled", "production_moe_prefill_enabled")
+        FIELD, "routed_f16_enabled", "production_moe_prefill_enabled",
+        "q51_iu8_exact_enabled")
     assert RETIRED_ENV not in campaign.PF13_PREEMPTING_ENV
 
     owner = SimpleNamespace(
@@ -418,11 +419,11 @@ def test_the_campaign_closes_the_owner_on_the_runner() -> None:
     record = campaign.q51_pair2_control_record(owner, environment={})
     assert record["preempting_owner_fields_closed"] == {
         FIELD: False, "routed_f16_enabled": False,
-        "production_moe_prefill_enabled": False,
+        "production_moe_prefill_enabled": False, "q51_iu8_exact_enabled": False,
     }
     assert record["preempting_owner_fields_previous"] == {
         FIELD: True, "routed_f16_enabled": False,
-        "production_moe_prefill_enabled": True,
+        "production_moe_prefill_enabled": True, "q51_iu8_exact_enabled": None,
     }
 
 
@@ -451,7 +452,7 @@ def test_the_pf13_arm_closes_the_owner_in_both_arms() -> None:
         "bound_value": False,
         "published_value": {
             FIELD: True, "routed_f16_enabled": False,
-            "production_moe_prefill_enabled": True,
+            "production_moe_prefill_enabled": True, "q51_iu8_exact_enabled": None,
         },
     }
 

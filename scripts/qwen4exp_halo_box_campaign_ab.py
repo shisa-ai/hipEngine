@@ -770,20 +770,15 @@ GDN_SERIAL_ROUTE_PACKAGES = frozenset({"gdn-narrow", "gdn-wave-norm"})
 #: row-publish selection - on the shipped lane: the routed F16 WMMA down (the
 #: actual production owner), the exact iu8-risk+repair down, grouped MoE
 #: prefill. A row-publish arm holds every one
-#: of them off for both arms; the profile's own values come back on exit. The
-#: F16 WMMA down owner below the chain is request-local runner state now, so
-#: it is held off through ``Q51_PAIR2_PREEMPTING_FIELDS`` rather than a
-#: process key. The retired ds4-MMQ Q5_1 suffix is not a preemptor: nothing
-#: reads it.
-Q51_PAIR2_PREEMPTING_ENV = (
-    "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
-)
-#: The preemptor the runner carries as a field: the F16 WMMA compact grouped
-#: Q5_1 down owner below the chain (``runner.q51_wmma_down``). The production
-#: plan publishes it off, and the arms bind it off on the runner they measure
-#: so the closure does not depend on that publication staying off.
+#: of them off for both arms; the profile's own values come back on exit.
+#: All of these preemptors now bind request-local runner state.
+#: The retired ds4-MMQ Q5_1 suffix is not a preemptor: nothing reads it.
+Q51_PAIR2_PREEMPTING_ENV = ()
+#: The F16 WMMA compact grouped Q5_1 down owner below the chain is also
+#: closed explicitly, independent of the production plan's publication.
 Q51_PAIR2_PREEMPTING_FIELDS = (
-    "q51_wmma_down", "routed_f16_enabled", "production_moe_prefill_enabled")
+    "q51_wmma_down", "routed_f16_enabled", "production_moe_prefill_enabled",
+    "q51_iu8_exact_enabled")
 #: The pair2 chain's own gate. It must stay on for the counted leaf to run, so
 #: the arm records it instead of forcing it. The gate is request-local runner
 #: state, so an arm reads it on the runner it measures, not from the
@@ -1052,10 +1047,8 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
 
     The row-publish selection only exists inside that chain, so an arm that
     leaves any preemptor open counts zero launches and measures the other
-    owner. Every key is read per dispatch, so closing them after construction
-    takes effect; the F16 WMMA down owner below the chain is runner state, so
-    it is bound off on the runner this arm measures; all prior values
-    (including absent keys and fields) come back on exit.
+    owner. The preemptors bind on the runner this arm measures; all prior
+    values (including absent fields) come back on exit.
     The pair2 chain's own gate is not one of the preemptors: it is request-local
     runner state and must already be on, so the scope reads it on the runner it
     measures and fails loudly rather than reporting an engagement it cannot
@@ -1068,7 +1061,7 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
             "Q5_1 down chain; without it the counted row-publish leaf cannot "
             "launch")
     from hipengine.runtime.qwen4_exp_runner import (
-        production_moe_prefill_enabled,
+        production_moe_prefill_enabled, q51_iu8_exact_enabled,
         q51_wmma_down, routed_f16_enabled as routed_f16,
     )
 
@@ -1078,7 +1071,8 @@ def q51_pair2_scope(*, runner=None, environment=os.environ):
     try:
         with contextlib.ExitStack() as scope:
             for manager in (
-                production_moe_prefill_enabled, q51_wmma_down, routed_f16
+                production_moe_prefill_enabled, q51_iu8_exact_enabled,
+                q51_wmma_down, routed_f16
             ):
                 scope.enter_context(manager(runner, False))
             yield previous
@@ -1433,7 +1427,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
         q8_down_row4_prefill,
     )
 
-    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled
+    from hipengine.runtime.qwen4_exp_runner import q8_selected_down_enabled, q51_iu8_exact_enabled
     previous_env = {key: environment.get(key) for key in PF13_PREEMPTING_ENV}
     previous_fields = {
         field: getattr(runner, field, None)
@@ -1443,6 +1437,7 @@ def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
     try:
         with contextlib.ExitStack() as scope:
             scope.enter_context(q8_selected_down_enabled(runner, False))
+            scope.enter_context(q51_iu8_exact_enabled(runner, False))
             for manager in (routed_f16, q51_pair_prefill, q51_fold128_prefill, q51_fold_pair_prefill,
                             q51_register_cache, q51_row_publish,
                             q8_down_row4_prefill, q8_down_bundle_prefill,

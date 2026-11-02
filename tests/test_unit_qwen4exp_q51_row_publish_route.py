@@ -301,10 +301,13 @@ def _chain_gate_owner(**fields):
 
 
 def test_pair2_scope_restores_absent_and_present_values():
-    env = {Q51_PAIR2_PREEMPTING_ENV[0]: "1"}
-    with q51_pair2_scope(runner=_chain_gate_owner(), environment=env):
-        assert all(env[key] == "0" for key in Q51_PAIR2_PREEMPTING_ENV)
-    assert env == {Q51_PAIR2_PREEMPTING_ENV[0]: "1"}
+    env = {Q51_IU8_EXACT_ENV: "1"}
+    owner = _chain_gate_owner(q51_iu8_exact_enabled=True)
+    with q51_pair2_scope(runner=owner, environment=env):
+        assert owner.q51_iu8_exact_enabled is False
+        assert env == {Q51_IU8_EXACT_ENV: "1"}
+    assert owner.q51_iu8_exact_enabled is True
+    assert env == {Q51_IU8_EXACT_ENV: "1"}
 
 
 def test_pair2_scope_restores_after_an_exception():
@@ -328,15 +331,13 @@ def test_pair2_control_names_every_preemptor():
     # The routed F16 down is the production owner; the rest sit behind it. The
     # pair2 gate is deliberately not in the forced list, and the retired
     # ds4-MMQ Q5_1 suffix is no longer a preemptor because nothing reads it.
-    assert Q51_PAIR2_PREEMPTING_ENV == (
-        "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
-    )
+    assert Q51_PAIR2_PREEMPTING_ENV == ()
     # The F16 WMMA down owner below the chain and the production grouped-MoE
     # prefill gate are runner state, so the arm holds them off through the field
     # set rather than process keys.
     assert Q51_PAIR2_PREEMPTING_FIELDS == (
         "q51_wmma_down", "routed_f16_enabled",
-        "production_moe_prefill_enabled")
+        "production_moe_prefill_enabled", "q51_iu8_exact_enabled")
     assert Q51_PAIR2_GATE_FIELD not in Q51_PAIR2_PREEMPTING_ENV
     assert Q51_IU8_EXACT_ENV == "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 
@@ -404,10 +405,10 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
     assert "HIPENGINE_QWEN4_EXP_ROUTED_F16" not in record["preempting_owners_previous"]
     assert record["preempting_owner_fields_closed"] == {
         "q51_wmma_down": False, "routed_f16_enabled": False,
-        "production_moe_prefill_enabled": False}
+        "production_moe_prefill_enabled": False, "q51_iu8_exact_enabled": False}
     assert record["preempting_owner_fields_previous"] == {
         "q51_wmma_down": None, "routed_f16_enabled": None,
-        "production_moe_prefill_enabled": None}
+        "production_moe_prefill_enabled": None, "q51_iu8_exact_enabled": None}
     assert record["pair2_gate"] == {
         "runner_field": Q51_PAIR2_GATE_FIELD,
         "published_value": True,

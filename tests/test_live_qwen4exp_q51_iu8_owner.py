@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
-@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign', 'state'])
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar', 'campaign', 'state', 'pair2', 'pf13'])
 @pytest.mark.parametrize('length', [1, 17, 73])
 def test_public_q51_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
@@ -71,12 +71,18 @@ def test_public_q51_iu8_owner(monkeypatch, length, interface):
                     # The production routed-F16 composite precedes this
                     # independent grouped fallback; isolate the route under test.
                     scopes.enter_context(runtime.routed_f16_enabled(runner, False))
+                    if interface in {'pair2', 'pf13'}:
+                        from scripts import qwen4exp_halo_box_campaign_ab as campaign
+                        scope = (campaign.q51_pair2_scope(runner=runner) if interface == 'pair2'
+                                 else campaign.pf13_scope('after', runner))
+                        scopes.enter_context(scope)
+                        assert runner.q51_iu8_exact_enabled is False
                 outputs, logits = [], []
                 for _ in range(2):
                     calls.clear()
                     start = len(captures)
                     outputs.append(llm.generate([list(range(100, 100 + length))], params))
-                    assert bool(calls) is (enabled and length >= 2)
+                    assert bool(calls) is (enabled and length >= 2 and interface not in {'pair2', 'pf13'})
                     logits.append([x.copy() for x in captures[start:]])
                 assert outputs[0] == outputs[1]
                 assert logits[0] and len(logits[0]) == len(logits[1])
