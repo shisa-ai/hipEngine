@@ -32,7 +32,7 @@ from hipengine.kernels.registry import (
 from scripts import qwen4exp_row4_state_gate as gate
 
 PACKAGES = ("q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle", "q5k-row4",
-            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "gr-dpp-reduction")
+            "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "gr-dpp-reduction", "q8-wmma-down")
 
 #: The GR-up leaves the DPP package counts: the promoted DPP sibling, the K320
 #: specialization the selector binds for complete 512-row chunks, and the
@@ -45,6 +45,9 @@ GR_WAVE_VARIANT = "coltile2_branch4_rowbatch4_wave_scale_f32_exact"
 
 #: The keys ``main()`` resolves the counted leaf through, per package.
 LEAF_KEYS = {
+    "q8-wmma-down": KernelKey(
+        "hip_gfx1151", "linear", "gguf_q8_0",
+        "selected_grouped_wmma_prefill_bf16_bf16_out"),
     "gr-dpp-reduction": KernelKey(
         "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0", GR_DPP_VARIANT),
     "gr-wave-scale": KernelKey(
@@ -126,6 +129,8 @@ def _runner(**overrides):
 
     published = {
         "prefill_chunk_size": 1024,
+        "q8_selected_down_enabled": True,
+        "q8_down_variant": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
         "gdn_register_prefill": True,
         "q51_pair_prefill": True,
         "q51_exact_grouped_down": True,
@@ -243,7 +248,12 @@ def test_main_writes_no_empty_process_key(
     # The reported failure: the premise asserted os.environ[""] (KeyError) and
     # the finally wrote os.environ[""] (OSError).
     before = set(os.environ)
+    if package == 'q8-wmma-down':
+        monkeypatch.setenv('HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN', '0')
+        before = set(os.environ)
     report = _run_main(monkeypatch, tmp_path, package, _runner())
+    if package == 'q8-wmma-down':
+        assert os.environ['HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN'] == '0'
     assert "" not in os.environ
     assert set(os.environ) - before <= MAIN_OWNED_KEYS
     assert report["status"] == "passed"
@@ -258,7 +268,15 @@ def test_main_records_the_runner_owned_premise(
     report = _run_main(monkeypatch, tmp_path, package, _runner())
     control = report["selection_control"]
     assert control["scope"] == "per measured run; restored on exit"
-    if package in {"q4-bundle", "prefill-bundle"}:
+    if package == 'q8-wmma-down':
+        assert control['runner_field'] == 'q8_down_variant'
+        assert control['gate'] == {
+            'runner_field': 'q8_selected_down_enabled', 'published_value': True,
+            'before': False, 'after': True}
+        assert control['published'] == _runner().q8_down_variant
+        assert control['bound'] == LEAF_KEYS[package].variant
+        assert 'environment' not in control and 'environment_value' not in control
+    elif package in {"q4-bundle", "prefill-bundle"}:
         assert control["runner_field"] == "q4_bundle_prefill"
         assert control["before"] is False and control["after"] is True
         if package == "prefill-bundle":
@@ -336,7 +354,8 @@ def test_main_records_the_runner_owned_premise(
 
 @pytest.mark.parametrize(
     "package,field",
-    [("q51-fold-pair", gate.Q51_FOLD128_FIELD),
+    [("q8-wmma-down", 'q8_selected_down_enabled'),
+     ("q51-fold-pair", gate.Q51_FOLD128_FIELD),
      ("q8-down-bundle", gate.Q8_DOWN_ROW4_FIELD)])
 def test_main_still_refuses_a_missing_published_parent(
         stubs, premise_env, monkeypatch, tmp_path, package, field):

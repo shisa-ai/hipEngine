@@ -621,7 +621,7 @@ def main():
             # around it, so the published value is the premise both arms ride.
             assert generator.runner.gr_dpp_reduction is True
             report["selection_control"] = gr_dpp_control_record(generator.runner)
-        if args.route_package in {"q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "q8-wmma-down"}:
+        if args.route_package in {"q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact"}:
             # These packages still own a binder-set process key. The Q5_1 fold
             # and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.
@@ -634,11 +634,15 @@ def main():
             # value from the published one.
             from hipengine.runtime.qwen4_exp_runner import (
                 Q8_DOWN_WMMA_VARIANT, resolve_q8_down_variant,
+                resolve_q8_selected_down,
             )
+            selected_down = resolve_q8_selected_down(generator.runner)
+            assert selected_down, "production must publish the selected Q8 down gate"
             report["selection_control"] = {
                 "runner_field": "q8_down_variant",
-                "environment": flag,
-                "environment_value": os.environ[flag],
+                "gate": {"runner_field": "q8_selected_down_enabled",
+                         "published_value": selected_down,
+                         "before": False, "after": True},
                 "published": resolve_q8_down_variant(generator.runner),
                 "bound": Q8_DOWN_WMMA_VARIANT,
                 "scope": "per measured run; restored on exit",
