@@ -49,7 +49,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
                    "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair",
-                   "q8-dpp-reduction", "q8-mmq-prepack", "q8-wmma-down", "gr-iu8", "gr-iu8-down"}:
+                   "q8-dpp-reduction", "q8-mmq-prepack", "q8-wmma-down", "gr-iu8", "gr-iu8-down", "q51-iu8-exact"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -215,7 +215,7 @@ def main():
     if args.route_package == "q4-iu8-exact":
         flag = "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT"
     if args.route_package == "q51-iu8-exact":
-        flag = "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
+        flag = ""  # arm_control binds the owning runner.
     if args.route_package == "q5k-iu8-exact":
         flag = "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"
     if args.route_package == "qsa-ordered-v2":
@@ -621,9 +621,12 @@ def main():
             # around it, so the published value is the premise both arms ride.
             assert generator.runner.gr_dpp_reduction is True
             report["selection_control"] = gr_dpp_control_record(generator.runner)
-        if args.route_package in {"q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact"}:
-            # These packages still own a binder-set process key. The Q5_1 fold
-            # and Q8_0 row4/bundle rungs are runner state, so their premise is
+        if args.route_package == 'q51-iu8-exact':
+            from scripts.qwen4exp_halo_box_campaign_ab import q51_iu8_control_record
+            report['selection_control'] = q51_iu8_control_record(generator.runner)
+        if args.route_package in {"q4-iu8-exact", "q5k-iu8-exact"}:
+            # These packages still own a binder-set process key.
+            # The Q5_1 fold and Q8_0 row4/bundle rungs are runner state, so their premise is
             # the plan's own publication, asserted in their blocks below.
             assert flag, "a process-keyed route package must name its key"
             assert os.environ[flag] == "1", "production must select the retained route without an override"
@@ -883,6 +886,10 @@ def main():
                         args.route_package, enabled,
                         generator.runner) as case_scope:
                     first = generator.runner.prefill(case["prompt_token_ids"])
+                    q51_iu8_enabled = None
+                    if args.route_package == 'q51-iu8-exact':
+                        from hipengine.runtime.qwen4_exp_runner import resolve_q51_iu8_exact
+                        q51_iu8_enabled = resolve_q51_iu8_exact(generator.runner)
                     gr_policy = None
                     if args.route_package in {'gr-iu8', 'gr-iu8-down'}:
                         from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
@@ -1075,6 +1082,7 @@ def main():
                     assert prefill_state == baseline[3], case["id"]
                 assert state["finite"]
                 summaries.append({
+                    "q51_iu8_exact_enabled": q51_iu8_enabled,
                     "gr_iu8_policy": gr_policy,
                     "enabled": enabled, "state_sha256": state["state_sha256"],
                     "layout_sha256": state["layout_sha256"],
