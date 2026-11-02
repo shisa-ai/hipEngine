@@ -49,7 +49,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256",
                    "q4-bundle", "prefill-bundle", "q51-pair", "q4-pair",
-                   "q8-dpp-reduction", "q8-mmq-prepack", "q8-wmma-down", "gr-iu8", "gr-iu8-down", "q4-iu8-exact", "q51-iu8-exact"}:
+                   "q8-dpp-reduction", "q8-mmq-prepack", "q8-wmma-down", "gr-iu8", "gr-iu8-down", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact"}:
         return  # route_scope binds the runner-local choice.
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
@@ -631,11 +631,11 @@ def main():
                 'production must select exact Q4 without an override')
             report['selection_control'] = q4_iu8_control_record(generator.runner)
         if args.route_package == "q5k-iu8-exact":
-            # This package still owns a binder-set process key.
-            # The Q5_1 fold and Q8_0 row4/bundle rungs are runner state, so their premise is
-            # the plan's own publication, asserted in their blocks below.
-            assert flag, "a process-keyed route package must name its key"
-            assert os.environ[flag] == "1", "production must select the retained route without an override"
+            from scripts.qwen4exp_halo_box_campaign_ab import q5k_iu8_control_record
+            from hipengine.runtime.qwen4_exp_runner import resolve_q5k_iu8_exact
+            assert resolve_q5k_iu8_exact(generator.runner), (
+                'production must select exact Q5_K without an override')
+            report['selection_control'] = q5k_iu8_control_record(generator.runner)
         if args.route_package == "q8-wmma-down":
             # The counted leaf is the unguarded WMMA parent, but the plan
             # publishes the guarded block-scale owner, so ``route_scope`` binds
@@ -810,8 +810,8 @@ def main():
                 "production must build the grouped row4 gate/up map")
             assert getattr(generator.runner, Q8_DOWN_FORKB_FIELD, False), (
                 "the Q8_0 expert-down chain gate must be on")
-            assert os.environ.get(
-                "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT", "") not in {"", "0"}, (
+            from hipengine.runtime.qwen4_exp_runner import resolve_q5k_iu8_exact
+            assert resolve_q5k_iu8_exact(generator.runner), (
                 "production must bind the grouped Q5_K IU8 owner the mapped "
                 "arm closes")
             report["selection_control"] = {
@@ -901,6 +901,10 @@ def main():
                     if args.route_package == 'q51-iu8-exact':
                         from hipengine.runtime.qwen4_exp_runner import resolve_q51_iu8_exact
                         q51_iu8_enabled = resolve_q51_iu8_exact(generator.runner)
+                    q5k_iu8_enabled = None
+                    if args.route_package == 'q5k-iu8-exact':
+                        from hipengine.runtime.qwen4_exp_runner import resolve_q5k_iu8_exact
+                        q5k_iu8_enabled = resolve_q5k_iu8_exact(generator.runner)
                     gr_policy = None
                     if args.route_package in {'gr-iu8', 'gr-iu8-down'}:
                         from hipengine.runtime.qwen4_exp_runner import resolve_gr_iu8_policy
@@ -1095,6 +1099,7 @@ def main():
                 summaries.append({
                     "q4_iu8_exact_enabled": q4_iu8_enabled,
                     "q51_iu8_exact_enabled": q51_iu8_enabled,
+                    "q5k_iu8_exact_enabled": q5k_iu8_enabled,
                     "gr_iu8_policy": gr_policy,
                     "enabled": enabled, "state_sha256": state["state_sha256"],
                     "layout_sha256": state["layout_sha256"],

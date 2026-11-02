@@ -3026,8 +3026,10 @@ comparison interface. Exact Q5_K IU8 selection now accepts optional owner
 state through resident, batch and mixed-target execution, with restoring scopes,
 serving inheritance and captured-segment identity. Profile-gap and candidate AR
 bind explicit Q5_K overrides on owners and report requested/effective values
-without process writes. Profiles and other diagnostic callers still use process
-transport; migrate those consumers before publishing bound profile choices.
+without process writes. Campaign and row4 state-gate arms also bind and report
+Q5_K choices through restoring owner scopes, including production-premise and
+mapped-down prerequisite reads. Profiles and other diagnostic callers still use
+process transport; migrate those consumers before publishing bound profile choices.
 Remove the `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT`
 process fallback after profiles and diagnostic consumers bind owner state and
 the public owner-selection regression passes without process transport.

@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize('length', [1, 17, 73])
-@pytest.mark.parametrize('interface', ['owner', 'gap', 'ar'])
+@pytest.mark.parametrize('interface', ['owner', 'gap', 'ar', 'campaign', 'state'])
 def test_public_q5k_iu8_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
@@ -49,6 +49,15 @@ def test_public_q5k_iu8_owner(monkeypatch, length, interface):
                 for target in [owner, *runners]:
                     if interface == 'owner':
                         scopes.enter_context(runtime.q5k_iu8_exact_enabled(target, enabled))
+                    elif interface in {'campaign', 'state'}:
+                        if interface == 'campaign':
+                            from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+                            scope = route_scope('q5k-iu8-exact', 'after' if enabled else 'before', target)
+                        else:
+                            from scripts.qwen4exp_row4_state_gate import arm_control
+                            scope = arm_control('q5k-iu8-exact', '1' if enabled else '0', target)
+                        scopes.enter_context(scope)
+                        assert runtime.resolve_q5k_iu8_exact(target) is enabled
                     else:
                         if interface == 'ar':
                             from scripts.qwen4exp_candidate_ar import bind_q5k_iu8_override

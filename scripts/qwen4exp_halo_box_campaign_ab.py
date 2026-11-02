@@ -1800,6 +1800,14 @@ def q51_iu8_control_record(runner):
             'scope': 'per measured run; restored on exit'}
 
 
+def q5k_iu8_control_record(runner):
+    """Record the owner choice replaced by each exact-Q5_K arm."""
+    from hipengine.runtime.qwen4_exp_runner import resolve_q5k_iu8_exact
+    return {'runner_field': 'q5k_iu8_exact_enabled', 'before': False, 'after': True,
+            'published_value': resolve_q5k_iu8_exact(runner),
+            'scope': 'per measured run; restored on exit'}
+
+
 def route_scope(route_package: str, mode: str, runner: Any = None, *,
                 environment: MutableMapping[str, str] = os.environ):
     """The live control a route package needs around its measured run.
@@ -1837,6 +1845,14 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             raise ValueError('q51-iu8-exact needs the owning runner')
         from hipengine.runtime.qwen4_exp_runner import q51_iu8_exact_enabled
         return q51_iu8_exact_enabled(runner, mode == 'after')
+
+    if route_package == 'q5k-iu8-exact':
+        if mode not in {'before', 'after'}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            raise ValueError('q5k-iu8-exact needs the owning runner')
+        from hipengine.runtime.qwen4_exp_runner import q5k_iu8_exact_enabled
+        return q5k_iu8_exact_enabled(runner, mode == 'after')
 
     if route_package in {'gr-iu8', 'gr-iu8-down'}:
         if mode not in {'before', 'after'}:
@@ -2320,7 +2336,7 @@ def _apply_mode(
         if route_package == "q51-iu8-exact":
             return  # route_scope binds the owning runner.
         if route_package == "q5k-iu8-exact":
-            flag = "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"
+            return  # route_scope binds the owning runner.
         if route_package == "qsa-ordered-v2":
             # Request-local on the runner; ``route_scope`` records the ordered
             # v1 prerequisite and binds the leaf.
@@ -3155,6 +3171,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         artifact['selection_control'] = q4_iu8_control_record(generator.runner)
     if args.route_package == 'q51-iu8-exact':
         artifact['selection_control'] = q51_iu8_control_record(generator.runner)
+    if args.route_package == 'q5k-iu8-exact':
+        artifact['selection_control'] = q5k_iu8_control_record(generator.runner)
     if args.route_package == "q8-wmma-down":
         artifact["selection_control"] = {
             "runner_field": "q8_selected_down_enabled", "before": False, "after": True,
@@ -3190,6 +3208,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.route_package == 'q51-iu8-exact':
                 from hipengine.runtime.qwen4_exp_runner import resolve_q51_iu8_exact
                 row['q51_iu8_exact_enabled'] = resolve_q51_iu8_exact(generator.runner)
+            if args.route_package == 'q5k-iu8-exact':
+                from hipengine.runtime.qwen4_exp_runner import resolve_q5k_iu8_exact
+                row['q5k_iu8_exact_enabled'] = resolve_q5k_iu8_exact(generator.runner)
             if args.route_package == "q8-wmma-down":
                 from hipengine.runtime.qwen4_exp_runner import resolve_q8_selected_down
                 row["q8_selected_down_enabled"] = resolve_q8_selected_down(generator.runner)
