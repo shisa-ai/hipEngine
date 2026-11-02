@@ -84,7 +84,6 @@ def test_live_row4_matches_parent(monkeypatch):
     rows, hidden, ffn, experts, topk = 65, 256, 256, 8, 3
     allocations = []
     scratch = None
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL", "0")
     try:
         mixed = _upload(rng.normal(0, 0.1, (rows, hidden)).astype(np.float32), runtime, allocations)
         weights = {
@@ -109,6 +108,7 @@ def test_live_row4_matches_parent(monkeypatch):
             monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL", enabled)
             result = runner.run_qwen4_exp_moe(
                 mixed.ptr, weights, q5k_row4_prefill=enabled == "1",
+                production_moe_prefill_enabled=False,
                 scratch=scratch, rows=rows, hidden=hidden,
                 ffn=ffn, experts=experts, top_k=topk, runtime=runtime)
             runtime.device_synchronize()

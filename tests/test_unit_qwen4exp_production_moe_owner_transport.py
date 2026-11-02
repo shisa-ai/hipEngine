@@ -237,22 +237,20 @@ def test_runner_constructor_exposes_the_owner_input():
     assert parameters["production_moe_prefill_enabled"].default is None
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("", False), ("0", False), ("false", False), ("False", False),
-    ("1", True), ("true", True), ("FALSE", True), (" 0 ", True),
-    ("off", True),
-])
-def test_raw_boolean_parser_preserves_the_historical_false_set(
-        monkeypatch, raw, expected):
+@pytest.mark.parametrize("raw", ["", "0", "false", "False", "1", "true", "FALSE", " 0 ", "off"])
+def test_unbound_owner_ignores_the_retired_process_selector(monkeypatch, raw):
     monkeypatch.setenv(ENV, raw)
     assert resolve_production_moe_prefill(
-        SimpleNamespace(production_moe_prefill_enabled=None)) is expected
+        SimpleNamespace(production_moe_prefill_enabled=None)) is False
+    assert resolve_production_moe_prefill(SimpleNamespace()) is False
 
 
 def test_owner_wins_over_ambient_and_override_wins_over_owner(monkeypatch):
     monkeypatch.setenv(ENV, "1")
     assert resolve_production_moe_prefill(
-        SimpleNamespace(production_moe_prefill_enabled=None)) is True
+        SimpleNamespace(production_moe_prefill_enabled=None)) is False
+    assert resolve_production_moe_prefill(
+        SimpleNamespace(production_moe_prefill_enabled=True)) is True
     assert resolve_production_moe_prefill(
         SimpleNamespace(production_moe_prefill_enabled=False)) is False
 
@@ -284,7 +282,7 @@ def test_override_restores_after_failure_without_allocation():
     assert generator.runner.production_moe_prefill_enabled is True
 
 
-def test_guarded_lookup_keeps_the_rows_guard_before_any_owner_or_ambient_read(
+def test_guarded_lookup_keeps_the_rows_guard_before_any_owner_read(
         monkeypatch):
     class ExplodingWeight:
         backend = "hip_gfx1151"
@@ -326,7 +324,7 @@ def test_run_moe_does_not_resolve_at_entry():
     assert "enabled=production_moe_prefill_enabled" in source
 
 
-def test_batch_policy_reads_ambient_only_in_the_active_row_scope(monkeypatch):
+def test_batch_policy_never_reads_the_retired_process_selector(monkeypatch):
     class GuardedEnvironment(dict):
         def get(self, key, default=None):
             if key == ENV:
@@ -337,8 +335,7 @@ def test_batch_policy_reads_ambient_only_in_the_active_row_scope(monkeypatch):
     assert _batch_owner(None)._production_moe_policy(1) is False
     assert _batch_owner(None)._production_moe_policy(15) is False
     assert _batch_owner(False)._production_moe_policy(16) is False
-    with pytest.raises(AssertionError, match="active row scope"):
-        _batch_owner(None)._production_moe_policy(16)
+    assert _batch_owner(None)._production_moe_policy(16) is False
 
 
 @pytest.mark.parametrize("rows", [1, 15, 16, 64])

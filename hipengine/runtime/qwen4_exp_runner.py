@@ -5932,27 +5932,15 @@ def router_producer_variant(runner: Any, mode: str | None = None):
         runner.router_producer_variant = prior
 
 
-_PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
-_PRODUCTION_MOE_PREFILL_FALSE = frozenset({"", "0", "false", "False"})
 _PRODUCTION_MOE_PREFILL_UNSET = object()
-
-
-def _parse_production_moe_prefill_enabled(value: str) -> bool:
-    """Preserve the historical raw false set, including its case handling."""
-
-    return value not in _PRODUCTION_MOE_PREFILL_FALSE
 
 
 def _resolve_production_moe_prefill_enabled(
     enabled: bool | None,
 ) -> bool:
-    """Resolve a bound owner decision, or the direct/unbound ambient fallback."""
+    """Use the explicit owner choice; unbound callers keep the strict parent."""
 
-    if enabled is not None:
-        return bool(enabled)
-    return _parse_production_moe_prefill_enabled(
-        os.environ.get(_PRODUCTION_MOE_PREFILL_ENV, "0")
-    )
+    return bool(enabled)
 
 
 def resolve_production_moe_prefill(owner: Any) -> bool:
@@ -5979,7 +5967,7 @@ def production_moe_prefill_enabled(
     """Override the production grouped-MoE prefill decision on one owner.
 
     A generator target also binds its current runner. Omitted preserves the
-    current owner value, ``None`` restores the direct/unbound fallback, and a
+    current owner value, ``None`` selects the unbound strict parent, and a
     bool binds that decision. The previous state is restored on exit, including
     after an exception. No allocation or resource work happens here.
     """
