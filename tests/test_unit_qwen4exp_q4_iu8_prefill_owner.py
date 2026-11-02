@@ -14,7 +14,7 @@ def test_prefill_owner_beats_ambient(monkeypatch, ambient):
     monkeypatch.setenv(ENV, ambient)
     for enabled in (None, False, True):
         owner = SimpleNamespace(q4_iu8_prefill_enabled=enabled)
-        expected = ambient not in {'', '0', 'false', 'False'} if enabled is None else enabled
+        expected = bool(enabled)
         assert runtime.resolve_q4_iu8_prefill(owner) is expected
 
 
@@ -47,5 +47,5 @@ def test_prefill_capture_identity(monkeypatch):
     owner.q4_iu8_prefill_enabled = True
     assert owner._expert_down_policy() != before
     owner.q4_iu8_prefill_enabled = None
-    monkeypatch.setenv(ENV, '0')
+    monkeypatch.setenv(ENV, '1')
     assert owner._expert_down_policy() == before

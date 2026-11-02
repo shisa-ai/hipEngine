@@ -6493,11 +6493,8 @@ def _qwen4_exp_q5_k_iu8_risk_multiplier() -> float:
 
 
 def _qwen4_exp_q4_iu8_prefill_enabled(enabled: bool | None = None) -> bool:
-    """Resolve plain Q4 prefill selection, preserving direct-call inputs."""
-    if enabled is not None:
-        return bool(enabled)
-    return os.environ.get('HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL', '0') not in {
-        '', '0', 'false', 'False'}
+    """Resolve the explicit plain-Q4 choice; unbound calls keep the parent."""
+    return bool(enabled)
 
 
 def resolve_q4_iu8_prefill(owner: Any) -> bool:
