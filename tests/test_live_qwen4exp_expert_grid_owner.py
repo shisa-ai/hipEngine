@@ -11,8 +11,9 @@ pytestmark = pytest.mark.skipif(
     not (_hip_available() and MODEL.is_dir()), reason='requires ROCm and Qwen4Exp GGUF')
 
 
+@pytest.mark.parametrize('interface', ['direct', 'profile_gap', 'candidate_ar'])
 @pytest.mark.parametrize('length', [17, 73, 273])
-def test_public_expert_grid_owner(monkeypatch, length):
+def test_public_expert_grid_owner(monkeypatch, length, interface):
     from hipengine import LLM, SamplingParams
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.kernels.registry import register, resolve, KernelKey
@@ -54,7 +55,16 @@ def test_public_expert_grid_owner(monkeypatch, length):
             for enabled in (False, True):
                 ambient = '0' if enabled else '64'
                 monkeypatch.setenv('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID', ambient)
-                with runtime.expert_grid_policy(owner, runtime.ExpertGridPolicy(enabled, enabled)):
+                with ExitStack() as policy_stack:
+                    if interface == 'direct':
+                        policy_stack.enter_context(runtime.expert_grid_policy(
+                            owner, runtime.ExpertGridPolicy(enabled, enabled)))
+                    else:
+                        import importlib
+                        script = importlib.import_module('scripts.qwen4exp_' + interface)
+                        report = script.bind_expert_grid_override(policy_stack, owner, {
+                            'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID': '64' if enabled else '0'})
+                        assert report['expert_grid_policy'] == runtime.ExpertGridPolicy(enabled, enabled).to_report()
                     repeats = []
                     for _ in range(2):
                         calls.clear()

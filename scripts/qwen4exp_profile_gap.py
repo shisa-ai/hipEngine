@@ -14,7 +14,8 @@ Dense-wide diagnostics use ``--q8-dense-wide`` and ``--q8-dense-wide-layers``;
 omitted axes preserve the bound policy. Legacy dense-wide process overrides are
 rejected because a bound owner would ignore them. Raw-prefill row slab and
 geometry keep their legacy override spelling but bind and report a paired owner
-policy without changing either process key.
+policy without changing either process key. Expert-grid family overrides also
+bind owner policy and preserve the `64`/`q4`/`q5` parser.
 """
 from __future__ import annotations
 
@@ -532,7 +533,8 @@ def _apply_post_binder_overrides(
     """
 
     overrides = {key: value for key, value in overrides.items()
-                 if key not in {"HIPENGINE_QWEN4_EXP_RAW_ROWBATCH",
+                 if key not in {"HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
+                                "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH",
                                 "HIPENGINE_QWEN4_EXP_RAW_VARIANT",
                                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
                                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES",
@@ -554,6 +556,22 @@ def _apply_post_binder_overrides(
     os.environ.update(overrides)
     effective = {key: os.environ.get(key) for key in effective_route_keys}
     return bound, effective
+
+
+def bind_expert_grid_override(
+    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
+) -> dict[str, Any]:
+    """Bind legacy family syntax to owner policy without process writes."""
+    from hipengine.runtime.qwen4_exp_runner import (
+        ExpertGridPolicy, expert_grid_policy, resolve_expert_grid_policy,
+    )
+    raw = overrides.get('HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID')
+    if raw is not None:
+        stack.enter_context(expert_grid_policy(
+            owner, ExpertGridPolicy(raw in {'64', 'q4'}, raw in {'64', 'q5'})))
+    return {'expert_grid_override': raw,
+            'expert_grid_policy': resolve_expert_grid_policy(
+                getattr(owner, 'expert_grid_policy', None)).to_report()}
 
 
 def bind_raw_prefill_override(
@@ -1226,6 +1244,7 @@ def main() -> None:
 
             report["q8_mmq_prefill_enabled"] = resolve_q8_mmq_prefill(
                 generator)
+        report.update(bind_expert_grid_override(q4_scope, generator, overrides))
         report.update(bind_raw_prefill_override(q4_scope, generator, overrides))
         report.update(bind_mmq_planes_override(q4_scope, generator, overrides))
         report.update(bind_q4_iu8_prefill_override(q4_scope, generator, overrides))

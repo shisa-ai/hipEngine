@@ -10,7 +10,8 @@ the same paired owner policy as profile-gap, as do the independent GR IU8
 up/down overrides. F32 MMQ plane and dense-wide enable/layer overrides also bind
 and report owner state. Raw-prefill row slab and geometry overrides bind a paired
 owner policy, preserving an omitted axis from the owner (or its defaults).
-Other overrides remain post-binder environment inputs.
+Expert-grid family overrides also bind and report owner policy without process
+writes. Other overrides remain post-binder environment inputs.
 This runner produces diagnostic samples, not production benchmark evidence.
 
 Usage:
@@ -57,6 +58,19 @@ def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | Non
         else:
             environment[key] = value
     return environment, attention
+
+
+def split_expert_grid_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """Separate expert-grid family choice from both process-write stages."""
+    key = 'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID'
+    return ({name: value for name, value in values.items() if name != key},
+            {name: value for name, value in values.items() if name == key})
+
+
+def bind_expert_grid_override(stack: ExitStack, owner, overrides: dict[str, str]):
+    """Share the profile-gap family parser and restoring scope."""
+    from scripts.qwen4exp_profile_gap import bind_expert_grid_override as bind
+    return bind(stack, owner, overrides)
 
 
 def split_raw_prefill_overrides(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
@@ -256,6 +270,7 @@ def main() -> int:
 
     try:
         overrides, attention_override = split_owner_overrides(args.override)
+        overrides, expert_grid_overrides = split_expert_grid_override(overrides)
         overrides, raw_prefill_overrides = split_raw_prefill_overrides(overrides)
         overrides, dense_wide_overrides = split_dense_wide_overrides(overrides)
         overrides, mmq_planes_overrides = split_mmq_planes_override(overrides)
@@ -356,6 +371,8 @@ def main() -> int:
     try:
         artifact['owner_overrides'] = owner_stack.enter_context(
             attention_override_scope(generator, attention_override))
+        artifact['owner_overrides'].update(bind_expert_grid_override(
+            owner_stack, generator, expert_grid_overrides))
         artifact['owner_overrides'].update(bind_raw_prefill_override(
             owner_stack, generator, raw_prefill_overrides))
         artifact['owner_overrides'].update(bind_dense_wide_override(

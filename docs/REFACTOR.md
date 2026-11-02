@@ -3684,8 +3684,10 @@ and campaign, candidate-AR/profile-gap binders preserve all geometry comparisons
 including partial overrides, without process writes. Expert-grid transport now
 has an explicit `ExpertGridPolicy(q4, q5)` and restoring owner scope, carried
 through scalar/batch helpers and batch graph identity. The legacy expert-grid
-fallback remains until campaign/PF13, route-ablation and generic diagnostic
-callers migrate; profiles have not published that axis yet. Audit each geometry's
+fallback remains until campaign/PF13 and route-ablation callers migrate;
+candidate-AR/profile-gap overrides now bind and report the policy without
+process writes, preserving legacy family syntax. Profiles have not published
+that axis yet. Audit each geometry's
 actual registry and dispatch consumers before removing wrappers; the old phrase
 “losing geometry ladder” is not evidence that every non-default rung is dead.
 Keep registered scalar raw-Q8 and direct selected strict primitives.

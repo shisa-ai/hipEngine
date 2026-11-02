@@ -83,6 +83,63 @@ def test_every_dispatch_call_forwards_policy():
                 assert any(k.arg == 'expert_grid_policy' for k in node.keywords), (node.func.id, node.lineno)
 
 
+@pytest.mark.parametrize('interface', ['profile_gap', 'candidate_ar'])
+@pytest.mark.parametrize('raw,expected', [('64', (True, True)), ('q4', (True, False)),
+    ('q5', (False, True)), ('0', (False, False)), ('other', (False, False))])
+def test_generic_override_binds_without_process_writes(monkeypatch, interface, raw, expected):
+    import importlib
+    import os
+    script = importlib.import_module('scripts.qwen4exp_' + interface)
+    key = 'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID'
+    monkeypatch.setenv(key, 'stale')
+    policy = runtime.ExpertGridPolicy(False, True)
+    owner = SimpleNamespace(expert_grid_policy=policy, runner=SimpleNamespace(expert_grid_policy=policy))
+    before = dict(os.environ)
+    with pytest.raises(RuntimeError, match='injected'):
+        with ExitStack() as stack:
+            report = script.bind_expert_grid_override(stack, owner, {key: raw})
+            selected = runtime.resolve_expert_grid_policy(owner.expert_grid_policy)
+            assert selected == runtime.ExpertGridPolicy(*expected)
+            assert owner.runner.expert_grid_policy is selected
+            assert report['expert_grid_policy'] == selected.to_report()
+            assert report['expert_grid_override'] == raw
+            assert _inherit_lane_decisions(owner, SimpleNamespace()).expert_grid_policy is selected
+            assert dict(os.environ) == before
+            raise RuntimeError('injected')
+    assert owner.expert_grid_policy is owner.runner.expert_grid_policy is policy
+
+
+def test_generic_override_main_transport(monkeypatch):
+    from scripts import qwen4exp_candidate_ar as ar, qwen4exp_profile_gap as gap
+    import os
+    key = 'HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID'
+    overrides = {key: 'q4', 'HIPENGINE_HIP_ARCH': 'same'}
+    monkeypatch.setenv(key, 'prior')
+    monkeypatch.setenv('HIPENGINE_HIP_ARCH', 'prior')
+    environment, selected = ar.split_expert_grid_override(overrides)
+    assert environment == {'HIPENGINE_HIP_ARCH': 'same'}
+    assert selected == {key: 'q4'}
+    source = inspect.getsource(ar.main)
+    assert source.index('split_expert_grid_override(overrides)') < source.index('os.environ.update(overrides)')
+    assert "artifact['owner_overrides'].update(bind_expert_grid_override(" in source
+    assert 'report.update(bind_expert_grid_override(' in inspect.getsource(gap.main)
+    gap._apply_post_binder_overrides(overrides)
+    assert os.environ[key] == 'prior'
+    assert os.environ['HIPENGINE_HIP_ARCH'] == 'same'
+
+
+@pytest.mark.parametrize('interface', ['profile_gap', 'candidate_ar'])
+def test_omitted_override_keeps_owner_and_reports_it(interface):
+    import importlib
+    script = importlib.import_module('scripts.qwen4exp_' + interface)
+    policy = runtime.ExpertGridPolicy(True, False)
+    owner = SimpleNamespace(expert_grid_policy=policy)
+    with ExitStack() as stack:
+        report = script.bind_expert_grid_override(stack, owner, {})
+        assert owner.expert_grid_policy is policy
+        assert report == {'expert_grid_override': None, 'expert_grid_policy': policy.to_report()}
+
+
 def test_constructor_carries_policy(monkeypatch):
     from hipengine.generation import qwen4_exp_gguf as generation
     calls = []
