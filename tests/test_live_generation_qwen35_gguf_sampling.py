@@ -652,7 +652,12 @@ def test_gguf_mtp_server_defer_verify_scatter_ignores_retired_override(
     else:
         monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", retired_override)
     jobs_seen = []
-    session = SimpleNamespace(verify_target_blocks_batch=lambda jobs: jobs_seen.extend(jobs) or [object()])
+    def verify_batch(jobs, *, capture_prefill_gdn=False):
+        assert capture_prefill_gdn is True
+        jobs_seen.extend(jobs)
+        return [object()]
+
+    session = SimpleNamespace(verify_target_blocks_batch=verify_batch)
     drafted = SimpleNamespace(
         slot=SimpleNamespace(session=session, timing={}), block_inputs=(1, 2),
     )
@@ -878,11 +883,12 @@ def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) 
     outputs = generator.generate_speculative_mtp_detailed(_request(prompts=("long",), max_tokens=3))
 
     assert outputs[0].text == "BCD"
-    assert ("draft_init_env", "1", "q6") in calls
+    assert ("draft_init_env", None, "q6") in calls
     assert ("verify_block", (1, 2), {
         "bulk_attention_mode": "bulk",
         "use_wmma_prefill": False,
         "capture_linear_state_rows": True,
+        "capture_prefill_gdn": True,
         "defer_linear_state_commit": True,
     }) in calls
     assert ("commit_row", 1, 6) in calls
@@ -1152,12 +1158,14 @@ def test_gguf_speculative_mtp_c2_uses_resident_slots(monkeypatch) -> None:
             "bulk_attention_mode": "bulk",
             "use_wmma_prefill": False,
             "capture_linear_state_rows": True,
+            "capture_prefill_gdn": True,
             "defer_linear_state_commit": True,
         }),
         ("verify_block", 1, (1, 2), {
             "bulk_attention_mode": "bulk",
             "use_wmma_prefill": False,
             "capture_linear_state_rows": True,
+            "capture_prefill_gdn": True,
             "defer_linear_state_commit": True,
         }),
     ]
@@ -4818,8 +4826,8 @@ def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
 
     assert [output.text for output in outputs] == ["BCD", "BCD"]
     assert [call for call in calls if call[0] == "step_batch"] == [
-        ("step_batch", 0, ((0, 1, 4), (1, 1, 4)), "1", False, False),
-        ("step_batch", 0, ((0, 2, 5), (1, 2, 5)), "1", False, False),
+        ("step_batch", 0, ((0, 1, 4), (1, 1, 4)), None, False, False),
+        ("step_batch", 0, ((0, 2, 5), (1, 2, 5)), None, False, False),
     ]
     assert not [call for call in calls if call[0] == "step"]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
@@ -5073,12 +5081,12 @@ def test_gguf_ar_packed_prefill_uses_batch_prompt_path(monkeypatch) -> None:
             0,
             ((10, 11, 12, 13), (20, 21, 22, 23)),
             (0, 1),
-            "1",
+            None,
             False,
         )
     ]
     assert [call for call in calls if call[0] == "step_batch"] == [
-        ("step_batch", 0, ((0, 1, 4), (1, 1, 4)), "1", False, False)
+        ("step_batch", 0, ((0, 1, 4), (1, 1, 4)), None, False, False)
     ]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
     assert generator.last_batch_generation is not None
@@ -5156,7 +5164,7 @@ def test_gguf_ar_packed_prefill_runs_one_native_c8_slab(monkeypatch) -> None:
                 (20, 21, 22, 23),
             ),
             (0, 1, 2, 3, 4, 5, 6, 7),
-            "1",
+            None,
             False,
         ),
     ]
@@ -5772,7 +5780,7 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
             2,
             ((1, 2, 3, 4), (2, 3, 4, 5)),
             (0, 1),
-            "1",
+            None,
             False,
         ),
         (
@@ -5781,7 +5789,7 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
             4,
             ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7)),
             (0, 1, 2, 3),
-            "1",
+            None,
             False,
         ),
     ]
@@ -6216,8 +6224,8 @@ def test_gguf_ar_batch_decode_streams_chunks_above_native_c8(monkeypatch) -> Non
         ("stream_create", 501, True),
     ]
     assert sorted(call for call in calls if call[0] == "step_batch") == [
-        ("step_batch", 0, 500, (0, 1, 2, 3, 4, 5, 6, 7), (4, 4, 4, 4, 4, 4, 4, 4), False, "1"),
-        ("step_batch", 8, 501, (8, 9), (4, 4), False, "1"),
+        ("step_batch", 0, 500, (0, 1, 2, 3, 4, 5, 6, 7), (4, 4, 4, 4, 4, 4, 4, 4), False, None),
+        ("step_batch", 8, 501, (8, 9), (4, 4), False, None),
     ]
     assert all(slot.native_decode_steps == 1 for slot in slots)
     assert all("decode_batch_ms" in slot.timing for slot in slots)
