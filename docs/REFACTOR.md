@@ -1674,19 +1674,17 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `use_selected_halfdot_decode`.
 
-**Decision needed:** keep the constructor rollback and diagnostic selectors, or migrate their
-exact-teacher and fallback ownership into an explicit kernel plan. Preserve both registered
-implementations. This is not a request to disable the default halfdot path or re-promote its
-arithmetic.
+**Interface decision:** retain the constructor rollback and maintained leaf/correctness
+selectors as supported diagnostics. The constructor resolves backend defaults once per session;
+paired singleton routing consumes that choice, while wider rows keep the exact fallback.
+Candidate/repeat sessions and the explicit exact-teacher session remain independent. Preserve
+both registered implementations; no arithmetic or default changes.
 
-Done when: migrate the correctness script's candidate/repeat/exact sessions and leaf
-selectors together, then run `uv run pytest tests/test_unit_laguna_halfdot_reference.py
-tests/test_unit_laguna_scalar_q_retirement.py tests/test_unit_laguna_tile8_comparison.py
-tests/test_unit_laguna_weighted_hidden_split_runtime.py tests/test_unit_laguna_gguf_runner.py
-tests/test_gpu_gguf_t16_selected_gemv_decode.py`. On a HIP host with the model/oracle, run `uv run
-python scripts/laguna_gguf_correctness.py --backend hip_gfx1151 --selected-halfdot` and compare a
-public generation request under default and explicit exact policy, recording actual routes, aligned
-teacher logits, reset/reuse and teardown. Do not remove the wider-row exact fallback.
+Done when: supply the absent Laguna checkpoint/oracle and run
+`uv run python scripts/laguna_gguf_correctness.py --backend hip_gfx1151 --selected-halfdot`,
+then public default/exact generation with aligned teacher logits, selected routes, reset/reuse
+and teardown. Local 117-test host bundle and natural/interleaved GPU primitive oracle pass
+on gfx1151; see `worklog/entries/20261105T223602.134441Z-lhl-r0367-owner-94a7e0.md`.
 
 ### R0354 — Paired expert cache and ordinary-layout migration
 

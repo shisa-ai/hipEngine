@@ -2270,11 +2270,12 @@
       "ledger_line": 1745,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/runtime/laguna_gguf_runner.py:3006,3228-3235 retains selected halfdot rollback."
+        "Constructor-local halfdot and independent exact-teacher/leaf diagnostics retained; wider-row exact fallback unchanged.",
+        "117 host tests and natural/interleaved GPU primitive oracle pass on gfx1151; worklog/entries/20261105T223602.134441Z-lhl-r0367-owner-94a7e0.md."
       ],
-      "next_action": "Move exact-teacher candidate/repeat selectors into owned diagnostic kernel plan and migrate correctness harness together; keep default halfdot and wider-row exact fallback.",
+      "next_action": "Supply absent Laguna checkpoint/oracle for correctness script and public default/exact teacher, reset/reuse and teardown checks. Local interface work complete.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
